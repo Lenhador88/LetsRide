@@ -128,6 +128,23 @@ npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PU
 
 Copy `.env.local.example` to `.env.local` for local development.
 
+## The Agent Squad
+
+Specialist agents live in `.claude/agents/`. Delegate to them rather than doing everything in the main thread.
+
+| Agent | Use for |
+|---|---|
+| `data` | Migrations, RLS policies, indexes, schema debugging |
+| `feature` | Complete vertical slice — route, page, components, types, wiring |
+| `rider-ux` | PWA, offline, geolocation, push, gloved-hand touch targets |
+| `test` | Vitest/Playwright infra and tests |
+| `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit |
+
+**Standard order for a feature that needs new schema:**
+`data` → `feature` → `test` → `reviewer` → open PR
+
+Skip `data` when no schema changes. Always run `reviewer` on someone else's output, never on its own work — the value is in the fresh eyes.
+
 ## Branching & CI
 
 - `main` = production. Auto-deploys to Vercel.
