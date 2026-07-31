@@ -1,5 +1,10 @@
 # LetsRide — Project Context for Claude Agents
 
+> **▶ Starting a session? Read [`docs/HANDOFF.md`](docs/HANDOFF.md) now.** This file holds
+> the durable context — stack, decisions, conventions. The handoff holds the *current
+> position*: what is half-done, what is blocked, and the exact next action. Neither is
+> complete without the other, and only this one gets auto-loaded.
+
 LetsRide is a mobile-first web app for motorcycle riders to organise rides, join clubs, and connect with friends. Built with Next.js 16 App Router, Supabase, and Tailwind v4. Targeting thousands of users — prioritise correctness, security, and clean code over cleverness.
 
 ## Stack
