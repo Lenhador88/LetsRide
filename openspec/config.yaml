@@ -1,0 +1,44 @@
+schema: spec-driven
+
+# CLAUDE.md at the repo root is the canonical description of the stack, layout
+# and conventions. It is deliberately not duplicated here — two copies drift,
+# and the one that drifts is always the one you did not read.
+context: |
+  LetsRide: mobile-first web app for motorcycle riders to organise rides, join
+  clubs and connect with friends. Next.js 16 App Router, Supabase, Tailwind v4.
+  Read CLAUDE.md at the repo root before writing any artifact; it covers the
+  stack, repo layout, Supabase client rules, and design system.
+
+  Access control lives entirely in Postgres RLS policies, not in application
+  code. Every table has RLS enabled and every query runs under the requesting
+  user's session. This means a visibility decision left unstated in a spec does
+  not fail loudly — it silently becomes whatever the migration author assumed.
+  That is the origin of every access-control bug this project has had.
+
+rules:
+  proposal:
+    - State who must NOT be able to see or do this, not only who must. An
+      unstated negative case is how private club rosters ended up world-readable.
+    - "For anything touching clubs, rides, memberships or profiles, name the
+      visibility rule for each role that can reach it: owner, member,
+      non-member, signed-out visitor."
+  spec:
+    - Write access-control requirements as testable statements about a role and
+      a resource, so each one maps onto an assertion in supabase/tests.
+  tasks:
+    - Any task adding or changing a migration must be paired with a task adding
+      assertions to supabase/tests/rls_test.sql. A policy change with no new
+      assertion is not finished.
+    - Migrations are append-only. Never edit an applied migration; add the next
+      numbered file.
+
+operations:
+  apply:
+    guidance:
+      - Run `npm test` before claiming a migration task is complete.
+      - After applying a migration to the hosted Supabase project, check the
+        security advisors. The local suite runs on plain Postgres and cannot see
+        environment-specific problems like role grants or exposed endpoints.
+  archive:
+    guidance:
+      - Do not archive while the RLS suite is failing.

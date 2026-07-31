@@ -120,6 +120,7 @@ npm run dev      # start dev server
 npm run lint     # eslint
 npx tsc --noEmit # type check
 npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY)
+npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/README.md)
 ```
 
 **Environment variables** (never commit these):
@@ -128,11 +129,36 @@ npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PU
 
 Copy `.env.local.example` to `.env.local` for local development.
 
+## Feature Workflow (OpenSpec)
+
+Features with real domain rules — anything touching visibility, membership or
+permissions — go through OpenSpec: `/opsx:propose` → `/opsx:apply` →
+`/opsx:archive`. Small mechanical changes (copy, styling, a dependency bump) do
+not need a proposal; requiring one for everything is how process gets ignored.
+
+Proposals must state the **negative** cases, not just the positive ones: who
+must *not* see or do this. Every access-control bug this project has had came
+from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
+
+## Testing
+
+`supabase/tests/` holds the RLS policy suite. It applies the real migration
+chain to a scratch database and asserts what each role can reach.
+
+- **A migration that changes a policy must add an assertion.** A policy change
+  with no new assertion is not finished.
+- The suite runs on plain Postgres, so it cannot see environment-specific
+  problems — role grants, exposed RPC endpoints, Supabase defaults. After
+  applying a migration to the hosted project, also check the Supabase security
+  advisors. A migration once passed locally and stayed broken in production
+  because of exactly this gap.
+
 ## Branching & CI
 
 - `main` = production. Auto-deploys to Vercel.
 - All work on feature branches. Open PRs against `main`.
-- CI runs on every PR: TypeScript → ESLint → `next build`. All three must pass before merging.
+- CI runs on every PR: TypeScript → ESLint → `next build`, plus the RLS policy
+  suite against Postgres 17. All must pass before merging.
 - Never push directly to `main`.
 
 ## What Not To Do
