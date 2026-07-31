@@ -77,6 +77,21 @@ Auth routes (redirect to `/dashboard` if already signed in): `/auth/*`.
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
+**The canonical project is `letsride`, ref `zwprydcyryvudhurbnye`** (`eu-west-1`). There is
+exactly one, and every environment points at it — Vercel's `NEXT_PUBLIC_SUPABASE_URL` and
+the GitHub Actions secrets of the same name. A second project named `LetsRide`
+(`ylxnicopnaroltebvfnc`) existed briefly, was never referenced by anything, and has been
+deleted. Recorded here because it is not secret — the ref ships in the client bundle as
+part of the Supabase URL — and because not knowing it cost real time.
+
+**Applied state:** `001` is applied. `002` and `003` are written but **not yet applied**
+(see Working Principles on drift). `003` must not be applied until the `full_name` call
+sites are fixed in the same change.
+
+**The project is on the free tier, which auto-pauses after ~7 days idle.** A paused project
+serves nothing, so the deployed app goes down with no alert. This needs to be on Pro before
+anything resembling launch.
+
 ## Component & Code Conventions
 
 **Pages:**
