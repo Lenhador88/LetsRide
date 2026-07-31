@@ -15,7 +15,7 @@ as $$
 $$;
 
 -- Clubs: members of a private club could not see the club itself, only its roster.
-drop policy "Public clubs are viewable by everyone" on clubs;
+drop policy if exists "Public clubs are viewable by everyone" on clubs;
 
 create policy "Clubs are viewable by the public and their members" on clubs for select
   using (
@@ -25,7 +25,7 @@ create policy "Clubs are viewable by the public and their members" on clubs for 
   );
 
 -- Club members: rosters of private clubs were world-readable.
-drop policy "Club members are viewable by everyone" on club_members;
+drop policy if exists "Club members are viewable by everyone" on club_members;
 
 create policy "Club rosters are viewable by the public and club members" on club_members for select
   using (
@@ -39,7 +39,7 @@ create policy "Club rosters are viewable by the public and club members" on club
 -- Club members: any authenticated user could insert themselves into any club,
 -- including private clubs they cannot see. The owner_id branch keeps the club
 -- creation flow working, where the owner adds their own membership row.
-drop policy "Users can join clubs" on club_members;
+drop policy if exists "Users can join clubs" on club_members;
 
 create policy "Users can join public clubs" on club_members for insert
   with check (
@@ -53,7 +53,7 @@ create policy "Users can join public clubs" on club_members for insert
 
 -- Rides: a club ride with is_public = false was visible only to its organizer,
 -- so the club it was created for could not see it.
-drop policy "Public rides are viewable by everyone" on rides;
+drop policy if exists "Public rides are viewable by everyone" on rides;
 
 create policy "Rides are viewable by the public, organizer and club" on rides for select
   using (
@@ -65,14 +65,14 @@ create policy "Rides are viewable by the public, organizer and club" on rides fo
 -- Ride members: attendee lists of non-public rides were world-readable. The
 -- subquery inherits the rides select policy above, so roster visibility now
 -- tracks ride visibility exactly.
-drop policy "Ride members are viewable by everyone" on ride_members;
+drop policy if exists "Ride members are viewable by everyone" on ride_members;
 
 create policy "Ride rosters follow ride visibility" on ride_members for select
   using (
     exists (select 1 from rides r where r.id = ride_members.ride_id)
   );
 
-drop policy "Users can join rides" on ride_members;
+drop policy if exists "Users can join rides" on ride_members;
 
 create policy "Users can join visible rides" on ride_members for insert
   with check (

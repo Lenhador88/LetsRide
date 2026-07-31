@@ -2,16 +2,26 @@
 /node_modules
 /.pnp
 .pnp.*
-
-# testing
-/coverage
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
 # next.js
 /.next/
 /out/
+next-env.d.ts
 
 # production
 /build
+
+# testing
+/coverage
+/test-results
+/playwright-report
+/blob-report
+/.playwright
 
 # misc
 .DS_Store
@@ -23,13 +33,21 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# env files — never commit these
 .env
 .env*.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.local.example
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
+
+# editors
+.idea
+.vscode/*
+!.vscode/extensions.json

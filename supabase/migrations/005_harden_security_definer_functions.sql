@@ -24,7 +24,7 @@ revoke all on function private.is_club_member(uuid) from public;
 grant execute on function private.is_club_member(uuid) to authenticated;
 
 -- Repoint the policies before dropping the old function, which they depend on.
-drop policy "Clubs are viewable by the public and their members" on clubs;
+drop policy if exists "Clubs are viewable by the public and their members" on clubs;
 
 create policy "Clubs are viewable by the public and their members" on clubs for select
   using (
@@ -33,7 +33,7 @@ create policy "Clubs are viewable by the public and their members" on clubs for 
     or private.is_club_member(id)
   );
 
-drop policy "Club rosters are viewable by the public and club members" on club_members;
+drop policy if exists "Club rosters are viewable by the public and club members" on club_members;
 
 create policy "Club rosters are viewable by the public and club members" on club_members for select
   using (
@@ -44,7 +44,7 @@ create policy "Club rosters are viewable by the public and club members" on club
     )
   );
 
-drop policy "Rides are viewable by the public, organizer and club" on rides;
+drop policy if exists "Rides are viewable by the public, organizer and club" on rides;
 
 create policy "Rides are viewable by the public, organizer and club" on rides for select
   using (

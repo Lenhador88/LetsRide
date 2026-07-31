@@ -1,5 +1,10 @@
 # LetsRide — Project Context for Claude Agents
 
+> **▶ Starting a session? Read [`docs/HANDOFF.md`](docs/HANDOFF.md) now.** This file holds
+> the durable context — stack, decisions, conventions. The handoff holds the *current
+> position*: what is half-done, what is blocked, and the exact next action. Neither is
+> complete without the other, and only this one gets auto-loaded.
+
 LetsRide is a mobile-first web app for motorcycle riders to organise rides, join clubs, and connect with friends. Built with Next.js 16 App Router, Supabase, and Tailwind v4. Targeting thousands of users — prioritise correctness, security, and clean code over cleverness.
 
 ## Stack
@@ -11,7 +16,7 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 | Database / Auth | Supabase (Postgres + RLS + `@supabase/ssr`) |
 | Icons | `lucide-react` |
 | Deployment | Vercel (auto-deploy from `main`) |
-| CI | GitHub Actions (type check + lint + build on every PR) |
+| CI | GitHub Actions (type check + lint + build + RLS policy suite on every PR) |
 
 ## Repo Layout
 
@@ -77,6 +82,29 @@ Auth routes (redirect to `/dashboard` if already signed in): `/auth/*`.
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
+**The canonical project is `letsride`, ref `zwprydcyryvudhurbnye`** (`eu-west-1`). There is
+exactly one, and every environment points at it — Vercel's `NEXT_PUBLIC_SUPABASE_URL` and
+the GitHub Actions secrets of the same name. A second project named `LetsRide`
+(`ylxnicopnaroltebvfnc`) existed briefly, was never referenced by anything, and has been
+deleted. Recorded here because it is not secret — the ref ships in the client bundle as
+part of the Supabase URL — and because not knowing it cost real time.
+
+**Applied state:** everything except `003_onboarding` is applied. `003` must not be
+applied until the `full_name` call sites are fixed in the same change, and
+`supabase/tests/run.sh` skips it for that reason — remove it from `SKIP_MIGRATIONS` in
+the change that deploys it.
+
+`004`–`006` reached the database before `002` did, because two chains were written in
+parallel and each recreated the policies the other did. `008` reconciles them: `to
+authenticated` from `002`, the visibility predicates from `004`. Verified by diffing the
+live policy set against a database built from the migration chain — they match exactly.
+Both databases now agree; the file order and the historical apply order do not, and that
+is recorded here rather than left to be rediscovered.
+
+**The project is on the free tier, which auto-pauses after ~7 days idle.** A paused project
+serves nothing, so the deployed app goes down with no alert. This needs to be on Pro before
+anything resembling launch.
+
 ## Component & Code Conventions
 
 **Pages:**
@@ -103,15 +131,48 @@ router.refresh()  // revalidates server component data without full navigation
 
 ## Design System
 
-- **Background:** `bg-zinc-950` (root), `bg-zinc-900` (cards)
-- **Borders:** `border-zinc-800`
-- **Primary/accent:** `orange-500` (buttons, active states, focus rings)
-- **Muted text:** `text-zinc-400` / `text-zinc-500`
-- **Errors:** `text-red-400` / `border-red-500`
-- **Layout:** Single-column, `max-w-lg mx-auto px-4`, mobile-first
-- **Fixed Navbar:** Top bar (`h-14`, add `pt-14` to page content) + bottom tab bar (`pb-20`)
-- **Safe area:** Use `.pb-safe` utility for bottom padding on mobile notch devices
-- Icons: `lucide-react` only
+> **⚠️ The code currently does NOT match the design.** The app was built against the
+> **v1 (dark)** designs. Figma has since moved to **v2 (light)** — a different theme,
+> palette, and typeface. The tokens below are the **target**. Anything in the codebase
+> using `zinc-*` or `orange-500` is legacy v1 and is being migrated. Do not add more of it.
+>
+> Figma: `gDoteM1ow1AZpSEGSNhpc7` — the `v2 / Component / *` library is canonical.
+> Ignore `Component / *` (v1, has `Theme=Dark` variants) and anything named `(OLD)`.
+
+**Colors** (Figma variable → use):
+
+| Token | Value | Use |
+|---|---|---|
+| `Grey/5` | `#F2ECE6` | App background (warm cream) |
+| `White/100` | `#FFFFFF` | Cards, surfaces |
+| `Grey/100` | `#1A1A1A` | Primary text, primary buttons |
+| `Grey/80` | `#666666` | Secondary / muted text |
+| `Grey/10%` | `#0000001A` | Dividers, subtle borders |
+| `Grey/20%` | `#00000033` | Stronger borders |
+| `Accent Brand/100` | `#3D996B` | Brand green — accents, success, splash |
+
+Note: primary buttons are **near-black (`Grey/100`)**, not green. Green is an accent, used
+sparingly — it is not the button colour.
+
+**Type — Poppins** (there is no other family):
+
+| Token | Size / LH | Weight |
+|---|---|---|
+| `Poppins/10/Medium` | 10 / 16 | 500 |
+| `Poppins/12/Semibold` | 12 / 18 | 600 |
+| `Poppins/14/Regular` | 14 / 20 | 400 |
+| `Poppins/14/Medium` | 14 / 20 | 500 |
+| `Poppins/14/Semibold` | 14 / 20 | 600 |
+| `Poppins/16/Regular` | 16 / 24 | 400 |
+| `Poppins/16/Medium` | 16 / 24 | 500 |
+| `Poppins/32/Semibold` | 32 / 48 | 600 |
+
+**Layout:** 390px mobile frame, single column, mobile-first. Fixed top header + fixed
+bottom tab bar. Use `.pb-safe` for notch devices.
+
+**Icons:** a custom set of ~40 (`Element / Icon / *` in Figma) including motorcycle-specific
+ones — Bike, Garage, Wrench, Coordinates, Store. `lucide-react` does not cover these and is
+being replaced. Pull icons from Figma, don't substitute lookalikes.
 
 ## Development Workflow
 
@@ -128,6 +189,93 @@ npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/R
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 Copy `.env.local.example` to `.env.local` for local development.
+
+## The Agent Squad
+
+Specialist agents live in `.claude/agents/`. Delegate to them rather than doing everything in the main thread.
+
+| Agent | Use for |
+|---|---|
+| `spec` | Turns a Figma flow into a buildable spec; lists undefined cases as questions |
+| `design-system` | v2 tokens, component library, icon set — **blocks most other work** |
+| `data` | Migrations, RLS policies, block lists, indexes, schema debugging |
+| `feature` | Complete vertical slice — route, page, components, types, wiring |
+| `realtime` | Chat (inbox + per-ride), notifications, unread counters, presence |
+| `media` | Photo upload, Supabase Storage, compression, **EXIF stripping** |
+| `rider-ux` | PWA, offline, geolocation, push, static map + deeplink, glove targets |
+| `test` | Vitest/Playwright infra and tests |
+| `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit |
+
+**Standard order for a feature:**
+
+```
+spec → data → design-system → feature → test → reviewer → PR
+```
+
+Skip `spec` when the flow is already specced, `data` when there's no schema change, and `design-system` when every component already exists. Swap in `realtime` or `media` for `feature` when the work is chat/notifications or images. Always run `reviewer` on someone else's output, never on its own work — the value is in the fresh eyes.
+
+## Architectural Decisions
+
+Settled. Don't reopen these without an explicit decision to change them.
+
+**1. No anonymous access, anywhere.** Every route outside `/auth/*` requires a session. No policy grants to the `anon` role. `is_public = true` means "visible to any signed-in rider", never "visible to the internet". The Figma's guest-browsing screens ("Become a rider" on a club page) are out of scope.
+
+**2. Blocking is enforced in RLS, not in the UI.** A blocked user disappears from feeds, search, chat, member lists, and ride crews simultaneously. One `security definer` helper applied across policies. Blocks are symmetric even though the row is directional.
+
+**3. Maps are a static thumbnail plus a Google Maps deeplink.** No mapping SDK, no turn-by-turn, no route rendering.
+
+**4. v2 is the only design.** v1 (`zinc-*`, `orange-500`, Geist, `lucide-react`) is superseded. Migrate on contact; never add more.
+
+**5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — `proxy.ts` redirects them back into the wizard. The schema carries the incomplete state so an abandoned signup resumes where it left off.
+
+**6. Email confirmation is off, for now.** Signup lands straight in onboarding with a live session. This is a deliberate temporary trade — it permits signing up with an email you don't control — and must be revisited before public launch.
+
+**7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
+
+## Working Principles
+
+**Fix the tool, don't route around it.** This app is being built for the long term. When a
+connector is down, a quota is exhausted, or a credential is missing, the default is to
+*restore the capability*, not to invent a lower-fidelity substitute and move on.
+
+The line worth holding:
+
+- **Acceptable** — a workaround that produces the *same artifact*. Writing a migration file
+  while the database is unreachable is fine: the file was always the deliverable, and it
+  gets applied unchanged later.
+- **Debt** — a workaround that produces a *lower-fidelity artifact*. Eyeballing colours off
+  a screenshot instead of reading `get_variable_defs`, guessing component padding rather
+  than reading the Figma frame, or asserting a migration works instead of running it.
+
+When the second kind is genuinely unavoidable, say so explicitly, mark exactly what was
+inferred, and leave a note for the pass that will verify it. Never let an inferred value
+pass silently as a known one — a guess that isn't labelled becomes a fact nobody rechecks.
+
+**Unapplied migrations are drift.** A migration in the repo that has not run against the
+database means the schema in git and the schema in Postgres disagree. Two are outstanding
+now. Apply them before adding a third; a queue of unapplied migrations fails in the order
+nobody tested.
+
+## Product Scope (from Figma)
+
+The built app covers a fraction of the design. Five nav tabs — **Home, Rides, Clubs,
+Inbox, Profile**. There is no "Friends" tab; the `friendships` table is a v1 leftover.
+
+| Domain | Status in code |
+|---|---|
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | Not built |
+| **Inbox** — DMs, per-ride group chat, notifications | Not built |
+| **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
+| **Trust & safety** — block account, report post, hide postcard, delete account | Not built |
+| **Rides** — cover image, static map + Google Maps deeplink, Plan/Journal/Crew tabs, Going/Maybe/No, per-ride chat | Partially built |
+| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built |
+
+**Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
+chat, search, and ride crews simultaneously. It belongs in RLS policies, and every review
+must check it.
+
+Maps are a **static thumbnail plus a Google Maps deeplink** — no Mapbox, no turn-by-turn,
+no route rendering. Do not add a mapping SDK.
 
 ## Feature Workflow (OpenSpec)
 

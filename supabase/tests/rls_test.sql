@@ -128,7 +128,34 @@ select assert_eq(
   (select coalesce(array_to_string(p.proconfig, ', '), '(unset)')
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'handle_new_user'),
-  'search_path=public, pg_temp', 'handle_new_user has a pinned search_path');
+  'search_path=""', 'handle_new_user has an empty pinned search_path');
+
+\echo ''
+\echo '# No anonymous access anywhere (migrations 002, 007)'
+
+-- The anon key ships in the client bundle, so anything anon can reach is
+-- public to the internet. This was a live exposure: every profile row was
+-- readable until 007 went out.
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where grantee = 'anon' and table_schema = 'public'),
+  0, 'anon holds no table privileges in public');
+
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and not (roles = '{authenticated}')),
+  0, 'every policy targets authenticated only, never PUBLIC or anon');
+
+-- Belt and braces: the grants and the policies are checked above, but the
+-- thing that actually matters is whether a real anonymous request returns data.
+set role anon;
+select assert_denied('select count(*) from profiles', 'anon cannot read profiles');
+select assert_denied('select count(*) from clubs', 'anon cannot read clubs');
+select assert_denied('select count(*) from rides', 'anon cannot read rides');
+select assert_denied('select count(*) from club_members', 'anon cannot read club rosters');
+select assert_denied('select count(*) from ride_members', 'anon cannot read ride rosters');
+select assert_denied('select count(*) from friendships', 'anon cannot read friendships');
+reset role;
 
 rollback;
 
