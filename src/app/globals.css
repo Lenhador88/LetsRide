@@ -1,19 +1,45 @@
 @import "tailwindcss";
 
-:root {
-  --background: #09090b;
-  --foreground: #fafafa;
-}
+/*
+ * v2 design tokens — Figma `gDoteM1ow1AZpSEGSNhpc7`, `v2 / Component / *` library.
+ * Values pulled via get_variable_defs (see CLAUDE.md "Design System"). Do not
+ * eyeball new colors off screenshots — extend this block from the same source.
+ */
+@theme {
+  /* Typography — Poppins is the only family. next/font/google exposes it as
+     --font-poppins on <html> in layout.tsx; only weights 400/500/600 are loaded. */
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* Eight-step type scale collapses to five sizes (weight is applied separately
+     via font-normal/font-medium/font-semibold, which already equal 400/500/600):
+       Poppins/10/Medium     -> text-2xs   (10/16)
+       Poppins/12/Semibold   -> text-xs    (12/18)
+       Poppins/14/*          -> text-sm    (14/20)
+       Poppins/16/*          -> text-base  (16/24)
+       Poppins/32/Semibold   -> text-display (32/48) */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-display: 2rem;
+  --text-display--line-height: 3rem;
+
+  /* Color — semantic names, not raw hex. Source: Figma variables below. */
+  --color-background: #F2ECE6;      /* Grey/5 — app background (warm cream) */
+  --color-surface: #FFFFFF;         /* White/100 — cards, surfaces */
+  --color-foreground: #1A1A1A;      /* Grey/100 — primary text AND primary buttons (near-black, not green) */
+  --color-muted: #666666;           /* Grey/80 — secondary / muted text (~4.9:1 on cream, do not lighten) */
+  --color-border: #0000001A;        /* Grey/10% — dividers, subtle borders */
+  --color-border-strong: #00000033; /* Grey/20% — stronger borders */
+  --color-accent: #3D996B;          /* Accent Brand/100 — brand green. Sparing accent only: splash, success, active. Never default button fill. */
+  --color-accent-foreground: #FFFFFF;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
