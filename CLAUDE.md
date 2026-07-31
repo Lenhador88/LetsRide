@@ -103,15 +103,48 @@ router.refresh()  // revalidates server component data without full navigation
 
 ## Design System
 
-- **Background:** `bg-zinc-950` (root), `bg-zinc-900` (cards)
-- **Borders:** `border-zinc-800`
-- **Primary/accent:** `orange-500` (buttons, active states, focus rings)
-- **Muted text:** `text-zinc-400` / `text-zinc-500`
-- **Errors:** `text-red-400` / `border-red-500`
-- **Layout:** Single-column, `max-w-lg mx-auto px-4`, mobile-first
-- **Fixed Navbar:** Top bar (`h-14`, add `pt-14` to page content) + bottom tab bar (`pb-20`)
-- **Safe area:** Use `.pb-safe` utility for bottom padding on mobile notch devices
-- Icons: `lucide-react` only
+> **⚠️ The code currently does NOT match the design.** The app was built against the
+> **v1 (dark)** designs. Figma has since moved to **v2 (light)** — a different theme,
+> palette, and typeface. The tokens below are the **target**. Anything in the codebase
+> using `zinc-*` or `orange-500` is legacy v1 and is being migrated. Do not add more of it.
+>
+> Figma: `gDoteM1ow1AZpSEGSNhpc7` — the `v2 / Component / *` library is canonical.
+> Ignore `Component / *` (v1, has `Theme=Dark` variants) and anything named `(OLD)`.
+
+**Colors** (Figma variable → use):
+
+| Token | Value | Use |
+|---|---|---|
+| `Grey/5` | `#F2ECE6` | App background (warm cream) |
+| `White/100` | `#FFFFFF` | Cards, surfaces |
+| `Grey/100` | `#1A1A1A` | Primary text, primary buttons |
+| `Grey/80` | `#666666` | Secondary / muted text |
+| `Grey/10%` | `#0000001A` | Dividers, subtle borders |
+| `Grey/20%` | `#00000033` | Stronger borders |
+| `Accent Brand/100` | `#3D996B` | Brand green — accents, success, splash |
+
+Note: primary buttons are **near-black (`Grey/100`)**, not green. Green is an accent, used
+sparingly — it is not the button colour.
+
+**Type — Poppins** (there is no other family):
+
+| Token | Size / LH | Weight |
+|---|---|---|
+| `Poppins/10/Medium` | 10 / 16 | 500 |
+| `Poppins/12/Semibold` | 12 / 18 | 600 |
+| `Poppins/14/Regular` | 14 / 20 | 400 |
+| `Poppins/14/Medium` | 14 / 20 | 500 |
+| `Poppins/14/Semibold` | 14 / 20 | 600 |
+| `Poppins/16/Regular` | 16 / 24 | 400 |
+| `Poppins/16/Medium` | 16 / 24 | 500 |
+| `Poppins/32/Semibold` | 32 / 48 | 600 |
+
+**Layout:** 390px mobile frame, single column, mobile-first. Fixed top header + fixed
+bottom tab bar. Use `.pb-safe` for notch devices.
+
+**Icons:** a custom set of ~40 (`Element / Icon / *` in Figma) including motorcycle-specific
+ones — Bike, Garage, Wrench, Coordinates, Store. `lucide-react` does not cover these and is
+being replaced. Pull icons from Figma, don't substitute lookalikes.
 
 ## Development Workflow
 
@@ -134,8 +167,11 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 
 | Agent | Use for |
 |---|---|
-| `data` | Migrations, RLS policies, indexes, schema debugging |
+| `design-system` | v2 tokens, component library, icon set — **blocks most other work** |
+| `data` | Migrations, RLS policies, block lists, indexes, schema debugging |
 | `feature` | Complete vertical slice — route, page, components, types, wiring |
+| `realtime` | Chat (inbox + per-ride), notifications, unread counters, presence |
+| `media` | Photo upload, Supabase Storage, compression, **EXIF stripping** |
 | `rider-ux` | PWA, offline, geolocation, push, gloved-hand touch targets |
 | `test` | Vitest/Playwright infra and tests |
 | `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit |
@@ -144,6 +180,27 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 `data` → `feature` → `test` → `reviewer` → open PR
 
 Skip `data` when no schema changes. Always run `reviewer` on someone else's output, never on its own work — the value is in the fresh eyes.
+
+## Product Scope (from Figma)
+
+The built app covers a fraction of the design. Five nav tabs — **Home, Rides, Clubs,
+Inbox, Profile**. There is no "Friends" tab; the `friendships` table is a v1 leftover.
+
+| Domain | Status in code |
+|---|---|
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | Not built |
+| **Inbox** — DMs, per-ride group chat, notifications | Not built |
+| **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
+| **Trust & safety** — block account, report post, hide postcard, delete account | Not built |
+| **Rides** — cover image, static map + Google Maps deeplink, Plan/Journal/Crew tabs, Going/Maybe/No, per-ride chat | Partially built |
+| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built |
+
+**Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
+chat, search, and ride crews simultaneously. It belongs in RLS policies, and every review
+must check it.
+
+Maps are a **static thumbnail plus a Google Maps deeplink** — no Mapbox, no turn-by-turn,
+no route rendering. Do not add a mapping SDK.
 
 ## Branching & CI
 
