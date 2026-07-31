@@ -43,8 +43,9 @@ Never import the server client into a `'use client'` file. Never import `@supaba
 - **RLS already filters by user.** Don't add `.eq('user_id', user.id)` to a select that RLS already scopes — you'll get it subtly wrong. Rely on the policy.
 - **New routes go under `src/app/(app)/`** if they need auth + the Navbar. Public routes go at the top level.
 - **Types live in `src/types/index.ts`.** Add them there, never inline. Supabase's inferred types don't include joined relations — cast with `as RideWithOrganizer` and define that type.
-- **Use the existing UI primitives**: `Button`, `Input`, `Card`, `Avatar`. Don't build new ones unless the primitive genuinely doesn't exist, and if you do, put it in `src/components/ui/`.
-- **Design tokens**: `bg-zinc-950` root, `bg-zinc-900` cards, `border-zinc-800`, `orange-500` accent, `text-zinc-400` muted. Layout is `max-w-lg mx-auto px-4`, mobile-first, single column.
+- **Use the existing UI primitives** from `src/components/ui/`. If a component you need doesn't exist, **stop and hand off to `design-system`** — do not improvise one. An ad-hoc component built against guessed tokens is worse than a blocked ticket.
+- **Design tokens live in `globals.css`** as Tailwind v4 theme values — see the v2 table in `CLAUDE.md`. Use the semantic classes, never raw hex. Anything you see using `zinc-*` or `orange-500` is legacy v1: don't copy it, and migrate it if you're already editing that file.
+- **No anonymous access.** Every route outside `/auth/*` requires a session. Never write a query or policy that assumes a logged-out viewer.
 
 ## Before you report done
 

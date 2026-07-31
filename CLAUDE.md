@@ -167,19 +167,35 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 
 | Agent | Use for |
 |---|---|
+| `spec` | Turns a Figma flow into a buildable spec; lists undefined cases as questions |
 | `design-system` | v2 tokens, component library, icon set — **blocks most other work** |
 | `data` | Migrations, RLS policies, block lists, indexes, schema debugging |
 | `feature` | Complete vertical slice — route, page, components, types, wiring |
 | `realtime` | Chat (inbox + per-ride), notifications, unread counters, presence |
 | `media` | Photo upload, Supabase Storage, compression, **EXIF stripping** |
-| `rider-ux` | PWA, offline, geolocation, push, gloved-hand touch targets |
+| `rider-ux` | PWA, offline, geolocation, push, static map + deeplink, glove targets |
 | `test` | Vitest/Playwright infra and tests |
 | `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit |
 
-**Standard order for a feature that needs new schema:**
-`data` → `feature` → `test` → `reviewer` → open PR
+**Standard order for a feature:**
 
-Skip `data` when no schema changes. Always run `reviewer` on someone else's output, never on its own work — the value is in the fresh eyes.
+```
+spec → data → design-system → feature → test → reviewer → PR
+```
+
+Skip `spec` when the flow is already specced, `data` when there's no schema change, and `design-system` when every component already exists. Swap in `realtime` or `media` for `feature` when the work is chat/notifications or images. Always run `reviewer` on someone else's output, never on its own work — the value is in the fresh eyes.
+
+## Architectural Decisions
+
+Settled. Don't reopen these without an explicit decision to change them.
+
+**1. No anonymous access, anywhere.** Every route outside `/auth/*` requires a session. No policy grants to the `anon` role. `is_public = true` means "visible to any signed-in rider", never "visible to the internet". The Figma's guest-browsing screens ("Become a rider" on a club page) are out of scope.
+
+**2. Blocking is enforced in RLS, not in the UI.** A blocked user disappears from feeds, search, chat, member lists, and ride crews simultaneously. One `security definer` helper applied across policies. Blocks are symmetric even though the row is directional.
+
+**3. Maps are a static thumbnail plus a Google Maps deeplink.** No mapping SDK, no turn-by-turn, no route rendering.
+
+**4. v2 is the only design.** v1 (`zinc-*`, `orange-500`, Geist, `lucide-react`) is superseded. Migrate on contact; never add more.
 
 ## Product Scope (from Figma)
 

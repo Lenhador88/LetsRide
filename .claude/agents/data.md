@@ -22,7 +22,11 @@ You own the Postgres schema and Row Level Security for LetsRide. Everything the 
 
 ## RLS patterns for this schema
 
-The access model is: **public content is readable by all, private content is readable by members, writes are owner-scoped.**
+The access model is: **every reader is authenticated, "public" content is readable by any signed-in user, private content is readable by members, and writes are owner-scoped.**
+
+**There is no anonymous access.** No policy grants anything to the `anon` role. `is_public = true` means "visible to any signed-in rider", never "visible to the internet". If a design implies logged-out browsing, that is out of scope — say so rather than adding an anon policy.
+
+**Blocking is your responsibility, not a feature.** When a block exists between two users, each must disappear from the other's feeds, search results, chat, club member lists, and ride crews. That is a predicate on many policies, not a filter in the UI. Write it once as a reusable `security definer` helper (`is_blocked(a uuid, b uuid)`) and apply it consistently — and remember blocks are symmetric even though the row is directional.
 
 Reference the existing policies before writing new ones. Key shapes:
 

@@ -29,8 +29,13 @@ This is a mobile-first web app, not a native app. There is no manifest, no servi
 3. **Geolocation** — permission flow that explains *why* before the browser prompt, graceful denial, and never block the UI on a location fix.
 4. **Push** — ride reminders and "the group is leaving" are the killer use cases. Web Push via service worker; note that iOS requires the app be installed to home screen first.
 
+## Maps: a thumbnail and a deeplink, nothing more
+
+Ride screens show a **static map image plus an "Open in Google Maps" link**. That is the whole feature. There is no embedded map SDK, no turn-by-turn, no route rendering — do not add Mapbox, Leaflet, or the Google Maps JS SDK. You own the location input, the static thumbnail, and the deeplink.
+
 ## Rules
 
+- **No anonymous access.** Everything outside `/auth/*` requires a session — including anything the service worker caches. Never cache authenticated content in a way another user of the device could read.
 - Progressive enhancement always. Every feature degrades to something usable when the API is unavailable or permission is denied. Never a blank screen.
 - Ask permission at the moment of need with context, never on page load.
 - Test claims about viewport and touch behaviour — Chromium is preinstalled at `/opt/pw-browsers`, use Playwright with a mobile device profile. Do NOT run `playwright install`.

@@ -28,6 +28,8 @@ Ask, specifically:
 - Does a new join pull columns the viewer shouldn't see? `select('*, profiles(*)')` on a friend request exposes the whole profile row.
 - Does a friendship check cover both `requester_id` and `addressee_id`? Checking one direction is the classic bug in this schema.
 - Could a policy recurse — a `clubs` policy querying `club_members` whose policy queries `clubs`?
+- **Does any policy grant to the `anon` role?** There is no anonymous access in this app. A policy without an `auth.uid()` predicate, or one using `true` as its `using` clause, is a leak to the public internet.
+- **Does blocking hold here?** For any query returning users or their content — feeds, search, chat, member lists, ride crews — confirm a blocked user cannot appear. Blocks are symmetric even though the row is directional, so a check in one direction only is a bug. This is the most commonly missed policy in this codebase.
 
 If the diff touched migrations, run `get_advisors` with type `security` and report anything it flags.
 
@@ -35,6 +37,7 @@ If the diff touched migrations, run `get_advisors` with type `security` and repo
 
 - **Correctness** — off-by-ones, unhandled null from a Supabase query, `await` missing on `createClient()` in a server component, race between a mutation and `router.refresh()`.
 - **Convention drift** — wrong Supabase client for the context, relative imports instead of `@/*`, inline types that belong in `src/types/index.ts`, a hand-rolled button instead of `<Button>`.
+- **v1 regression** — new code using `zinc-*`, `orange-500`, Geist, or `lucide-react`. Those are the superseded v1 design; flag any fresh use of them.
 - **Next.js 16 specifics** — a `middleware.ts` appearing (must stay `proxy.ts`), client/server boundary violations, `'use client'` on a component that doesn't need it.
 - **Dead weight** — commented-out code, unused imports, a comment restating what the line already says.
 

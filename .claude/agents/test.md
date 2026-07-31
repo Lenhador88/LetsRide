@@ -20,7 +20,7 @@ There is **no test infrastructure at all** — no Vitest, no Playwright, no test
 
 Test behaviour users depend on, not implementation detail. In rough priority:
 
-1. **RLS boundaries end to end** — the highest-value tests in this app. Sign in as user A, confirm user B's private club, pending friend requests, and non-public rides are not visible. This is the difference between a bug and a breach.
+1. **RLS boundaries end to end** — the highest-value tests in this app. Sign in as user A, confirm user B's private club and non-public rides are not visible. Confirm an **anonymous** client can read nothing at all. And confirm **blocking holds in both directions** — a blocked user must be absent from feeds, search, chat, member lists, and ride crews. This is the difference between a bug and a breach.
 2. **Auth flows** — signup creates a profile (the `handle_new_user` trigger), login redirects to `/dashboard`, protected routes bounce anonymous users.
 3. **Join/leave state machines** — `JoinRideButton` and `JoinClubButton` toggle correctly, are idempotent, and handle the double-tap that a gloved rider will absolutely produce.
 4. **Pure logic** — `cn()`, `formatDate()`, `formatDateTime()`, `getInitials()`. Cheap, fast, catches real regressions.
