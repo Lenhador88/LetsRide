@@ -203,6 +203,30 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 
+## Working Principles
+
+**Fix the tool, don't route around it.** This app is being built for the long term. When a
+connector is down, a quota is exhausted, or a credential is missing, the default is to
+*restore the capability*, not to invent a lower-fidelity substitute and move on.
+
+The line worth holding:
+
+- **Acceptable** — a workaround that produces the *same artifact*. Writing a migration file
+  while the database is unreachable is fine: the file was always the deliverable, and it
+  gets applied unchanged later.
+- **Debt** — a workaround that produces a *lower-fidelity artifact*. Eyeballing colours off
+  a screenshot instead of reading `get_variable_defs`, guessing component padding rather
+  than reading the Figma frame, or asserting a migration works instead of running it.
+
+When the second kind is genuinely unavoidable, say so explicitly, mark exactly what was
+inferred, and leave a note for the pass that will verify it. Never let an inferred value
+pass silently as a known one — a guess that isn't labelled becomes a fact nobody rechecks.
+
+**Unapplied migrations are drift.** A migration in the repo that has not run against the
+database means the schema in git and the schema in Postgres disagree. Two are outstanding
+now. Apply them before adding a third; a queue of unapplied migrations fails in the order
+nobody tested.
+
 ## Product Scope (from Figma)
 
 The built app covers a fraction of the design. Five nav tabs — **Home, Rides, Clubs,
