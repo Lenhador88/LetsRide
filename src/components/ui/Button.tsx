@@ -11,9 +11,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-orange-500 hover:bg-orange-600 text-white',
-  secondary: 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700',
-  ghost: 'hover:bg-zinc-800 text-zinc-300',
+  // Primary is near-black (Grey/100), not green — green is a sparing accent, never the default fill.
+  primary: 'bg-foreground hover:bg-foreground/90 text-white',
+  secondary: 'bg-surface hover:bg-background text-foreground border border-border-strong',
+  ghost: 'hover:bg-foreground/5 text-foreground',
   danger: 'bg-red-600 hover:bg-red-700 text-white',
 }
 
@@ -30,7 +31,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         className={cn(
-          'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed',
+          'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed',
           variants[variant],
           sizes[size],
           className
