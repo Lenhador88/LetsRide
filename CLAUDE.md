@@ -16,7 +16,7 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 | Database / Auth | Supabase (Postgres + RLS + `@supabase/ssr`) |
 | Icons | `lucide-react` |
 | Deployment | Vercel (auto-deploy from `main`) |
-| CI | GitHub Actions (type check + lint + build on every PR) |
+| CI | GitHub Actions (type check + lint + build + RLS policy suite on every PR) |
 
 ## Repo Layout
 
@@ -89,9 +89,17 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state:** `001` is applied. `002` and `003` are written but **not yet applied**
-(see Working Principles on drift). `003` must not be applied until the `full_name` call
-sites are fixed in the same change.
+**Applied state:** everything except `003_onboarding` is applied. `003` must not be
+applied until the `full_name` call sites are fixed in the same change, and
+`supabase/tests/run.sh` skips it for that reason — remove it from `SKIP_MIGRATIONS` in
+the change that deploys it.
+
+`004`–`006` reached the database before `002` did, because two chains were written in
+parallel and each recreated the policies the other did. `008` reconciles them: `to
+authenticated` from `002`, the visibility predicates from `004`. Verified by diffing the
+live policy set against a database built from the migration chain — they match exactly.
+Both databases now agree; the file order and the historical apply order do not, and that
+is recorded here rather than left to be rediscovered.
 
 **The project is on the free tier, which auto-pauses after ~7 days idle.** A paused project
 serves nothing, so the deployed app goes down with no alert. This needs to be on Pro before
@@ -173,6 +181,7 @@ npm run dev      # start dev server
 npm run lint     # eslint
 npx tsc --noEmit # type check
 npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY)
+npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/README.md)
 ```
 
 **Environment variables** (never commit these):
@@ -268,11 +277,36 @@ must check it.
 Maps are a **static thumbnail plus a Google Maps deeplink** — no Mapbox, no turn-by-turn,
 no route rendering. Do not add a mapping SDK.
 
+## Feature Workflow (OpenSpec)
+
+Features with real domain rules — anything touching visibility, membership or
+permissions — go through OpenSpec: `/opsx:propose` → `/opsx:apply` →
+`/opsx:archive`. Small mechanical changes (copy, styling, a dependency bump) do
+not need a proposal; requiring one for everything is how process gets ignored.
+
+Proposals must state the **negative** cases, not just the positive ones: who
+must *not* see or do this. Every access-control bug this project has had came
+from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
+
+## Testing
+
+`supabase/tests/` holds the RLS policy suite. It applies the real migration
+chain to a scratch database and asserts what each role can reach.
+
+- **A migration that changes a policy must add an assertion.** A policy change
+  with no new assertion is not finished.
+- The suite runs on plain Postgres, so it cannot see environment-specific
+  problems — role grants, exposed RPC endpoints, Supabase defaults. After
+  applying a migration to the hosted project, also check the Supabase security
+  advisors. A migration once passed locally and stayed broken in production
+  because of exactly this gap.
+
 ## Branching & CI
 
 - `main` = production. Auto-deploys to Vercel.
 - All work on feature branches. Open PRs against `main`.
-- CI runs on every PR: TypeScript → ESLint → `next build`. All three must pass before merging.
+- CI runs on every PR: TypeScript → ESLint → `next build`, plus the RLS policy
+  suite against Postgres 17. All must pass before merging.
 - Never push directly to `main`.
 
 ## What Not To Do

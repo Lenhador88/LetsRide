@@ -1,0 +1,64 @@
+# RLS policy tests
+
+Every table in this project relies on Row Level Security for access control, so
+a wrong policy is a data leak rather than a broken page. This suite runs the
+real migration chain against a scratch Postgres database and asserts what each
+role can and cannot reach.
+
+## Running locally
+
+Needs a Postgres server and `psql`. Point the standard `PG*` variables at it:
+
+```bash
+npm test                                  # localhost:5432, user postgres
+PGHOST=/tmp PGPORT=5433 npm test          # a socket-based local instance
+```
+
+The runner drops and recreates `letsride_test`, applies `harness.sql`, then
+every file in `../migrations` in filename order, then `seed.sql`, then
+`rls_test.sql`. New migrations are picked up automatically — there is no list to
+keep in sync.
+
+CI runs the same script against `postgres:17`, matching the Supabase project's
+major version.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `harness.sql` | Stand-in for Supabase: `auth.users`, `auth.uid()`, the `anon`/`authenticated`/`auth_admin` roles, their default grants, and the assertion helpers |
+| `seed.sql` | Fixtures: a private club with a member, a public club, a club-only ride, a public ride |
+| `rls_test.sql` | The assertions |
+| `run.sh` | Applies everything in order and runs the suite |
+
+## Writing assertions
+
+`assert_eq(actual, expected, label)`, `assert_denied(sql, label)` and
+`assert_allowed(sql, label)` all raise on failure, and `psql -v ON_ERROR_STOP=1`
+turns that into a non-zero exit. `assert_allowed` unwinds its own write, so it
+leaves nothing behind for later assertions.
+
+Switch identity with `set_config('test.uid', '<uuid>', false)`; the harness's
+`auth.uid()` reads it. The suite runs as the `authenticated` role and asserts
+that up front — running as superuser would bypass RLS and pass while testing
+nothing.
+
+## What this suite cannot catch
+
+It runs against plain Postgres, not Supabase, so anything that depends on the
+hosted environment is invisible to it. That gap is not theoretical: migration
+`003` revoked `EXECUTE` from `PUBLIC`, passed locally, and left the function
+callable in production, because Supabase *also* grants `anon` and
+`authenticated` explicitly and an explicit grant needs an explicit revoke.
+
+`harness.sql` now reproduces those grants, and dropping migration `004` makes
+this suite fail — so that specific bug is covered. But the general class is not.
+For changes touching roles, grants, or exposed endpoints, also check the live
+project:
+
+```
+mcp__Supabase__get_advisors(project_id, type: "security")
+```
+
+Treat a green suite as evidence about policy *logic*, not about the deployed
+environment.
