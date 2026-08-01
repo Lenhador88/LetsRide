@@ -96,13 +96,16 @@ Then `test`, then `reviewer`, then a PR. Any migration in that change must add a
 
 ---
 
-## Open decision
+## Deployment protection — settled
 
-**Vercel SSO protection is on** (`all_except_custom_domains`), so every `*.vercel.app` URL
-sits behind a Vercel login — including production at `letsrideapp.vercel.app`. It opens for
-the account owner and prompts everyone else, so the link is not currently shareable.
-Turning it off is one setting and low risk: `proxy.ts` gates every route behind a session
-and `anon` holds no database privileges. Left on pending a decision.
+**Vercel SSO now applies to previews only.** Production at `letsrideapp.vercel.app` is
+publicly reachable and the link is shareable; preview deployments still sit behind a Vercel
+login, so unreleased work is not exposed.
+
+Public production is safe here because access control does not depend on the URL being
+secret: `proxy.ts` gates every route outside `/auth/*` behind a session, and `anon` holds no
+table privileges at all. A signed-out visitor can reach the landing and auth pages and
+nothing else.
 
 ---
 
@@ -136,6 +139,23 @@ it is not evidence that a URL is publicly reachable.
    (two static pages on a proxy allowlist, no data access). Not yet approved.
 2. **Email confirmation is off.** Deliberate and recorded, but it means anyone can sign up
    with an address they do not control. Must be revisited before public launch.
-3. **Branch protection on `main` is not enabled.** With agents opening PRs, this is what
-   makes "CI is the safety net" actually true. Now that CI runs the RLS suite, this is worth
-   more than it was.
+3. **Branch protection on `main` is not enabled**, and **an agent session cannot enable it** —
+   the GitHub MCP server has no branch-protection tool, and the REST endpoint returns 403
+   because repo settings are outside what the session's GitHub access grants. It needs a
+   human in the repo settings.
+
+   With agents pushing, this is what makes "CI is the safety net" true rather than
+   aspirational. Recommended for `main`:
+
+   - Require a pull request before merging (0 approvals is fine for a solo maintainer)
+   - Require status checks: **`Type Check, Lint & Build`** and **`RLS Policy Tests`** —
+     these are the job `name:` values in `ci.yml`, and a check is only selectable in the UI
+     after it has run at least once
+   - Require branches to be up to date before merging — this is the one that would have
+     caught today's semantic conflict, where two branches each rewrote the same policies
+   - Do not allow bypassing the above. Agents push with an owner-level token, so without
+     this the rules do not bind the thing they exist to constrain
+   - Leave force pushes and deletions disallowed
+
+   If CI ever breaks and blocks an urgent fix, the rule can be toggled off in settings —
+   enabling it is not a lock-out.
