@@ -1,6 +1,6 @@
 # Handoff — where things stand
 
-Branch: `claude/coding-session-setup-xyq8re` (everything committed and pushed)
+Branch: `main`. PR #3 merged; nothing outstanding on a feature branch.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -10,24 +10,14 @@ This file is only the *current position* — the things that will be stale in a 
 
 ## Do this first
 
-**Enable the Supabase connector for the conversation.** It is authenticated at the account
-level (`installState: connected`) but was toggled **off per-chat**, which is why nothing
-could reach the database. The toggle is on the chat input's connector control, not in
-account settings — account settings will show it connected, because it is.
+Nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and the
+anonymous read hole is closed.
 
-Then, in order:
-
-1. **`restore_project`** on `zwprydcyryvudhurbnye` — it is paused, so the deployed app is
-   down.
-2. **Apply `002_restrict_to_authenticated.sql` immediately.** Restoring re-opens an
-   anonymous read hole on `profiles`, `club_members`, `ride_members`, and every public
-   `clubs`/`rides` row. Nothing is exposed while paused; the gap between restore and apply
-   should be seconds.
-3. **Run the two verification queries** at the bottom of 002. Both must return zero rows.
-4. **Upgrade to Pro.** The free tier auto-pauses after ~7 days idle and takes the
-   deployment down with no alerting. This will recur otherwise.
-
-Do **not** apply `003` yet — see below.
+**Do not re-apply `002_restrict_to_authenticated`.** It is already applied. Re-running it
+recreates the `clubs`, `club_members`, `rides` and `ride_members` policies *without* the
+visibility predicates, which silently reverts `008` — reopening world-readable private
+rosters and hiding club-only rides from their own club. To change those four tables, add a
+new migration. `008` is the current definition.
 
 ---
 
@@ -35,15 +25,28 @@ Do **not** apply `003` yet — see below.
 
 | | |
 |---|---|
-| Migrations | `001` applied. `002`, `003` written, **not applied**. |
+| Migrations | All applied except `003_onboarding`. See the ordering note below. |
+| Tests | `supabase/tests/` — RLS policy suite, 40 assertions, `npm test`. Gates every PR. |
+| Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins and light theme landed. Only `components/ui/*` migrated. |
 | Spec | `docs/specs/login-onboarding.md` — 23 questions, all with defaults; four settled. |
 | Squad | Nine agents in `.claude/agents/`. |
-| CI | Green (type check, lint, build on every PR). |
+| CI | Green: type check, lint, build, RLS suite against Postgres 17. |
+| Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
 
-The app currently looks inconsistent on purpose: the cream v2 background is live, but
-`app/auth/*` and `app/(app)/*` are still v1 `zinc-*`/`orange-500`. Those migrate with their
-own epics.
+The app looks inconsistent on purpose: the cream v2 background is live, but `app/auth/*`
+and `app/(app)/*` are still v1 `zinc-*`/`orange-500`. Those migrate with their own epics.
+
+**Migration ordering is not file order.** Two chains were written in parallel and each
+recreated the policies the other did. `004`–`006` reached the database before `002` did;
+`008` reconciles them by taking `to authenticated` from `002` and the visibility predicates
+from `004`. Verified by diffing the live policy set against a database built from the
+chain — 22 policies, identical. Do not try to "tidy" the numbering; the end state is
+correct and the divergence is recorded deliberately.
+
+**`003_onboarding` is written but not applied**, and `supabase/tests/run.sh` skips it via
+`SKIP_MIGRATIONS`. It drops `profiles.full_name` while 29 references across 10 files still
+use it. Remove the skip entry in the same change that deploys it.
 
 ---
 
@@ -61,7 +64,35 @@ rides pages.
 `SearchRiders.tsx` filters on `full_name.ilike.%…%`, which becomes a hard Postgres error the
 moment the column is gone. Applying `003` against `main` as it stands breaks the running app.
 
-Then `test`, then `reviewer`, then a PR.
+Then `test`, then `reviewer`, then a PR. Any migration in that change must add assertions to
+`supabase/tests/rls_test.sql` — a policy change with no new assertion is not finished.
+
+---
+
+## Known issues, roughly by cost to fix
+
+- **Duplicate usernames break signup.** `handle_new_user` falls back to the email local
+  part, which is `UNIQUE`, so a second `dave@…` gets a raw "Database error saving new
+  user" and no account. Fixed by the login epic, where username moves into onboarding.
+- **Private clubs are unreachable from `/clubs`.** The page filters `is_public`, so a member
+  of a private club has no way to navigate to it. Direct links work.
+- **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are
+  tested, but nothing calls them — you can create a ride and never fix a typo or cancel it.
+- **Leaked password protection is disabled.** Supabase advisor flags it; a dashboard toggle
+  that checks signups against HaveIBeenPwned.
+- **Free tier auto-pauses after ~7 days idle**, taking the deployment down with no alerting.
+  This already happened once, and restoring it is what reopened the anon hole. Pro before
+  anything resembling launch.
+
+---
+
+## Open decision
+
+**Vercel SSO protection is on** (`all_except_custom_domains`), so every `*.vercel.app` URL
+sits behind a Vercel login — including production at `letsrideapp.vercel.app`. It opens for
+the account owner and prompts everyone else, so the link is not currently shareable.
+Turning it off is one setting and low risk: `proxy.ts` gates every route behind a session
+and `anon` holds no database privileges. Left on pending a decision.
 
 ---
 
@@ -77,9 +108,14 @@ calls. **Check the Figma plan before starting it.** Running it against an exhaus
 produces a half-built library with guessed padding and radii, which is worse than not
 starting — see the working principles in `CLAUDE.md`.
 
-**Unverified from the last session:** the four migrated primitives kept their v1 shapes
+**Unverified from an earlier session:** the four migrated primitives kept their v1 shapes
 (padding, radius, focus treatment). Tokens are correct; geometry is inferred and flagged in
 the commit. The Figma pass should verify them.
+
+**The agent proxy blocks outbound HTTPS to `supabase.co` and `vercel.app`.** Verify database
+state through the Supabase MCP tools and the deployment through the Vercel MCP tools rather
+than `curl`. Note that Vercel's fetch tool authenticates as the account owner, so a 200 from
+it is not evidence that a URL is publicly reachable.
 
 ---
 
@@ -91,4 +127,5 @@ the commit. The Figma pass should verify them.
 2. **Email confirmation is off.** Deliberate and recorded, but it means anyone can sign up
    with an address they do not control. Must be revisited before public launch.
 3. **Branch protection on `main` is not enabled.** With agents opening PRs, this is what
-   makes "CI is the safety net" actually true.
+   makes "CI is the safety net" actually true. Now that CI runs the RLS suite, this is worth
+   more than it was.
