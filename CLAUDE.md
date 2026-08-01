@@ -180,7 +180,7 @@ times the style is used on the Components page — a good proxy for how central 
 Note: primary buttons are **near-black (`Grey/100`)**, not green. Green is an accent, used
 sparingly — it is not the button colour.
 
-Nine `Grey (OLD)/*` and `Accent (OLD)/*` styles are still live *inside* v2 components —
+Twelve `Grey (OLD)/*` and `Accent (OLD)/*` styles are still live *inside* v2 components —
 `#808080` (93 uses), `#E6E6E6` (84), `#262626` (59), `#36B289` (31) and others. They are v1.
 Do not port them; resolve to the v2 token nearest in intent.
 

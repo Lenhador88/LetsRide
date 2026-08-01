@@ -44,6 +44,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# figma — local response cache for scripts/figma-tokens.mjs
+.figma-cache.json
+
 # typescript
 *.tsbuildinfo
 
