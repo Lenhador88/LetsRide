@@ -1,6 +1,6 @@
 # Handoff — where things stand
 
-Branch: `main`. PR #3 merged; nothing outstanding on a feature branch.
+Branch: `claude/figma-token-access-yz21em` — docs only, no code change. PR #3 and #5 merged.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -79,6 +79,58 @@ Then `test`, then `reviewer`, then a PR. Any migration in that change must add a
 
 ---
 
+## Building to the design — read before starting
+
+Figma access is solved (see Known constraints) and `CLAUDE.md`'s token tables are now correct
+and complete. What follows is the shape of the work, measured on 2026-08-01 rather than
+estimated.
+
+**"Applying the design" is roughly one fifth restyling and four fifths building product that
+does not exist.** The code is 12 routes and 11 components with 139 v1 token occurrences
+across 17 files. The design is 6 sections — Login, Home, Rides, Clubs, Inbox, Profile —
+backed by 52 component sets, 213 variants, 88 components and 44 icons. The gap is structural,
+not cosmetic:
+
+- **The design has no Friends tab.** The five tabs are Home, Rides, Clubs, Inbox, Profile.
+  `/friends` is not restyled, it is **deleted**, and `friendships` is a v1 leftover. This is a
+  product decision that has not been explicitly signed off — confirm before deleting.
+- **The design's home is Postcards**, a photo feed. The app's home is `/dashboard`. The
+  central screen of the product is not built.
+- **Inbox, Garage and trust & safety have no routes and no tables.** The schema is
+  `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `friendships` — nothing behind
+  postcards, messages, garage or blocks. Most of this is `data` → `feature`, not CSS.
+
+**Suggested order.** The ratings are impact on shipping a product that matches the design.
+
+| # | Work | Impact | Notes |
+|---|---|---|---|
+| 1 | `design-system` — v2 library + 44 icons, retire `lucide-react` | 8/10 | Gates all screen work |
+| 2 | Login epic + `003` (above) | 7/10 | Already specced and queued |
+| 3 | Restyle the 12 existing routes v1 → v2 | 4/10 | Days, but only *after* 1 |
+| 4 | **Postcards / Home** | 10/10 | New tables + Storage + EXIF; the core loop |
+| 5 | Inbox — DMs, ride chat, notifications | 8/10 | New tables + `realtime` |
+| 6 | Trust & safety — block, report, hide | 7/10 | RLS-level; needed before real users |
+| 7 | Garage | 5/10 | Self-contained, lowest urgency |
+
+**Do not restyle screen-by-screen before `design-system` lands.** Twelve routes each
+re-deriving tokens is how drift gets baked in. This was a live risk until today: the token
+table omitted `Warning/100` `#D92140`, so every `<Button variant="danger">` built against the
+old docs would have used the wrong colour.
+
+**One number is still missing: how many screens sit inside each design section.** Figma
+started returning `429` and four backoff retries over ~80s did not clear it, so this was left
+unmeasured rather than guessed. It is the difference between weeks and months on Postcards.
+One call once the window resets:
+
+```
+curl -H "X-Figma-Token: $FIGMA_ACCESS_TOKEN" \
+  "https://api.figma.com/v1/files/gDoteM1ow1AZpSEGSNhpc7/nodes?ids=0:1&depth=3"
+```
+
+Get this before committing to any timeline.
+
+---
+
 ## Known issues, roughly by cost to fix
 
 - **Duplicate usernames break signup.** `handle_new_user` falls back to the email local
@@ -111,15 +163,110 @@ nothing else.
 
 ## Known constraints
 
-**Figma is quota-limited.** The Starter plan cut off `spec` after 5 calls. That was enough
-for structural metadata but *not* for the label text on button and input instances — roughly
-eleven strings in the spec are marked `[inferred]` and need one verification pass.
+**Figma: use the REST API with a PAT, not the MCP server.** This is settled and it unblocks
+`design-system`, which the previous handoff listed as quota-blocked. It no longer is.
 
-This matters more for the next design task than the last one: `design-system` needs ~30
-components with full variant matrices plus ~40 icon exports, an order of magnitude more
-calls. **Check the Figma plan before starting it.** Running it against an exhausted quota
-produces a half-built library with guessed padding and radii, which is worse than not
-starting — see the working principles in `CLAUDE.md`.
+The **MCP server is effectively dead on this plan**: Starter allows *6 tool calls per month*
+total, regardless of seat. `whoami` is exempt from that quota, so it succeeds and tells you
+nothing about whether reads will work — do not treat it as a green light. Every tool that
+reads design data is metered, and the quota is currently exhausted.
+
+The **REST API on a personal access token has no monthly cap**, but it throttles harder than
+it first appears. After pulling the full Components page (2.3 MB) plus a handful of smaller
+requests, everything returned `429 Rate limit exceeded` and **stayed 429 for over ten
+minutes** across repeated backoff. Treat it as a real budget, not a per-minute hiccup.
+
+Practical consequences for `design-system`, which needs the most calls of any task here:
+
+- **Batch.** `/v1/images` takes comma-separated ids — fetch all 44 icons in one or two calls,
+  never 44 separate ones.
+- **Cache to disk.** One `/nodes` pull of the Components page (node `50:559`) contains every
+  component, variant, fill, style reference and geometry value. Save the JSON and query it
+  locally instead of re-fetching. That single response answered nearly every design question
+  in this session.
+- **Budget the big pull first**, then work offline from it.
+
+`FIGMA_ACCESS_TOKEN` is set in the environment (`figd_…`, 14 read/write scopes) and persists
+across sessions. Verified working:
+
+| Endpoint | |
+|---|---|
+| `/v1/me` | ✅ authenticates as `pedro88email@gmail.com` |
+| `/v1/files/:key`, `/v1/files/:key/nodes` | ✅ full node tree, all depths |
+| `/v1/images/:key?format=svg` | ✅ returns render URLs — icon export works |
+| `/v1/files/:key/variables/local` | ❌ **403, permanently** |
+| `/v1/files/:key/components`, `/styles` | ⚠️ 200 but empty — library is unpublished |
+
+**The Variables API is Enterprise-only and no token will ever fix it.** The 403 says
+`This endpoint requires the file_variables:read scope`; that scope is not grantable outside
+an Enterprise org and errors during OAuth on lower tiers. Do not spend time regenerating
+tokens with different scopes ticked — this is a plan gate, not a credential problem.
+
+**It does not matter, because this design system is built on styles, not variables.** Of
+1,289 solid fills on the Components page, **87.4% reference a named paint style**, 10.8% are
+raw hex, and only 1.8% are bound to a variable. Style *names* come back in the `styles` map
+on any `/nodes` response — so `Grey/100`, `Poppins/14/Medium` and the rest are fully
+readable without Enterprise. Token extraction is a solved problem; see the table below.
+
+**Do not "modernise" the Figma file by converting styles to variables.** It would take the
+token layer from 87% machine-readable to 0% — every one of those fills would move behind the
+403. This is the rare case where the older Figma feature is the one that works for us.
+
+The file is `LR - Mobile App` (`gDoteM1ow1AZpSEGSNhpc7`), last modified 2026-06-04, three
+pages: `Design`, **`Components`** (node `50:559`), `Archive`. The Components page holds 2,447
+nodes — 52 component sets covering 213 variants, 88 standalone components, and **44 icons**
+under `Element / Icon / *`, including the motorcycle-specific Bike, Garage, Wrench,
+Coordinates and Store that `lucide-react` cannot supply.
+
+### Extracted tokens — verified against the file, 2026-08-01
+
+Names are Figma style names; values are the resolved fills. Anything marked `(OLD)` is v1 and
+must not be used — `CLAUDE.md` already says to ignore it, and the file confirms nine such
+styles still in active use inside v2 components.
+
+| Token | Value | | Token | Value |
+|---|---|---|---|---|
+| `Grey/5` | `#F2ECE6` | | `Accent Brand/100` | `#3D996B` |
+| `Grey/80` | `#666666` | | `Accent Brand/110` | `#338059` |
+| `Grey/100` | `#1A1A1A` | | `Accent Brand/50%` | `#3D996B` @50% |
+| `Grey/60` | `#808080` | | `Warning/100` | `#D92140` |
+| `Grey/10%` | `#000000` @10% | | `Warning/90` | `#FF3355` |
+| `Grey/20%` | `#000000` @20% | | `Warning/110` | `#99001A` |
+| `Grey/70%` | `#000000` @70% | | `Pink/100` | `#F23071` |
+| `White/100` | `#FFFFFF` | | `White/10%` | `#FFFFFF` @10% |
+| `White/5%` | `#FFFFFF` @5% | | | |
+
+Type — all Poppins, `size/line-height weight`:
+`10/16 500` · `10/16 600` · `12/18 400` · `12/18 500` · `12/18 600` · `14/20 400` ·
+`14/20 500` · `14/20 600` · `16/24 400` · `16/24 500` · `16/24 600` · `18/26 600` ·
+`20/30 500` · `20/30 600` · `24/36 600` · `40/60 600`
+
+Most-used geometry, for the primitives that still carry inferred v1 shapes: corner radii
+`4` (x147), `100` (x110), `8` (x85), `5` (x52); spacing `paddingLeft 16` (x99),
+`itemSpacing 8` (x86), `itemSpacing 4` (x66), `itemSpacing 16` (x40).
+
+**`CLAUDE.md`'s Design System tables are incomplete and one entry is wrong** — not yet
+corrected, because that file is durable context and this was a read-only session:
+
+- It lists 7 colours; there are **20 live v2 tokens**. Missing most notably `Warning/100`
+  `#D92140`, which is what `<Button variant="danger">` should be using.
+- It lists 8 type tokens; there are **16**.
+- It lists `Poppins/32/Semibold` (32/48, w600). **No such style exists in the file.** The
+  large sizes are `24/36 w600` and `40/60 w600`. Whoever picks up `design-system` should fix
+  this before building against it.
+
+Reproduce any of the above with:
+`curl -H "X-Figma-Token: $FIGMA_ACCESS_TOKEN" "https://api.figma.com/v1/files/gDoteM1ow1AZpSEGSNhpc7/nodes?ids=50:559"`
+— the `styles` map on the response gives name → id, and node `styles.fill` / `styles.text`
+give id → usage.
+
+**`FIGMA_ACCESS_TOKEN` lives only in the session environment.** This container is ephemeral;
+if the token is not in the environment config it dies with the session. It is not in
+`.env.local.example` and must not be committed.
+
+**Eleven `[inferred]` strings remain in `docs/specs/login-onboarding.md`** — button and input
+label text the old quota cut off. These are now cheaply verifiable via the REST API and
+should be resolved in the login epic rather than carried further.
 
 **Unverified from an earlier session:** the four migrated primitives kept their v1 shapes
 (padding, radius, focus treatment). Tokens are correct; geometry is inferred and flagged in
