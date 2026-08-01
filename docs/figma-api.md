@@ -35,15 +35,30 @@ Until that lands, use the MCP tools and spend the quota deliberately.
 
 ## Setup
 
-The token lives in `.env.local`, which is gitignored via `.env*.local`:
+`scripts/figma.sh` reads `FIGMA_ACCESS_TOKEN` from the environment first, and falls
+back to `.env.local`. There are two places to put it, and they are not equivalent.
+
+**Agent sessions — the Claude Code environment settings.** This is the one that
+persists. Remote sessions run in an ephemeral container that clones the repo fresh
+and is reclaimed after idle, so a token written to `.env.local` during a session is
+gone by the next one. Set it as an environment variable on the environment itself:
+claude.ai/code → the environment → Environment variables → `FIGMA_ACCESS_TOKEN`.
+See https://code.claude.com/docs/en/claude-code-on-the-web.
+
+**Local development — `.env.local`**, gitignored via `.env*.local`:
 
 ```
 FIGMA_ACCESS_TOKEN=figd_…
 FIGMA_FILE_KEY=gDoteM1ow1AZpSEGSNhpc7
 ```
 
-`FIGMA_ACCESS_TOKEN` in the environment overrides the file. `.env.local.example`
-carries the placeholders.
+`.env.local.example` carries the placeholders. Because the environment wins over the
+file, a session with the variable set needs no `.env.local` at all.
+
+Do **not** put the token in `.claude/settings.json` — that file is committed, so an
+`env` block there puts the secret in git. `.claude/settings.local.json` is gitignored
+for exactly this reason, but it lives in the same ephemeral container and so buys
+nothing over `.env.local`.
 
 **This is a tooling credential, not an application one.** The Next.js app never
 reads it. Never prefix it `NEXT_PUBLIC_` — that ships it in the client bundle to

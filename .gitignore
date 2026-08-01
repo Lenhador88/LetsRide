@@ -41,6 +41,9 @@ yarn-error.log*
 .env.production.local
 !.env.local.example
 
+# claude code local settings — an `env` block here can hold real tokens
+.claude/settings.local.json
+
 # vercel
 .vercel
 

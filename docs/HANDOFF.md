@@ -118,11 +118,19 @@ The fix is in place rather than worked around: a personal access token now lives
 MCP tool to its REST equivalent. REST has no per-session ceiling and batches ids, which is
 what `design-system` needs for ~30 components and ~40 icon exports.
 
-**It does not work yet.** `api.figma.com` is not on this environment's egress allowlist —
-every request dies at the proxy with `CONNECT tunnel failed, response 403`, and
-`www.figma.com` is blocked too, so the whole domain is off the policy. Add it in the
-environment's network settings, then run `scripts/figma.sh me` to confirm. The token and
-its scopes are **unverified** until that call returns.
+**It does not work yet, and needs two settings changed on the environment itself** —
+neither is a code change, and no agent tool can make them:
+
+1. **Egress.** `api.figma.com` is not on the outbound allowlist, so every request dies at
+   the proxy with `CONNECT tunnel failed, response 403`. `www.figma.com` is blocked too,
+   so the whole domain is off the policy. Add it under network access.
+2. **The token.** Set `FIGMA_ACCESS_TOKEN` as an environment variable on the environment,
+   not in a file. Sessions run in an ephemeral container, so a token written to
+   `.env.local` mid-session does not survive to the next one. `scripts/figma.sh` reads the
+   environment in preference to the file, so this needs no code change either.
+
+Then run `scripts/figma.sh me` to confirm. The token and its scopes are **unverified**
+until that call returns.
 
 One thing REST cannot replace on our plan: `get_variable_defs`. The REST variables
 endpoint is Enterprise-only, so design tokens still cost MCP calls. That is cheap — the v2
