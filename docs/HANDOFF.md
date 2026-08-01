@@ -221,7 +221,7 @@ Coordinates and Store that `lucide-react` cannot supply.
 ### Extracted tokens — verified against the file, 2026-08-01
 
 Names are Figma style names; values are the resolved fills. Anything marked `(OLD)` is v1 and
-must not be used — `CLAUDE.md` already says to ignore it, and the file confirms nine such
+must not be used — `CLAUDE.md` already says to ignore it, and the file confirms twelve such
 styles still in active use inside v2 components.
 
 | Token | Value | | Token | Value |

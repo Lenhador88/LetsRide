@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "./supabase/tests/run.sh"
+    "test": "./supabase/tests/run.sh",
+    "figma:tokens": "node scripts/figma-tokens.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
