@@ -14,7 +14,7 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 | Framework | Next.js 16 (App Router, TypeScript strict) |
 | Styling | Tailwind CSS v4 (CSS-first config, no `tailwind.config.*`) |
 | Database / Auth | Supabase (Postgres + RLS + `@supabase/ssr`) |
-| Icons | `lucide-react` |
+| Icons | `lucide-react` — **v1, being replaced** by the Figma icon set (see Design System) |
 | Deployment | Vercel (auto-deploy from `main`) |
 | CI | GitHub Actions (type check + lint + build + RLS policy suite on every PR) |
 
@@ -31,8 +31,8 @@ src/
 │   │   ├── friends/        # /friends
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup (public)
-│   ├── layout.tsx          # Root layout (Geist font, dark bg)
-│   ├── page.tsx            # / — public landing page
+│   ├── layout.tsx          # Root layout (Poppins, v2 light theme)
+│   ├── page.tsx            # / — public landing page (still v1 dark)
 │   └── globals.css         # Tailwind import + CSS vars + .pb-safe
 ├── components/
 │   ├── ui/                 # Button, Input, Card, Avatar
@@ -50,7 +50,14 @@ src/
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
 supabase/
-└── migrations/             # SQL migrations (applied to Supabase project)
+├── migrations/             # SQL migrations — append-only, see Supabase Rules
+└── tests/                  # RLS policy suite (npm test); README covers its scope
+docs/
+├── HANDOFF.md              # Current position — read at session start
+└── specs/                  # Implementation specs (login-onboarding.md)
+openspec/                   # Spec-driven change proposals + config.yaml
+.claude/
+└── agents/                 # The specialist squad (see The Agent Squad)
 ```
 
 ## Critical: proxy.ts (not middleware.ts)
@@ -204,7 +211,7 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | `media` | Photo upload, Supabase Storage, compression, **EXIF stripping** |
 | `rider-ux` | PWA, offline, geolocation, push, static map + deeplink, glove targets |
 | `test` | Vitest/Playwright infra and tests |
-| `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit |
+| `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit + documentation-claims audit |
 
 **Standard order for a feature:**
 

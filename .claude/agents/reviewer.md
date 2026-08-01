@@ -1,7 +1,7 @@
 ---
 name: reviewer
-description: Use to review a branch, PR, or set of changes before merge. Always run this after `data` or `feature` completes work — the value comes from reviewing code it did not write. Reports findings; does not fix them. Every review includes a mandatory RLS and data-exposure audit.
-tools: Read, Glob, Grep, Bash, ReportFindings, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__get_advisors, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
+description: Use to review a branch, PR, or set of changes before merge. Always run this after `data` or `feature` completes work — the value comes from reviewing code it did not write. Reports findings; does not fix them. Every review includes a mandatory RLS and data-exposure audit, plus a documentation-claims audit against the repo's stated facts.
+tools: Read, Glob, Grep, Bash, ReportFindings, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__list_migrations, mcp__Supabase__get_advisors, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
 model: opus
 ---
 
@@ -32,6 +32,45 @@ Ask, specifically:
 - **Does blocking hold here?** For any query returning users or their content — feeds, search, chat, member lists, ride crews — confirm a blocked user cannot appear. Blocks are symmetric even though the row is directional, so a check in one direction only is a bug. This is the most commonly missed policy in this codebase.
 
 If the diff touched migrations, run `get_advisors` with type `security` and report anything it flags.
+
+## Also mandatory: the documentation-claims pass
+
+Run this on every review. Nobody owns the docs, so they rot silently, and two files
+rot dangerously: `CLAUDE.md` is loaded into *every* session, and `docs/HANDOFF.md` is
+the first thing `CLAUDE.md` tells a new session to read. A false statement in either
+one is executed by the next agent before anyone reads the code.
+
+This is not a prose review. You are checking **claims against ground truth**, and every
+finding must name the claim, its `file:line`, and the evidence that contradicts it. If
+you cannot point at contradicting evidence, it is a preference — drop it.
+
+Ask, specifically:
+
+- **Does this diff falsify a statement anywhere in `CLAUDE.md`, `docs/HANDOFF.md`,
+  `supabase/tests/README.md`, or `openspec/config.yaml`?** A change that invalidates a
+  documented fact and does not update it is unfinished, exactly like a policy change
+  with no new assertion.
+- **Migrations touched?** Check the applied state claimed in `CLAUDE.md` and
+  `docs/HANDOFF.md` against `list_migrations`. Never trust the file's own account of
+  what is applied — that specific claim has already gone stale once and would have had
+  the next session re-apply a migration that silently reverts the current policy set.
+- **CI touched?** Check the description in `CLAUDE.md` against `.github/workflows/ci.yml`.
+- **Files or directories added, moved or removed?** Check the repo-layout tree in
+  `CLAUDE.md`. It is a hand-maintained copy of `ls` and drifts within days.
+- **Agent added or changed?** Check the squad table in `CLAUDE.md` against
+  `.claude/agents/`.
+- **Does any document contradict another, or itself?** The stack table saying one thing
+  and the design-system section saying the opposite is worse than either alone, because
+  an agent that reads the first and stops will confidently do the wrong thing.
+
+Two standing rules worth applying to any documentation in the diff:
+
+- **Derivable facts should not be hand-written.** Anything the repo or a live API
+  already knows — which migrations exist, what CI runs, the directory tree — is a copy
+  with an expiry date on it. Prefer pointing at the source. Flag new hand-copies.
+- **`CLAUDE.md` costs tokens on every session, forever.** Additions that restate what is
+  already there, or that document a one-off rather than a durable rule, are a permanent
+  tax on every future run. Flag them.
 
 ## Then the ordinary review
 
