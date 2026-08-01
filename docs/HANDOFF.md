@@ -119,7 +119,10 @@ total, regardless of seat. `whoami` is exempt from that quota, so it succeeds an
 nothing about whether reads will work — do not treat it as a green light. Every tool that
 reads design data is metered, and the quota is currently exhausted.
 
-The **REST API on a personal access token has no such ceiling.** `FIGMA_ACCESS_TOKEN` is set
+The **REST API on a personal access token has no monthly cap.** It does throttle per minute —
+sustained pulls return `429 Rate limit exceeded`, and the window is long enough that four
+retries over ~80s did not clear it. Batch requests, cache responses to disk, and back off;
+this is a pacing constraint, not the hard wall the MCP quota was. `FIGMA_ACCESS_TOKEN` is set
 in the environment (`figd_…`, 14 read/write scopes). Verified working:
 
 | Endpoint | |
