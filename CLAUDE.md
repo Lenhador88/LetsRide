@@ -146,40 +146,86 @@ router.refresh()  // revalidates server component data without full navigation
 > Figma: `gDoteM1ow1AZpSEGSNhpc7` — the `v2 / Component / *` library is canonical.
 > Ignore `Component / *` (v1, has `Theme=Dark` variants) and anything named `(OLD)`.
 
-**Colors** (Figma variable → use):
+**These tokens are Figma *paint and text styles*, not variables.** That distinction is load
+bearing: the Variables REST API is Enterprise-only and returns 403 on this plan, but style
+names ship in the `styles` map on any `/v1/files/:key/nodes` response, so the whole token set
+is readable. 87% of fills on the Components page reference a named style. Never convert these
+to Figma variables — it would move the entire token layer behind the 403.
 
-| Token | Value | Use |
-|---|---|---|
-| `Grey/5` | `#F2ECE6` | App background (warm cream) |
-| `White/100` | `#FFFFFF` | Cards, surfaces |
-| `Grey/100` | `#1A1A1A` | Primary text, primary buttons |
-| `Grey/80` | `#666666` | Secondary / muted text |
-| `Grey/10%` | `#0000001A` | Dividers, subtle borders |
-| `Grey/20%` | `#00000033` | Stronger borders |
-| `Accent Brand/100` | `#3D996B` | Brand green — accents, success, splash |
+Everything below was extracted from the file and verified on 2026-08-01. `n` is how many
+times the style is used on the Components page — a good proxy for how central it is.
+
+**Colors:**
+
+| Token | Value | n | Use |
+|---|---|---|---|
+| `Grey/100` | `#1A1A1A` | 275 | Primary text, primary buttons |
+| `White/100` | `#FFFFFF` | 222 | Cards, surfaces, text on dark |
+| `Grey/80` | `#666666` | 101 | Secondary / muted text, icons |
+| `Grey/5` | `#F2ECE6` | 54 | App background (warm cream) |
+| `Warning/100` | `#D92140` | 39 | Destructive / error — `<Button variant="danger">` |
+| `Grey/10%` | `#0000001A` | 16 | Dividers, subtle borders |
+| `Accent Brand/100` | `#3D996B` | 14 | Brand green — accents, success, splash |
+| `White/10%` | `#FFFFFF1A` | 7 | Overlay on imagery |
+| `Accent Brand/110` | `#338059` | 5 | Brand green, darker — pressed / hover |
+| `Grey/20%` | `#00000033` | 3 | Stronger borders |
+| `White/5%` | `#FFFFFF0D` | 3 | Subtle overlay on imagery |
+| `Accent Brand/50%` | `#3D996B80` | 2 | Muted brand |
+| `Warning/90` | `#FF3355` | 2 | Error, lighter |
+| `Pink/100` | `#F23071` | 2 | Purpose not established — check before using |
+| `Grey/60` | `#808080` | 1 | Near-unused; may be a stray |
+| `Grey/70%` | `#000000B3` | 1 | Scrim / overlay |
+| `Warning/110` | `#99001A` | 1 | Error, darker |
 
 Note: primary buttons are **near-black (`Grey/100`)**, not green. Green is an accent, used
 sparingly — it is not the button colour.
 
+Nine `Grey (OLD)/*` and `Accent (OLD)/*` styles are still live *inside* v2 components —
+`#808080` (93 uses), `#E6E6E6` (84), `#262626` (59), `#36B289` (31) and others. They are v1.
+Do not port them; resolve to the v2 token nearest in intent.
+
 **Type — Poppins** (there is no other family):
 
-| Token | Size / LH | Weight |
-|---|---|---|
-| `Poppins/10/Medium` | 10 / 16 | 500 |
-| `Poppins/12/Semibold` | 12 / 18 | 600 |
-| `Poppins/14/Regular` | 14 / 20 | 400 |
-| `Poppins/14/Medium` | 14 / 20 | 500 |
-| `Poppins/14/Semibold` | 14 / 20 | 600 |
-| `Poppins/16/Regular` | 16 / 24 | 400 |
-| `Poppins/16/Medium` | 16 / 24 | 500 |
-| `Poppins/32/Semibold` | 32 / 48 | 600 |
+| Token | Size / LH | Weight | n |
+|---|---|---|---|
+| `Poppins/14/Medium` | 14 / 20 | 500 | 102 |
+| `Poppins/16/Regular` | 16 / 24 | 400 | 77 |
+| `Poppins/14/Semibold` | 14 / 20 | 600 | 69 |
+| `Poppins/12/Semibold` | 12 / 18 | 600 | 60 |
+| `Poppins/14/Regular` | 14 / 20 | 400 | 57 |
+| `Poppins/16/Medium` | 16 / 24 | 500 | 47 |
+| `Poppins/10/Medium` | 10 / 16 | 500 | 31 |
+| `Poppins/16/Semibold` | 16 / 24 | 600 | 26 |
+| `Poppins/12/Regular` | 12 / 18 | 400 | 25 |
+| `Poppins/10/Semibold` | 10 / 16 | 600 | 23 |
+| `Poppins/12/Medium` | 12 / 18 | 500 | 14 |
+| `Poppins/20/Semibold` | 20 / 30 | 600 | 6 |
+| `Poppins/18/Semibold` | 18 / 26 | 600 | 5 |
+| `Poppins/24/Semibold` | 24 / 36 | 600 | 2 |
+| `Poppins/20/Medium` | 20 / 30 | 500 | 1 |
+| `Poppins/40/Semibold` | 40 / 60 | 600 | 1 |
+
+There is no `Poppins/32/Semibold`. This file previously documented one; it does not exist in
+Figma. The display sizes are 24/36 and 40/60.
 
 **Layout:** 390px mobile frame, single column, mobile-first. Fixed top header + fixed
 bottom tab bar. Use `.pb-safe` for notch devices.
 
-**Icons:** a custom set of ~40 (`Element / Icon / *` in Figma) including motorcycle-specific
-ones — Bike, Garage, Wrench, Coordinates, Store. `lucide-react` does not cover these and is
-being replaced. Pull icons from Figma, don't substitute lookalikes.
+**Geometry** (most-used values on the Components page — use these rather than inventing):
+corner radius `4` (147), `100` (110, i.e. pill), `8` (85), `5` (52), `12` (15);
+padding-left `16` (99), `8` (43), `24` (21); item spacing `8` (86), `4` (66), `16` (40).
+
+**Icons: 44**, under `Element / Icon / *`, confirmed present. Includes the
+motorcycle-specific ones `lucide-react` cannot supply — Bike, Garage, Wrench, Coordinates,
+Store — plus Arrow Left/Right/Up, Avatar, Block Account, Calendar, Chat Bubble, Check,
+Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart Filled/Outline,
+Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu, Mute, Options,
+Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search, Share.
+Export them as SVG via `/v1/images/:key?ids=…&format=svg`. `lucide-react` is still imported
+in 15 files and is being replaced — don't substitute lookalikes.
+
+**The library scale**, for planning: 52 component sets covering 213 variants, plus 88
+standalone components, 2,447 nodes on the Components page.
 
 ## Development Workflow
 

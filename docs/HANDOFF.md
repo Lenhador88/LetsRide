@@ -79,6 +79,58 @@ Then `test`, then `reviewer`, then a PR. Any migration in that change must add a
 
 ---
 
+## Building to the design — read before starting
+
+Figma access is solved (see Known constraints) and `CLAUDE.md`'s token tables are now correct
+and complete. What follows is the shape of the work, measured on 2026-08-01 rather than
+estimated.
+
+**"Applying the design" is roughly one fifth restyling and four fifths building product that
+does not exist.** The code is 12 routes and 11 components with 139 v1 token occurrences
+across 17 files. The design is 6 sections — Login, Home, Rides, Clubs, Inbox, Profile —
+backed by 52 component sets, 213 variants, 88 components and 44 icons. The gap is structural,
+not cosmetic:
+
+- **The design has no Friends tab.** The five tabs are Home, Rides, Clubs, Inbox, Profile.
+  `/friends` is not restyled, it is **deleted**, and `friendships` is a v1 leftover. This is a
+  product decision that has not been explicitly signed off — confirm before deleting.
+- **The design's home is Postcards**, a photo feed. The app's home is `/dashboard`. The
+  central screen of the product is not built.
+- **Inbox, Garage and trust & safety have no routes and no tables.** The schema is
+  `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `friendships` — nothing behind
+  postcards, messages, garage or blocks. Most of this is `data` → `feature`, not CSS.
+
+**Suggested order.** The ratings are impact on shipping a product that matches the design.
+
+| # | Work | Impact | Notes |
+|---|---|---|---|
+| 1 | `design-system` — v2 library + 44 icons, retire `lucide-react` | 8/10 | Gates all screen work |
+| 2 | Login epic + `003` (above) | 7/10 | Already specced and queued |
+| 3 | Restyle the 12 existing routes v1 → v2 | 4/10 | Days, but only *after* 1 |
+| 4 | **Postcards / Home** | 10/10 | New tables + Storage + EXIF; the core loop |
+| 5 | Inbox — DMs, ride chat, notifications | 8/10 | New tables + `realtime` |
+| 6 | Trust & safety — block, report, hide | 7/10 | RLS-level; needed before real users |
+| 7 | Garage | 5/10 | Self-contained, lowest urgency |
+
+**Do not restyle screen-by-screen before `design-system` lands.** Twelve routes each
+re-deriving tokens is how drift gets baked in. This was a live risk until today: the token
+table omitted `Warning/100` `#D92140`, so every `<Button variant="danger">` built against the
+old docs would have used the wrong colour.
+
+**One number is still missing: how many screens sit inside each design section.** Figma
+started returning `429` and four backoff retries over ~80s did not clear it, so this was left
+unmeasured rather than guessed. It is the difference between weeks and months on Postcards.
+One call once the window resets:
+
+```
+curl -H "X-Figma-Token: $FIGMA_ACCESS_TOKEN" \
+  "https://api.figma.com/v1/files/gDoteM1ow1AZpSEGSNhpc7/nodes?ids=0:1&depth=3"
+```
+
+Get this before committing to any timeline.
+
+---
+
 ## Known issues, roughly by cost to fix
 
 - **Duplicate usernames break signup.** `handle_new_user` falls back to the email local
