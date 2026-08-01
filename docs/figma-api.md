@@ -41,9 +41,32 @@ back to `.env.local`. There are two places to put it, and they are not equivalen
 **Agent sessions — the Claude Code environment settings.** This is the one that
 persists. Remote sessions run in an ephemeral container that clones the repo fresh
 and is reclaimed after idle, so a token written to `.env.local` during a session is
-gone by the next one. Set it as an environment variable on the environment itself:
-claude.ai/code → the environment → Environment variables → `FIGMA_ACCESS_TOKEN`.
-See https://code.claude.com/docs/en/claude-code-on-the-web.
+gone by the next one.
+
+There is no settings page or direct URL. At claude.ai/code, click the cloud icon
+showing the environment's name in the row above the message box, hover the
+environment, and click the gear. The dialog holds network access, environment
+variables and the setup script. Add to **Environment variables**, `.env` format:
+
+```
+FIGMA_ACCESS_TOKEN=figd_…
+```
+
+Two things to know before doing that:
+
+- **Values are readable by anyone who uses the environment, and there is no secrets
+  store.** Anthropic's docs say plainly: "don't add API keys or other credentials."
+  For a *personal* environment that audience is one person, and a read-scoped Figma
+  token is a small blast radius — but scope it to read, and rotate it if the
+  environment is ever shared. Do not put a Supabase service key here.
+- **A running session copies the values once at startup and never re-reads them.**
+  Setting the variable does nothing for the session you are in; start a new one.
+
+And the network side, in the same dialog — set **Network access** to **Custom**, then
+put `api.figma.com` in **Allowed domains**. **Tick "Also include default list of
+common package managers."** Custom without that box replaces the Trusted list rather
+than extending it, so `npm install` stops working. GitHub is unaffected either way;
+it goes through a separate proxy.
 
 **Local development — `.env.local`**, gitignored via `.env*.local`:
 
