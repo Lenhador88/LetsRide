@@ -13,11 +13,21 @@ This file is only the *current position* — the things that will be stale in a 
 Nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and the
 anonymous read hole is closed.
 
-**Do not re-apply `002_restrict_to_authenticated`.** It is already applied. Re-running it
-recreates the `clubs`, `club_members`, `rides` and `ride_members` policies *without* the
-visibility predicates, which silently reverts `008` — reopening world-readable private
-rosters and hiding club-only rides from their own club. To change those four tables, add a
-new migration. `008` is the current definition.
+**Do not re-apply `002_restrict_to_authenticated`.** It is already applied, and it is not
+idempotent — it was written to run once against the `001` schema.
+
+Re-running it **fails partway and leaves the database worse than when it started.** Its
+`profiles` block drops three policies and then creates `"Profiles are viewable by signed-in
+riders"`, which already exists, so the script aborts there. `psql` autocommits, so the drops
+have already stuck: `profiles` is left with a select policy and **no insert or update
+policy**, which breaks profile editing for every user. It never reaches `club_members`,
+`rides` or `ride_members`, so `008` survives intact and nothing leaks — the damage is
+narrower than a leak, and easier to miss, because the tables you would think to check are
+fine.
+
+Verified by applying the full chain to a scratch database and re-running `002` over it.
+
+To change any of those four tables, add a new migration. `008` is the current definition.
 
 ---
 
@@ -38,7 +48,7 @@ The app looks inconsistent on purpose: the cream v2 background is live, but `app
 and `app/(app)/*` are still v1 `zinc-*`/`orange-500`. Those migrate with their own epics.
 
 **Migration ordering is not file order.** Two chains were written in parallel and each
-recreated the policies the other did. `004`–`006` reached the database before `002` did;
+recreated the policies the other did. `004`–`007` reached the database before `002` did;
 `008` reconciles them by taking `to authenticated` from `002` and the visibility predicates
 from `004`. Verified by diffing the live policy set against a database built from the
 chain — 22 policies, identical. Do not try to "tidy" the numbering; the end state is

@@ -51,9 +51,12 @@ Ask, specifically:
   documented fact and does not update it is unfinished, exactly like a policy change
   with no new assertion.
 - **Migrations touched?** Check the applied state claimed in `CLAUDE.md` and
-  `docs/HANDOFF.md` against `list_migrations`. Never trust the file's own account of
-  what is applied — that specific claim has already gone stale once and would have had
-  the next session re-apply a migration that silently reverts the current policy set.
+  `docs/HANDOFF.md` against the database. Never trust a file's own account of what is
+  applied — that claim has already gone stale once, and the next session would have acted
+  on it. Use `list_migrations`; if it is not in your toolset, do not skip the check —
+  `execute_sql` with `select version, name from supabase_migrations.schema_migrations
+  order by version` gives the same answer, and that table also reveals the *apply order*,
+  which on this project deliberately differs from the file order.
 - **CI touched?** Check the description in `CLAUDE.md` against `.github/workflows/ci.yml`.
 - **Files or directories added, moved or removed?** Check the repo-layout tree in
   `CLAUDE.md`. It is a hand-maintained copy of `ls` and drifts within days.

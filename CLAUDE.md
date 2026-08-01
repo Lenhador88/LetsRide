@@ -101,7 +101,7 @@ applied until the `full_name` call sites are fixed in the same change, and
 `supabase/tests/run.sh` skips it for that reason — remove it from `SKIP_MIGRATIONS` in
 the change that deploys it.
 
-`004`–`006` reached the database before `002` did, because two chains were written in
+`004`–`007` reached the database before `002` did, because two chains were written in
 parallel and each recreated the policies the other did. `008` reconciles them: `to
 authenticated` from `002`, the visibility predicates from `004`. Verified by diffing the
 live policy set against a database built from the migration chain — they match exactly.
