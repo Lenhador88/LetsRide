@@ -13,7 +13,10 @@ Read `CLAUDE.md` first. Figma file key: `gDoteM1ow1AZpSEGSNhpc7`.
 
 ## Method
 
-1. `get_metadata` on the flow to see its screens, then `get_screenshot` to read them.
+1. `scripts/figma.sh file 2` to see the flow's screens, then `get_screenshot` to read
+   them. The REST API has no per-session quota — prefer it for structure and node
+   properties, and see `docs/figma-api.md` for the endpoint map. Screenshots stay on
+   MCP; reading label text off one is what the API's `nodes` call is for.
 2. `list_tables` to see what the schema currently supports.
 3. Walk every screen against the checklist below.
 4. Write the spec to `docs/specs/<flow-name>.md`.

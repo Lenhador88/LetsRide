@@ -9,6 +9,28 @@ You own the LetsRide component library. Everything visual in the app is built fr
 
 Figma file key: `gDoteM1ow1AZpSEGSNhpc7`
 
+## Use the REST API for the bulk work
+
+The MCP quota cannot cover this library — ~30 components with full variant matrices
+plus ~40 icon exports is far more than it allows. `scripts/figma.sh` gives you the
+REST API with no per-session ceiling. **Read `docs/figma-api.md` before your first
+call**; it carries the endpoint map, the batching rules and the current blocker.
+
+```bash
+scripts/figma.sh me                       # verify auth before doing anything else
+scripts/figma.sh file 2                   # shallow tree — find your node ids
+scripts/figma.sh nodes "1:23,4:56"        # then one deep call on just those ids
+scripts/figma.sh images "1:23,4:56" svg   # icon exports
+```
+
+Batch ids into one call rather than looping, and cache the JSON to disk between
+runs. Spend MCP calls only on what REST cannot do on our plan — that is
+`get_variable_defs` (Enterprise-gated over REST) and `add_code_connect_map`.
+
+If `scripts/figma.sh me` fails at the proxy, `api.figma.com` is still not on the
+egress allowlist. Stop and report it — do not fall back to reading values off
+screenshots and building the library on guesses.
+
 ## The v1/v2 split — read this before touching anything
 
 The Figma contains two libraries. Only one is current:
@@ -25,9 +47,9 @@ You MUST load the design-to-code guidance first — prefer the `/figma-design-to
 
 ## Order of work
 
-1. **Tokens first.** Wire the v2 variables into `src/app/globals.css` as Tailwind v4 `@theme` values. Use semantic names (`--color-surface`, `--color-accent`), not raw hex scattered through components. Pull them with `get_variable_defs` — do not eyeball colours off a screenshot.
+1. **Tokens first.** Wire the v2 variables into `src/app/globals.css` as Tailwind v4 `@theme` values. Use semantic names (`--color-surface`, `--color-accent`), not raw hex scattered through components. Pull them with `get_variable_defs` — the one job REST cannot do on our plan, so it is worth the MCP call. Do not eyeball colours off a screenshot.
 2. **Poppins.** Load via `next/font/google` in `src/app/layout.tsx`, replacing Geist. Wire the eight-step scale into the theme.
-3. **Icons.** ~40 custom icons under `Element / Icon / *`, including motorcycle-specific ones (Bike, Garage, Wrench, Coordinates, Store) that `lucide-react` does not have. Extract with `download_assets`, ship as React components in `src/components/icons/`. Do not substitute lookalikes — a wrong wrench is worse than a missing one.
+3. **Icons.** ~40 custom icons under `Element / Icon / *`, including motorcycle-specific ones (Bike, Garage, Wrench, Coordinates, Store) that `lucide-react` does not have. Extract with `scripts/figma.sh images "<ids>" svg` — batched, not one call per icon — then fetch the returned URLs and ship them as React components in `src/components/icons/`. Do not substitute lookalikes; a wrong wrench is worse than a missing one.
 4. **Primitives**, in dependency order: Button → Input → Avatar → Card → Header → Navigation → the rest.
 
 ## Matching Figma variants

@@ -52,8 +52,11 @@ src/
 supabase/
 ├── migrations/             # SQL migrations — append-only, see Supabase Rules
 └── tests/                  # RLS policy suite (npm test); README covers its scope
+scripts/
+└── figma.sh                # Authenticated Figma REST API access
 docs/
 ├── HANDOFF.md              # Current position — read at session start
+├── figma-api.md            # Figma REST setup, endpoint map, limits
 └── specs/                  # Implementation specs (login-onboarding.md)
 openspec/                   # Spec-driven change proposals + config.yaml
 .claude/
@@ -145,6 +148,12 @@ router.refresh()  // revalidates server component data without full navigation
 >
 > Figma: `gDoteM1ow1AZpSEGSNhpc7` — the `v2 / Component / *` library is canonical.
 > Ignore `Component / *` (v1, has `Theme=Dark` variants) and anything named `(OLD)`.
+>
+> Read the file through the **REST API** (`scripts/figma.sh`, see `docs/figma-api.md`),
+> not the MCP server — the MCP quota cannot cover a component library this size. The
+> exception is `get_variable_defs`: the REST variables endpoint is Enterprise-gated, so
+> tokens still come from MCP. **`api.figma.com` is currently blocked by the environment's
+> egress policy and must be allowlisted before any of this works.**
 
 **Colors** (Figma variable → use):
 
@@ -194,6 +203,8 @@ npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/R
 **Environment variables** (never commit these):
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `FIGMA_ACCESS_TOKEN` — tooling only, read by `scripts/figma.sh`. The app never reads
+  it; never prefix it `NEXT_PUBLIC_` or it ships in the client bundle.
 
 Copy `.env.local.example` to `.env.local` for local development.
 

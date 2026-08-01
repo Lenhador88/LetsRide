@@ -108,15 +108,29 @@ and `anon` holds no database privileges. Left on pending a decision.
 
 ## Known constraints
 
-**Figma is quota-limited.** The Starter plan cut off `spec` after 5 calls. That was enough
-for structural metadata but *not* for the label text on button and input instances — roughly
-eleven strings in the spec are marked `[inferred]` and need one verification pass.
+**Figma MCP is quota-limited; REST is configured but blocked.** The Starter plan cut off
+`spec` after 5 calls — enough for structural metadata but *not* for the label text on
+button and input instances, so roughly eleven strings in the spec are marked `[inferred]`
+and need one verification pass.
 
-This matters more for the next design task than the last one: `design-system` needs ~30
-components with full variant matrices plus ~40 icon exports, an order of magnitude more
-calls. **Check the Figma plan before starting it.** Running it against an exhausted quota
-produces a half-built library with guessed padding and radii, which is worse than not
-starting — see the working principles in `CLAUDE.md`.
+The fix is in place rather than worked around: a personal access token now lives in
+`.env.local`, `scripts/figma.sh` wraps the REST API, and `docs/figma-api.md` maps every
+MCP tool to its REST equivalent. REST has no per-session ceiling and batches ids, which is
+what `design-system` needs for ~30 components and ~40 icon exports.
+
+**It does not work yet.** `api.figma.com` is not on this environment's egress allowlist —
+every request dies at the proxy with `CONNECT tunnel failed, response 403`, and
+`www.figma.com` is blocked too, so the whole domain is off the policy. Add it in the
+environment's network settings, then run `scripts/figma.sh me` to confirm. The token and
+its scopes are **unverified** until that call returns.
+
+One thing REST cannot replace on our plan: `get_variable_defs`. The REST variables
+endpoint is Enterprise-only, so design tokens still cost MCP calls. That is cheap — the v2
+tokens are already in `CLAUDE.md` — but it is why the MCP tools stay on the agents.
+
+**Do not start `design-system` until `scripts/figma.sh me` succeeds.** Running it against
+a blocked API produces a half-built library with guessed padding and radii, which is worse
+than not starting — see the working principles in `CLAUDE.md`.
 
 **Unverified from an earlier session:** the four migrated primitives kept their v1 shapes
 (padding, radius, focus treatment). Tokens are correct; geometry is inferred and flagged in
