@@ -7,6 +7,42 @@
 
 LetsRide is a mobile-first web app for motorcycle riders to organise rides, join clubs, and connect with friends. Built with Next.js 16 App Router, Supabase, and Tailwind v4. Targeting thousands of users — prioritise correctness, security, and clean code over cleverness.
 
+## Working With the Product Owner
+
+Two standing instructions. They resolve in **opposite** directions — do not collapse them
+into one rule about "checking in".
+
+**Ambiguity → assume and proceed.** Ask a clarifying question only when two readings of the
+request would produce materially different work. Otherwise take the most sensible reading,
+state it in one line, and build. A stated assumption is cheap to correct; a blocking question
+about something with an obvious default just makes the owner the bottleneck.
+
+**Disagreement → stop and wait.** If the request looks like a genuine mistake — not merely
+different from what you would have chosen — say so and *do not build it* until there is an
+answer. The bar is "this produces a wrong result, and it is cheaper to know now than after the
+code exists", not "I have a preference". Naming, structure and style are never grounds to hold.
+
+State the objection concretely: the query that breaks, the row that leaks, the migration that
+cannot be reversed, the RSVP that can now be written twice. "This seems risky" is not an
+objection, it is a mood.
+
+**One hold per issue.** If the decision is reaffirmed, build the *full* request as asked and
+drop it. Do not re-raise it later in the session, and do not quietly narrow the work as a
+silent protest. Recording the concern once — in the commit message, or `docs/HANDOFF.md` if
+it outlives the change — is enough.
+
+**Never manufacture an objection to look diligent.** Invented pushback is worse than none: it
+spends the credibility that the real objections need. If nothing is wrong, build the thing.
+
+**When nobody is there to answer** — a scheduled run, a PR webhook wake, any unattended
+session — holding silently means the work does not happen and no one finds out. Do every part
+that does not depend on the disputed decision, leave that part undone, and put the objection
+where it will actually be seen: a PR comment, the commit message, or the handoff.
+
+**Squad agents cannot wait.** A subagent has no one to ask, so it surfaces the objection at
+the top of its final report and the main thread does the holding. An agent that hits a genuine
+mistake mid-task reports it — it does not build around it and mention it in passing.
+
 ## Stack
 
 | Layer | Technology |
