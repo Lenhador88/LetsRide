@@ -171,11 +171,23 @@ total, regardless of seat. `whoami` is exempt from that quota, so it succeeds an
 nothing about whether reads will work — do not treat it as a green light. Every tool that
 reads design data is metered, and the quota is currently exhausted.
 
-The **REST API on a personal access token has no monthly cap.** It does throttle per minute —
-sustained pulls return `429 Rate limit exceeded`, and the window is long enough that four
-retries over ~80s did not clear it. Batch requests, cache responses to disk, and back off;
-this is a pacing constraint, not the hard wall the MCP quota was. `FIGMA_ACCESS_TOKEN` is set
-in the environment (`figd_…`, 14 read/write scopes). Verified working:
+The **REST API on a personal access token has no monthly cap**, but it throttles harder than
+it first appears. After pulling the full Components page (2.3 MB) plus a handful of smaller
+requests, everything returned `429 Rate limit exceeded` and **stayed 429 for over ten
+minutes** across repeated backoff. Treat it as a real budget, not a per-minute hiccup.
+
+Practical consequences for `design-system`, which needs the most calls of any task here:
+
+- **Batch.** `/v1/images` takes comma-separated ids — fetch all 44 icons in one or two calls,
+  never 44 separate ones.
+- **Cache to disk.** One `/nodes` pull of the Components page (node `50:559`) contains every
+  component, variant, fill, style reference and geometry value. Save the JSON and query it
+  locally instead of re-fetching. That single response answered nearly every design question
+  in this session.
+- **Budget the big pull first**, then work offline from it.
+
+`FIGMA_ACCESS_TOKEN` is set in the environment (`figd_…`, 14 read/write scopes) and persists
+across sessions. Verified working:
 
 | Endpoint | |
 |---|---|
