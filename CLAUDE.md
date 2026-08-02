@@ -452,6 +452,16 @@ When the second kind is genuinely unavoidable, say so explicitly, mark exactly w
 inferred, and leave a note for the pass that will verify it. Never let an inferred value
 pass silently as a known one — a guess that isn't labelled becomes a fact nobody rechecks.
 
+**Rate every suggestion: complexity 0-10, recommendation 0-10.** Whenever you propose
+optional work — a refactor, a test, a hardening, a follow-up — give both numbers and one line
+of reasoning. Complexity is effort plus risk plus the maintenance it adds. Recommendation is
+how strongly you actually advise doing it, independent of how interesting it is to build.
+
+The two are not correlated, and saying so is the point: a 1/10 complexity item can be a 9/10
+recommendation, and a clever 6/10 build can be a 2/10 recommendation. Rate your own ideas
+honestly, including low — an unrated suggestion reads as advocacy, and the reader cannot
+cheaply decline it. If you would not spend your own afternoon on it, say so in the number.
+
 **Committed and pushed is not shipped.** Work only counts when it is on `main`. A branch that
 is green, pushed and reviewed still changes nothing until it merges — and the gap between
 "I opened the PR" and "it landed" is where things get dropped, because every other signal
