@@ -1,8 +1,7 @@
 # Handoff — where things stand
 
-Last shipped: the **login & onboarding epic** (PR #8, merged `0e30556`, live in production).
-The branch `claude/login-flow-architecture-fz2zxu` has been restarted from `main` — treat any
-further work on it as a fresh change.
+Last shipped: the **login & onboarding epic** (PR #8, merged `0e30556`, live in production),
+followed by PRs #9 and #10. No branch is in flight — start new work from `main`.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.

@@ -96,7 +96,7 @@ src/
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme)
-│   ├── page.tsx            # / — public landing page (still v1 dark)
+│   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + .pb-safe
 ├── components/
 │   ├── ui/                 # Button, Input, Card, Avatar
@@ -128,8 +128,9 @@ openspec/                   # Spec-driven change proposals + config.yaml
 └── agents/                 # The specialist squad (see The Agent Squad)
 ```
 
-`src/lib/{data,actions,validation,auth}` were created by the login epic. The screens under
-`app/auth/*` and `app/onboarding/*` are the part of that epic still outstanding.
+`src/lib/{data,actions,validation,auth}`, `app/auth/*`, `app/onboarding/*` and `app/legal/*`
+were all created by the login epic, which is shipped. What is still v1 is everything under
+`app/(app)/*`.
 
 ## Critical: proxy.ts (not middleware.ts)
 
