@@ -125,7 +125,11 @@ docs/
 └── specs/                  # Implementation specs (login-onboarding.md)
 openspec/                   # Spec-driven change proposals + config.yaml
 .claude/
-└── agents/                 # The specialist squad (see The Agent Squad)
+├── agents/                 # The specialist squad (see The Agent Squad)
+├── commands/               # Slash commands (opsx/*)
+├── skills/                 # Project skills
+├── hooks/                  # handoff-landed-check.sh — Stop hook, see Working Principles
+└── settings.json           # Project hook config
 ```
 
 `src/lib/{data,actions,validation,auth}`, `app/auth/*`, `app/onboarding/*` and `app/legal/*`
