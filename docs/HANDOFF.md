@@ -30,6 +30,36 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 ## Do this first
 
+**In flight: the Home/Postcards epic, branch `claude/home-page-design-churhi`.**
+
+Migration `009_postcards_and_blocks.sql` is **written, locally verified, pushed, and NOT
+applied to the hosted project.** That is drift — it is the one outstanding migration, and it
+should be applied (and verified live, plus advisors) before a `010` is added.
+
+It creates `postcards`, `postcard_likes` and `blocks`, plus `private.is_blocked()`, and
+applies the block predicate to `profiles`, `club_members`, `rides`, `ride_members` and
+`friendships` so decision #2 holds everywhere the moment blocking exists. Verified by
+applying the full `001`–`009` chain to a scratch Postgres and running the suite green.
+
+**It drops SELECT policies on those five tables by catalog lookup before recreating them.**
+If it ever aborts partway the tables are left with no select policy — deny-all. That fails
+*closed*, unlike `002`, so the damage mode is "riders see nothing" rather than a leak. Worth
+knowing before you run it against production.
+
+Product owner sign-offs taken this session, both previously listed here as unconfirmed:
+
+- **`/dashboard` is to be deleted**, and Postcards becomes the home screen.
+- **`/friends` is to be deleted** along with the `friendships` v1 leftover.
+
+Neither deletion has happened yet, and **the order matters**: `proxy.ts` redirects a
+signed-in rider to `/dashboard`, so deleting it before the feed route exists leaves login
+landing on a 404. Delete it *with* the feed, not before.
+
+The approved first UI slice is **view + like** — comments and shares are deliberately out of
+scope, and `009` creates no table for them.
+
+---
+
 **The login epic is shipped.** PR #8 merged to `main` as `0e30556` on 2026-08-02, migration
 `003` applied to the hosted project, and the production deployment is `READY` on
 `letsrideapp.vercel.app` with no runtime errors. Nothing is outstanding from it.
@@ -77,8 +107,8 @@ To change any of those four tables, add a new migration. `008` is the current de
 
 | | |
 |---|---|
-| Migrations | `001`–`008` all applied to the hosted project. See the ordering note below. |
-| Tests | RLS suite 69 assertions (`npm test`) + Vitest 84 tests (`npm run test:unit`). Both gate every PR. |
+| Migrations | `001`–`008` all applied to the hosted project. **`009` is written and verified but NOT applied** — see *Do this first*. See the ordering note below. |
+| Tests | RLS suite 155 assertions (`npm test`) + Vitest 84 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -177,8 +207,9 @@ backed by 52 component sets, 213 variants, 88 components and 44 icons. The gap i
 not cosmetic:
 
 - **The design has no Friends tab.** The five tabs are Home, Rides, Clubs, Inbox, Profile.
-  `/friends` is not restyled, it is **deleted**, and `friendships` is a v1 leftover. This is a
-  product decision that has not been explicitly signed off — confirm before deleting.
+  `/friends` is not restyled, it is **deleted**, and `friendships` is a v1 leftover.
+  **Signed off by the product owner on 2026-08-02**, along with deleting `/dashboard`.
+  Not yet carried out — see *Do this first* for why the order matters.
 - **The design's home is Postcards**, a photo feed. The app's home is `/dashboard`. The
   central screen of the product is not built.
 - **Inbox, Garage and trust & safety have no routes and no tables.** The schema is

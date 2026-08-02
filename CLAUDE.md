@@ -347,7 +347,8 @@ Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart Filled
 Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu, Mute, Options,
 Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search, Share.
 Export them as SVG via `/v1/images/:key?ids=…&format=svg`. `lucide-react` is still imported
-in 15 files and is being replaced — don't substitute lookalikes.
+in 12 files and is being replaced — don't substitute lookalikes.
+(`git grep -l lucide-react -- 'src/*' | wc -l` — this said 15 until it was measured.)
 
 **The library scale**, for planning: 52 component sets covering 213 variants, plus 88
 standalone components, 2,447 nodes on the Components page.
@@ -423,7 +424,7 @@ means one of three things and only the first two are open:
   service-role key. Costs a network hop, keeps RLS intact. Justified only by something Node
   or Go can do that Postgres and Edge Functions cannot.
 - **A service-role backend that owns the database.** This voids decision #2. Every visibility
-  rule currently living in 22 policies and 69 test assertions gets reimplemented in
+  rule currently living in 22 policies and 155 test assertions gets reimplemented in
   application code — where, per `openspec/config.yaml`, an unstated rule fails silently
   instead of loudly. Nothing on the roadmap justifies it. Reopening it takes an explicit
   decision, not drift.
