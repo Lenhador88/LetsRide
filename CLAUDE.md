@@ -447,6 +447,19 @@ When the second kind is genuinely unavoidable, say so explicitly, mark exactly w
 inferred, and leave a note for the pass that will verify it. Never let an inferred value
 pass silently as a known one — a guess that isn't labelled becomes a fact nobody rechecks.
 
+**Committed and pushed is not shipped.** Work only counts when it is on `main`. A branch that
+is green, pushed and reviewed still changes nothing until it merges — and the gap between
+"I opened the PR" and "it landed" is where things get dropped, because every other signal
+(clean tree, pushed branch, green CI) already looks finished. Before ending a session, merge
+it or say plainly that it is open and why. This is not hypothetical: a handoff rewrite sat in
+an unmerged PR while `main` told the next session a shipped epic was half-finished.
+
+**A claim about state needs the command that checks it.** `docs/HANDOFF.md` describes things
+that move on their own — what is deployed, what is applied, how many tests there are. Write
+those with the one-liner that verifies them, so a stale line costs seconds instead of
+misleading someone. Counts especially: `git grep -c` beats a number typed by hand, which has
+been wrong here three times (assertion count, dependency count, `.from()` call sites).
+
 **Unapplied migrations are drift.** A migration in the repo that has not run against the
 database means the schema in git and the schema in Postgres disagree. Two are outstanding
 now. Apply them before adding a third; a queue of unapplied migrations fails in the order
