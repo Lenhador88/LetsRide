@@ -11,27 +11,27 @@ This file is only the *current position* — the things that will be stale in a 
 
 ## Do this first
 
-**`claude/login-flow-architecture-fz2zxu` is complete and ready to merge — but `003` and the
-merge have to land close together, and neither is done yet.**
+**`003` IS APPLIED. Merge `claude/login-flow-architecture-fz2zxu` now — production is in a
+degraded window until you do.**
 
-The epic is finished: all seven screens exist, so the earlier blocker (the proxy redirecting
-to `/onboarding/*` routes that 404'd) is gone. What remains is a deploy-ordering problem,
-because the schema and the code have to move as one:
+The migration was applied to the hosted project on 2026-08-02 and verified there. The branch
+is complete and green. But `main` — which is what Vercel serves — still queries
+`profiles.full_name`, and that column no longer exists. So right now:
 
-- **Merge first, apply second:** for the length of one Vercel build, `003` is missing, so
-  `proxy.ts` cannot read `onboarding_completed_at`. That path is handled — it redirects to
-  `/auth/login?error=profile_unavailable` and the auth screens stay reachable — so the app
-  degrades rather than breaking. It does **not** loop; there is a regression test pinning
-  that (`src/__tests__/proxy.test.ts`).
-- **Apply first, merge second:** `main` still queries `full_name`, which `003` drops, so the
-  dashboard, profile, friends, rides and clubs pages error until the build lands. Auth keeps
-  working.
+- **Broken on production:** dashboard, profile, friends, rides, `rides/[id]`, `clubs/[id]`
+  — every page that reads a profile.
+- **Still working:** auth, the landing page, anything not touching `profiles`.
 
-Either is survivable pre-launch with one real rider; the window is a single build. Pick one
-and do the two steps back to back rather than leaving them apart. After applying, run the
-negative checks in the footer of `supabase/migrations/003_onboarding.sql` against the live
-database and then check the Supabase security advisors — the local suite runs on plain
-Postgres and cannot see role grants or exposed endpoints.
+Merging the branch ends it. Nothing else needs doing, and there is nothing to roll back —
+the branch is the fix.
+
+Verified on the live database after applying, not just in CI: completion is refused while
+`location` is NULL and is one-way once set; reserved, too-short and uppercase usernames are
+all rejected with `23514`; 22 policies exist and every one is `to authenticated`; `anon`
+holds zero table grants. Security advisors show nothing new — only the pre-existing
+leaked-password toggle. The one real rider's row survived intact (`pedrousername`), with
+`onboarding_completed_at` NULL, so they will be sent through onboarding step 2 (location)
+on their next visit. That is decision #5 working as intended, not a bug.
 
 Otherwise nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and
 the anonymous read hole is closed.

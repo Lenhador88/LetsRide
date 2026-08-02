@@ -184,12 +184,15 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state:** `001`–`002` and `004`–`008` are applied to the hosted project.
-**`003_onboarding` is written, tested, and NOT applied.** The RLS suite now applies the
-whole chain including it (`SKIP_MIGRATIONS` is empty), so CI proves the schema works — but
-CI is not the hosted database. Apply `003` only when the branch carrying the `full_name`
-call-site fixes merges: production runs `main`, and `main` still queries the column `003`
-drops. Verify against the live database rather than trusting this line.
+**Applied state: `001`–`008` are all applied to the hosted project.** `003_onboarding` was
+applied 2026-08-02 and verified against the live database, not just CI: the five negative
+cases from its own footer all hold (completion refused while `location` is NULL, completion
+one-way once set, reserved / too-short / uppercase usernames all rejected with `23514`),
+22 policies exist and every one is `to authenticated`, and `anon` holds zero table grants.
+The security advisors report nothing new — only the pre-existing leaked-password toggle.
+
+Verify against the live database rather than trusting this line; it is the exact claim that
+was wrong before.
 
 `004`–`007` reached the database before `002` did, because two chains were written in
 parallel and each recreated the policies the other did. `008` reconciles them: `to
