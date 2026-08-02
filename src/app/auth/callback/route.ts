@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { RECOVERY_COOKIE, RECOVERY_PATH } from '@/lib/auth/recovery'
 
 /**
  * Exchanges a Supabase auth code for a session cookie. Password recovery is
@@ -27,7 +28,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/auth/forgot-password?error=invalid_link`)
   }
 
-  return NextResponse.redirect(`${origin}${next}`)
+  const response = NextResponse.redirect(`${origin}${next}`)
+
+  // A recovery link produces an ordinary session, indistinguishable from one
+  // created by signing in. proxy.ts no longer bounces signed-in riders away
+  // from /auth/reset-password (Q1), so without a marker anyone holding a
+  // session cookie — a shared device, a borrowed laptop — could set a new
+  // password without knowing the old one. updatePassword requires this cookie
+  // and clears it, so the ability to reset is spent by the reset.
+  if (next === RECOVERY_PATH) {
+    response.cookies.set(RECOVERY_COOKIE, '1', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 15,
+    })
+  }
+
+  return response
 }
 
 /**
@@ -56,5 +75,5 @@ export function safeNext(value: string | null): string {
     !value.includes('\\') &&
     !/[\x00-\x1F\x7F]/.test(value)
 
-  return isPath ? value : '/auth/reset-password'
+  return isPath ? value : RECOVERY_PATH
 }

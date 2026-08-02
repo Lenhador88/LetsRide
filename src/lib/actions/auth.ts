@@ -1,9 +1,10 @@
 'use server'
 
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { RECOVERY_COOKIE } from '@/lib/auth/recovery'
 import {
   loginSchema,
   newPasswordFormSchema,
@@ -48,16 +49,39 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
     password: parsed.data.password,
   })
 
-  if (error) return { error: error.message }
+  if (error) {
+    // Spec §Risks accepts that with email confirmation off (decision #6) the
+    // duplicate-signup case is unavoidably explicit — Supabase's usual
+    // mitigation, returning success and emailing the real owner, needs
+    // confirmation on. So this leak is a known consequence of #6, not an
+    // oversight, and it closes when #6 is revisited. Everything else gets one
+    // message rather than Supabase's raw copy.
+    const alreadyRegistered = error.message.toLowerCase().includes('already registered')
+    return {
+      error: alreadyRegistered
+        ? 'That email is already registered. Try signing in instead.'
+        : 'Could not create that account. Try again.',
+    }
+  }
   if (!data.user) return { error: 'Could not create that account. Try again.' }
 
   // Decision #6: email confirmation is off, so the session is live here and the
   // consent record can be written immediately. It is stored rather than kept in
   // form state because it has to outlive the request that collected it.
-  await supabase
+  const { data: consent } = await supabase
     .from('profiles')
     .update({ terms_accepted_at: new Date().toISOString() })
     .eq('id', data.user.id)
+    .select('id')
+    .maybeSingle()
+
+  // Checked rather than fire-and-forget. This write only succeeds because #6
+  // leaves the session live at this point; turn email confirmation on and it
+  // runs unauthenticated, is refused, and the rider would otherwise finish
+  // onboarding with no consent record while the screen reported success.
+  if (!consent) {
+    return { error: 'Your account was created but we could not record your consent. Sign in to continue.' }
+  }
 
   redirect('/onboarding/username')
 }
@@ -89,15 +113,28 @@ export async function updatePassword(
   const parsed = newPasswordFormSchema.safeParse({ password: formData.get('password') })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
+  // A recovery link yields an ordinary session, so "is signed in" is not
+  // evidence of anything here. proxy.ts deliberately stopped bouncing signed-in
+  // riders away from this page (Q1), which means without this check anyone
+  // holding a session cookie could set a new password without knowing the old
+  // one. The cookie is set only by /auth/callback after a successful code
+  // exchange.
+  const cookieStore = await cookies()
+  if (!cookieStore.get(RECOVERY_COOKIE)) {
+    return { error: 'That reset link has expired. Request a new one.' }
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
-  // Reaching this page without a recovery session means the link was never
-  // exchanged — updateUser would otherwise fail with a less useful message.
   if (!user) return { error: 'That reset link has expired. Request a new one.' }
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
-  if (error) return { error: error.message }
+  // Supabase's own copy leaks implementation detail and, for some failures,
+  // account state. The schema above already enforces what the rider controls.
+  if (error) return { error: 'Could not update your password. Request a new link.' }
+
+  // One link, one reset.
+  cookieStore.delete(RECOVERY_COOKIE)
 
   // Q14: the recovery session is already active, so there is nothing to log
   // into — go straight in.

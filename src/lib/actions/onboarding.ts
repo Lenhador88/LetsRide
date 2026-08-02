@@ -29,10 +29,16 @@ export async function setUsername(_prev: ActionState, formData: FormData): Promi
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const { error } = await supabase
+  // .select() so a zero-row update is distinguishable from a successful one.
+  // PostgREST reports no error when an update matches nothing, and the proxy
+  // reads a missing profile row as "not onboarded" — so without this the rider
+  // is redirected back to step 1 forever while every screen reports success.
+  const { data: updated, error } = await supabase
     .from('profiles')
     .update({ username: parsed.data })
     .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) {
     // 23505 is the unique index on lower(username). Two riders can both pass
@@ -45,6 +51,7 @@ export async function setUsername(_prev: ActionState, formData: FormData): Promi
     if (error.code === '23514') return { error: 'That username is not available.' }
     return { error: 'Could not save that username. Try again.' }
   }
+  if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
   redirect('/onboarding/location')
 }
@@ -61,12 +68,15 @@ export async function setLocation(_prev: ActionState, formData: FormData): Promi
   // trigger refuses the stamp unless username and location are both set, which
   // is what makes the wizard genuinely non-skippable (decision #5) rather than
   // merely non-skippable in the UI.
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from('profiles')
     .update({ location: parsed.data, onboarding_completed_at: new Date().toISOString() })
     .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: 'Could not save that. Try again.' }
+  if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
   redirect('/dashboard')
 }

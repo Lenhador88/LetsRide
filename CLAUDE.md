@@ -24,15 +24,16 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 otherwise get answered differently in every epic. Drafted 2026-08-02; edit freely, but edit
 here rather than deciding again inside a PR.
 
-**Dependencies are added deliberately.** Eight runtime dependencies today, and that is a
+**Dependencies are added deliberately.** Nine runtime dependencies today, and that is a
 feature. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
 
 **Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
 functions — `getRide(id)`, `getClubMembers(clubId)` — that own their query shape. Server
 components call them directly; they use the server client internally. This exists because 29
-`.from()` calls spread across 17 components means a renamed column is 29 places to find,
-which is exactly the trap `003` sets by dropping `full_name`.
+`.from()` calls spread across 14 files means a renamed column is 29 places to find, which is
+exactly the trap `003` sets by dropping `full_name`. (Counts move — re-derive with
+`git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'` rather than trusting this line.)
 
 **Writes go through Server Actions**, one per mutation, in `src/lib/actions/`. In order of
 weight:
@@ -61,7 +62,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place, gates every PR |
-| Units — validation, `lib/utils.ts`, `lib/data/` | Vitest | Add with the login epic |
+| Units — validation, `lib/utils.ts`, `lib/data/` | Vitest — `npm run test:unit` | In place, gates every PR. Covers `lib/validation/`, `getInitials` and `safeNext`; `lib/data/` and `lib/actions/` are not covered yet |
 | End-to-end | Playwright | Deferred until a flow is stable enough to be worth maintaining |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
@@ -92,7 +93,8 @@ src/
 │   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
 │   │   ├── friends/        # /friends
 │   │   └── profile/        # /profile
-│   ├── auth/               # /auth/login, /auth/signup (public)
+│   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
+│   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme)
 │   ├── page.tsx            # / — public landing page (still v1 dark)
 │   └── globals.css         # Tailwind import + CSS vars + .pb-safe
@@ -107,9 +109,10 @@ src/
 │   ├── supabase/
 │   │   ├── client.ts       # Browser client — use in 'use client' components
 │   │   └── server.ts       # Server client — use in server components / route handlers
-│   ├── data/               # ⧗ Read functions — the only place that queries Supabase
-│   ├── actions/            # ⧗ Server Actions — the only place that writes
-│   ├── validation/         # ⧗ Zod schemas, shared by client and server
+│   ├── data/               # Read functions — the only place that queries Supabase
+│   ├── actions/            # Server Actions — the only place that writes
+│   ├── validation/         # Zod schemas, shared by client and server
+│   ├── auth/               # recovery.ts — cookie name shared by callback + action
 │   └── utils.ts            # cn(), formatDate(), formatDateTime(), getInitials()
 ├── proxy.ts                # Auth middleware (Next.js 16 uses proxy.ts, not middleware.ts)
 └── types/
@@ -125,15 +128,32 @@ openspec/                   # Spec-driven change proposals + config.yaml
 └── agents/                 # The specialist squad (see The Agent Squad)
 ```
 
-`⧗` marks directories that Technology Decisions establishes but that do not exist yet. The
-login epic creates them; until then, no file should import from them.
+`src/lib/{data,actions,validation,auth}` were created by the login epic. The screens under
+`app/auth/*` and `app/onboarding/*` are the part of that epic still outstanding.
 
 ## Critical: proxy.ts (not middleware.ts)
 
 Next.js 16 uses `src/proxy.ts` instead of `src/middleware.ts`. The exported function must be named `proxy` (not `middleware`). Do not rename it or add a `middleware.ts` — the framework will break.
 
-Protected routes (redirect to `/auth/login` if no session): `/dashboard`, `/rides`, `/clubs`, `/friends`, `/profile`.
-Auth routes (redirect to `/dashboard` if already signed in): `/auth/*`.
+**Protection is a denylist of public paths, not an allowlist of protected ones.**
+Everything is gated except these, which is what makes decision #1 hold by default —
+a new route is protected unless someone deliberately opens it:
+
+```
+'/', '/auth/login', '/auth/signup', '/auth/forgot-password',
+'/auth/reset-password', '/auth/callback', and '/legal/*'
+```
+
+Three further rules:
+
+- **No session + non-public path** → `/auth/login`.
+- **Session + onboarding incomplete** → the resume step (`/onboarding/username` or
+  `/onboarding/location`), unless already under `/onboarding`. Read from
+  `profiles.onboarding_completed_at` on every request; never from `user_metadata`,
+  which the client can write.
+- **Session + `/auth/login` or `/auth/signup`** → `/dashboard`. Note the two paths:
+  bouncing *all* of `/auth/*` breaks password recovery, because Supabase's link
+  establishes a session before the reset page loads.
 
 ## Supabase Rules
 
@@ -164,10 +184,12 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state:** everything except `003_onboarding` is applied. `003` must not be
-applied until the `full_name` call sites are fixed in the same change, and
-`supabase/tests/run.sh` skips it for that reason — remove it from `SKIP_MIGRATIONS` in
-the change that deploys it.
+**Applied state:** `001`–`002` and `004`–`008` are applied to the hosted project.
+**`003_onboarding` is written, tested, and NOT applied.** The RLS suite now applies the
+whole chain including it (`SKIP_MIGRATIONS` is empty), so CI proves the schema works — but
+CI is not the hosted database. Apply `003` only when the branch carrying the `full_name`
+call-site fixes merges: production runs `main`, and `main` still queries the column `003`
+drops. Verify against the live database rather than trusting this line.
 
 `004`–`007` reached the database before `002` did, because two chains were written in
 parallel and each recreated the policies the other did. `008` reconciles them: `to
@@ -319,6 +341,7 @@ npm run dev      # start dev server
 npm run lint     # eslint
 npx tsc --noEmit # type check
 npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY)
+npm run test:unit # Vitest — validation schemas, getInitials, safeNext
 npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/README.md)
 ```
 

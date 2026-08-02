@@ -1,6 +1,7 @@
 # Handoff — where things stand
 
-Branch: `claude/figma-token-access-yz21em` — docs only, no code change. PR #3 and #5 merged.
+Branch: `claude/login-flow-architecture-fz2zxu` — the login epic, **half landed**. The data,
+auth and validation layers are built and tested; the five screens are not.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -10,8 +11,18 @@ This file is only the *current position* — the things that will be stale in a 
 
 ## Do this first
 
-Nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and the
-anonymous read hole is closed.
+**Do not merge `claude/login-flow-architecture-fz2zxu` yet, and do not apply `003`.**
+`proxy.ts` on that branch redirects any rider whose `onboarding_completed_at` is NULL to
+`/onboarding/username` — a route that does not exist yet, because the screens are the part
+still outstanding. Every existing user has a NULL there. Merging as it stands 404s the whole
+app for everyone signed in. The branch is safe to keep working on; it is not safe to deploy
+until the onboarding routes land.
+
+`003` is likewise written and unapplied. Production runs `main`, which still queries
+`full_name`, so applying it early breaks the live app from the database side instead.
+
+Otherwise nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and
+the anonymous read hole is closed.
 
 **Do not re-apply `002_restrict_to_authenticated`.** It is already applied, and it is not
 idempotent — it was written to run once against the `001` schema.
@@ -54,9 +65,11 @@ from `004`. Verified by diffing the live policy set against a database built fro
 chain — 22 policies, identical. Do not try to "tidy" the numbering; the end state is
 correct and the divergence is recorded deliberately.
 
-**`003_onboarding` is written but not applied**, and `supabase/tests/run.sh` skips it via
-`SKIP_MIGRATIONS`. It drops `profiles.full_name` while 29 references across 10 files still
-use it. Remove the skip entry in the same change that deploys it.
+**`003_onboarding` is written and tested but still not applied to the hosted project.**
+`supabase/tests/run.sh` no longer skips it — `SKIP_MIGRATIONS` is empty and CI applies the
+whole chain, with 69 assertions covering what `003` introduces. 24 of the 29 `full_name`
+references are fixed; the remaining 5 are all in `src/app/auth/signup/page.tsx`, which the
+login epic replaces wholesale rather than editing twice.
 
 ---
 

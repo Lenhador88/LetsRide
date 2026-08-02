@@ -51,7 +51,12 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const isPublic = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/legal')
+  // `/legal/` with the trailing slash, not `startsWith('/legal')` — the loose
+  // prefix also matches `/legalfoo`. Harmless while nothing routes there, but a
+  // public rider profile at `/[username]` is a plausible next route, and
+  // `legalbeagle` is a legal username under 003's rules.
+  const isPublic =
+    PUBLIC_PATHS.includes(pathname) || pathname === '/legal' || pathname.startsWith('/legal/')
   const isAuthEntry = AUTH_ENTRY_PATHS.includes(pathname)
   const isOnboarding = pathname.startsWith('/onboarding')
 
@@ -71,11 +76,22 @@ export async function proxy(request: NextRequest) {
   // Decision #5: the gate is read from the database on every request. It
   // deliberately does not live in user_metadata, which the client can write via
   // supabase.auth.updateUser() to mark itself onboarded.
-  const { data: profile } = await supabase
+  const { data: profile, error } = await supabase
     .from('profiles')
     .select('username, location, onboarding_completed_at')
     .eq('id', user.id)
     .maybeSingle()
+
+  // A failed read and a genuinely un-onboarded rider are different states, and
+  // treating them the same is how a deploy mismatch turns into a redirect loop:
+  // if 003 has not been applied, this select fails with 42703 and every
+  // authenticated route would bounce to an onboarding step that cannot exist yet.
+  // Fail closed and visibly rather than into the wizard.
+  if (error) {
+    const url = new URL('/auth/login', request.url)
+    url.searchParams.set('error', 'profile_unavailable')
+    return NextResponse.redirect(url)
+  }
 
   if (!profile?.onboarding_completed_at) {
     // Resume position is derived from which fields are still empty; completion
