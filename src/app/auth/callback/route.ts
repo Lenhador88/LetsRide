@@ -38,10 +38,23 @@ export async function GET(request: NextRequest) {
  * Only a path is accepted: it must start with a single `/`. `//evil.example`
  * is protocol-relative and would leave the origin, so the second character is
  * checked too.
+ *
+ * Backslashes and control characters are rejected as well. They are not
+ * exploitable through this route as written — it builds `${origin}${next}`,
+ * where the host is already fixed by literal text before any parsing happens.
+ * But URL parsers fold `\` to `/` and strip tabs and newlines, so
+ * `/\evil.example` resolves to the host `evil.example` the moment a value is
+ * resolved *against* a base instead of concatenated onto one. Rejecting them
+ * here means the guard holds on its own rather than depending on how every
+ * future caller assembles the redirect.
  */
-function safeNext(value: string | null): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) {
-    return '/auth/reset-password'
-  }
-  return value
+export function safeNext(value: string | null): string {
+  const isPath =
+    !!value &&
+    value.startsWith('/') &&
+    !value.startsWith('//') &&
+    !value.includes('\\') &&
+    !/[\x00-\x1F\x7F]/.test(value)
+
+  return isPath ? value : '/auth/reset-password'
 }
