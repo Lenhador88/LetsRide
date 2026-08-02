@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { formatDateTime } from '@/lib/utils'
 import type { Ride } from '@/types'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -14,7 +15,7 @@ export default async function DashboardPage() {
     supabase.from('profiles').select('*').eq('id', user!.id).single(),
     supabase
       .from('rides')
-      .select('*, organizer:profiles!organizer_id(*)')
+      .select(`*, organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS})`)
       .eq('is_public', true)
       .gte('departure_at', new Date().toISOString())
       .order('departure_at', { ascending: true })

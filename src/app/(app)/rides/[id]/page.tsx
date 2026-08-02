@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { formatDateTime } from '@/lib/utils'
 import { JoinRideButton } from '@/components/rides/JoinRideButton'
 import type { Ride, RideMember } from '@/types'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function RidePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -16,12 +17,12 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
   const [{ data: ride }, { data: members }] = await Promise.all([
     supabase
       .from('rides')
-      .select('*, organizer:profiles!organizer_id(*)')
+      .select(`*, organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS})`)
       .eq('id', id)
       .single(),
     supabase
       .from('ride_members')
-      .select('*, profile:profiles(*)')
+      .select(`*, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`)
       .eq('ride_id', id),
   ])
 

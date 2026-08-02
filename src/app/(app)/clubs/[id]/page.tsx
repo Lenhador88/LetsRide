@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { formatDateTime } from '@/lib/utils'
 import { JoinClubButton } from '@/components/clubs/JoinClubButton'
 import type { ClubMember, Ride } from '@/types'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function ClubPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -15,7 +16,7 @@ export default async function ClubPage({ params }: { params: Promise<{ id: strin
 
   const [{ data: club }, { data: members }, { data: rides }] = await Promise.all([
     supabase.from('clubs').select('*, owner:profiles!owner_id(*)').eq('id', id).single(),
-    supabase.from('club_members').select('*, profile:profiles(*)').eq('club_id', id),
+    supabase.from('club_members').select(`*, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`).eq('club_id', id),
     supabase
       .from('rides')
       .select('*')

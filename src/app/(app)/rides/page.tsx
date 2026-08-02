@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { formatDateTime } from '@/lib/utils'
 import type { Ride } from '@/types'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function RidesPage() {
   const supabase = await createClient()
@@ -13,7 +14,7 @@ export default async function RidesPage() {
     .from('rides')
     .select(`
       *,
-      organizer:profiles!organizer_id(*),
+      organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
       members_count:ride_members(count)
     `)
     .eq('is_public', true)

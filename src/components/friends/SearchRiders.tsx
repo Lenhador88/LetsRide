@@ -6,11 +6,12 @@ import { createClient } from '@/lib/supabase/client'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import type { Profile } from '@/types'
+import type { PublicProfile } from '@/types'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export function SearchRiders({ currentUserId }: { currentUserId: string }) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Profile[]>([])
+  const [results, setResults] = useState<PublicProfile[]>([])
   const [sent, setSent] = useState<Set<string>>(new Set())
   const [searching, setSearching] = useState(false)
 
@@ -21,7 +22,7 @@ export function SearchRiders({ currentUserId }: { currentUserId: string }) {
     const supabase = createClient()
     const { data } = await supabase
       .from('profiles')
-      .select('*')
+      .select(PUBLIC_PROFILE_COLUMNS)
       .neq('id', currentUserId)
       // .ilike() rather than .or(): the .or() form interpolates the raw query
       // into a PostgREST filter string, where a comma or paren injects extra

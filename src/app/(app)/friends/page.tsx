@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { FriendActions } from '@/components/friends/FriendActions'
 import { SearchRiders } from '@/components/friends/SearchRiders'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function FriendsPage() {
   const supabase = await createClient()
@@ -12,12 +13,12 @@ export default async function FriendsPage() {
   const [{ data: friends }, { data: pendingReceived }] = await Promise.all([
     supabase
       .from('friendships')
-      .select('*, requester:profiles!requester_id(*), addressee:profiles!addressee_id(*)')
+      .select(`*, requester:profiles!requester_id(${PUBLIC_PROFILE_COLUMNS}), addressee:profiles!addressee_id(${PUBLIC_PROFILE_COLUMNS})`)
       .or(`requester_id.eq.${user!.id},addressee_id.eq.${user!.id}`)
       .eq('status', 'accepted'),
     supabase
       .from('friendships')
-      .select('*, requester:profiles!requester_id(*)')
+      .select(`*, requester:profiles!requester_id(${PUBLIC_PROFILE_COLUMNS})`)
       .eq('addressee_id', user!.id)
       .eq('status', 'pending'),
   ])

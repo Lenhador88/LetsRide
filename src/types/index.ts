@@ -12,6 +12,15 @@ export type Profile = {
   created_at: string
 }
 
+/**
+ * Another rider as they appear to you: exactly the columns
+ * PUBLIC_PROFILE_COLUMNS selects. Every embedded profile on the types below is
+ * this rather than `Profile`, so that reading a field the query does not fetch
+ * — `terms_accepted_at` on a club member, say — is a compile error rather than
+ * `undefined` at runtime.
+ */
+export type PublicProfile = Pick<Profile, 'id' | 'username' | 'avatar_url' | 'bike_model'>
+
 export type Ride = {
   id: string
   title: string
@@ -23,7 +32,7 @@ export type Ride = {
   is_public: boolean
   club_id: string | null
   organizer_id: string
-  organizer?: Profile
+  organizer?: PublicProfile
   created_at: string
   members_count?: number
   is_member?: boolean
@@ -34,7 +43,7 @@ export type RideMember = {
   user_id: string
   status: 'going' | 'maybe'
   joined_at: string
-  profile?: Profile
+  profile?: PublicProfile
 }
 
 export type Club = {
@@ -44,7 +53,7 @@ export type Club = {
   avatar_url: string | null
   is_public: boolean
   owner_id: string
-  owner?: Profile
+  owner?: PublicProfile
   created_at: string
   members_count?: number
   is_member?: boolean
@@ -55,7 +64,7 @@ export type ClubMember = {
   user_id: string
   role: 'owner' | 'admin' | 'member'
   joined_at: string
-  profile?: Profile
+  profile?: PublicProfile
 }
 
 export type Friendship = {
@@ -64,6 +73,6 @@ export type Friendship = {
   addressee_id: string
   status: 'pending' | 'accepted'
   created_at: string
-  requester?: Profile
-  addressee?: Profile
+  requester?: PublicProfile
+  addressee?: PublicProfile
 }
