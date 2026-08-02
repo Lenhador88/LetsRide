@@ -5,7 +5,8 @@ import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { emptyActionState, signIn } from '@/lib/actions/auth'
+import { signIn } from '@/lib/actions/auth'
+import { emptyActionState } from '@/lib/actions/state'
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(signIn, emptyActionState)

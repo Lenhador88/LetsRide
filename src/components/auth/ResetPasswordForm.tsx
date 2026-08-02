@@ -5,7 +5,8 @@ import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { emptyActionState, updatePassword } from '@/lib/actions/auth'
+import { updatePassword } from '@/lib/actions/auth'
+import { emptyActionState } from '@/lib/actions/state'
 
 /**
  * No back link (Q Screens note: entered from an email deep link, not from

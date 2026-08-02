@@ -5,7 +5,8 @@ import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { emptyActionState, requestPasswordReset } from '@/lib/actions/auth'
+import { requestPasswordReset } from '@/lib/actions/auth'
+import { emptyActionState } from '@/lib/actions/state'
 
 const BACK = { href: '/auth/login', label: 'Back to login' }
 
@@ -13,11 +14,11 @@ export default function ForgotPasswordPage() {
   const [state, formAction, pending] = useActionState(requestPasswordReset, emptyActionState)
 
   // requestPasswordReset never reveals whether the address exists (Q16), so
-  // its success and its unsubmitted initial state are both `{ error: null }`.
-  // The two are told apart by reference, not value: the action always
-  // returns a fresh object, while the untouched form still holds the exact
-  // `emptyActionState` singleton it was seeded with.
-  const submitted = state !== emptyActionState && !state.error
+  // its success and its unsubmitted initial state would otherwise both read as
+  // `{ error: null }`. The action sets `sent` to distinguish them by value —
+  // comparing object identity against the seed worked, but only for as long as
+  // that seed stayed a shared singleton.
+  const submitted = state.sent === true
 
   if (submitted) {
     return (

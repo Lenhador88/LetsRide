@@ -88,6 +88,13 @@ export async function proxy(request: NextRequest) {
   // authenticated route would bounce to an onboarding step that cannot exist yet.
   // Fail closed and visibly rather than into the wizard.
   if (error) {
+    // The auth entry paths must fall through rather than redirect. They are
+    // public but still reach this read (a signed-in rider is normally bounced
+    // off them), so sending /auth/login to /auth/login is an infinite loop —
+    // and it would fire on exactly the deploy mismatch this branch exists to
+    // survive, locking every signed-in rider out with no way to sign out.
+    if (isAuthEntry) return supabaseResponse
+
     const url = new URL('/auth/login', request.url)
     url.searchParams.set('error', 'profile_unavailable')
     return NextResponse.redirect(url)
@@ -96,7 +103,18 @@ export async function proxy(request: NextRequest) {
   if (!profile?.onboarding_completed_at) {
     // Resume position is derived from which fields are still empty; completion
     // itself is stored, so editing your profile later never re-gates you.
-    if (isOnboarding) return supabaseResponse
+    if (isOnboarding) {
+      // Step 2 cannot be reached before step 1 is done. The database refuses
+      // completion unless both fields are set, so without this a rider who
+      // deep-links to /onboarding/location submits, gets a check violation
+      // rendered as "Could not save that", and has no way forward from a
+      // screen that can never succeed. Going backwards stays allowed — step 2
+      // has a Back link, and editing a username you already chose is fine.
+      if (pathname === '/onboarding/location' && !profile?.username) {
+        return redirect('/onboarding/username')
+      }
+      return supabaseResponse
+    }
     return redirect(profile?.username ? '/onboarding/location' : '/onboarding/username')
   }
 

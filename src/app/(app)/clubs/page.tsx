@@ -3,13 +3,14 @@ import Link from 'next/link'
 import { Bike, Plus, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function ClubsPage() {
   const supabase = await createClient()
 
   const { data: clubs } = await supabase
     .from('clubs')
-    .select('*, owner:profiles!owner_id(*), members_count:club_members(count)')
+    .select(`*, owner:profiles!owner_id(${PUBLIC_PROFILE_COLUMNS}), members_count:club_members(count)`)
     .eq('is_public', true)
     .order('created_at', { ascending: false })
 

@@ -7,7 +7,8 @@ import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
-import { emptyActionState, signUp } from '@/lib/actions/auth'
+import { signUp } from '@/lib/actions/auth'
+import { emptyActionState } from '@/lib/actions/state'
 
 export default function SignupPage() {
   const [state, formAction, pending] = useActionState(signUp, emptyActionState)

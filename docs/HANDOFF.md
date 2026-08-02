@@ -11,15 +11,27 @@ This file is only the *current position* — the things that will be stale in a 
 
 ## Do this first
 
-**Do not merge `claude/login-flow-architecture-fz2zxu` yet, and do not apply `003`.**
-`proxy.ts` on that branch redirects any rider whose `onboarding_completed_at` is NULL to
-`/onboarding/username` — a route that does not exist yet, because the screens are the part
-still outstanding. Every existing user has a NULL there. Merging as it stands 404s the whole
-app for everyone signed in. The branch is safe to keep working on; it is not safe to deploy
-until the onboarding routes land.
+**`claude/login-flow-architecture-fz2zxu` is complete and ready to merge — but `003` and the
+merge have to land close together, and neither is done yet.**
 
-`003` is likewise written and unapplied. Production runs `main`, which still queries
-`full_name`, so applying it early breaks the live app from the database side instead.
+The epic is finished: all seven screens exist, so the earlier blocker (the proxy redirecting
+to `/onboarding/*` routes that 404'd) is gone. What remains is a deploy-ordering problem,
+because the schema and the code have to move as one:
+
+- **Merge first, apply second:** for the length of one Vercel build, `003` is missing, so
+  `proxy.ts` cannot read `onboarding_completed_at`. That path is handled — it redirects to
+  `/auth/login?error=profile_unavailable` and the auth screens stay reachable — so the app
+  degrades rather than breaking. It does **not** loop; there is a regression test pinning
+  that (`src/__tests__/proxy.test.ts`).
+- **Apply first, merge second:** `main` still queries `full_name`, which `003` drops, so the
+  dashboard, profile, friends, rides and clubs pages error until the build lands. Auth keeps
+  working.
+
+Either is survivable pre-launch with one real rider; the window is a single build. Pick one
+and do the two steps back to back rather than leaving them apart. After applying, run the
+negative checks in the footer of `supabase/migrations/003_onboarding.sql` against the live
+database and then check the Supabase security advisors — the local suite runs on plain
+Postgres and cannot see role grants or exposed endpoints.
 
 Otherwise nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and
 the anonymous read hole is closed.
@@ -318,15 +330,19 @@ Most-used geometry, for the primitives that still carry inferred v1 shapes: corn
 `4` (x147), `100` (x110), `8` (x85), `5` (x52); spacing `paddingLeft 16` (x99),
 `itemSpacing 8` (x86), `itemSpacing 4` (x66), `itemSpacing 16` (x40).
 
-**`CLAUDE.md`'s Design System tables are incomplete and one entry is wrong** — not yet
-corrected, because that file is durable context and this was a read-only session:
+**`CLAUDE.md`'s Design System tables were incomplete — now corrected, 2026-08-02.** It listed
+7 colours against 20 live v2 tokens (missing `Warning/100` `#D92140`, which is what
+`<Button variant="danger">` uses) and 8 type tokens against 16. Both tables are now full.
 
-- It lists 7 colours; there are **20 live v2 tokens**. Missing most notably `Warning/100`
-  `#D92140`, which is what `<Button variant="danger">` should be using.
-- It lists 8 type tokens; there are **16**.
-- It lists `Poppins/32/Semibold` (32/48, w600). **No such style exists in the file.** The
-  large sizes are `24/36 w600` and `40/60 w600`. Whoever picks up `design-system` should fix
-  this before building against it.
+**One claim in the list above was itself wrong and is retracted:** it said
+`Poppins/32/Semibold` does not exist. **It does** — style `503:6020`, and it is what every
+screen title in the login epic uses; the Login title node resolves to `fontSize 32,
+lineHeight 48, weight 600`. The likeliest origin of the error is that the counts were taken
+from the Components page, where that style happens to be unused — a style can exist in the
+library without appearing there. `--text-display` in `globals.css` was correct all along.
+
+Also corrected: the app background is a 135° gradient `#F2ECE6` → `#CCB8A3`, not a flat
+`Grey/5`, and the splash is flat `Accent Brand/100`.
 
 Reproduce any of the above with:
 `curl -H "X-Figma-Token: $FIGMA_ACCESS_TOKEN" "https://api.figma.com/v1/files/gDoteM1ow1AZpSEGSNhpc7/nodes?ids=50:559"`

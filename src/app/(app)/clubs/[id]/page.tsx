@@ -15,7 +15,7 @@ export default async function ClubPage({ params }: { params: Promise<{ id: strin
   const { data: { user } } = await supabase.auth.getUser()
 
   const [{ data: club }, { data: members }, { data: rides }] = await Promise.all([
-    supabase.from('clubs').select('*, owner:profiles!owner_id(*)').eq('id', id).single(),
+    supabase.from('clubs').select(`*, owner:profiles!owner_id(${PUBLIC_PROFILE_COLUMNS})`).eq('id', id).single(),
     supabase.from('club_members').select(`*, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`).eq('club_id', id),
     supabase
       .from('rides')

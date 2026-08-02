@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { RECOVERY_COOKIE } from '@/lib/auth/recovery'
+import type { ActionState } from '@/lib/actions/state'
 import {
   loginSchema,
   newPasswordFormSchema,
@@ -12,9 +13,7 @@ import {
   signUpSchema,
 } from '@/lib/validation/auth'
 
-export type ActionState = { error: string | null }
-
-export const emptyActionState: ActionState = { error: null }
+export type { ActionState } from '@/lib/actions/state'
 
 export async function signIn(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = loginSchema.safeParse({
@@ -103,7 +102,10 @@ export async function requestPasswordReset(
     redirectTo: `${origin}/auth/callback?next=/auth/reset-password`,
   })
 
-  return { error: null }
+  // `sent` rather than relying on the screen comparing object identity against
+  // the seed value: both states are `{error: null}`, and identity survives only
+  // as long as the seed is a shared singleton.
+  return { error: null, sent: true }
 }
 
 export async function updatePassword(
