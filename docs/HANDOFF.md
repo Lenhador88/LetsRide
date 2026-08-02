@@ -1,7 +1,8 @@
 # Handoff — where things stand
 
-Branch: `claude/login-flow-architecture-fz2zxu` — the login epic, **half landed**. The data,
-auth and validation layers are built and tested; the five screens are not.
+Last shipped: the **login & onboarding epic** (PR #8, merged `0e30556`, live in production).
+The branch `claude/login-flow-architecture-fz2zxu` has been restarted from `main` — treat any
+further work on it as a fresh change.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -58,17 +59,18 @@ To change any of those four tables, add a new migration. `008` is the current de
 
 | | |
 |---|---|
-| Migrations | All applied except `003_onboarding`. See the ordering note below. |
-| Tests | `supabase/tests/` — RLS policy suite, 69 assertions, `npm test`. Gates every PR. |
+| Migrations | `001`–`008` all applied to the hosted project. See the ordering note below. |
+| Tests | RLS suite 69 assertions (`npm test`) + Vitest 84 tests (`npm run test:unit`). Both gate every PR. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
-| Design | v2 tokens, Poppins and light theme landed. Only `components/ui/*` migrated — and `--text-display` is built on a Figma style that does not exist, see above. |
+| Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
 | Squad | Nine agents in `.claude/agents/`. |
 | CI | Green: type check, lint, build, RLS suite against Postgres 17. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
 
-The app looks inconsistent on purpose: the cream v2 background is live, but `app/auth/*`
-and `app/(app)/*` are still v1 `zinc-*`/`orange-500`. Those migrate with their own epics.
+The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*` and
+`app/legal/*` are v2, while everything under `app/(app)/*` — dashboard, rides, clubs,
+friends, profile — is still v1 `zinc-*`/`orange-500`. Those migrate with their own epics.
 
 **Migration ordering is not file order.** Two chains were written in parallel and each
 recreated the policies the other did. `004`–`007` reached the database before `002` did;
@@ -77,11 +79,9 @@ from `004`. Verified by diffing the live policy set against a database built fro
 chain — 22 policies, identical. Do not try to "tidy" the numbering; the end state is
 correct and the divergence is recorded deliberately.
 
-**`003_onboarding` is written and tested but still not applied to the hosted project.**
-`supabase/tests/run.sh` no longer skips it — `SKIP_MIGRATIONS` is empty and CI applies the
-whole chain, with 69 assertions covering what `003` introduces. 24 of the 29 `full_name`
-references are fixed; the remaining 5 are all in `src/app/auth/signup/page.tsx`, which the
-login epic replaces wholesale rather than editing twice.
+**`003_onboarding` is applied** (2026-08-02) and `supabase/tests/run.sh` no longer skips
+it — `SKIP_MIGRATIONS` is empty, so CI applies the whole chain. All 29 `full_name`
+references are gone; `grep -rn full_name src/` returns nothing.
 
 ---
 
@@ -112,55 +112,37 @@ Everything extracted from that pull is written up under *Verified measurements* 
 `docs/specs/login-onboarding.md`: every string verbatim, component geometry, fills, and the
 screen layout. **That section supersedes §Screens wherever they disagree.**
 
-## Next piece of work: the Login epic
+## The login epic — shipped, and what it left behind
 
-All five flows are marked **Done** in Figma, so the design is settled. The spec is written.
-`003` is written. What remains is the application code.
+Merged and live. All seven routes exist (`/`, the four `auth/*` screens, the two
+`onboarding/*` steps), `003` is applied, and every `full_name` reference is gone.
 
-**The non-visual half is built, reviewed and pushed.** Branch
-`claude/login-flow-architecture-fz2zxu`, six commits, all suites green: 69 RLS assertions,
-72 unit tests, `tsc` clean, `next build` passing at 16 routes.
+Three decisions were taken on **defaults rather than sign-off**. They are cheap to revisit
+now and expensive later, so they are recorded rather than buried:
 
-Landed:
+- **Server Actions for all writes.** There were zero `'use server'` files before this. The
+  legacy `supabase.from()` + `router.refresh()` pattern survives only in `JoinRideButton` and
+  `JoinClubButton` — migrate those on contact.
+- **Zod**, the one new runtime dependency, for schemas shared by client and server.
+- **The profile-photo step is deferred** to a `media` follow-up, so onboarding is two steps
+  and the wizard shows two dots, not the three drawn.
 
-| | |
-|---|---|
-| Schema | `003` verified against the spec; no longer in `SKIP_MIGRATIONS`, so CI applies the whole chain |
-| Call sites | 24 of 29 `full_name` references fixed; `Profile.username` now nullable |
-| Proxy | Rewritten as a public-path denylist, plus the onboarding gate |
-| Auth | `/auth/callback` with an open-redirect guard, placeholder `/legal/*` |
-| Writes | Server Actions in `src/lib/actions/` — the first in this codebase |
-| Reads | `src/lib/data/`, and `PUBLIC_PROFILE_COLUMNS` for other riders' rows |
-| Validation | Zod schemas in `src/lib/validation/`, shared client and server |
-| Tests | Vitest as `npm run test:unit`, wired into CI |
-
-**Still to build — all of it blocked on Figma:** the five screens (splash, login, sign up,
-forgot/create password, the two onboarding steps) and the primitives they need (Checkbox,
-pagination dots, logo, avatar picker), plus verifying `Button` and `Input` against the
-measured 310×56 / 310×40 / 310×72 geometry.
-
-Three decisions were taken on defaults rather than sign-off, and are cheap to reverse now and
-expensive later:
-
-- **Server Actions** for all writes. There were zero `'use server'` files before; the legacy
-  `supabase.from()` + `router.refresh()` pattern survives only in `JoinRideButton` and
-  `JoinClubButton`.
-- **Zod** as the one new runtime dependency.
-- **The profile-picture step is deferred** to a `media` follow-up, per the spec's own
-  recommendation, so onboarding is two steps and the wizard shows two dots, not three.
+**Three deliberate deviations from a Done design**, tabulated in the spec for the designer:
+`Skip` removed from onboarding (decision #5), step 1 asks for a **username** rather than a
+name (decision #7 changed what the field collects after it was drawn — "Name" would invite
+input that fails the charset rule), and two dots instead of three.
 
 ### Open, needing a decision
 
-- **`terms_accepted_at` is not protected.** `enforce_onboarding_completion()` makes the
-  onboarding stamp one-way but leaves the consent stamp writable, so a rider can clear or
-  back-date their own. Worse: `CLAUDE.md` names T&C acceptance as an integrity rule the
-  client must not own, and if email confirmation is ever switched on (decision #6 says
-  revisit before launch), `signUp` loses its live session and the consent write is refused
-  entirely. The action now checks the result; the schema guard is still a migration nobody
-  has written.
-- **`src/app/auth/signup/page.tsx` still writes `full_name`** — the last of the ten files.
-  Left alone deliberately: the Sign up screen replaces it wholesale. Harmless only while the
-  branch stays unmerged.
+- **`terms_accepted_at` is not protected.** `enforce_onboarding_completion()` pins the
+  onboarding stamp but leaves the consent stamp writable, so a rider can clear or back-date
+  their own. `CLAUDE.md` names T&C acceptance as an integrity rule the client must not own.
+  Worse: if email confirmation is ever switched on (decision #6 says revisit before launch),
+  `signUp` loses its live session and the consent write is refused outright. The action
+  checks its result now; the schema guard is an unwritten migration.
+- **`/onboarding/photo` is unbuilt** and needs the `media` agent — Storage bucket, RLS,
+  client-side compression, EXIF stripping. When it lands it must **not** re-gate riders who
+  already completed onboarding; surface it as a dismissible nudge on the profile screen.
 
 ---
 
@@ -189,38 +171,46 @@ not cosmetic:
 
 | # | Work | Impact | Notes |
 |---|---|---|---|
-| 1 | `design-system` — v2 library + 44 icons, retire `lucide-react` | 8/10 | Gates all screen work |
-| 2 | Login epic — **screens only**, the rest is built | 7/10 | Blocked on Figma, see above |
-| 3 | Restyle the 12 existing routes v1 → v2 | 4/10 | Days, but only *after* 1 |
+| ~~1~~ | ~~`design-system` — login primitives~~ | — | **Done** for the login set: Button, Input, Checkbox, Pagination, AppBackground. The 44 icons and retiring `lucide-react` are still outstanding |
+| ~~2~~ | ~~Login epic~~ | — | **Shipped** — PR #8 |
+| 3 | Restyle the 12 existing routes v1 → v2 | 4/10 | Only `app/(app)/*` remains v1 now |
 | 4 | **Postcards / Home** | 10/10 | New tables + Storage + EXIF; the core loop |
 | 5 | Inbox — DMs, ride chat, notifications | 8/10 | New tables + `realtime` |
 | 6 | Trust & safety — block, report, hide | 7/10 | RLS-level; needed before real users |
 | 7 | Garage | 5/10 | Self-contained, lowest urgency |
+| 8 | `/onboarding/photo` | 3/10 | `media` follow-up deferred out of the login epic |
 
 **Do not restyle screen-by-screen before `design-system` lands.** Twelve routes each
 re-deriving tokens is how drift gets baked in. This was a live risk until today: the token
 table omitted `Warning/100` `#D92140`, so every `<Button variant="danger">` built against the
 old docs would have used the wrong colour.
 
-**One number is still missing: how many screens sit inside each design section.** Figma
-started returning `429` and four backoff retries over ~80s did not clear it, so this was left
-unmeasured rather than guessed. It is the difference between weeks and months on Postcards.
-One call once the window resets:
+**Screens per section — measured 2026-08-02**, from the whole-file REST pull. This was
+previously listed as the one missing number, "the difference between weeks and months".
 
-```
-curl -H "X-Figma-Token: $FIGMA_ACCESS_TOKEN" \
-  "https://api.figma.com/v1/files/gDoteM1ow1AZpSEGSNhpc7/nodes?ids=0:1&depth=3"
-```
+| Section | 390px frames |
+|---|---|
+| Clubs | 65 |
+| Rides | 45 |
+| Home (Postcards) | 29 |
+| Profile | 25 |
+| Login | 18 |
+| Inbox | 17 |
+| **Total** | **199** |
 
-Get this before committing to any timeline.
+**Read that as frames, not routes.** It counts focus, filled and empty-state variants of the
+same screen. The login epic is the calibration: **18 frames became 7 routes**, roughly 2.5:1.
+Applying that ratio to the remaining 181 frames suggests something like 70 routes left — so
+Clubs and Rides are each a larger build than the entire login epic, and Postcards is not the
+biggest section by frame count even though it is the highest-impact one.
 
 ---
 
 ## Known issues, roughly by cost to fix
 
-- **Duplicate usernames break signup.** `handle_new_user` falls back to the email local
-  part, which is `UNIQUE`, so a second `dave@…` gets a raw "Database error saving new
-  user" and no account. Fixed by the login epic, where username moves into onboarding.
+- ~~**Duplicate usernames break signup.**~~ **Fixed and deployed** — `handle_new_user` no
+  longer guesses a username from the email local part, so two `dave@…` addresses no longer
+  collide. Username moved into onboarding.
 - **Private clubs are unreachable from `/clubs`.** The page filters `is_public`, so a member
   of a private club has no way to navigate to it. Direct links work.
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are
