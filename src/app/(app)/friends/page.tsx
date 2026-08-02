@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { FriendActions } from '@/components/friends/FriendActions'
 import { SearchRiders } from '@/components/friends/SearchRiders'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function FriendsPage() {
   const supabase = await createClient()
@@ -12,12 +13,12 @@ export default async function FriendsPage() {
   const [{ data: friends }, { data: pendingReceived }] = await Promise.all([
     supabase
       .from('friendships')
-      .select('*, requester:profiles!requester_id(*), addressee:profiles!addressee_id(*)')
+      .select(`*, requester:profiles!requester_id(${PUBLIC_PROFILE_COLUMNS}), addressee:profiles!addressee_id(${PUBLIC_PROFILE_COLUMNS})`)
       .or(`requester_id.eq.${user!.id},addressee_id.eq.${user!.id}`)
       .eq('status', 'accepted'),
     supabase
       .from('friendships')
-      .select('*, requester:profiles!requester_id(*)')
+      .select(`*, requester:profiles!requester_id(${PUBLIC_PROFILE_COLUMNS})`)
       .eq('addressee_id', user!.id)
       .eq('status', 'pending'),
   ])
@@ -40,11 +41,11 @@ export default async function FriendsPage() {
                 <div className="flex items-center gap-3">
                   <Avatar
                     src={req.requester?.avatar_url}
-                    name={req.requester?.full_name || req.requester?.username || 'Rider'}
+                    name={req.requester?.username ?? 'Rider'}
                     size="md"
                   />
                   <div className="flex-1">
-                    <p className="font-medium text-white">{req.requester?.full_name || req.requester?.username}</p>
+                    <p className="font-medium text-white">{req.requester?.username ?? 'Rider'}</p>
                     <p className="text-xs text-zinc-500">@{req.requester?.username}</p>
                   </div>
                   <FriendActions friendshipId={req.id} action="accept" />
@@ -74,11 +75,11 @@ export default async function FriendsPage() {
                   <div className="flex items-center gap-3">
                     <Avatar
                       src={friend?.avatar_url}
-                      name={friend?.full_name || friend?.username || 'Rider'}
+                      name={friend?.username ?? 'Rider'}
                       size="md"
                     />
                     <div className="flex-1">
-                      <p className="font-medium text-white">{friend?.full_name || friend?.username}</p>
+                      <p className="font-medium text-white">{friend?.username ?? 'Rider'}</p>
                       <p className="text-xs text-zinc-500">@{friend?.username}</p>
                       {friend?.bike_model && (
                         <p className="text-xs text-orange-400">{friend.bike_model}</p>

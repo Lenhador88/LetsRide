@@ -27,16 +27,23 @@ major version.
 | File | Purpose |
 |---|---|
 | `harness.sql` | Stand-in for Supabase: `auth.users`, `auth.uid()`, the `anon`/`authenticated`/`auth_admin` roles, their default grants, and the assertion helpers |
-| `seed.sql` | Fixtures: a private club with a member, a public club, a club-only ride, a public ride |
+| `seed.sql` | Fixtures: three onboarded riders, two riders mid-onboarding, a private club with a member, a public club, a club-only ride, a public ride |
 | `rls_test.sql` | The assertions |
 | `run.sh` | Applies everything in order and runs the suite |
 
 ## Writing assertions
 
-`assert_eq(actual, expected, label)`, `assert_denied(sql, label)` and
-`assert_allowed(sql, label)` all raise on failure, and `psql -v ON_ERROR_STOP=1`
-turns that into a non-zero exit. `assert_allowed` unwinds its own write, so it
-leaves nothing behind for later assertions.
+`assert_eq(actual, expected, label)`, `assert_denied(sql, label)`,
+`assert_rejected(sql, sqlstate, label)` and `assert_allowed(sql, label)` all raise
+on failure, and `psql -v ON_ERROR_STOP=1` turns that into a non-zero exit.
+`assert_allowed` unwinds its own write, so it leaves nothing behind for later
+assertions.
+
+`assert_denied` recognises only an RLS refusal (`42501`). Constraints and trigger
+guards refuse with `23514` / `23505`, so those use `assert_rejected`, which names
+the expected SQLSTATE — "rejected by the charset check" and "rejected as a
+duplicate" are different claims and a test that accepted any error would blur
+them.
 
 Switch identity with `set_config('test.uid', '<uuid>', false)`; the harness's
 `auth.uid()` reads it. The suite runs as the `authenticated` role and asserts

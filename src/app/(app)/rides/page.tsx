@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { formatDateTime } from '@/lib/utils'
 import type { Ride } from '@/types'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function RidesPage() {
   const supabase = await createClient()
@@ -13,7 +14,7 @@ export default async function RidesPage() {
     .from('rides')
     .select(`
       *,
-      organizer:profiles!organizer_id(*),
+      organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
       members_count:ride_members(count)
     `)
     .eq('is_public', true)
@@ -46,7 +47,7 @@ export default async function RidesPage() {
               <div className="flex items-start gap-3">
                 <Avatar
                   src={ride.organizer?.avatar_url}
-                  name={ride.organizer?.full_name || ride.organizer?.username || 'Rider'}
+                  name={ride.organizer?.username ?? 'Rider'}
                   size="md"
                 />
                 <div className="min-w-0 flex-1">

@@ -28,6 +28,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Runs before the build because it is fast and catches the drift that
+      # matters most: the reserved-username list in src/lib/validation is
+      # asserted against the CHECK constraint in the migration, and if those
+      # disagree the client accepts a name the database rejects.
+      - name: Unit tests
+        run: npm run test:unit
+
       - name: Build
         run: npm run build
         env:

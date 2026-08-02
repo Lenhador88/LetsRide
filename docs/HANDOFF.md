@@ -1,6 +1,7 @@
 # Handoff — where things stand
 
-Branch: `claude/figma-token-access-yz21em` — docs only, no code change. PR #3 and #5 merged.
+Branch: `claude/login-flow-architecture-fz2zxu` — the login epic, **half landed**. The data,
+auth and validation layers are built and tested; the five screens are not.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -10,8 +11,30 @@ This file is only the *current position* — the things that will be stale in a 
 
 ## Do this first
 
-Nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and the
-anonymous read hole is closed.
+**`003` IS APPLIED. Merge `claude/login-flow-architecture-fz2zxu` now — production is in a
+degraded window until you do.**
+
+The migration was applied to the hosted project on 2026-08-02 and verified there. The branch
+is complete and green. But `main` — which is what Vercel serves — still queries
+`profiles.full_name`, and that column no longer exists. So right now:
+
+- **Broken on production:** dashboard, profile, friends, rides, `rides/[id]`, `clubs/[id]`
+  — every page that reads a profile.
+- **Still working:** auth, the landing page, anything not touching `profiles`.
+
+Merging the branch ends it. Nothing else needs doing, and there is nothing to roll back —
+the branch is the fix.
+
+Verified on the live database after applying, not just in CI: completion is refused while
+`location` is NULL and is one-way once set; reserved, too-short and uppercase usernames are
+all rejected with `23514`; 22 policies exist and every one is `to authenticated`; `anon`
+holds zero table grants. Security advisors show nothing new — only the pre-existing
+leaked-password toggle. The one real rider's row survived intact (`pedrousername`), with
+`onboarding_completed_at` NULL, so they will be sent through onboarding step 2 (location)
+on their next visit. That is decision #5 working as intended, not a bug.
+
+Otherwise nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and
+the anonymous read hole is closed.
 
 **Do not re-apply `002_restrict_to_authenticated`.** It is already applied, and it is not
 idempotent — it was written to run once against the `001` schema.
@@ -36,10 +59,10 @@ To change any of those four tables, add a new migration. `008` is the current de
 | | |
 |---|---|
 | Migrations | All applied except `003_onboarding`. See the ordering note below. |
-| Tests | `supabase/tests/` — RLS policy suite, 40 assertions, `npm test`. Gates every PR. |
+| Tests | `supabase/tests/` — RLS policy suite, 69 assertions, `npm test`. Gates every PR. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
-| Design | v2 tokens, Poppins and light theme landed. Only `components/ui/*` migrated. |
-| Spec | `docs/specs/login-onboarding.md` — 23 questions, all with defaults; four settled. |
+| Design | v2 tokens, Poppins and light theme landed. Only `components/ui/*` migrated — and `--text-display` is built on a Figma style that does not exist, see above. |
+| Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
 | Squad | Nine agents in `.claude/agents/`. |
 | CI | Green: type check, lint, build, RLS suite against Postgres 17. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
@@ -54,28 +77,90 @@ from `004`. Verified by diffing the live policy set against a database built fro
 chain — 22 policies, identical. Do not try to "tidy" the numbering; the end state is
 correct and the divergence is recorded deliberately.
 
-**`003_onboarding` is written but not applied**, and `supabase/tests/run.sh` skips it via
-`SKIP_MIGRATIONS`. It drops `profiles.full_name` while 29 references across 10 files still
-use it. Remove the skip entry in the same change that deploys it.
+**`003_onboarding` is written and tested but still not applied to the hosted project.**
+`supabase/tests/run.sh` no longer skips it — `SKIP_MIGRATIONS` is empty and CI applies the
+whole chain, with 69 assertions covering what `003` introduces. 24 of the 29 `full_name`
+references are fixed; the remaining 5 are all in `src/app/auth/signup/page.tsx`, which the
+login epic replaces wholesale rather than editing twice.
 
 ---
+
+## Figma rate limits are PER-ENDPOINT — this cost hours, don't repeat it
+
+`/v1/files/:key/nodes` returned `429` for over three hours on 2026-08-02. The wrong
+conclusion — the one drawn here for most of that time — was "Figma is unreachable". It was
+not. Measured in the same minute, with the same token:
+
+| Endpoint | State |
+|---|---|
+| `/v1/files/:key/nodes` | **429** |
+| `/v1/files/:key` (whole file, `depth` optional) | **200** |
+| `/v1/images/:key` | **200** |
+| `/v1/files/:key/styles`, `/components` | 200 but empty (library unpublished) |
+| `/v1/me` | 200 |
+
+**Always probe the whole-file endpoint before declaring Figma blocked.** It is also the
+better call: one request returned the entire document *and* the `styles` map — everything
+`/nodes` would have given, for every page at once. ~30 MB in about 7 seconds. Cache it to
+disk and query it offline; never hold it in context.
+
+The MCP server is a separate, monthly quota and is genuinely exhausted: one `get_metadata`
+succeeded, `get_design_context` never did. Do not spend time there — the REST whole-file
+route makes it unnecessary.
+
+Everything extracted from that pull is written up under *Verified measurements* in
+`docs/specs/login-onboarding.md`: every string verbatim, component geometry, fills, and the
+screen layout. **That section supersedes §Screens wherever they disagree.**
 
 ## Next piece of work: the Login epic
 
 All five flows are marked **Done** in Figma, so the design is settled. The spec is written.
 `003` is written. What remains is the application code.
 
-Run `feature` on it. In the same change it must fix the **29 `full_name` references across
-10 files** — `src/types/index.ts`, `EditProfileForm.tsx`, `SearchRiders.tsx`,
-`auth/signup/page.tsx`, and the dashboard, profile, friends, `clubs/[id]`, `rides/[id]` and
-rides pages.
+**The non-visual half is built, reviewed and pushed.** Branch
+`claude/login-flow-architecture-fz2zxu`, six commits, all suites green: 69 RLS assertions,
+72 unit tests, `tsc` clean, `next build` passing at 16 routes.
 
-**`003` and those call-site fixes are one coordinated change.** `003` drops `full_name`, and
-`SearchRiders.tsx` filters on `full_name.ilike.%…%`, which becomes a hard Postgres error the
-moment the column is gone. Applying `003` against `main` as it stands breaks the running app.
+Landed:
 
-Then `test`, then `reviewer`, then a PR. Any migration in that change must add assertions to
-`supabase/tests/rls_test.sql` — a policy change with no new assertion is not finished.
+| | |
+|---|---|
+| Schema | `003` verified against the spec; no longer in `SKIP_MIGRATIONS`, so CI applies the whole chain |
+| Call sites | 24 of 29 `full_name` references fixed; `Profile.username` now nullable |
+| Proxy | Rewritten as a public-path denylist, plus the onboarding gate |
+| Auth | `/auth/callback` with an open-redirect guard, placeholder `/legal/*` |
+| Writes | Server Actions in `src/lib/actions/` — the first in this codebase |
+| Reads | `src/lib/data/`, and `PUBLIC_PROFILE_COLUMNS` for other riders' rows |
+| Validation | Zod schemas in `src/lib/validation/`, shared client and server |
+| Tests | Vitest as `npm run test:unit`, wired into CI |
+
+**Still to build — all of it blocked on Figma:** the five screens (splash, login, sign up,
+forgot/create password, the two onboarding steps) and the primitives they need (Checkbox,
+pagination dots, logo, avatar picker), plus verifying `Button` and `Input` against the
+measured 310×56 / 310×40 / 310×72 geometry.
+
+Three decisions were taken on defaults rather than sign-off, and are cheap to reverse now and
+expensive later:
+
+- **Server Actions** for all writes. There were zero `'use server'` files before; the legacy
+  `supabase.from()` + `router.refresh()` pattern survives only in `JoinRideButton` and
+  `JoinClubButton`.
+- **Zod** as the one new runtime dependency.
+- **The profile-picture step is deferred** to a `media` follow-up, per the spec's own
+  recommendation, so onboarding is two steps and the wizard shows two dots, not three.
+
+### Open, needing a decision
+
+- **`terms_accepted_at` is not protected.** `enforce_onboarding_completion()` makes the
+  onboarding stamp one-way but leaves the consent stamp writable, so a rider can clear or
+  back-date their own. Worse: `CLAUDE.md` names T&C acceptance as an integrity rule the
+  client must not own, and if email confirmation is ever switched on (decision #6 says
+  revisit before launch), `signUp` loses its live session and the consent write is refused
+  entirely. The action now checks the result; the schema guard is still a migration nobody
+  has written.
+- **`src/app/auth/signup/page.tsx` still writes `full_name`** — the last of the ten files.
+  Left alone deliberately: the Sign up screen replaces it wholesale. Harmless only while the
+  branch stays unmerged.
 
 ---
 
@@ -105,7 +190,7 @@ not cosmetic:
 | # | Work | Impact | Notes |
 |---|---|---|---|
 | 1 | `design-system` — v2 library + 44 icons, retire `lucide-react` | 8/10 | Gates all screen work |
-| 2 | Login epic + `003` (above) | 7/10 | Already specced and queued |
+| 2 | Login epic — **screens only**, the rest is built | 7/10 | Blocked on Figma, see above |
 | 3 | Restyle the 12 existing routes v1 → v2 | 4/10 | Days, but only *after* 1 |
 | 4 | **Postcards / Home** | 10/10 | New tables + Storage + EXIF; the core loop |
 | 5 | Inbox — DMs, ride chat, notifications | 8/10 | New tables + `realtime` |
@@ -245,15 +330,19 @@ Most-used geometry, for the primitives that still carry inferred v1 shapes: corn
 `4` (x147), `100` (x110), `8` (x85), `5` (x52); spacing `paddingLeft 16` (x99),
 `itemSpacing 8` (x86), `itemSpacing 4` (x66), `itemSpacing 16` (x40).
 
-**`CLAUDE.md`'s Design System tables are incomplete and one entry is wrong** — not yet
-corrected, because that file is durable context and this was a read-only session:
+**`CLAUDE.md`'s Design System tables were incomplete — now corrected, 2026-08-02.** It listed
+7 colours against 20 live v2 tokens (missing `Warning/100` `#D92140`, which is what
+`<Button variant="danger">` uses) and 8 type tokens against 16. Both tables are now full.
 
-- It lists 7 colours; there are **20 live v2 tokens**. Missing most notably `Warning/100`
-  `#D92140`, which is what `<Button variant="danger">` should be using.
-- It lists 8 type tokens; there are **16**.
-- It lists `Poppins/32/Semibold` (32/48, w600). **No such style exists in the file.** The
-  large sizes are `24/36 w600` and `40/60 w600`. Whoever picks up `design-system` should fix
-  this before building against it.
+**One claim in the list above was itself wrong and is retracted:** it said
+`Poppins/32/Semibold` does not exist. **It does** — style `503:6020`, and it is what every
+screen title in the login epic uses; the Login title node resolves to `fontSize 32,
+lineHeight 48, weight 600`. The likeliest origin of the error is that the counts were taken
+from the Components page, where that style happens to be unused — a style can exist in the
+library without appearing there. `--text-display` in `globals.css` was correct all along.
+
+Also corrected: the app background is a 135° gradient `#F2ECE6` → `#CCB8A3`, not a flat
+`Grey/5`, and the splash is flat `Accent Brand/100`.
 
 Reproduce any of the above with:
 `curl -H "X-Figma-Token: $FIGMA_ACCESS_TOKEN" "https://api.figma.com/v1/files/gDoteM1ow1AZpSEGSNhpc7/nodes?ids=50:559"`

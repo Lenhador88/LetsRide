@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { formatDateTime } from '@/lib/utils'
 import { JoinRideButton } from '@/components/rides/JoinRideButton'
 import type { Ride, RideMember } from '@/types'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function RidePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -16,12 +17,12 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
   const [{ data: ride }, { data: members }] = await Promise.all([
     supabase
       .from('rides')
-      .select('*, organizer:profiles!organizer_id(*)')
+      .select(`*, organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS})`)
       .eq('id', id)
       .single(),
     supabase
       .from('ride_members')
-      .select('*, profile:profiles(*)')
+      .select(`*, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`)
       .eq('ride_id', id),
   ])
 
@@ -42,13 +43,13 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
       <div className="mb-4 flex items-center gap-3">
         <Avatar
           src={(ride as Ride).organizer?.avatar_url}
-          name={(ride as Ride).organizer?.full_name || (ride as Ride).organizer?.username || 'Rider'}
+          name={(ride as Ride).organizer?.username ?? 'Rider'}
           size="md"
         />
         <div>
           <p className="text-xs text-zinc-500">Organized by</p>
           <p className="font-medium text-white">
-            {(ride as Ride).organizer?.full_name || (ride as Ride).organizer?.username}
+            {(ride as Ride).organizer?.username ?? 'Rider'}
           </p>
         </div>
       </div>
@@ -109,12 +110,12 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
             <div key={member.user_id} className="flex items-center gap-3">
               <Avatar
                 src={(member as RideMember).profile?.avatar_url}
-                name={(member as RideMember).profile?.full_name || (member as RideMember).profile?.username || 'Rider'}
+                name={(member as RideMember).profile?.username ?? 'Rider'}
                 size="sm"
               />
               <div>
                 <p className="text-sm font-medium text-white">
-                  {(member as RideMember).profile?.full_name || (member as RideMember).profile?.username}
+                  {(member as RideMember).profile?.username ?? 'Rider'}
                 </p>
                 <p className="text-xs text-zinc-500 capitalize">{member.status}</p>
               </div>

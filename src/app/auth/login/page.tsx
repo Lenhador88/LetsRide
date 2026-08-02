@@ -1,80 +1,46 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { Bike } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { useActionState } from 'react'
+import { AuthScreen } from '@/components/auth/AuthScreen'
+import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { signIn } from '@/lib/actions/auth'
+import { emptyActionState } from '@/lib/actions/state'
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-    } else {
-      router.push('/dashboard')
-      router.refresh()
-    }
-  }
+  const [state, formAction, pending] = useActionState(signIn, emptyActionState)
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500">
-            <Bike className="h-6 w-6 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-white">Welcome back</h1>
-          <p className="text-sm text-zinc-400">Sign in to your LetsRide account</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form action={formAction}>
+      <AuthScreen
+        title="Login"
+        footer={
+          <Button href="/auth/signup" variant="secondary" size="md">
+            Sign up
+          </Button>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <Input name="email" type="email" label="Email" autoComplete="email" required />
           <Input
-            id="email"
-            type="email"
-            label="Email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <Input
-            id="password"
+            name="password"
             type="password"
             label="Password"
-            placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
             required
           />
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          <Button type="submit" loading={loading} className="mt-1">
-            Sign In
+        </div>
+        <div className="flex flex-col gap-2">
+          <FormError message={state.error} />
+          <Button type="submit" size="lg" loading={pending}>
+            Login
           </Button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-zinc-500">
-          No account?{' '}
-          <Link href="/auth/signup" className="text-orange-500 hover:underline">
-            Sign up
-          </Link>
-        </p>
-      </div>
-    </div>
+          <Button href="/auth/forgot-password" variant="secondary" size="md">
+            Forgot password?
+          </Button>
+        </div>
+      </AuthScreen>
+    </form>
   )
 }

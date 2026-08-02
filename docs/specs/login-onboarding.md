@@ -123,6 +123,122 @@ secondary button now has no function.
 
 ---
 
+## Verified measurements — all five flows, 2026-08-02
+
+**Measured from the Figma file, not inferred.** Pulled via REST `/v1/files/:key`, which
+returns the whole document plus the `styles` map. Every `[inferred]` string in §Screens above
+is now resolved; where the two disagree, this section wins.
+
+**How to re-derive.** `/v1/files/:key/nodes` was rate-limited for hours while
+`/v1/files/:key` (no `nodes` segment), `/v1/images`, `/v1/files/:key/styles` and `/v1/me` all
+returned 200. The limits are per-endpoint — a 429 on `/nodes` says nothing about the others,
+so try the whole-file endpoint before concluding Figma is unreachable. The response is ~30 MB;
+cache it and query offline.
+
+### Copy — every string, verbatim
+
+| Screen | Element | Text |
+|---|---|---|
+| Login | title | `Login` |
+| Login | inputs | `Email`, `Password` |
+| Login | primary | `Login` (not "Log in") |
+| Login | secondary | `Forgot password?` |
+| Login | bottom secondary | `Sign up` |
+| Sign up | back link | `Back to login` |
+| Sign up | title | `Sign up` |
+| Sign up | inputs | `Email`, `Password` |
+| Sign up | consent | `I agree to the Lets Ride terms and conditions and privacy statement.` |
+| Sign up | primary | `Sign up` |
+| Forgot password | back link | `Back to login` |
+| Forgot password | title | `Reset password` |
+| Forgot password | body | `Enter the email associated with your account and we'll send an email with instructions to reset you password.` (the typo is in the design) |
+| Forgot password | primary | `Send instructions` |
+| Create new password | title | `Create new password` |
+| Create new password | input | `Password` |
+| Create new password | primary | `Save password` |
+| Onboarding 1 | title / input | `What's your name?` / `Name` |
+| Onboarding 2 | title / input | `Where are you located?` / `City` |
+| Onboarding 3 | title | `Add a profile picture` |
+| Onboarding | buttons | `Next`, `Back`, and **`Skip`** on steps 2–3; step 3's primary is `Finish` |
+
+**Q10 is settled by that last row.** The spec inferred the orphaned secondary on steps 2–3
+was a Skip; it literally reads `Skip`. Decision #5 makes onboarding non-skippable, so it is
+removed and the primary goes full width, matching step 1.
+
+### Deliberate deviations from the design — the designer needs to see these
+
+All three are consequences of settled decisions, not preferences. Nothing else diverges.
+
+| Screen | Design | Built | Why |
+|---|---|---|---|
+| Onboarding 2–3 | `Skip` secondary | removed, primary full width | Decision #5: onboarding is not skippable (Q10) |
+| Onboarding 1 | "What's your name?" / `Name` | "Choose a username" / `Username` | Decision #7 replaced full name with a **unique** username carrying charset and length rules. Q4 records that this screen "was drawn as a display name". Labelling it `Name` would invite "Pedro Silva", which fails the charset check — the copy predates the decision |
+| Onboarding 2 | `Next` | `Finish` | The photo step is deferred, so location is the terminal step and commits `onboarding_completed_at`. `Next` would promise a screen that no longer exists |
+| Wizard dots | 3 | 2 | Same deferral |
+
+### Components — measured
+
+```
+Button / Regular / Primary     310x56  radius 8  padding 16  fill Grey/100
+                               label White/100, Poppins/16/Medium
+                               + 1px White inset overlay at radius 7
+Button / Regular / Secondary   310x40  radius 8  padding 16  no fill
+                               stroke Grey/20% 1px
+                               label Grey/100, Poppins/14/Medium
+Button / Link / Secondary      136x32 (auth screens) / 72x32 (onboarding back)
+Input / Text                   310x72  radius 8  stroke Grey/10% 2px
+                               inner fill White/100, inset 2px, radius 6
+                               label  at (16,12) 278x20  Grey/80  Poppins/14/Medium
+                               value  at (16,36) 278x24  Grey/100 Poppins/16/Regular
+Terms & Conditions row         310x72  radius 8  padding 16  gap 12  fill Grey/5
+                               checkbox 20x20 radius 4, stroke Grey/100 2px
+                               text Grey/100 Poppins/14/Medium, wraps to 2 lines
+Pagination                     310x8  gap 8, three 8x8 dots
+                               active Grey/100, inactive Grey/20%
+App Background                 390x844 — LINEAR GRADIENT, see below
+```
+
+### Screen layout (identical across Login, Sign up, Forgot)
+
+```
+frame 390x844, 40px horizontal padding => 310px content column
+  Form frame at y=120
+    title            310x48   Poppins/32/Semibold
+    Inputs at y=72   310x152  two inputs 310x72, 8px gap
+    Buttons at y=248 310x104  primary 310x56, secondary 310x40, 8px gap
+  bottom-pinned secondary at y=764, 310x40
+```
+
+Onboarding footers sit at y=407 on steps 1–2 (directly above the keyboard) and at the bottom
+on step 3; the footer is 390x88 and holds the pagination above the buttons.
+
+### Two corrections to durable docs
+
+1. **`Poppins/32/Semibold` exists.** Style id `503:6020`; the Login title resolves to
+   `fontSize 32, lineHeight 48, weight 600`. `CLAUDE.md` and `docs/HANDOFF.md` both stated it
+   does not exist, and an earlier revision of *this* section repeated the claim. It is used by
+   every screen title in this epic. `--text-display: 2rem / 3rem` in `globals.css` is correct.
+   It is plausibly absent from the *Components* page, which is where the original count was
+   taken — a style can exist without being used there.
+2. **The app background is a gradient, not flat `Grey/5`.** `App Background` fills with a
+   135° linear gradient from `#F2ECE6` (Grey/5) to `#CCB8A3`. `CLAUDE.md` documents only the
+   flat top colour.
+
+An earlier revision of this section also claimed the 310x40 elements were
+`Button / Regular / Secondary` rather than `Button / Link / Secondary` and that §Screens was
+wrong. **That correction was itself wrong** and has been removed: §Screens is right. Both
+components exist and are used for different things — `Regular/Secondary` is the 310x40
+full-width button, `Link/Secondary` is the 136x32 and 72x32 back link.
+
+### Splash
+
+Frame `1857:15449` (named "Description"), 390x844, flat fill `Accent Brand/100` `#3D996B` —
+confirming what §Screens marked unconfirmed. It holds `Logo2` (`1867:19444`), a 493x328
+raster positioned at x=-51 so it bleeds off both edges. Exported at 3x to
+`public/brand/logo-splash.png`.
+
+---
+
 ## Data
 
 ### Tables read/written
@@ -295,7 +411,8 @@ described in Q5, so it is not harmless.
 
 ## Open questions
 
-Ten blocking, thirteen non-blocking. Every one has a recommended default; the build can
+Eleven blocking, fourteen non-blocking — 25 in total. (Counted from the `**Q` headings; this
+line previously said ten and thirteen.) Every one has a recommended default; the build can
 proceed on defaults alone.
 
 ### Blocking

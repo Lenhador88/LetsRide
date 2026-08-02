@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { formatDateTime } from '@/lib/utils'
 import { JoinClubButton } from '@/components/clubs/JoinClubButton'
 import type { ClubMember, Ride } from '@/types'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 export default async function ClubPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -14,8 +15,8 @@ export default async function ClubPage({ params }: { params: Promise<{ id: strin
   const { data: { user } } = await supabase.auth.getUser()
 
   const [{ data: club }, { data: members }, { data: rides }] = await Promise.all([
-    supabase.from('clubs').select('*, owner:profiles!owner_id(*)').eq('id', id).single(),
-    supabase.from('club_members').select('*, profile:profiles(*)').eq('club_id', id),
+    supabase.from('clubs').select(`*, owner:profiles!owner_id(${PUBLIC_PROFILE_COLUMNS})`).eq('id', id).single(),
+    supabase.from('club_members').select(`*, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`).eq('club_id', id),
     supabase
       .from('rides')
       .select('*')
@@ -91,12 +92,12 @@ export default async function ClubPage({ params }: { params: Promise<{ id: strin
             <div key={member.user_id} className="flex items-center gap-3">
               <Avatar
                 src={(member as ClubMember).profile?.avatar_url}
-                name={(member as ClubMember).profile?.full_name || (member as ClubMember).profile?.username || 'Rider'}
+                name={(member as ClubMember).profile?.username ?? 'Rider'}
                 size="sm"
               />
               <div className="flex-1">
                 <p className="text-sm font-medium text-white">
-                  {(member as ClubMember).profile?.full_name || (member as ClubMember).profile?.username}
+                  {(member as ClubMember).profile?.username ?? 'Rider'}
                 </p>
               </div>
               {member.role !== 'member' && (
