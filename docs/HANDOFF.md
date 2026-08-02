@@ -11,29 +11,29 @@ This file is only the *current position* — the things that will be stale in a 
 
 ## Do this first
 
-**`003` IS APPLIED. Merge `claude/login-flow-architecture-fz2zxu` now — production is in a
-degraded window until you do.**
-
-The migration was applied to the hosted project on 2026-08-02 and verified there. The branch
-is complete and green. But `main` — which is what Vercel serves — still queries
-`profiles.full_name`, and that column no longer exists. So right now:
-
-- **Broken on production:** dashboard, profile, friends, rides, `rides/[id]`, `clubs/[id]`
-  — every page that reads a profile.
-- **Still working:** auth, the landing page, anything not touching `profiles`.
-
-Merging the branch ends it. Nothing else needs doing, and there is nothing to roll back —
-the branch is the fix.
+**The login epic is shipped.** PR #8 merged to `main` as `0e30556` on 2026-08-02, migration
+`003` applied to the hosted project, and the production deployment is `READY` on
+`letsrideapp.vercel.app` with no runtime errors. Nothing is outstanding from it.
 
 Verified on the live database after applying, not just in CI: completion is refused while
 `location` is NULL and is one-way once set; reserved, too-short and uppercase usernames are
 all rejected with `23514`; 22 policies exist and every one is `to authenticated`; `anon`
 holds zero table grants. Security advisors show nothing new — only the pre-existing
-leaked-password toggle. The one real rider's row survived intact (`pedrousername`), with
-`onboarding_completed_at` NULL, so they will be sent through onboarding step 2 (location)
-on their next visit. That is decision #5 working as intended, not a bug.
+leaked-password toggle.
 
-Otherwise nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and
+Two things to expect rather than debug:
+
+- **The one existing rider (`pedrousername`) has `onboarding_completed_at` NULL**, so their
+  next visit routes them to `/onboarding/location` to supply a city before they reach the
+  app. That is decision #5 working as designed. A one-row backfill would skip it if that is
+  not wanted.
+- **`terms_accepted_at` is still client-writable.** `enforce_onboarding_completion()` pins
+  the onboarding stamp but not the consent stamp, so a rider can clear or back-date their
+  own. The action checks its write now; the schema guard is an unwritten migration and a
+  product decision. `CLAUDE.md` names T&C acceptance as an integrity rule the client must
+  not own, so this is a real gap, not a nitpick.
+
+Nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and
 the anonymous read hole is closed.
 
 **Do not re-apply `002_restrict_to_authenticated`.** It is already applied, and it is not
