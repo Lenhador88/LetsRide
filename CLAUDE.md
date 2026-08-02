@@ -18,6 +18,68 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 | Deployment | Vercel (auto-deploy from `main`) |
 | CI | GitHub Actions (type check + lint + build + RLS policy suite on every PR) |
 
+## Technology Decisions
+
+*What* we build is under Architectural Decisions. This is *how* — the tooling questions that
+otherwise get answered differently in every epic. Drafted 2026-08-02; edit freely, but edit
+here rather than deciding again inside a PR.
+
+**Dependencies are added deliberately.** Eight runtime dependencies today, and that is a
+feature. Before adding one, ask whether a thirty-line helper does the job. No UI component
+libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
+
+**Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
+functions — `getRide(id)`, `getClubMembers(clubId)` — that own their query shape. Server
+components call them directly; they use the server client internally. This exists because 29
+`.from()` calls spread across 17 components means a renamed column is 29 places to find,
+which is exactly the trap `003` sets by dropping `full_name`.
+
+**Writes go through Server Actions**, one per mutation, in `src/lib/actions/`. In order of
+weight:
+
+1. RLS enforces *authorization*, never *validity*. Username charset, T&C acceptance and the
+   onboarding completion stamp are integrity rules the client must not own.
+2. Auth flows have to set cookies. Server Components cannot; Server Actions and Route
+   Handlers can. Login, signup and password reset all need this.
+3. `useActionState` gives pending and error states without hand-rolled `useState` triples.
+
+The legacy pattern — a client component calling `supabase.from()` then `router.refresh()` —
+is v1. `JoinRideButton` and `JoinClubButton` still use it. Migrate on contact, the same way
+v1 styling is handled, and never add more.
+
+**Validation: Zod, one schema per concern, shared by both sides.** Lives in
+`src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
+client needs the same rules for live feedback. Two hand-written copies of the username rule
+will drift, and the one that drifts silently is the server's. This is the only new runtime
+dependency this section introduces.
+
+**Forms are hand-rolled** — controlled inputs plus `useActionState`. No React Hook Form or
+Formik; the forms in this app are one to three fields.
+
+**Tests:**
+
+| Kind | Tool | Status |
+|---|---|---|
+| RLS policies | `supabase/tests/` — psql against Postgres 17 | In place, gates every PR |
+| Units — validation, `lib/utils.ts`, `lib/data/` | Vitest | Add with the login epic |
+| End-to-end | Playwright | Deferred until a flow is stable enough to be worth maintaining |
+
+Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
+
+**Versions.** `package-lock.json` is committed and CI runs `npm ci`, so what ships is already
+pinned — this policy governs what moves on a routine `npm install`. Pin exact for anything
+the framework or auth depends on: `next`, `eslint-config-next`, `react`, `react-dom`,
+`@supabase/ssr`, `@supabase/supabase-js`. Caret is fine for leaves (`clsx`, `tailwind-merge`).
+Supabase is on that list because a minor bump that changes cookie handling breaks sessions
+silently.
+
+**Dates: `Intl` only, no date library.** `formatDate` / `formatDateTime` in
+`src/lib/utils.ts`. Both currently hardcode `en-US`, which is a bug for a European rider app
+rather than a decision.
+
+**Deliberately undecided** — raise these rather than inventing an answer: error tracking,
+analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
+
 ## Repo Layout
 
 ```
@@ -45,6 +107,9 @@ src/
 │   ├── supabase/
 │   │   ├── client.ts       # Browser client — use in 'use client' components
 │   │   └── server.ts       # Server client — use in server components / route handlers
+│   ├── data/               # ⧗ Read functions — the only place that queries Supabase
+│   ├── actions/            # ⧗ Server Actions — the only place that writes
+│   ├── validation/         # ⧗ Zod schemas, shared by client and server
 │   └── utils.ts            # cn(), formatDate(), formatDateTime(), getInitials()
 ├── proxy.ts                # Auth middleware (Next.js 16 uses proxy.ts, not middleware.ts)
 └── types/
@@ -59,6 +124,9 @@ openspec/                   # Spec-driven change proposals + config.yaml
 .claude/
 └── agents/                 # The specialist squad (see The Agent Squad)
 ```
+
+`⧗` marks directories that Technology Decisions establishes but that do not exist yet. The
+login epic creates them; until then, no file should import from them.
 
 ## Critical: proxy.ts (not middleware.ts)
 
@@ -115,19 +183,36 @@ anything resembling launch.
 ## Component & Code Conventions
 
 **Pages:**
-- Server pages: plain `async function Page()` — fetch from Supabase directly.
+- Server pages: plain `async function Page()` — call a function from `src/lib/data/`.
 - Client pages/components: `'use client'` at the top.
 - Default export for pages, named exports for reusable components.
 
-**Mutation pattern in client components:**
+**Read pattern** — the query lives in `src/lib/data/`, never in the page:
 ```ts
-const supabase = createClient()
-await supabase.from('table').insert(...)
-router.refresh()  // revalidates server component data without full navigation
+// src/lib/data/rides.ts
+export async function getRide(id: string) {
+  const supabase = await createClient()
+  const { data } = await supabase.from('rides').select('*, organizer:profiles(*)').eq('id', id).single()
+  return data
+}
 ```
 
+**Mutation pattern** — a Server Action, called from the client component:
+```ts
+// src/lib/actions/rides.ts
+'use server'
+export async function joinRide(rideId: string) {
+  const supabase = await createClient()
+  await supabase.from('ride_members').insert(...)
+  revalidatePath(`/rides/${rideId}`)
+}
+```
+
+The older shape — `supabase.from()` inside a client component followed by `router.refresh()`
+— is v1. See Technology Decisions; migrate on contact, don't extend it.
+
 **UI primitives** (always use these, don't reinvent):
-- `<Button>` — variants: `primary` (orange), `secondary`, `ghost`, `danger`. Prop: `loading`.
+- `<Button>` — variants: `primary` (near-black `Grey/100`), `secondary`, `ghost`, `danger`. Prop: `loading`.
 - `<Input>` — props: `label`, `error`.
 - `<Card>`, `<CardHeader>`, `<CardTitle>`, `<CardContent>`
 - `<Avatar>` — sizes: `sm`, `md`, `lg`, `xl`. Falls back to initials.
@@ -285,6 +370,28 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 
+**8. Supabase with RLS *is* the backend.** Extra server compute goes in Route Handlers or
+Edge Functions — never behind a service-role API that owns the database. "A bigger backend"
+means one of three things and only the first two are open:
+
+- **More server compute, same database.** Route Handlers or Supabase Edge Functions for work
+  the client cannot do: webhooks, image processing and EXIF stripping, push, scheduled jobs.
+  Additive, no architectural cost. This is what Postcards and Inbox will need, and it is
+  almost certainly the only one we ever need.
+- **A separate service that forwards the user's JWT** to Postgres rather than holding a
+  service-role key. Costs a network hop, keeps RLS intact. Justified only by something Node
+  or Go can do that Postgres and Edge Functions cannot.
+- **A service-role backend that owns the database.** This voids decision #2. Every visibility
+  rule currently living in 22 policies and 40 test assertions gets reimplemented in
+  application code — where, per `openspec/config.yaml`, an unstated rule fails silently
+  instead of loudly. Nothing on the roadmap justifies it. Reopening it takes an explicit
+  decision, not drift.
+
+The `src/lib/data/` and `src/lib/actions/` boundaries earn their place on their own merits,
+and they happen to make the second option a change to ~20 functions instead of 17 components.
+That is a side effect, not the justification. Do not build ports, adapters or a repository
+interface for a migration nothing has asked for.
+
 ## Working Principles
 
 **Fix the tool, don't route around it.** This app is being built for the long term. When a
@@ -367,6 +474,8 @@ chain to a scratch database and asserts what each role can reach.
 - Don't add comments that just describe what the code does — only add comments for non-obvious WHY.
 - Don't add error handling for impossible scenarios — trust Supabase + TypeScript.
 - Don't import from `@supabase/supabase-js` directly — always use the wrappers in `lib/supabase/`.
+- Don't query Supabase from inside a component — reads belong in `lib/data/`, writes in `lib/actions/`.
+- Don't introduce a service-role key into the app. It bypasses every RLS policy; see decision #8.
 - Don't add new UI libraries (no shadcn, Radix, MUI) — extend the existing custom primitives.
 - Don't create a `middleware.ts` — this is Next.js 16, use `proxy.ts`.
 - Don't run `playwright install` — Chromium is pre-installed at `/opt/pw-browsers`.

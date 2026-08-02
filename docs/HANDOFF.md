@@ -65,6 +65,22 @@ use it. Remove the skip entry in the same change that deploys it.
 All five flows are marked **Done** in Figma, so the design is settled. The spec is written.
 `003` is written. What remains is the application code.
 
+**`CLAUDE.md` gained a Technology Decisions section on 2026-08-02, and it has not been signed
+off.** It answers the tooling questions the login epic would otherwise answer by accident:
+Server Actions for writes, `src/lib/data/` for reads, Zod for validation, Vitest for units,
+exact pins for framework and auth packages. It also adds Architectural Decision #8 — Supabase
+with RLS *is* the backend. Two of those are real forks worth a deliberate yes or no before
+`feature` runs:
+
+- **Server Actions.** Today every mutation is a client component calling `supabase.from()`
+  then `router.refresh()`; there are zero `'use server'` files. Login is where that changes,
+  or where it doesn't. Deciding after the epic means retrofitting.
+- **Zod.** The only new runtime dependency proposed. The alternative is hand-written
+  predicates, which is defensible for the four fields login needs and less so by Postcards.
+
+The epic also creates `src/lib/data/`, `src/lib/actions/` and `src/lib/validation/`, marked
+`⧗` in the repo layout because they do not exist yet.
+
 Run `feature` on it. In the same change it must fix the **29 `full_name` references across
 10 files** — `src/types/index.ts`, `EditProfileForm.tsx`, `SearchRiders.tsx`,
 `auth/signup/page.tsx`, and the dashboard, profile, friends, `clubs/[id]`, `rides/[id]` and
