@@ -8,6 +8,25 @@ Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
 This file is only the *current position* — the things that will be stale in a week.
 
+## Before you trust this file
+
+Everything below is a claim about state that moves without this file moving with it. Two
+commands settle whether it is current, and they cost seconds:
+
+```bash
+git log --oneline -3 origin/main                  # what actually shipped
+git diff --stat origin/main -- docs/HANDOFF.md    # is this file itself unmerged?
+```
+
+If the second prints anything, someone edited the handoff and it never reached `main` —
+which has happened, and is why a `Stop` hook now warns about exactly that
+(`.claude/hooks/handoff-landed-check.sh`).
+
+**Database and deployment state cannot be checked from the shell.** `api.github.com` is
+refused by the proxy ("GitHub access is not enabled for this session") and `supabase.co` is
+blocked, so any `curl`-based check here fails silently and tells you nothing. Use the GitHub,
+Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical to a passing one.
+
 ---
 
 ## Do this first
