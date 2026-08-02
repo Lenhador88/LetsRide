@@ -256,6 +256,30 @@ nothing else.
 
 ## Known constraints
 
+**`git log %G?` lies about signatures here — do not "fix" commits based on it.** Commit
+signing works: `commit.gpgsign` is true and the signer is `/tmp/code-sign`. But
+`gpg.ssh.allowedSignersFile` is not configured, so git cannot attempt SSH verification and
+reports `%G? = N` — the same value it uses for *unsigned*. Every correctly signed commit
+looks unsigned.
+
+Check the header instead, which is the ground truth:
+
+```bash
+git cat-file commit <sha> | grep -q '^gpgsig' && echo signed || echo unsigned
+```
+
+This cost a pointless `git rebase --exec ... --reset-author` across a whole branch to
+"re-sign" commits that already carried valid signatures. The user-global
+`~/.claude/stop-hook-git-check.sh` had the same bug baked into it — it has since been fixed
+to grep the header, to stop treating `noreply@github.com` (GitHub's signed web-flow identity
+on merge commits) as a fault, and to ignore commits already on the default branch. That hook
+is outside this repo, so a fresh environment may still carry the old version.
+
+**`origin/HEAD` is not set in this clone.** It is a symbolic ref only `git clone` or an
+explicit `set-head` creates. Any script that references it here resolves to nothing and
+becomes a silent no-op — which is exactly how two "fixes" to that hook passed review and did
+nothing. Fall back to `origin/main` explicitly.
+
 **Figma: use the REST API with a PAT, not the MCP server.** This is settled and it unblocks
 `design-system`, which the previous handoff listed as quota-blocked. It no longer is.
 
