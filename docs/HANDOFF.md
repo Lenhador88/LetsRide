@@ -175,6 +175,27 @@ better call: one request returned the entire document *and* the `styles` map —
 `/nodes` would have given, for every page at once. ~30 MB in about 7 seconds. Cache it to
 disk and query it offline; never hold it in context.
 
+**Update, 2026-08-02 evening: the per-endpoint escape hatch did not hold a second time.**
+The whole-file route was 429 on the *first* call of a fresh session — inherited budget, not
+something that session spent — and stayed 429 across **40 polls at 3-minute intervals over
+two hours**. Measured at both ends of that window:
+
+| Endpoint | Session start | Two hours later |
+|---|---|---|
+| `/v1/files/:key`, `?depth=1`, `/nodes` | 429 | 429 |
+| `/v1/images/:key` | **200** | **429** — degraded during the session |
+| `/v1/me` | 200 | 200 |
+
+Two things to carry forward. **`/v1/images` is not a reliable fallback** — it was the one
+file-reading route still alive at the start and it died too, so "icon export works" is not
+a standing fact. And **`/v1/me` returning 200 means nothing**; it stayed green throughout
+while every route that reads design data was refused.
+
+The MCP server was probed once as a last resort and returned the Starter-plan quota error,
+confirming the note below rather than contradicting it. Both routes to design data can be
+shut at the same time, and when they are, the honest move is to stop and say so — not to
+eyeball values off a screenshot.
+
 The MCP server is a separate, monthly quota and is genuinely exhausted: one `get_metadata`
 succeeded, `get_design_context` never did. Do not spend time there — the REST whole-file
 route makes it unnecessary.
