@@ -269,7 +269,7 @@ times the style is used on the Components page — a good proxy for how central 
 | `Grey/100` | `#1A1A1A` | 275 | Primary text, primary buttons |
 | `White/100` | `#FFFFFF` | 222 | Cards, surfaces, text on dark |
 | `Grey/80` | `#666666` | 101 | Secondary / muted text, icons |
-| `Grey/5` | `#F2ECE6` | 54 | App background (warm cream) |
+| `Grey/5` | `#F2ECE6` | 54 | App background (warm cream) — but see the gradient note below |
 | `Warning/100` | `#D92140` | 39 | Destructive / error — `<Button variant="danger">` |
 | `Grey/10%` | `#0000001A` | 16 | Dividers, subtle borders |
 | `Accent Brand/100` | `#3D996B` | 14 | Brand green — accents, success, splash |
@@ -286,6 +286,12 @@ times the style is used on the Components page — a good proxy for how central 
 
 Note: primary buttons are **near-black (`Grey/100`)**, not green. Green is an accent, used
 sparingly — it is not the button colour.
+
+**The app background is a gradient, not a flat fill.** `v2 / Component / App Background` is a
+135° linear gradient from `#F2ECE6` (`Grey/5`) to `#CCB8A3`. Every screen in the login epic
+instances it except the splash, which is flat `Accent Brand/100` `#3D996B`. `--color-background`
+in `globals.css` holds only the flat top colour, which is right for surfaces and wrong for the
+page. Measured 2026-08-02.
 
 Twelve `Grey (OLD)/*` and `Accent (OLD)/*` styles are still live *inside* v2 components —
 `#808080` (93 uses), `#E6E6E6` (84), `#262626` (59), `#36B289` (31) and others. They are v1.
@@ -312,8 +318,12 @@ Do not port them; resolve to the v2 token nearest in intent.
 | `Poppins/20/Medium` | 20 / 30 | 500 | 1 |
 | `Poppins/40/Semibold` | 40 / 60 | 600 | 1 |
 
-There is no `Poppins/32/Semibold`. This file previously documented one; it does not exist in
-Figma. The display sizes are 24/36 and 40/60.
+**`Poppins/32/Semibold` (32/48, w600) does exist** — style `503:6020`, and it is what every
+screen title in the login epic uses. A previous revision of this file claimed it did not,
+almost certainly because the counts above were taken from the Components page, where it is
+unused; a style can exist in the library without appearing there. Verified 2026-08-02 by
+resolving the Login title node, which reports `fontSize 32, lineHeight 48, weight 600`.
+`--text-display` in `globals.css` is correct. The other display sizes are 24/36 and 40/60.
 
 **Layout:** 390px mobile frame, single column, mobile-first. Fixed top header + fixed
 bottom tab bar. Use `.pb-safe` for notch devices.

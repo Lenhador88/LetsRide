@@ -73,33 +73,32 @@ login epic replaces wholesale rather than editing twice.
 
 ---
 
-## Figma is blocked — read before planning any screen work
+## Figma rate limits are PER-ENDPOINT — this cost hours, don't repeat it
 
-Both routes to the design were unavailable on 2026-08-02 and neither is a credential problem.
+`/v1/files/:key/nodes` returned `429` for over three hours on 2026-08-02. The wrong
+conclusion — the one drawn here for most of that time — was "Figma is unreachable". It was
+not. Measured in the same minute, with the same token:
 
-| Route | State |
+| Endpoint | State |
 |---|---|
-| REST `/v1/files/*` | `429` continuously for ~2 hours, ten backoff attempts, two container restarts. No recovery. |
-| REST `/v1/me` | `200` throughout — the token is valid, so a 429 here is a budget, not an auth failure. |
-| MCP `get_metadata` | Worked **once**, then hit the plan limit. |
-| MCP `get_design_context` | Never succeeded. Starter plan quota is monthly. |
+| `/v1/files/:key/nodes` | **429** |
+| `/v1/files/:key` (whole file, `depth` optional) | **200** |
+| `/v1/images/:key` | **200** |
+| `/v1/files/:key/styles`, `/components` | 200 but empty (library unpublished) |
+| `/v1/me` | 200 |
 
-Two corrections to what this file said before:
+**Always probe the whole-file endpoint before declaring Figma blocked.** It is also the
+better call: one request returned the entire document *and* the `styles` map — everything
+`/nodes` would have given, for every page at once. ~30 MB in about 7 seconds. Cache it to
+disk and query it offline; never hold it in context.
 
-- **The previous "quota is exhausted, MCP is dead" note was not quite right** — one
-  `get_metadata` call did get through. The quota is real, but `whoami` is not the only
-  exempt call, so a single probe is worth trying before assuming.
-- **"Stayed 429 for over ten minutes" badly understates the REST budget.** Two hours is the
-  measured figure. Treat `/v1/files/*` as a daily-or-longer allowance, not a per-minute one.
+The MCP server is a separate, monthly quota and is genuinely exhausted: one `get_metadata`
+succeeded, `get_design_context` never did. Do not spend time there — the REST whole-file
+route makes it unnecessary.
 
-The one successful call is written up under *Verified measurements* in
-`docs/specs/login-onboarding.md`. It covers Login only. **Do not re-fetch it** — it is the
-most expensive data in this repo per byte.
-
-Practical consequence: **the screens cannot be built faithfully until Figma is readable.**
-The blocking unknowns are the button label strings, the Input's internal composition, and the
-Checkbox / pagination dots / logo / avatar picker, which were never retrieved. `--text-display`
-in `globals.css` is also built on a Figma style that does not exist and needs settling first.
+Everything extracted from that pull is written up under *Verified measurements* in
+`docs/specs/login-onboarding.md`: every string verbatim, component geometry, fills, and the
+screen layout. **That section supersedes §Screens wherever they disagree.**
 
 ## Next piece of work: the Login epic
 
