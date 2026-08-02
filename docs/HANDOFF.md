@@ -32,9 +32,8 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 **In flight: the Home/Postcards epic, branch `claude/home-page-design-churhi`.**
 
-Migration `009_postcards_and_blocks.sql` is **written, locally verified, pushed, and NOT
-applied to the hosted project.** That is drift — it is the one outstanding migration, and it
-should be applied (and verified live, plus advisors) before a `010` is added.
+Migration `009_postcards_and_blocks.sql` is **applied to the hosted project and verified
+live** (2026-08-02). No drift: the repo chain and the database agree.
 
 It creates `postcards`, `postcard_likes` and `blocks`, plus `private.is_blocked()`, and
 applies the block predicate to `profiles`, `club_members`, `rides`, `ride_members` and
@@ -42,9 +41,33 @@ applies the block predicate to `profiles`, `club_members`, `rides`, `ride_member
 applying the full `001`–`009` chain to a scratch Postgres and running the suite green.
 
 **It drops SELECT policies on those five tables by catalog lookup before recreating them.**
-If it ever aborts partway the tables are left with no select policy — deny-all. That fails
-*closed*, unlike `002`, so the damage mode is "riders see nothing" rather than a leak. Worth
-knowing before you run it against production.
+It applied cleanly, but note the shape for any future rerun: an abort partway leaves those
+tables with no select policy — deny-all. That fails *closed*, unlike `002`, so the damage
+mode is "riders see nothing" rather than a leak.
+
+Verified on the live database, not asserted — these are the environment-specific things the
+RLS suite runs on plain Postgres and structurally cannot see:
+
+| Check | Result |
+|---|---|
+| `postcards`, `postcard_likes`, `blocks` exist, RLS enabled | ✅ all three |
+| Policies not `to authenticated` | 0 |
+| `anon` table privileges | 0 |
+| `is_blocked` in `public` / in `private` | 0 / 1 — off the PostgREST surface |
+| `authenticated` USAGE on `private` | false |
+| `authenticated` UPDATE on `postcard_likes` / `blocks` | false / false |
+| SELECT policies per table | **exactly 1 each** — no leftover from the drop loop |
+| Total policies | 22 → 32 |
+| Security advisors | only the pre-existing leaked-password toggle |
+
+The "exactly 1 SELECT policy per table" row is the load-bearing one: policies for a command
+are OR'd, so a single leftover would silently undo the whole block predicate.
+
+Reproduce the whole set with the queries in §Verification at the foot of the migration file.
+
+Finally, impersonated as the one real rider (`set local role authenticated` +
+`request.jwt.claims`), profiles, clubs, club_members, rides and ride_members all still
+return their rows — the policy replacement caused no regression for the live user.
 
 Product owner sign-offs taken this session, both previously listed here as unconfirmed:
 
@@ -72,10 +95,10 @@ leaked-password toggle.
 
 Two things to expect rather than debug:
 
-- **The one existing rider (`pedrousername`) has `onboarding_completed_at` NULL**, so their
-  next visit routes them to `/onboarding/location` to supply a city before they reach the
-  app. That is decision #5 working as designed. A one-row backfill would skip it if that is
-  not wanted.
+- ~~**The one existing rider (`pedrousername`) has `onboarding_completed_at` NULL**~~ — **no
+  longer true.** Checked 2026-08-02: the stamp is set, so they land in the app directly and
+  no backfill is needed. Verify with
+  `select username, onboarding_completed_at from profiles;` rather than trusting this line.
 - **`terms_accepted_at` is still client-writable.** `enforce_onboarding_completion()` pins
   the onboarding stamp but not the consent stamp, so a rider can clear or back-date their
   own. The action checks its write now; the schema guard is an unwritten migration and a
@@ -107,7 +130,7 @@ To change any of those four tables, add a new migration. `008` is the current de
 
 | | |
 |---|---|
-| Migrations | `001`–`008` all applied to the hosted project. **`009` is written and verified but NOT applied** — see *Do this first*. See the ordering note below. |
+| Migrations | `001`–`009` all applied to the hosted project. See the ordering note below. |
 | Tests | RLS suite 155 assertions (`npm test`) + Vitest 84 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |

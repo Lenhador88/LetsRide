@@ -189,7 +189,10 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`008` are all applied to the hosted project.** `003_onboarding` was
+**Applied state: `001`–`009` are all applied to the hosted project.** `009_postcards_and_blocks`
+was applied 2026-08-02 and verified live: 32 policies, all `to authenticated`, exactly one
+SELECT policy per table, `anon` holds zero grants, and `private.is_blocked` is absent from
+`public` so PostgREST does not publish it. `003_onboarding` was
 applied 2026-08-02 and verified against the live database, not just CI: the five negative
 cases from its own footer all hold (completion refused while `location` is NULL, completion
 one-way once set, reserved / too-short / uppercase usernames all rejected with `23514`),
