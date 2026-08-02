@@ -5,38 +5,32 @@ import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { emptyActionState, signIn } from '@/lib/actions/auth'
+import { emptyActionState, updatePassword } from '@/lib/actions/auth'
 
-export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(signIn, emptyActionState)
+/**
+ * No back link (Q Screens note: entered from an email deep link, not from
+ * within the app) and no confirm-password field (Q15).
+ */
+export function ResetPasswordForm() {
+  const [state, formAction, pending] = useActionState(updatePassword, emptyActionState)
 
   return (
     <form action={formAction}>
-      <AuthScreen
-        title="Login"
-        footer={
-          <Button href="/auth/signup" variant="secondary" size="md">
-            Sign up
-          </Button>
-        }
-      >
+      <AuthScreen title="Create new password">
         <div className="flex flex-col gap-2">
-          <Input name="email" type="email" label="Email" autoComplete="email" required />
           <Input
             name="password"
             type="password"
             label="Password"
-            autoComplete="current-password"
+            autoComplete="new-password"
+            minLength={8}
             required
           />
         </div>
         <div className="flex flex-col gap-2">
           <FormError message={state.error} />
           <Button type="submit" size="lg" loading={pending}>
-            Login
-          </Button>
-          <Button href="/auth/forgot-password" variant="secondary" size="md">
-            Forgot password?
+            Save password
           </Button>
         </div>
       </AuthScreen>

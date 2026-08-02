@@ -163,8 +163,18 @@ cache it and query offline.
 
 **Q10 is settled by that last row.** The spec inferred the orphaned secondary on steps 2–3
 was a Skip; it literally reads `Skip`. Decision #5 makes onboarding non-skippable, so it is
-removed and the primary goes full width, matching step 1. This is a deliberate, known
-deviation from a Done design — tell the designer.
+removed and the primary goes full width, matching step 1.
+
+### Deliberate deviations from the design — the designer needs to see these
+
+All three are consequences of settled decisions, not preferences. Nothing else diverges.
+
+| Screen | Design | Built | Why |
+|---|---|---|---|
+| Onboarding 2–3 | `Skip` secondary | removed, primary full width | Decision #5: onboarding is not skippable (Q10) |
+| Onboarding 1 | "What's your name?" / `Name` | "Choose a username" / `Username` | Decision #7 replaced full name with a **unique** username carrying charset and length rules. Q4 records that this screen "was drawn as a display name". Labelling it `Name` would invite "Pedro Silva", which fails the charset check — the copy predates the decision |
+| Onboarding 2 | `Next` | `Finish` | The photo step is deferred, so location is the terminal step and commits `onboarding_completed_at`. `Next` would promise a screen that no longer exists |
+| Wizard dots | 3 | 2 | Same deferral |
 
 ### Components — measured
 

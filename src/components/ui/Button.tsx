@@ -1,14 +1,43 @@
 import { cn } from '@/lib/utils'
-import { ButtonHTMLAttributes, forwardRef } from 'react'
+import Link from 'next/link'
+import { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react'
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'link'
 type Size = 'sm' | 'md' | 'lg'
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+type SharedProps = {
   variant?: Variant
   size?: Size
-  loading?: boolean
+  className?: string
+  children?: ReactNode
 }
+
+/**
+ * Two shapes, discriminated on `href`, rather than one shape with an optional
+ * `href`: the anchor form cannot submit, cannot be `disabled` and cannot show
+ * a spinner, and a single optional prop would let `<Button href="/x" disabled>`
+ * type-check and then silently render an enabled link. `href?: never` on the
+ * button form and `loading?: never`/`disabled?: never` on the link form make
+ * that a compile error instead.
+ *
+ * Both branches share one class recipe, so a navigating
+ * `Button / Regular / Secondary` ("Forgot password?", the bottom-pinned
+ * "Sign up") cannot drift from a submitting one.
+ */
+type ButtonAsButton = SharedProps &
+  Omit<ButtonHTMLAttributes<HTMLButtonElement>, keyof SharedProps> & {
+    href?: never
+    loading?: boolean
+  }
+
+type ButtonAsLink = SharedProps &
+  Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof SharedProps | 'href'> & {
+    href: string
+    loading?: never
+    disabled?: never
+  }
+
+type ButtonProps = ButtonAsButton | ButtonAsLink
 
 // `Button / Regular / *` in Figma — filled or outlined, full width at the
 // measured size (`lg` = Regular/Primary 56px, `md` = Regular/Secondary 40px).
@@ -43,27 +72,36 @@ const sizes: Record<Size, string> = {
   lg: 'h-14 w-full px-4 text-base',
 }
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'primary', size = 'md', loading, children, disabled, ...props }, ref) => {
+export function Button({ className, variant = 'primary', size = 'md', children, ...props }: ButtonProps) {
+  const classes = cn(
+    'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground',
+    sizes[size],
+    variants[variant],
+    className
+  )
+
+  if (props.href !== undefined) {
+    const { href, ...rest } = props
+    // `loading`/`disabled` are typed `never` on this branch, so they are absent
+    // at runtime; the cast just drops them from the spread's type.
     return (
-      <button
-        ref={ref}
-        disabled={disabled || loading}
-        className={cn(
-          'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground',
-          sizes[size],
-          variants[variant],
-          className
-        )}
-        {...props}
-      >
-        {loading && (
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-        )}
+      <Link href={href} className={classes} {...(rest as AnchorHTMLAttributes<HTMLAnchorElement>)}>
         {children}
-      </button>
+      </Link>
     )
   }
-)
 
-Button.displayName = 'Button'
+  const { loading, disabled, ...rest } = props
+  return (
+    <button
+      disabled={disabled || loading}
+      className={classes}
+      {...(rest as ButtonHTMLAttributes<HTMLButtonElement>)}
+    >
+      {loading && (
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      )}
+      {children}
+    </button>
+  )
+}
