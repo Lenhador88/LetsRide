@@ -1,10 +1,14 @@
 export type Profile = {
   id: string
-  username: string
-  full_name: string | null
+  // Nullable until onboarding step 1 completes — the trigger creates the row
+  // the instant the auth user exists, before a name has been chosen.
+  username: string | null
   avatar_url: string | null
   bio: string | null
   bike_model: string | null
+  location: string | null
+  onboarding_completed_at: string | null
+  terms_accepted_at: string | null
   created_at: string
 }
 

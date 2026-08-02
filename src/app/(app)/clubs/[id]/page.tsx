@@ -91,12 +91,12 @@ export default async function ClubPage({ params }: { params: Promise<{ id: strin
             <div key={member.user_id} className="flex items-center gap-3">
               <Avatar
                 src={(member as ClubMember).profile?.avatar_url}
-                name={(member as ClubMember).profile?.full_name || (member as ClubMember).profile?.username || 'Rider'}
+                name={(member as ClubMember).profile?.username ?? 'Rider'}
                 size="sm"
               />
               <div className="flex-1">
                 <p className="text-sm font-medium text-white">
-                  {(member as ClubMember).profile?.full_name || (member as ClubMember).profile?.username}
+                  {(member as ClubMember).profile?.username ?? 'Rider'}
                 </p>
               </div>
               {member.role !== 'member' && (

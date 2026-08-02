@@ -42,13 +42,13 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
       <div className="mb-4 flex items-center gap-3">
         <Avatar
           src={(ride as Ride).organizer?.avatar_url}
-          name={(ride as Ride).organizer?.full_name || (ride as Ride).organizer?.username || 'Rider'}
+          name={(ride as Ride).organizer?.username ?? 'Rider'}
           size="md"
         />
         <div>
           <p className="text-xs text-zinc-500">Organized by</p>
           <p className="font-medium text-white">
-            {(ride as Ride).organizer?.full_name || (ride as Ride).organizer?.username}
+            {(ride as Ride).organizer?.username ?? 'Rider'}
           </p>
         </div>
       </div>
@@ -109,12 +109,12 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
             <div key={member.user_id} className="flex items-center gap-3">
               <Avatar
                 src={(member as RideMember).profile?.avatar_url}
-                name={(member as RideMember).profile?.full_name || (member as RideMember).profile?.username || 'Rider'}
+                name={(member as RideMember).profile?.username ?? 'Rider'}
                 size="sm"
               />
               <div>
                 <p className="text-sm font-medium text-white">
-                  {(member as RideMember).profile?.full_name || (member as RideMember).profile?.username}
+                  {(member as RideMember).profile?.username ?? 'Rider'}
                 </p>
                 <p className="text-xs text-zinc-500 capitalize">{member.status}</p>
               </div>

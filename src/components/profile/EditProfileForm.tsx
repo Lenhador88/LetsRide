@@ -12,7 +12,6 @@ export function EditProfileForm({ profile }: { profile: Profile | null }) {
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [form, setForm] = useState({
-    full_name: profile?.full_name || '',
     bio: profile?.bio || '',
     bike_model: profile?.bike_model || '',
   })
@@ -28,7 +27,7 @@ export function EditProfileForm({ profile }: { profile: Profile | null }) {
     const supabase = createClient()
     await supabase
       .from('profiles')
-      .update({ full_name: form.full_name || null, bio: form.bio || null, bike_model: form.bike_model || null })
+      .update({ bio: form.bio || null, bike_model: form.bike_model || null })
       .eq('id', profile!.id)
     setLoading(false)
     setSaved(true)
@@ -38,12 +37,6 @@ export function EditProfileForm({ profile }: { profile: Profile | null }) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <h2 className="font-semibold text-white">Edit Profile</h2>
-      <Input
-        label="Full Name"
-        placeholder="Your name"
-        value={form.full_name}
-        onChange={(e) => setField('full_name', e.target.value)}
-      />
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-zinc-300">Bio</label>
         <textarea

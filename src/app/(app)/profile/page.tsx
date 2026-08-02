@@ -33,11 +33,11 @@ export default async function ProfilePage() {
       <div className="mb-6 flex flex-col items-center gap-3">
         <Avatar
           src={profile?.avatar_url}
-          name={profile?.full_name || profile?.username || 'Rider'}
+          name={profile?.username ?? 'Rider'}
           size="xl"
         />
         <div className="text-center">
-          <p className="text-xl font-bold text-white">{profile?.full_name || profile?.username}</p>
+          <p className="text-xl font-bold text-white">{profile?.username ?? 'Rider'}</p>
           <p className="text-sm text-zinc-500">@{profile?.username}</p>
           {profile?.bike_model && (
             <p className="mt-1 text-sm text-orange-400 flex items-center justify-center gap-1">

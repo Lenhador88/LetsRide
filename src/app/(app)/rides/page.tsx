@@ -46,7 +46,7 @@ export default async function RidesPage() {
               <div className="flex items-start gap-3">
                 <Avatar
                   src={ride.organizer?.avatar_url}
-                  name={ride.organizer?.full_name || ride.organizer?.username || 'Rider'}
+                  name={ride.organizer?.username ?? 'Rider'}
                   size="md"
                 />
                 <div className="min-w-0 flex-1">

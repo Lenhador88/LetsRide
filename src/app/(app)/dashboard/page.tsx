@@ -30,10 +30,10 @@ export default async function DashboardPage() {
     <div className="mx-auto max-w-lg px-4 py-6">
       {/* Greeting */}
       <div className="mb-6 flex items-center gap-3">
-        <Avatar src={profile?.avatar_url} name={profile?.full_name || profile?.username || 'Rider'} size="lg" />
+        <Avatar src={profile?.avatar_url} name={profile?.username ?? 'Rider'} size="lg" />
         <div>
           <p className="text-sm text-zinc-400">Welcome back,</p>
-          <h1 className="text-xl font-bold text-white">{profile?.full_name || profile?.username}</h1>
+          <h1 className="text-xl font-bold text-white">{profile?.username ?? 'Rider'}</h1>
         </div>
       </div>
 
@@ -100,7 +100,7 @@ function RideCard({ ride }: { ride: Ride }) {
           </div>
           <Avatar
             src={ride.organizer?.avatar_url}
-            name={ride.organizer?.full_name || ride.organizer?.username || 'Rider'}
+            name={ride.organizer?.username ?? 'Rider'}
             size="sm"
           />
         </div>
