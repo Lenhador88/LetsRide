@@ -49,8 +49,8 @@ To change any of those four tables, add a new migration. `008` is the current de
 | Migrations | All applied except `003_onboarding`. See the ordering note below. |
 | Tests | `supabase/tests/` — RLS policy suite, 69 assertions, `npm test`. Gates every PR. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
-| Design | v2 tokens, Poppins and light theme landed. Only `components/ui/*` migrated. |
-| Spec | `docs/specs/login-onboarding.md` — 23 questions, all with defaults; four settled. |
+| Design | v2 tokens, Poppins and light theme landed. Only `components/ui/*` migrated — and `--text-display` is built on a Figma style that does not exist, see above. |
+| Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
 | Squad | Nine agents in `.claude/agents/`. |
 | CI | Green: type check, lint, build, RLS suite against Postgres 17. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
@@ -73,38 +73,83 @@ login epic replaces wholesale rather than editing twice.
 
 ---
 
+## Figma is blocked — read before planning any screen work
+
+Both routes to the design were unavailable on 2026-08-02 and neither is a credential problem.
+
+| Route | State |
+|---|---|
+| REST `/v1/files/*` | `429` continuously for ~2 hours, ten backoff attempts, two container restarts. No recovery. |
+| REST `/v1/me` | `200` throughout — the token is valid, so a 429 here is a budget, not an auth failure. |
+| MCP `get_metadata` | Worked **once**, then hit the plan limit. |
+| MCP `get_design_context` | Never succeeded. Starter plan quota is monthly. |
+
+Two corrections to what this file said before:
+
+- **The previous "quota is exhausted, MCP is dead" note was not quite right** — one
+  `get_metadata` call did get through. The quota is real, but `whoami` is not the only
+  exempt call, so a single probe is worth trying before assuming.
+- **"Stayed 429 for over ten minutes" badly understates the REST budget.** Two hours is the
+  measured figure. Treat `/v1/files/*` as a daily-or-longer allowance, not a per-minute one.
+
+The one successful call is written up under *Verified measurements* in
+`docs/specs/login-onboarding.md`. It covers Login only. **Do not re-fetch it** — it is the
+most expensive data in this repo per byte.
+
+Practical consequence: **the screens cannot be built faithfully until Figma is readable.**
+The blocking unknowns are the button label strings, the Input's internal composition, and the
+Checkbox / pagination dots / logo / avatar picker, which were never retrieved. `--text-display`
+in `globals.css` is also built on a Figma style that does not exist and needs settling first.
+
 ## Next piece of work: the Login epic
 
 All five flows are marked **Done** in Figma, so the design is settled. The spec is written.
 `003` is written. What remains is the application code.
 
-**`CLAUDE.md` gained a Technology Decisions section on 2026-08-02, and it has not been signed
-off.** It answers the tooling questions the login epic would otherwise answer by accident:
-Server Actions for writes, `src/lib/data/` for reads, Zod for validation, Vitest for units,
-exact pins for framework and auth packages. It also adds Architectural Decision #8 — Supabase
-with RLS *is* the backend. Two of those are real forks worth a deliberate yes or no before
-`feature` runs:
+**The non-visual half is built, reviewed and pushed.** Branch
+`claude/login-flow-architecture-fz2zxu`, six commits, all suites green: 69 RLS assertions,
+72 unit tests, `tsc` clean, `next build` passing at 16 routes.
 
-- **Server Actions.** Today every mutation is a client component calling `supabase.from()`
-  then `router.refresh()`; there are zero `'use server'` files. Login is where that changes,
-  or where it doesn't. Deciding after the epic means retrofitting.
-- **Zod.** The only new runtime dependency proposed. The alternative is hand-written
-  predicates, which is defensible for the four fields login needs and less so by Postcards.
+Landed:
 
-The epic also creates `src/lib/data/`, `src/lib/actions/` and `src/lib/validation/`, marked
-`⧗` in the repo layout because they do not exist yet.
+| | |
+|---|---|
+| Schema | `003` verified against the spec; no longer in `SKIP_MIGRATIONS`, so CI applies the whole chain |
+| Call sites | 24 of 29 `full_name` references fixed; `Profile.username` now nullable |
+| Proxy | Rewritten as a public-path denylist, plus the onboarding gate |
+| Auth | `/auth/callback` with an open-redirect guard, placeholder `/legal/*` |
+| Writes | Server Actions in `src/lib/actions/` — the first in this codebase |
+| Reads | `src/lib/data/`, and `PUBLIC_PROFILE_COLUMNS` for other riders' rows |
+| Validation | Zod schemas in `src/lib/validation/`, shared client and server |
+| Tests | Vitest as `npm run test:unit`, wired into CI |
 
-Run `feature` on it. In the same change it must fix the **29 `full_name` references across
-10 files** — `src/types/index.ts`, `EditProfileForm.tsx`, `SearchRiders.tsx`,
-`auth/signup/page.tsx`, and the dashboard, profile, friends, `clubs/[id]`, `rides/[id]` and
-rides pages.
+**Still to build — all of it blocked on Figma:** the five screens (splash, login, sign up,
+forgot/create password, the two onboarding steps) and the primitives they need (Checkbox,
+pagination dots, logo, avatar picker), plus verifying `Button` and `Input` against the
+measured 310×56 / 310×40 / 310×72 geometry.
 
-**`003` and those call-site fixes are one coordinated change.** `003` drops `full_name`, and
-`SearchRiders.tsx` filters on `full_name.ilike.%…%`, which becomes a hard Postgres error the
-moment the column is gone. Applying `003` against `main` as it stands breaks the running app.
+Three decisions were taken on defaults rather than sign-off, and are cheap to reverse now and
+expensive later:
 
-Then `test`, then `reviewer`, then a PR. Any migration in that change must add assertions to
-`supabase/tests/rls_test.sql` — a policy change with no new assertion is not finished.
+- **Server Actions** for all writes. There were zero `'use server'` files before; the legacy
+  `supabase.from()` + `router.refresh()` pattern survives only in `JoinRideButton` and
+  `JoinClubButton`.
+- **Zod** as the one new runtime dependency.
+- **The profile-picture step is deferred** to a `media` follow-up, per the spec's own
+  recommendation, so onboarding is two steps and the wizard shows two dots, not three.
+
+### Open, needing a decision
+
+- **`terms_accepted_at` is not protected.** `enforce_onboarding_completion()` makes the
+  onboarding stamp one-way but leaves the consent stamp writable, so a rider can clear or
+  back-date their own. Worse: `CLAUDE.md` names T&C acceptance as an integrity rule the
+  client must not own, and if email confirmation is ever switched on (decision #6 says
+  revisit before launch), `signUp` loses its live session and the consent write is refused
+  entirely. The action now checks the result; the schema guard is still a migration nobody
+  has written.
+- **`src/app/auth/signup/page.tsx` still writes `full_name`** — the last of the ten files.
+  Left alone deliberately: the Sign up screen replaces it wholesale. Harmless only while the
+  branch stays unmerged.
 
 ---
 
@@ -134,7 +179,7 @@ not cosmetic:
 | # | Work | Impact | Notes |
 |---|---|---|---|
 | 1 | `design-system` — v2 library + 44 icons, retire `lucide-react` | 8/10 | Gates all screen work |
-| 2 | Login epic + `003` (above) | 7/10 | Already specced and queued |
+| 2 | Login epic — **screens only**, the rest is built | 7/10 | Blocked on Figma, see above |
 | 3 | Restyle the 12 existing routes v1 → v2 | 4/10 | Days, but only *after* 1 |
 | 4 | **Postcards / Home** | 10/10 | New tables + Storage + EXIF; the core loop |
 | 5 | Inbox — DMs, ride chat, notifications | 8/10 | New tables + `realtime` |

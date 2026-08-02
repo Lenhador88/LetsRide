@@ -123,6 +123,49 @@ secondary button now has no function.
 
 ---
 
+## Verified measurements — Login, 2026-08-02
+
+Pulled with the Figma MCP `get_metadata` on node `1857:15440`. **Measured, not inferred.**
+Recorded here because the call that produced them exhausted the plan's monthly MCP quota,
+and both Figma routes were unavailable for the rest of that session — re-deriving this costs
+either a plan upgrade or a wait for the REST budget.
+
+```
+Screen frame                        390 x 844
+  v2 / Component / App Background   0,0  390x844   (every screen except the splash)
+  Form frame                        x=40 y=120  310x352
+    title text "Login"              x=0  y=0     310x48
+    Inputs frame                    x=0  y=72    310x152
+      v2 / Component / Input / Text x=0  y=0     310x72
+      v2 / Component / Input / Text x=0  y=80    310x72     -> 8px gap
+    Buttons frame                   x=0  y=248   310x104
+      Button / Regular / Primary    x=0  y=0     310x56
+      Button / Regular / Secondary  x=0  y=64    310x40     -> 8px gap
+  Button / Regular / Secondary      x=40 y=764   310x40     (pinned to bottom)
+```
+
+Safe to generalise: **40px horizontal page padding**, 310px content column, 8px as the
+default gap inside a group.
+
+**Correction to §Screens above.** That section calls the 310×40 elements
+`Button / Link / Secondary`. They are not — the component is
+`v2 / Component / Button / Regular / Secondary`, at both 310×40 and the 56px primary size.
+There may still be a `Button / Link / Secondary` elsewhere in the library, but it is not what
+these screens instance.
+
+**Unresolved and blocking a faithful title.** The title box is 310×48. `CLAUDE.md` records
+that `Poppins/32/Semibold` **does not exist** in the file — the display styles are 24/36 and
+40/60. `src/app/globals.css` nonetheless defines `--text-display: 2rem` with a 3rem line
+height, i.e. exactly the non-existent style. One of these is wrong and the `styles` map from
+a REST `/nodes` response is what settles it. Do not build more screens on `--text-display`
+until it is checked.
+
+Never retrieved, still unknown: all button label text (the `[inferred]` strings below), the
+Input's internal composition, and the Checkbox, wizard pagination dots, logo and avatar
+picker.
+
+---
+
 ## Data
 
 ### Tables read/written
@@ -295,7 +338,8 @@ described in Q5, so it is not harmless.
 
 ## Open questions
 
-Ten blocking, thirteen non-blocking. Every one has a recommended default; the build can
+Eleven blocking, fourteen non-blocking — 25 in total. (Counted from the `**Q` headings; this
+line previously said ten and thirteen.) Every one has a recommended default; the build can
 proceed on defaults alone.
 
 ### Blocking
