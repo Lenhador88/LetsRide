@@ -382,7 +382,7 @@ means one of three things and only the first two are open:
   service-role key. Costs a network hop, keeps RLS intact. Justified only by something Node
   or Go can do that Postgres and Edge Functions cannot.
 - **A service-role backend that owns the database.** This voids decision #2. Every visibility
-  rule currently living in 22 policies and 40 test assertions gets reimplemented in
+  rule currently living in 22 policies and 69 test assertions gets reimplemented in
   application code — where, per `openspec/config.yaml`, an unstated rule fails silently
   instead of loudly. Nothing on the roadmap justifies it. Reopening it takes an explicit
   decision, not drift.

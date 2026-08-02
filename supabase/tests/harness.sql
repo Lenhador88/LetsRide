@@ -94,6 +94,30 @@ begin
 end;
 $$;
 
+-- Runs the statement and requires it to be refused by a specific SQLSTATE.
+-- Distinct from assert_denied, which only recognises an RLS refusal (42501):
+-- constraints and trigger guards raise 23514 / 23505, and a test that accepted
+-- "any error" would pass when the wrong rule fired. Naming the SQLSTATE is what
+-- makes "rejected by the charset check" different from "rejected as a duplicate".
+create or replace function assert_rejected(stmt text, expected_sqlstate text, label text)
+returns void
+language plpgsql
+as $$
+begin
+  begin
+    execute stmt;
+  exception
+    when others then
+      if sqlstate = expected_sqlstate then
+        raise notice 'ok    % (rejected %)', label, sqlstate;
+        return;
+      end if;
+      raise exception 'FAIL  % — expected SQLSTATE %, got %: %', label, expected_sqlstate, sqlstate, sqlerrm;
+  end;
+  raise exception 'FAIL  % — expected the statement to be rejected, but it succeeded', label;
+end;
+$$;
+
 -- Runs the statement, requires it to succeed, then unwinds the subtransaction so
 -- the write leaves no trace for later assertions.
 create or replace function assert_allowed(stmt text, label text)

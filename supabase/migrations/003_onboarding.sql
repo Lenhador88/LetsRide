@@ -227,16 +227,21 @@ create policy "Profiles are viewable by signed-in riders"
   using (auth.uid() = id or username is not null);
 
 -- ---------------------------------------------------------------------------
--- Verification (run manually against the restored project)
+-- Verification (run manually against the hosted project after apply)
 -- ---------------------------------------------------------------------------
--- The Supabase project is paused, so this migration has NOT been applied to
--- it. It was instead validated end-to-end on a throwaway Postgres 16 cluster
--- with a stub `auth` schema and the anon/authenticated/service_role roles:
--- 001 -> 002 -> 003 applied in order, both pre-existing bugs reproduced first
--- (case-variant `Ripper`/`ripper` coexisting, and dave@yahoo.com failing with
--- "duplicate key ... profiles_username_key" from inside the trigger), then
--- shown fixed. Every check below passed there. Re-run them against the real
--- project after apply — a local stub is not the production auth schema.
+-- This migration is written and has not yet been applied to the hosted
+-- project. It was validated on a throwaway Postgres cluster with a stub `auth`
+-- schema and the anon/authenticated/service_role roles: 001 -> 002 -> 003
+-- applied in order, both pre-existing bugs reproduced first (case-variant
+-- `Ripper`/`ripper` coexisting, and dave@yahoo.com failing with "duplicate key
+-- ... profiles_username_key" from inside the trigger), then shown fixed.
+--
+-- Every negative case below is now also an assertion in
+-- supabase/tests/rls_test.sql, which applies the whole chain to a scratch
+-- database on every PR. The checks are kept here because the suite runs on
+-- plain Postgres and cannot see role grants, PostgREST exposure or Supabase
+-- defaults — re-run them against the real project after apply, and check the
+-- security advisors, because a local stub is not the production environment.
 --
 -- Shape — expect username nullable, no full_name, three new columns:
 --
@@ -245,11 +250,25 @@ create policy "Profiles are viewable by signed-in riders"
 --   where table_schema = 'public' and table_name = 'profiles'
 --   order by ordinal_position;
 --
--- Case-insensitive uniqueness — the second statement must fail with
--- "duplicate key value violates unique constraint profiles_username_lower_key":
+-- Case-insensitive uniqueness. Note what actually rejects what: the charset
+-- constraint forbids uppercase, and Postgres evaluates CHECK constraints before
+-- it reaches the index, so `Ripper` fails as a check_violation (23514) and
+-- never touches profiles_username_lower_key. The two rules overlap on purpose —
+-- the index is the one that would still hold if the charset rule were ever
+-- relaxed to allow capitals — but a verification that only tries `Ripper` is
+-- testing the check constraint, not the index, and would pass just as happily
+-- against 001's case-sensitive unique(username).
+--
+-- Uniqueness itself, expect "duplicate key value violates unique constraint
+-- profiles_username_lower_key" on the second statement:
 --
 --   update public.profiles set username = 'ripper' where id = '<uuid-a>';
---   update public.profiles set username = 'Ripper' where id = '<uuid-b>';
+--   update public.profiles set username = 'ripper' where id = '<uuid-b>';
+--
+-- The case-folding half cannot be observed while the charset check is in place.
+-- supabase/tests/rls_test.sql isolates it by dropping profiles_username_format
+-- inside a savepoint and then attempting `Clubowner` against an existing
+-- `clubowner`; that is the assertion to trust, not a manual `Ripper` attempt.
 --
 -- Charset / length / reserved — every one of these must fail:
 --

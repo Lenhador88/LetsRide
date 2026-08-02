@@ -36,7 +36,7 @@ To change any of those four tables, add a new migration. `008` is the current de
 | | |
 |---|---|
 | Migrations | All applied except `003_onboarding`. See the ordering note below. |
-| Tests | `supabase/tests/` — RLS policy suite, 40 assertions, `npm test`. Gates every PR. |
+| Tests | `supabase/tests/` — RLS policy suite, 69 assertions, `npm test`. Gates every PR. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins and light theme landed. Only `components/ui/*` migrated. |
 | Spec | `docs/specs/login-onboarding.md` — 23 questions, all with defaults; four settled. |
