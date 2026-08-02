@@ -37,6 +37,27 @@
   --color-border-strong: #00000033; /* Grey/20% — stronger borders */
   --color-accent: #3D996B;          /* Accent Brand/100 — brand green. Sparing accent only: splash, success, active. Never default button fill. */
   --color-accent-foreground: #FFFFFF;
+  --color-danger: #D92140;          /* Warning/100 — destructive / error. <Button variant="danger">, form error text. */
+  --color-danger-strong: #99001A;   /* Warning/110 — Warning, darker. Hover/pressed on danger. */
+
+  /* App Background gradient end stop — Figma `v2 / Component / App Background`,
+     135deg linear-gradient(#F2ECE6 -> #CCB8A3). Per docs/specs/login-onboarding.md
+     "Verified measurements": every screen but the splash uses this, not flat Grey/5. */
+  --color-background-gradient-end: #CCB8A3;
+
+  /* Disabled controls. Measured from Button/Regular/Primary State=Disabled:
+     the fill is Grey/10% and the label Grey/20% — the same two tokens the
+     borders use, aliased here so the intent reads at the call site and the
+     value cannot drift from its source. */
+  --color-disabled: var(--color-border);
+  --color-disabled-foreground: var(--color-border-strong);
+}
+
+/* Custom utility (Tailwind v4 CSS-first) rather than Tailwind's `bg-gradient-to-*`
+   corner utilities: those compute their angle from the element's own aspect ratio,
+   which would not reproduce a literal 135deg on a non-square frame. */
+@utility bg-app-gradient {
+  background-image: linear-gradient(135deg, var(--color-background) 0%, var(--color-background-gradient-end) 100%);
 }
 
 body {
