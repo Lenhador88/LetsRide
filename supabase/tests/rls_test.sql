@@ -1024,6 +1024,440 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 \echo ''
+\echo '# Comments inherit their postcard''s audience (migration 011)'
+
+-- A comment has no audience of its own. Every policy on postcard_comments
+-- delegates to postcards through EXISTS, so these assertions are really about
+-- whether that delegation holds — nothing in 011 restates the club predicate,
+-- and if it ever does, one of these two counts stops agreeing with the other.
+-- Fixtures: cc1/cc3/cc4 on the global postcard e1, cc2 on e2 inside PRIVATE
+-- club c1.
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e2'),
+  0, 'an outsider cannot read comments on a private club''s postcard');
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc2'),
+  0, 'and cannot reach that comment by its id either');
+-- The bulk read is the one a feed actually issues. A targeted lookup can pass
+-- while the list query still leaks, so both are asserted — same pairing the
+-- postcards section uses.
+select assert_eq((select count(*)::int from postcard_comments),
+  3, 'the outsider''s whole comment read excludes the private club''s comment');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e2'),
+  1, 'a club member reads comments on that club''s postcard (guards against over-tightening)');
+select assert_eq((select count(*)::int from postcard_comments), 4,
+  'a rider with no blocks reads every comment they have audience for');
+
+-- Writing inherits the same predicate, so "cannot comment on what you cannot
+-- see" needs no clause of its own in the insert policy.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_denied($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-00000000000c', 'let me in')$$,
+  'a rider cannot comment on a postcard they cannot see');
+select assert_allowed($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c', 'Great shot')$$,
+  'a rider can comment on a postcard they can see (guards against over-tightening)');
+
+\echo ''
+\echo '# Comments cannot be forged or edited, and moderation is the author''s (migration 011)'
+
+select assert_denied($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000a', 'forged')$$,
+  'a rider cannot forge author_id on a comment');
+
+-- No UPDATE policy and no UPDATE grant, so this is refused at the privilege
+-- layer rather than filtered — including for the comment's own author, which
+-- is the point: editing means designing "edited", and nothing has.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_denied($$
+  update postcard_comments set body = 'edited'
+  where id = '00000000-0000-0000-0000-000000000cc1'$$,
+  'a rider cannot edit their own comment');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_denied($$
+  update postcard_comments set body = 'edited'
+  where id = '00000000-0000-0000-0000-000000000cc1'$$,
+  'not even the postcard''s author can edit a comment on it');
+
+-- DELETE is filtered by USING rather than refused, so a wrong-hands delete
+-- silently touches zero rows instead of raising. The surviving row is the
+-- evidence, same trap the postcards and storage sections already call out.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+delete from postcard_comments where id = '00000000-0000-0000-0000-000000000cc1';
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc1'),
+  1, 'a rider cannot delete someone else''s comment on someone else''s postcard');
+
+-- The positive form carries the same trap in reverse, and it is sharper than
+-- it looks: assert_allowed only proves the statement did not ERROR, and a
+-- DELETE that matches nothing does not error. Using it here would pass against
+-- a policy that permits no deletion at all — verified by mutation, where
+-- reducing this policy to `author_id = auth.uid()` left an assert_allowed form
+-- of the moderation case still green. So both positives delete for real, count
+-- the row, and put it back as superuser for the sections that follow.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+delete from postcard_comments where id = '00000000-0000-0000-0000-000000000cc1';
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc1'),
+  0, 'a rider can delete their own comment');
+reset role;
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-000000000cc1', '00000000-0000-0000-0000-0000000000e1',
+   '00000000-0000-0000-0000-00000000000b', 'Beautiful light on that road.');
+set role authenticated;
+
+-- The second branch of the delete policy: moderation on your own post. e1 is
+-- authored by 000a; cc1 is not, so only that branch can do this.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+delete from postcard_comments where id = '00000000-0000-0000-0000-000000000cc1';
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc1'),
+  0, 'a postcard author can delete a comment on their own postcard');
+reset role;
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-000000000cc1', '00000000-0000-0000-0000-0000000000e1',
+   '00000000-0000-0000-0000-00000000000b', 'Beautiful light on that road.');
+set role authenticated;
+-- ...and that right does not extend past their own postcards. cc2 sits on e2,
+-- which 000a also authored, so the negative needs a postcard they did NOT
+-- author: e5, by the outsider. A comment is written there for the purpose.
+reset role;
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-000000000cc5', '00000000-0000-0000-0000-0000000000e5',
+   '00000000-0000-0000-0000-00000000000b', 'On someone else''s postcard.');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+delete from postcard_comments where id = '00000000-0000-0000-0000-000000000cc5';
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc5'),
+  1, 'moderation does not extend to comments on a postcard someone else authored');
+reset role;
+delete from postcard_comments where id = '00000000-0000-0000-0000-000000000cc5';
+set role authenticated;
+
+-- Validity, not authorization: RLS never enforces shape, so the body bounds
+-- are a CHECK constraint and refuse with 23514 after the policy has passed.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c', '')$$,
+  '23514', 'an empty comment body is rejected');
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c', '     ')$$,
+  '23514', 'a whitespace-only comment body is rejected');
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c', repeat('x', 1001))$$,
+  '23514', 'a comment body over 1000 characters is rejected');
+
+\echo ''
+\echo '# Blocking hides comments in both directions (decision #2, migration 011)'
+
+-- cc3 is by the blocked rider and cc4 by the blocker, both on the same
+-- globally visible postcard. Each must vanish for the other and for neither
+-- of them alone — a one-directional block is worse than none.
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc3'),
+  0, 'the blocker does not see the blocked rider''s comment');
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  2, 'and the comment count they read on that postcard drops with it');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc4'),
+  0, 'and vice versa: the blocked rider does not see the blocker''s comment');
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  2, 'their own comment is still theirs to read, so the count matches');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  3, 'an unrelated rider counts all three (comment counts are per-viewer, like likes)');
+
+-- A blocked rider cannot comment on the blocker's postcard at all, and the
+-- insert policy never mentions blocks — it inherits the refusal from the
+-- postcards select policy through its EXISTS.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_denied($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-00000000001a', 'hello')$$,
+  'a rider cannot comment on a postcard hidden from them by a block');
+
+-- Blocking is a visibility filter, never a delete (009 §7). Every comment row
+-- is still there; only who can read it changed.
+reset role;
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  3, 'all three comment rows still exist in the table beneath RLS');
+set role authenticated;
+
+\echo ''
+\echo '# Reports are private to the reporter and one per postcard (migration 011)'
+
+-- Seeded: ff1, filed by the outsider against e1. Nobody but the reporter can
+-- read it — there is no admin role in this project, which migration 011's
+-- header records as a known trust-and-safety gap rather than a design.
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from postcard_reports), 1,
+  'a rider reads the report they filed');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from postcard_reports), 0,
+  'a rider cannot read another rider''s reports');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq((select count(*)::int from postcard_reports), 0,
+  'not even the reported postcard''s author can read reports about it');
+
+-- One report per rider per postcard, so a repeat press is a no-op rather than
+-- a brigading tool. Same idempotency shape as blocks.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_rejected($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e1', 'spam')$$,
+  '23505', 'a rider cannot report the same postcard twice');
+select assert_allowed($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e1', 'spam')
+  on conflict do nothing$$,
+  'the same report written with on conflict do nothing is a silent no-op');
+
+select assert_denied($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000e1', 'spam')$$,
+  'a rider cannot file a report in another rider''s name');
+select assert_denied($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e2', 'spam')$$,
+  'a rider cannot report a postcard they cannot see');
+select assert_rejected($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e3', 'because')$$,
+  '23514', 'a reason outside the constrained set is rejected');
+select assert_rejected($$
+  insert into postcard_reports (reporter_id, postcard_id, reason, note)
+  values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e3', 'spam', '   ')$$,
+  '23514', 'a whitespace-only note is rejected (a note is optional, an empty one is not a note)');
+select assert_allowed($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e3', 'harassment')$$,
+  'a rider can report a different postcard they can see (guards against over-tightening)');
+
+-- A report is a statement at a moment in time. Neither grant exists, so both
+-- are refused at the privilege layer rather than filtered to zero rows.
+select assert_denied($$
+  update postcard_reports set reason = 'hate'
+  where id = '00000000-0000-0000-0000-000000000ff1'$$,
+  'nobody can edit a report, including its author');
+select assert_denied($$
+  delete from postcard_reports where id = '00000000-0000-0000-0000-000000000ff1'$$,
+  'nobody can withdraw a report, including its author');
+
+\echo ''
+\echo '# Hiding a postcard is per-viewer, and it happens in RLS (migration 011)'
+
+-- Unlike a block, a hide is one-directional and affects nobody but its owner.
+-- Nothing seeds a hide — a seeded one would silently move the postcard counts
+-- every earlier section asserts — so the rows below are written live, through
+-- the INSERT policy, which puts that policy under test as a side effect.
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from postcards), 4,
+  'the feed the hider reads before hiding anything');
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  1, 'and the postcard about to be hidden is in it');
+
+insert into postcard_hides (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c');
+
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'a hidden postcard is gone for the rider who hid it');
+select assert_eq((select count(*)::int from postcards), 3,
+  'and it is gone from their whole feed, not only from a targeted lookup');
+
+-- The hide reaches everything that delegates to the postcards select policy,
+-- with no restatement anywhere: likes, comments and the Storage object behind
+-- the image all go with it.
+select assert_eq((select count(*)::int from postcard_likes
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'the hidden postcard''s likes go with it');
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'so do its comments');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'),
+  0, 'and so does the Storage object behind its image');
+select assert_denied($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c', 'still here')$$,
+  'and the hider can no longer comment on it');
+
+-- ...and nobody else's feed moved at all. This is the half that makes "hide"
+-- different from "block".
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from postcards), 5,
+  'another rider''s feed is untouched by someone else''s hide');
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  1, 'and they still see the hidden postcard itself');
+
+-- The author branch of the select policy is unconditional and comes first, so
+-- a self-hide is accepted and inert. 009 made that branch unconditional so a
+-- rider never loses their own photo; a self-hide that removed it from their own
+-- profile grid would reintroduce exactly that loss, and there is no "hidden
+-- postcards" screen from which to undo it.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+insert into postcard_hides (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000a');
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  1, 'an author still sees their own postcard after hiding it — the hide is inert');
+delete from postcard_hides
+  where postcard_id = '00000000-0000-0000-0000-0000000000e1'
+    and user_id = '00000000-0000-0000-0000-00000000000a';
+
+-- Hides are private. A rider who could read them would learn what everyone
+-- else has quietly muted.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from postcard_hides), 0,
+  'a rider cannot read another rider''s hides');
+-- e4, not the already-hidden e1: against e1 this insert collides with 000c's
+-- existing row and would be refused as a duplicate, which is a different claim
+-- from "refused by RLS" and would pass for the wrong reason.
+select assert_denied($$
+  insert into postcard_hides (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-00000000000c')$$,
+  'a rider cannot hide a postcard on another rider''s behalf');
+select assert_denied($$
+  update postcard_hides set user_id = '00000000-0000-0000-0000-00000000000b'
+  where postcard_id = '00000000-0000-0000-0000-0000000000e1'$$,
+  'nobody can update a hide row at all');
+
+-- Deliberately written WITHOUT a where clause, and that is the whole point.
+-- Postgres applies SELECT policies to a DELETE only when the statement has to
+-- read columns — a where clause or returning. A qualified `delete ... where
+-- user_id = <someone else>` is therefore refused by the SELECT policy before
+-- the DELETE policy is ever consulted, and passes even if the DELETE policy
+-- says `using (true)`: verified by mutation, where that exact weakening
+-- survived the qualified form. The bare delete reads nothing, so only the
+-- DELETE policy stands between this rider and every hide row in the table.
+delete from postcard_hides;
+reset role;
+select assert_eq((select count(*)::int from postcard_hides
+                   where user_id = '00000000-0000-0000-0000-00000000000c'),
+  1, 'an unqualified delete cannot lift someone else''s hide');
+set role authenticated;
+
+-- Unhide must work from out of view, or the hide is a one-way door: the DELETE
+-- policy deliberately carries no visibility requirement, same as unliking.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+delete from postcard_hides
+  where postcard_id = '00000000-0000-0000-0000-0000000000e1'
+    and user_id = '00000000-0000-0000-0000-00000000000c';
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  1, 'unhiding restores the postcard, from a state where it could not be seen');
+select assert_eq((select count(*)::int from postcards), 4,
+  'and the feed is back to what it was');
+
+\echo ''
+\echo '# Deleting a postcard takes its interactions with it (migration 011)'
+
+-- All three 011 tables cascade on postcard_id, and that is load-bearing rather
+-- than tidy: every one of their select policies resolves visibility by
+-- delegating to the postcards row. An orphan would be a row whose audience
+-- predicate has nothing left to delegate to — invisible to everyone, forever,
+-- and still counted by anything that reads beneath RLS.
+--
+-- Run as owner: the cascade is a foreign key, not a policy, so RLS would only
+-- obscure what is being tested. A hide is written first because the live hide
+-- section above deliberately unwinds its own.
+reset role;
+insert into postcard_hides (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c');
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  3, 'precondition: the postcard about to be deleted carries comments');
+
+delete from postcards where id = '00000000-0000-0000-0000-0000000000e1';
+
+select assert_eq((select count(*)::int from postcard_comments
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'deleting a postcard cascades its comments');
+select assert_eq((select count(*)::int from postcard_hides
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'and its hides');
+select assert_eq((select count(*)::int from postcard_reports
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'and the reports filed against it — which is also how a report is lost, see 011''s header');
+-- What does NOT go with it is the Storage object, because no foreign key
+-- crosses into Storage. 010 §3 and the comment 011 puts on the postcards
+-- delete policy both say so; this is that claim, asserted.
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'),
+  1, 'but the Storage object survives — deletePostcard must remove it in the same request');
+set role authenticated;
+
+\echo ''
+\echo '# The 011 tables are locked down by construction (migration 011)'
+
+-- "A rider cannot delete another rider's postcard" is asserted where the
+-- postcards delete policy is exercised, near the top of the postcard-writes
+-- section — 011 checked that policy exists rather than adding one, so the
+-- assertion stays where it already lives instead of being duplicated here.
+
+reset role;
+
+select assert_eq(
+  (select count(*)::int from pg_class
+    where relnamespace = 'public'::regnamespace
+      and relname in ('postcard_comments', 'postcard_hides', 'postcard_reports')
+      and relrowsecurity),
+  3, 'row level security is enabled on all three new tables');
+
+-- 011 §3 drops the postcards SELECT policy by catalog lookup and recreates one.
+-- Policies for the same command are OR'd, so a leftover would silently restore
+-- every hidden postcard. The suite already checks this globally (see the 009
+-- section); this pins it to the table 011 actually rewrote.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'postcards' and cmd = 'SELECT'),
+  1, 'postcards still carries exactly one SELECT policy after 011 recreated it');
+
+-- No table 011 created has a mutable column, so none carries an UPDATE policy
+-- or an UPDATE grant. The grant is the layer that holds independently of the
+-- policies.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and cmd = 'UPDATE'
+      and tablename in ('postcard_comments', 'postcard_hides', 'postcard_reports')),
+  0, 'no UPDATE policy exists on any table 011 created');
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_comments', 'update'),
+  false, 'authenticated holds no UPDATE grant on postcard_comments');
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_hides', 'update'),
+  false, 'authenticated holds no UPDATE grant on postcard_hides');
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_reports', 'update'),
+  false, 'authenticated holds no UPDATE grant on postcard_reports');
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_reports', 'delete'),
+  false, 'authenticated holds no DELETE grant on postcard_reports — a report cannot be withdrawn');
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_comments', 'delete'),
+  true, 'authenticated can delete comments (own, or on their own postcard)');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+\echo ''
 \echo '# No anonymous access anywhere (migrations 002, 007)'
 
 -- The anon key ships in the client bundle, so anything anon can reach is
@@ -1048,6 +1482,9 @@ select assert_denied('select count(*) from rides', 'anon cannot read rides');
 select assert_denied('select count(*) from club_members', 'anon cannot read club rosters');
 select assert_denied('select count(*) from ride_members', 'anon cannot read ride rosters');
 select assert_denied('select count(*) from friendships', 'anon cannot read friendships');
+select assert_denied('select count(*) from postcard_comments', 'anon cannot read comments');
+select assert_denied('select count(*) from postcard_hides', 'anon cannot read hides');
+select assert_denied('select count(*) from postcard_reports', 'anon cannot read reports');
 reset role;
 
 rollback;
