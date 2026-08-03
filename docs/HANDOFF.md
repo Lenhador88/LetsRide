@@ -51,6 +51,14 @@ ratio, byline placement, the like control, spacing, the whole create flow — is
 one recorded as *chose:* in `docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff. It is not
 finished until someone has compared it to the design.
 
+**FIRST ACTION: apply migration `011`.** It is written, reviewed, mutation-tested and green
+(264 RLS assertions), but **not applied** — which is drift by this repo's own rule, and the
+one thing deliberately left for a waking human. It rewrites the `postcards` SELECT policy
+that governs the whole feed's visibility, so it was held rather than pushed through
+unattended. Apply it, then run `mcp__Supabase__get_advisors` — the RLS suite runs on plain
+Postgres and structurally cannot see role grants, PostgREST exposure or Supabase defaults,
+which is exactly how a migration once passed locally and stayed broken in production.
+
 **Try `npm run figma:pull` before anything else** — that comparison is the highest-value
 thing left, and one successful pull unblocks it. **It will not work before roughly
 2026-08-06 12:30 UTC** — `Retry-After` said 69 hours at 15:22 on 2026-08-03, and it is a real
@@ -123,8 +131,8 @@ that is now historical rather than current.
 a substantial feature with its own audience rules. Building either without knowing which
 would be a guess.
 
-**Migration `010_postcard_storage.sql` is applied and verified live** (2026-08-03). No drift:
-`001`–`010` are all applied. It creates the private `media` bucket and the `storage.objects`
+**Migration `010_postcard_storage.sql` is applied and verified live** (2026-08-03).
+`001`–`010` are all applied; `011` is not — see the State table. It creates the private `media` bucket and the `storage.objects`
 policies, and drops and recreates two of `009`'s postcards policies to bind `image_path` to
 the author's own Storage folder.
 
@@ -219,7 +227,7 @@ To change any of those four tables, add a new migration. `008` is the current de
 
 | | |
 |---|---|
-| Migrations | `001`–`010` all applied to the hosted project. See the ordering note below. |
+| Migrations | `001`–`010` applied to the hosted project. **`011` is written, reviewed and green but NOT applied** — that is drift by this repo's own definition, and closing it is the first action below. See the ordering note. |
 | Tests | RLS suite 255 assertions (`npm test`) + Vitest 195 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
