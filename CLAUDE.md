@@ -62,7 +62,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place, gates every PR |
-| Units — validation, `lib/utils.ts`, `lib/data/` | Vitest — `npm run test:unit` | In place, gates every PR. Covers `lib/validation/`, `getInitials` and `safeNext`; `lib/data/` and `lib/actions/` are not covered yet |
+| Units — validation, `lib/utils.ts`, `lib/data/` | Vitest — `npm run test:unit` | In place, gates every PR. Covers `lib/validation/`, `lib/media/`, `getInitials` and `safeNext`; `lib/data/` and `lib/actions/` are not covered yet |
 | End-to-end | Playwright | Deferred until a flow is stable enough to be worth maintaining |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
@@ -112,6 +112,7 @@ src/
 │   ├── data/               # Read functions — the only place that queries Supabase
 │   ├── actions/            # Server Actions — the only place that writes
 │   ├── validation/         # Zod schemas, shared by client and server
+│   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # recovery.ts — cookie name shared by callback + action
 │   └── utils.ts            # cn(), formatDate(), formatDateTime(), getInitials()
 ├── proxy.ts                # Auth middleware (Next.js 16 uses proxy.ts, not middleware.ts)
@@ -122,6 +123,7 @@ supabase/
 └── tests/                  # RLS policy suite (npm test); README covers its scope
 docs/
 ├── HANDOFF.md              # Current position — read at session start
+├── FIGMA-FIDELITY-TODO.md  # Values inferred, not read — verify before trusting the UI
 └── specs/                  # Implementation specs (login-onboarding.md)
 openspec/                   # Spec-driven change proposals + config.yaml
 .claude/
@@ -178,7 +180,10 @@ Three further rules:
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. |
 | `club_members` | `(club_id, user_id)` composite PK. `role`: `owner` \| `admin` \| `member`. |
-| `friendships` | `requester_id`, `addressee_id`, `status`: `pending` \| `accepted`. |
+| `friendships` | `requester_id`, `addressee_id`, `status`: `pending` \| `accepted`. v1 leftover — signed off for deletion. |
+| `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`. **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
+| `postcard_likes` | `(postcard_id, user_id)` composite PK. No denormalised count — the correct count is per-viewer, so it is counted under RLS. |
+| `blocks` | `(blocker_id, blocked_id)` composite PK. The row is **directional**, the effect **symmetric**. Never query it from a policy — go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
@@ -189,7 +194,10 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`008` are all applied to the hosted project.** `003_onboarding` was
+**Applied state: `001`–`010` are all applied to the hosted project.** `009_postcards_and_blocks`
+was applied 2026-08-02 and verified live: 32 policies, all `to authenticated`, exactly one
+SELECT policy per table, `anon` holds zero grants, and `private.is_blocked` is absent from
+`public` so PostgREST does not publish it. `003_onboarding` was
 applied 2026-08-02 and verified against the live database, not just CI: the five negative
 cases from its own footer all hold (completion refused while `location` is NULL, completion
 one-way once set, reserved / too-short / uppercase usernames all rejected with `23514`),
@@ -347,7 +355,8 @@ Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart Filled
 Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu, Mute, Options,
 Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search, Share.
 Export them as SVG via `/v1/images/:key?ids=…&format=svg`. `lucide-react` is still imported
-in 15 files and is being replaced — don't substitute lookalikes.
+in 12 files and is being replaced — don't substitute lookalikes.
+(`git grep -l lucide-react -- 'src/*' | wc -l` — this said 15 until it was measured.)
 
 **The library scale**, for planning: 52 component sets covering 213 variants, plus 88
 standalone components, 2,447 nodes on the Components page.
@@ -423,7 +432,7 @@ means one of three things and only the first two are open:
   service-role key. Costs a network hop, keeps RLS intact. Justified only by something Node
   or Go can do that Postgres and Edge Functions cannot.
 - **A service-role backend that owns the database.** This voids decision #2. Every visibility
-  rule currently living in 22 policies and 69 test assertions gets reimplemented in
+  rule currently living in 35 policies and 186 test assertions gets reimplemented in
   application code — where, per `openspec/config.yaml`, an unstated rule fails silently
   instead of loudly. Nothing on the roadmap justifies it. Reopening it takes an explicit
   decision, not drift.
@@ -476,9 +485,11 @@ misleading someone. Counts especially: `git grep -c` beats a number typed by han
 been wrong here three times (assertion count, dependency count, `.from()` call sites).
 
 **Unapplied migrations are drift.** A migration in the repo that has not run against the
-database means the schema in git and the schema in Postgres disagree. Two are outstanding
-now. Apply them before adding a third; a queue of unapplied migrations fails in the order
-nobody tested.
+database means the schema in git and the schema in Postgres disagree. Apply them before
+adding another; a queue of unapplied migrations fails in the order nobody tested. Check
+rather than trust this line — `mcp__Supabase__list_migrations` against the hosted project,
+against `ls supabase/migrations/`. (It said "two are outstanding" while the true count was
+first zero and then one.)
 
 ## Product Scope (from Figma)
 

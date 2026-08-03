@@ -30,6 +30,105 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 ## Do this first
 
+**In flight: the Home/Postcards epic, branch `claude/home-page-design-churhi`.**
+
+Migration `009_postcards_and_blocks.sql` is **applied to the hosted project and verified
+live** (2026-08-02). No drift: the repo chain and the database agree.
+
+It creates `postcards`, `postcard_likes` and `blocks`, plus `private.is_blocked()`, and
+applies the block predicate to `profiles`, `club_members`, `rides`, `ride_members` and
+`friendships` so decision #2 holds everywhere the moment blocking exists. Verified by
+applying the full `001`–`009` chain to a scratch Postgres and running the suite green.
+
+**It drops SELECT policies on those five tables by catalog lookup before recreating them.**
+It applied cleanly, but note the shape for any future rerun: an abort partway leaves those
+tables with no select policy — deny-all. That fails *closed*, unlike `002`, so the damage
+mode is "riders see nothing" rather than a leak.
+
+Verified on the live database, not asserted — these are the environment-specific things the
+RLS suite runs on plain Postgres and structurally cannot see:
+
+| Check | Result |
+|---|---|
+| `postcards`, `postcard_likes`, `blocks` exist, RLS enabled | ✅ all three |
+| Policies not `to authenticated` | 0 |
+| `anon` table privileges | 0 |
+| `is_blocked` in `public` / in `private` | 0 / 1 — off the PostgREST surface |
+| `authenticated` USAGE on `private` | false |
+| `authenticated` UPDATE on `postcard_likes` / `blocks` | false / false |
+| SELECT policies per table | **exactly 1 each** — no leftover from the drop loop |
+| Total policies | 22 → 32 |
+| Security advisors | only the pre-existing leaked-password toggle |
+
+The "exactly 1 SELECT policy per table" row is the load-bearing one: policies for a command
+are OR'd, so a single leftover would silently undo the whole block predicate.
+
+Reproduce the whole set with the queries in §Verification at the foot of the migration file.
+
+Finally, impersonated as the one real rider (`set local role authenticated` +
+`request.jwt.claims`), profiles, clubs, club_members, rides and ride_members all still
+return their rows — the policy replacement caused no regression for the live user.
+
+Product owner sign-offs taken this session, both previously listed here as unconfirmed:
+
+- **`/dashboard` is to be deleted**, and Postcards becomes the home screen.
+- **`/friends` is to be deleted** along with the `friendships` v1 leftover.
+
+Neither deletion has happened yet, and **the order matters**: `proxy.ts` redirects a
+signed-in rider to `/dashboard`, so deleting it before the feed route exists leaves login
+landing on a 404. Delete it *with* the feed, not before.
+
+The approved first UI slice is **view + like + create**. Comments and shares stay out of
+scope, and `009` deliberately creates no table for them. Create was added after it became
+clear that view + like alone renders an empty feed forever — nothing can put a postcard in it.
+
+**Migration `010_postcard_storage.sql` is applied and verified live** (2026-08-03). No drift:
+`001`–`010` are all applied. It creates the private `media` bucket and the `storage.objects`
+policies, and drops and recreates two of `009`'s postcards policies to bind `image_path` to
+the author's own Storage folder.
+
+Verified on the hosted project after applying:
+
+| Check | Result |
+|---|---|
+| `media` bucket | `public=false`, 5242880, `{image/jpeg}` |
+| `storage.objects` RLS | enabled |
+| Storage policies | 3 — INSERT / SELECT / DELETE, no UPDATE, all `to authenticated` |
+| `public` policies | 32, unchanged (the two recreated replaced their originals) |
+| `postcards_image_path_key` unique index | present |
+| `anon` table privileges | 0 |
+| Security advisors | only the pre-existing leaked-password toggle |
+
+And the hole itself, probed against production as the real rider: a cross-folder
+`image_path` is **refused 42501**, an upload into another rider's folder is **refused 42501**,
+and the rider's own folder is still **accepted** — so it is closed without being
+over-tightened.
+
+Still unexercised: **a real upload through storage-api has never run.** The INSERT policy
+reads `metadata`, which storage-api populates, and it is written null-tolerantly so a
+null-metadata pre-check cannot refuse every upload — but nothing has proven that end to end,
+and the RLS suite cannot, because `harness.sql` stubs `storage.objects`. The first session
+that builds the create screen should treat "does one real upload succeed" as its first test,
+not its last.
+
+That binding is not cosmetic. Without it there is a **live data-exposure hole**: the storage
+read policy delegates to `postcards` via `EXISTS`, which inherits RLS from *whatever row
+matches the path* rather than from the object's owner — so a rider could write another
+rider's image path into their own app-wide postcard and make a private club's photo readable
+by every signed-in rider, blocked or not. `image_path` reaches the browser, so the paths are
+known. It was found by review, reproduced against the scratch database, fixed before `010`
+was ever applied, and is now covered by assertions in
+`# A rider cannot read an image by claiming its path (migration 010)`.
+
+No `media` bucket existed beforehand (checked before applying), so the `on conflict do update`
+guard did not have to correct anything on this run — it is there for reruns and for anyone
+who creates one through the dashboard, where "public" is a checkbox.
+
+The UI itself is unbuilt — see `docs/FIGMA-FIDELITY-TODO.md` for why, and for the register of
+what a later pass must verify against the design.
+
+---
+
 **The login epic is shipped.** PR #8 merged to `main` as `0e30556` on 2026-08-02, migration
 `003` applied to the hosted project, and the production deployment is `READY` on
 `letsrideapp.vercel.app` with no runtime errors. Nothing is outstanding from it.
@@ -42,10 +141,10 @@ leaked-password toggle.
 
 Two things to expect rather than debug:
 
-- **The one existing rider (`pedrousername`) has `onboarding_completed_at` NULL**, so their
-  next visit routes them to `/onboarding/location` to supply a city before they reach the
-  app. That is decision #5 working as designed. A one-row backfill would skip it if that is
-  not wanted.
+- ~~**The one existing rider (`pedrousername`) has `onboarding_completed_at` NULL**~~ — **no
+  longer true.** Checked 2026-08-02: the stamp is set, so they land in the app directly and
+  no backfill is needed. Verify with
+  `select username, onboarding_completed_at from profiles;` rather than trusting this line.
 - **`terms_accepted_at` is still client-writable.** `enforce_onboarding_completion()` pins
   the onboarding stamp but not the consent stamp, so a rider can clear or back-date their
   own. The action checks its write now; the schema guard is an unwritten migration and a
@@ -77,8 +176,8 @@ To change any of those four tables, add a new migration. `008` is the current de
 
 | | |
 |---|---|
-| Migrations | `001`–`008` all applied to the hosted project. See the ordering note below. |
-| Tests | RLS suite 69 assertions (`npm test`) + Vitest 84 tests (`npm run test:unit`). Both gate every PR. |
+| Migrations | `001`–`010` all applied to the hosted project. See the ordering note below. |
+| Tests | RLS suite 186 assertions (`npm test`) + Vitest 117 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -121,6 +220,45 @@ not. Measured in the same minute, with the same token:
 better call: one request returned the entire document *and* the `styles` map — everything
 `/nodes` would have given, for every page at once. ~30 MB in about 7 seconds. Cache it to
 disk and query it offline; never hold it in context.
+
+**Update, 2026-08-02 evening: the per-endpoint escape hatch did not hold a second time.**
+The whole-file route was 429 on the *first* call of a fresh session — inherited budget, not
+something that session spent — and stayed 429 across **40 polls at 3-minute intervals over
+two hours**. Measured at both ends of that window:
+
+| Endpoint | Session start | Two hours later |
+|---|---|---|
+| `/v1/files/:key`, `?depth=1`, `/nodes` | 429 | 429 |
+| `/v1/images/:key` | **200** | **429** — degraded during the session |
+| `/v1/me` | 200 | 200 |
+
+Two things to carry forward. **`/v1/images` is not a reliable fallback** — it was the one
+file-reading route still alive at the start and it died too, so "icon export works" is not
+a standing fact. And **`/v1/me` returning 200 means nothing**; it stayed green throughout
+while every route that reads design data was refused.
+
+**The rate limit is not the blocker that matters.** Measured 2026-08-03: six endpoint
+families (`/versions`, `/comments`, `/files/:key/images`, `/teams/:t/projects`, `/styles`,
+`/components`) all returned 200 while the node-reading routes stayed 429. `/components` and `/styles`
+are **empty** — the library is unpublished — and `/files/:key/images` returns 418 real image
+fills whose URLs all point at **`s3-alpha-sig.figma.com`, which this environment's network
+policy refuses at CONNECT with 403**, before the request leaves the container.
+
+That is a *network policy* denial, not a Figma limit: waiting will not clear it, and neither
+will upgrading the Figma plan. Since `/v1/images` hands back render URLs on that same host,
+**icon SVG export is expected to fail even once the 429 lifts.** The fix is to allow
+`s3-alpha-sig.figma.com` and `figma-alpha-api.s3.us-west-2.amazonaws.com` in the environment's
+network policy. See `docs/FIGMA-FIDELITY-TODO.md`, which is the register of everything the
+outage forces to be inferred.
+
+**Do not buy a Figma plan to solve this.** The REST API on a personal token is free and
+uncapped; only the MCP server is plan-gated (Starter = 6 tool calls/month, exhausted), and
+the MCP path is not the one this project uses.
+
+The MCP server was probed once as a last resort and returned the Starter-plan quota error,
+confirming the note below rather than contradicting it. Both routes to design data can be
+shut at the same time, and when they are, the honest move is to stop and say so — not to
+eyeball values off a screenshot.
 
 The MCP server is a separate, monthly quota and is genuinely exhausted: one `get_metadata`
 succeeded, `get_design_context` never did. Do not spend time there — the REST whole-file
@@ -177,13 +315,17 @@ backed by 52 component sets, 213 variants, 88 components and 44 icons. The gap i
 not cosmetic:
 
 - **The design has no Friends tab.** The five tabs are Home, Rides, Clubs, Inbox, Profile.
-  `/friends` is not restyled, it is **deleted**, and `friendships` is a v1 leftover. This is a
-  product decision that has not been explicitly signed off — confirm before deleting.
+  `/friends` is not restyled, it is **deleted**, and `friendships` is a v1 leftover.
+  **Signed off by the product owner on 2026-08-02**, along with deleting `/dashboard`.
+  Not yet carried out — see *Do this first* for why the order matters.
 - **The design's home is Postcards**, a photo feed. The app's home is `/dashboard`. The
   central screen of the product is not built.
-- **Inbox, Garage and trust & safety have no routes and no tables.** The schema is
-  `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `friendships` — nothing behind
-  postcards, messages, garage or blocks. Most of this is `data` → `feature`, not CSS.
+- **Inbox and Garage have no routes and no tables.** The schema is `profiles`, `rides`,
+  `ride_members`, `clubs`, `club_members`, `friendships`, plus `postcards`, `postcard_likes`
+  and `blocks` from `009` — so postcards and blocking now have tables, while messages and
+  garage still have nothing. Most of what is left is `data` → `feature`, not CSS.
+  (This bullet claimed "nothing behind postcards … or blocks" for a while after `009` landed
+  and contradicted §Do this first twenty lines above it. Re-read both before trusting either.)
 
 **Suggested order.** The ratings are impact on shipping a product that matches the design.
 

@@ -67,6 +67,59 @@ export type ClubMember = {
   profile?: PublicProfile
 }
 
+export type Postcard = {
+  id: string
+  author_id: string
+  // NULL is the app-wide feed; set means that club's members only. This column
+  // IS the audience — there is no is_public flag.
+  club_id: string | null
+  // A Supabase Storage object path, never a URL. Render it through a signed or
+  // public URL helper; a check constraint rejects anything containing '://'.
+  image_path: string
+  caption: string | null
+  created_at: string
+  updated_at: string
+  author?: PublicProfile
+  club?: Pick<Club, 'id' | 'name'>
+  likes_count?: number
+  is_liked?: boolean
+}
+
+/**
+ * Cursor for the feed. `before` is the `created_at` of the last card already
+ * shown, which pairs with the `(created_at desc)` index 009 adds.
+ *
+ * Known limit, recorded rather than discovered later: `created_at` is not
+ * unique, so two postcards sharing a timestamp exactly at a page boundary can
+ * be skipped. A composite `(created_at, id)` cursor fixes it and is worth doing
+ * if postcards ever arrive in bulk; at rider-typed posting rates a collision to
+ * the microsecond is not realistic.
+ */
+export type FeedPage = {
+  before?: string
+  limit?: number
+}
+
+export type PostcardLike = {
+  postcard_id: string
+  user_id: string
+  created_at: string
+  profile?: PublicProfile
+}
+
+/**
+ * The row is directional — who pressed the button — but the effect is symmetric:
+ * neither party sees the other. Never derive "am I blocked" by reading this
+ * table; you can only read blocks you created. Enforcement lives in RLS via
+ * private.is_blocked().
+ */
+export type Block = {
+  blocker_id: string
+  blocked_id: string
+  created_at: string
+  blocked?: PublicProfile
+}
+
 export type Friendship = {
   id: string
   requester_id: string
