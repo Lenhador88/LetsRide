@@ -51,7 +51,15 @@ ratio, byline placement, the like control, spacing, the whole create flow — is
 one recorded as *chose:* in `docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff. It is not
 finished until someone has compared it to the design.
 
-**FIRST ACTION: apply migration `011`.** It is written, reviewed, mutation-tested and green
+**FIRST ACTION: apply migration `011`, and do it BEFORE merging PR #22.** The order is not
+cosmetic. `POSTCARD_SELECT` now embeds `comments_count:postcard_comments(count)`; if that
+table does not exist, PostgREST fails the whole feed query, and `getFeed` does
+`const { data } = await query; return data ?? []` — it swallows the error. So merging first
+does not produce a 500 anyone would notice. It produces `/postcards` rendering "No postcards
+yet" to every rider, with nothing in the logs. Same shape as the `/dashboard` ordering trap,
+and the same lesson.
+
+**Applying `011`.** It is written, reviewed, mutation-tested and green
 (264 RLS assertions), but **not applied** — which is drift by this repo's own rule, and the
 one thing deliberately left for a waking human. It rewrites the `postcards` SELECT policy
 that governs the whole feed's visibility, so it was held rather than pushed through
