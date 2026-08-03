@@ -572,8 +572,17 @@ select assert_allowed($$
   update postcards set caption = 'Sunrise on the N222, again'
   where id = '00000000-0000-0000-0000-0000000000e1'$$,
   'an author can edit their own caption');
-select assert_allowed($$delete from postcards where id = '00000000-0000-0000-0000-0000000000e1'$$,
-  'an author can delete their own postcard');
+-- Not assert_allowed. That helper runs the statement and then raises to undo
+-- it, so it only ever proves the statement did not ERROR — and a DELETE
+-- filtered to zero rows by its USING clause does not error. This assertion
+-- passed with the delete policy dropped entirely until a mutation test caught
+-- it. The savepoint restores the row and everything that cascades off it.
+savepoint author_deletes_own_postcard;
+delete from postcards where id = '00000000-0000-0000-0000-0000000000e1';
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'an author can delete their own postcard');
+rollback to savepoint author_deletes_own_postcard;
 
 -- The documented side effect of the WITH CHECK: an author who left a club keeps
 -- read and delete on their postcard in it, but loses the caption edit. A policy
@@ -584,8 +593,12 @@ select assert_denied($$
   update postcards set caption = 'edited'
   where id = '00000000-0000-0000-0000-0000000000e5'$$,
   'an author who left a club cannot edit their postcard in it');
-select assert_allowed($$delete from postcards where id = '00000000-0000-0000-0000-0000000000e5'$$,
-  'but they can still delete it, so nothing is stranded');
+savepoint departed_author_deletes;
+delete from postcards where id = '00000000-0000-0000-0000-0000000000e5';
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000000000e5'),
+  0, 'but they can still delete it, so nothing is stranded');
+rollback to savepoint departed_author_deletes;
 
 \echo ''
 \echo '# image_path is a storage path, not a URL (migration 009)'
@@ -680,11 +693,18 @@ select assert_eq((select count(*)::int from postcard_likes
                    where postcard_id = '00000000-0000-0000-0000-0000000000e1'
                      and user_id = '00000000-0000-0000-0000-00000000001b'),
   1, 'unliking cannot remove another rider''s like');
-select assert_allowed($$
-  delete from postcard_likes
+-- Same weakness as the postcard delete above: assert_allowed cannot tell a
+-- permitted delete from one filtered to zero rows. Deleted for real, counted,
+-- and rolled back so the like counts the next section asserts still hold.
+savepoint rider_removes_own_like;
+delete from postcard_likes
   where postcard_id = '00000000-0000-0000-0000-0000000000e1'
-    and user_id = '00000000-0000-0000-0000-00000000000c'$$,
-  'a rider can remove their own like');
+    and user_id = '00000000-0000-0000-0000-00000000000c';
+select assert_eq((select count(*)::int from postcard_likes
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'
+                     and user_id = '00000000-0000-0000-0000-00000000000c'),
+  0, 'a rider can remove their own like');
+rollback to savepoint rider_removes_own_like;
 
 -- No mutable column, so no update policy and no update grant. The missing grant
 -- is the layer that still holds if a future policy is written too permissively.
@@ -931,9 +951,15 @@ delete from storage.objects where name = 'postcards/00000000-0000-0000-0000-0000
 select assert_eq((select count(*)::int from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'),
   1, 'a rider cannot delete another rider''s postcard image');
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
-select assert_allowed($$
-  delete from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'$$,
-  'a rider can delete their own postcard image');
+-- The positive half needs a real delete for the same reason the negative half
+-- above does: assert_allowed only proves the statement did not error, and this
+-- one would not error even if the policy filtered it to nothing.
+savepoint rider_deletes_own_image;
+delete from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg';
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'),
+  0, 'a rider can delete their own postcard image');
+rollback to savepoint rider_deletes_own_image;
 
 -- No anonymous access, same as everywhere else. anon holds a broad table
 -- grant in this harness (see harness.sql) precisely so this is a test of RLS,
