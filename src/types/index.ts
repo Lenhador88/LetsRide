@@ -85,6 +85,21 @@ export type Postcard = {
   is_liked?: boolean
 }
 
+/**
+ * Cursor for the feed. `before` is the `created_at` of the last card already
+ * shown, which pairs with the `(created_at desc)` index 009 adds.
+ *
+ * Known limit, recorded rather than discovered later: `created_at` is not
+ * unique, so two postcards sharing a timestamp exactly at a page boundary can
+ * be skipped. A composite `(created_at, id)` cursor fixes it and is worth doing
+ * if postcards ever arrive in bulk; at rider-typed posting rates a collision to
+ * the microsecond is not realistic.
+ */
+export type FeedPage = {
+  before?: string
+  limit?: number
+}
+
 export type PostcardLike = {
   postcard_id: string
   user_id: string

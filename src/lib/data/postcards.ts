@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
-import type { Postcard } from '@/types'
+import type { Postcard, FeedPage } from '@/types'
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
@@ -10,6 +10,15 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 type PostcardRow = Omit<Postcard, 'likes_count' | 'is_liked'> & {
   likes_count: { count: number }[] | null
 }
+
+/**
+ * Provisional. The design decides whether the feed pages or infinite-scrolls
+ * and how many cards a screen shows, and the Figma file is currently
+ * unreadable — see docs/FIGMA-FIDELITY-TODO.md. What is NOT provisional is
+ * that the query is bounded at all: unbounded, the home screen selects every
+ * postcard the viewer can see, on every render, forever.
+ */
+export const FEED_PAGE_SIZE = 30
 
 const POSTCARD_SELECT = `
   *,
@@ -63,30 +72,39 @@ async function attachLikeState(
  * here would be the exact drift trap 009 warns about — a second copy of a
  * predicate that can silently disagree with the policy it duplicates.
  */
-export async function getFeed(): Promise<Postcard[]> {
+export async function getFeed({ before, limit = FEED_PAGE_SIZE }: FeedPage = {}): Promise<Postcard[]> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { data } = await supabase
+  let query = supabase
     .from('postcards')
     .select(POSTCARD_SELECT)
     .order('created_at', { ascending: false })
+    .limit(limit)
+  if (before) query = query.lt('created_at', before)
 
+  const { data } = await query
   return attachLikeState(supabase, (data ?? []) as PostcardRow[], user?.id)
 }
 
 /** The same feed, scoped to one club. RLS still decides whether the viewer
  * may see club-scoped rows at all; `club_id` here just picks which club. */
-export async function getClubFeed(clubId: string): Promise<Postcard[]> {
+export async function getClubFeed(
+  clubId: string,
+  { before, limit = FEED_PAGE_SIZE }: FeedPage = {}
+): Promise<Postcard[]> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { data } = await supabase
+  let query = supabase
     .from('postcards')
     .select(POSTCARD_SELECT)
     .eq('club_id', clubId)
     .order('created_at', { ascending: false })
+    .limit(limit)
+  if (before) query = query.lt('created_at', before)
 
+  const { data } = await query
   return attachLikeState(supabase, (data ?? []) as PostcardRow[], user?.id)
 }
 
