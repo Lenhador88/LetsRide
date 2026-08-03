@@ -1,7 +1,12 @@
 # Handoff — where things stand
 
-Last shipped: the **login & onboarding epic** (PR #8, merged `0e30556`, live in production),
-followed by PRs #9 and #10. No branch is in flight — start new work from `main`.
+Last shipped: the **Postcards/Home backend** (PR #15, merged `dd72c96`) — migrations `009`
+and `010`, the feed data layer and actions, and client-side EXIF stripping. Before that, the
+**login & onboarding epic** (PR #8, merged `0e30556`). No branch is in flight — start new
+work from `main`.
+
+**The Postcards UI is the next thing to build, and it is blocked on Figma.** Everything
+behind it is done and on `main`; nothing has been drawn. See *Do this first*.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -30,7 +35,14 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 ## Do this first
 
-**In flight: the Home/Postcards epic, branch `claude/home-page-design-churhi`.**
+**The Home/Postcards backend is SHIPPED** — PR #15, merged to `main` as `dd72c96` on
+2026-08-03, CI green on both jobs. Nothing is in flight.
+
+**What is left is the UI, and only the UI.** No page, component or screen exists: the whole
+epic so far is schema, policies, Storage, reads, actions and image processing. The next
+session's job is the feed screen, the postcard card, the create flow, the icon set, and the
+`/dashboard` + `/friends` deletions — all of which need the design, which is unreadable.
+Start at *Building to the design* and `docs/FIGMA-FIDELITY-TODO.md`.
 
 Migration `009_postcards_and_blocks.sql` is **applied to the hosted project and verified
 live** (2026-08-02). No drift: the repo chain and the database agree.
@@ -244,12 +256,23 @@ are **empty** — the library is unpublished — and `/files/:key/images` return
 fills whose URLs all point at **`s3-alpha-sig.figma.com`, which this environment's network
 policy refuses at CONNECT with 403**, before the request leaves the container.
 
-That is a *network policy* denial, not a Figma limit: waiting will not clear it, and neither
-will upgrading the Figma plan. Since `/v1/images` hands back render URLs on that same host,
-**icon SVG export is expected to fail even once the 429 lifts.** The fix is to allow
-`s3-alpha-sig.figma.com` and `figma-alpha-api.s3.us-west-2.amazonaws.com` in the environment's
-network policy. See `docs/FIGMA-FIDELITY-TODO.md`, which is the register of everything the
-outage forces to be inferred.
+That was a *network policy* denial, not a Figma limit. **It has since been fixed** — the
+product owner allowed `s3-alpha-sig.figma.com` and
+`figma-alpha-api.s3.us-west-2.amazonaws.com` on 2026-08-03, and a 2.2 MB image fill
+downloaded successfully straight afterwards. So one of the two blockers is gone: when
+`/v1/images` stops returning 429, **icon export should now actually work end to end**.
+
+Two things learned while confirming that, worth not repeating:
+
+- **The 418 image fills are not screen designs.** They are content placed into the file —
+  photos, and at least one **personal WhatsApp screenshot** showing a real person's name and
+  private conversation. There is no design layout in them. Do not bulk-download them looking
+  for screens; sample one at most, and treat what is there as private rather than as an asset.
+- **Layout still needs the node tree**, i.e. `/v1/files/:key` or `/nodes`, which was still
+  429 as of 2026-08-03. The allowlist does not change that.
+
+`docs/FIGMA-FIDELITY-TODO.md` remains the register of everything the outage forces to be
+inferred.
 
 **Do not buy a Figma plan to solve this.** The REST API on a personal token is free and
 uncapped; only the MCP server is plan-gated (Starter = 6 tool calls/month, exhausted), and
