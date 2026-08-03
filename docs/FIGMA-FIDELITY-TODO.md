@@ -26,23 +26,22 @@ Two independent blocks, and they need different fixes:
 | `/v1/files/:key/images` | 200, **418 fills** | Reachable, but see below. |
 | `/v1/files/:key/versions`, `/comments`, `/v1/teams/:t/projects` | 200 | No design structure in them. |
 | Figma MCP server | **quota exhausted** | Starter = 6 tool calls/month. Plan gate. |
-| `s3-alpha-sig.figma.com` | **403 at CONNECT** | This environment's **network policy**, not Figma. |
+| `s3-alpha-sig.figma.com` | **fixed 2026-08-03** | Was a 403 at CONNECT from this environment's network policy; now allowed, and a 2.2 MB fill downloaded cleanly. |
 
-**The last row is the one that does not fix itself.** The 418 image fills are real and the API
-hands back their URLs, but every URL points at Figma's S3 host, which the agent proxy refuses
-before the request leaves the container. Since `/v1/images` returns render URLs on that same
-host, **icon SVG export is expected to fail even once the 429 clears.**
+**The S3 block is fixed; the rate limit is not.** Allowing the two Figma S3 hosts removed the
+blocker that would never have cleared on its own, so icon export should work as soon as
+`/v1/images` stops 429-ing. What remains:
 
-Fix, in order of leverage:
-
-1. **Allow `s3-alpha-sig.figma.com` and `figma-alpha-api.s3.us-west-2.amazonaws.com`** in the
-   environment's network policy. Without this, no image or icon ever leaves Figma, regardless
-   of rate limits or plan.
-2. Wait out the 429 on `/v1/files/*`. This is free and needs no upgrade — do **not** buy a
-   Figma plan to solve it, which fixes only the MCP path.
-3. Publishing the library would make `/components` and `/styles` useful, but is not required:
+1. Wait out the 429 on `/v1/files/*` and `/v1/images`. Free, and needs no upgrade — do **not**
+   buy a Figma plan to solve it, which fixes only the MCP path.
+2. Publishing the library would make `/components` and `/styles` useful, but is not required:
    87% of fills reference a named style and those names ship in the `styles` map of any
    `/nodes` response.
+
+**Do not go looking for screens in `/v1/files/:key/images`.** Those 418 fills are content
+placed into the file, not frames — photos, and at least one personal WhatsApp screenshot with
+a real name and private conversation in it. There is no layout there, and it is not ours to
+mine.
 
 Verify all of the above with the probe sweep in `docs/HANDOFF.md` before assuming any of it
 is still true.
