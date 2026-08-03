@@ -10,7 +10,11 @@
     "test": "./supabase/tests/run.sh",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
-    "figma:tokens": "node scripts/figma-tokens.mjs"
+    "figma": "node scripts/figma/query.mjs",
+    "figma:pull": "node scripts/figma/pull.mjs",
+    "figma:extract": "node scripts/figma/extract.mjs",
+    "figma:icons": "node scripts/figma/icons.mjs",
+    "figma:check": "node scripts/figma/check.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
