@@ -50,6 +50,66 @@ grant usage on schema public to anon, authenticated;
 -- not have.
 grant usage on schema auth to anon, authenticated;
 
+-- Minimal stand-in for the parts of Supabase Storage migration 010's policies
+-- touch: the storage.objects metadata row, storage.buckets (only so the
+-- bucket-creation insert has somewhere to land), and the one helper function
+-- those policies call. Storage's actual file service — the S3-compatible
+-- backend and the HTTP API that receives multipart uploads — has no Postgres
+-- equivalent and is out of scope: this suite tests RLS on the metadata row,
+-- which is the only part of Storage that is actually Postgres.
+--
+-- storage.foldername's body is copied from Supabase's own definition rather
+-- than reinvented, because a policy that calls the real function in
+-- production and a differently-behaved stand-in here is worse than no
+-- stand-in at all — it is a pass that means nothing.
+create schema if not exists storage;
+
+create table storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean not null default false,
+  file_size_limit bigint,
+  allowed_mime_types text[]
+);
+
+create table storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets(id),
+  name text,
+  owner uuid,
+  metadata jsonb,
+  created_at timestamptz default now()
+);
+
+alter table storage.buckets enable row level security;
+alter table storage.objects enable row level security;
+
+create or replace function storage.foldername(name text)
+returns text[]
+language plpgsql
+immutable
+as $$
+declare
+  _parts text[];
+begin
+  select string_to_array(name, '/') into _parts;
+  return _parts[1 : array_length(_parts, 1) - 1];
+end;
+$$;
+
+grant usage on schema storage to anon, authenticated;
+grant execute on function storage.foldername(text) to anon, authenticated;
+
+-- Supabase grants broad default privileges on storage.objects to both roles,
+-- same as it does in `public` before 002/007 tighten it — RLS is the actual
+-- gate, which is exactly what makes "anon cannot read/write storage.objects"
+-- a meaningful assertion rather than one that passes for the wrong reason
+-- (a missing grant instead of an absent policy). storage.buckets gets no
+-- grant: nothing in the app queries it, and 010 writes to it only once, as
+-- the migration role, which bypasses RLS/grants entirely — same as every
+-- other migration in this chain.
+grant select, insert, update, delete on storage.objects to anon, authenticated;
+
 -- Supabase grants anon and authenticated broad privileges in `public`, including
 -- execute on functions. Reproducing that is what makes a revoke test meaningful:
 -- an explicit grant needs an explicit revoke, and without these lines a test

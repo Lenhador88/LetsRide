@@ -799,6 +799,136 @@ select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'updat
   true, 'authenticated can update postcards (caption edits)');
 
 \echo ''
+\echo '# Postcard image storage (migration 010)'
+
+-- Shape checks first, independent of any test identity.
+reset role;
+
+select assert_eq(
+  (select relrowsecurity from pg_class
+    where relnamespace = 'storage'::regnamespace and relname = 'objects'),
+  true, 'row level security is enabled on storage.objects');
+
+select assert_eq((select public from storage.buckets where id = 'media'),
+  false, 'the media bucket is private');
+select assert_eq((select file_size_limit from storage.buckets where id = 'media'),
+  5242880::bigint, 'the media bucket caps object size at 5 MiB');
+select assert_eq((select allowed_mime_types from storage.buckets where id = 'media'),
+  array['image/jpeg'], 'the media bucket only accepts image/jpeg');
+
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and not (roles = '{authenticated}')),
+  0, 'every storage.objects policy targets authenticated only, never PUBLIC or anon');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and cmd = 'UPDATE'),
+  0, 'no UPDATE policy on storage.objects — uploads never upsert (see uploadObject)');
+select assert_eq(
+  (select count(*)::int from pg_policies where schemaname = 'storage' and tablename = 'objects'),
+  3, 'exactly insert, select and delete — no leftover policy to OR against the others');
+
+set role authenticated;
+
+-- SELECT mirrors postcard visibility exactly, through the same EXISTS-under-RLS
+-- trick postcard_likes uses: nothing here restates the author/block/club
+-- predicate, so it cannot drift from the one 009 owns.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/000a/dawn.jpg'),
+  1, 'an outsider can read the object behind a globally visible postcard');
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/000a/secret.jpg'),
+  0, 'an outsider cannot read the object behind a club postcard they cannot see');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/000a/secret.jpg'),
+  1, 'a club member can read the object behind that club''s postcard (guards against over-tightening)');
+
+-- The block predicate, inherited the same way — never restated as a second
+-- is_blocked() call inside this policy.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/001b/coast.jpg'),
+  0, 'a blocker cannot read the image behind a postcard from someone they blocked');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/001b/coast.jpg'),
+  1, 'an unrelated rider can still read that same object (guards against over-tightening)');
+
+-- An object with no referencing postcards row at all is unreadable by anyone,
+-- including its own uploader — visibility runs entirely through the postcards
+-- row, so there is nothing to see until that row exists. A real (unwrapped)
+-- insert, relying on the suite's own final rollback to clean it up, same as
+-- the postcard_likes deletion earlier in this file.
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'postcards/00000000-0000-0000-0000-00000000000c/55555555-5555-5555-5555-555555555555.jpg',
+   '00000000-0000-0000-0000-00000000000c', '{"mimetype":"image/jpeg","size":1024}');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-00000000000c/55555555-5555-5555-5555-555555555555.jpg'),
+  0, 'even the uploader cannot read their own object before a postcards row references it');
+
+-- INSERT: own folder, well-formed path, matching mimetype and size all have
+-- to hold at once. assert_allowed's own subtransaction undoes this, so the
+-- object above (inserted for real) is the only lasting row from this block.
+select assert_allowed($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'postcards/00000000-0000-0000-0000-00000000000c/11111111-1111-1111-1111-111111111111.jpg',
+          '00000000-0000-0000-0000-00000000000c', '{"mimetype":"image/jpeg","size":1024}')$$,
+  'a rider can upload into their own folder with a well-formed path, jpeg mimetype and size under the cap');
+
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'postcards/00000000-0000-0000-0000-00000000000a/22222222-2222-2222-2222-222222222222.jpg',
+          '00000000-0000-0000-0000-00000000000c', '{"mimetype":"image/jpeg","size":1024}')$$,
+  'a rider cannot write into another rider''s folder');
+
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'postcards/00000000-0000-0000-0000-00000000000c/33333333-3333-3333-3333-333333333333.png',
+          '00000000-0000-0000-0000-00000000000c', '{"mimetype":"image/png","size":1024}')$$,
+  'a rider cannot upload a non-jpeg mimetype even into their own folder');
+
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'postcards/00000000-0000-0000-0000-00000000000c/44444444-4444-4444-4444-444444444444.jpg',
+          '00000000-0000-0000-0000-00000000000c', '{"mimetype":"image/jpeg","size":10485760}')$$,
+  'a rider cannot upload past the size cap even with a matching mimetype');
+
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'postcards/00000000-0000-0000-0000-00000000000c/not-a-uuid.jpg',
+          '00000000-0000-0000-0000-00000000000c', '{"mimetype":"image/jpeg","size":1024}')$$,
+  'a malformed filename is rejected even with correct folder ownership');
+
+-- DELETE: an uploader can remove their own object, never someone else's. This
+-- is what makes createPostcard's compensating cleanup possible when the
+-- postcards insert fails after the upload already succeeded.
+--
+-- DELETE is filtered by USING rather than refused — same trap postcards' own
+-- tests already call out (line ~548): a wrong-owner delete silently touches
+-- zero rows instead of raising, so the row's survival is the evidence, not
+-- an exception.
+delete from storage.objects where name = 'postcards/000a/dawn.jpg';
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/000a/dawn.jpg'),
+  1, 'a rider cannot delete another rider''s postcard image');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_allowed($$
+  delete from storage.objects where name = 'postcards/000a/dawn.jpg'$$,
+  'a rider can delete their own postcard image');
+
+-- No anonymous access, same as everywhere else. anon holds a broad table
+-- grant in this harness (see harness.sql) precisely so this is a test of RLS,
+-- not of a missing grant: the SELECT returns zero rows rather than erroring,
+-- because RLS silently filters rather than refusing when no policy matches;
+-- the INSERT genuinely errors, because a failed WITH CHECK on a write does.
+set role anon;
+select assert_eq((select count(*)::int from storage.objects), 0,
+  'anon reads zero rows from storage.objects, no matter what is in it');
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, metadata)
+  values ('media', 'postcards/anon/00000000-0000-0000-0000-000000000000.jpg', '{"mimetype":"image/jpeg","size":1}')$$,
+  'anon cannot upload to storage at all');
+reset role;
+set role authenticated;
+
+\echo ''
 \echo '# No anonymous access anywhere (migrations 002, 007)'
 
 -- The anon key ships in the client bundle, so anything anon can reach is

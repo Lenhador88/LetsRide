@@ -168,3 +168,26 @@ insert into postcards (id, author_id, club_id, image_path, caption) values
 insert into postcard_likes (postcard_id, user_id) values
   ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000001b'),
   ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c');
+
+-- ---------------------------------------------------------------------------
+-- 010: postcard image storage
+-- ---------------------------------------------------------------------------
+-- One storage.objects row per postcards fixture above, at the exact same
+-- image_path, so "can I read this object" and "can I read the postcard it
+-- belongs to" are assertions about the same visibility predicate rather than
+-- two independently-seeded stories that happen to agree.
+--
+-- The `media` bucket itself is not created here — migration 010 already did
+-- that, and re-inserting it would collide with its primary key.
+
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'postcards/000a/dawn.jpg',   '00000000-0000-0000-0000-00000000000a',
+   '{"mimetype":"image/jpeg","size":1024}'),
+  ('media', 'postcards/000a/secret.jpg', '00000000-0000-0000-0000-00000000000a',
+   '{"mimetype":"image/jpeg","size":1024}'),
+  ('media', 'postcards/001b/coast.jpg',  '00000000-0000-0000-0000-00000000001b',
+   '{"mimetype":"image/jpeg","size":1024}'),
+  ('media', 'postcards/001a/hills.jpg',  '00000000-0000-0000-0000-00000000001a',
+   '{"mimetype":"image/jpeg","size":1024}'),
+  ('media', 'postcards/000c/left.jpg',   '00000000-0000-0000-0000-00000000000c',
+   '{"mimetype":"image/jpeg","size":1024}');
