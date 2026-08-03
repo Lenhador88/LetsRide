@@ -36,7 +36,7 @@ describe('proxy — signed out', () => {
   })
 
   it('sends every other path to login', async () => {
-    for (const p of ['/dashboard', '/rides', '/onboarding/username']) {
+    for (const p of ['/postcards', '/rides', '/onboarding/username']) {
       expect((await go(p)).location, p).toContain('/auth/login')
     }
   })
@@ -53,10 +53,10 @@ describe('proxy — onboarding gate', () => {
 
   it('sends an un-onboarded rider to the step they left off at', async () => {
     profileResult = { data: { username: null, location: null, onboarding_completed_at: null }, error: null }
-    expect((await go('/dashboard')).location).toContain('/onboarding/username')
+    expect((await go('/postcards')).location).toContain('/onboarding/username')
 
     profileResult = { data: { username: 'ripper', location: null, onboarding_completed_at: null }, error: null }
-    expect((await go('/dashboard')).location).toContain('/onboarding/location')
+    expect((await go('/postcards')).location).toContain('/onboarding/location')
   })
 
   it('lets an un-onboarded rider stay inside the wizard', async () => {
@@ -83,8 +83,8 @@ describe('proxy — onboarding gate', () => {
       data: { username: 'ripper', location: 'Porto', onboarding_completed_at: '2026-01-01T00:00:00Z' },
       error: null,
     }
-    expect((await go('/onboarding/username')).location).toContain('/dashboard')
-    expect((await go('/auth/login')).location).toContain('/dashboard')
+    expect((await go('/onboarding/username')).location).toContain('/postcards')
+    expect((await go('/auth/login')).location).toContain('/postcards')
   })
 
   it('does not bounce a signed-in rider off the recovery flow', async () => {
@@ -119,7 +119,7 @@ describe('proxy — profile read fails (the 003-not-applied case)', () => {
   })
 
   it('sends other paths to login with a reason, rather than into the wizard', async () => {
-    const res = await go('/dashboard')
+    const res = await go('/postcards')
     expect(res.location).toContain('/auth/login')
     expect(res.location).toContain('profile_unavailable')
   })

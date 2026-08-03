@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createPostcardSchema } from '@/lib/validation/postcards'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
@@ -11,15 +12,14 @@ export type PostcardActionState = { error: string | null }
 
 export const emptyPostcardActionState: PostcardActionState = { error: null }
 
-// The postcard's own detail route doesn't exist yet — no UI has landed for
-// Postcards — but `/postcards/[id]` follows the `/rides/[id]` / `/clubs/[id]`
-// naming already in the repo, and revalidating a path with no matching route
-// is a harmless no-op. The home feed's URL isn't invented here for the same
-// reason: Postcards-as-home is signed off (docs/HANDOFF.md) but not built, and
-// guessing it would be the exact "lower-fidelity artifact" the CLAUDE.md
-// working principles warn against. The `feature` agent should add that path
-// (and the club Posts-tab route once it exists) when those routes land.
+// `/postcards` is the home feed, which now exists — a like has to move the
+// count there, which is the whole reason this path was left to be filled in.
+// `/postcards/[id]` has no route yet; revalidating a path with no matching
+// route is a harmless no-op, and the name follows the `/rides/[id]` /
+// `/clubs/[id]` convention already in the repo. The club Posts tab gets added
+// here when that route lands.
 async function revalidatePostcardRoutes(supabase: SupabaseServerClient, postcardId: string) {
+  revalidatePath('/postcards')
   revalidatePath(`/postcards/${postcardId}`)
 
   const { data: postcard } = await supabase
@@ -88,12 +88,12 @@ export async function unlikePostcard(postcardId: string): Promise<PostcardAction
  * hidden input, set once uploadPostcardImage resolves, alongside a caption
  * textarea and a club selector.
  *
- * No redirect on success, unlike onboarding's actions: there is no feed
- * route to send a rider back to yet (Postcards-as-home is signed off but not
- * built — see docs/HANDOFF.md and the comment on revalidatePostcardRoutes
- * above). Inventing one here would be exactly the guessed artifact
- * CLAUDE.md's working principles warn against; the screen that calls this
- * decides where to go once that route exists.
+ * Redirects to the feed on success, the same shape as onboarding's actions —
+ * `/postcards` now exists, which is the condition this was waiting on. That
+ * also makes success distinguishable from the initial state: both are
+ * `{ error: null }`, so a caller watching the returned state alone could not
+ * tell "not submitted yet" from "posted", and would need a sentinel field to
+ * fake what a redirect expresses directly.
  */
 export async function createPostcard(
   _prev: PostcardActionState,
@@ -136,7 +136,11 @@ export async function createPostcard(
 
   // clubId is already in hand from the parsed form, so this skips the lookup
   // revalidatePostcardRoutes would otherwise do to find it.
+  revalidatePath('/postcards')
   revalidatePath(`/postcards/${postcard.id}`)
   if (clubId) revalidatePath(`/clubs/${clubId}`)
-  return { error: null }
+
+  // Outside the try/catch shape above on purpose: redirect() signals by
+  // throwing, so it must not sit anywhere an error branch could swallow it.
+  redirect('/postcards')
 }

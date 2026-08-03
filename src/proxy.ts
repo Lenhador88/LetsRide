@@ -119,7 +119,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isOnboarding || isAuthEntry) {
-    return redirect('/dashboard')
+    // Postcards is the home screen; /dashboard was deleted with the feed that
+    // replaced it. The order was load-bearing — moving this redirect before
+    // /postcards existed would have landed every completed login on a 404.
+    return redirect('/postcards')
   }
 
   return supabaseResponse

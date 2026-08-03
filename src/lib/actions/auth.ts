@@ -31,7 +31,7 @@ export async function signIn(_prev: ActionState, formData: FormData): Promise<Ac
 
   // proxy.ts decides the real destination — an un-onboarded rider is sent to
   // their resume step rather than the dashboard.
-  redirect('/dashboard')
+  redirect('/postcards')
 }
 
 export async function signUp(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -140,7 +140,7 @@ export async function updatePassword(
 
   // Q14: the recovery session is already active, so there is nothing to log
   // into — go straight in.
-  redirect('/dashboard')
+  redirect('/postcards')
 }
 
 export async function signOut(): Promise<void> {
