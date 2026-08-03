@@ -1,8 +1,13 @@
 # Figma fidelity — what is inferred and must be verified
 
-The Postcards/Home screens were built **without access to the Figma file**. This file is the
-register of what that cost. Every entry is a value that was inferred rather than read, and
-each one is a thing a later pass must check against the design.
+The Postcards/Home screens are being built **without access to the Figma file**. This file is
+the register of what that costs. Every entry is a value that would have to be inferred rather
+than read, and each one is a thing a later pass must check against the design.
+
+**As of 2026-08-03 no screen has been built at all** — `git diff main...HEAD --name-only`
+returns nothing under `src/app/` or `src/components/`. The backend (migrations `009`/`010`,
+`lib/data`, `lib/actions`, `lib/media`) is design-independent and was built instead. So every
+box below is still unchecked because the work has not started, not because it was done badly.
 
 Per `CLAUDE.md` §Working Principles, a workaround that produces a lower-fidelity artifact is
 **debt**, and the rule is to mark exactly what was inferred so it never passes silently as a

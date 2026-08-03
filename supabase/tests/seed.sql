@@ -153,15 +153,15 @@ insert into club_members (club_id, user_id, role) values
 --       policy in isolation from every other branch.
 insert into postcards (id, author_id, club_id, image_path, caption) values
   ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000a',
-   null, 'postcards/000a/dawn.jpg', 'Sunrise on the N222'),
+   null, 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg', 'Sunrise on the N222'),
   ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-00000000000a',
-   '00000000-0000-0000-0000-0000000000c1', 'postcards/000a/secret.jpg', 'Club only'),
+   '00000000-0000-0000-0000-0000000000c1', 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dec2.jpg', 'Club only'),
   ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-00000000001b',
-   null, 'postcards/001b/coast.jpg', 'From the blocked rider'),
+   null, 'postcards/00000000-0000-0000-0000-00000000001b/bbbbbbbb-0000-4000-8000-00000000c0a5.jpg', 'From the blocked rider'),
   ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-00000000001a',
-   null, 'postcards/001a/hills.jpg', 'From the blocker'),
+   null, 'postcards/00000000-0000-0000-0000-00000000001a/cccccccc-0000-4000-8000-000000001115.jpg', 'From the blocker'),
   ('00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-00000000000c',
-   '00000000-0000-0000-0000-0000000000c1', 'postcards/000c/left.jpg', 'Posted before I left');
+   '00000000-0000-0000-0000-0000000000c1', 'postcards/00000000-0000-0000-0000-00000000000c/dddddddd-0000-4000-8000-000000001ef7.jpg', 'Posted before I left');
 
 -- Two likes on the same globally visible postcard: one from the blocked rider,
 -- one from an unrelated rider. The blocker must see a count of 1, everyone else 2.
@@ -181,13 +181,13 @@ insert into postcard_likes (postcard_id, user_id) values
 -- that, and re-inserting it would collide with its primary key.
 
 insert into storage.objects (bucket_id, name, owner, metadata) values
-  ('media', 'postcards/000a/dawn.jpg',   '00000000-0000-0000-0000-00000000000a',
+  ('media', 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg',   '00000000-0000-0000-0000-00000000000a',
    '{"mimetype":"image/jpeg","size":1024}'),
-  ('media', 'postcards/000a/secret.jpg', '00000000-0000-0000-0000-00000000000a',
+  ('media', 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dec2.jpg', '00000000-0000-0000-0000-00000000000a',
    '{"mimetype":"image/jpeg","size":1024}'),
-  ('media', 'postcards/001b/coast.jpg',  '00000000-0000-0000-0000-00000000001b',
+  ('media', 'postcards/00000000-0000-0000-0000-00000000001b/bbbbbbbb-0000-4000-8000-00000000c0a5.jpg',  '00000000-0000-0000-0000-00000000001b',
    '{"mimetype":"image/jpeg","size":1024}'),
-  ('media', 'postcards/001a/hills.jpg',  '00000000-0000-0000-0000-00000000001a',
+  ('media', 'postcards/00000000-0000-0000-0000-00000000001a/cccccccc-0000-4000-8000-000000001115.jpg',  '00000000-0000-0000-0000-00000000001a',
    '{"mimetype":"image/jpeg","size":1024}'),
-  ('media', 'postcards/000c/left.jpg',   '00000000-0000-0000-0000-00000000000c',
+  ('media', 'postcards/00000000-0000-0000-0000-00000000000c/dddddddd-0000-4000-8000-000000001ef7.jpg',   '00000000-0000-0000-0000-00000000000c',
    '{"mimetype":"image/jpeg","size":1024}');

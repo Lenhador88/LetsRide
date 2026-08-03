@@ -134,6 +134,9 @@ export async function createPostcard(
     return { error: 'Could not post that. Try again.' }
   }
 
-  await revalidatePostcardRoutes(supabase, postcard.id)
+  // clubId is already in hand from the parsed form, so this skips the lookup
+  // revalidatePostcardRoutes would otherwise do to find it.
+  revalidatePath(`/postcards/${postcard.id}`)
+  if (clubId) revalidatePath(`/clubs/${clubId}`)
   return { error: null }
 }

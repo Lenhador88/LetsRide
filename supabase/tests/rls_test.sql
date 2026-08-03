@@ -518,12 +518,12 @@ select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 select assert_denied($$
   insert into postcards (author_id, image_path)
-  values ('00000000-0000-0000-0000-00000000000a', 'postcards/000a/forged.jpg')$$,
+  values ('00000000-0000-0000-0000-00000000000a', 'postcards/00000000-0000-0000-0000-00000000000a/forged.jpg')$$,
   'a rider cannot create a postcard authored by someone else');
 select assert_denied($$
   insert into postcards (author_id, club_id, image_path)
   values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000c1',
-          'postcards/000c/injected.jpg')$$,
+          'postcards/00000000-0000-0000-0000-00000000000c/injected.jpg')$$,
   'a rider cannot post into a club they are not a member of');
 -- The same rule against a PUBLIC club. c1 above is private, so that denial could
 -- equally have come from not being able to see the club at all; 000c can see c5
@@ -531,18 +531,18 @@ select assert_denied($$
 select assert_denied($$
   insert into postcards (author_id, club_id, image_path)
   values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000c5',
-          'postcards/000c/injected-public.jpg')$$,
+          'postcards/00000000-0000-0000-0000-00000000000c/injected-public.jpg')$$,
   'a rider cannot post into a PUBLIC club they are not a member of');
 select assert_allowed($$
   insert into postcards (author_id, image_path)
-  values ('00000000-0000-0000-0000-00000000000c', 'postcards/000c/ok.jpg')$$,
+  values ('00000000-0000-0000-0000-00000000000c', 'postcards/00000000-0000-0000-0000-00000000000c/ok.jpg')$$,
   'any signed-in rider can post to the app-wide feed');
 
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
 select assert_allowed($$
   insert into postcards (author_id, club_id, image_path)
   values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000c1',
-          'postcards/000b/ok.jpg')$$,
+          'postcards/00000000-0000-0000-0000-00000000000b/ok.jpg')$$,
   'a club member can post into their own club');
 
 -- UPDATE and DELETE are filtered by the USING clause rather than refused, so a
@@ -593,25 +593,47 @@ select assert_allowed($$delete from postcards where id = '00000000-0000-0000-000
 -- RLS enforces authorization, never validity. Storing a URL bakes in the
 -- project ref and the public/signed distinction, so the shape is a constraint.
 
+-- Two layers, and since 010 they fire in this order: the INSERT policy's
+-- `image_path like 'postcards/<uid>/%'` refuses a malformed path with 42501
+-- before the CHECK constraint is ever reached. Both are asserted, because the
+-- constraint is what still holds if the policy is ever loosened, and a suite
+-- that only tested the outer layer would not notice the inner one rotting.
+select assert_denied($$
+  insert into postcards (author_id, image_path)
+  values ('00000000-0000-0000-0000-00000000000c', 'https://example.com/a.jpg')$$,
+  'an https URL is rejected as an image_path');
+select assert_denied($$
+  insert into postcards (author_id, image_path)
+  values ('00000000-0000-0000-0000-00000000000c', 's3://bucket/a.jpg')$$,
+  'any other URI scheme is rejected too');
+select assert_denied($$
+  insert into postcards (author_id, image_path)
+  values ('00000000-0000-0000-0000-00000000000c', '/postcards/00000000-0000-0000-0000-00000000000c/a.jpg')$$,
+  'a leading slash is rejected');
+select assert_denied($$
+  insert into postcards (author_id, image_path)
+  values ('00000000-0000-0000-0000-00000000000c', '')$$,
+  'an empty image_path is rejected');
+
+-- The inner layer, with RLS out of the way. The table owner bypasses policies,
+-- so anything rejected here is the CHECK constraint from 009 doing it.
+reset role;
 select assert_rejected($$
   insert into postcards (author_id, image_path)
   values ('00000000-0000-0000-0000-00000000000c', 'https://example.com/a.jpg')$$,
-  '23514', 'an https URL is rejected as an image_path');
+  '23514', 'beneath RLS, the constraint still rejects an https URL');
 select assert_rejected($$
   insert into postcards (author_id, image_path)
-  values ('00000000-0000-0000-0000-00000000000c', 's3://bucket/a.jpg')$$,
-  '23514', 'any other URI scheme is rejected too');
-select assert_rejected($$
-  insert into postcards (author_id, image_path)
-  values ('00000000-0000-0000-0000-00000000000c', '/postcards/000c/a.jpg')$$,
-  '23514', 'a leading slash is rejected');
+  values ('00000000-0000-0000-0000-00000000000c', '/leading/slash.jpg')$$,
+  '23514', 'beneath RLS, the constraint still rejects a leading slash');
 select assert_rejected($$
   insert into postcards (author_id, image_path)
   values ('00000000-0000-0000-0000-00000000000c', '')$$,
-  '23514', 'an empty image_path is rejected');
+  '23514', 'beneath RLS, the constraint still rejects an empty path');
+set role authenticated;
 select assert_rejected($$
   insert into postcards (author_id, image_path, caption)
-  values ('00000000-0000-0000-0000-00000000000c', 'postcards/000c/a.jpg', repeat('x', 2001))$$,
+  values ('00000000-0000-0000-0000-00000000000c', 'postcards/00000000-0000-0000-0000-00000000000c/a.jpg', repeat('x', 2001))$$,
   '23514', 'a caption over 2000 characters is rejected');
 
 \echo ''
@@ -834,22 +856,22 @@ set role authenticated;
 -- trick postcard_likes uses: nothing here restates the author/block/club
 -- predicate, so it cannot drift from the one 009 owns.
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
-select assert_eq((select count(*)::int from storage.objects where name = 'postcards/000a/dawn.jpg'),
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'),
   1, 'an outsider can read the object behind a globally visible postcard');
-select assert_eq((select count(*)::int from storage.objects where name = 'postcards/000a/secret.jpg'),
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dec2.jpg'),
   0, 'an outsider cannot read the object behind a club postcard they cannot see');
 
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
-select assert_eq((select count(*)::int from storage.objects where name = 'postcards/000a/secret.jpg'),
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dec2.jpg'),
   1, 'a club member can read the object behind that club''s postcard (guards against over-tightening)');
 
 -- The block predicate, inherited the same way — never restated as a second
 -- is_blocked() call inside this policy.
 select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
-select assert_eq((select count(*)::int from storage.objects where name = 'postcards/001b/coast.jpg'),
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000001b/bbbbbbbb-0000-4000-8000-00000000c0a5.jpg'),
   0, 'a blocker cannot read the image behind a postcard from someone they blocked');
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
-select assert_eq((select count(*)::int from storage.objects where name = 'postcards/001b/coast.jpg'),
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000001b/bbbbbbbb-0000-4000-8000-00000000c0a5.jpg'),
   1, 'an unrelated rider can still read that same object (guards against over-tightening)');
 
 -- An object with no referencing postcards row at all is unreadable by anyone,
@@ -905,12 +927,12 @@ select assert_denied($$
 -- tests already call out (line ~548): a wrong-owner delete silently touches
 -- zero rows instead of raising, so the row's survival is the evidence, not
 -- an exception.
-delete from storage.objects where name = 'postcards/000a/dawn.jpg';
-select assert_eq((select count(*)::int from storage.objects where name = 'postcards/000a/dawn.jpg'),
+delete from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg';
+select assert_eq((select count(*)::int from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'),
   1, 'a rider cannot delete another rider''s postcard image');
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
 select assert_allowed($$
-  delete from storage.objects where name = 'postcards/000a/dawn.jpg'$$,
+  delete from storage.objects where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'$$,
   'a rider can delete their own postcard image');
 
 -- No anonymous access, same as everywhere else. anon holds a broad table
@@ -927,6 +949,79 @@ select assert_denied($$
   'anon cannot upload to storage at all');
 reset role;
 set role authenticated;
+
+\echo ''
+\echo '# A rider cannot read an image by claiming its path (migration 010)'
+
+-- The hole 010 was written with and fixed before it was ever applied. The
+-- storage SELECT policy delegates to postcards via EXISTS, which inherits RLS
+-- from *whatever row matches the path* — not from the object's owner. Nothing
+-- in 009 bound image_path to the author's own folder, so a rider could insert
+-- their own app-wide postcard carrying someone else's path and make that
+-- object readable to themselves and to every signed-in rider, blocked or not.
+-- image_path reaches the browser (lib/data selects *), so the path is known to
+-- anyone who ever saw the postcard legitimately.
+--
+-- Two independent brakes now, and both are asserted: the write is refused, and
+-- even a row that somehow exists does not expose the object.
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+-- 000c is not a member of private club c1, so neither the postcard nor its
+-- object is reachable. This is the precondition the exploit tried to defeat.
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dec2.jpg'),
+  0, 'a private club image is invisible to an outsider to begin with');
+
+select assert_denied($$
+  insert into postcards (author_id, club_id, image_path)
+  values ('00000000-0000-0000-0000-00000000000c', null,
+          'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dec2.jpg')$$,
+  'a rider cannot claim another rider''s image path on their own postcard');
+
+-- The unique index refuses a second postcard on a path another postcard already
+-- holds, which is the first brake. Assert that directly rather than leaving it
+-- implied.
+reset role;
+select assert_rejected($$
+  insert into postcards (id, author_id, club_id, image_path)
+  values ('00000000-0000-0000-0000-0000000000e8', '00000000-0000-0000-0000-00000000000c', null,
+          'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dec2.jpg')$$,
+  '23505', 'two postcards cannot share one image path, even inserted as owner');
+
+-- Belt, and the one that would have caught the original hole: the leak was in
+-- the READ, so prove the storage SELECT policy refuses on its own — with the
+-- unique index and the INSERT policy both stepped around. Uses an object in
+-- 000a's folder that no postcard points at, so nothing else can do the work.
+insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'postcards/00000000-0000-0000-0000-00000000000a/eeeeeeee-0000-4000-8000-00000000beef.jpg',
+          '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1024}');
+insert into postcards (id, author_id, club_id, image_path)
+  values ('00000000-0000-0000-0000-0000000000e9', '00000000-0000-0000-0000-00000000000c', null,
+          'postcards/00000000-0000-0000-0000-00000000000a/eeeeeeee-0000-4000-8000-00000000beef.jpg');
+set role authenticated;
+
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-00000000000a/eeeeeeee-0000-4000-8000-00000000beef.jpg'),
+  0, 'a forged postcard row does not expose an image from another rider''s folder');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-00000000000a/eeeeeeee-0000-4000-8000-00000000beef.jpg'),
+  0, 'and it stays invisible to every other signed-in rider too');
+
+-- Guards against over-tightening: the ordinary path must still resolve.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dec2.jpg'),
+  1, 'the author still reads their own club image');
+
+reset role;
+delete from postcards where id = '00000000-0000-0000-0000-0000000000e9';
+delete from storage.objects
+  where name = 'postcards/00000000-0000-0000-0000-00000000000a/eeeeeeee-0000-4000-8000-00000000beef.jpg';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 \echo ''
 \echo '# No anonymous access anywhere (migrations 002, 007)'

@@ -54,9 +54,19 @@
 -- targets well under 1 MiB per image; this bound exists for a caller that
 -- skips the client entirely — a stolen token replayed with curl — not for the
 -- ordinary path, which never gets close to it.
+-- `do update`, not `do nothing`. A `media` bucket may already exist on the
+-- hosted project — the dashboard creates one in two clicks and offers "public"
+-- as a checkbox. `do nothing` would silently leave such a bucket PUBLIC, which
+-- serves every rider's photos over HTTP with no session and no RLS: decision #1
+-- gone, and the scratch database can never catch it because it has no
+-- pre-existing bucket for the conflict to fire on. The write is authoritative
+-- so the migration asserts the bucket's state rather than assuming it.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('media', 'media', false, 5242880, array['image/jpeg'])
-on conflict (id) do nothing;
+on conflict (id) do update set
+  public             = false,
+  file_size_limit    = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 -- ---------------------------------------------------------------------------
 -- 2. storage.objects policies, scoped to the `postcards/` folder
@@ -87,11 +97,22 @@ create policy "Riders upload postcard images into their own folder"
     and (storage.foldername(name))[1] = 'postcards'
     and (storage.foldername(name))[2] = auth.uid()::text
     and name ~ '^postcards/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$'
-    -- The second cap promised above. `metadata` is populated by storage-api
-    -- from the multipart request BEFORE this row is written, so — unlike a
-    -- client-supplied header — it is trustworthy here in exactly the way
-    -- §1's bucket config is, and independently of it.
-    and (metadata ->> 'mimetype') = 'image/jpeg'
+    -- The second cap promised above, written NULL-TOLERANTLY on purpose.
+    --
+    -- storage-api performs an RLS pre-check by attempting this row inside a
+    -- rolled-back transaction *before* the file body has been received, at
+    -- which point `metadata` is null. Written as a bare equality,
+    -- `metadata ->> 'mimetype' = 'image/jpeg'` evaluates to NULL there, the
+    -- WITH CHECK fails, and every upload is refused with 42501 — a feature
+    -- that cannot be used at all. That storage-api behaviour is asserted by
+    -- its source, not by anything this repo runs, so the policy is written to
+    -- be correct whether or not it holds.
+    --
+    -- Null-tolerant is not a weakening: the bucket's own file_size_limit and
+    -- allowed_mime_types (§1) are enforced by storage-api regardless, so this
+    -- clause is the second of two independent caps and only has to reject the
+    -- case where metadata IS present and wrong.
+    and (metadata ->> 'mimetype' is null or (metadata ->> 'mimetype') = 'image/jpeg')
     and coalesce((metadata ->> 'size')::bigint, 0) <= 5242880
   );
 
@@ -113,7 +134,18 @@ create policy "Riders read postcard images their audience predicate allows"
     bucket_id = 'media'
     and (storage.foldername(name))[1] = 'postcards'
     and exists (
-      select 1 from public.postcards p where p.image_path = storage.objects.name
+      select 1 from public.postcards p
+      where p.image_path = storage.objects.name
+        -- The claiming row must be authored by the rider who OWNS the folder.
+        -- Without this the EXISTS inherits RLS from *whatever* postcards row
+        -- matches the path, not from the object's owner — and nothing stops a
+        -- rider writing someone else's path into their own postcard. Verified
+        -- exploitable before this line existed: an outsider inserted an
+        -- app-wide postcard carrying a private club's image path, and the
+        -- object became readable to them and to every signed-in rider,
+        -- blocked or not. image_path ships to the browser (lib/data selects
+        -- *), so knowing the path is not a barrier.
+        and (storage.foldername(storage.objects.name))[2] = p.author_id::text
     )
   );
 
@@ -153,6 +185,57 @@ create policy "Riders delete their own postcard images"
 -- action calls it yet, so it is not this migration's to close. Whoever adds
 -- that action must delete the Storage object first, or in the same request,
 -- because there is still no cascade to do it for them.
+
+-- ---------------------------------------------------------------------------
+-- 4. Close the path-claiming hole at the source, not only at the read
+-- ---------------------------------------------------------------------------
+-- §2's SELECT policy now refuses to serve an object whose folder does not match
+-- the claiming postcard's author, which stops the leak. This section stops the
+-- bogus row being written at all — two independent brakes, because the read
+-- policy is one `or` away from being loosened by someone who does not know why
+-- it is shaped like that.
+--
+-- These policies belong to 009, which is APPLIED and must not be edited. They
+-- are dropped and recreated here instead. Everything else about them is
+-- unchanged from 009; the added clause is the image_path binding.
+--
+-- Why this lives in 010 and not a fresh 011: the rule "your image_path must be
+-- inside your own Storage folder" is meaningless until the bucket and its
+-- folder convention exist, which is what this migration introduces. Splitting
+-- it would leave 010 shipping a hole it already knows how to close.
+
+-- One postcard per object. A second row pointing at the same path is only ever
+-- an attempt to claim someone else's image — a real upload mints a fresh uuid
+-- per attempt, so nothing legitimate collides. This also gives the storage
+-- SELECT policy's EXISTS at most one row to find.
+create unique index postcards_image_path_key on public.postcards (image_path);
+
+drop policy if exists "Riders can post as themselves, into their own clubs" on public.postcards;
+
+create policy "Riders can post as themselves, into their own clubs"
+  on public.postcards for insert to authenticated
+  with check (
+    author_id = auth.uid()
+    and (
+      club_id is null
+      or private.is_club_member(club_id)
+    )
+    and image_path like ('postcards/' || auth.uid()::text || '/%')
+  );
+
+drop policy if exists "Authors can edit their own postcards" on public.postcards;
+
+create policy "Authors can edit their own postcards"
+  on public.postcards for update to authenticated
+  using (author_id = auth.uid())
+  with check (
+    author_id = auth.uid()
+    and (
+      club_id is null
+      or private.is_club_member(club_id)
+    )
+    and image_path like ('postcards/' || auth.uid()::text || '/%')
+  );
 
 -- ---------------------------------------------------------------------------
 -- Verification (run against the hosted project after apply)

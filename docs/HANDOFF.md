@@ -78,8 +78,37 @@ Neither deletion has happened yet, and **the order matters**: `proxy.ts` redirec
 signed-in rider to `/dashboard`, so deleting it before the feed route exists leaves login
 landing on a 404. Delete it *with* the feed, not before.
 
-The approved first UI slice is **view + like** — comments and shares are deliberately out of
-scope, and `009` creates no table for them.
+The approved first UI slice is **view + like + create**. Comments and shares stay out of
+scope, and `009` deliberately creates no table for them. Create was added after it became
+clear that view + like alone renders an empty feed forever — nothing can put a postcard in it.
+
+**Migration `010_postcard_storage.sql` is written, verified locally, and NOT applied.** It is
+the one piece of drift right now. It creates the private `media` bucket and the
+`storage.objects` policies, and it also drops and recreates two of `009`'s postcards policies
+to bind `image_path` to the author's own Storage folder.
+
+That binding is not cosmetic. Without it there is a **live data-exposure hole**: the storage
+read policy delegates to `postcards` via `EXISTS`, which inherits RLS from *whatever row
+matches the path* rather than from the object's owner — so a rider could write another
+rider's image path into their own app-wide postcard and make a private club's photo readable
+by every signed-in rider, blocked or not. `image_path` reaches the browser, so the paths are
+known. It was found by review, reproduced against the scratch database, fixed before `010`
+was ever applied, and is now covered by assertions in
+`# A rider cannot read an image by claiming its path (migration 010)`.
+
+Before applying `010`, two things need checking that the suite structurally cannot:
+
+1. **Does a `media` bucket already exist on the hosted project?** The insert is now
+   `on conflict do update set public = false`, so it corrects a pre-existing public bucket
+   rather than silently leaving it public — but confirm what it changed afterwards.
+2. **Does a real upload actually succeed?** The INSERT policy reads `metadata`, which
+   storage-api populates. It is written null-tolerantly so a null-metadata pre-check cannot
+   refuse every upload, but that path has never been exercised against real storage-api.
+   One real upload settles it; the RLS suite cannot, because `harness.sql` stubs
+   `storage.objects`.
+
+The UI itself is unbuilt — see `docs/FIGMA-FIDELITY-TODO.md` for why, and for the register of
+what a later pass must verify against the design.
 
 ---
 
@@ -131,7 +160,7 @@ To change any of those four tables, add a new migration. `008` is the current de
 | | |
 |---|---|
 | Migrations | `001`–`009` all applied to the hosted project. See the ordering note below. |
-| Tests | RLS suite 155 assertions (`npm test`) + Vitest 84 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite 186 assertions (`npm test`) + Vitest 117 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -190,6 +219,24 @@ Two things to carry forward. **`/v1/images` is not a reliable fallback** — it 
 file-reading route still alive at the start and it died too, so "icon export works" is not
 a standing fact. And **`/v1/me` returning 200 means nothing**; it stayed green throughout
 while every route that reads design data was refused.
+
+**The rate limit is not the blocker that matters.** Measured 2026-08-03: six endpoint
+families (`/versions`, `/comments`, `/files/:key/images`, `/teams/:t/projects`, `/styles`,
+`/components`) all returned 200 while the node-reading routes stayed 429. `/components` and `/styles`
+are **empty** — the library is unpublished — and `/files/:key/images` returns 418 real image
+fills whose URLs all point at **`s3-alpha-sig.figma.com`, which this environment's network
+policy refuses at CONNECT with 403**, before the request leaves the container.
+
+That is a *network policy* denial, not a Figma limit: waiting will not clear it, and neither
+will upgrading the Figma plan. Since `/v1/images` hands back render URLs on that same host,
+**icon SVG export is expected to fail even once the 429 lifts.** The fix is to allow
+`s3-alpha-sig.figma.com` and `figma-alpha-api.s3.us-west-2.amazonaws.com` in the environment's
+network policy. See `docs/FIGMA-FIDELITY-TODO.md`, which is the register of everything the
+outage forces to be inferred.
+
+**Do not buy a Figma plan to solve this.** The REST API on a personal token is free and
+uncapped; only the MCP server is plan-gated (Starter = 6 tool calls/month, exhausted), and
+the MCP path is not the one this project uses.
 
 The MCP server was probed once as a last resort and returned the Starter-plan quota error,
 confirming the note below rather than contradicting it. Both routes to design data can be
@@ -256,9 +303,12 @@ not cosmetic:
   Not yet carried out — see *Do this first* for why the order matters.
 - **The design's home is Postcards**, a photo feed. The app's home is `/dashboard`. The
   central screen of the product is not built.
-- **Inbox, Garage and trust & safety have no routes and no tables.** The schema is
-  `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `friendships` — nothing behind
-  postcards, messages, garage or blocks. Most of this is `data` → `feature`, not CSS.
+- **Inbox and Garage have no routes and no tables.** The schema is `profiles`, `rides`,
+  `ride_members`, `clubs`, `club_members`, `friendships`, plus `postcards`, `postcard_likes`
+  and `blocks` from `009` — so postcards and blocking now have tables, while messages and
+  garage still have nothing. Most of what is left is `data` → `feature`, not CSS.
+  (This bullet claimed "nothing behind postcards … or blocks" for a while after `009` landed
+  and contradicted §Do this first twenty lines above it. Re-read both before trusting either.)
 
 **Suggested order.** The ratings are impact on shipping a product that matches the design.
 
