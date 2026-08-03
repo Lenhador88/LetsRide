@@ -61,8 +61,8 @@ placed into the file, not frames — photos, and at least one personal WhatsApp 
 a real name and private conversation in it. There is no layout there, and it is not ours to
 mine.
 
-Verify all of the above with the probe sweep in `docs/HANDOFF.md` before assuming any of it
-is still true.
+Verify all of the above with `npm run figma:check -- --probe` before assuming any of it is
+still true — it sweeps every endpoint in one command.
 
 ## What is NOT inferred
 

@@ -288,14 +288,12 @@ than poll. Full rationale in `design/README.md`.
 The tables below and `design/TOKENS.md` describe the same thing. **When they disagree,
 `design/TOKENS.md` is right** — it is generated, these are transcribed.
 
-**These tokens are Figma *paint and text styles*, not variables.** That distinction is load
-bearing: the Variables REST API is Enterprise-only and returns 403 on this plan, but style
-names ship in the `styles` map on any `/v1/files/:key/nodes` response, so the whole token set
-is readable. 87% of fills on the Components page reference a named style. Never convert these
-to Figma variables — it would move the entire token layer behind the 403.
+**These tokens are Figma *paint and text styles*, not variables** — which is the only reason
+they are readable at all, and why converting them would be catastrophic. `design/README.md`
+explains it; *What Not To Do* carries the rule.
 
-Everything below was extracted from the file and verified on 2026-08-01. `n` is how many
-times the style is used on the Components page — a good proxy for how central it is.
+Extracted from the file and verified 2026-08-01. `n` is how often the style is used on the
+Components page — a good proxy for how central it is.
 
 **Colors:**
 
