@@ -124,3 +124,12 @@ render endpoint, which returns only rendered vectors from node ids we chose.
   network policy, not Figma. That host was allowlisted on 2026-08-03.
 - The Figma MCP server is a **separate monthly quota** — 6 tool calls/month on Starter,
   exhausted. The REST path is the one this project uses.
+- **Do not buy a Figma plan to fix a 429.** The REST API on a personal token is free and
+  uncapped; only the MCP server is plan-gated, and that is not the path this pipeline uses.
+- **The Variables API (`/v1/files/:key/variables/local`) is a permanent 403.** It needs the
+  `file_variables:read` scope, which is not grantable outside an Enterprise org and errors
+  during OAuth on lower tiers. This is a plan gate, not a credential problem — do not spend
+  time regenerating tokens with different scopes ticked.
+- `FIGMA_ACCESS_TOKEN` lives **only in the session environment**, never in the repo and not in
+  `.env.local.example`. This container is ephemeral, so if the token is not in the environment
+  config it dies with the session — and only the two network commands need it.
