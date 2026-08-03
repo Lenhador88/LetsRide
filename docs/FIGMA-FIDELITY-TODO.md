@@ -14,6 +14,24 @@ Per `CLAUDE.md` §Working Principles, a workaround that produces a lower-fidelit
 known value. That is what this file is for. Delete an entry only when it has been checked
 against Figma — not when it merely looks right.
 
+## There is now a way out — `design/`
+
+**Added 2026-08-03.** `scripts/figma/` builds a committed, offline snapshot of the design
+file. One successful `npm run figma:pull` populates `design/` and answers most of the boxes
+below without another API call, permanently. The pipeline is built and tested; it is waiting
+on a rate-limit window, not on more work.
+
+So before inferring anything on this list:
+
+```bash
+npm run figma:check          # is a snapshot even needed?
+npm run figma:pull           # if this succeeds, most of this file is obsolete
+npm run figma -- tree "Home / Feed"
+```
+
+If it 429s, the rules below still apply — but check first, because the cost of guessing is
+now one command instead of an outage.
+
 ## Why the design was unreadable — measured 2026-08-03
 
 Two independent blocks, and they need different fixes:

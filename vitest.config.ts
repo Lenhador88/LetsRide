@@ -15,7 +15,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // scripts/ is plain .mjs — the Figma snapshot pipeline runs under node, not
+    // Next, so its tests sit beside it rather than under src/.
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     // Explicit imports from 'vitest' everywhere instead — keeps tsconfig.json
     // untouched rather than adding the "vitest/globals" ambient types.
     globals: false,

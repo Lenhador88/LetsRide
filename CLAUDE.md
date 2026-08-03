@@ -125,6 +125,15 @@ docs/
 ├── HANDOFF.md              # Current position — read at session start
 ├── FIGMA-FIDELITY-TODO.md  # Values inferred, not read — verify before trusting the UI
 └── specs/                  # Implementation specs (login-onboarding.md)
+design/                     # Committed Figma snapshot — READ THIS, don't call the API
+├── README.md               # Why it exists, how to refresh it, how to query it
+├── manifest.json           # Provenance + counts; `figma:check` compares against it
+├── index.json              # Name -> file map for every frame and component
+├── tokens.json, TOKENS.md  # Colour + type tokens, geometry census
+├── frames/*.json           # One pruned tree per screen
+├── components/*.json       # One pruned tree per component set
+└── icons/                  # index.json + exported SVGs
+scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
 openspec/                   # Spec-driven change proposals + config.yaml
 .claude/
 ├── agents/                 # The specialist squad (see The Agent Squad)
@@ -269,6 +278,16 @@ The older shape — `supabase.from()` inside a client component followed by `rou
 > Figma: `gDoteM1ow1AZpSEGSNhpc7` — the `v2 / Component / *` library is canonical.
 > Ignore `Component / *` (v1, has `Theme=Dark` variants) and anything named `(OLD)`.
 
+**Read the design from `design/`, not from the Figma API.** The snapshot committed there is
+generated from the same file and answers layout, geometry, copy and token questions offline —
+`npm run figma -- tree "<screen>"`. The API rate limit is per-endpoint, inherited across
+sessions, and has blocked work for hours at a time; the snapshot exists so that stops
+mattering. Refresh it monthly with `npm run figma:pull`, and if a 429 comes back, stop rather
+than poll. Full rationale in `design/README.md`.
+
+The tables below and `design/TOKENS.md` describe the same thing. **When they disagree,
+`design/TOKENS.md` is right** — it is generated, these are transcribed.
+
 **These tokens are Figma *paint and text styles*, not variables.** That distinction is load
 bearing: the Variables REST API is Enterprise-only and returns 403 on this plan, but style
 names ship in the `styles` map on any `/v1/files/:key/nodes` response, so the whole token set
@@ -368,13 +387,35 @@ npm run dev      # start dev server
 npm run lint     # eslint
 npx tsc --noEmit # type check
 npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY)
-npm run test:unit # Vitest — validation schemas, getInitials, safeNext
+npm run test:unit # Vitest — validation schemas, getInitials, safeNext, the Figma extractor
 npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/README.md)
 ```
+
+**Reading the design** — offline, from the committed snapshot in `design/`. None of these
+touch the network, so none of them can be rate limited:
+
+```bash
+npm run figma -- ls [pattern]        # every frame and component
+npm run figma -- tree "Home / Feed"  # structure, sizes and tokens, one line per node
+npm run figma -- text "Home / Feed"  # every string, with its type token
+npm run figma -- tokens Grey         # token tables
+```
+
+Refreshing it needs the network and is a **monthly** job, not a per-session one:
+
+```bash
+npm run figma:check   # one cheap call — is the snapshot even stale?
+npm run figma:pull    # the expensive call; extracts automatically
+npm run figma:icons   # export Element / Icon / * as SVG
+npm run figma:check -- --probe   # sweep every endpoint when something looks blocked
+```
+
+If `figma:pull` returns 429, stop — do not poll. See `design/README.md`.
 
 **Environment variables** (never commit these):
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `FIGMA_ACCESS_TOKEN` — only needed to *refresh* the snapshot, never to read it
 
 Copy `.env.local.example` to `.env.local` for local development.
 
@@ -554,3 +595,8 @@ chain to a scratch database and asserts what each role can reach.
 - Don't add new UI libraries (no shadcn, Radix, MUI) — extend the existing custom primitives.
 - Don't create a `middleware.ts` — this is Next.js 16, use `proxy.ts`.
 - Don't run `playwright install` — Chromium is pre-installed at `/opt/pw-browsers`.
+- Don't call the Figma API to answer a design question — read `design/`. Refreshing the
+  snapshot is a deliberate monthly job, not something a feature task does.
+- Don't poll a Figma 429. Windows last hours and the budget is inherited across sessions.
+- Don't convert the Figma styles to variables — it would move the whole token layer behind
+  the Enterprise-only Variables API, which 403s permanently on this plan.
