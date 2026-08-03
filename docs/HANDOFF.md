@@ -110,9 +110,18 @@ Product owner sign-offs taken this session, both previously listed here as uncon
   was kept out of the Postcards work deliberately. The Navbar still routes to it; deleting
   the tab without the route would strand the page.
 
-The approved first UI slice is **view + like + create**. Comments and shares stay out of
-scope, and `009` deliberately creates no table for them. Create was added after it became
+The approved first UI slice was **view + like + create**. Create was added after it became
 clear that view + like alone renders an empty feed forever — nothing can put a postcard in it.
+
+**Comments came back into scope on 2026-08-03**, by the product owner, reversing the earlier
+"no tables for comments or shares" decision. That reversal is theirs to make and is recorded
+here so it does not read as drift — `009`'s header still says comments are out of scope, and
+that is now historical rather than current.
+
+**Shares are still out**, and this is a genuine open question rather than a deferral:
+"share" could mean a native share sheet, which needs no backend at all, or a repost, which is
+a substantial feature with its own audience rules. Building either without knowing which
+would be a guess.
 
 **Migration `010_postcard_storage.sql` is applied and verified live** (2026-08-03). No drift:
 `001`–`010` are all applied. It creates the private `media` bucket and the `storage.objects`
@@ -456,6 +465,36 @@ table privileges at all. A signed-out visitor can reach the landing and auth pag
 nothing else.
 
 ---
+
+## The test rider account
+
+Created 2026-08-03 so screens can be exercised without using the product owner's own login.
+
+| | |
+|---|---|
+| Email | `duskrider@letsride.test` |
+| Username | `duskrider` |
+| User id | `0f6c4947-7990-475d-9224-2e3011b31923` |
+| State | Onboarding complete — lands straight on `/postcards` |
+
+**The password is not in this repo and must never be.** It lives with the product owner; ask
+them, or reset it from the Supabase dashboard. If CI ever needs it, it belongs in GitHub
+Actions secrets, not in a file.
+
+Two caveats that matter more than they look:
+
+- **`.test` is an RFC 2606 reserved TLD and receives no mail.** Harmless while email
+  confirmation is off (decision #6), but the moment confirmation is turned on, this account
+  cannot sign up, recover a password, or confirm anything. Revisit it with that decision, not
+  after.
+- **It was created by SQL insert into `auth.users`, not through the signup flow**, because
+  this container cannot reach `supabase.co` — so it proves nothing about signup itself. The
+  row shape was mirrored from the one real account and the bcrypt hash was verified with
+  `crypt()`, so password login works; everything upstream of the session is untested.
+
+**The app is not public yet.** That is why a real account on the production project is an
+acceptable test fixture at all. It stops being acceptable the day real riders sign up —
+before launch, either delete it or move testing to a separate Supabase project.
 
 ## Known constraints
 

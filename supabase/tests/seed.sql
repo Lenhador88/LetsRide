@@ -191,3 +191,39 @@ insert into storage.objects (bucket_id, name, owner, metadata) values
    '{"mimetype":"image/jpeg","size":1024}'),
   ('media', 'postcards/00000000-0000-0000-0000-00000000000c/dddddddd-0000-4000-8000-000000001ef7.jpg',   '00000000-0000-0000-0000-00000000000c',
    '{"mimetype":"image/jpeg","size":1024}');
+
+-- ---------------------------------------------------------------------------
+-- 011: comments and reports
+-- ---------------------------------------------------------------------------
+-- No new riders, clubs or postcards. Everything below hangs off fixtures that
+-- already exist, precisely so no assertion written before 011 changes its
+-- expected value — the rule this file's 009 section states and the reason the
+-- block story got its own club and rides.
+--
+-- NOTHING SEEDS A HIDE. A hide row changes what its owner can see, so seeding
+-- one would silently move the postcard counts every earlier section asserts.
+-- The hide story is written live inside rls_test.sql instead, which also puts
+-- the INSERT policy under test rather than routing around it as superuser.
+--
+-- Comments, on postcards that already carry the visibility stories worth
+-- inheriting:
+--   cc1  on e1 (global)         by the club member  -- the ordinary case
+--   cc2  on e2 (PRIVATE club c1) by the club member  -- an outsider must not see it
+--   cc3  on e1                  by the blocked rider -- must vanish for the blocker
+--   cc4  on e1                  by the blocker       -- must vanish for the blocked rider
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-000000000cc1', '00000000-0000-0000-0000-0000000000e1',
+   '00000000-0000-0000-0000-00000000000b', 'Beautiful light on that road.'),
+  ('00000000-0000-0000-0000-000000000cc2', '00000000-0000-0000-0000-0000000000e2',
+   '00000000-0000-0000-0000-00000000000b', 'See you all on Sunday.'),
+  ('00000000-0000-0000-0000-000000000cc3', '00000000-0000-0000-0000-0000000000e1',
+   '00000000-0000-0000-0000-00000000001b', 'From the blocked rider.'),
+  ('00000000-0000-0000-0000-000000000cc4', '00000000-0000-0000-0000-0000000000e1',
+   '00000000-0000-0000-0000-00000000001a', 'From the blocker.');
+
+-- One report, by the outsider against the globally visible postcard e1. Enough
+-- to prove both halves that matter: nobody else can read it, and the same
+-- rider cannot file it twice.
+insert into postcard_reports (id, reporter_id, postcard_id, reason, note) values
+  ('00000000-0000-0000-0000-000000000ff1', '00000000-0000-0000-0000-00000000000c',
+   '00000000-0000-0000-0000-0000000000e1', 'spam', 'Posted the same photo four times.');

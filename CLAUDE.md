@@ -541,7 +541,7 @@ Inbox, Profile**. There is no "Friends" tab; the `friendships` table is a v1 lef
 
 | Domain | Status in code |
 |---|---|
-| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View + like + create built** at `/postcards`; composition unverified against Figma. Comments and shares are deliberately out of scope and have no tables |
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View + like + create built** at `/postcards`; composition unverified against Figma. **Comments are in scope as of 2026-08-03** — the product owner reversed the earlier decision. **Shares remain out**, and deliberately so: it is undefined whether "share" means a native share sheet (no backend at all) or a repost (a substantial feature with its own audience rules), and building either would be a guess |
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | Not built |
