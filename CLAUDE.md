@@ -88,10 +88,10 @@ src/
 ├── app/                    # Next.js App Router pages
 │   ├── (app)/              # Authenticated route group — has Navbar
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed top + fixed bottom tabs)
-│   │   ├── dashboard/      # /dashboard
+│   │   ├── postcards/      # /postcards (the home screen), /postcards/new
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id]
 │   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
-│   │   ├── friends/        # /friends
+│   │   ├── friends/        # /friends — v1 leftover, signed off for deletion
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
@@ -103,6 +103,7 @@ src/
 │   ├── layout/             # Navbar
 │   ├── rides/              # JoinRideButton
 │   ├── clubs/              # JoinClubButton
+│   ├── postcards/          # PostcardCard, LikeButton, CreatePostcardForm
 │   ├── friends/            # FriendActions, SearchRiders
 │   └── profile/            # EditProfileForm, SignOutButton
 ├── lib/
@@ -167,7 +168,8 @@ Three further rules:
   `/onboarding/location`), unless already under `/onboarding`. Read from
   `profiles.onboarding_completed_at` on every request; never from `user_metadata`,
   which the client can write.
-- **Session + `/auth/login` or `/auth/signup`** → `/dashboard`. Note the two paths:
+- **Session + `/auth/login` or `/auth/signup`** → `/postcards` (the home screen; `/dashboard`
+  was deleted with the feed that replaced it). Note the two paths:
   bouncing *all* of `/auth/*` breaks password recovery, because Supabase's link
   establishes a session before the reset page loads.
 
@@ -537,7 +539,7 @@ Inbox, Profile**. There is no "Friends" tab; the `friendships` table is a v1 lef
 
 | Domain | Status in code |
 |---|---|
-| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | Not built |
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View + like + create built** at `/postcards`; composition unverified against Figma. Comments and shares are deliberately out of scope and have no tables |
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | Not built |

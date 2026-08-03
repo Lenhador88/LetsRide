@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { signImagePaths } from '@/lib/data/media'
 import type { Postcard, FeedPage } from '@/types'
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
@@ -57,10 +58,17 @@ async function attachLikeState(
     ownLikes?.forEach((like) => likedIds.add(like.postcard_id))
   }
 
+  // Signed on the way out rather than at the call site: the `media` bucket is
+  // private, so a postcard without `image_url` renders nothing at all. Doing it
+  // here means a future screen cannot forget, and one batched request covers
+  // the whole page.
+  const imageUrls = await signImagePaths(rows.map((row) => row.image_path), supabase)
+
   return rows.map((row) => ({
     ...row,
     likes_count: row.likes_count?.[0]?.count ?? 0,
     is_liked: likedIds.has(row.id),
+    image_url: imageUrls.get(row.image_path) ?? null,
   }))
 }
 

@@ -78,5 +78,5 @@ export async function setLocation(_prev: ActionState, formData: FormData): Promi
   if (error) return { error: 'Could not save that. Try again.' }
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
-  redirect('/dashboard')
+  redirect('/postcards')
 }

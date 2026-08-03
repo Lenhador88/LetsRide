@@ -83,6 +83,12 @@ export type Postcard = {
   club?: Pick<Club, 'id' | 'name'>
   likes_count?: number
   is_liked?: boolean
+  // A short-lived signed URL for `image_path`, attached by the read functions in
+  // lib/data/postcards.ts. The `media` bucket is private (010), so this is the
+  // only way a postcard image renders — `image_path` alone is not fetchable.
+  // Null when signing failed, which the UI renders as a missing image rather
+  // than a broken one.
+  image_url?: string | null
 }
 
 /**

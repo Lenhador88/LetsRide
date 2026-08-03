@@ -1,5 +1,41 @@
 import { describe, expect, it } from 'vitest'
-import { getInitials } from '@/lib/utils'
+import { formatRelativeTime, getInitials } from '@/lib/utils'
+
+describe('formatRelativeTime', () => {
+  const now = new Date('2026-08-03T12:00:00Z')
+  const ago = (seconds: number) =>
+    formatRelativeTime(new Date(now.getTime() - seconds * 1000).toISOString(), now)
+
+  it('reads "just now" under a minute, rather than "0 seconds ago"', () => {
+    expect(ago(0)).toBe('just now')
+    expect(ago(1)).toBe('just now')
+    expect(ago(59)).toBe('just now')
+  })
+
+  it('switches to minutes at the boundary', () => {
+    expect(ago(60)).toBe('1 minute ago')
+    expect(ago(59 * 60)).toBe('59 minutes ago')
+  })
+
+  it('picks the largest unit that fits', () => {
+    expect(ago(60 * 60)).toBe('1 hour ago')
+    expect(ago(5 * 60 * 60)).toBe('5 hours ago')
+    expect(ago(24 * 60 * 60)).toBe('yesterday')
+    expect(ago(3 * 24 * 60 * 60)).toBe('3 days ago')
+    expect(ago(7 * 24 * 60 * 60)).toBe('last week')
+    expect(ago(30 * 24 * 60 * 60)).toBe('last month')
+    expect(ago(365 * 24 * 60 * 60)).toBe('last year')
+  })
+
+  it('handles a future timestamp without producing a negative unit', () => {
+    const future = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString()
+    expect(formatRelativeTime(future, now)).toBe('in 2 hours')
+  })
+
+  it('defaults `now` to the current time', () => {
+    expect(formatRelativeTime(new Date().toISOString())).toBe('just now')
+  })
+})
 
 describe('getInitials', () => {
   it('returns "R" for null', () => {

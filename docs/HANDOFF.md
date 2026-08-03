@@ -5,8 +5,9 @@ and `010`, the feed data layer and actions, and client-side EXIF stripping. Befo
 **login & onboarding epic** (PR #8, merged `0e30556`). No branch is in flight — start new
 work from `main`.
 
-**The Postcards UI is the next thing to build, and it is blocked on Figma.** Everything
-behind it is done and on `main`; nothing has been drawn. See *Do this first*.
+**The Postcards UI now exists — view, like and create — but it has never been compared to
+the design.** Figma was rate limited throughout the build, so every composition value in it
+is an inferred guess, registered in `docs/FIGMA-FIDELITY-TODO.md`. See *Do this first*.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -38,16 +39,26 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 **The Home/Postcards backend is SHIPPED** — PR #15, merged to `main` as `dd72c96` on
 2026-08-03, CI green on both jobs. Nothing is in flight.
 
-**What is left is the UI, and only the UI.** No page, component or screen exists: the whole
-epic so far is schema, policies, Storage, reads, actions and image processing. The next
-session's job is the feed screen, the postcard card, the create flow, the icon set, and the
-`/dashboard` + `/friends` deletions — all of which need the design.
+**The approved UI slice — view + like + create — is now built**, 2026-08-03. `/postcards` is
+the home screen, `/postcards/new` creates one, `/dashboard` is deleted and every redirect
+that pointed at it now points at `/postcards`. New: `PostcardCard`, `LikeButton`,
+`CreatePostcardForm`, a `Textarea` primitive, `lib/data/media.ts` (signed URLs — the `media`
+bucket is private, so nothing renders without them) and `lib/data/clubs.ts`.
 
-**Try `npm run figma:pull` before anything else.** As of 2026-08-03 the node routes were
-still 429, but the snapshot pipeline is now in place: one successful pull populates `design/`
-and the design stops being a blocker permanently. See *Figma* below. If it 429s,
-do not poll it — build what does not need the design, and keep registering inferred values in
-`docs/FIGMA-FIDELITY-TODO.md`.
+**It was built against a rate-limited Figma, and that is the headline caveat.** Colours, type
+and the background gradient are the verified tokens; **every composition value — aspect
+ratio, byline placement, the like control, spacing, the whole create flow — is a guess**, each
+one recorded as *chose:* in `docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff. It is not
+finished until someone has compared it to the design.
+
+**Try `npm run figma:pull` before anything else** — that comparison is the highest-value
+thing left, and one successful pull unblocks it. Still 429 as of 14:00 on 2026-08-03. If it
+429s, do not poll it.
+
+What is left on Postcards, roughly in order: verify the screens against the design, export
+the 44 icons and give the like control its heart, then the `/friends` + `friendships`
+deletion (signed off, untouched here — it needs a migration, so it is a `data` change, not a
+UI one). Pagination, a loading state and the postcard detail route are unbuilt and unread.
 
 Migration `009_postcards_and_blocks.sql` is **applied to the hosted project and verified
 live** (2026-08-02). No drift: the repo chain and the database agree.
@@ -88,12 +99,15 @@ return their rows — the policy replacement caused no regression for the live u
 
 Product owner sign-offs taken this session, both previously listed here as unconfirmed:
 
-- **`/dashboard` is to be deleted**, and Postcards becomes the home screen.
-- **`/friends` is to be deleted** along with the `friendships` v1 leftover.
-
-Neither deletion has happened yet, and **the order matters**: `proxy.ts` redirects a
-signed-in rider to `/dashboard`, so deleting it before the feed route exists leaves login
-landing on a 404. Delete it *with* the feed, not before.
+- **`/dashboard` is to be deleted**, and Postcards becomes the home screen. **Done**
+  2026-08-03 — deleted together with the feed that replaced it, which was the required order:
+  `proxy.ts` redirected signed-in riders there, so removing it first would have landed every
+  completed login on a 404. `proxy.ts`, `app/page.tsx`, both auth actions, onboarding and the
+  Navbar all point at `/postcards` now, and the proxy tests assert it.
+- **`/friends` is to be deleted** along with the `friendships` v1 leftover. **Not done** — it
+  needs a migration to drop the table, so it is a `data` change rather than a UI one, and it
+  was kept out of the Postcards work deliberately. The Navbar still routes to it; deleting
+  the tab without the route would strand the page.
 
 The approved first UI slice is **view + like + create**. Comments and shares stay out of
 scope, and `009` deliberately creates no table for them. Create was added after it became
@@ -194,7 +208,7 @@ To change any of those four tables, add a new migration. `008` is the current de
 | | |
 |---|---|
 | Migrations | `001`–`010` all applied to the hosted project. See the ordering note below. |
-| Tests | RLS suite 186 assertions (`npm test`) + Vitest 117 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite 186 assertions (`npm test`) + Vitest 163 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -202,9 +216,10 @@ To change any of those four tables, add a new migration. `008` is the current de
 | CI | Green: type check, lint, build, RLS suite against Postgres 17. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
 
-The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*` and
-`app/legal/*` are v2, while everything under `app/(app)/*` — dashboard, rides, clubs,
-friends, profile — is still v1 `zinc-*`/`orange-500`. Those migrate with their own epics.
+The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`
+and now `app/(app)/postcards/*` are v2, along with the `(app)` shell — its layout and the
+Navbar migrated on contact when Home moved to `/postcards`. Rides, clubs, friends and
+profile are still v1 `zinc-*`/`orange-500` and migrate with their own epics.
 
 **Migration ordering is not file order.** Two chains were written in parallel and each
 recreated the policies the other did. `004`–`007` reached the database before `002` did;
