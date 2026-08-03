@@ -160,3 +160,59 @@ export async function createPostcard(
   // throwing, so it must not sit anywhere an error branch could swallow it.
   redirect('/postcards')
 }
+
+/**
+ * Deletes a postcard and the Storage object behind it.
+ *
+ * **Row first, object second, and the order is not arbitrary.** Postgres and
+ * Storage are separate systems with no cross-system cascade, so one of the two
+ * failure modes has to be chosen deliberately:
+ *
+ * - Object first: a failed row delete leaves a postcard whose image 404s, which
+ *   is visible to every viewer and unrecoverable.
+ * - Row first: a failed object delete leaves an unreferenced object, which is
+ *   invisible to everyone (010's Storage SELECT policy requires a referencing
+ *   postcards row) and costs only storage.
+ *
+ * The second is strictly less bad, so it is the one taken.
+ *
+ * There is no `.eq('author_id', ...)`: 009's DELETE policy is already
+ * `author_id = auth.uid()`, and restating it here would be a second copy of a
+ * rule RLS owns. `.select()` is what makes a refusal detectable — PostgREST
+ * reports no error when a delete matches nothing, so without it a rider
+ * deleting someone else's postcard would be told it worked.
+ */
+export async function deletePostcard(postcardId: string): Promise<ActionState> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to do that.' }
+
+  // Read the path before the row goes: afterwards there is nothing left to
+  // tell us which object to remove.
+  const { data: existing } = await supabase
+    .from('postcards')
+    .select('image_path, club_id')
+    .eq('id', postcardId)
+    .maybeSingle()
+
+  const { data: deleted, error } = await supabase
+    .from('postcards')
+    .delete()
+    .eq('id', postcardId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { error: 'Could not delete that postcard. Try again.' }
+  if (!deleted) return { error: 'That postcard is not yours to delete.' }
+
+  if (existing?.image_path) {
+    // Best effort, swallowed on purpose — see the ordering note above. A failed
+    // cleanup costs storage, and the rider's postcard is already gone.
+    await supabase.storage.from(MEDIA_BUCKET).remove([existing.image_path])
+  }
+
+  revalidatePath('/postcards')
+  revalidatePath(`/postcards/${postcardId}`)
+  if (existing?.club_id) revalidatePath(`/clubs/${existing.club_id}`)
+  return { error: null }
+}
