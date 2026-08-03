@@ -3,7 +3,11 @@
 import { useActionState, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
-import { createPostcard, emptyPostcardActionState } from '@/lib/actions/postcards'
+import { createPostcard } from '@/lib/actions/postcards'
+// Seed state comes from the plain module, never from the `'use server'` one — a
+// const exported from there is not importable and takes the route down at module
+// evaluation. See the comment at the top of lib/actions/postcards.ts.
+import { emptyActionState } from '@/lib/actions/state'
 import { uploadPostcardImage, validateImageFile } from '@/lib/media'
 import { POSTCARD_CAPTION_MAX_LENGTH } from '@/lib/validation/postcards'
 import type { Club } from '@/types'
@@ -31,7 +35,7 @@ type Upload =
  * See docs/FIGMA-FIDELITY-TODO.md §Create postcard.
  */
 export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
-  const [state, formAction, pending] = useActionState(createPostcard, emptyPostcardActionState)
+  const [state, formAction, pending] = useActionState(createPostcard, emptyActionState)
   const [upload, setUpload] = useState<Upload>({ status: 'idle' })
   const [preview, setPreview] = useState<string | null>(null)
   const [caption, setCaption] = useState('')

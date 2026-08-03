@@ -5,12 +5,28 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createPostcardSchema } from '@/lib/validation/postcards'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
+import type { ActionState } from '@/lib/actions/state'
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
-export type PostcardActionState = { error: string | null }
-
-export const emptyPostcardActionState: PostcardActionState = { error: null }
+/**
+ * State lives in `lib/actions/state.ts`, not here, and that is load bearing
+ * rather than tidiness: a `'use server'` module may only export async functions,
+ * so the `emptyPostcardActionState` const this file used to export threw
+ * `A "use server" file can only export async functions, found object` the moment
+ * a client component imported it — taking the whole /postcards/new route down at
+ * module evaluation. It was latent from the day it shipped because nothing
+ * imported it yet.
+ *
+ * Nothing in the build catches this. Type check, lint, `next build` and the unit
+ * suite were all green while the route was dead in production, which is why
+ * `src/__tests__/use-server-exports.test.ts` now asserts the rule directly.
+ *
+ * Re-exported as a type here so callers can keep importing it from the module
+ * whose actions they are using — a type re-export is erased at compile time and
+ * is legal in a `'use server'` file, unlike a value.
+ */
+export type { ActionState as PostcardActionState } from '@/lib/actions/state'
 
 // `/postcards` is the home feed, which now exists — a like has to move the
 // count there, which is the whole reason this path was left to be filled in.
@@ -36,7 +52,7 @@ async function revalidatePostcardRoutes(supabase: SupabaseServerClient, postcard
  * resolution fails 42501. A duplicate like is a no-op by the composite PK, so
  * ignoring the conflict is correct, not just a workaround.
  */
-export async function likePostcard(postcardId: string): Promise<PostcardActionState> {
+export async function likePostcard(postcardId: string): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to like this.' }
@@ -60,7 +76,7 @@ export async function likePostcard(postcardId: string): Promise<PostcardActionSt
  * here would be the re-filtering trap: a second copy of a rule RLS already
  * owns, free to drift from the policy silently.
  */
-export async function unlikePostcard(postcardId: string): Promise<PostcardActionState> {
+export async function unlikePostcard(postcardId: string): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
@@ -96,9 +112,9 @@ export async function unlikePostcard(postcardId: string): Promise<PostcardAction
  * fake what a redirect expresses directly.
  */
 export async function createPostcard(
-  _prev: PostcardActionState,
+  _prev: ActionState,
   formData: FormData
-): Promise<PostcardActionState> {
+): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to post.' }

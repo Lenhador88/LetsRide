@@ -136,12 +136,14 @@ And the hole itself, probed against production as the real rider: a cross-folder
 and the rider's own folder is still **accepted** — so it is closed without being
 over-tightened.
 
-Still unexercised: **a real upload through storage-api has never run.** The INSERT policy
-reads `metadata`, which storage-api populates, and it is written null-tolerantly so a
-null-metadata pre-check cannot refuse every upload — but nothing has proven that end to end,
-and the RLS suite cannot, because `harness.sql` stubs `storage.objects`. The first session
-that builds the create screen should treat "does one real upload succeed" as its first test,
-not its last.
+**A real upload through storage-api has now run, and it worked** — 2026-08-03, from the
+deployed create screen. `POST 200`, `ObjectCreated`, the object landed at
+`postcards/<uid>/<uuid>.jpg` with `mimetype image/jpeg` and `metadata` populated. That closes
+the long-standing "unexercised" caveat: the INSERT policy's null-tolerant `metadata` read is
+correct against the real storage-api, not just against `harness.sql`'s stub.
+
+**The insert that should have followed it did not**, and the cause is worth remembering —
+see *The bug that CI could not see* below.
 
 That binding is not cosmetic. Without it there is a **live data-exposure hole**: the storage
 read policy delegates to `postcards` via `EXISTS`, which inherits RLS from *whatever row
@@ -209,7 +211,7 @@ To change any of those four tables, add a new migration. `008` is the current de
 | | |
 |---|---|
 | Migrations | `001`–`010` all applied to the hosted project. See the ordering note below. |
-| Tests | RLS suite 186 assertions (`npm test`) + Vitest 163 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite 186 assertions (`npm test`) + Vitest 192 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -389,6 +391,41 @@ Clubs and Rides are each a larger build than the entire login epic, and Postcard
 biggest section by frame count even though it is the highest-impact one.
 
 ---
+
+## The bug that CI could not see — read before trusting a green pipeline
+
+`/postcards/new` shipped dead. It was green on type check, lint, `next build` and 173 unit
+tests, and it threw on the first real use:
+
+```
+Error: A "use server" file can only export async functions, found object.
+routes=/postcards/new
+```
+
+`lib/actions/postcards.ts` is a `'use server'` module and exported a plain const
+(`emptyPostcardActionState`). That is illegal, and it fails at **module evaluation** the
+moment a client component imports it — taking the route down rather than the one value. It
+had been latent since `009`/`010` shipped the backend, because nothing imported it until a
+screen existed.
+
+Three things worth keeping:
+
+- **`lib/actions/state.ts` already existed to prevent exactly this**, and its header says so.
+  `auth.ts` and `onboarding.ts` follow it; `postcards.ts` did not. A documented convention
+  with one silent violator is how this class of bug survives review.
+- **The whole pipeline is blind to it.** It is not a type error, a lint error or a build
+  error — it is a runtime property of the server module graph. `src/__tests__/use-server-exports.test.ts`
+  now asserts the rule directly, and was verified by reintroducing the bug and watching it
+  fail with the offending line.
+- **The upload succeeding while the insert never ran left an orphan**, which is what pinned
+  the diagnosis: `createPostcard` deletes the object when the *insert* fails, so an orphan
+  surviving proved the action never reached the insert. Storage logs plus a
+  `select count(*) from postcards` settled in a minute what guessing would not have.
+
+The general lesson, and the reason "does one real upload succeed" was already written down as
+a thing to test first: **a green CI run says the code compiles, not that the screen works.**
+Any route that has never been loaded against the real deployment is unverified, whatever the
+badge says.
 
 ## Known issues, roughly by cost to fix
 
