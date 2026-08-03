@@ -82,10 +82,34 @@ The approved first UI slice is **view + like + create**. Comments and shares sta
 scope, and `009` deliberately creates no table for them. Create was added after it became
 clear that view + like alone renders an empty feed forever — nothing can put a postcard in it.
 
-**Migration `010_postcard_storage.sql` is written, verified locally, and NOT applied.** It is
-the one piece of drift right now. It creates the private `media` bucket and the
-`storage.objects` policies, and it also drops and recreates two of `009`'s postcards policies
-to bind `image_path` to the author's own Storage folder.
+**Migration `010_postcard_storage.sql` is applied and verified live** (2026-08-03). No drift:
+`001`–`010` are all applied. It creates the private `media` bucket and the `storage.objects`
+policies, and drops and recreates two of `009`'s postcards policies to bind `image_path` to
+the author's own Storage folder.
+
+Verified on the hosted project after applying:
+
+| Check | Result |
+|---|---|
+| `media` bucket | `public=false`, 5242880, `{image/jpeg}` |
+| `storage.objects` RLS | enabled |
+| Storage policies | 3 — INSERT / SELECT / DELETE, no UPDATE, all `to authenticated` |
+| `public` policies | 32, unchanged (the two recreated replaced their originals) |
+| `postcards_image_path_key` unique index | present |
+| `anon` table privileges | 0 |
+| Security advisors | only the pre-existing leaked-password toggle |
+
+And the hole itself, probed against production as the real rider: a cross-folder
+`image_path` is **refused 42501**, an upload into another rider's folder is **refused 42501**,
+and the rider's own folder is still **accepted** — so it is closed without being
+over-tightened.
+
+Still unexercised: **a real upload through storage-api has never run.** The INSERT policy
+reads `metadata`, which storage-api populates, and it is written null-tolerantly so a
+null-metadata pre-check cannot refuse every upload — but nothing has proven that end to end,
+and the RLS suite cannot, because `harness.sql` stubs `storage.objects`. The first session
+that builds the create screen should treat "does one real upload succeed" as its first test,
+not its last.
 
 That binding is not cosmetic. Without it there is a **live data-exposure hole**: the storage
 read policy delegates to `postcards` via `EXISTS`, which inherits RLS from *whatever row
@@ -96,16 +120,9 @@ known. It was found by review, reproduced against the scratch database, fixed be
 was ever applied, and is now covered by assertions in
 `# A rider cannot read an image by claiming its path (migration 010)`.
 
-Before applying `010`, two things need checking that the suite structurally cannot:
-
-1. **Does a `media` bucket already exist on the hosted project?** The insert is now
-   `on conflict do update set public = false`, so it corrects a pre-existing public bucket
-   rather than silently leaving it public — but confirm what it changed afterwards.
-2. **Does a real upload actually succeed?** The INSERT policy reads `metadata`, which
-   storage-api populates. It is written null-tolerantly so a null-metadata pre-check cannot
-   refuse every upload, but that path has never been exercised against real storage-api.
-   One real upload settles it; the RLS suite cannot, because `harness.sql` stubs
-   `storage.objects`.
+No `media` bucket existed beforehand (checked before applying), so the `on conflict do update`
+guard did not have to correct anything on this run — it is there for reruns and for anyone
+who creates one through the dashboard, where "public" is a checkbox.
 
 The UI itself is unbuilt — see `docs/FIGMA-FIDELITY-TODO.md` for why, and for the register of
 what a later pass must verify against the design.
@@ -159,7 +176,7 @@ To change any of those four tables, add a new migration. `008` is the current de
 
 | | |
 |---|---|
-| Migrations | `001`–`009` all applied to the hosted project. See the ordering note below. |
+| Migrations | `001`–`010` all applied to the hosted project. See the ordering note below. |
 | Tests | RLS suite 186 assertions (`npm test`) + Vitest 117 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
