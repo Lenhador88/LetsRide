@@ -410,7 +410,9 @@ npm run figma:icons   # export Element / Icon / * as SVG
 npm run figma:check -- --probe   # sweep every endpoint when something looks blocked
 ```
 
-If `figma:pull` returns 429, stop — do not poll. See `design/README.md`.
+If `figma:pull` returns 429 it prints `Retry-After` — a real countdown, in seconds, that
+requests do not reset. Come back then rather than polling; waits have been measured in days,
+not hours. See `design/README.md`.
 
 **Environment variables** (never commit these):
 - `NEXT_PUBLIC_SUPABASE_URL`
@@ -597,6 +599,7 @@ chain to a scratch database and asserts what each role can reach.
 - Don't run `playwright install` — Chromium is pre-installed at `/opt/pw-browsers`.
 - Don't call the Figma API to answer a design question — read `design/`. Refreshing the
   snapshot is a deliberate monthly job, not something a feature task does.
-- Don't poll a Figma 429. Windows last hours and the budget is inherited across sessions.
+- Don't poll a Figma 429 — read its `Retry-After` instead. It is a real countdown in seconds
+  that requests do not reset, and waits have been measured in days.
 - Don't convert the Figma styles to variables — it would move the whole token layer behind
   the Enterprise-only Variables API, which 403s permanently on this plan.

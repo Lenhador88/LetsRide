@@ -52,8 +52,9 @@ one recorded as *chose:* in `docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff
 finished until someone has compared it to the design.
 
 **Try `npm run figma:pull` before anything else** — that comparison is the highest-value
-thing left, and one successful pull unblocks it. Still 429 as of 14:00 on 2026-08-03. If it
-429s, do not poll it.
+thing left, and one successful pull unblocks it. **It will not work before roughly
+2026-08-06 12:30 UTC** — `Retry-After` said 69 hours at 15:22 on 2026-08-03, and it is a real
+countdown. Check with `npm run figma:check -- --probe` rather than trying blind.
 
 What is left on Postcards, roughly in order: verify the screens against the design, export
 the 44 icons and give the like control its heart, then the `/friends` + `friendships`
@@ -253,29 +254,40 @@ for a file that changes about once a month. The snapshot is committed for exactl
 | `npm run figma:pull` | **yes** | Refresh — the expensive call. Monthly |
 | `npm run figma:icons` | **yes** | Export `Element / Icon / *` as SVG |
 
-**The snapshot is not populated yet.** The pipeline is built, tested (158 unit tests, 14 of
-them running the real extractor end-to-end against a fixture) and committed, but the node
-routes were still 429 at 13:29 on 2026-08-03 — on the first call of a fresh session, budget
-nobody here spent. `design/` therefore holds only its README. **The first session that finds
-the window open should run `npm run figma:pull && npm run figma:icons`, then commit
-`design/`.** That single act retires this section and most of `docs/FIGMA-FIDELITY-TODO.md`.
+**The snapshot is not populated yet, and now we know exactly when it can be.** The pipeline
+is built, tested and committed, but every node route was 429 all day on 2026-08-03 — on the
+first call of a fresh session, budget nobody here spent. `design/` therefore holds only its
+README.
 
-Measured 2026-08-03 13:29 with `npm run figma:check -- --probe`:
+`Retry-After` puts the clearing time at **roughly 2026-08-06 12:30 UTC**. Do not try before
+then; do not poll. On or after that, run `npm run figma:pull && npm run figma:icons` and
+commit `design/`. That single act retires this section and most of
+`docs/FIGMA-FIDELITY-TODO.md`, and lets someone finally check the Postcards screens against
+the design they were guessed from.
+
+Measured 2026-08-03 15:22 with `npm run figma:check -- --probe`:
 
 | Endpoint | State |
 |---|---|
 | `/v1/me` | 200 — proves nothing, stays green through every outage |
 | `/v1/files/:key/versions` | 200 — different bucket, which is why `figma:check` works when `figma:pull` cannot |
-| `/v1/files/:key`, `/nodes` | **429** — gates `figma:pull` |
-| `/v1/images/:key` | **429** — gates `figma:icons` |
+| `/v1/files/:key`, `/nodes` | **429**, `Retry-After` 2d 21h — gates `figma:pull` |
+| `/v1/images/:key` | **429**, `Retry-After` 2d 21h — gates `figma:icons` |
 | `/v1/files/:key/styles`, `/components` | 200 but empty (library unpublished) |
 
-Three lessons worth carrying, each of which has cost this project hours: **the limit is per
-endpoint family**, so one 429 is never evidence about another route; **the budget is
-inherited across sessions and windows last hours** — 40 polls at 3-minute intervals over two
-hours with no recovery, so polling does not shorten them; and **when both routes to design
-data are shut, stop and say so** rather than eyeballing values off a screenshot — register
-the gap in `docs/FIGMA-FIDELITY-TODO.md` and build what does not need the design.
+**The 429 carries `Retry-After`, and it is in seconds.** Measured 2026-08-03 by sampling it
+61 seconds apart and watching it fall by 64 — a real countdown, not a constant, and requests
+neither reset nor shorten it. `npm run figma:check -- --probe` now prints the wait per
+endpoint and when it clears, so "when can I pull?" has an exact answer.
+
+This retired a belief that had been repeated in three files and cost real time: windows do
+**not** "last hours". The live header said **69 hours**. Anyone told to "try again in a few
+hours" was going to fail three times and learn nothing.
+
+Two lessons still stand: **the limit is per endpoint family**, so one 429 is never evidence
+about another route; and **when both routes to design data are shut, stop and say so** rather
+than eyeballing values off a screenshot — register the gap in `docs/FIGMA-FIDELITY-TODO.md`
+and build what does not need the design.
 
 Everything extracted from the 2026-08-02 whole-file pull is written up under *Verified
 measurements* in `docs/specs/login-onboarding.md`: every string verbatim, component geometry,

@@ -29,11 +29,56 @@ export const RAW_DIR = dir('FIGMA_RAW_DIR', '../../.figma-raw/')
 /** Derived artifacts. Small, committed, the thing everyone actually reads. */
 export const DESIGN_DIR = dir('FIGMA_DESIGN_DIR', '../../design/')
 
+/** "69h 8m" / "4m 9s" — a wait you can act on rather than a raw second count. */
+export function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return 'unknown'
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
+/**
+ * Reads the rate-limit story off a 429's headers.
+ *
+ * `Retry-After` is real here and is in **seconds**, per RFC — verified 2026-08-03
+ * by sampling it 61 seconds apart and watching it fall by 64. It is a true
+ * countdown: repeated requests do not reset it, so probing costs nothing but
+ * also buys nothing.
+ *
+ * Figma exposes it deliberately, alongside the plan tier and which limit was
+ * tripped — see `access-control-expose-headers` on any 429.
+ */
+export function readRateLimit(headers) {
+  const raw = headers.get('retry-after')
+  // RFC allows an HTTP-date instead of a delta; Figma sends a delta, but a date
+  // would otherwise parse as NaN and read as "unknown" forever.
+  let seconds = raw === null ? null : Number(raw)
+  if (raw !== null && Number.isNaN(seconds)) {
+    const at = Date.parse(raw)
+    seconds = Number.isNaN(at) ? null : Math.max(0, Math.round((at - Date.now()) / 1000))
+  }
+
+  return {
+    seconds,
+    readableWait: seconds === null ? 'unknown' : formatDuration(seconds),
+    resetsAt: seconds === null ? null : new Date(Date.now() + seconds * 1000),
+    planTier: headers.get('x-figma-plan-tier'),
+    limitType: headers.get('x-figma-rate-limit-type'),
+    upgradeLink: headers.get('x-figma-upgrade-link'),
+  }
+}
+
 /**
  * Figma throttles per endpoint *family* and the budget is inherited across
- * sessions — a fresh container can get a 429 on its first ever call. Retrying
- * in a loop does not help; observed windows have lasted over two hours. So this
- * fails loudly with the one instruction that works: come back later.
+ * sessions — a fresh container can get a 429 on its first ever call. Retrying in
+ * a loop does not help, and now it does not have to be guesswork either: the
+ * 429 carries `Retry-After`, so this reports exactly how long is left.
  */
 export async function figmaFetch(path, { token = env.FIGMA_ACCESS_TOKEN } = {}) {
   if (!token) {
@@ -47,13 +92,17 @@ export async function figmaFetch(path, { token = env.FIGMA_ACCESS_TOKEN } = {}) 
   })
 
   if (res.status === 429) {
+    const limit = readRateLimit(res.headers)
+    const until = limit.resetsAt ? ` (about ${limit.resetsAt.toISOString().slice(0, 16)}Z)` : ''
     const err = new Error(
       `Figma returned 429 for /${path}.\n` +
-        'This is a real budget, not a per-minute hiccup — windows have lasted 2+ hours and\n' +
-        'are inherited across sessions. Do not poll it. Re-run when it clears; everything\n' +
-        'else in this pipeline works offline from design/ in the meantime.',
+        `Retry-After says ${limit.readableWait} left${until}.\n` +
+        `Plan tier: ${limit.planTier ?? 'unknown'}; limit tripped: ${limit.limitType ?? 'unknown'}.\n` +
+        'That is a real countdown, not a suggestion — repeated requests do not reset it and\n' +
+        'do not shorten it. Everything else in this pipeline works offline from design/.',
     )
     err.rateLimited = true
+    err.rateLimit = limit
     throw err
   }
   if (!res.ok) throw new Error(`Figma returned ${res.status} for /${path}: ${await res.text()}`)
