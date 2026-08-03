@@ -82,7 +82,21 @@ export async function deleteComment(commentId: string): Promise<ActionState> {
     .maybeSingle()
 
   if (error) return { error: 'Could not delete that comment. Try again.' }
-  if (!deleted) return { error: 'That comment is not yours to delete.' }
+
+  if (!deleted) {
+    // Not necessarily a refusal. RLS filters a DELETE by what the caller may
+    // READ, and `.eq('id', …)` reads a column — so an author who blocked their
+    // harasser matches zero rows against a comment sitting on their own photo.
+    // 011 §1b exists for exactly that case; it is security definer and re-checks
+    // `p.author_id = auth.uid()` itself, so this is not a weaker path, just one
+    // that can see the row.
+    const { data: moderated, error: rpcError } = await supabase.rpc('moderate_comment', {
+      comment_id: commentId,
+    })
+
+    if (rpcError) return { error: 'Could not delete that comment. Try again.' }
+    if (!moderated) return { error: 'That comment is not yours to delete.' }
+  }
 
   if (existing?.postcard_id) revalidateThread(existing.postcard_id)
   return { error: null }

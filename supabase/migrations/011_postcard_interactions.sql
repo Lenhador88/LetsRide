@@ -152,11 +152,27 @@ create policy "Riders can comment on visible postcards, as themselves"
 -- author branch is unconditional, so this keeps working for a postcard in a
 -- club the author has since left.
 --
--- Note that DELETE is filtered by USING alone — a SELECT policy does not
--- constrain it unless the statement uses RETURNING. So a postcard author can
--- delete a comment they cannot themselves see, which is exactly right: a
--- comment from someone they blocked is invisible to them but still sitting on
--- their photo for everyone else.
+-- CAUTION, and this cost a review to find: this policy does NOT let an author
+-- remove a comment they cannot see. An earlier revision of this comment claimed
+-- it did, on the grounds that a SELECT policy only constrains a DELETE that
+-- uses RETURNING. That is wrong — Postgres applies the SELECT policy whenever
+-- the statement READS columns, and a WHERE clause reads them. Measured:
+--
+--   author sees own postcard        1
+--   author sees blocked comment     0
+--   delete ... where id = '<it>'    DELETE 0
+--
+-- So the harassment case this branch exists for — block a rider, then clear
+-- their comment off your own photo — silently does nothing through any query a
+-- client would write. Only a bare unqualified `delete from postcard_comments`
+-- reaches it, which no caller can use because it would sweep every comment
+-- they are allowed to delete.
+--
+-- The branch is still correct and still worth having: it covers every comment
+-- the author CAN see, which is the ordinary case. The invisible case is served
+-- by public.moderate_comment() in §1b, which is security definer for exactly
+-- the reason private.is_blocked is — the actor cannot read the row they must
+-- act on.
 create policy "Riders delete their own comments, authors moderate their own postcard"
   on public.postcard_comments for delete to authenticated
   using (
@@ -182,6 +198,52 @@ create trigger postcard_comments_set_updated_at
 -- number is per-viewer. A comment from a rider you blocked must not be counted
 -- for you. Counting rows under RLS gives that for free and cannot drift from
 -- the rows it summarises.
+
+-- ---------------------------------------------------------------------------
+-- 1b. Moderating a comment the author cannot see
+-- ---------------------------------------------------------------------------
+-- The one job the DELETE policy above cannot do, and the reason is structural
+-- rather than a bug in the policy: RLS filters a statement by what the caller
+-- may READ, so an author whose blocked harasser commented on their photo issues
+-- a delete that matches zero rows. The policy is not too strict — it is being
+-- evaluated against a row the caller is not allowed to see in the first place.
+--
+-- Security definer is the same instrument 009 reached for with
+-- private.is_blocked, and for the same reason: the actor cannot read the row
+-- their action depends on. The authorization is not weakened, it is moved —
+-- `p.author_id = auth.uid()` inside the function is the entire grant, and it is
+-- checked against auth.uid() rather than anything the caller passes.
+--
+-- Hardened per 005: `set search_path = ''`, every name schema-qualified, execute
+-- revoked from public and anon. Unlike is_blocked this one lives in `public`
+-- and IS published by PostgREST — it has to be, a client calls it — so the
+-- narrowness of what it does is the whole defence. It deletes exactly one
+-- comment, on a postcard the caller authored, and returns whether it did.
+create or replace function public.moderate_comment(comment_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  removed integer;
+begin
+  delete from public.postcard_comments c
+  using public.postcards p
+  where c.id = comment_id
+    and p.id = c.postcard_id
+    and p.author_id = auth.uid();
+
+  get diagnostics removed = row_count;
+  return removed > 0;
+end;
+$$;
+
+comment on function public.moderate_comment(uuid) is
+  'Removes one comment from a postcard the caller authored, including one the caller cannot see because they blocked its author. Security definer because RLS filters a DELETE by what the caller may read — see 011 §1b.';
+
+revoke all on function public.moderate_comment(uuid) from public, anon;
+grant execute on function public.moderate_comment(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 2. postcard_hides

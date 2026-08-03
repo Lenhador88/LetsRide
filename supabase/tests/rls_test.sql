@@ -1148,6 +1148,52 @@ delete from postcard_comments where id = '00000000-0000-0000-0000-000000000cc1';
 select assert_eq((select count(*)::int from postcard_comments
                    where id = '00000000-0000-0000-0000-000000000cc1'),
   0, 'a postcard author can delete a comment on their own postcard');
+
+-- The limit of that branch, and the reason public.moderate_comment() exists.
+-- RLS filters a DELETE by what the caller may READ — a WHERE clause reads
+-- columns, so the SELECT policy applies. An author who blocked their harasser
+-- therefore cannot clear that comment off their own photo with any query a
+-- client would write. This was documented as working, was not, and is now
+-- pinned in both directions: the policy alone fails, the function succeeds.
+reset role;
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-000000000cc9', '00000000-0000-0000-0000-0000000000e4',
+   '00000000-0000-0000-0000-00000000001b', 'harassment from a blocked rider');
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000000000e4'),
+  1, 'the author can see their own postcard');
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc9'),
+  0, 'but not the comment on it from a rider they blocked');
+
+delete from postcard_comments where id = '00000000-0000-0000-0000-000000000cc9';
+reset role;
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc9'),
+  1, 'so a qualified delete removes nothing — the policy cannot reach an unreadable row');
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select public.moderate_comment('00000000-0000-0000-0000-000000000cc9'))::text,
+  'true', 'moderate_comment() reports that it removed the unreadable comment');
+reset role;
+select assert_eq((select count(*)::int from postcard_comments
+                   where id = '00000000-0000-0000-0000-000000000cc9'),
+  0, 'and the comment is actually gone');
+set role authenticated;
+
+-- The function is not a back door. It deletes only on a postcard the CALLER
+-- authored, checked against auth.uid() inside the function rather than against
+-- anything passed in — so security definer moves the authorization, it does not
+-- remove it. e1 belongs to 000a, so 000c moderating it must be refused.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select public.moderate_comment('00000000-0000-0000-0000-000000000cc1'))::text,
+  'false', 'a rider cannot moderate a comment on someone else''s postcard');
+select assert_eq((select public.moderate_comment(gen_random_uuid()))::text,
+  'false', 'and a comment that does not exist is a clean false, not an error');
 reset role;
 insert into postcard_comments (id, postcard_id, author_id, body) values
   ('00000000-0000-0000-0000-000000000cc1', '00000000-0000-0000-0000-0000000000e1',
@@ -1185,6 +1231,19 @@ select assert_rejected($$
   insert into postcard_comments (postcard_id, author_id, body)
   values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c', repeat('x', 1001))$$,
   '23514', 'a comment body over 1000 characters is rejected');
+
+-- The ceiling is on the RAW length and the floor on the TRIMMED one, and both
+-- the constraint and its mirror in lib/validation/comments.ts go out of their
+-- way to explain why. Nothing asserted it: changing the ceiling to
+-- length(btrim(body)) — the exact mistake those comments exist to prevent —
+-- passed the whole suite. `repeat('x', 1001)` cannot tell the two apart, so
+-- this pads a legal 1000-character body with whitespace instead.
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000c',
+          repeat(' ', 500) || repeat('x', 1000))$$,
+  '23514', 'whitespace padding cannot smuggle a 1000-character body past the raw ceiling');
+
 
 \echo ''
 \echo '# Blocking hides comments in both directions (decision #2, migration 011)'
@@ -1278,6 +1337,14 @@ select assert_rejected($$
   insert into postcard_reports (reporter_id, postcard_id, reason, note)
   values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e3', 'spam', '   ')$$,
   '23514', 'a whitespace-only note is rejected (a note is optional, an empty one is not a note)');
+-- The note's ceiling had no assertion at all: dropping `length(note) <= 1000`
+-- outright passed the whole suite. Nothing reads this table and nothing may
+-- delete from it, so an unbounded note is stored forever with no way to clear it.
+select assert_rejected($$
+  insert into postcard_reports (reporter_id, postcard_id, reason, note)
+  values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e3',
+          'spam', repeat('x', 1001))$$,
+  '23514', 'a report note over 1000 characters is rejected');
 select assert_allowed($$
   insert into postcard_reports (reporter_id, postcard_id, reason)
   values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000e3', 'harassment')$$,
