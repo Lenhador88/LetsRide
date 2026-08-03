@@ -1,7 +1,66 @@
 import { describe, expect, it } from 'vitest'
 import {
-  collectGeometry, collectTokens, dominant, isLegacy, pruneNode, resolvePaint, slug, toHex, total, walk,
+  collectGeometry, collectTokens, dominant, formatDuration, isLegacy, pruneNode, readRateLimit,
+  resolvePaint, slug, toHex, total, walk,
 } from '../lib.mjs'
+
+describe('formatDuration', () => {
+  it.each([
+    [45, '45s'],
+    [90, '1m 30s'],
+    [3600, '1h 0m'],
+    [14_400, '4h 0m'],
+    [248_933, '2d 21h'],
+  ])('%is -> %s', (seconds, expected) => {
+    expect(formatDuration(seconds)).toBe(expected)
+  })
+
+  it('does not invent a duration from a missing or negative value', () => {
+    expect(formatDuration(null)).toBe('unknown')
+    expect(formatDuration(NaN)).toBe('unknown')
+    expect(formatDuration(-1)).toBe('unknown')
+  })
+})
+
+describe('readRateLimit', () => {
+  const headers = (entries) => new Headers(entries)
+
+  it('reads Retry-After as seconds, which is what Figma sends', () => {
+    // Verified live 2026-08-03: sampled 61s apart, the value fell by 64 — a
+    // real countdown in seconds, not milliseconds and not reset per request.
+    const limit = readRateLimit(headers({
+      'retry-after': '248933',
+      'x-figma-plan-tier': 'starter',
+      'x-figma-rate-limit-type': 'high',
+    }))
+
+    expect(limit.seconds).toBe(248_933)
+    expect(limit.readableWait).toBe('2d 21h')
+    expect(limit.planTier).toBe('starter')
+    expect(limit.limitType).toBe('high')
+  })
+
+  it('projects a reset instant rather than leaving the caller to add it up', () => {
+    const before = Date.now()
+    const limit = readRateLimit(headers({ 'retry-after': '3600' }))
+    expect(limit.resetsAt.getTime()).toBeGreaterThanOrEqual(before + 3_600_000 - 1000)
+    expect(limit.resetsAt.getTime()).toBeLessThanOrEqual(Date.now() + 3_600_000 + 1000)
+  })
+
+  it('accepts the HTTP-date form the RFC also allows', () => {
+    const at = new Date(Date.now() + 120_000).toUTCString()
+    const limit = readRateLimit(headers({ 'retry-after': at }))
+    expect(limit.seconds).toBeGreaterThan(100)
+    expect(limit.seconds).toBeLessThanOrEqual(120)
+  })
+
+  it('reports unknown rather than guessing when the header is absent', () => {
+    const limit = readRateLimit(headers({}))
+    expect(limit.seconds).toBeNull()
+    expect(limit.readableWait).toBe('unknown')
+    expect(limit.resetsAt).toBeNull()
+  })
+})
 
 const solid = (r, g, b, opacity) => ({ type: 'SOLID', color: { r, g, b }, opacity })
 

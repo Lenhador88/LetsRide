@@ -17,8 +17,25 @@ Three properties of the limit make it worse than it looks:
   never evidence about another route.
 - **The budget is inherited across sessions.** A brand-new container can 429 on its first
   ever call, having spent nothing.
-- **Windows are long.** Two hours of 3-minute polling has been observed with no recovery.
-  Polling does not shorten them.
+- **Windows are measured in days, not hours** — and the 429 tells you exactly how many.
+
+**Read `Retry-After`. It is real, and it is in seconds.** Verified 2026-08-03 by sampling it
+61 seconds apart and watching it fall by 64: a true countdown, not a fixed constant, and
+repeated requests neither reset nor shorten it. That measurement replaced a guess — the same
+day, this file said windows "last hours"; the live header said **69 hours**.
+
+Figma exposes it deliberately, along with two more signals, on every 429:
+
+| Header | Example | Meaning |
+|---|---|---|
+| `retry-after` | `248933` | Seconds until this endpoint family clears |
+| `x-figma-plan-tier` | `starter` | The plan the limit is being applied under |
+| `x-figma-rate-limit-type` | `high` | Which limit was tripped |
+
+`npm run figma:check -- --probe` prints the wait per endpoint and the clearing time, so
+"when can I pull?" is one command with an exact answer. There is never a reason to guess it
+again, and never a reason to poll: the countdown runs on wall-clock time whether you ask or
+not.
 
 The design file changes about once a month. So the fix is not a better retry strategy — it
 is to stop asking. One pull produces a snapshot; everything downstream reads the snapshot.
@@ -54,8 +71,9 @@ npm run test:unit       # the extractor is covered
 git add design && git commit -m "design: refresh the Figma snapshot"
 ```
 
-If `figma:pull` returns 429, **stop**. Do not poll it. The committed snapshot is still
-usable; come back later.
+If `figma:pull` returns 429 it now prints the exact wait and the clearing time. **Come back
+then** — not sooner, and there is no point polling in between. The committed snapshot stays
+usable throughout.
 
 ## Querying it
 
@@ -124,8 +142,13 @@ render endpoint, which returns only rendered vectors from node ids we chose.
   network policy, not Figma. That host was allowlisted on 2026-08-03.
 - The Figma MCP server is a **separate monthly quota** — 6 tool calls/month on Starter,
   exhausted. The REST path is the one this project uses.
-- **Do not buy a Figma plan to fix a 429.** The REST API on a personal token is free and
-  uncapped; only the MCP server is plan-gated, and that is not the path this pipeline uses.
+- **"The REST API is free and uncapped" is doubtful, and was never verified.** A 429 reports
+  `x-figma-plan-tier: starter` and `x-figma-rate-limit-type: high`, and Figma exposes an
+  `X-Figma-Upgrade-Link` header on these responses — all three point at REST limits being
+  plan-tiered, not flat. What is *observed* is the tier being named in the refusal; what is
+  **not** established is that a paid plan raises the ceiling, or by how much. Do not buy a
+  plan on the strength of this, and do not repeat the old claim either. If it ever matters,
+  the question to answer first is what the starter limit actually is.
 - **The Variables API (`/v1/files/:key/variables/local`) is a permanent 403.** It needs the
   `file_variables:read` scope, which is not grantable outside an Enterprise org and errors
   during OAuth on lower tiers. This is a plan gate, not a credential problem — do not spend

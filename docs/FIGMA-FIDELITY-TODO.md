@@ -42,7 +42,7 @@ Two independent blocks, and they need different fixes:
 
 | Route | State | Nature |
 |---|---|---|
-| `/v1/files/:key`, `?depth=1`, `/nodes` | **429** | Rate limit. Free, uncapped, recovers on its own. |
+| `/v1/files/:key`, `?depth=1`, `/nodes` | **429** | Rate limit. Recovers on its own, but on a **multi-day** clock — `Retry-After` read 69 hours on 2026-08-03, not the "hours" this table used to claim. "Free and uncapped" is unverified and doubtful; the 429 names `x-figma-plan-tier: starter`. |
 | `/v1/images/:key` | **429** | Same. Was 200 earlier the same day, then degraded. |
 | `/v1/files/:key/components`, `/styles` | 200 but **empty** | The library is unpublished — not a permissions problem. |
 | `/v1/files/:key/images` | 200, **418 fills** | Reachable, but see below. |

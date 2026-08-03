@@ -26,6 +26,7 @@ const ROUTES = [
 
 async function pullDocument() {
   const failures = []
+  let limit = null
 
   for (const route of ROUTES) {
     process.stdout.write(`Trying ${route.label} (/${route.path.split('?')[0]}) … `)
@@ -35,16 +36,27 @@ async function pullDocument() {
       return { json, route }
     } catch (error) {
       if (!error.rateLimited) throw error
-      console.log('429')
+      console.log(`429 — ${error.rateLimit.readableWait} left`)
       failures.push(route.label)
+      // The longest wait across the routes is the one that actually gates a pull.
+      if (!limit || (error.rateLimit.seconds ?? 0) > (limit.seconds ?? 0)) limit = error.rateLimit
     }
   }
 
+  console.error(`\nEvery node-reading route is rate limited (${failures.join(', ')}).`)
+
+  if (limit?.seconds !== null && limit?.seconds !== undefined) {
+    console.error(
+      `\nRetry-After: ${limit.readableWait} — clears around ${limit.resetsAt.toISOString().slice(0, 16)}Z.\n` +
+        `Plan tier ${limit.planTier ?? 'unknown'}, limit type ${limit.limitType ?? 'unknown'}.\n` +
+        'Verified in seconds and counting down in real time; requests neither reset nor\n' +
+        'shorten it, so there is nothing to gain by trying again before then.',
+    )
+  }
+
   console.error(
-    `\nEvery node-reading route is rate limited (${failures.join(', ')}).\n\n` +
-      'This budget is inherited across sessions and windows have lasted over two hours.\n' +
-      'Polling does not shorten it. Re-run later — design/ stays usable meanwhile, and\n' +
-      '`npm run figma:check` tells you whether the committed snapshot is even stale.',
+    '\ndesign/ stays usable meanwhile, and `npm run figma:check` tells you whether the\n' +
+      'committed snapshot is even stale.',
   )
   exit(1)
 }

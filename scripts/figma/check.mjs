@@ -13,7 +13,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { argv, env, exit } from 'node:process'
-import { DESIGN_DIR, FILE_KEY, figmaFetch } from './lib.mjs'
+import { DESIGN_DIR, FILE_KEY, figmaFetch, readRateLimit } from './lib.mjs'
 
 const PROBES = [
   ['me', 'auth only — 200 here proves nothing about design reads'],
@@ -31,13 +31,31 @@ if (argv.includes('--probe')) {
     exit(1)
   }
 
-  console.log('Rate limits are per endpoint family — one 429 is not evidence about another.\n')
+  console.log('Rate limits are per endpoint family — one 429 is not evidence about another.')
+  console.log('A 429 carries Retry-After in seconds; it counts down for real and requests do')
+  console.log('not reset it, so the wait shown is the whole story.\n')
+
+  let worst = null
   for (const [path, note] of PROBES) {
     const res = await fetch(`https://api.figma.com/v1/${path}`, {
       headers: { 'X-Figma-Token': env.FIGMA_ACCESS_TOKEN },
     })
     const mark = res.ok ? 'ok  ' : res.status === 429 ? '429 ' : 'fail'
-    console.log(`${mark} ${String(res.status).padEnd(4)} /${path.split('?')[0].padEnd(46)} ${note}`)
+    let wait = ''
+    if (res.status === 429) {
+      const limit = readRateLimit(res.headers)
+      wait = `  wait ${limit.readableWait}`
+      if (!worst || (limit.seconds ?? 0) > (worst.seconds ?? 0)) worst = limit
+    }
+    console.log(`${mark} ${String(res.status).padEnd(4)} /${path.split('?')[0].padEnd(46)} ${note}${wait}`)
+  }
+
+  if (worst?.resetsAt) {
+    console.log(
+      `\nLongest wait clears around ${worst.resetsAt.toISOString().slice(0, 16)}Z ` +
+        `(plan tier ${worst.planTier ?? 'unknown'}, limit type ${worst.limitType ?? 'unknown'}).`,
+    )
+    if (worst.upgradeLink) console.log(`Figma suggests: ${worst.upgradeLink}`)
   }
   exit(0)
 }
