@@ -182,6 +182,7 @@
                       },
                       "strokeWeight": 2,
                       "strokeAlign": "CENTER",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -598,6 +599,7 @@
                   },
                   "strokeWeight": 2,
                   "strokeAlign": "CENTER",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "SOLID",
@@ -1082,6 +1084,7 @@
                   },
                   "strokeWeight": 2,
                   "strokeAlign": "CENTER",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "SOLID",

@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "408:5880",
+  "page": "Design",
+  "id": "1883:10615",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 13360,
-    "y": 7416,
+    "x": 10520,
+    "y": 7074,
     "w": 480,
     "h": 844
   },
@@ -24,7 +24,7 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Add/edit my motorcycles"
+      "value": "View your rides"
     },
     "Notes#1527:1": {
       "type": "TEXT",
@@ -32,7 +32,7 @@
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I408:5880;50:568",
+      "id": "I1883:10615;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 13416,
-        "y": 7496,
+        "x": 10576,
+        "y": 7154,
         "w": 368,
         "h": 708
       },
@@ -88,14 +88,14 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I408:5880;50:561",
+          "id": "I1883:10615;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 13416,
-            "y": 7496,
+            "x": 10576,
+            "y": 7154,
             "w": 368,
-            "h": 96
+            "h": 48
           },
           "layoutSizingHorizontal": "FILL",
           "layoutSizingVertical": "HUG",
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Add/edit my motorcycles",
+          "characters": "View your rides",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I408:5880;50:567",
+          "id": "I1883:10615;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 13416,
-            "y": 7632,
+            "x": 10576,
+            "y": 7242,
             "w": 368,
             "h": 52
           },
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I408:5880;50:562",
+              "id": "I1883:10615;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 13416,
-                "y": 7632,
+                "x": 10576,
+                "y": 7242,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +185,12 @@
               }
             },
             {
-              "id": "I408:5880;50:563",
+              "id": "I1883:10615;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 13416,
-                "y": 7664,
+                "x": 10576,
+                "y": 7274,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I408:5880;50:878",
+      "id": "I1883:10615;50:878",
       "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": 13672,
-        "y": 7424,
+        "x": 10832,
+        "y": 7082,
         "w": 160,
         "h": 46
       },
@@ -248,12 +249,12 @@
       "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I408:5880;50:878;50:841",
+          "id": "I1883:10615;50:878;50:841",
           "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": 13688,
-            "y": 7432,
+            "x": 10848,
+            "y": 7090,
             "w": 128,
             "h": 30
           },

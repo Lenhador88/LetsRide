@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "309:4634",
+  "page": "Design",
+  "id": "1883:10201",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 25722,
-    "y": 1232,
+    "x": 6020,
+    "y": 2144,
     "w": 480,
     "h": 844
   },
@@ -22,21 +22,9 @@
   "componentId": "50:565",
   "component": "Annotation / Epic Cover",
   "componentProperties": {
-    "Epic Name#2067:7": {
-      "type": "TEXT",
-      "value": "Settings"
-    },
-    "Notes#1527:1": {
-      "type": "TEXT",
-      "value": "..."
-    },
-    "has Notes#1527:0": {
-      "type": "BOOLEAN",
-      "value": true
-    },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:846",
+      "value": "50:848",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -63,16 +51,28 @@
           "key": "4e5d49a7273a51eed0dacde1364f712d6fb15ad8"
         }
       ]
+    },
+    "Epic Name#2067:7": {
+      "type": "TEXT",
+      "value": "View new postcards from club"
+    },
+    "Notes#1527:1": {
+      "type": "TEXT",
+      "value": "..."
+    },
+    "has Notes#1527:0": {
+      "type": "BOOLEAN",
+      "value": false
     }
   },
   "children": [
     {
-      "id": "I309:4634;50:568",
+      "id": "I1883:10201;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 25778,
-        "y": 1312,
+        "x": 6076,
+        "y": 2224,
         "w": 368,
         "h": 708
       },
@@ -88,14 +88,14 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I309:4634;50:561",
+          "id": "I1883:10201;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 25778,
-            "y": 1312,
+            "x": 6076,
+            "y": 2224,
             "w": 368,
-            "h": 48
+            "h": 96
           },
           "layoutSizingHorizontal": "FILL",
           "layoutSizingVertical": "HUG",
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Settings",
+          "characters": "View new postcards from club",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I309:4634;50:567",
+          "id": "I1883:10201;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 25778,
-            "y": 1400,
+            "x": 6076,
+            "y": 2312,
             "w": 368,
             "h": 52
           },
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I309:4634;50:562",
+              "id": "I1883:10201;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 25778,
-                "y": 1400,
+                "x": 6076,
+                "y": 2312,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +185,12 @@
               }
             },
             {
-              "id": "I309:4634;50:563",
+              "id": "I1883:10201;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 25778,
-                "y": 1432,
+                "x": 6076,
+                "y": 2344,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I309:4634;50:878",
-      "name": "Annotation / Status / In review",
+      "id": "I1883:10201;50:878",
+      "name": "Annotation / Status / Todo",
       "type": "INSTANCE",
       "box": {
-        "x": 26034,
-        "y": 1240,
+        "x": 6332,
+        "y": 2152,
         "w": 160,
         "h": 46
       },
@@ -241,19 +242,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#E5B217"
+          "color": "#1739E5"
         }
       ],
-      "componentId": "50:846",
-      "component": "Annotation / Status / In review",
+      "componentId": "50:848",
+      "component": "Annotation / Status / Todo",
       "children": [
         {
-          "id": "I309:4634;50:878;50:839",
-          "name": "In review",
+          "id": "I1883:10201;50:878;50:755",
+          "name": "To do",
           "type": "TEXT",
           "box": {
-            "x": 26050,
-            "y": 1248,
+            "x": 6348,
+            "y": 2160,
             "w": 128,
             "h": 30
           },
@@ -262,13 +263,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#1A1A1A"
+              "color": "#FFFFFF"
             }
           ],
           "styles": {
-            "fill": "Grey (OLD)/10"
+            "fill": "White/100"
           },
-          "characters": "In review",
+          "characters": "To do",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

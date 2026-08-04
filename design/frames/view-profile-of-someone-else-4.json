@@ -261,6 +261,7 @@
                       "clipsContent": false,
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 5,
                       "children": [
                         {
                           "id": "903:5743",
@@ -298,6 +299,7 @@
                           "cornerRadius": 1,
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 0,
                           "strokes": [
                             {
                               "type": "SOLID",
@@ -407,6 +409,7 @@
                       "clipsContent": false,
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 5,
                       "children": [
                         {
                           "id": "908:5769",
@@ -444,6 +447,7 @@
                           "cornerRadius": 1,
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 0,
                           "strokes": [
                             {
                               "type": "SOLID",
@@ -467,6 +471,7 @@
                               },
                               "strokeWeight": 1,
                               "strokeAlign": "INSIDE",
+                              "rotation": 0,
                               "fills": [
                                 {
                                   "type": "IMAGE",
@@ -553,6 +558,7 @@
                       "clipsContent": false,
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 5,
                       "children": [
                         {
                           "id": "908:5776",
@@ -590,6 +596,7 @@
                           "cornerRadius": 1,
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 0,
                           "strokes": [
                             {
                               "type": "SOLID",
@@ -613,6 +620,7 @@
                               },
                               "strokeWeight": 1,
                               "strokeAlign": "INSIDE",
+                              "rotation": 0,
                               "fills": [
                                 {
                                   "type": "IMAGE",
@@ -699,6 +707,7 @@
                       "clipsContent": false,
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 5,
                       "children": [
                         {
                           "id": "908:5783",
@@ -736,6 +745,7 @@
                           "cornerRadius": 1,
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 0,
                           "strokes": [
                             {
                               "type": "SOLID",
@@ -759,6 +769,7 @@
                               },
                               "strokeWeight": 1,
                               "strokeAlign": "INSIDE",
+                              "rotation": 0,
                               "fills": [
                                 {
                                   "type": "IMAGE",
@@ -845,6 +856,7 @@
                       "clipsContent": false,
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 5,
                       "children": [
                         {
                           "id": "908:5790",
@@ -882,6 +894,7 @@
                           "cornerRadius": 1,
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 0,
                           "strokes": [
                             {
                               "type": "SOLID",
@@ -905,6 +918,7 @@
                               },
                               "strokeWeight": 1,
                               "strokeAlign": "INSIDE",
+                              "rotation": 0,
                               "fills": [
                                 {
                                   "type": "IMAGE",
@@ -991,6 +1005,7 @@
                       "clipsContent": false,
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 5,
                       "children": [
                         {
                           "id": "908:5751",
@@ -1028,6 +1043,7 @@
                           "cornerRadius": 1,
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 0,
                           "strokes": [
                             {
                               "type": "SOLID",
@@ -1051,6 +1067,7 @@
                               },
                               "strokeWeight": 1,
                               "strokeAlign": "INSIDE",
+                              "rotation": 0,
                               "fills": [
                                 {
                                   "type": "IMAGE",
@@ -1137,6 +1154,7 @@
                       "clipsContent": false,
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 5,
                       "children": [
                         {
                           "id": "908:5760",
@@ -1174,6 +1192,7 @@
                           "cornerRadius": 1,
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 0,
                           "strokes": [
                             {
                               "type": "SOLID",
@@ -1197,6 +1216,7 @@
                               },
                               "strokeWeight": 1,
                               "strokeAlign": "INSIDE",
+                              "rotation": 0,
                               "fills": [
                                 {
                                   "type": "IMAGE",
@@ -1806,6 +1826,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -1827,6 +1848,7 @@
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
                       "visible": false,
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -1848,6 +1870,7 @@
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
                       "visible": false,
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -2485,6 +2508,7 @@
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
                       "visible": false,
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -2505,6 +2529,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -2526,6 +2551,7 @@
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
                       "visible": false,
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -3648,6 +3674,7 @@
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
                       "visible": false,
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -3669,6 +3696,7 @@
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
                       "visible": false,
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -3689,6 +3717,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",

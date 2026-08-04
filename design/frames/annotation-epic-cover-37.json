@@ -1,11 +1,11 @@
 {
   "page": "Archive",
-  "id": "1729:8652",
+  "id": "366:3097",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": -12849,
-    "y": 45548,
+    "x": 19542,
+    "y": 4380,
     "w": 480,
     "h": 844
   },
@@ -24,7 +24,7 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "v4"
+      "value": "View private club as member"
     },
     "Notes#1527:1": {
       "type": "TEXT",
@@ -36,7 +36,7 @@
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:847",
+      "value": "50:845",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I1729:8652;50:568",
+      "id": "I366:3097;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": -12793,
-        "y": 45628,
+        "x": 19598,
+        "y": 4460,
         "w": 368,
         "h": 708
       },
@@ -88,14 +88,14 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I1729:8652;50:561",
+          "id": "I366:3097;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": -12793,
-            "y": 45628,
+            "x": 19598,
+            "y": 4460,
             "w": 368,
-            "h": 48
+            "h": 96
           },
           "layoutSizingHorizontal": "FILL",
           "layoutSizingVertical": "HUG",
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "v4",
+          "characters": "View private club as member",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I1729:8652;50:567",
+          "id": "I366:3097;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": -12793,
-            "y": 45716,
+            "x": 19598,
+            "y": 4596,
             "w": 368,
             "h": 52
           },
@@ -147,12 +147,12 @@
           "strokeAlign": "INSIDE",
           "children": [
             {
-              "id": "I1729:8652;50:562",
+              "id": "I366:3097;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": -12793,
-                "y": 45716,
+                "x": 19598,
+                "y": 4596,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +184,12 @@
               }
             },
             {
-              "id": "I1729:8652;50:563",
+              "id": "I366:3097;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": -12793,
-                "y": 45748,
+                "x": 19598,
+                "y": 4628,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +225,12 @@
       ]
     },
     {
-      "id": "I1729:8652;50:878",
-      "name": "Annotation / Status / In progress",
+      "id": "I366:3097;50:878",
+      "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": -12537,
-        "y": 45556,
+        "x": 19854,
+        "y": 4388,
         "w": 160,
         "h": 46
       },
@@ -241,19 +241,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#E56D17"
+          "color": "#74B236"
         }
       ],
-      "componentId": "50:847",
-      "component": "Annotation / Status / In progress",
+      "componentId": "50:845",
+      "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I1729:8652;50:878;50:837",
-          "name": "In progress",
+          "id": "I366:3097;50:878;50:841",
+          "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": -12521,
-            "y": 45564,
+            "x": 19870,
+            "y": 4396,
             "w": 128,
             "h": 30
           },
@@ -262,13 +262,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#FFFFFF"
+              "color": "#1A1A1A"
             }
           ],
           "styles": {
-            "fill": "White/100"
+            "fill": "Grey (OLD)/10"
           },
-          "characters": "In progress",
+          "characters": "Done",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

@@ -147,6 +147,7 @@
               "clipsContent": true,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "componentId": "1508:8477",
               "component": "Element / Icon / Bike",
               "children": [
@@ -369,6 +370,7 @@
               "clipsContent": true,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "componentId": "1508:8477",
               "component": "Element / Icon / Bike",
               "children": [
@@ -557,6 +559,7 @@
       "clipsContent": false,
       "strokeWeight": 1,
       "strokeAlign": "INSIDE",
+      "rotation": 0,
       "children": [
         {
           "id": "1914:4432",
@@ -632,6 +635,7 @@
                   },
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "IMAGE",
@@ -668,6 +672,7 @@
                   },
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "IMAGE",
@@ -765,6 +770,7 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "children": [
             {
               "id": "1918:8663",
@@ -889,6 +895,7 @@
       "clipsContent": false,
       "strokeWeight": 1,
       "strokeAlign": "INSIDE",
+      "rotation": 0,
       "children": [
         {
           "id": "1914:4548",
@@ -964,6 +971,7 @@
                   },
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "IMAGE",
@@ -1000,6 +1008,7 @@
                   },
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "IMAGE",
@@ -1096,6 +1105,7 @@
           },
           "strokeWeight": 2,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "strokes": [
             {
               "type": "SOLID",
@@ -1119,6 +1129,7 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "children": [
             {
               "id": "1918:8671",

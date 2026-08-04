@@ -181,6 +181,36 @@ describe('pruneNode', () => {
     expect(pruned).not.toHaveProperty('visible')
   })
 
+  it('carries visible:false, because a hidden layer is not the same as an absent one', () => {
+    // Figma keeps toggled-off variant slots in the file — the Home header still
+    // contains the back button it hides. Dropping this made the snapshot claim
+    // the home screen has a back button.
+    const hidden = pruneNode({ id: '5:5', name: 'Back', type: 'INSTANCE', visible: false })
+    expect(hidden.visible).toBe(false)
+  })
+
+  describe('rotation', () => {
+    // A rotated node's bounding box grows to contain it, so without this a card
+    // stack fanned at ±2° reads as three differently-sized cards.
+    it('converts radians to degrees, and counter-clockwise to CSS clockwise', () => {
+      const figmaTwoDegreesCcw = 0.034906585
+      expect(pruneNode({ id: '1:1', name: 'a', type: 'FRAME', rotation: figmaTwoDegreesCcw }).rotation).toBe(-2)
+      expect(pruneNode({ id: '1:1', name: 'a', type: 'FRAME', rotation: -figmaTwoDegreesCcw }).rotation).toBe(2)
+    })
+
+    it('keeps the precision that rounding raw radians destroys', () => {
+      // round() is shared and clips to 2dp. Applied to 0.0349 radians that is
+      // 0.03, which is 1.7° — the bug this conversion exists to avoid.
+      const { rotation } = pruneNode({ id: '1:1', name: 'a', type: 'FRAME', rotation: 0.034906585 })
+      expect(Math.abs(rotation)).toBe(2)
+    })
+
+    it('omits an unrotated node rather than writing a zero', () => {
+      expect(pruneNode({ id: '1:1', name: 'a', type: 'FRAME', rotation: 0 })).not.toHaveProperty('rotation')
+      expect(pruneNode({ id: '1:1', name: 'a', type: 'FRAME' })).not.toHaveProperty('rotation')
+    })
+  })
+
   it('resolves style ids to names, so the snapshot reads without a lookup table', () => {
     expect(pruned.styles).toEqual({ fill: 'Grey/100' })
     expect(pruned.fills).toEqual([{ type: 'SOLID', color: '#1A1A1A' }])

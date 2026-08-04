@@ -1747,6 +1747,7 @@
                       },
                       "strokeWeight": 2,
                       "strokeAlign": "CENTER",
+                      "rotation": -180,
                       "fills": [
                         {
                           "type": "SOLID",

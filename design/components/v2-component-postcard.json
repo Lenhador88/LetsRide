@@ -79,6 +79,7 @@
       "cornerRadius": 8,
       "strokeWeight": 2,
       "strokeAlign": "INSIDE",
+      "rotation": 0,
       "fills": [
         {
           "type": "SOLID",
@@ -156,6 +157,7 @@
               },
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "fills": [
                 {
                   "type": "IMAGE",
@@ -176,6 +178,7 @@
               },
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "fills": [
                 {
                   "type": "GRADIENT_LINEAR",
@@ -579,6 +582,7 @@
                   "cornerRadius": 100,
                   "strokeWeight": 2,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "strokes": [
                     {
                       "type": "SOLID",
@@ -1268,6 +1272,7 @@
                   "cornerRadius": 8,
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "componentId": "1111:6034",
                   "component": "State=Default",
                   "componentSet": "v2 / Component / Button / Icon",
@@ -1402,6 +1407,7 @@
       "cornerRadius": 8,
       "strokeWeight": 2,
       "strokeAlign": "INSIDE",
+      "rotation": 0,
       "fills": [
         {
           "type": "SOLID",
@@ -1479,6 +1485,7 @@
               },
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "fills": [
                 {
                   "type": "IMAGE",
@@ -1499,6 +1506,7 @@
               },
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "fills": [
                 {
                   "type": "GRADIENT_LINEAR",
@@ -1902,6 +1910,7 @@
                   "cornerRadius": 100,
                   "strokeWeight": 2,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "strokes": [
                     {
                       "type": "SOLID",
@@ -2590,6 +2599,7 @@
                   "cornerRadius": 8,
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "componentId": "1111:6034",
                   "component": "State=Default",
                   "componentSet": "v2 / Component / Button / Icon",

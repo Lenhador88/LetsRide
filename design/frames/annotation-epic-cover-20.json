@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "50:569",
+  "page": "Design",
+  "id": "1883:10528",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 5020,
-    "y": 1232,
+    "x": 23656,
+    "y": 4048,
     "w": 480,
     "h": 844
   },
@@ -24,15 +24,15 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Rides overview"
+      "value": "Explore clubs"
     },
     "Notes#1527:1": {
       "type": "TEXT",
-      "value": "If we introduce ”Groups” in a later stage, we probably want to show the group who created the ride in the card/list item."
+      "value": "..."
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I50:569;50:568",
+      "id": "I1883:10528;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 5076,
-        "y": 1312,
+        "x": 23712,
+        "y": 4128,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I50:569;50:561",
+          "id": "I1883:10528;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 5076,
-            "y": 1312,
+            "x": 23712,
+            "y": 4128,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Rides overview",
+          "characters": "Explore clubs",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,14 +125,14 @@
           }
         },
         {
-          "id": "I50:569;50:567",
+          "id": "I1883:10528;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 5076,
-            "y": 1400,
+            "x": 23712,
+            "y": 4216,
             "w": 368,
-            "h": 92
+            "h": 52
           },
           "layoutMode": "VERTICAL",
           "layoutWrap": "NO_WRAP",
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I50:569;50:562",
+              "id": "I1883:10528;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 5076,
-                "y": 1400,
+                "x": 23712,
+                "y": 4216,
                 "w": 368,
                 "h": 24
               },
@@ -184,14 +185,14 @@
               }
             },
             {
-              "id": "I50:569;50:563",
+              "id": "I1883:10528;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 5076,
-                "y": 1432,
+                "x": 23712,
+                "y": 4248,
                 "w": 368,
-                "h": 60
+                "h": 20
               },
               "layoutSizingHorizontal": "FILL",
               "layoutSizingVertical": "HUG",
@@ -209,7 +210,7 @@
               "styles": {
                 "fill": "White/100"
               },
-              "characters": "If we introduce ”Groups” in a later stage, we probably want to show the group who created the ride in the card/list item.",
+              "characters": "...",
               "text": {
                 "fontFamily": "Poppins",
                 "fontSize": 14,
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I50:569;50:878",
+      "id": "I1883:10528;50:878",
       "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": 5332,
-        "y": 1240,
+        "x": 23968,
+        "y": 4056,
         "w": 160,
         "h": 46
       },
@@ -248,12 +249,12 @@
       "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I50:569;50:878;50:841",
+          "id": "I1883:10528;50:878;50:841",
           "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": 5348,
-            "y": 1248,
+            "x": 23984,
+            "y": 4064,
             "w": 128,
             "h": 30
           },

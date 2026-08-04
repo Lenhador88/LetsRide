@@ -59,6 +59,7 @@
           "layoutGrow": 0,
           "strokeWeight": 1,
           "strokeAlign": "OUTSIDE",
+          "rotation": 0,
           "fills": [
             {
               "type": "SOLID",
@@ -221,6 +222,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -254,6 +256,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -314,6 +317,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -351,6 +355,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -388,6 +393,7 @@
                       "layoutGrow": 1,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -542,6 +548,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -575,6 +582,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -635,6 +643,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -672,6 +681,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -709,6 +719,7 @@
                       "layoutGrow": 1,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -863,6 +874,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -896,6 +908,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -956,6 +969,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -993,6 +1007,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -1030,6 +1045,7 @@
                       "layoutGrow": 1,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",

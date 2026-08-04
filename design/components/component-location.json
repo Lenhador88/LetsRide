@@ -205,6 +205,7 @@
           "clipsContent": true,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "componentId": "416:4202",
           "component": "Element / Icon / Arrow Right",
           "children": [
@@ -220,6 +221,7 @@
               },
               "strokeWeight": 2,
               "strokeAlign": "CENTER",
+              "rotation": 0,
               "fills": [
                 {
                   "type": "SOLID",
@@ -345,6 +347,7 @@
           "clipsContent": true,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "componentId": "416:4202",
           "component": "Element / Icon / Arrow Right",
           "children": [
@@ -360,6 +363,7 @@
               },
               "strokeWeight": 2,
               "strokeAlign": "CENTER",
+              "rotation": 0,
               "fills": [
                 {
                   "type": "SOLID",

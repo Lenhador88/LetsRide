@@ -13953,6 +13953,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0,
                               "strokeAlign": "INSIDE",
+                              "rotation": 2.2,
                               "children": [
                                 {
                                   "id": "259:8682",
@@ -13986,6 +13987,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "children": [
                                     {
                                       "id": "259:8684",
@@ -13999,6 +14001,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14077,6 +14080,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -14096,6 +14100,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -14118,6 +14123,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0,
                               "strokeAlign": "INSIDE",
+                              "rotation": -2.2,
                               "children": [
                                 {
                                   "id": "259:8691",
@@ -14151,6 +14157,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "children": [
                                     {
                                       "id": "259:8693",
@@ -14164,6 +14171,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14202,6 +14210,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14221,6 +14230,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14242,6 +14252,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -16287,6 +16298,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0.13,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 45.2,
                                   "children": [
                                     {
                                       "id": "259:8797",
@@ -16773,6 +16785,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0.13,
                               "strokeAlign": "INSIDE",
+                              "rotation": -180,
                               "children": [
                                 {
                                   "id": "259:8819",
@@ -17271,6 +17284,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0.13,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 45.2,
                                   "children": [
                                     {
                                       "id": "259:8842",

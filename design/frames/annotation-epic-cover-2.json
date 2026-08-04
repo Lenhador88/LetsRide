@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "50:924",
+  "page": "Design",
+  "id": "1857:15402",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 18272,
-    "y": 1232,
+    "x": 700,
+    "y": 3588,
     "w": 480,
     "h": 844
   },
@@ -24,7 +24,7 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Clubs overview"
+      "value": "Forgot password"
     },
     "Notes#1527:1": {
       "type": "TEXT",
@@ -32,7 +32,7 @@
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I50:924;50:568",
+      "id": "I1857:15402;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 18328,
-        "y": 1312,
+        "x": 756,
+        "y": 3668,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I50:924;50:561",
+          "id": "I1857:15402;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 18328,
-            "y": 1312,
+            "x": 756,
+            "y": 3668,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Clubs overview",
+          "characters": "Forgot password",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I50:924;50:567",
+          "id": "I1857:15402;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 18328,
-            "y": 1400,
+            "x": 756,
+            "y": 3756,
             "w": 368,
             "h": 52
           },
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I50:924;50:562",
+              "id": "I1857:15402;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 18328,
-                "y": 1400,
+                "x": 756,
+                "y": 3756,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +185,12 @@
               }
             },
             {
-              "id": "I50:924;50:563",
+              "id": "I1857:15402;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 18328,
-                "y": 1432,
+                "x": 756,
+                "y": 3788,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I50:924;50:878",
+      "id": "I1857:15402;50:878",
       "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": 18584,
-        "y": 1240,
+        "x": 1012,
+        "y": 3596,
         "w": 160,
         "h": 46
       },
@@ -248,12 +249,12 @@
       "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I50:924;50:878;50:841",
+          "id": "I1857:15402;50:878;50:841",
           "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": 18600,
-            "y": 1248,
+            "x": 1028,
+            "y": 3604,
             "w": 128,
             "h": 30
           },

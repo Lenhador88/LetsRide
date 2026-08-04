@@ -137,6 +137,7 @@
                           },
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 45,
                           "fills": [
                             {
                               "type": "SOLID",
@@ -382,6 +383,7 @@
                           },
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 45,
                           "fills": [
                             {
                               "type": "SOLID",

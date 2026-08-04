@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "416:10737",
+  "page": "Design",
+  "id": "1883:10557",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 1065,
-    "y": 1232,
+    "x": 41392,
+    "y": 4853,
     "w": 480,
     "h": 844
   },
@@ -24,19 +24,19 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Splash"
+      "value": "Delete account"
     },
     "Notes#1527:1": {
       "type": "TEXT",
-      "value": "The splash screen is visible when the app is opened and still loading."
+      "value": "..."
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:846",
+      "value": "50:845",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I416:10737;50:568",
+      "id": "I1883:10557;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 1121,
-        "y": 1312,
+        "x": 41448,
+        "y": 4933,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I416:10737;50:561",
+          "id": "I1883:10557;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 1121,
-            "y": 1312,
+            "x": 41448,
+            "y": 4933,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Splash",
+          "characters": "Delete account",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,14 +125,14 @@
           }
         },
         {
-          "id": "I416:10737;50:567",
+          "id": "I1883:10557;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 1121,
-            "y": 1400,
+            "x": 41448,
+            "y": 5021,
             "w": 368,
-            "h": 72
+            "h": 52
           },
           "layoutMode": "VERTICAL",
           "layoutWrap": "NO_WRAP",
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I416:10737;50:562",
+              "id": "I1883:10557;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 1121,
-                "y": 1400,
+                "x": 41448,
+                "y": 5021,
                 "w": 368,
                 "h": 24
               },
@@ -184,14 +185,14 @@
               }
             },
             {
-              "id": "I416:10737;50:563",
+              "id": "I1883:10557;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 1121,
-                "y": 1432,
+                "x": 41448,
+                "y": 5053,
                 "w": 368,
-                "h": 40
+                "h": 20
               },
               "layoutSizingHorizontal": "FILL",
               "layoutSizingVertical": "HUG",
@@ -209,7 +210,7 @@
               "styles": {
                 "fill": "White/100"
               },
-              "characters": "The splash screen is visible when the app is opened and still loading.",
+              "characters": "...",
               "text": {
                 "fontFamily": "Poppins",
                 "fontSize": 14,
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I416:10737;50:878",
-      "name": "Annotation / Status / In review",
+      "id": "I1883:10557;50:878",
+      "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": 1377,
-        "y": 1240,
+        "x": 41704,
+        "y": 4861,
         "w": 160,
         "h": 46
       },
@@ -241,19 +242,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#E5B217"
+          "color": "#74B236"
         }
       ],
-      "componentId": "50:846",
-      "component": "Annotation / Status / In review",
+      "componentId": "50:845",
+      "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I416:10737;50:878;50:839",
-          "name": "In review",
+          "id": "I1883:10557;50:878;50:841",
+          "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": 1393,
-            "y": 1248,
+            "x": 41720,
+            "y": 4869,
             "w": 128,
             "h": 30
           },
@@ -268,7 +269,7 @@
           "styles": {
             "fill": "Grey (OLD)/10"
           },
-          "characters": "In review",
+          "characters": "Done",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

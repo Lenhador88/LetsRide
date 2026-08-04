@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "241:5596",
+  "page": "Design",
+  "id": "1883:10526",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 15902,
-    "y": 1232,
+    "x": 23656,
+    "y": 700,
     "w": 480,
     "h": 844
   },
@@ -24,15 +24,15 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "View profile of other rider"
+      "value": "View your clubs"
     },
     "Notes#1527:1": {
       "type": "TEXT",
-      "value": "Do we want the ability to add people as friends? What is the value of friends compared to being in the same group together? I think friends are for chatting, but I'm not sure if we need to implement a chat functionality, that might not be what this app is for."
+      "value": "..."
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I241:5596;50:568",
+      "id": "I1883:10526;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 15958,
-        "y": 1312,
+        "x": 23712,
+        "y": 780,
         "w": 368,
         "h": 708
       },
@@ -88,14 +88,14 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I241:5596;50:561",
+          "id": "I1883:10526;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 15958,
-            "y": 1312,
+            "x": 23712,
+            "y": 780,
             "w": 368,
-            "h": 96
+            "h": 48
           },
           "layoutSizingHorizontal": "FILL",
           "layoutSizingVertical": "HUG",
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "View profile of other rider",
+          "characters": "View your clubs",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,14 +125,14 @@
           }
         },
         {
-          "id": "I241:5596;50:567",
+          "id": "I1883:10526;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 15958,
-            "y": 1448,
+            "x": 23712,
+            "y": 868,
             "w": 368,
-            "h": 152
+            "h": 52
           },
           "layoutMode": "VERTICAL",
           "layoutWrap": "NO_WRAP",
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I241:5596;50:562",
+              "id": "I1883:10526;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 15958,
-                "y": 1448,
+                "x": 23712,
+                "y": 868,
                 "w": 368,
                 "h": 24
               },
@@ -184,14 +185,14 @@
               }
             },
             {
-              "id": "I241:5596;50:563",
+              "id": "I1883:10526;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 15958,
-                "y": 1480,
+                "x": 23712,
+                "y": 900,
                 "w": 368,
-                "h": 120
+                "h": 20
               },
               "layoutSizingHorizontal": "FILL",
               "layoutSizingVertical": "HUG",
@@ -209,7 +210,7 @@
               "styles": {
                 "fill": "White/100"
               },
-              "characters": "Do we want the ability to add people as friends? What is the value of friends compared to being in the same group together? I think friends are for chatting, but I'm not sure if we need to implement a chat functionality, that might not be what this app is for.",
+              "characters": "...",
               "text": {
                 "fontFamily": "Poppins",
                 "fontSize": 14,
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I241:5596;50:878",
+      "id": "I1883:10526;50:878",
       "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": 16214,
-        "y": 1240,
+        "x": 23968,
+        "y": 708,
         "w": 160,
         "h": 46
       },
@@ -248,12 +249,12 @@
       "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I241:5596;50:878;50:841",
+          "id": "I1883:10526;50:878;50:841",
           "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": 16230,
-            "y": 1248,
+            "x": 23984,
+            "y": 716,
             "w": 128,
             "h": 30
           },

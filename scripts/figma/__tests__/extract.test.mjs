@@ -45,7 +45,11 @@ afterAll(async () => {
 describe('extract', () => {
   it('writes one file per top-level frame and component', async () => {
     const index = await read('index.json')
-    expect(index.frames.map((f) => f.name)).toEqual(['Home / Feed', 'Create Postcard'])
+    expect(index.frames.map((f) => f.name)).toEqual([
+      'Home / Feed',
+      'Create Postcard',
+      'Nested Screen',
+    ])
     expect(index.components.map((c) => c.name)).toContain('v2 / Component / Button')
   })
 
@@ -53,6 +57,15 @@ describe('extract', () => {
     const index = await read('index.json')
     expect(index.frames.map((f) => f.name)).not.toContain('Section wrapper')
     expect(index.frames.find((f) => f.name === 'Create Postcard').id).toBe('11:2')
+  })
+
+  it('descends through *nested* sections, so every screen is addressable by name', async () => {
+    // The real file groups flows in an outer section whose children are sections.
+    // Stopping at one level indexed the flow and hid the screens inside it, so
+    // `figma -- tree "Home - Postcards - All new"` could not resolve.
+    const index = await read('index.json')
+    expect(index.frames.map((f) => f.name)).not.toContain('Inner section')
+    expect(index.frames.find((f) => f.name === 'Nested Screen').id).toBe('11:5')
   })
 
   it('disambiguates two nodes sharing a name instead of overwriting one', async () => {
@@ -129,7 +142,7 @@ describe('extract', () => {
       latestVersionId: 'v-fixture-1',
       pulledAt: provenance.pulledAt,
     })
-    expect(manifest.counts).toMatchObject({ pages: 2, frames: 2, components: 4, componentSets: 1 })
+    expect(manifest.counts).toMatchObject({ pages: 2, frames: 3, components: 4, componentSets: 1 })
   })
 
   it('is deterministic — a second run reproduces the same bytes', async () => {

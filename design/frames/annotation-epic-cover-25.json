@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "50:1008",
+  "page": "Design",
+  "id": "2020:5210",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 5020,
-    "y": 6108,
+    "x": 27390,
+    "y": 7576,
     "w": 480,
     "h": 844
   },
@@ -24,19 +24,19 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "View ride as organizer"
+      "value": "View joined public club"
     },
     "Notes#1527:1": {
       "type": "TEXT",
-      "value": "How do private slots work?\nCan they only be filled by invitation? If so, why bother setting a fixed amount of private slots? Just invite the people you want to invite.\nThey start to make more sense once we introduces groups. Then it means, you ”reserve” X spots for people from the group that created the ride. Those spots can't be filled by public riders."
+      "value": "..."
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:845",
+      "value": "50:844",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I50:1008;50:568",
+      "id": "I2020:5210;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 5076,
-        "y": 6188,
+        "x": 27446,
+        "y": 7656,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I50:1008;50:561",
+          "id": "I2020:5210;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 5076,
-            "y": 6188,
+            "x": 27446,
+            "y": 7656,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "View ride as organizer",
+          "characters": "View joined public club",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,14 +125,14 @@
           }
         },
         {
-          "id": "I50:1008;50:567",
+          "id": "I2020:5210;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 5076,
-            "y": 6276,
+            "x": 27446,
+            "y": 7744,
             "w": 368,
-            "h": 212
+            "h": 52
           },
           "layoutMode": "VERTICAL",
           "layoutWrap": "NO_WRAP",
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I50:1008;50:562",
+              "id": "I2020:5210;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 5076,
-                "y": 6276,
+                "x": 27446,
+                "y": 7744,
                 "w": 368,
                 "h": 24
               },
@@ -184,14 +185,14 @@
               }
             },
             {
-              "id": "I50:1008;50:563",
+              "id": "I2020:5210;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 5076,
-                "y": 6308,
+                "x": 27446,
+                "y": 7776,
                 "w": 368,
-                "h": 180
+                "h": 20
               },
               "layoutSizingHorizontal": "FILL",
               "layoutSizingVertical": "HUG",
@@ -209,7 +210,7 @@
               "styles": {
                 "fill": "White/100"
               },
-              "characters": "How do private slots work?\nCan they only be filled by invitation? If so, why bother setting a fixed amount of private slots? Just invite the people you want to invite.\nThey start to make more sense once we introduces groups. Then it means, you ”reserve” X spots for people from the group that created the ride. Those spots can't be filled by public riders.",
+              "characters": "...",
               "text": {
                 "fontFamily": "Poppins",
                 "fontSize": 14,
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I50:1008;50:878",
-      "name": "Annotation / Status / Done",
+      "id": "I2020:5210;50:878",
+      "name": "Annotation / Status / On hold",
       "type": "INSTANCE",
       "box": {
-        "x": 5332,
-        "y": 6116,
+        "x": 27702,
+        "y": 7584,
         "w": 160,
         "h": 46
       },
@@ -241,19 +242,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#74B236"
+          "color": "#CC2929"
         }
       ],
-      "componentId": "50:845",
-      "component": "Annotation / Status / Done",
+      "componentId": "50:844",
+      "component": "Annotation / Status / On hold",
       "children": [
         {
-          "id": "I50:1008;50:878;50:841",
-          "name": "Done",
+          "id": "I2020:5210;50:878;50:843",
+          "name": "On hold",
           "type": "TEXT",
           "box": {
-            "x": 5348,
-            "y": 6124,
+            "x": 27718,
+            "y": 7592,
             "w": 128,
             "h": 30
           },
@@ -262,13 +263,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#1A1A1A"
+              "color": "#FFFFFF"
             }
           ],
           "styles": {
-            "fill": "Grey (OLD)/10"
+            "fill": "White/100"
           },
-          "characters": "Done",
+          "characters": "On hold",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

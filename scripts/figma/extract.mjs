@@ -83,11 +83,16 @@ async function emit(relative, data) {
   return body
 }
 
-/** Sections are organisational wrappers; their children are the real top-level items. */
+/**
+ * Sections are organisational wrappers, and they nest — the Design page groups its
+ * flows in an outer section whose children are themselves sections. Recursing means
+ * every screen is addressable by its own name (`Home - Postcards - All new`) rather
+ * than only through the flow that contains it.
+ */
 function topLevel(page) {
-  return (page.children ?? []).flatMap((child) =>
-    child.type === 'SECTION' ? (child.children ?? []) : [child],
-  )
+  return (page.children ?? []).flatMap(function expand(child) {
+    return child.type === 'SECTION' ? (child.children ?? []).flatMap(expand) : [child]
+  })
 }
 
 const index = { fileKey: FILE_KEY, frames: [], components: [] }

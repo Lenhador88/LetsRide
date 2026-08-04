@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "50:708",
+  "page": "Design",
+  "id": "1883:10238",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 13360,
-    "y": 1232,
+    "x": 6020,
+    "y": 5032,
     "w": 480,
     "h": 844
   },
@@ -22,21 +22,9 @@
   "componentId": "50:565",
   "component": "Annotation / Epic Cover",
   "componentProperties": {
-    "Epic Name#2067:7": {
-      "type": "TEXT",
-      "value": "View my own profile"
-    },
-    "Notes#1527:1": {
-      "type": "TEXT",
-      "value": "..."
-    },
-    "has Notes#1527:0": {
-      "type": "BOOLEAN",
-      "value": true
-    },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:845",
+      "value": "50:848",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -63,16 +51,28 @@
           "key": "4e5d49a7273a51eed0dacde1364f712d6fb15ad8"
         }
       ]
+    },
+    "Epic Name#2067:7": {
+      "type": "TEXT",
+      "value": "Comment on a postcard"
+    },
+    "Notes#1527:1": {
+      "type": "TEXT",
+      "value": "..."
+    },
+    "has Notes#1527:0": {
+      "type": "BOOLEAN",
+      "value": false
     }
   },
   "children": [
     {
-      "id": "I50:708;50:568",
+      "id": "I1883:10238;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 13416,
-        "y": 1312,
+        "x": 6076,
+        "y": 5112,
         "w": 368,
         "h": 708
       },
@@ -88,14 +88,14 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I50:708;50:561",
+          "id": "I1883:10238;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 13416,
-            "y": 1312,
+            "x": 6076,
+            "y": 5112,
             "w": 368,
-            "h": 48
+            "h": 96
           },
           "layoutSizingHorizontal": "FILL",
           "layoutSizingVertical": "HUG",
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "View my own profile",
+          "characters": "Comment on a postcard",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I50:708;50:567",
+          "id": "I1883:10238;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 13416,
-            "y": 1400,
+            "x": 6076,
+            "y": 5200,
             "w": 368,
             "h": 52
           },
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I50:708;50:562",
+              "id": "I1883:10238;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 13416,
-                "y": 1400,
+                "x": 6076,
+                "y": 5200,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +185,12 @@
               }
             },
             {
-              "id": "I50:708;50:563",
+              "id": "I1883:10238;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 13416,
-                "y": 1432,
+                "x": 6076,
+                "y": 5232,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I50:708;50:878",
-      "name": "Annotation / Status / Done",
+      "id": "I1883:10238;50:878",
+      "name": "Annotation / Status / Todo",
       "type": "INSTANCE",
       "box": {
-        "x": 13672,
-        "y": 1240,
+        "x": 6332,
+        "y": 5040,
         "w": 160,
         "h": 46
       },
@@ -241,19 +242,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#74B236"
+          "color": "#1739E5"
         }
       ],
-      "componentId": "50:845",
-      "component": "Annotation / Status / Done",
+      "componentId": "50:848",
+      "component": "Annotation / Status / Todo",
       "children": [
         {
-          "id": "I50:708;50:878;50:841",
-          "name": "Done",
+          "id": "I1883:10238;50:878;50:755",
+          "name": "To do",
           "type": "TEXT",
           "box": {
-            "x": 13688,
-            "y": 1248,
+            "x": 6348,
+            "y": 5048,
             "w": 128,
             "h": 30
           },
@@ -262,13 +263,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#1A1A1A"
+              "color": "#FFFFFF"
             }
           ],
           "styles": {
-            "fill": "Grey (OLD)/10"
+            "fill": "White/100"
           },
-          "characters": "Done",
+          "characters": "To do",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

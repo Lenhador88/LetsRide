@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "366:3080",
+  "page": "Design",
+  "id": "1857:15441",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 18272,
-    "y": 2576,
+    "x": 700,
+    "y": 2144,
     "w": 480,
     "h": 844
   },
@@ -24,7 +24,7 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Create club"
+      "value": "Log in"
     },
     "Notes#1527:1": {
       "type": "TEXT",
@@ -32,7 +32,7 @@
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I366:3080;50:568",
+      "id": "I1857:15441;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 18328,
-        "y": 2656,
+        "x": 756,
+        "y": 2224,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I366:3080;50:561",
+          "id": "I1857:15441;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 18328,
-            "y": 2656,
+            "x": 756,
+            "y": 2224,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Create club",
+          "characters": "Log in",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I366:3080;50:567",
+          "id": "I1857:15441;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 18328,
-            "y": 2744,
+            "x": 756,
+            "y": 2312,
             "w": 368,
             "h": 52
           },
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I366:3080;50:562",
+              "id": "I1857:15441;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 18328,
-                "y": 2744,
+                "x": 756,
+                "y": 2312,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +185,12 @@
               }
             },
             {
-              "id": "I366:3080;50:563",
+              "id": "I1857:15441;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 18328,
-                "y": 2776,
+                "x": 756,
+                "y": 2344,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I366:3080;50:878",
+      "id": "I1857:15441;50:878",
       "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": 18584,
-        "y": 2584,
+        "x": 1012,
+        "y": 2152,
         "w": 160,
         "h": 46
       },
@@ -248,12 +249,12 @@
       "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I366:3080;50:878;50:841",
+          "id": "I1857:15441;50:878;50:841",
           "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": 18600,
-            "y": 2592,
+            "x": 1028,
+            "y": 2160,
             "w": 128,
             "h": 30
           },

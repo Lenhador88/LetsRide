@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "416:12377",
+  "page": "Design",
+  "id": "1883:10559",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 1065,
-    "y": 3920,
+    "x": 41392,
+    "y": 3409,
     "w": 480,
     "h": 844
   },
@@ -24,7 +24,7 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Create account"
+      "value": "View someone else's profile"
     },
     "Notes#1527:1": {
       "type": "TEXT",
@@ -32,11 +32,11 @@
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:846",
+      "value": "50:847",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I416:12377;50:568",
+      "id": "I1883:10559;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 1121,
-        "y": 4000,
+        "x": 41448,
+        "y": 3489,
         "w": 368,
         "h": 708
       },
@@ -88,14 +88,14 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I416:12377;50:561",
+          "id": "I1883:10559;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 1121,
-            "y": 4000,
+            "x": 41448,
+            "y": 3489,
             "w": 368,
-            "h": 48
+            "h": 96
           },
           "layoutSizingHorizontal": "FILL",
           "layoutSizingVertical": "HUG",
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Create account",
+          "characters": "View someone else's profile",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I416:12377;50:567",
+          "id": "I1883:10559;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 1121,
-            "y": 4088,
+            "x": 41448,
+            "y": 3577,
             "w": 368,
             "h": 52
           },
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I416:12377;50:562",
+              "id": "I1883:10559;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 1121,
-                "y": 4088,
+                "x": 41448,
+                "y": 3577,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +185,12 @@
               }
             },
             {
-              "id": "I416:12377;50:563",
+              "id": "I1883:10559;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 1121,
-                "y": 4120,
+                "x": 41448,
+                "y": 3609,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I416:12377;50:878",
-      "name": "Annotation / Status / In review",
+      "id": "I1883:10559;50:878",
+      "name": "Annotation / Status / In progress",
       "type": "INSTANCE",
       "box": {
-        "x": 1377,
-        "y": 3928,
+        "x": 41704,
+        "y": 3417,
         "w": 160,
         "h": 46
       },
@@ -241,19 +242,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#E5B217"
+          "color": "#E56D17"
         }
       ],
-      "componentId": "50:846",
-      "component": "Annotation / Status / In review",
+      "componentId": "50:847",
+      "component": "Annotation / Status / In progress",
       "children": [
         {
-          "id": "I416:12377;50:878;50:839",
-          "name": "In review",
+          "id": "I1883:10559;50:878;50:837",
+          "name": "In progress",
           "type": "TEXT",
           "box": {
-            "x": 1393,
-            "y": 3936,
+            "x": 41720,
+            "y": 3425,
             "w": 128,
             "h": 30
           },
@@ -262,13 +263,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#1A1A1A"
+              "color": "#FFFFFF"
             }
           ],
           "styles": {
-            "fill": "Grey (OLD)/10"
+            "fill": "White/100"
           },
-          "characters": "In review",
+          "characters": "In progress",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

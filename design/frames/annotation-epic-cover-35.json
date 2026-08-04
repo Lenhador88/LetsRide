@@ -1,11 +1,11 @@
 {
   "page": "Archive",
-  "id": "1527:8889",
+  "id": "367:5408",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": -12758,
-    "y": 16328,
+    "x": 19542,
+    "y": 2576,
     "w": 480,
     "h": 844
   },
@@ -24,7 +24,7 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Menu"
+      "value": "Edit club"
     },
     "Notes#1527:1": {
       "type": "TEXT",
@@ -36,7 +36,7 @@
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:846",
+      "value": "50:845",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I1527:8889;50:568",
+      "id": "I367:5408;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": -12702,
-        "y": 16408,
+        "x": 19598,
+        "y": 2656,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I1527:8889;50:561",
+          "id": "I367:5408;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": -12702,
-            "y": 16408,
+            "x": 19598,
+            "y": 2656,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Menu",
+          "characters": "Edit club",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I1527:8889;50:567",
+          "id": "I367:5408;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": -12702,
-            "y": 16496,
+            "x": 19598,
+            "y": 2744,
             "w": 368,
             "h": 52
           },
@@ -147,12 +147,12 @@
           "strokeAlign": "INSIDE",
           "children": [
             {
-              "id": "I1527:8889;50:562",
+              "id": "I367:5408;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": -12702,
-                "y": 16496,
+                "x": 19598,
+                "y": 2744,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +184,12 @@
               }
             },
             {
-              "id": "I1527:8889;50:563",
+              "id": "I367:5408;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": -12702,
-                "y": 16528,
+                "x": 19598,
+                "y": 2776,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +225,12 @@
       ]
     },
     {
-      "id": "I1527:8889;50:878",
-      "name": "Annotation / Status / In review",
+      "id": "I367:5408;50:878",
+      "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": -12446,
-        "y": 16336,
+        "x": 19854,
+        "y": 2584,
         "w": 160,
         "h": 46
       },
@@ -241,19 +241,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#E5B217"
+          "color": "#74B236"
         }
       ],
-      "componentId": "50:846",
-      "component": "Annotation / Status / In review",
+      "componentId": "50:845",
+      "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I1527:8889;50:878;50:839",
-          "name": "In review",
+          "id": "I367:5408;50:878;50:841",
+          "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": -12430,
-            "y": 16344,
+            "x": 19870,
+            "y": 2592,
             "w": 128,
             "h": 30
           },
@@ -268,7 +268,7 @@
           "styles": {
             "fill": "Grey (OLD)/10"
           },
-          "characters": "In review",
+          "characters": "Done",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

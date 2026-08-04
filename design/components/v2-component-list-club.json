@@ -332,6 +332,7 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "children": [
             {
               "id": "1918:7216",
@@ -353,6 +354,7 @@
               "clipsContent": false,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "children": [
                 {
                   "id": "1918:7217",
@@ -543,6 +545,7 @@
               "clipsContent": false,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "children": [
                 {
                   "id": "1918:7223",
@@ -560,6 +563,7 @@
                   "layoutGrow": 0,
                   "strokeWeight": 1,
                   "strokeAlign": "OUTSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "SOLID",
@@ -946,6 +950,7 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "children": [
             {
               "id": "1918:7239",
@@ -967,6 +972,7 @@
               "clipsContent": false,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "children": [
                 {
                   "id": "1918:7240",
@@ -1157,6 +1163,7 @@
               "clipsContent": false,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "children": [
                 {
                   "id": "1918:7246",
@@ -1174,6 +1181,7 @@
                   "layoutGrow": 0,
                   "strokeWeight": 1,
                   "strokeAlign": "OUTSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "SOLID",
@@ -1558,6 +1566,7 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "children": [
             {
               "id": "1918:7407",
@@ -1579,6 +1588,7 @@
               "clipsContent": false,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "children": [
                 {
                   "id": "1918:7408",
@@ -1769,6 +1779,7 @@
               "clipsContent": false,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "children": [
                 {
                   "id": "1918:7414",
@@ -1786,6 +1797,7 @@
                   "layoutGrow": 0,
                   "strokeWeight": 1,
                   "strokeAlign": "OUTSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "SOLID",

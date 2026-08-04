@@ -159,6 +159,7 @@
                   "clipsContent": true,
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "componentId": "1508:8477",
                   "component": "Element / Icon / Bike",
                   "children": [
@@ -313,6 +314,7 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "rotation": 0,
           "componentId": "1914:4473",
           "component": "Type=All new, State=Default",
           "componentSet": "v2 / Component / Filter Bar / Item",
@@ -415,6 +417,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -451,6 +454,7 @@
                       },
                       "strokeWeight": 1,
                       "strokeAlign": "INSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "IMAGE",
@@ -548,6 +552,7 @@
               "clipsContent": false,
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 0,
               "children": [
                 {
                   "id": "I1914:4743;1918:8663",

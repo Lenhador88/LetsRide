@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "339:4065",
+  "page": "Design",
+  "id": "2322:8394",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 6780,
-    "y": 6108,
+    "x": 32524,
+    "y": 700,
     "w": 480,
     "h": 844
   },
@@ -24,11 +24,11 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "View not joined ride"
+      "value": "View notifications"
     },
     "Notes#1527:1": {
       "type": "TEXT",
-      "value": "..."
+      "value": "A notification can involve:\n<User> joined a ride you also joined\nRide upcoming\nRide updated\n<User> started following you\n<User> liked your postcard\n<User> commented on your postcard\n<User> liked your comment\n<User> created a ride in <club>\n<User> joined <club>"
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
@@ -36,7 +36,7 @@
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:845",
+      "value": "50:846",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I339:4065;50:568",
+      "id": "I2322:8394;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 6836,
-        "y": 6188,
+        "x": 32580,
+        "y": 780,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I339:4065;50:561",
+          "id": "I2322:8394;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 6836,
-            "y": 6188,
+            "x": 32580,
+            "y": 780,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "View not joined ride",
+          "characters": "View notifications",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,14 +125,14 @@
           }
         },
         {
-          "id": "I339:4065;50:567",
+          "id": "I2322:8394;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 6836,
-            "y": 6276,
+            "x": 32580,
+            "y": 868,
             "w": 368,
-            "h": 52
+            "h": 232
           },
           "layoutMode": "VERTICAL",
           "layoutWrap": "NO_WRAP",
@@ -147,12 +147,12 @@
           "strokeAlign": "INSIDE",
           "children": [
             {
-              "id": "I339:4065;50:562",
+              "id": "I2322:8394;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 6836,
-                "y": 6276,
+                "x": 32580,
+                "y": 868,
                 "w": 368,
                 "h": 24
               },
@@ -184,14 +184,14 @@
               }
             },
             {
-              "id": "I339:4065;50:563",
+              "id": "I2322:8394;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 6836,
-                "y": 6308,
+                "x": 32580,
+                "y": 900,
                 "w": 368,
-                "h": 20
+                "h": 200
               },
               "layoutSizingHorizontal": "FILL",
               "layoutSizingVertical": "HUG",
@@ -209,7 +209,7 @@
               "styles": {
                 "fill": "White/100"
               },
-              "characters": "...",
+              "characters": "A notification can involve:\n<User> joined a ride you also joined\nRide upcoming\nRide updated\n<User> started following you\n<User> liked your postcard\n<User> commented on your postcard\n<User> liked your comment\n<User> created a ride in <club>\n<User> joined <club>",
               "text": {
                 "fontFamily": "Poppins",
                 "fontSize": 14,
@@ -225,12 +225,12 @@
       ]
     },
     {
-      "id": "I339:4065;50:878",
-      "name": "Annotation / Status / Done",
+      "id": "I2322:8394;50:878",
+      "name": "Annotation / Status / In review",
       "type": "INSTANCE",
       "box": {
-        "x": 7092,
-        "y": 6116,
+        "x": 32836,
+        "y": 708,
         "w": 160,
         "h": 46
       },
@@ -241,19 +241,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#74B236"
+          "color": "#E5B217"
         }
       ],
-      "componentId": "50:845",
-      "component": "Annotation / Status / Done",
+      "componentId": "50:846",
+      "component": "Annotation / Status / In review",
       "children": [
         {
-          "id": "I339:4065;50:878;50:841",
-          "name": "Done",
+          "id": "I2322:8394;50:878;50:839",
+          "name": "In review",
           "type": "TEXT",
           "box": {
-            "x": 7108,
-            "y": 6124,
+            "x": 32852,
+            "y": 716,
             "w": 128,
             "h": 30
           },
@@ -268,7 +268,7 @@
           "styles": {
             "fill": "Grey (OLD)/10"
           },
-          "characters": "Done",
+          "characters": "In review",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

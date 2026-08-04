@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "408:5567",
+  "page": "Design",
+  "id": "1883:10587",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 15122,
-    "y": 1232,
+    "x": 6020,
+    "y": 6476,
     "w": 480,
     "h": 844
   },
@@ -24,19 +24,19 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "View my own profile without account"
+      "value": "Create postcard"
     },
     "Notes#1527:1": {
       "type": "TEXT",
-      "value": "Without an account you can't view your profile page. Instead, when you press on the profile icon, you stay on the current screen and are presented with the ”Become a rider” overlay panel."
+      "value": "..."
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:845",
+      "value": "50:847",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I408:5567;50:568",
+      "id": "I1883:10587;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 15178,
-        "y": 1312,
+        "x": 6076,
+        "y": 6556,
         "w": 368,
         "h": 708
       },
@@ -88,14 +88,14 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I408:5567;50:561",
+          "id": "I1883:10587;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 15178,
-            "y": 1312,
+            "x": 6076,
+            "y": 6556,
             "w": 368,
-            "h": 96
+            "h": 48
           },
           "layoutSizingHorizontal": "FILL",
           "layoutSizingVertical": "HUG",
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "View my own profile without account",
+          "characters": "Create postcard",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,14 +125,14 @@
           }
         },
         {
-          "id": "I408:5567;50:567",
+          "id": "I1883:10587;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 15178,
-            "y": 1448,
+            "x": 6076,
+            "y": 6644,
             "w": 368,
-            "h": 112
+            "h": 52
           },
           "layoutMode": "VERTICAL",
           "layoutWrap": "NO_WRAP",
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I408:5567;50:562",
+              "id": "I1883:10587;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 15178,
-                "y": 1448,
+                "x": 6076,
+                "y": 6644,
                 "w": 368,
                 "h": 24
               },
@@ -184,14 +185,14 @@
               }
             },
             {
-              "id": "I408:5567;50:563",
+              "id": "I1883:10587;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 15178,
-                "y": 1480,
+                "x": 6076,
+                "y": 6676,
                 "w": 368,
-                "h": 80
+                "h": 20
               },
               "layoutSizingHorizontal": "FILL",
               "layoutSizingVertical": "HUG",
@@ -209,7 +210,7 @@
               "styles": {
                 "fill": "White/100"
               },
-              "characters": "Without an account you can't view your profile page. Instead, when you press on the profile icon, you stay on the current screen and are presented with the ”Become a rider” overlay panel.",
+              "characters": "...",
               "text": {
                 "fontFamily": "Poppins",
                 "fontSize": 14,
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I408:5567;50:878",
-      "name": "Annotation / Status / Done",
+      "id": "I1883:10587;50:878",
+      "name": "Annotation / Status / In progress",
       "type": "INSTANCE",
       "box": {
-        "x": 15434,
-        "y": 1240,
+        "x": 6332,
+        "y": 6484,
         "w": 160,
         "h": 46
       },
@@ -241,19 +242,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#74B236"
+          "color": "#E56D17"
         }
       ],
-      "componentId": "50:845",
-      "component": "Annotation / Status / Done",
+      "componentId": "50:847",
+      "component": "Annotation / Status / In progress",
       "children": [
         {
-          "id": "I408:5567;50:878;50:841",
-          "name": "Done",
+          "id": "I1883:10587;50:878;50:837",
+          "name": "In progress",
           "type": "TEXT",
           "box": {
-            "x": 15450,
-            "y": 1248,
+            "x": 6348,
+            "y": 6492,
             "w": 128,
             "h": 30
           },
@@ -262,13 +263,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#1A1A1A"
+              "color": "#FFFFFF"
             }
           ],
           "styles": {
-            "fill": "Grey (OLD)/10"
+            "fill": "White/100"
           },
-          "characters": "Done",
+          "characters": "In progress",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

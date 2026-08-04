@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "339:4073",
+  "page": "Design",
+  "id": "2375:9517",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 8050,
-    "y": 6108,
+    "x": 32524,
+    "y": 3346,
     "w": 480,
     "h": 844
   },
@@ -24,7 +24,7 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "View joined ride"
+      "value": "View chats"
     },
     "Notes#1527:1": {
       "type": "TEXT",
@@ -36,7 +36,7 @@
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:845",
+      "value": "50:846",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I339:4073;50:568",
+      "id": "I2375:9517;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 8106,
-        "y": 6188,
+        "x": 32580,
+        "y": 3426,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I339:4073;50:561",
+          "id": "I2375:9517;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 8106,
-            "y": 6188,
+            "x": 32580,
+            "y": 3426,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "View joined ride",
+          "characters": "View chats",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I339:4073;50:567",
+          "id": "I2375:9517;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 8106,
-            "y": 6276,
+            "x": 32580,
+            "y": 3514,
             "w": 368,
             "h": 52
           },
@@ -147,12 +147,12 @@
           "strokeAlign": "INSIDE",
           "children": [
             {
-              "id": "I339:4073;50:562",
+              "id": "I2375:9517;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 8106,
-                "y": 6276,
+                "x": 32580,
+                "y": 3514,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +184,12 @@
               }
             },
             {
-              "id": "I339:4073;50:563",
+              "id": "I2375:9517;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 8106,
-                "y": 6308,
+                "x": 32580,
+                "y": 3546,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +225,12 @@
       ]
     },
     {
-      "id": "I339:4073;50:878",
-      "name": "Annotation / Status / Done",
+      "id": "I2375:9517;50:878",
+      "name": "Annotation / Status / In review",
       "type": "INSTANCE",
       "box": {
-        "x": 8362,
-        "y": 6116,
+        "x": 32836,
+        "y": 3354,
         "w": 160,
         "h": 46
       },
@@ -241,19 +241,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#74B236"
+          "color": "#E5B217"
         }
       ],
-      "componentId": "50:845",
-      "component": "Annotation / Status / Done",
+      "componentId": "50:846",
+      "component": "Annotation / Status / In review",
       "children": [
         {
-          "id": "I339:4073;50:878;50:841",
-          "name": "Done",
+          "id": "I2375:9517;50:878;50:839",
+          "name": "In review",
           "type": "TEXT",
           "box": {
-            "x": 8378,
-            "y": 6124,
+            "x": 32852,
+            "y": 3362,
             "w": 128,
             "h": 30
           },
@@ -268,7 +268,7 @@
           "styles": {
             "fill": "Grey (OLD)/10"
           },
-          "characters": "Done",
+          "characters": "In review",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

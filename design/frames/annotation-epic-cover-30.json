@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "416:12368",
+  "page": "Design",
+  "id": "2303:7975",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 1065,
-    "y": 2576,
+    "x": 41392,
+    "y": 6297,
     "w": 480,
     "h": 844
   },
@@ -22,21 +22,9 @@
   "componentId": "50:565",
   "component": "Annotation / Epic Cover",
   "componentProperties": {
-    "Epic Name#2067:7": {
-      "type": "TEXT",
-      "value": "Log in"
-    },
-    "Notes#1527:1": {
-      "type": "TEXT",
-      "value": "..."
-    },
-    "has Notes#1527:0": {
-      "type": "BOOLEAN",
-      "value": true
-    },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:846",
+      "value": "50:848",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -63,16 +51,28 @@
           "key": "4e5d49a7273a51eed0dacde1364f712d6fb15ad8"
         }
       ]
+    },
+    "Epic Name#2067:7": {
+      "type": "TEXT",
+      "value": "..."
+    },
+    "Notes#1527:1": {
+      "type": "TEXT",
+      "value": "..."
+    },
+    "has Notes#1527:0": {
+      "type": "BOOLEAN",
+      "value": false
     }
   },
   "children": [
     {
-      "id": "I416:12368;50:568",
+      "id": "I2303:7975;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 1121,
-        "y": 2656,
+        "x": 41448,
+        "y": 6377,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I416:12368;50:561",
+          "id": "I2303:7975;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 1121,
-            "y": 2656,
+            "x": 41448,
+            "y": 6377,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Log in",
+          "characters": "...",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I416:12368;50:567",
+          "id": "I2303:7975;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 1121,
-            "y": 2744,
+            "x": 41448,
+            "y": 6465,
             "w": 368,
             "h": 52
           },
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I416:12368;50:562",
+              "id": "I2303:7975;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 1121,
-                "y": 2744,
+                "x": 41448,
+                "y": 6465,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +185,12 @@
               }
             },
             {
-              "id": "I416:12368;50:563",
+              "id": "I2303:7975;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 1121,
-                "y": 2776,
+                "x": 41448,
+                "y": 6497,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I416:12368;50:878",
-      "name": "Annotation / Status / In review",
+      "id": "I2303:7975;50:878",
+      "name": "Annotation / Status / Todo",
       "type": "INSTANCE",
       "box": {
-        "x": 1377,
-        "y": 2584,
+        "x": 41704,
+        "y": 6305,
         "w": 160,
         "h": 46
       },
@@ -241,19 +242,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#E5B217"
+          "color": "#1739E5"
         }
       ],
-      "componentId": "50:846",
-      "component": "Annotation / Status / In review",
+      "componentId": "50:848",
+      "component": "Annotation / Status / Todo",
       "children": [
         {
-          "id": "I416:12368;50:878;50:839",
-          "name": "In review",
+          "id": "I2303:7975;50:878;50:755",
+          "name": "To do",
           "type": "TEXT",
           "box": {
-            "x": 1393,
-            "y": 2592,
+            "x": 41720,
+            "y": 6313,
             "w": 128,
             "h": 30
           },
@@ -262,13 +263,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#1A1A1A"
+              "color": "#FFFFFF"
             }
           ],
           "styles": {
-            "fill": "Grey (OLD)/10"
+            "fill": "White/100"
           },
-          "characters": "In review",
+          "characters": "To do",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

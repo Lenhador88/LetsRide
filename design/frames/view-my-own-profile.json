@@ -147,6 +147,7 @@
                           },
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 45,
                           "fills": [
                             {
                               "type": "SOLID",
@@ -269,6 +270,7 @@
                           },
                           "strokeWeight": 1,
                           "strokeAlign": "INSIDE",
+                          "rotation": 45,
                           "fills": [
                             {
                               "type": "SOLID",
@@ -13818,6 +13820,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0,
                               "strokeAlign": "INSIDE",
+                              "rotation": 2.2,
                               "children": [
                                 {
                                   "id": "292:6739",
@@ -13851,6 +13854,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "children": [
                                     {
                                       "id": "292:6741",
@@ -13864,6 +13868,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -13942,6 +13947,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -13961,6 +13967,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -13983,6 +13990,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0,
                               "strokeAlign": "INSIDE",
+                              "rotation": -2.2,
                               "children": [
                                 {
                                   "id": "292:6748",
@@ -14016,6 +14024,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "children": [
                                     {
                                       "id": "292:6750",
@@ -14029,6 +14038,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14067,6 +14077,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14086,6 +14097,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14107,6 +14119,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -16152,6 +16165,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0.13,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 45.2,
                                   "children": [
                                     {
                                       "id": "292:6854",
@@ -16638,6 +16652,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0.13,
                               "strokeAlign": "INSIDE",
+                              "rotation": -180,
                               "children": [
                                 {
                                   "id": "292:6876",
@@ -17136,6 +17151,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0.13,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 45.2,
                                   "children": [
                                     {
                                       "id": "292:6899",

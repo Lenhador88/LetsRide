@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "50:699",
+  "page": "Design",
+  "id": "1987:13289",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 9720,
-    "y": 3920,
+    "x": 23656,
+    "y": 7576,
     "w": 480,
     "h": 844
   },
@@ -24,11 +24,11 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Edit ride"
+      "value": "View not joined public club"
     },
     "Notes#1527:1": {
       "type": "TEXT",
-      "value": "..."
+      "value": "Public clubs are Post-MVP. Until then we only have private clubs."
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
@@ -36,7 +36,7 @@
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:845",
+      "value": "50:844",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I50:699;50:568",
+      "id": "I1987:13289;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 9776,
-        "y": 4000,
+        "x": 23712,
+        "y": 7656,
         "w": 368,
         "h": 708
       },
@@ -88,14 +88,14 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I50:699;50:561",
+          "id": "I1987:13289;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 9776,
-            "y": 4000,
+            "x": 23712,
+            "y": 7656,
             "w": 368,
-            "h": 48
+            "h": 96
           },
           "layoutSizingHorizontal": "FILL",
           "layoutSizingVertical": "HUG",
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Edit ride",
+          "characters": "View not joined public club",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,14 +125,14 @@
           }
         },
         {
-          "id": "I50:699;50:567",
+          "id": "I1987:13289;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 9776,
-            "y": 4088,
+            "x": 23712,
+            "y": 7792,
             "w": 368,
-            "h": 52
+            "h": 72
           },
           "layoutMode": "VERTICAL",
           "layoutWrap": "NO_WRAP",
@@ -147,12 +147,12 @@
           "strokeAlign": "INSIDE",
           "children": [
             {
-              "id": "I50:699;50:562",
+              "id": "I1987:13289;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 9776,
-                "y": 4088,
+                "x": 23712,
+                "y": 7792,
                 "w": 368,
                 "h": 24
               },
@@ -184,14 +184,14 @@
               }
             },
             {
-              "id": "I50:699;50:563",
+              "id": "I1987:13289;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 9776,
-                "y": 4120,
+                "x": 23712,
+                "y": 7824,
                 "w": 368,
-                "h": 20
+                "h": 40
               },
               "layoutSizingHorizontal": "FILL",
               "layoutSizingVertical": "HUG",
@@ -209,7 +209,7 @@
               "styles": {
                 "fill": "White/100"
               },
-              "characters": "...",
+              "characters": "Public clubs are Post-MVP. Until then we only have private clubs.",
               "text": {
                 "fontFamily": "Poppins",
                 "fontSize": 14,
@@ -225,12 +225,12 @@
       ]
     },
     {
-      "id": "I50:699;50:878",
-      "name": "Annotation / Status / Done",
+      "id": "I1987:13289;50:878",
+      "name": "Annotation / Status / On hold",
       "type": "INSTANCE",
       "box": {
-        "x": 10032,
-        "y": 3928,
+        "x": 23968,
+        "y": 7584,
         "w": 160,
         "h": 46
       },
@@ -241,19 +241,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#74B236"
+          "color": "#CC2929"
         }
       ],
-      "componentId": "50:845",
-      "component": "Annotation / Status / Done",
+      "componentId": "50:844",
+      "component": "Annotation / Status / On hold",
       "children": [
         {
-          "id": "I50:699;50:878;50:841",
-          "name": "Done",
+          "id": "I1987:13289;50:878;50:843",
+          "name": "On hold",
           "type": "TEXT",
           "box": {
-            "x": 10048,
-            "y": 3936,
+            "x": 23984,
+            "y": 7592,
             "w": 128,
             "h": 30
           },
@@ -262,13 +262,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#1A1A1A"
+              "color": "#FFFFFF"
             }
           ],
           "styles": {
-            "fill": "Grey (OLD)/10"
+            "fill": "White/100"
           },
-          "characters": "Done",
+          "characters": "On hold",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

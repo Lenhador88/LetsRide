@@ -249,6 +249,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -286,6 +287,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -325,6 +327,7 @@
                   "layoutGrow": 0,
                   "strokeWeight": 1,
                   "strokeAlign": "OUTSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "SOLID",
@@ -441,6 +444,7 @@
                   "clipsContent": true,
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "children": [
                     {
                       "id": "1883:21734",
@@ -593,6 +597,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -630,6 +635,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -669,6 +675,7 @@
                   "layoutGrow": 0,
                   "strokeWeight": 1,
                   "strokeAlign": "OUTSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "SOLID",
@@ -785,6 +792,7 @@
                   "clipsContent": true,
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "children": [
                     {
                       "id": "1883:21880",
@@ -937,6 +945,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -974,6 +983,7 @@
                       "layoutGrow": 0,
                       "strokeWeight": 1,
                       "strokeAlign": "OUTSIDE",
+                      "rotation": 0,
                       "fills": [
                         {
                           "type": "SOLID",
@@ -1013,6 +1023,7 @@
                   "layoutGrow": 0,
                   "strokeWeight": 1,
                   "strokeAlign": "OUTSIDE",
+                  "rotation": 0,
                   "fills": [
                     {
                       "type": "SOLID",
@@ -1129,6 +1140,7 @@
                   "clipsContent": true,
                   "strokeWeight": 1,
                   "strokeAlign": "INSIDE",
+                  "rotation": 0,
                   "children": [
                     {
                       "id": "1883:22017",
@@ -1174,6 +1186,7 @@
       "cornerRadius": 12,
       "strokeWeight": 2,
       "strokeAlign": "INSIDE",
+      "rotation": 0,
       "fills": [
         {
           "type": "SOLID",
@@ -1286,6 +1299,7 @@
               },
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": -90,
               "fills": [
                 {
                   "type": "IMAGE",
@@ -1306,6 +1320,7 @@
               },
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 92.73,
               "fills": [
                 {
                   "type": "IMAGE",
@@ -1326,6 +1341,7 @@
               },
               "strokeWeight": 1,
               "strokeAlign": "INSIDE",
+              "rotation": 4.13,
               "fills": [
                 {
                   "type": "IMAGE",

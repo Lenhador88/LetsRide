@@ -1588,6 +1588,7 @@
               "clipsContent": false,
               "strokeWeight": 0.13,
               "strokeAlign": "INSIDE",
+              "rotation": -180,
               "children": [
                 {
                   "id": "318:4898",
@@ -3164,6 +3165,7 @@
           },
           "strokeWeight": 0.13,
           "strokeAlign": "INSIDE",
+          "rotation": -180,
           "fills": [
             {
               "type": "SOLID",
@@ -5395,6 +5397,7 @@
               },
               "strokeWeight": 0.08,
               "strokeAlign": "INSIDE",
+              "rotation": -180,
               "fills": [
                 {
                   "type": "SOLID",

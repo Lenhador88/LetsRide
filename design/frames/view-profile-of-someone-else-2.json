@@ -13740,6 +13740,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0,
                               "strokeAlign": "INSIDE",
+                              "rotation": 2.2,
                               "children": [
                                 {
                                   "id": "871:11102",
@@ -13773,6 +13774,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "children": [
                                     {
                                       "id": "871:11104",
@@ -13786,6 +13788,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -13864,6 +13867,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -13883,6 +13887,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -13905,6 +13910,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0,
                               "strokeAlign": "INSIDE",
+                              "rotation": -2.2,
                               "children": [
                                 {
                                   "id": "871:11111",
@@ -13938,6 +13944,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "children": [
                                     {
                                       "id": "871:11113",
@@ -13951,6 +13958,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -13989,6 +13997,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14008,6 +14017,7 @@
                                       },
                                       "strokeWeight": 0,
                                       "strokeAlign": "INSIDE",
+                                      "rotation": 0,
                                       "fills": [
                                         {
                                           "type": "SOLID",
@@ -14029,6 +14039,7 @@
                                   },
                                   "strokeWeight": 0,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 0,
                                   "fills": [
                                     {
                                       "type": "SOLID",
@@ -16074,6 +16085,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0.13,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 45.2,
                                   "children": [
                                     {
                                       "id": "871:11217",
@@ -16560,6 +16572,7 @@
                               "clipsContent": false,
                               "strokeWeight": 0.13,
                               "strokeAlign": "INSIDE",
+                              "rotation": -180,
                               "children": [
                                 {
                                   "id": "871:11239",
@@ -17058,6 +17071,7 @@
                                   "clipsContent": false,
                                   "strokeWeight": 0.13,
                                   "strokeAlign": "INSIDE",
+                                  "rotation": 45.2,
                                   "children": [
                                     {
                                       "id": "871:11262",

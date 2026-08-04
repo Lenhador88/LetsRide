@@ -206,6 +206,17 @@ export function pruneNode(node, { styles = {}, components = {}, componentSets = 
     out[key] = typeof value === 'number' ? round(value) : value
   }
 
+  /**
+   * Rotation is absent from the bounding box, which grows to contain a rotated
+   * node — so without it a fanned card stack reads as three differently-sized
+   * cards. Stored in **degrees, clockwise-positive**: Figma reports radians
+   * counter-clockwise, but every consumer of this snapshot is writing CSS, and
+   * rounding raw radians to the shared 2dp turned an exact 2° into 1.7°.
+   * `.figma-raw/` is gitignored and rebuilt per session, so a value not carried
+   * here cannot be recovered offline.
+   */
+  if (node.rotation) out.rotation = round((-node.rotation * 180) / Math.PI)
+
   const fills = (node.fills ?? []).map(resolvePaint).filter(Boolean)
   if (fills.length) out.fills = fills
 

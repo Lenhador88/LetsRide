@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "50:997",
+  "page": "Design",
+  "id": "1883:10532",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 5020,
-    "y": 2576,
+    "x": 23656,
+    "y": 5492,
     "w": 480,
     "h": 844
   },
@@ -24,7 +24,7 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Search rides"
+      "value": "View private club"
     },
     "Notes#1527:1": {
       "type": "TEXT",
@@ -32,11 +32,11 @@
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
-      "value": true
+      "value": false
     },
     "Status#50:1": {
       "type": "INSTANCE_SWAP",
-      "value": "50:844",
+      "value": "50:845",
       "preferredValues": [
         {
           "type": "COMPONENT_SET",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I50:997;50:568",
+      "id": "I1883:10532;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 5076,
-        "y": 2656,
+        "x": 23712,
+        "y": 5572,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I50:997;50:561",
+          "id": "I1883:10532;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 5076,
-            "y": 2656,
+            "x": 23712,
+            "y": 5572,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Search rides",
+          "characters": "View private club",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,12 +125,12 @@
           }
         },
         {
-          "id": "I50:997;50:567",
+          "id": "I1883:10532;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 5076,
-            "y": 2744,
+            "x": 23712,
+            "y": 5660,
             "w": 368,
             "h": 52
           },
@@ -145,14 +145,15 @@
           "clipsContent": false,
           "strokeWeight": 1,
           "strokeAlign": "INSIDE",
+          "visible": false,
           "children": [
             {
-              "id": "I50:997;50:562",
+              "id": "I1883:10532;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 5076,
-                "y": 2744,
+                "x": 23712,
+                "y": 5660,
                 "w": 368,
                 "h": 24
               },
@@ -184,12 +185,12 @@
               }
             },
             {
-              "id": "I50:997;50:563",
+              "id": "I1883:10532;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 5076,
-                "y": 2776,
+                "x": 23712,
+                "y": 5692,
                 "w": 368,
                 "h": 20
               },
@@ -225,12 +226,12 @@
       ]
     },
     {
-      "id": "I50:997;50:878",
-      "name": "Annotation / Status / On hold",
+      "id": "I1883:10532;50:878",
+      "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": 5332,
-        "y": 2584,
+        "x": 23968,
+        "y": 5500,
         "w": 160,
         "h": 46
       },
@@ -241,19 +242,19 @@
       "fills": [
         {
           "type": "SOLID",
-          "color": "#CC2929"
+          "color": "#74B236"
         }
       ],
-      "componentId": "50:844",
-      "component": "Annotation / Status / On hold",
+      "componentId": "50:845",
+      "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I50:997;50:878;50:843",
-          "name": "On hold",
+          "id": "I1883:10532;50:878;50:841",
+          "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": 5348,
-            "y": 2592,
+            "x": 23984,
+            "y": 5508,
             "w": 128,
             "h": 30
           },
@@ -262,13 +263,13 @@
           "fills": [
             {
               "type": "SOLID",
-              "color": "#FFFFFF"
+              "color": "#1A1A1A"
             }
           ],
           "styles": {
-            "fill": "White/100"
+            "fill": "Grey (OLD)/10"
           },
-          "characters": "On hold",
+          "characters": "Done",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 20,

@@ -1,11 +1,11 @@
 {
-  "page": "Archive",
-  "id": "348:2110",
+  "page": "Design",
+  "id": "1883:10594",
   "name": "Annotation / Epic Cover",
   "type": "INSTANCE",
   "box": {
-    "x": 13360,
-    "y": 3384,
+    "x": 10520,
+    "y": 700,
     "w": 480,
     "h": 844
   },
@@ -24,11 +24,11 @@
   "componentProperties": {
     "Epic Name#2067:7": {
       "type": "TEXT",
-      "value": "Edit my profile photos"
+      "value": "View all rides"
     },
     "Notes#1527:1": {
       "type": "TEXT",
-      "value": "..."
+      "value": "The counters show all upcoming rides, not just the ”new” ones."
     },
     "has Notes#1527:0": {
       "type": "BOOLEAN",
@@ -67,12 +67,12 @@
   },
   "children": [
     {
-      "id": "I348:2110;50:568",
+      "id": "I1883:10594;50:568",
       "name": "Content",
       "type": "FRAME",
       "box": {
-        "x": 13416,
-        "y": 3464,
+        "x": 10576,
+        "y": 780,
         "w": 368,
         "h": 708
       },
@@ -88,12 +88,12 @@
       "strokeAlign": "INSIDE",
       "children": [
         {
-          "id": "I348:2110;50:561",
+          "id": "I1883:10594;50:561",
           "name": "Epic name",
           "type": "TEXT",
           "box": {
-            "x": 13416,
-            "y": 3464,
+            "x": 10576,
+            "y": 780,
             "w": 368,
             "h": 48
           },
@@ -113,7 +113,7 @@
           "styles": {
             "fill": "White/100"
           },
-          "characters": "Edit my profile photos",
+          "characters": "View all rides",
           "text": {
             "fontFamily": "Poppins",
             "fontSize": 32,
@@ -125,14 +125,14 @@
           }
         },
         {
-          "id": "I348:2110;50:567",
+          "id": "I1883:10594;50:567",
           "name": "Notes",
           "type": "FRAME",
           "box": {
-            "x": 13416,
-            "y": 3552,
+            "x": 10576,
+            "y": 868,
             "w": 368,
-            "h": 52
+            "h": 72
           },
           "layoutMode": "VERTICAL",
           "layoutWrap": "NO_WRAP",
@@ -147,12 +147,12 @@
           "strokeAlign": "INSIDE",
           "children": [
             {
-              "id": "I348:2110;50:562",
+              "id": "I1883:10594;50:562",
               "name": "Notes",
               "type": "TEXT",
               "box": {
-                "x": 13416,
-                "y": 3552,
+                "x": 10576,
+                "y": 868,
                 "w": 368,
                 "h": 24
               },
@@ -184,14 +184,14 @@
               }
             },
             {
-              "id": "I348:2110;50:563",
+              "id": "I1883:10594;50:563",
               "name": "...",
               "type": "TEXT",
               "box": {
-                "x": 13416,
-                "y": 3584,
+                "x": 10576,
+                "y": 900,
                 "w": 368,
-                "h": 20
+                "h": 40
               },
               "layoutSizingHorizontal": "FILL",
               "layoutSizingVertical": "HUG",
@@ -209,7 +209,7 @@
               "styles": {
                 "fill": "White/100"
               },
-              "characters": "...",
+              "characters": "The counters show all upcoming rides, not just the ”new” ones.",
               "text": {
                 "fontFamily": "Poppins",
                 "fontSize": 14,
@@ -225,12 +225,12 @@
       ]
     },
     {
-      "id": "I348:2110;50:878",
+      "id": "I1883:10594;50:878",
       "name": "Annotation / Status / Done",
       "type": "INSTANCE",
       "box": {
-        "x": 13672,
-        "y": 3392,
+        "x": 10832,
+        "y": 708,
         "w": 160,
         "h": 46
       },
@@ -248,12 +248,12 @@
       "component": "Annotation / Status / Done",
       "children": [
         {
-          "id": "I348:2110;50:878;50:841",
+          "id": "I1883:10594;50:878;50:841",
           "name": "Done",
           "type": "TEXT",
           "box": {
-            "x": 13688,
-            "y": 3400,
+            "x": 10848,
+            "y": 716,
             "w": 128,
             "h": 30
           },

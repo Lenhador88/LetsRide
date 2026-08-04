@@ -12,6 +12,7 @@
   "clipsContent": true,
   "strokeWeight": 1,
   "strokeAlign": "INSIDE",
+  "rotation": 0,
   "children": [
     {
       "id": "2483:7732",
@@ -25,6 +26,7 @@
       },
       "strokeWeight": 2,
       "strokeAlign": "CENTER",
+      "rotation": 0,
       "fills": [
         {
           "type": "SOLID",
