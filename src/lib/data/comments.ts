@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { unwrapList } from '@/lib/data/unwrap'
 import type { PostcardComment } from '@/types'
 
 /**
@@ -22,11 +23,14 @@ import type { PostcardComment } from '@/types'
 export async function getPostcardComments(postcardId: string): Promise<PostcardComment[]> {
   const supabase = await createClient()
 
-  const { data } = await supabase
-    .from('postcard_comments')
-    .select(`*, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS})`)
-    .eq('postcard_id', postcardId)
-    .order('created_at', { ascending: true })
+  const rows = unwrapList(
+    await supabase
+      .from('postcard_comments')
+      .select(`*, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS})`)
+      .eq('postcard_id', postcardId)
+      .order('created_at', { ascending: true }),
+    'the comments on this postcard',
+  )
 
-  return (data ?? []) as PostcardComment[]
+  return rows as PostcardComment[]
 }

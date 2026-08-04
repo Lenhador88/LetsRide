@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { unwrapList } from '@/lib/data/unwrap'
 import type { Club } from '@/types'
 
 type ClubOption = Pick<Club, 'id' | 'name'>
@@ -20,15 +21,15 @@ export async function getMyClubs(): Promise<ClubOption[]> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  const { data } = await supabase
-    .from('club_members')
-    .select('club:clubs(id, name)')
-    .eq('user_id', user.id)
+  const data = unwrapList(
+    await supabase.from('club_members').select('club:clubs(id, name)').eq('user_id', user.id),
+    'your clubs',
+  )
 
   // PostgREST types a to-one embed as possibly-array; a membership row whose
   // club is missing (deleted, or hidden by the clubs policy) is dropped rather
   // than rendered as an empty option.
-  return (data ?? [])
+  return data
     .flatMap((row) => {
       const club = row.club as unknown as ClubOption | ClubOption[] | null
       if (!club) return []
