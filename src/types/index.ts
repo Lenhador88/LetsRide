@@ -46,6 +46,70 @@ export type RideMember = {
   profile?: PublicProfile
 }
 
+/**
+ * Which slice of the rides list is showing. `undefined` is "All rides".
+ *
+ * The design's filter bar also draws a *rider* tile ("itchyboots") beside the
+ * club ones, which would mean "rides organised by that rider". It is not built:
+ * the three tiles specified for this screen are yours, all, and one per club.
+ * Recorded in docs/FIGMA-FIDELITY-TODO.md rather than silently dropped.
+ */
+export type RideFilter = { kind: 'mine' } | { kind: 'club'; id: string }
+
+/** This viewer's own RSVP. `null` means they have not responded. */
+export type RideAttendance = 'going' | 'maybe' | null
+
+/**
+ * One card in the rides list — `v2 / Component / List / Ride`, whose five
+ * variants are the product of `is Upcoming` and `Are you going?`. Both are
+ * derived here rather than stored: upcoming is `departure_at` against now, and
+ * `attendance` is this viewer's row in `ride_members`.
+ */
+export type RideListItem = {
+  id: string
+  title: string
+  meeting_point: string
+  departure_at: string
+  /** The chip above the title. Null for a ride that belongs to no club. */
+  club: Pick<Club, 'id' | 'name' | 'avatar_url'> | null
+  /** Drawn first in the avatar row, with the brand ring. */
+  organizer: PublicProfile | null
+  /** Organizer first, then the crew — capped at RIDE_AVATAR_LIMIT. */
+  riders: PublicProfile[]
+  /** Everyone on the ride, including the organizer and the riders not shown. */
+  riders_count: number
+  attendance: RideAttendance
+  /**
+   * Read once per list in the data layer rather than per card at render, so
+   * every card in one response agrees about what "now" is — and so the card
+   * stays a pure function of its props.
+   */
+  is_upcoming: boolean
+}
+
+/** One club tile in the rides filter bar. */
+export type RideFilterOption = {
+  id: string
+  name: string
+  imageUrl: string | null
+  count: number
+}
+
+/**
+ * Everything the rides filter bar needs, counted over the same bounded window
+ * the list itself reads — so a tile can never offer a filter that yields an
+ * empty list. Same rule as PostcardFilters, and the same reason.
+ */
+export type RideFilters = {
+  /** Upcoming rides this viewer organises or has RSVP'd to. */
+  mine: number
+  /** Every upcoming ride in the window. */
+  total: number
+  /** Up to four organizer avatars, for the "All rides" tile's 2×2. */
+  collage: string[]
+  clubs: RideFilterOption[]
+}
+
 export type Club = {
   id: string
   name: string

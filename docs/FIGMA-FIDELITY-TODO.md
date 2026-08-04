@@ -159,6 +159,62 @@ being called done.
 - [ ] **Badge semantics** — see the unread-count gap above. The tile currently badges how many
       postcards in the feed window come from that rider or club.
 
+### Rides list — built from the measurements 2026-08-04
+
+Every geometry value on this screen was **read** from `v2 / Component / List / Ride` (the
+5-variant set, `1908:3102`) and `v2 / Component / Filter Bar / Rides` (`1914:4791`), and the
+four frames `Home - Rides - All / No rides / Your rides / No upcoming rides / Rides from club`.
+Nothing about the layout is inferred. What is listed here is the design asking for **data the
+schema has not got**, plus three deliberate deviations.
+
+- [x] ~~**Card composition**~~ — **measured.** 358×156 (128 without the club chip), White/100,
+      radius 8, padding 4/4/4/16, gap 16. Image strip 80 wide at radius 4. Content column
+      8-padded top and bottom, gap 4. Club chip `Grey/5` at radius 4, padding 8/3,
+      Poppins/12/Semibold `Grey/80`. Avatars 28px overlapping by 4, organizer first inside a
+      36px `Accent Brand/100` ring. Divider between date and time is a 3×3 dot.
+      → `src/components/rides/RideCard.tsx`
+- [x] ~~**The five variants**~~ — **measured.** They are the product of `is Upcoming` and
+      `Are you going?`. `No` draws **no pill at all**; `Yes` is `Going` upcoming and **`Went`**
+      past; `Maybe` keeps its label in both. Both are derived (departure time, and the viewer's
+      `ride_members` row), so the component takes data rather than a variant name.
+- [ ] **The 80×148 image strip has no data behind it.** The design fills it with a photo
+      carrying a `Location Filled` pin — almost certainly the static map thumbnail decision #3
+      calls for. `rides` has **no image column and no coordinates**, and `meeting_point` is
+      free text. *Chose:* render the design's container and the pin, and nothing else. Needs a
+      migration **and** a static-tile provider, so it is two decisions, not a styling task. It
+      is the most visually obvious gap on the screen — a 80×148 grey block on every card.
+- [ ] **`10:00 - 15:00` is a range; the schema has one timestamp.** `rides.departure_at` has no
+      `ends_at` beside it, so the card renders a single departure time. Adding an end time is a
+      small migration and would complete the design as drawn.
+- [ ] **The "All rides" tile's 2×2 collage has no ride photos to show.** *Chose:* the
+      organizers' avatars — real data in the right shape. The design's own empty frame draws
+      four `Grey/10%` quadrants, which is the fallback when there are no avatars either.
+- [ ] **The filter bar draws a rider tile ("itchyboots") among the clubs.** It would mean
+      "rides organised by that rider". **Not built** — the product owner specified three tiles
+      for this screen: yours, all, and one per club. One question for the designer: is the
+      rider tile intended here, or carried over from the Postcards bar it shares a component
+      set with?
+- [ ] **The `Maybe` pill is `#E58F17`, and it is an unnamed fill.** Every other colour in
+      `globals.css` inherits a Figma paint style name; this one has none, so `--color-maybe` is
+      ours. It is 3.0:1 against white — fine for a 12/Semibold pill, not for prose. Worth
+      asking whether it should join the palette properly.
+- [ ] **Club tiles are derived from the rides in the window, not from membership.** That is
+      what `Home - Rides - No rides` draws — no club tiles at all when there are no rides — but
+      it means a club you belong to that has scheduled nothing has no tile. Consistent with
+      the design; flagged because it is a rule nobody stated in words.
+- [ ] **The list is upcoming-only, and ride history has no screen.** All four frames draw
+      upcoming rides, and the empty state says "no *upcoming* rides". But the component set
+      carries two past variants (`Went`), which nothing in this flow can reach. Either a past
+      section belongs on "Your rides" or history lives on the profile — the design does not
+      say.
+- [ ] **Timezone.** The card formats `departure_at` on the server, so it renders in the
+      server's zone (UTC on Vercel), not the rider's. For a screen whose whole point is *when
+      to be somewhere* that is a real defect, not a nicety — it is the same bug as the `en-US`
+      hardcoding in `formatDate`/`formatDateTime`/`formatRelativeTime`, and the four should be
+      fixed together with one decision about how this app handles locale and time.
+      `formatRideDate`/`formatRideTime` use `en-GB` for day-first order and a 24-hour clock,
+      matching both the design and `formatPostcardDate`.
+
 ### Create postcard
 
 - [ ] **Flow order** — *chose:* preview → choose-photo button → caption → audience → submit,

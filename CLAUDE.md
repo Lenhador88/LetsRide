@@ -98,10 +98,10 @@ src/
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + .pt-safe/.pb-safe/.pt-header/.pb-navbar
 ├── components/
-│   ├── ui/                 # Button, Input, Card, Avatar
+│   ├── ui/                 # Button, Input, Card, Avatar, AppBackground, FilterTile (the bar shared by Postcards + Rides)
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
-│   ├── rides/              # JoinRideButton
+│   ├── rides/              # RideCard, RideFilterBar, JoinRideButton
 │   ├── clubs/              # JoinClubButton
 │   ├── postcards/          # PostcardDeck, PostcardCard, PostcardFilterBar, PostcardAction, LikeButton, CommentsLink, ShareButton, CommentList, CommentItem, CommentForm, CreatePostcardForm
 │   └── profile/            # EditProfileForm, SignOutButton
@@ -585,7 +585,7 @@ blocking.
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | Not built |
-| **Rides** — cover image, static map + Google Maps deeplink, Plan/Journal/Crew tabs, Going/Maybe/No, per-ride chat | Partially built |
+| **Rides** — cover image, static map + Google Maps deeplink, Plan/Journal/Crew tabs, Going/Maybe/No, per-ride chat | Partially built. **The list at `/rides` is v2 and built from the measured design** (2026-08-04): three filters — your rides, all rides, one tile per club — over `src/lib/data/rides.ts`. `/rides/new` and `/rides/[id]` are still v1. The card's map thumbnail is blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list |
 | **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,

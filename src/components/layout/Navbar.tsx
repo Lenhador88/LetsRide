@@ -48,6 +48,7 @@ const UNBUILT = new Set<string>(['/inbox'])
  */
 const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
   '/postcards': { label: 'Create postcard', href: '/postcards/new' },
+  '/rides': { label: 'Create ride', href: '/rides/new' },
 }
 
 export function Navbar() {
