@@ -1,17 +1,19 @@
 # Handoff — where things stand
 
-Last shipped: the **storage orphan sweep and two fixes** (PR #24, merged `0adc5a5`). Before
-that, the postcard interactions backend (PR #22) and the feed UI (PR #19).
+Last shipped, 2026-08-03/04: the **Postcards home screen and every interaction behind it** —
+`#17` the committed Figma snapshot pipeline, `#18` a startup-context dedup, `#19` the feed and
+create screens, `#20` reading Figma's `Retry-After`, `#21` a route that shipped dead, `#22`
+migration `011` with comments / hides / reports / blocks, `#23` reads that no longer swallow
+errors, `#24` the orphan sweep, `#25` this file's own rewrite.
 
-**In flight: the comments UI**, on `claude/comments-ui-krjuyl` — the thread route
-`/postcards/[id]`, the composer, and the card's comment control, all sitting on `011`'s
-existing backend. No schema change; the only non-UI edit is `addComment` now returning
-`sent: true` so the composer can tell success from "not submitted yet".
+**In flight: the comments UI** (`#26`, `claude/comments-ui-krjuyl`) — the thread route
+`/postcards/[id]`, the composer, and the card's comment control, on `011`'s existing backend.
+No schema change. It closes the first and largest part of the gap `#25` named below; **hiding,
+reporting, blocking and deleting still have no UI.**
 
-**The whole Postcards UI — view, like, create and now comment — has never been compared to
-the design.** Figma has been rate limited throughout every one of those builds, so every
-composition value is an inferred guess, registered in `docs/FIGMA-FIDELITY-TODO.md`. See
-*Do this first*.
+**Nothing in the UI has ever been compared to the design.** Figma was rate limited throughout,
+so every composition value is an inferred guess, each one recorded as *chose:* in
+`docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff rather than a re-derivation.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -71,8 +73,29 @@ The next actions, in the order they are worth doing:
 5. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
-**The comments UI has never been run against the real database.** This container cannot reach
-`supabase.co`, so type check, lint, `next build` and 222 unit tests are the whole of its
+**The rest of the Postcards interaction UI is the next build.** `#26` took the comments half —
+`getPostcardComments`, `addComment` and `deleteComment` now have a screen, and the
+`comments_count` the feed had been paying for is displayed. Still callable and still called by
+nothing: `hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`, `unblockRider`,
+`deletePostcard`. Those are one surface — an overflow menu on a card — rather than six.
+
+Two things to know before starting it, both of which `#26` followed:
+
+- **Extend the existing guesses, do not invent a third style.** Every composition value
+  already in the feed, create and thread screens is recorded as *chose:* in
+  `docs/FIGMA-FIDELITY-TODO.md`. A menu built to a different rhythm than the card above it is
+  worse than one built to the same wrong rhythm, because the second is one find-and-replace
+  to correct.
+- **The icons still cannot be exported**, so per decision #4 no lookalike is substituted. The
+  like and comment controls are text-labelled for that reason; hide and report should match
+  them rather than reaching for `lucide-react`.
+
+**The product call in `#25` — whether to build before the Figma window opens — was taken, not
+dodged:** `#26` built it, accepting that composition gets done twice. Worth knowing the trade
+was made deliberately if the thread comes back looking wrong on 2026-08-06.
+
+**None of the comments UI has been run against the real database.** This container cannot
+reach `supabase.co`, so type check, lint, `next build` and 222 unit tests are the whole of its
 verification — and the `/postcards/new` incident below is the standing proof that those four
 say the code compiles, not that the screen works. Load `/postcards/[id]` on the deployment and
 post one comment before calling it done.
