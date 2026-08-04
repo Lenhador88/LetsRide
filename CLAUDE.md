@@ -14,9 +14,9 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 | Framework | Next.js 16 (App Router, TypeScript strict) |
 | Styling | Tailwind CSS v4 (CSS-first config, no `tailwind.config.*`) |
 | Database / Auth | Supabase (Postgres + RLS + `@supabase/ssr`) |
-| Icons | `lucide-react` — **v1, being replaced** by the Figma icon set (see Design System) |
+| Icons | The Figma set, generated to `src/components/icons/generated.tsx` (see Design System). `lucide-react` survives only in the v1 pages |
 | Deployment | Vercel (auto-deploy from `main`) |
-| CI | GitHub Actions (type check + lint + build + RLS policy suite on every PR) |
+| CI | GitHub Actions — type check + lint + unit tests + build, and the RLS suite. Path-scoped; see Branching & CI |
 
 ## Technology Decisions
 
@@ -61,8 +61,8 @@ Formik; the forms in this app are one to three fields.
 
 | Kind | Tool | Status |
 |---|---|---|
-| RLS policies | `supabase/tests/` — psql against Postgres 17 | In place, gates every PR |
-| Units — validation, `lib/utils.ts`, `lib/data/` | Vitest — `npm run test:unit` | In place, gates every PR. Covers `lib/validation/`, `lib/media/`, `getInitials` and `safeNext`; `lib/data/` and `lib/actions/` are not covered yet |
+| RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
+| Units — validation, `lib/utils.ts`, `lib/data/` | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Covers `lib/validation/`, `lib/media/`, `getInitials` and `safeNext`; `lib/data/` and `lib/actions/` are not covered yet |
 | End-to-end | Playwright | Deferred until a flow is stable enough to be worth maintaining |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
@@ -87,7 +87,7 @@ analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
 src/
 ├── app/                    # Next.js App Router pages
 │   ├── (app)/              # Authenticated route group — has Navbar
-│   │   ├── layout.tsx      # Renders <Navbar /> (fixed top + fixed bottom tabs)
+│   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id]
 │   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
@@ -96,7 +96,7 @@ src/
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme)
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
-│   └── globals.css         # Tailwind import + CSS vars + .pb-safe
+│   └── globals.css         # Tailwind import + CSS vars + .pt-safe/.pb-safe/.pt-header/.pb-navbar
 ├── components/
 │   ├── ui/                 # Button, Input, Card, Avatar
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
@@ -114,7 +114,7 @@ src/
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # recovery.ts — cookie name shared by callback + action
-│   └── utils.ts            # cn(), formatDate(), formatDateTime(), getInitials()
+│   └── utils.ts            # cn(), formatDate(), formatDateTime(), formatPostcardDate(), getInitials()
 ├── proxy.ts                # Auth middleware (Next.js 16 uses proxy.ts, not middleware.ts)
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
@@ -620,8 +620,20 @@ chain to a scratch database and asserts what each role can reach.
 
 - `main` = production. Auto-deploys to Vercel.
 - All work on feature branches. Open PRs against `main`.
-- CI runs on every PR: TypeScript → ESLint → `next build`, plus the RLS policy
-  suite against Postgres 17. All must pass before merging.
+- **CI is scoped to what a PR can actually break**, decided by a `changes` job that
+  diffs against the merge base:
+  - **`Type Check, Lint & Build`** (tsc → ESLint → Vitest → `next build`) runs unless
+    *every* changed file is under `docs/`, `design/`, `openspec/`, `.claude/` or a
+    root `*.md`. That is a **denylist**, like `proxy.ts`'s public paths — a new
+    top-level directory runs CI by default, so forgetting to list something costs
+    one green run rather than a missed break.
+  - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
+    changes — the migration chain and the assertions are its only inputs.
+  - A push to `main` always runs both. It is the deploy gate and it is rare.
+  - Skipped jobs are skipped with `if:`, never a workflow-level `paths:` filter: a
+    filtered-out workflow never reports its check, and a required check that never
+    reports blocks the merge forever.
+- Whatever runs must pass before merging.
 - Never push directly to `main`.
 
 ## What Not To Do
