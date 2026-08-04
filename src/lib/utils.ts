@@ -6,6 +6,59 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * The zone every ride time is rendered in.
+ *
+ * Ride dates and times are formatted on the **server**, so without this they
+ * render in the server's zone — which on Vercel is UTC. A ride departing at
+ * 20:00 in Amsterdam was being drawn as `18:00`, two hours wrong, on the one
+ * screen where the hour is the single fact a rider acts on. The unit tests
+ * missed it because `vitest.config.ts` pins `TZ=UTC`, so the environment that
+ * hid the bug in production was also the one asserting the behaviour.
+ *
+ * **This is an interim, and a deliberate one.** The correct answer is the wall
+ * clock *at the meeting point* — a ride in Lisbon reads 10:00 to everyone,
+ * wherever they are looking from — and that needs a zone column on `rides`
+ * beside the timestamp. Until it exists, a fixed European zone is right for the
+ * whole current user base where UTC is wrong for all of it, and it is one
+ * constant to delete when the column lands. It is not the viewer's zone either:
+ * `Intl.DateTimeFormat().resolvedOptions().timeZone` would be per-viewer correct
+ * and would also make the server and client render different strings, which is a
+ * hydration mismatch on every ride card.
+ *
+ * Applies to the three `formatRide*` helpers only. `formatDate`/`formatDateTime`
+ * are untouched here — they carry a separate known `en-US` bug and the two
+ * changes should not be tangled.
+ */
+export const APP_TIME_ZONE = 'Europe/Amsterdam'
+
+/**
+ * A Google Maps **directions** link to a free-text destination.
+ *
+ * `maps/dir/?api=1&destination=…`, not `maps/search/?api=1&query=…`. The search
+ * endpoint drops a pin and stops there — which is what riders reported: tapping
+ * the map "only highlights the location". `dir` with a `destination` and no
+ * `origin` makes Google route from wherever the rider currently is, which is the
+ * thing the tap was always meant to do.
+ *
+ * `travelmode=driving` because this is a motorcycle app. Google's `two-wheeler`
+ * mode exists but is only served in a handful of countries and falls back
+ * unpredictably elsewhere, so the honest default is the one that resolves the
+ * same way everywhere.
+ *
+ * `URLSearchParams` rather than `encodeURIComponent`, so an address containing
+ * `&` or `#` cannot truncate the query — the previous hand-built string would
+ * have silently lost everything after an ampersand.
+ */
+export function googleMapsDirectionsUrl(destination: string) {
+  const params = new URLSearchParams({
+    api: '1',
+    destination,
+    travelmode: 'driving',
+  })
+  return `https://www.google.com/maps/dir/?${params.toString()}`
+}
+
+/**
  * The date stamped on a postcard photo — `19 Nov 2024`.
  *
  * Its own formatter rather than `formatDate` because the design gives this one a
@@ -48,6 +101,7 @@ export function formatRideDate(date: string) {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
+    timeZone: APP_TIME_ZONE,
   }).formatToParts(new Date(date))
 
   const find = (type: Intl.DateTimeFormatPartTypes) =>
@@ -62,7 +116,11 @@ export function formatRideDate(date: string) {
  * in docs/FIGMA-FIDELITY-TODO.md as blocked on schema, not on the design.
  */
 export function formatRideTime(date: string) {
-  return new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return new Date(date).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: APP_TIME_ZONE,
+  })
 }
 
 export function formatDate(date: string) {
@@ -95,16 +153,16 @@ export function formatDateTime(date: string) {
  *
  * Same `en-GB`, same parts-assembly, and same reason — see `formatRideDate`.
  *
- * Renders in the **server's** timezone, so a ride at 14:00 local shows as 14:00
- * UTC on Vercel. `formatRideTime` has always had this; rides are simply the
- * first screen where a wrong hour misleads rather than merely looks off.
- * Logged in docs/FIGMA-FIDELITY-TODO.md §Ride detail.
+ * Rendered in `APP_TIME_ZONE`, not the server's. It used to be the server's,
+ * which meant UTC on Vercel and every ride drawn two hours early in summer; see
+ * that constant for why the fix is a fixed zone rather than the viewer's.
  */
 export function formatRideDateLong(date: string) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'short',
+    timeZone: APP_TIME_ZONE,
   }).formatToParts(new Date(date))
 
   const find = (type: Intl.DateTimeFormatPartTypes) =>

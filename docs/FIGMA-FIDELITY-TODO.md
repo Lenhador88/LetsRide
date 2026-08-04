@@ -287,11 +287,35 @@ Blocked on schema, in the same shape as the rides list's image strip:
       all, so it is omitted entirely rather than rendered as a 200px grey slab — an empty
       fifth of the screen above the fold is worse than a shorter page. *Chose:* omit. Needs
       the same migration + Storage work as the list card's strip; do both together.
-- [ ] **The map tile has no coordinates — but the deeplink works.** `rides` has no lat/lng,
-      only free-text `meeting_point`, and Google's search endpoint takes a text query. So
-      `Open in Google Maps` genuinely opens the meeting point while the panel behind it stays
-      an empty container with a pin. *Chose:* render the container and a real link. Filling
-      it is a migration **and** a static-tile provider — two decisions, not a styling task.
+- [ ] **The map tile has no coordinates.** `rides` has no lat/lng, only free-text
+      `meeting_point`, so there is no tile to draw. *Chose:* render the panel as what it
+      actually is — the address, legibly, and one tap that opens directions. Filling it is a
+      migration **and** a keyed static-tile provider (Google Static Maps, Mapbox and the rest
+      all require a key and a billing account); that is two product decisions, not a styling
+      task. **Do not** substitute an `output=embed` iframe: it is an interactive map where
+      decision #3 specifies a static thumbnail, it swallows touch gestures inside a scrolling
+      page, and Safari's tracking prevention blanks third-party frames — which would
+      reproduce the exact bug reported below.
+- [x] ~~**The map panel read as blank, and its link only dropped a pin.**~~ **Fixed
+      2026-08-05**, all three reported from a real iPad:
+      **(a)** the fill was `bg-border/40`, which compiles to `#0000000a` — 4% black,
+      `#e9e3dd` over the cream background, **1.09:1 against the page itself**. It was blank
+      on every device; the iPad is just where someone noticed. Now the opaque `Grey/10`
+      (`bg-track`) this screen already uses elsewhere, at 1.17:1 — still a quiet surface, so
+      what actually makes the panel read is the address inside it at 12.65:1.
+
+      *Worth recording how this one nearly shipped wrong:* the first version of the fix
+      blamed Safari's `color-mix()` support, since Tailwind v4 compiles opacity modifiers to
+      `color-mix(in oklab, …)`. Checking the built CSS instead of asserting it showed the
+      production output emits a static `#0000000a` **outside** the `@supports` guard, so a
+      browser without `color-mix()` still gets the fill and the bug was never
+      browser-specific. Same lesson as the contrast ratios above, in a new costume: the
+      plausible mechanism and the real one were different, and only the build output knew.
+      **(b)** the link was `maps/search/?api=1&query=`, which highlights a location and stops;
+      it is now `maps/dir/?api=1&destination=…&travelmode=driving`, which routes from wherever
+      the rider is. **(c)** only the 100×20 chip was tappable though the whole 358×160 panel
+      looked like the target — the panel is the link now. `googleMapsDirectionsUrl` is in
+      `lib/utils.ts` with tests, including that an `&` in an address cannot truncate the query.
 - [ ] **`14:00 - 18:00` is a range; the schema has one timestamp.** Same `ends_at` gap the
       rides list logged. The detail row renders a single departure time.
 - [ ] **The location row draws a place name over a street address.** `meeting_point` is one
@@ -331,10 +355,21 @@ Deviations that are ours, not the design's:
       that would silently restyle every date on the postcards feed. CLAUDE.md calls their
       hardcoded `en-US` a bug rather than a decision. The real fix is one locale constant for
       the app — small, and not approved as part of this epic.
-- [ ] **Times render in the server's timezone.** A ride at 14:00 local shows as 14:00 UTC on
-      Vercel. `formatRideTime` has always had this; rides are simply the first screen where a
-      wrong hour misleads someone rather than merely looking off. Needs a decision about
-      whether ride times are wall-clock at the meeting point or instants.
+- [x] ~~**Times render in the server's timezone.**~~ **Fixed 2026-08-05.** A ride departing
+      20:00 in Amsterdam was drawn as `18:00` — UTC, because Vercel runs UTC and the three
+      `formatRide*` helpers run in server components. `APP_TIME_ZONE` in `lib/utils.ts` now
+      pins them to `Europe/Amsterdam`. The unit tests had missed it because
+      `vitest.config.ts` pins `TZ=UTC`, so the environment asserting the behaviour was the
+      one hiding the bug; the new assertions check the CET *and* CEST offsets and that the
+      date rolls with the clock, none of which UTC formatting can fake.
+
+      **Still open, and it is the interesting half:** a fixed zone is right for the current
+      user base and wrong in principle. The correct model is wall-clock **at the meeting
+      point** — a ride in Lisbon reads 10:00 to everyone, wherever they look from — which
+      needs a zone column on `rides` beside the timestamp. The viewer's own zone was
+      rejected rather than overlooked: it renders a different string on server and client,
+      which is a hydration mismatch on every ride card. Deleting `APP_TIME_ZONE` is a
+      one-line change once the column exists.
 - [ ] **`ListUser` renders both avatars at 40px** where the design draws the host at 40 and
       everyone else at 36. A 4px difference on one row of a roster reads as a rendering bug
       rather than as emphasis, so the rows share a left edge instead.
