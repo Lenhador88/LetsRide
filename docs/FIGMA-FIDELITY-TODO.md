@@ -86,8 +86,9 @@ screen has now been built, the box records **what was chosen** so verification i
 rather than a re-derivation.
 
 **Built 2026-08-03 against this register:** the feed (`/postcards`), the card, the like
-control, and the create screen (`/postcards/new`). Every value below marked *chose* is in the
-code right now and unverified.
+control, and the create screen (`/postcards/new`). **Built 2026-08-04:** the comment thread
+(`/postcards/[id]`), the composer and the card's comment control. Every value below marked
+*chose* is in the code right now and unverified.
 
 ### Home / Postcards feed — the 29 frames
 
@@ -141,6 +142,51 @@ code right now and unverified.
       refused by Supabase's own guard — the row is metadata and deleting it alone would
       strand the bytes. No service-role key: 010 already grants each rider DELETE on their
       own folder, so the blast radius is a property of the policy rather than of the script.
+
+### Comments — built 2026-08-04, every composition value inferred
+
+The probe that morning read **429 with 2d 4h left** on `/v1/files/*` and `/v1/images`, clearing
+around **2026-08-06T12:32Z** — so the thread screen was built the same way the feed was, and
+the register below is what that cost. The *behaviour* is not a guess: `011` owns who may read,
+write and delete a comment, and the UI adds no rule of its own.
+
+- [ ] **Where a thread lives** — *chose:* a dedicated route, `/postcards/[id]`, holding the
+      card and its comments; the feed card carries a comment control that links to it. The
+      alternative — comments inline on the feed card, with a "view all N" expander — is what
+      several photo feeds do, and it is unread which one this design uses. Two things pushed
+      this way: `addComment` has revalidated `/postcards/${postcardId}` since `011` shipped,
+      before any route answered to that path, and `getPostcard()` existed unused. Inline
+      expansion would also have meant inventing a truncation rule, which is the same trap the
+      caption clamp is being avoided for.
+      → `src/app/(app)/postcards/[id]/page.tsx`
+- [ ] **Comment affordance on the card** — *chose:* a **text-labelled** link ("Comment" /
+      "Comments N") sitting beside the like control in one row below the image. The design
+      uses `Element / Icon / Chat Bubble`, which cannot be exported while the render endpoint
+      is 429; per the icon rule, no `lucide-react` lookalike was substituted. Swapping the
+      icon in touches only `CommentsLink.tsx`. Unread: whether the count sits beside the label
+      or under the image as "View all 12 comments".
+- [ ] **Thread composition** — *chose:* comments **oldest first** (which `getPostcardComments`
+      already ordered for, and which its own comment argues for), avatar `sm` (32px) + username
+      Semibold 14 + relative timestamp on one line, body beneath, `gap-5` between comments,
+      the whole thread in a bordered `bg-surface` panel under the card. Unread: all of it.
+- [ ] **Composer** — *chose:* a `Textarea` (3 rows) labelled "Add a comment" with a full-width
+      "Post comment" button under it, pinned to the **bottom of the thread** rather than
+      floating above the keyboard. A sticky composer is what a phone-first design usually
+      draws and is the most likely correction here. Unread: placement, whether it is a single
+      line that grows, and whether the avatar of the signed-in rider appears beside it.
+      → `src/components/postcards/CommentForm.tsx`
+- [ ] **Delete affordance** — *chose:* a text "Delete" under the rider's own comment, which
+      arms an inline "Confirm delete" / "Cancel" pair. Editing is deliberately impossible
+      (`011` has no UPDATE policy and no UPDATE grant), so deleting is the only way to take
+      words back and it is irreversible — an immediate one-tap delete on a phone is the worse
+      guess. Unread: whether the design uses a swipe, a long-press, an overflow menu
+      (`Element / Icon / Options`) or a sheet.
+- [ ] **Empty and heading copy** — *chose:* "No comments yet. Be the first to say something."
+      and a heading that counts ("3 comments" / "Comments" when empty). Unread.
+- [ ] **Not built:** pagination of a long thread. `getPostcardComments` is deliberately
+      unbounded — a thread is bounded by one postcard rather than by the whole app — so a very
+      popular photo renders every comment. Worth a cursor when a real thread gets long; the
+      page size is not inventable without the design.
 
 ### Report a postcard — the reason list is a guess
 

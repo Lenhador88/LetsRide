@@ -1,7 +1,17 @@
 import { Avatar } from '@/components/ui/Avatar'
 import { LikeButton } from '@/components/postcards/LikeButton'
+import { CommentsLink } from '@/components/postcards/CommentsLink'
 import { formatRelativeTime } from '@/lib/utils'
 import type { Postcard } from '@/types'
+
+type PostcardCardProps = {
+  postcard: Postcard
+  /**
+   * False on `/postcards/[id]`, where the card heads its own thread and the
+   * comment control would otherwise link to the page it is already on.
+   */
+  linkToThread?: boolean
+}
 
 /**
  * One card in the feed.
@@ -17,7 +27,7 @@ import type { Postcard } from '@/types'
  * What is NOT inferred: the colours and type sizes, which come from the token
  * tables in CLAUDE.md §Design System.
  */
-export function PostcardCard({ postcard }: { postcard: Postcard }) {
+export function PostcardCard({ postcard, linkToThread = true }: PostcardCardProps) {
   const username = postcard.author?.username ?? 'Rider'
 
   return (
@@ -62,11 +72,20 @@ export function PostcardCard({ postcard }: { postcard: Postcard }) {
       )}
 
       <div className="flex flex-col gap-2 p-4">
-        <LikeButton
-          postcardId={postcard.id}
-          likesCount={postcard.likes_count ?? 0}
-          isLiked={postcard.is_liked ?? false}
-        />
+        {/* items-start so LikeButton's error message pushes down rather than
+            re-centring the whole row. */}
+        <div className="flex items-start gap-1">
+          <LikeButton
+            postcardId={postcard.id}
+            likesCount={postcard.likes_count ?? 0}
+            isLiked={postcard.is_liked ?? false}
+          />
+          <CommentsLink
+            postcardId={postcard.id}
+            count={postcard.comments_count ?? 0}
+            href={linkToThread}
+          />
+        </div>
         {postcard.caption && (
           // No line clamp: the design's truncation rule and "more" affordance are
           // unread, and inventing a clamp would silently hide a rider's words.

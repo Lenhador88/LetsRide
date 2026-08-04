@@ -88,7 +88,7 @@ src/
 ├── app/                    # Next.js App Router pages
 │   ├── (app)/              # Authenticated route group — has Navbar
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed top + fixed bottom tabs)
-│   │   ├── postcards/      # /postcards (the home screen), /postcards/new
+│   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id]
 │   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
 │   │   ├── friends/        # /friends — v1 leftover, signed off for deletion
@@ -103,7 +103,7 @@ src/
 │   ├── layout/             # Navbar
 │   ├── rides/              # JoinRideButton
 │   ├── clubs/              # JoinClubButton
-│   ├── postcards/          # PostcardCard, LikeButton, CreatePostcardForm
+│   ├── postcards/          # PostcardCard, LikeButton, CommentsLink, CommentList, CommentItem, CommentForm, CreatePostcardForm
 │   ├── friends/            # FriendActions, SearchRiders
 │   └── profile/            # EditProfileForm, SignOutButton
 ├── lib/
@@ -544,7 +544,7 @@ Inbox, Profile**. There is no "Friends" tab; the `friendships` table is a v1 lef
 
 | Domain | Status in code |
 |---|---|
-| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View + like + create built** at `/postcards`; composition unverified against Figma. **Comments are in scope as of 2026-08-03** — the product owner reversed the earlier decision. **Shares remain out**, and deliberately so: it is undefined whether "share" means a native share sheet (no backend at all) or a repost (a substantial feature with its own audience rules), and building either would be a guess |
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View, like, create and comment built** — the feed at `/postcards`, the composer at `/postcards/new`, and one card plus its thread at `/postcards/[id]`. Composition unverified against Figma throughout. **Shares remain out**, and deliberately so: it is undefined whether "share" means a native share sheet (no backend at all) or a repost (a substantial feature with its own audience rules), and building either would be a guess |
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | Not built |

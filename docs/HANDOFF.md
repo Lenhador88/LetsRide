@@ -1,13 +1,17 @@
 # Handoff — where things stand
 
-Last shipped: the **Postcards/Home backend** (PR #15, merged `dd72c96`) — migrations `009`
-and `010`, the feed data layer and actions, and client-side EXIF stripping. Before that, the
-**login & onboarding epic** (PR #8, merged `0e30556`). No branch is in flight — start new
-work from `main`.
+Last shipped: the **storage orphan sweep and two fixes** (PR #24, merged `0adc5a5`). Before
+that, the postcard interactions backend (PR #22) and the feed UI (PR #19).
 
-**The Postcards UI now exists — view, like and create — but it has never been compared to
-the design.** Figma was rate limited throughout the build, so every composition value in it
-is an inferred guess, registered in `docs/FIGMA-FIDELITY-TODO.md`. See *Do this first*.
+**In flight: the comments UI**, on `claude/comments-ui-krjuyl` — the thread route
+`/postcards/[id]`, the composer, and the card's comment control, all sitting on `011`'s
+existing backend. No schema change; the only non-UI edit is `addComment` now returning
+`sent: true` so the composer can tell success from "not submitted yet".
+
+**The whole Postcards UI — view, like, create and now comment — has never been compared to
+the design.** Figma has been rate limited throughout every one of those builds, so every
+composition value is an inferred guess, registered in `docs/FIGMA-FIDELITY-TODO.md`. See
+*Do this first*.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -45,8 +49,7 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 ## Do this first
 
 **Everything through migration `011` is shipped and applied.** `001`–`011` are all live on the
-hosted project, the Postcards backend is complete for every home-screen action, and the
-feed / create screens work end to end against production. Nothing is in flight.
+hosted project, and the Postcards backend is complete for every home-screen action.
 
 The next actions, in the order they are worth doing:
 
@@ -54,16 +57,25 @@ The next actions, in the order they are worth doing:
    serves nothing and there is no alert, so the deployed app goes down silently. This needs a
    card, not a commit, and it will bite at the worst possible moment.
 2. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
-   `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21.
-3. **`npm run figma:pull`, but not before roughly 2026-08-06 12:30 UTC.** `Retry-After` read
-   69 hours at 15:22 on 2026-08-03 and it is a real countdown; check with
-   `npm run figma:check -- --probe` rather than trying blind. One successful pull is the
-   highest-value thing left — see *Building to the design*.
+   `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21. #24
+   shipped the tool; whether it has since been *run* could not be checked from this container,
+   which cannot reach `supabase.co`. The dry run is free and settles it.
+3. **`npm run figma:pull`, but not before 2026-08-06 12:32 UTC.** Re-probed 2026-08-04: still
+   429 on `/v1/files/*` and `/v1/images`, `2d 4h` left, which agrees with the 2026-08-03
+   reading to within an hour — it really is one countdown, not a fresh window per attempt.
+   Check with `npm run figma:check -- --probe` rather than trying blind. One successful pull
+   is the highest-value thing left — see *Building to the design*.
 4. **Then verify the Postcards screens against the design**, working through the `chose:`
-   entries in `docs/FIGMA-FIDELITY-TODO.md`. Every composition value in them is a guess;
-   the tokens are not.
+   entries in `docs/FIGMA-FIDELITY-TODO.md` — now four screens' worth, including the comment
+   thread. Every composition value in them is a guess; the tokens are not.
 5. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
+
+**The comments UI has never been run against the real database.** This container cannot reach
+`supabase.co`, so type check, lint, `next build` and 222 unit tests are the whole of its
+verification — and the `/postcards/new` incident below is the standing proof that those four
+say the code compiles, not that the screen works. Load `/postcards/[id]` on the deployment and
+post one comment before calling it done.
 
 **A security advisor fires on `public.moderate_comment` and it is expected — do not "fix" it.**
 `authenticated_security_definer_function_executable` flags it as a `SECURITY DEFINER`
@@ -94,15 +106,20 @@ trusting this paragraph.
 
 **The one caveat that outlives all of it:** the Postcards UI has never been compared to the
 design. It was built while Figma was rate limited, so aspect ratios, spacing, byline
-placement and the whole create flow are defensible guesses, each recorded as *chose:* so
-verification is a diff. It is not finished until someone has looked.
+placement, the whole create flow and now the comment thread are defensible guesses, each
+recorded as *chose:* so verification is a diff. It is not finished until someone has looked.
+
+The largest of those guesses, and the one most worth challenging first: **comments live on
+their own route rather than inline on the feed card.** That shape is what `011`'s
+`revalidatePath('/postcards/${id}')` and the unused `getPostcard()` were both already built
+for, but it is a shape nobody has read off the design.
 
 ## State
 
 | | |
 |---|---|
 | Migrations | `001`–`011` all applied to the hosted project and verified live. See the ordering note below. |
-| Tests | RLS suite 255 assertions (`npm test`) + Vitest 195 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite 255 assertions (`npm test`) + Vitest **222** tests (`npm run test:unit`, measured 2026-08-04 — this line said 195). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |

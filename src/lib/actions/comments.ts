@@ -46,7 +46,11 @@ export async function addComment(_prev: ActionState, formData: FormData): Promis
   if (error) return { error: 'Could not post that comment. The postcard may no longer be available.' }
 
   revalidateThread(postcardId)
-  return { error: null }
+  // `sent` is what lets the form tell "not submitted yet" from "submitted,
+  // nothing to report" — both are `error: null` otherwise, so without it the
+  // composer cannot know when to clear itself. This is the case state.ts
+  // documents the flag for: an action that finishes without navigating.
+  return { error: null, sent: true }
 }
 
 /**
