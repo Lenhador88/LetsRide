@@ -180,6 +180,27 @@ $$;
 
 -- Runs the statement, requires it to succeed, then unwinds the subtransaction so
 -- the write leaves no trace for later assertions.
+--
+-- USE IT ONLY FOR INSERT AND SELECT, and the function now enforces that.
+--
+-- All this helper can prove is that the statement did not ERROR. That is a real
+-- test for an INSERT, which a WITH CHECK policy refuses outright with 42501.
+-- It is close to worthless for an UPDATE or DELETE: those are *filtered* by
+-- their USING clause, so a statement the policy forbids entirely touches zero
+-- rows and returns without error. Both look identical from here.
+--
+-- This is not theoretical. Four assertions in the suite passed against policies
+-- that permitted nothing at all — including "an author can delete their own
+-- postcard", which stayed green with the DELETE policy dropped — until a
+-- mutation test caught them. Rather than fix the call sites and trust the next
+-- person to remember, the shape is refused.
+--
+-- The replacement is three lines and proves the thing itself:
+--
+--   savepoint x;
+--   delete from t where id = '...';
+--   select assert_eq((select count(*)::int from t where id = '...'), 0, 'label');
+--   rollback to savepoint x;
 create or replace function assert_allowed(stmt text, label text)
 returns void
 language plpgsql
@@ -187,6 +208,15 @@ as $$
 declare
   undo constant text := 'assert_allowed_undo';
 begin
+  -- `[[:space:]]*` rather than btrim(), which strips spaces but NOT newlines.
+  -- The first version of this guard used btrim and so matched only the one call
+  -- site whose statement began on the same line as the opening quote, silently
+  -- missing the three that began on the next line. A guard that half-fires is
+  -- worse than none, because it looks like it passed.
+  if lower(stmt) ~ '^[[:space:]]*(update|delete)[[:space:]]' then
+    raise exception 'FAIL  % — assert_allowed cannot prove an UPDATE or DELETE was permitted: RLS filters them to zero rows rather than raising, so this passes even against a policy that forbids the write entirely. Run the statement and count the affected row instead (see the comment on assert_allowed).', label;
+  end if;
+
   begin
     execute stmt;
     raise exception using errcode = 'P0001', message = undo;

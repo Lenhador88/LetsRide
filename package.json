@@ -14,7 +14,8 @@
     "figma:pull": "node scripts/figma/pull.mjs",
     "figma:extract": "node scripts/figma/extract.mjs",
     "figma:icons": "node scripts/figma/icons.mjs",
-    "figma:check": "node scripts/figma/check.mjs"
+    "figma:check": "node scripts/figma/check.mjs",
+    "storage:sweep": "node scripts/storage/sweep-orphans.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

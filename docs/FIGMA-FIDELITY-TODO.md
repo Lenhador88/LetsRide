@@ -136,6 +136,11 @@ code right now and unverified.
 - [ ] **Known leak, not a design question:** picking a second photo orphans the first upload
       in Storage. `createPostcard` cleans up only when the *insert* fails, and Storage has no
       cross-system cascade. Costs storage, never correctness.
+      Sweep them with `npm run storage:sweep` (dry run) then `-- --delete`. It signs in as
+      the rider and works through the Storage API, because `delete from storage.objects` is
+      refused by Supabase's own guard — the row is metadata and deleting it alone would
+      strand the bytes. No service-role key: 010 already grants each rider DELETE on their
+      own folder, so the blast radius is a property of the policy rather than of the script.
 
 ### Report a postcard — the reason list is a guess
 

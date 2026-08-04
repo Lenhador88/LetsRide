@@ -27,6 +27,14 @@ If the second prints anything, someone edited the handoff and it never reached `
 which has happened, and is why a `Stop` hook now warns about exactly that
 (`.claude/hooks/handoff-landed-check.sh`).
 
+**Prune this file as part of landing work, not as a separate task.** It records the *current
+position*, so it accretes by design — every session adds what it just did, and nothing
+removes what stopped being current. A one-off cleanup does not hold: this file was deduped by
+2,400 tokens on 2026-08-03 and had grown past its starting size by the end of the same day.
+When you finish a change, delete the paragraph it made obsolete. Proof of something already
+verified belongs in the migration's own §Verification footer, not here; a settled decision
+belongs in `CLAUDE.md`. What stays here is what is still true and still undone.
+
 **Database and deployment state cannot be checked from the shell.** `api.github.com` is
 refused by the proxy ("GitHub access is not enabled for this session") and `supabase.co` is
 blocked, so any `curl`-based check here fails silently and tells you nothing. Use the GitHub,
@@ -36,227 +44,58 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 ## Do this first
 
-**The Home/Postcards backend is SHIPPED** — PR #15, merged to `main` as `dd72c96` on
-2026-08-03, CI green on both jobs. Nothing is in flight.
+**Everything through migration `011` is shipped and applied.** `001`–`011` are all live on the
+hosted project, the Postcards backend is complete for every home-screen action, and the
+feed / create screens work end to end against production. Nothing is in flight.
 
-**The approved UI slice — view + like + create — is now built**, 2026-08-03. `/postcards` is
-the home screen, `/postcards/new` creates one, `/dashboard` is deleted and every redirect
-that pointed at it now points at `/postcards`. New: `PostcardCard`, `LikeButton`,
-`CreatePostcardForm`, a `Textarea` primitive, `lib/data/media.ts` (signed URLs — the `media`
-bucket is private, so nothing renders without them) and `lib/data/clubs.ts`.
+The next actions, in the order they are worth doing:
 
-**It was built against a rate-limited Figma, and that is the headline caveat.** Colours, type
-and the background gradient are the verified tokens; **every composition value — aspect
-ratio, byline placement, the like control, spacing, the whole create flow — is a guess**, each
-one recorded as *chose:* in `docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff. It is not
-finished until someone has compared it to the design.
+1. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project
+   serves nothing and there is no alert, so the deployed app goes down silently. This needs a
+   card, not a commit, and it will bite at the worst possible moment.
+2. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
+   `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21.
+3. **`npm run figma:pull`, but not before roughly 2026-08-06 12:30 UTC.** `Retry-After` read
+   69 hours at 15:22 on 2026-08-03 and it is a real countdown; check with
+   `npm run figma:check -- --probe` rather than trying blind. One successful pull is the
+   highest-value thing left — see *Building to the design*.
+4. **Then verify the Postcards screens against the design**, working through the `chose:`
+   entries in `docs/FIGMA-FIDELITY-TODO.md`. Every composition value in them is a guess;
+   the tokens are not.
+5. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
+   security advisor that is not deliberate.
 
-**Migration `011` is applied and verified live** (2026-08-04). `001`–`011` are all applied;
-no drift. It adds `postcard_comments`, `postcard_hides` and `postcard_reports`, and rewrites
-the `postcards` SELECT policy to enforce per-viewer hiding.
+**A security advisor fires on `public.moderate_comment` and it is expected — do not "fix" it.**
+`authenticated_security_definer_function_executable` flags it as a `SECURITY DEFINER`
+function callable via `/rest/v1/rpc/`. That is what it is for: it lets a rider remove a
+comment from a harasser they blocked, which RLS alone cannot reach because it filters a
+DELETE by what the caller may *read*. Revoking EXECUTE or switching to `SECURITY INVOKER`
+would silently restore that hole. Its safety is narrowness — `search_path` pinned, names
+schema-qualified, revoked from `public` and `anon`, and the authorization checked *inside*
+the function against `auth.uid()`. Asserted both ways in the suite.
 
-Verified on the hosted project after applying — the environment-specific things the RLS suite
-runs on plain Postgres and structurally cannot see:
+**Still not done, and deliberately so:** the `/friends` + `friendships` deletion. Signed off
+by the product owner, but it needs a migration to drop the table, so it is a `data` change
+rather than a UI one. The Navbar still routes there; deleting the tab without the route
+strands the page.
 
-| Check | Result |
-|---|---|
-| Three new tables exist, RLS enabled | ✅ all three |
-| Policies not `to authenticated` | 0 |
-| `anon` table privileges | 0 |
-| SELECT policies on `postcards` | **exactly 1** — no leftover from the drop loop |
-| UPDATE policies on the new tables | 0 |
-| `authenticated` UPDATE on comments / DELETE on reports | false / false |
-| Total `public` policies | 32 → 40 |
-| Live regression as the real rider | feed, profiles, clubs and rides all still readable |
+**Comments came back into scope on 2026-08-03**, reversing the earlier "no tables for
+comments or shares" decision. `009`'s header still says they are out of scope — that is now
+historical. **Shares are still out**, and that is a genuine open question rather than a
+deferral: "share" could mean a native share sheet (no backend at all) or a repost (a table,
+an audience rule, and an answer for what happens when the original is deleted).
 
-**A NEW security advisor fires, and it is expected — do not "fix" it.**
-`authenticated_security_definer_function_executable` flags
-`public.moderate_comment(uuid)` as a `SECURITY DEFINER` function callable via
-`/rest/v1/rpc/`. That is the entire point: it exists so a rider can remove a comment from a
-harasser they blocked, which RLS alone cannot reach because it filters a DELETE by what the
-caller may *read*. Revoking EXECUTE or switching it to `SECURITY INVOKER` would silently
-restore that hole. What keeps it safe is narrowness, not the grant: `search_path` pinned,
-names schema-qualified, revoked from `public` and `anon`, and the authorization
-(`p.author_id = auth.uid()`) checked *inside* the function against `auth.uid()` rather than
-against anything the caller passes. Asserted both ways in the suite.
+**Migrations `009`, `010` and `011` were each verified live after applying**, not merely
+applied — three tables with RLS on, zero policies outside `to authenticated`, zero `anon`
+grants, and exactly one SELECT policy per table. That last one is load-bearing: policies for
+a command are OR'd, so a single leftover silently undoes the whole predicate. Each migration
+carries the reproducible queries in its own §Verification footer; run those rather than
+trusting this paragraph.
 
-The other advisor, leaked-password protection, is still the pre-existing one — a dashboard
-toggle nobody has flipped.
-
-**The create flow is verified end to end.** A real postcard was posted from the deployed app
-on 2026-08-03 at 21:49 UTC, image present in Storage. That closes the caveat carried since
-#15 that no real upload had ever run — upload, compression, EXIF stripping, the Storage
-policies and the insert all work against production.
-
-**Two orphaned Storage objects exist** (3 objects, 1 postcard). One is from the failed
-attempt before #21; both are unreachable, since 010's Storage SELECT policy resolves through
-a `postcards` row that does not exist. They cost storage only. Cleaning them up needs a
-decision about whether to sweep automatically — see `docs/FIGMA-FIDELITY-TODO.md` for the
-known-leak note.
-
-**Try `npm run figma:pull` before anything else** — that comparison is the highest-value
-thing left, and one successful pull unblocks it. **It will not work before roughly
-2026-08-06 12:30 UTC** — `Retry-After` said 69 hours at 15:22 on 2026-08-03, and it is a real
-countdown. Check with `npm run figma:check -- --probe` rather than trying blind.
-
-What is left on Postcards, roughly in order: verify the screens against the design, export
-the 44 icons and give the like control its heart, then the `/friends` + `friendships`
-deletion (signed off, untouched here — it needs a migration, so it is a `data` change, not a
-UI one). Pagination, a loading state and the postcard detail route are unbuilt and unread.
-
-Migration `009_postcards_and_blocks.sql` is **applied to the hosted project and verified
-live** (2026-08-02). No drift: the repo chain and the database agree.
-
-It creates `postcards`, `postcard_likes` and `blocks`, plus `private.is_blocked()`, and
-applies the block predicate to `profiles`, `club_members`, `rides`, `ride_members` and
-`friendships` so decision #2 holds everywhere the moment blocking exists. Verified by
-applying the full `001`–`009` chain to a scratch Postgres and running the suite green.
-
-**It drops SELECT policies on those five tables by catalog lookup before recreating them.**
-It applied cleanly, but note the shape for any future rerun: an abort partway leaves those
-tables with no select policy — deny-all. That fails *closed*, unlike `002`, so the damage
-mode is "riders see nothing" rather than a leak.
-
-Verified on the live database, not asserted — these are the environment-specific things the
-RLS suite runs on plain Postgres and structurally cannot see:
-
-| Check | Result |
-|---|---|
-| `postcards`, `postcard_likes`, `blocks` exist, RLS enabled | ✅ all three |
-| Policies not `to authenticated` | 0 |
-| `anon` table privileges | 0 |
-| `is_blocked` in `public` / in `private` | 0 / 1 — off the PostgREST surface |
-| `authenticated` USAGE on `private` | false |
-| `authenticated` UPDATE on `postcard_likes` / `blocks` | false / false |
-| SELECT policies per table | **exactly 1 each** — no leftover from the drop loop |
-| Total policies | 22 → 32 |
-| Security advisors | only the pre-existing leaked-password toggle |
-
-The "exactly 1 SELECT policy per table" row is the load-bearing one: policies for a command
-are OR'd, so a single leftover would silently undo the whole block predicate.
-
-Reproduce the whole set with the queries in §Verification at the foot of the migration file.
-
-Finally, impersonated as the one real rider (`set local role authenticated` +
-`request.jwt.claims`), profiles, clubs, club_members, rides and ride_members all still
-return their rows — the policy replacement caused no regression for the live user.
-
-Product owner sign-offs taken this session, both previously listed here as unconfirmed:
-
-- **`/dashboard` is to be deleted**, and Postcards becomes the home screen. **Done**
-  2026-08-03 — deleted together with the feed that replaced it, which was the required order:
-  `proxy.ts` redirected signed-in riders there, so removing it first would have landed every
-  completed login on a 404. `proxy.ts`, `app/page.tsx`, both auth actions, onboarding and the
-  Navbar all point at `/postcards` now, and the proxy tests assert it.
-- **`/friends` is to be deleted** along with the `friendships` v1 leftover. **Not done** — it
-  needs a migration to drop the table, so it is a `data` change rather than a UI one, and it
-  was kept out of the Postcards work deliberately. The Navbar still routes to it; deleting
-  the tab without the route would strand the page.
-
-The approved first UI slice was **view + like + create**. Create was added after it became
-clear that view + like alone renders an empty feed forever — nothing can put a postcard in it.
-
-**Comments came back into scope on 2026-08-03**, by the product owner, reversing the earlier
-"no tables for comments or shares" decision. That reversal is theirs to make and is recorded
-here so it does not read as drift — `009`'s header still says comments are out of scope, and
-that is now historical rather than current.
-
-**Shares are still out**, and this is a genuine open question rather than a deferral:
-"share" could mean a native share sheet, which needs no backend at all, or a repost, which is
-a substantial feature with its own audience rules. Building either without knowing which
-would be a guess.
-
-**Migration `010_postcard_storage.sql` is applied and verified live** (2026-08-03).
-`001`–`010` are all applied; `011` is not — see the State table. It creates the private `media` bucket and the `storage.objects`
-policies, and drops and recreates two of `009`'s postcards policies to bind `image_path` to
-the author's own Storage folder.
-
-Verified on the hosted project after applying:
-
-| Check | Result |
-|---|---|
-| `media` bucket | `public=false`, 5242880, `{image/jpeg}` |
-| `storage.objects` RLS | enabled |
-| Storage policies | 3 — INSERT / SELECT / DELETE, no UPDATE, all `to authenticated` |
-| `public` policies | 32, unchanged (the two recreated replaced their originals) |
-| `postcards_image_path_key` unique index | present |
-| `anon` table privileges | 0 |
-| Security advisors | only the pre-existing leaked-password toggle |
-
-And the hole itself, probed against production as the real rider: a cross-folder
-`image_path` is **refused 42501**, an upload into another rider's folder is **refused 42501**,
-and the rider's own folder is still **accepted** — so it is closed without being
-over-tightened.
-
-**A real upload through storage-api has now run, and it worked** — 2026-08-03, from the
-deployed create screen. `POST 200`, `ObjectCreated`, the object landed at
-`postcards/<uid>/<uuid>.jpg` with `mimetype image/jpeg` and `metadata` populated. That closes
-the long-standing "unexercised" caveat: the INSERT policy's null-tolerant `metadata` read is
-correct against the real storage-api, not just against `harness.sql`'s stub.
-
-**The insert that should have followed it did not**, and the cause is worth remembering —
-see *The bug that CI could not see* below.
-
-That binding is not cosmetic. Without it there is a **live data-exposure hole**: the storage
-read policy delegates to `postcards` via `EXISTS`, which inherits RLS from *whatever row
-matches the path* rather than from the object's owner — so a rider could write another
-rider's image path into their own app-wide postcard and make a private club's photo readable
-by every signed-in rider, blocked or not. `image_path` reaches the browser, so the paths are
-known. It was found by review, reproduced against the scratch database, fixed before `010`
-was ever applied, and is now covered by assertions in
-`# A rider cannot read an image by claiming its path (migration 010)`.
-
-No `media` bucket existed beforehand (checked before applying), so the `on conflict do update`
-guard did not have to correct anything on this run — it is there for reruns and for anyone
-who creates one through the dashboard, where "public" is a checkbox.
-
-The UI itself is unbuilt — see `docs/FIGMA-FIDELITY-TODO.md` for why, and for the register of
-what a later pass must verify against the design.
-
----
-
-**The login epic is shipped.** PR #8 merged to `main` as `0e30556` on 2026-08-02, migration
-`003` applied to the hosted project, and the production deployment is `READY` on
-`letsrideapp.vercel.app` with no runtime errors. Nothing is outstanding from it.
-
-Verified on the live database after applying, not just in CI: completion is refused while
-`location` is NULL and is one-way once set; reserved, too-short and uppercase usernames are
-all rejected with `23514`; 22 policies exist and every one is `to authenticated`; `anon`
-holds zero table grants. Security advisors show nothing new — only the pre-existing
-leaked-password toggle.
-
-Two things to expect rather than debug:
-
-- ~~**The one existing rider (`pedrousername`) has `onboarding_completed_at` NULL**~~ — **no
-  longer true.** Checked 2026-08-02: the stamp is set, so they land in the app directly and
-  no backfill is needed. Verify with
-  `select username, onboarding_completed_at from profiles;` rather than trusting this line.
-- **`terms_accepted_at` is still client-writable.** `enforce_onboarding_completion()` pins
-  the onboarding stamp but not the consent stamp, so a rider can clear or back-date their
-  own. The action checks its write now; the schema guard is an unwritten migration and a
-  product decision. `CLAUDE.md` names T&C acceptance as an integrity rule the client must
-  not own, so this is a real gap, not a nitpick.
-
-Nothing is on fire. The database is `ACTIVE_HEALTHY`, the deployment is live, and
-the anonymous read hole is closed.
-
-**Do not re-apply `002_restrict_to_authenticated`.** It is already applied, and it is not
-idempotent — it was written to run once against the `001` schema.
-
-Re-running it **fails partway and leaves the database worse than when it started.** Its
-`profiles` block drops three policies and then creates `"Profiles are viewable by signed-in
-riders"`, which already exists, so the script aborts there. `psql` autocommits, so the drops
-have already stuck: `profiles` is left with a select policy and **no insert or update
-policy**, which breaks profile editing for every user. It never reaches `club_members`,
-`rides` or `ride_members`, so `008` survives intact and nothing leaks — the damage is
-narrower than a leak, and easier to miss, because the tables you would think to check are
-fine.
-
-Verified by applying the full chain to a scratch database and re-running `002` over it.
-
-To change any of those four tables, add a new migration. `008` is the current definition.
-
----
+**The one caveat that outlives all of it:** the Postcards UI has never been compared to the
+design. It was built while Figma was rate limited, so aspect ratios, spacing, byline
+placement and the whole create flow are defensible guesses, each recorded as *chose:* so
+verification is a diff. It is not finished until someone has looked.
 
 ## State
 
