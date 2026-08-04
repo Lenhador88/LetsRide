@@ -1,0 +1,76 @@
+-- 013: Remove `friendships` — a v1 feature the product no longer has.
+--
+-- ###########################################################################
+-- NOT YET APPLIED TO THE HOSTED PROJECT, and this one DESTROYS DATA. Written
+-- 2026-08-04. Apply 012 first; then, before applying this:
+--
+--   select count(*) from public.friendships;
+--
+-- The expectation is 0 — at the time of writing the project held one rider,
+-- one club and one ride, all created through the deployed app. Whether a
+-- friendship was ever written is [INFERRED, not checked]: the deleted
+-- SearchRiders.tsx did have a working "Add" button and the INSERT policy
+-- permitted it, and the session that wrote this could not reach the project to
+-- count. That is exactly why the check above is a STOP and not a formality.
+-- If the count is not 0, get a decision: this drop is irreversible and there is
+-- no export step below.
+-- ###########################################################################
+--
+-- ---------------------------------------------------------------------------
+-- Why
+-- ---------------------------------------------------------------------------
+-- The design has five tabs — Home, Rides, Clubs, Inbox, Profile. There is no
+-- Friends tab and no friendship concept anywhere in it; the social graph the
+-- product actually has is clubs, plus blocking. `friendships` is a v1 leftover
+-- that survived because deleting a table is scarier than ignoring one.
+--
+-- Signed off by the product owner 2026-08-02, recorded in docs/HANDOFF.md, and
+-- deferred ever since precisely because it needed this migration rather than a
+-- UI edit.
+--
+-- ---------------------------------------------------------------------------
+-- What goes with it
+-- ---------------------------------------------------------------------------
+-- Dropping the table drops its policies with it — the ones 001 and 002 created
+-- and 009 rewrote for blocking ("Users can view their own friendships", "Users
+-- can send friend requests"). Nothing else references the table: no foreign key
+-- points at it, and `private.is_blocked` never consulted it.
+--
+-- The matching RLS assertions are removed in the same change. Two of them
+-- covered "a friendship spanning a block is hidden from the blocker", which was
+-- real coverage of 009's symmetry — that behaviour is still asserted against
+-- profiles, rides, ride_members, club_members, postcards and comments, so what
+-- is lost is one more surface of the same rule, not the rule itself.
+--
+-- `'friends'` STAYS in RESERVED_USERNAMES (src/lib/validation/profile.ts). The
+-- list already reserves `inbox` and `garage`, which have no routes either — it
+-- is a namespace reservation, not a route index, and un-reserving a name is a
+-- widening change nobody asked for.
+--
+-- ---------------------------------------------------------------------------
+-- Reversibility
+-- ---------------------------------------------------------------------------
+-- There is none, which is the whole reason for the header above. Recreating the
+-- table from 001 would restore the shape and not one row. That is an accepted
+-- cost at zero rows and an unacceptable one otherwise.
+
+drop table if exists public.friendships;
+
+-- ---------------------------------------------------------------------------
+-- Verification (run against the hosted project after apply)
+-- ---------------------------------------------------------------------------
+--   select to_regclass('public.friendships');          -- expect NULL
+--   select count(*) from pg_policies
+--    where schemaname = 'public' and tablename = 'friendships';   -- expect 0
+--
+-- And confirm nothing else broke: the security advisors should report no new
+-- findings.
+--
+-- Do NOT check this by watching the total policy count fall by a remembered
+-- number. An earlier draft of this footer said "by exactly the two friendships
+-- policies" and was wrong — the table carries FOUR (SELECT and INSERT, rewritten
+-- by 009, plus UPDATE and DELETE from 002 that nothing touched again). The
+-- total goes 40 -> 36. Being told to expect 38 during an irreversible,
+-- data-destroying step is precisely how an operator talks themselves into
+-- believing the drop took something it should not have. The scoped count above
+-- is the claim that actually matters and it needs no maintaining.

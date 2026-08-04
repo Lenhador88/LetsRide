@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Bike, Home, MapPin, User, UserCheck } from 'lucide-react'
+import { Bike, Home, MapPin, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -12,21 +12,20 @@ import { cn } from '@/lib/utils'
  * tinted or underlined — is inferred, because the Figma nav frame could not be
  * opened. See docs/FIGMA-FIDELITY-TODO.md.
  *
- * The icons are still `lucide-react` and still v1. All five need replacing with
+ * The icons are still `lucide-react` and still v1. All four need replacing with
  * the `Element / Icon / *` set once it can be exported; that is one task, not
  * five, and is already registered. `Home` replaces `LayoutDashboard` here only
  * because the latter now names a screen that no longer exists.
  *
- * The design's five tabs are Home, Rides, Clubs, Inbox, Profile. Inbox has no
- * route or schema yet, and Friends is signed off for deletion but still routed
- * — so this renders what exists rather than a tab that 404s or a missing one
- * that strands `/friends`.
+ * The design's five tabs are Home, Rides, Clubs, Inbox, Profile. Four of them
+ * render here: Inbox has no route and no schema yet, so a tab for it would
+ * 404. Friends is gone as of 013 — it was never in the design, and the tab and
+ * the route were removed together so neither could strand the other.
  */
 const navItems = [
   { href: '/postcards', label: 'Home', icon: Home },
   { href: '/rides', label: 'Rides', icon: MapPin },
   { href: '/clubs', label: 'Clubs', icon: Bike },
-  { href: '/friends', label: 'Friends', icon: UserCheck },
   { href: '/profile', label: 'Profile', icon: User },
 ]
 

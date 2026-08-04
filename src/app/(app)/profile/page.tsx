@@ -13,14 +13,9 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
 
-  const [{ count: rideCount }, { count: clubCount }, { count: friendCount }] = await Promise.all([
+  const [{ count: rideCount }, { count: clubCount }] = await Promise.all([
     supabase.from('ride_members').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
     supabase.from('club_members').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-    supabase
-      .from('friendships')
-      .select('*', { count: 'exact', head: true })
-      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-      .eq('status', 'accepted'),
   ])
 
   return (
@@ -47,11 +42,14 @@ export default async function ProfilePage() {
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-3 gap-3">
+      {/* Two stats since 013 dropped friendships. Deliberately not backfilled
+          with a third (postcards, say) — the design's Profile section is 25
+          unread frames, and inventing a stat to fill a grid column is the kind
+          of guess that outlives the reason for it. */}
+      <div className="mb-6 grid grid-cols-2 gap-3">
         {[
           { label: 'Rides', value: rideCount ?? 0 },
           { label: 'Clubs', value: clubCount ?? 0 },
-          { label: 'Friends', value: friendCount ?? 0 },
         ].map(({ label, value }) => (
           <Card key={label} className="text-center">
             <p className="text-2xl font-bold text-white">{value}</p>

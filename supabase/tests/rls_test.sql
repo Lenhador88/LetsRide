@@ -246,6 +246,61 @@ select assert_eq((select onboarding_completed_at from profiles where id = '00000
   timestamptz '2026-01-01 00:00:00+00', 'an ordinary profile edit does not disturb completion');
 
 \echo ''
+\echo '# The consent stamp is not client-owned (migration 012)'
+
+-- terms_accepted_at is evidence that a specific rider accepted specific terms at
+-- a specific time. "Users can update their own profile" covers the column, so
+-- without 012 the subject of that evidence can rewrite it.
+
+-- Rider 000a is deliberately an *onboarded* rider, and that is the load-bearing
+-- part of these two. The trigger returns early once onboarding_completed_at is
+-- set, so a consent guard written below that branch would never run for anyone
+-- who has finished the wizard — i.e. for every rider this protects. These fail
+-- if 012's block is ever moved below the early return.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+update profiles set terms_accepted_at = null
+  where id = '00000000-0000-0000-0000-00000000000a';
+select assert_eq((select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
+  timestamptz '2026-01-01 00:00:00+00', 'consent cannot be cleared by the rider who gave it');
+
+update profiles set terms_accepted_at = timestamptz '2020-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-00000000000a';
+select assert_eq((select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
+  timestamptz '2026-01-01 00:00:00+00', 'consent cannot be back-dated');
+
+update profiles set bio = 'Still rides at dawn'
+  where id = '00000000-0000-0000-0000-00000000000a';
+select assert_eq((select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
+  timestamptz '2026-01-01 00:00:00+00', 'an ordinary profile edit does not disturb consent');
+
+-- First acceptance: the client says *that*, the server says *when*. 000e is the
+-- step-1 rider, the only fixture with no stamp yet. Pinning alone would leave
+-- this hole — the very first write choosing any timestamp it liked.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
+
+savepoint first_consent;
+update profiles set terms_accepted_at = timestamptz '2020-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-00000000000e';
+select assert_eq(
+  (select terms_accepted_at > timestamptz '2026-06-01 00:00:00+00'
+     from profiles where id = '00000000-0000-0000-0000-00000000000e')::text,
+  'true', 'a first consent write is stamped with server time, not the value sent');
+rollback to savepoint first_consent;
+
+-- PostgREST's upsert is INSERT ... ON CONFLICT DO UPDATE, the same second route
+-- to the column that 003's completion gate had to cover.
+-- Identity first: `rollback to savepoint` above restores the row, not
+-- `test.uid`, so anything here would otherwise still run as 000e and be
+-- refused by RLS against 000a's row — an UPDATE 0 that reads like setup.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+insert into profiles (id, terms_accepted_at)
+  values ('00000000-0000-0000-0000-00000000000a', timestamptz '2020-01-01 00:00:00+00')
+  on conflict (id) do update set terms_accepted_at = excluded.terms_accepted_at;
+select assert_eq((select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
+  timestamptz '2026-01-01 00:00:00+00', 'the consent guard survives a PostgREST-style upsert');
+
+\echo ''
 \echo '# Username charset, length and reserved names (migration 003, Q4)'
 
 -- The client is not a trust boundary: every one of these is reachable as a
@@ -482,26 +537,10 @@ select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000000000d4'),
   1, 'an unrelated rider still sees that ride');
 
--- friendships is beyond the tables the brief named, and is included because a
--- pending request from a blocked rider sitting in your list is the same leak.
-select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
-select assert_eq((select count(*)::int from friendships),
-  0, 'a friendship spanning a block is hidden from the blocker');
-select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
-select assert_eq((select count(*)::int from friendships),
-  0, 'and from the blocked rider');
-select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
-select assert_eq((select count(*)::int from friendships),
-  1, 'an unblocked friendship is still visible to its parties');
-select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
-select assert_denied($$
-  insert into friendships (requester_id, addressee_id)
-  values ('00000000-0000-0000-0000-00000000001a', '00000000-0000-0000-0000-00000000001b')$$,
-  'a rider cannot send a friend request across a block');
-select assert_allowed($$
-  insert into friendships (requester_id, addressee_id)
-  values ('00000000-0000-0000-0000-00000000001a', '00000000-0000-0000-0000-00000000000c')$$,
-  'an ordinary friend request still works (guards against over-tightening)');
+-- The five friendship assertions that sat here went with the table in 013. They
+-- covered one more surface of block symmetry, not a rule of its own — the same
+-- rule is still asserted above and below against profiles, rides, ride_members,
+-- club_members, postcards and comments.
 
 \echo ''
 \echo '# Blocking changes visibility only — it never deletes data (migration 009)'
@@ -1591,7 +1630,6 @@ select assert_denied('select count(*) from clubs', 'anon cannot read clubs');
 select assert_denied('select count(*) from rides', 'anon cannot read rides');
 select assert_denied('select count(*) from club_members', 'anon cannot read club rosters');
 select assert_denied('select count(*) from ride_members', 'anon cannot read ride rosters');
-select assert_denied('select count(*) from friendships', 'anon cannot read friendships');
 select assert_denied('select count(*) from postcard_comments', 'anon cannot read comments');
 select assert_denied('select count(*) from postcard_hides', 'anon cannot read hides');
 select assert_denied('select count(*) from postcard_reports', 'anon cannot read reports');

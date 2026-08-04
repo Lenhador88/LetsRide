@@ -118,15 +118,7 @@ insert into rides (id, title, meeting_point, departure_at, is_public, organizer_
 insert into ride_members (ride_id, user_id, status) values
   ('00000000-0000-0000-0000-0000000000d4', '00000000-0000-0000-0000-00000000001b', 'going');
 
--- An accepted friendship spanning the block, to prove the row disappears for
--- both parties rather than only for the one who pressed the button.
-insert into friendships (id, requester_id, addressee_id, status) values
-  ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-00000000001a',
-   '00000000-0000-0000-0000-00000000001b', 'accepted');
--- A control friendship with no block anywhere near it.
-insert into friendships (id, requester_id, addressee_id, status) values
-  ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-00000000000a',
-   '00000000-0000-0000-0000-00000000000c', 'accepted');
+-- The two friendship fixtures here were dropped with the table in 013.
 
 -- A club the primary rider (000a) is NOT a member of. Every other club in this
 -- seed has 000a as owner, which left "cannot post into a club you do not belong

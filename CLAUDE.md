@@ -91,7 +91,6 @@ src/
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id]
 │   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
-│   │   ├── friends/        # /friends — v1 leftover, signed off for deletion
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
@@ -104,7 +103,6 @@ src/
 │   ├── rides/              # JoinRideButton
 │   ├── clubs/              # JoinClubButton
 │   ├── postcards/          # PostcardCard, LikeButton, CommentsLink, CommentList, CommentItem, CommentForm, CreatePostcardForm
-│   ├── friends/            # FriendActions, SearchRiders
 │   └── profile/            # EditProfileForm, SignOutButton
 ├── lib/
 │   ├── supabase/
@@ -191,7 +189,7 @@ Three further rules:
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. |
 | `club_members` | `(club_id, user_id)` composite PK. `role`: `owner` \| `admin` \| `member`. |
-| `friendships` | `requester_id`, `addressee_id`, `status`: `pending` \| `accepted`. v1 leftover — signed off for deletion. |
+| `friendships` | **Dropped by `013` — which is not applied yet, so it still exists in production** with nothing in `src/` reading it. A v1 leftover; the design has no friendship concept. Do not build on it. |
 | `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`. **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
 | `postcard_likes` | `(postcard_id, user_id)` composite PK. No denormalised count — the correct count is per-viewer, so it is counted under RLS. |
 | `blocks` | `(blocker_id, blocked_id)` composite PK. The row is **directional**, the effect **symmetric**. Never query it from a policy — go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row. |
@@ -208,10 +206,15 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`011` are all applied to the hosted project.** Re-read from
-`list_migrations` on 2026-08-04, which returns eleven rows ending in `postcard_interactions`
-(`20260804062626`). This line said `001`–`010` for a day after `011` landed, which is the
-worst way for it to be wrong: a session obeying *Unapplied migrations are drift* would have
+**Applied state: `001`–`011` are applied. `012` and `013` are NOT — the repo and the hosted
+schema currently disagree, deliberately and on the record.** `list_migrations` on 2026-08-04
+returns eleven rows ending in `postcard_interactions` (`20260804062626`). `012` (consent stamp
+guard) and `013` (drop `friendships`) were written the same day by a session whose Supabase
+write tool required an approval it did not have; both carry a loud header saying so. Apply
+them **in order** before writing `014`, and read `013`'s pre-flight check first — it destroys
+data. Verify with `list_migrations` against `ls supabase/migrations/` rather than trusting
+this paragraph, which is exactly the line that has been wrong before: it said `001`–`010` for
+a day after `011` landed, and a session obeying *Unapplied migrations are drift* would have
 re-run `011` against tables that already exist. `009_postcards_and_blocks`
 was applied 2026-08-02 and verified live: 32 policies, all `to authenticated`, exactly one
 SELECT policy per table, `anon` holds zero grants, and `private.is_blocked` is absent from
@@ -381,8 +384,9 @@ Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart Filled
 Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu, Mute, Options,
 Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search, Share.
 Export them as SVG via `/v1/images/:key?ids=…&format=svg`. `lucide-react` is still imported
-in 12 files and is being replaced — don't substitute lookalikes.
-(`git grep -l lucide-react -- 'src/*' | wc -l` — this said 15 until it was measured.)
+in 11 files and is being replaced — don't substitute lookalikes.
+(`git grep -l lucide-react -- 'src/*' | wc -l` — this said 15, then 12, before each measurement.
+The command is the answer; the number beside it is the liability.)
 
 **The library scale**, for planning: 52 component sets covering 213 variants, plus 88
 standalone components, 2,447 nodes on the Components page.
@@ -482,7 +486,8 @@ means one of three things and only the first two are open:
   service-role key. Costs a network hop, keeps RLS intact. Justified only by something Node
   or Go can do that Postgres and Edge Functions cannot.
 - **A service-role backend that owns the database.** This voids decision #2. Every visibility
-  rule currently living in 40 policies and 255 test assertions gets reimplemented in
+  rule currently living in the RLS policy set and the assertions that cover it gets
+  reimplemented in
   application code — where, per `openspec/config.yaml`, an unstated rule fails silently
   instead of loudly. Nothing on the roadmap justifies it. Reopening it takes an explicit
   decision, not drift.
@@ -544,7 +549,9 @@ first zero and then one.)
 ## Product Scope (from Figma)
 
 The built app covers a fraction of the design. Five nav tabs — **Home, Rides, Clubs,
-Inbox, Profile**. There is no "Friends" tab; the `friendships` table is a v1 leftover.
+Inbox, Profile**. There is no "Friends" tab, and `013` drops the `friendships` table —
+but `013` is not applied yet, so the table is still there in production with nothing reading
+it. The social graph is clubs plus blocking.
 
 | Domain | Status in code |
 |---|---|
