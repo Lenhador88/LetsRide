@@ -190,7 +190,7 @@ Three further rules:
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. |
 | `club_members` | `(club_id, user_id)` composite PK. `role`: `owner` \| `admin` \| `member`. |
-| `friendships` | **Dropped by `013` — which is not applied yet, so it still exists in production** with nothing in `src/` reading it. A v1 leftover; the design has no friendship concept. Do not build on it. |
+| ~~`friendships`~~ | **Dropped by `013`, applied 2026-08-04.** Gone from the schema and from `src/`. A v1 leftover; the design has no friendship concept. Listed here only so its absence is not mistaken for an oversight. |
 | `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`. **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
 | `postcard_likes` | `(postcard_id, user_id)` composite PK. No denormalised count — the correct count is per-viewer, so it is counted under RLS. |
 | `blocks` | `(blocker_id, blocked_id)` composite PK. The row is **directional**, the effect **symmetric**. Never query it from a policy — go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row. |
@@ -207,16 +207,15 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`011` are applied. `012` and `013` are NOT — the repo and the hosted
-schema currently disagree, deliberately and on the record.** `list_migrations` on 2026-08-04
-returns eleven rows ending in `postcard_interactions` (`20260804062626`). `012` (consent stamp
-guard) and `013` (drop `friendships`) were written the same day by a session whose Supabase
-write tool required an approval it did not have; both carry a loud header saying so. Apply
-them **in order** before writing `014`, and read `013`'s pre-flight check first — it destroys
-data. Verify with `list_migrations` against `ls supabase/migrations/` rather than trusting
-this paragraph, which is exactly the line that has been wrong before: it said `001`–`010` for
-a day after `011` landed, and a session obeying *Unapplied migrations are drift* would have
-re-run `011` against tables that already exist. `009_postcards_and_blocks`
+**Applied state: `001`–`013` are all applied — there is no drift.** `list_migrations` on
+2026-08-04 returns thirteen rows ending in `drop_friendships` (`20260804162819`). `012`
+(consent stamp guard) and `013` (drop `friendships`) were applied that day after sitting
+written-but-unapplied; `013`'s pre-flight returned **0 rows**, so nothing was destroyed, and
+every number its footer predicts was confirmed live (`to_regclass` NULL, 0 friendships
+policies, total 40 -> 36). Verify with `list_migrations` against `ls supabase/migrations/`
+rather than trusting this paragraph, which is exactly the line that has been wrong before: it
+said `001`–`010` for a day after `011` landed, and a session obeying *Unapplied migrations are
+drift* would have re-run `011` against tables that already exist. `009_postcards_and_blocks`
 was applied 2026-08-02 and verified live: 32 policies, all `to authenticated`, exactly one
 SELECT policy per table, `anon` holds zero grants, and `private.is_blocked` is absent from
 `public` so PostgREST does not publish it. `003_onboarding` was
@@ -576,9 +575,9 @@ first zero and then one.)
 ## Product Scope (from Figma)
 
 The built app covers a fraction of the design. Five nav tabs — **Home, Rides, Clubs,
-Inbox, Profile**. There is no "Friends" tab, and `013` drops the `friendships` table —
-but `013` is not applied yet, so the table is still there in production with nothing reading
-it. The social graph is clubs plus blocking.
+Inbox, Profile**. There is no "Friends" tab: `013` dropped the `friendships` table on
+2026-08-04, and the route and components went earlier. The social graph is clubs plus
+blocking.
 
 | Domain | Status in code |
 |---|---|

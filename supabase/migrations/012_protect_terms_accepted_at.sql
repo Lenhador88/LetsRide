@@ -1,16 +1,14 @@
 -- 012: The consent stamp stops being client-owned.
 --
--- ###########################################################################
--- NOT YET APPLIED TO THE HOSTED PROJECT. Written 2026-08-04; the session that
--- wrote it could not apply it (the Supabase write tool required an approval it
--- did not have). It is verified against the migration chain by the RLS suite,
--- which applies 001-012 to a scratch database on every PR, but the hosted
--- schema and this repo currently DISAGREE.
+-- APPLIED 2026-08-04 as `protect_terms_accepted_at` (20260804162810), before 013.
+-- Verified live: the trigger is wired BEFORE UPDATE ON public.profiles FOR EACH
+-- ROW and enabled, and the function body carries the terms guard.
 --
--- Apply it before adding 013 — a queue of unapplied migrations fails in the
--- order nobody tested. Check first, do not trust this line:
---   mcp__Supabase__list_migrations vs `ls supabase/migrations/`
--- ###########################################################################
+-- What was NOT done live, deliberately: the four behavioural checks in the
+-- footer below mutate a real row, and this migration makes the stamp immutable
+-- — so a test whose rollback failed could not be undone. They are asserted
+-- instead by the RLS suite, which applies the whole chain to a scratch database
+-- on every PR that touches supabase/**. Re-run those there, not here.
 --
 -- ---------------------------------------------------------------------------
 -- What was wrong
