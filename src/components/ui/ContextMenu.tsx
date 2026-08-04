@@ -75,12 +75,19 @@ export function ContextMenu({
   )
 }
 
+/**
+ * The component set also carries an icon slot and a `Type=Warning` variant
+ * (`Warning/100` on icon and label). Neither is built: this menu hides its icons
+ * and has no destructive row, so both would be untested surface on a shared
+ * primitive. The postcard overflow menu needs both and is where they belong.
+ */
 type ItemProps = {
-  icon?: React.ReactNode
   children: React.ReactNode
-  /** `Type=Warning` — the destructive row, `Warning/100` on both icon and label. */
-  variant?: 'regular' | 'warning'
-  /** Marks the row as the current one. Rendered as a check, not a fill. */
+  /**
+   * Marks the row as the current page for assistive tech. Deliberately has no
+   * visual: the design draws all three rows identically, and the trigger button
+   * already names the current page.
+   */
   selected?: boolean
   className?: string
 }
@@ -89,12 +96,10 @@ type ItemProps = {
 // is `Grey/10%`, which is `active:` here rather than `hover:` — this is a touch
 // surface and a sticky hover state on mobile reads as a stuck selection.
 const itemBase =
-  'flex h-14 items-center gap-4 rounded px-4 text-base font-medium transition-colors active:bg-border'
+  'flex h-14 items-center gap-4 rounded px-4 text-base font-medium text-foreground transition-colors active:bg-border'
 
 export function ContextMenuItem({
-  icon,
   children,
-  variant = 'regular',
   selected,
   className,
   ...props
@@ -103,25 +108,16 @@ export function ContextMenuItem({
     | ({ href: string } & Omit<React.ComponentProps<typeof Link>, 'href' | 'className'>)
     | ({ href?: never } & Omit<React.ComponentProps<'button'>, 'className'>)
   )) {
-  const tone = variant === 'warning' ? 'text-danger' : 'text-foreground'
-  const content = (
-    <>
-      {icon}
-      <span className="flex-1 text-left">{children}</span>
-      {selected && <span aria-hidden="true">•</span>}
-    </>
-  )
-
   if ('href' in props && props.href) {
     const { href, ...rest } = props as { href: string }
     return (
       <Link
         href={href}
         aria-current={selected ? 'page' : undefined}
-        className={cn(itemBase, tone, className)}
+        className={cn(itemBase, className)}
         {...rest}
       >
-        {content}
+        {children}
       </Link>
     )
   }
@@ -129,10 +125,10 @@ export function ContextMenuItem({
   return (
     <button
       type="button"
-      className={cn(itemBase, tone, className)}
+      className={cn(itemBase, className)}
       {...(props as React.ComponentProps<'button'>)}
     >
-      {content}
+      {children}
     </button>
   )
 }
