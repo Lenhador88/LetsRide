@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { HeartFilledIcon, HeartOutlineIcon } from '@/components/icons/generated'
+import { PostcardActionButton } from '@/components/postcards/PostcardAction'
 import { likePostcard, unlikePostcard } from '@/lib/actions/postcards'
-import { cn } from '@/lib/utils'
 
 type LikeButtonProps = {
   postcardId: string
@@ -16,12 +17,11 @@ type LikeButtonProps = {
  * server action is still the authority — a refused write (blocked, signed out,
  * RLS) rolls the local state back and surfaces the message.
  *
- * There is no icon here. The design's like affordance is `Element / Icon /
- * Heart Filled` and `Heart Outline`, which cannot be exported while the Figma
- * render endpoint is rate limited, and decision #4 forbids substituting a
- * lookalike from `lucide-react`. A labelled control is the honest fallback and
- * swapping the icon in later touches only this file.
- * See docs/FIGMA-FIDELITY-TODO.md §Home / Postcards feed.
+ * The icons are now the real ones. This file used to carry a text label because
+ * `Element / Icon / Heart *` could not be exported through the rate limit and
+ * decision #4 forbids a `lucide-react` lookalike; the snapshot has them, so the
+ * fallback is retired. Toggled-on is Heart Filled in Pink/100 — the design's
+ * only use of that colour.
  */
 export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps) {
   const [liked, setLiked] = useState(isLiked)
@@ -46,33 +46,28 @@ export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps)
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <button
-        type="button"
+    <>
+      <PostcardActionButton
         onClick={toggle}
-        aria-pressed={liked}
-        // 44px minimum touch target — CLAUDE.md's glove-friendly floor. The
-        // negative margin keeps the *visual* row tight while the hit area stays
-        // full size.
-        className={cn(
-          '-ml-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
-          liked ? 'text-accent' : 'text-muted hover:text-foreground',
-          pending && 'opacity-70'
-        )}
-      >
-        <span>{liked ? 'Liked' : 'Like'}</span>
-        {count > 0 && (
-          <span className="tabular-nums" aria-label={`${count} ${count === 1 ? 'like' : 'likes'}`}>
-            {count}
-          </span>
-        )}
-      </button>
+        pressed={liked}
+        count={count}
+        label={liked ? `Unlike, ${count} likes` : `Like, ${count} likes`}
+        className={pending ? 'opacity-70' : undefined}
+        icon={
+          liked ? (
+            <HeartFilledIcon className="h-6 w-6 text-like" />
+          ) : (
+            <HeartOutlineIcon className="h-6 w-6" />
+          )
+        }
+      />
       {error && (
-        <p role="status" className="text-xs text-danger">
+        // Absolutely placed so a failed like cannot reflow the action row and
+        // shift the controls beside it out from under a rider's thumb.
+        <p role="status" className="absolute -top-5 left-2 text-xs text-danger">
           {error}
         </p>
       )}
-    </div>
+    </>
   )
 }

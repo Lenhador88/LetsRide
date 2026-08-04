@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatRelativeTime, getInitials } from '@/lib/utils'
+import { formatPostcardDate, formatRelativeTime, getInitials } from '@/lib/utils'
 
 describe('formatRelativeTime', () => {
   const now = new Date('2026-08-03T12:00:00Z')
@@ -64,5 +64,16 @@ describe('getInitials', () => {
 
   it('never returns more than two characters, even with three or more words', () => {
     expect(getInitials('road warrior supreme')).toBe('RW')
+  })
+})
+
+describe('formatPostcardDate', () => {
+  it('is day-first, as the design stamps it — "19 Nov 2024", not "Nov 19, 2024"', () => {
+    expect(formatPostcardDate('2024-11-19T10:00:00Z')).toBe('19 Nov 2024')
+  })
+
+  it('carries no weekday, unlike formatDate', () => {
+    // The design's stamp sits in the corner of a photo and has room for three parts.
+    expect(formatPostcardDate('2025-01-01T10:00:00Z')).toBe('1 Jan 2025')
   })
 })

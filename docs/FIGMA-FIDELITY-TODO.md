@@ -1,42 +1,53 @@
 # Figma fidelity — what is inferred and must be verified
 
-The Postcards/Home screens are being built **without access to the Figma file**. This file is
-the register of what that costs. Every entry is a value that would have to be inferred rather
-than read, and each one is a thing a later pass must check against the design.
+This file registers design values the code had to **infer** rather than read, so that a guess
+never passes silently as a known one (`CLAUDE.md` §Working Principles).
 
-**The first Postcards screens were built on 2026-08-03 while the file was still 429** — the
-feed, the card, the like control and the create flow. Every composition value in them is a
-guess, and each one is now recorded below as *chose:* so verification is a diff against the
-design rather than a re-derivation. The boxes stay unchecked until someone has actually
-compared them.
+## The snapshot landed — 2026-08-04
 
-The tokens those screens use are **not** guesses — colours, type and the background gradient
-all come from the verified set. The debt is composition only.
-
-Per `CLAUDE.md` §Working Principles, a workaround that produces a lower-fidelity artifact is
-**debt**, and the rule is to mark exactly what was inferred so it never passes silently as a
-known value. That is what this file is for. Delete an entry only when it has been checked
-against Figma — not when it merely looks right.
-
-## There is now a way out — `design/`
-
-**Added 2026-08-03.** `scripts/figma/` builds a committed, offline snapshot of the design
-file. One successful `npm run figma:pull` populates `design/` and answers most of the boxes
-below without another API call, permanently. The pipeline is built and tested; it is waiting
-on a rate-limit window, not on more work.
-
-So before inferring anything on this list:
+**`design/` is populated.** The product owner upgraded the Figma plan, all seven endpoint
+families probed 200, and one whole-file pull captured 195 frames (298 addressable screens),
+140 components and all 53 icons. The premise most of this file was written under — "the design
+is unreadable" — **no longer holds**.
 
 ```bash
-npm run figma:check          # is a snapshot even needed?
-npm run figma:pull           # if this succeeds, most of this file is obsolete
-npm run figma -- tree "Home / Feed"
+npm run figma -- ls [pattern]                    # every frame and component
+npm run figma -- tree "Home - Postcards - All new"
+npm run figma -- text "v2 / Component / Postcard"
 ```
 
-If it 429s, the rules below still apply — but check first, because the cost of guessing is
-now one command instead of an outage.
+None of those touch the network, so none can be rate limited. **A composition question is now
+a file read, and inferring one is no longer defensible.**
 
-## Why the design was unreadable — measured 2026-08-03
+Two traps the snapshot itself had, both fixed in the same change — worth knowing because they
+silently produce wrong values:
+
+- **Figma keeps toggled-off layers.** A Home header still *contains* the back button it hides.
+  `tree` now omits hidden subtrees by default (`--all` shows them marked `[hidden]`). Reading
+  the unfiltered tree is how you end up building a back button onto the home screen.
+- **Rotation is not in the bounding box.** A rotated node reports a *larger* box, so the fanned
+  card stack read as three differently-sized cards. `rotation` is now carried, in degrees and
+  clockwise-positive for CSS.
+
+## Resolved by the pull — 2026-08-04
+
+The home screen was rebuilt against the measured design in the same change. What follows in
+§Home, §Navigation and §Icons is **struck through where it was resolved**; the entries that
+remain are real gaps, and three of them are schema gaps rather than design ones.
+
+**The gaps that outlived the pull, because the design needs data the schema has not got:**
+
+| Gap | What the design shows | What is missing |
+|---|---|---|
+| **Unread counts** | Filter tiles carry a badge; the deck is "all *new*"; the empty state is "no *new* postcards, yet!" | No seen/unseen model anywhere. The badge currently counts postcards in the feed window, which is the same number while nothing is marked seen. Needs a `postcard_views` table or a last-seen stamp — a migration, and `012`/`013` are still unapplied ahead of it. |
+| **Photo location** | Every card overlays `flag · City, Country` | `postcards` has no location columns. The date renders; the location does not. The author's `profiles.location` is where they live, not where the photo was taken, so it is not a substitute. |
+| **Share count** | The share action shows a count | Nothing is recorded to count. The button shares a link (Web Share API, clipboard fallback) and shows no number. |
+
+## Why the design was unreadable — historical, resolved 2026-08-04
+
+Kept because it explains why the guesses above exist and how the block was diagnosed. **Every
+row below is now 200.** Re-run `npm run figma:check -- --probe` rather than reading this table
+as current state.
 
 Two independent blocks, and they need different fixes:
 
@@ -90,33 +101,63 @@ control, and the create screen (`/postcards/new`). **Built 2026-08-04:** the com
 (`/postcards/[id]`), the composer and the card's comment control. Every value below marked
 *chose* is in the code right now and unverified.
 
-### Home / Postcards feed — the 29 frames
+### Home / Postcards feed — rebuilt from the measurements 2026-08-04
 
-- [ ] **Card composition** — *chose:* `rounded-xl` (12, a verified radius), `border-border`,
-      `bg-surface`, image **inset within** the card and edge-to-edge horizontally, aspect
-      **4:5 portrait**. Unread: the real ratio, and whether the card is bordered at all.
-      → `src/components/postcards/PostcardCard.tsx`
-- [ ] **Byline** — *chose:* avatar `md` (40px) + username Semibold 14 + a second line of
-      `formatRelativeTime` and, for a club-scoped postcard, `· <club name>`; all above the
-      image. Unread: placement (above vs overlaid), avatar size, timestamp format.
-- [ ] **Like affordance** — *chose:* a **text-labelled** control ("Like"/"Liked") with the
-      count beside it, below the image and above the caption, tinted `Accent Brand/100` when
-      liked. The design uses `Element / Icon / Heart Filled` / `Heart Outline`, which cannot
-      be exported yet; per the icon rule below, no lookalike was substituted. Swapping the
-      icon in touches only `LikeButton.tsx`.
-- [ ] **Caption treatment** — *chose:* **no** truncation or line clamp, `whitespace-pre-line`.
-      A clamp would silently hide a rider's words; showing it in full is the reversible
-      choice. Unread: the real clamp and any "more" affordance.
-- [ ] **Vertical rhythm** — *chose:* `gap-4` (16) between cards, `px-4 py-6` feed padding,
-      `max-w-lg` column. 16 is a verified spacing value; the rhythm is not.
-- [ ] **Empty state** — *chose:* bordered panel, "No postcards yet" + one line of copy + a
-      primary CTA. Unread: copy and whether an illustration belongs there.
-- [ ] **Loading state** — **not built.** Skeleton vs spinner is unread, and the page is a
-      server component with no client loading boundary yet.
-- [ ] **Header** — *chose:* "Postcards" title + a "New postcard" button on the same row. No
-      club filter or tab control was built. Unread: whether the design has one.
-- [ ] **Pagination** — **not built.** `getFeed` is bounded and takes a `before` cursor, but
-      paging vs infinite scroll is unread, so only the first page renders.
+Source: `Home - Postcards - All new` (`1883:15456`), `v2 / Component / Postcard` Type=Home,
+`v2 / Component / Filter Bar / Postcards`. Screenshotted at a real 390×844 viewport before
+being called done.
+
+- [x] ~~**Card composition**~~ — **measured.** 342×448, radius **8**, 4px padding, 8px gaps,
+      fill `#FAFAFA` under a White/100 style (`bg-surface` keeps the token; the 1.5% gap is
+      invisible). Photo **334×200 — 5:3, not the 4:5 that was guessed**, radius 4. Three
+      stacked drop shadows, tinted: `0 4px 8px #00000014`, `-4px -2px 16px #00AAFF14`,
+      `4px 2px 16px #FF005514`. → `src/components/postcards/PostcardCard.tsx`
+- [x] ~~**Byline**~~ — **measured.** *Below* the photo, not above: avatar 24px (`Avatar`
+      Size=Small, 2px Grey/20% ring) + `username in Club name`, all Poppins/12/Semibold
+      Grey/100, 12px side padding. The relative timestamp guessed here is not in the design at
+      all — the date lives on the photo instead.
+- [x] ~~**Like affordance**~~ — **measured**, and the text-label fallback is retired. Icon
+      control on the shared `Button / Postcard Action` shape (gap 4, padding 8/12/8/8, radius
+      8), Heart Outline → **Heart Filled in Pink/100 `#F23071`** when liked. That settles the
+      "Pink/100 — purpose not established" note in `CLAUDE.md`: it is the liked heart, and
+      nothing else uses it.
+- [x] ~~**Empty state**~~ — **measured copy:** "There are no new postcards, yet!",
+      Poppins/14/Medium in Grey/80, centred, no panel, no illustration, no CTA.
+- [x] ~~**Header**~~ — **measured.** `v2 / Component / Header` Type=Regular: 96 tall, centred
+      "Home", no back button and no sub-page on this screen (both are toggled off in the
+      instance). The "New postcard" button guessed here is real but belongs to the *nav bar*
+      as a sticky action, not the header.
+- [x] ~~**Pagination**~~ — **the design does not page.** The screen is a swipeable stack: you
+      advance one card at a time and the deck ends. `getFeed` stays bounded.
+- [ ] **Caption treatment** — still open. The design's caption box is a fixed 140px and the
+      mock text overflows it, so *something* clips — but no clamp count or "more" affordance is
+      drawn. *chose:* scroll inside the card, so no words are hidden and the action row cannot
+      be pushed off. Ask the designer whether it should clamp instead.
+- [ ] **Swipe direction** — *chose:* a swipe in **either** direction advances, per the product
+      owner's description, so the deck only moves forward and "Start over" is the only way
+      back. If the intent was a carousel (left = next, right = previous) this is one change in
+      `PostcardDeck.tsx`. Prototype wiring was not read.
+- [ ] **Options menu** — the card's fourth control opens `Hide postcard for me` / `Block
+      account` / `Report post` (Poppins/16/Medium), with confirmation banners
+      ("Postcard hidden"). `hidePostcard`, `reportPostcard`, `blockRider` and `deletePostcard`
+      all exist and are called by nothing. **Not built** — the slot is left empty rather than
+      shipping a dead button. Frames: `Postcard options` (`2302:5395`), `Postcard hidden
+      banner` (`2303:6009`).
+- [ ] **Loading state** — **not built.** Skeleton vs spinner is not drawn in any Home frame.
+
+### Filter bar
+
+- [x] ~~**Shape language**~~ — **measured.** Riders are 64px circles; clubs are 60px rounded
+      squares at radius 8. The club tile is deliberately the smaller of the two so both read
+      as the same optical size. Selected is a 2px `Accent Brand/100` ring sitting 4px outside
+      the image (72 for a circle, 68 at radius 12 for a square) plus an accent-filled badge.
+      "All new" is a 2×2 collage of the four newest photos.
+- [ ] **Shape is the only differentiator** — the design gives riders and clubs no label,
+      grouping or badge to tell them apart, only a 4px difference in corner radius at 60px.
+      Built as drawn. Worth a second look on a real device before it ships to riders; the
+      product owner has already flagged it as a possible readability problem.
+- [ ] **Badge semantics** — see the unread-count gap above. The tile currently badges how many
+      postcards in the feed window come from that rider or club.
 
 ### Create postcard
 
@@ -205,28 +246,41 @@ write and delete a comment, and the UI adds no rule of its own.
 
 ### Navigation
 
-- [ ] **Tab bar** — *chose:* five tabs (Home, Rides, Clubs, Friends, Profile) on `bg-surface`
-      with `Accent Brand/100` for the active tab. The design's five are Home, Rides, Clubs,
-      **Inbox**, Profile — Inbox has no route or schema, and Friends is signed off for
-      deletion but still routed, so this renders what exists. Unread: bar height, icon size,
-      and whether "active" is a tint, an underline, or a filled icon.
+- [x] ~~**Tab bar**~~ — **measured**, and the guess was wrong in the way that mattered.
+      `v2 / Component / Navigation / Bar`: **88px** for the bar alone, **152px** when a screen
+      supplies the sticky primary action above the tabs (44 frames use the first, 27 the
+      second). Background is `Grey/5` — the page colour, not `bg-surface` — with a **1px top
+      border** only. Five tiles, 24px icons, Poppins/10/Semibold labels.
+      **Active is `Grey/100` with no background, not the brand green this used to apply**;
+      pressed is the only state with a fill (`Grey/10%`). Inbox renders inert — the design has
+      five tabs and the route does not exist, and a tab that 404s is worse than a disabled one.
       → `src/components/layout/Navbar.tsx`
+- [x] ~~**Header placement**~~ — the header is **per screen**, not part of the shell: each
+      design frame gives it its own title, back affordance and variant.
+      → `src/components/layout/Header.tsx`
+- [ ] **Header Type=User / Type=Club** — 120px variants with an avatar, name and options
+      button. Not built; no screen needs them yet.
 
-### Icons — blocked on the render endpoint
+### Icons — resolved 2026-08-04
 
-- [ ] Export all 44 from `Element / Icon / *` and retire `lucide-react`.
-      Decision #4 forbids lookalike substitutes, so **no icon should be guessed** — a screen
-      needing an unavailable icon should ship without it rather than with a wrong one. That
-      rule is why the like control is text-labelled.
-      `npm run figma:icons` does the export in one command once `/v1/images` stops 429-ing.
-      The one exception taken so far: `Navbar` swapped lucide `LayoutDashboard` → `Home`,
-      because the former named a screen that no longer exists. All five nav icons are v1 and
-      due for replacement regardless — that is one task, not five.
-      (`git grep -l lucide-react -- 'src/*' | wc -l` for the current count.)
+- [x] ~~Export all 44 and retire `lucide-react`~~ — **53 exported** (the set is larger than the
+      44 counted from the Components page). `npm run figma:components` generates
+      `src/components/icons/generated.tsx` from them, rewriting every literal fill to
+      `currentColor` — which also erases the stray legacy `#808080` a few were drawn with.
+      Regenerate rather than hand-edit.
+- [ ] **Retire the remaining `lucide-react` imports.** The v2 screens are clean; the v1 pages
+      (`rides/*`, `clubs/*`, `profile`) and `SignOutButton` still import it, and they migrate
+      with their own epics. The dependency comes out when the last import does —
+      `grep -rl lucide-react src/ | grep -v generated` is the current count, not a number typed
+      here.
 
 ## Rule for anyone building against this
 
-If you need a value that is not in the verified list above, do **not** invent one silently.
-Add it to this file as an unchecked box, pick the most defensible value, and leave a comment
-at the call site pointing here. A guess that is written down is a task; a guess that is not
-is a bug nobody will find.
+**Read `design/` first — it is offline and cannot be rate limited.** An inferred composition
+value is no longer defensible when `npm run figma -- tree "<screen>"` answers it in a second.
+
+What still needs recording is the case the snapshot cannot settle: a value the design does not
+specify, or one it specifies against data the schema does not have. For those, do **not**
+invent one silently. Add it here as an unchecked box, pick the most defensible value, and
+leave a comment at the call site pointing here. A guess that is written down is a task; a
+guess that is not is a bug nobody will find.

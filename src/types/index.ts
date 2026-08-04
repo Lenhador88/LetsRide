@@ -136,6 +136,34 @@ export type FeedPage = {
   limit?: number
 }
 
+/**
+ * One item in the home screen's filter bar (`v2 / Component / Filter Bar / Item`).
+ * `kind` is what the design draws as a shape: a rider is a circle, a club a
+ * rounded square. That is the *only* thing distinguishing them visually, which is
+ * a deliberate design choice recorded rather than second-guessed.
+ *
+ * `count` is how many postcards in the current feed window come from this rider or
+ * club. The design's badge means "new", which needs a seen/unseen model the schema
+ * does not have — see docs/FIGMA-FIDELITY-TODO.md. Until it exists this counts
+ * what is actually there, which is the same number while nothing is marked seen.
+ */
+export type PostcardFilterOption = {
+  kind: 'rider' | 'club'
+  id: string
+  name: string
+  imageUrl: string | null
+  count: number
+}
+
+/** Everything the filter bar needs, read in one bounded pass over the feed. */
+export type PostcardFilters = {
+  total: number
+  /** Up to four newest images, for the "All new" tile's 2×2 collage. */
+  collage: string[]
+  riders: PostcardFilterOption[]
+  clubs: PostcardFilterOption[]
+}
+
 export type PostcardLike = {
   postcard_id: string
   user_id: string

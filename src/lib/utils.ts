@@ -5,6 +5,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * The date stamped on a postcard photo — `19 Nov 2024`.
+ *
+ * Its own formatter rather than `formatDate` because the design gives this one a
+ * distinct shape: day first, short month, no weekday, sized to sit in the corner
+ * of a photo. `en-GB` gives that day-first order; the design's lowercase month
+ * ("19 nov 2024") is Dutch, which is the locale its mock content is written in
+ * rather than a choice about the app's.
+ *
+ * This deliberately does not touch the `en-US` hardcoding in `formatDate` /
+ * `formatDateTime` / `formatRelativeTime`. That is a known bug for a European
+ * rider app and the three have to move together, which is not this change.
+ */
+export function formatPostcardDate(date: string) {
+  return new Date(date).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 export function formatDate(date: string) {
   return new Date(date).toLocaleDateString('en-US', {
     weekday: 'short',

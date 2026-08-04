@@ -99,10 +99,11 @@ src/
 │   └── globals.css         # Tailwind import + CSS vars + .pb-safe
 ├── components/
 │   ├── ui/                 # Button, Input, Card, Avatar
-│   ├── layout/             # Navbar
+│   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
+│   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── rides/              # JoinRideButton
 │   ├── clubs/              # JoinClubButton
-│   ├── postcards/          # PostcardCard, LikeButton, CommentsLink, CommentList, CommentItem, CommentForm, CreatePostcardForm
+│   ├── postcards/          # PostcardDeck, PostcardCard, PostcardFilterBar, PostcardAction, LikeButton, CommentsLink, ShareButton, CommentList, CommentItem, CommentForm, CreatePostcardForm
 │   └── profile/            # EditProfileForm, SignOutButton
 ├── lib/
 │   ├── supabase/
@@ -324,7 +325,7 @@ Components page — a good proxy for how central it is.
 | `White/5%` | `#FFFFFF0D` | 3 | Subtle overlay on imagery |
 | `Accent Brand/50%` | `#3D996B80` | 2 | Muted brand |
 | `Warning/90` | `#FF3355` | 2 | Error, lighter |
-| `Pink/100` | `#F23071` | 2 | Purpose not established — check before using |
+| `Pink/100` | `#F23071` | 2 | **The liked heart, and only that** — `Button / Postcard Action` Type=Like Toggled=True. `--color-like` |
 | `Grey/60` | `#808080` | 1 | Near-unused; may be a stray |
 | `Grey/70%` | `#000000B3` | 1 | Scrim / overlay |
 | `Warning/110` | `#99001A` | 1 | Error, darker |
@@ -377,16 +378,31 @@ bottom tab bar. Use `.pb-safe` for notch devices.
 corner radius `4` (147), `100` (110, i.e. pill), `8` (85), `5` (52), `12` (15);
 padding-left `16` (99), `8` (43), `24` (21); item spacing `8` (86), `4` (66), `16` (40).
 
-**Icons: 44**, under `Element / Icon / *`, confirmed present. Includes the
-motorcycle-specific ones `lucide-react` cannot supply — Bike, Garage, Wrench, Coordinates,
-Store — plus Arrow Left/Right/Up, Avatar, Block Account, Calendar, Chat Bubble, Check,
-Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart Filled/Outline,
-Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu, Mute, Options,
-Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search, Share.
-Export them as SVG via `/v1/images/:key?ids=…&format=svg`. `lucide-react` is still imported
-in 11 files and is being replaced — don't substitute lookalikes.
-(`git grep -l lucide-react -- 'src/*' | wc -l` — this said 15, then 12, before each measurement.
-The command is the answer; the number beside it is the liability.)
+**Icons: 53 exported**, under `Element / Icon / *` — more than the 44 counted from the
+Components page, which is where that older number came from. They are in `design/icons/` as
+SVG and, more usefully, as typed React components:
+
+```bash
+npm run figma -- icons        # list them
+npm run figma:components      # regenerate src/components/icons/generated.tsx
+```
+
+**Import from `@/components/icons/generated`; never hand-edit it.** The generator rewrites
+every literal fill to `currentColor`, so an icon takes the colour of the text around it and
+the stray legacy `#808080` a few were drawn with disappears at the door. Size with
+`className` — `h-6 w-6` is the design's 24px default.
+
+The set includes the motorcycle-specific ones `lucide-react` cannot supply — Bike, Garage,
+Wrench, Coordinates, Store — plus Arrow Left/Right/Up, Avatar, Block Account, Calendar, Chat
+Bubble, Check, Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart
+Filled/Outline, Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu,
+Mute, Options, Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search,
+Share.
+
+`lucide-react` is still imported by the v1 pages and comes out with them; don't add more, and
+don't substitute lookalikes. (`grep -rl lucide-react src/ | grep -v generated` is the count —
+the command is the answer, and the number beside it is the liability. It has said 15, 12 and
+11 at various points.)
 
 **The library scale**, for planning: 52 component sets covering 213 variants, plus 88
 standalone components, 2,447 nodes on the Components page.
@@ -407,10 +423,16 @@ touch the network, so none of them can be rate limited:
 
 ```bash
 npm run figma -- ls [pattern]        # every frame and component
-npm run figma -- tree "Home / Feed"  # structure, sizes and tokens, one line per node
-npm run figma -- text "Home / Feed"  # every string, with its type token
+npm run figma -- tree "Home - Postcards - All new"   # structure, sizes, tokens, rotation
+npm run figma -- text "v2 / Component / Postcard"    # every string, with its type token
 npm run figma -- tokens Grey         # token tables
+npm run figma -- icons               # the exported icon set
 ```
+
+**`tree` and `text` hide layers Figma has toggled off** — a component instance carries every
+variant slot it does not use, so the Home header still *contains* the back button it hides.
+Add `--all` to see them, marked `[hidden]`. Building from an unfiltered tree is how a back
+button ends up on the home screen.
 
 Refreshing it needs the network and is a **monthly** job, not a per-session one:
 
@@ -418,6 +440,7 @@ Refreshing it needs the network and is a **monthly** job, not a per-session one:
 npm run figma:check   # one cheap call — is the snapshot even stale?
 npm run figma:pull    # the expensive call; extracts automatically
 npm run figma:icons   # export Element / Icon / * as SVG
+npm run figma:components # SVGs -> React components (offline, run after figma:icons)
 npm run figma:check -- --probe   # sweep every endpoint when something looks blocked
 ```
 
@@ -555,7 +578,7 @@ it. The social graph is clubs plus blocking.
 
 | Domain | Status in code |
 |---|---|
-| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View, like, create and comment built** — the feed at `/postcards`, the composer at `/postcards/new`, and one card plus its thread at `/postcards/[id]`. Composition unverified against Figma throughout. **Shares remain out**, and deliberately so: it is undefined whether "share" means a native share sheet (no backend at all) or a repost (a substantial feature with its own audience rules), and building either would be a guess |
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **Built and verified against the design** as of 2026-08-04: the swipeable card deck and filter bar at `/postcards`, the composer at `/postcards/new`, one card plus its thread at `/postcards/[id]`. The home screen is a **card stack you swipe**, not a scrolling feed. **Share is a link share** (Web Share API, clipboard fallback) — the reading that needs no schema; a repost is still an open product question. Three design elements are blocked on schema, not design: unread badges, photo location, and the hide/block/report menu. See `docs/FIGMA-FIDELITY-TODO.md` |
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | Not built |

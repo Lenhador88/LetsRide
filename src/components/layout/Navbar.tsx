@@ -2,68 +2,105 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Bike, Home, MapPin, User } from 'lucide-react'
+import {
+  BikeIcon,
+  ClubsIcon,
+  HomeIcon,
+  MailboxIcon,
+  ProfileIcon,
+} from '@/components/icons/generated'
+import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
 /**
- * Migrated v1 → v2 on contact (decision #4) because Home had to move from the
- * deleted `/dashboard` to `/postcards`. Colours and type are the verified v2
- * tokens; the *shape* — bar heights, icon size, whether the active tab is
- * tinted or underlined — is inferred, because the Figma nav frame could not be
- * opened. See docs/FIGMA-FIDELITY-TODO.md.
+ * `v2 / Component / Navigation / Bar`, measured from the committed snapshot.
  *
- * The icons are still `lucide-react` and still v1. All four need replacing with
- * the `Element / Icon / *` set once it can be exported; that is one task, not
- * five, and is already registered. `Home` replaces `LayoutDashboard` here only
- * because the latter now names a screen that no longer exists.
+ * Two heights in the design, and which one you get is per screen: 88px for the
+ * bar alone, 152px when a screen supplies the sticky primary action that sits
+ * above the tabs (44 frames use the first, 27 the second). `action` is that slot.
  *
- * The design's five tabs are Home, Rides, Clubs, Inbox, Profile. Four of them
- * render here: Inbox has no route and no schema yet, so a tab for it would
- * 404. Friends is gone as of 013 — it was never in the design, and the tab and
- * the route were removed together so neither could strand the other.
+ * The icons are the real `Element / Icon / *` set now that the snapshot can export
+ * them — `lucide-react` lookalikes are gone from this file (decision #4).
+ *
+ * Selected is **Grey/100 with no background**, not the brand green this file used
+ * to apply; green is an accent and never the active-tab colour. Pressed is the
+ * only state with a fill (Grey/10%). Read off `Navigation / Bar / Tile`'s three
+ * State variants.
  */
 const navItems = [
-  { href: '/postcards', label: 'Home', icon: Home },
-  { href: '/rides', label: 'Rides', icon: MapPin },
-  { href: '/clubs', label: 'Clubs', icon: Bike },
-  { href: '/profile', label: 'Profile', icon: User },
-]
+  { href: '/postcards', label: 'Home', Icon: HomeIcon },
+  { href: '/rides', label: 'Rides', Icon: BikeIcon },
+  { href: '/clubs', label: 'Clubs', Icon: ClubsIcon },
+  { href: '/inbox', label: 'Inbox', Icon: MailboxIcon },
+  { href: '/profile', label: 'Profile', Icon: ProfileIcon },
+] as const
+
+/** Inbox has no route yet; the tab is drawn because the design has five, but a
+ *  link to a 404 is worse than a disabled tab, so it renders inert until built. */
+const UNBUILT = new Set<string>(['/inbox'])
+
+/**
+ * The sticky action belongs to the screen, but it renders *inside* the bar —
+ * above the tabs and below the bar's top border — so a page cannot supply it as
+ * a sibling without breaking that border. Keeping the mapping here mirrors how
+ * the design defines it: a per-screen property of the navigation component, not
+ * of the page content.
+ */
+const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
+  '/postcards': { label: 'Create postcard', href: '/postcards/new' },
+}
 
 export function Navbar() {
   const pathname = usePathname()
+  const action = STICKY_ACTIONS[pathname]
 
   return (
-    <>
-      <header className="fixed top-0 right-0 left-0 z-50 flex h-14 items-center border-b border-border bg-surface px-4">
-        <Link href="/postcards" className="flex items-center gap-2 font-semibold text-foreground">
-          <Bike className="h-5 w-5" />
-          <span>LetsRide</span>
-        </Link>
-      </header>
+    <nav className="pb-safe fixed right-0 bottom-0 left-0 z-50 border-t border-border bg-background px-4">
+      {action && (
+        <div className="pt-4 pb-2">
+          <Button href={action.href} size="md" className="text-base">
+            {action.label}
+          </Button>
+        </div>
+      )}
 
-      <nav className="pb-safe fixed right-0 bottom-0 left-0 z-50 flex border-t border-border bg-surface">
-        {navItems.map(({ href, label, icon: Icon }) => {
+      <div className="flex">
+        {navItems.map(({ href, label, Icon }) => {
           // Exact match on the segment root, then a `/` boundary — plain
           // startsWith would light up Clubs for a hypothetical `/clubsomething`,
           // the same trap proxy.ts documents for `/legal`.
           const active = pathname === href || pathname.startsWith(`${href}/`)
-          return (
+          const unbuilt = UNBUILT.has(href)
+
+          const content = (
+            <>
+              <Icon className="h-6 w-6" />
+              {label}
+            </>
+          )
+
+          const className = cn(
+            'flex flex-1 flex-col items-center gap-1 rounded-xl pt-2 pb-1 text-2xs font-semibold transition-colors',
+            active ? 'text-foreground' : 'text-muted',
+            unbuilt ? 'cursor-not-allowed opacity-40' : 'active:bg-border'
+          )
+
+          return unbuilt ? (
+            <span key={href} aria-disabled className={className} title={`${label} is not built yet`}>
+              {content}
+            </span>
+          ) : (
             <Link
               key={href}
               href={href}
               aria-current={active ? 'page' : undefined}
-              // min-h-11 is the 44px glove-friendly floor from CLAUDE.md.
-              className={cn(
-                'flex min-h-11 flex-1 flex-col items-center gap-1 py-2 text-2xs font-medium transition-colors',
-                active ? 'text-accent' : 'text-muted hover:text-foreground'
-              )}
+              className={className}
             >
-              <Icon className="h-5 w-5" />
-              {label}
+              {content}
             </Link>
           )
         })}
-      </nav>
-    </>
+      </div>
+    </nav>
   )
 }

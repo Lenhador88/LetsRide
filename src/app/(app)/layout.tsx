@@ -10,9 +10,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppBackground className="flex flex-col">
       <Navbar />
-      {/* pt-14 clears the fixed header; pb-24 clears the fixed tab bar, which is
-          taller than the v1 four-tab version it replaced. */}
-      <main className="flex-1 pt-14 pb-24">{children}</main>
+      {/* Both bars are fixed. The header is now per-screen (the design gives each
+          one its own title, back affordance and variant), so pages render their
+          own `<Header>`; the padding that clears it stays here so no page can
+          forget it. `/postcards` overrides the bottom padding — it owns the
+          viewport rather than scrolling under the bar. */}
+      <main className="pt-header pb-navbar flex-1">{children}</main>
     </AppBackground>
   )
 }
