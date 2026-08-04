@@ -40,10 +40,11 @@ export const APP_TIME_ZONE = 'Europe/Amsterdam'
  * `origin` makes Google route from wherever the rider currently is, which is the
  * thing the tap was always meant to do.
  *
- * `travelmode=driving` because this is a motorcycle app. Google's `two-wheeler`
- * mode exists but is only served in a handful of countries and falls back
- * unpredictably elsewhere, so the honest default is the one that resolves the
- * same way everywhere.
+ * `travelmode=driving` because the Maps **URLs** API documents exactly four
+ * values — `driving`, `walking`, `bicycling`, `transit`. The `two-wheeler` mode
+ * a motorcycle app would want belongs to the Routes/Directions *web service*,
+ * which is a keyed, billed API and not this one; passing it here is not a
+ * degraded option, it is not a value this endpoint accepts.
  *
  * `URLSearchParams` rather than `encodeURIComponent`, so an address containing
  * `&` or `#` cannot truncate the query — the previous hand-built string would
