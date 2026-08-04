@@ -40,19 +40,17 @@ import { googleMapsDirectionsUrl } from '@/lib/utils'
 export function RideMap({ meetingPoint }: { meetingPoint: string }) {
   const destination = meetingPoint.trim()
 
-  // `meeting_point` is NOT NULL but not non-empty, and a blank destination
-  // deeplinks to an empty Google Maps route form — an affordance that visibly
-  // does nothing is worse than no affordance.
-  if (!destination) {
-    return (
-      <div
-        className="relative mx-4 flex h-40 items-center justify-center overflow-hidden rounded-lg border border-border bg-track"
-        aria-hidden="true"
-      >
-        <LocationFilledIcon className="h-6 w-6 text-muted" />
-      </div>
-    )
-  }
+  // `meeting_point` is NOT NULL but not non-empty, and nothing rejects blank:
+  // the create form's `required` accepts `"   "`, the insert does not trim,
+  // there is no Zod schema for ride creation, and 001 set no check constraint.
+  //
+  // Renders nothing rather than an empty panel. The page above already made
+  // this exact call for the 200px banner — "it carries no affordance at all,
+  // so an empty fifth of the screen is worse than a shorter page" — and a
+  // 160px box with a decorative pin and no link is the same object. Drawing
+  // one here while omitting the banner for the stated reason would have been
+  // the page contradicting itself.
+  if (!destination) return null
 
   return (
     <a

@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Users } from 'lucide-react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { Card } from '@/components/ui/Card'
-import { formatDateTime } from '@/lib/utils'
+import { formatRideDate, formatRideTime } from '@/lib/utils'
 import { JoinClubButton } from '@/components/clubs/JoinClubButton'
 import type { ClubMember, Ride } from '@/types'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
@@ -71,7 +71,13 @@ export default async function ClubPage({ params }: { params: Promise<{ id: strin
               <Link key={ride.id} href={`/rides/${ride.id}`}>
                 <Card className="hover:border-zinc-600 transition-colors">
                   <p className="font-medium text-white">{(ride as Ride).title}</p>
-                  <p className="mt-1 text-xs text-orange-400">{formatDateTime((ride as Ride).departure_at)}</p>
+                  {/* The ride helpers, not a generic date formatter: this is the
+                      same instant `/rides` and `/rides/[id]` draw, and before
+                      this the three screens disagreed by two hours. */}
+                  <p className="mt-1 text-xs text-orange-400">
+                    {formatRideDate((ride as Ride).departure_at)} ·{' '}
+                    {formatRideTime((ride as Ride).departure_at)}
+                  </p>
                   <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1">
                     <MapPin className="h-3 w-3" />{(ride as Ride).meeting_point}
                   </p>

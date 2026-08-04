@@ -75,14 +75,21 @@ the framework or auth depends on: `next`, `eslint-config-next`, `react`, `react-
 Supabase is on that list because a minor bump that changes cookie handling breaks sessions
 silently.
 
-**Dates: `Intl` only, no date library.** All in `src/lib/utils.ts`. `formatDate` and
-`formatDateTime` hardcode `en-US`, which is a bug for a European rider app rather than a
-decision. The rides screens could not wait for it — the design draws day-before-month and a
-24-hour clock, which `en-US` cannot produce — so `formatRideDate`, `formatRideDateLong` and
-`formatRideTime` are `en-GB`. **The app therefore renders dates in two locales right now.**
-The fix is one locale constant, not more per-screen formatters; until then, do not add a
-third variant. All of them also render in the *server's* timezone, which is a separate open
-question recorded in `docs/FIGMA-FIDELITY-TODO.md` §Ride detail.
+**Dates: `Intl` only, no date library.** All in `src/lib/utils.ts`, and every formatter is
+**named for the screen it serves** — `formatPostcardDate`, `formatRideDate`,
+`formatRideDateLong`, `formatRideTime` — because each design draws a genuinely different
+shape. There is deliberately no generic `formatDate`/`formatDateTime`: both existed, both
+hardcoded `en-US`, and by 2026-08-05 they had one caller between them. Deleting them
+resolved the two-locale split this section used to describe. Write the screen's own
+formatter and let its name say where it belongs.
+
+**Ride times are pinned to `APP_TIME_ZONE`** (`Europe/Amsterdam`). The three `formatRide*`
+helpers run in server components, so before that they rendered in the server's zone — UTC on
+Vercel — and drew a 20:00 Amsterdam departure as 18:00. It is a documented **interim**: the
+correct model is wall-clock at the meeting point, which needs a zone column on `rides`. The
+viewer's own zone is not the answer — it renders different strings on server and client,
+i.e. a hydration mismatch. `formatRelativeTime` needs no zone (it measures elapsed instants)
+and keeps `en-US` because it produces English prose, not a date format.
 
 **Deliberately undecided** — raise these rather than inventing an answer: error tracking,
 analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
@@ -121,7 +128,7 @@ src/
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # recovery.ts — cookie name shared by callback + action
-│   └── utils.ts            # cn(), formatDate/DateTime(), formatPostcardDate(), formatRideDate/DateLong/Time(), getInitials()
+│   └── utils.ts            # cn(), APP_TIME_ZONE, googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRelativeTime(), getInitials()
 ├── proxy.ts                # Auth middleware (Next.js 16 uses proxy.ts, not middleware.ts)
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)

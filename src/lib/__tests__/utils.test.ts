@@ -9,16 +9,22 @@ import {
   googleMapsDirectionsUrl,
 } from '@/lib/utils'
 
-// TZ is pinned to UTC in vitest.config.ts — these assertions are about the
-// *shape* of the string, and the zone is what makes them reproducible.
+// TZ is pinned to UTC in vitest.config.ts, and for these assertions that pin is
+// now inert: `formatRideDate` carries its own `timeZone`, so it renders the same
+// string on any runner. The pin still matters for `formatPostcardDate` and
+// `formatRelativeTime`, which have none.
+//
+// An earlier version of this comment said the pin "is what makes them
+// reproducible", which was true when the helpers took the process zone and is
+// exactly how the UTC bug hid here — see the timezone block further down.
 describe('formatRideDate', () => {
   it('reads as the design draws it — uppercase, weekday first, no year', () => {
     expect(formatRideDate('2024-11-16T10:00:00Z')).toBe('SAT, 16 NOV')
     expect(formatRideDate('2024-11-17T13:30:00Z')).toBe('SUN, 17 NOV')
   })
 
-  it('puts the day before the month, unlike formatDate', () => {
-    // en-GB, for a European rider app. The en-US ordering would read "NOV 16".
+  it('puts the day before the month, as en-GB does', () => {
+    // For a European rider app. An en-US ordering would read "NOV 16".
     expect(formatRideDate('2026-01-02T09:00:00Z')).toBe('FRI, 2 JAN')
   })
 })
@@ -93,7 +99,7 @@ describe('googleMapsDirectionsUrl', () => {
     expect(url).not.toContain('query=')
   })
 
-  it('routes from the rider’s current position by omitting an origin', () => {
+  it('omits an origin, which is what makes Google route from the device', () => {
     expect(googleMapsDirectionsUrl('Dam Square')).not.toContain('origin=')
   })
 
@@ -187,8 +193,8 @@ describe('formatPostcardDate', () => {
     expect(formatPostcardDate('2024-11-19T10:00:00Z')).toBe('19 Nov 2024')
   })
 
-  it('carries no weekday, unlike formatDate', () => {
-    // The design's stamp sits in the corner of a photo and has room for three parts.
+  it('carries no weekday — the stamp has room for three parts', () => {
+    // It sits in the corner of a photo, which is what bounds it.
     expect(formatPostcardDate('2025-01-01T10:00:00Z')).toBe('1 Jan 2025')
   })
 })

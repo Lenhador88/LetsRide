@@ -242,13 +242,14 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
       carries two past variants (`Went`), which nothing in this flow can reach. Either a past
       section belongs on "Your rides" or history lives on the profile — the design does not
       say.
-- [ ] **Timezone.** The card formats `departure_at` on the server, so it renders in the
-      server's zone (UTC on Vercel), not the rider's. For a screen whose whole point is *when
-      to be somewhere* that is a real defect, not a nicety — it is the same bug as the `en-US`
-      hardcoding in `formatDate`/`formatDateTime`/`formatRelativeTime`, and the four should be
-      fixed together with one decision about how this app handles locale and time.
-      `formatRideDate`/`formatRideTime` use `en-GB` for day-first order and a 24-hour clock,
-      matching both the design and `formatPostcardDate`.
+- [x] ~~**Timezone.**~~ **Fixed 2026-08-05** — see §Ride detail, where the same bug was found
+      from a real device and fixed once for both screens. `RideCard` calls
+      `formatRideDate`/`formatRideTime`, which are now pinned to `APP_TIME_ZONE`. The `en-US`
+      half of this item resolved itself: `formatDate` and `formatDateTime` were **deleted**,
+      having ended up with one caller between them, so the app no longer renders dates in two
+      locales. `formatRelativeTime` keeps `en-US` deliberately — it emits English prose, not a
+      date. What remains open is only the model, not the defect: wall-clock at the meeting
+      point needs a zone column on `rides`.
 
 ### Ride detail — built from the measurements 2026-08-04
 
@@ -348,13 +349,15 @@ not this screen's.
 
 Deviations that are ours, not the design's:
 
-- [ ] **Dates on this screen are `en-GB`; `formatDate`/`formatDateTime` are still `en-US`.**
-      The design draws `Saturday, 12 Nov` and `14:00`, which `en-US` cannot produce — it
-      renders `Saturday, Nov 12` and `02:00 PM`. `formatRideDateLong` and `formatRideTime`
-      match the design; the two older functions were **deliberately not changed**, because
-      that would silently restyle every date on the postcards feed. CLAUDE.md calls their
-      hardcoded `en-US` a bug rather than a decision. The real fix is one locale constant for
-      the app — small, and not approved as part of this epic.
+- [x] ~~**Dates on this screen are `en-GB`; `formatDate`/`formatDateTime` are still `en-US`.**~~
+      **Resolved 2026-08-05, by deletion.** The design draws `Saturday, 12 Nov` and `14:00`,
+      which `en-US` cannot produce. The two `en-US` functions were left alone at the time
+      because changing them would have restyled every date on the postcards feed — but the
+      timezone fix showed `formatDateTime` had **one** caller and `formatDate` none, and that
+      one caller was a ride time that should have used the ride helpers anyway. Removing them
+      cost nothing and ended the two-locale split; the feed was never affected, because
+      `formatPostcardDate` was always separate. The "one locale constant" fix this item asked
+      for turned out to be unnecessary — there was no second locale worth keeping.
 - [x] ~~**Times render in the server's timezone.**~~ **Fixed 2026-08-05.** A ride departing
       20:00 in Amsterdam was drawn as `18:00` — UTC, because Vercel runs UTC and the three
       `formatRide*` helpers run in server components. `APP_TIME_ZONE` in `lib/utils.ts` now

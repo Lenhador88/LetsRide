@@ -25,9 +25,9 @@ export function cn(...inputs: ClassValue[]) {
  * and would also make the server and client render different strings, which is a
  * hydration mismatch on every ride card.
  *
- * Applies to the three `formatRide*` helpers only. `formatDate`/`formatDateTime`
- * are untouched here — they carry a separate known `en-US` bug and the two
- * changes should not be tangled.
+ * Applies to the three `formatRide*` helpers, which after this change are the
+ * only zone-dependent formatters left — `formatPostcardDate` is a photo stamp
+ * and `formatRelativeTime` works on elapsed instants, which no zone changes.
  */
 export const APP_TIME_ZONE = 'Europe/Amsterdam'
 
@@ -62,15 +62,15 @@ export function googleMapsDirectionsUrl(destination: string) {
 /**
  * The date stamped on a postcard photo — `19 Nov 2024`.
  *
- * Its own formatter rather than `formatDate` because the design gives this one a
+ * Named for its screen rather than generic, because the design gives this one a
  * distinct shape: day first, short month, no weekday, sized to sit in the corner
  * of a photo. `en-GB` gives that day-first order; the design's lowercase month
  * ("19 nov 2024") is Dutch, which is the locale its mock content is written in
  * rather than a choice about the app's.
  *
- * This deliberately does not touch the `en-US` hardcoding in `formatDate` /
- * `formatDateTime` / `formatRelativeTime`. That is a known bug for a European
- * rider app and the three have to move together, which is not this change.
+ * Deliberately **not** pinned to APP_TIME_ZONE. This is the date a photo was
+ * taken, stamped on the photo; the zone that matters is the one the rider was
+ * standing in, which the schema does not record either way.
  */
 export function formatPostcardDate(date: string) {
   return new Date(date).toLocaleDateString('en-GB', {
@@ -124,24 +124,30 @@ export function formatRideTime(date: string) {
   })
 }
 
-export function formatDate(date: string) {
-  return new Date(date).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
-export function formatDateTime(date: string) {
-  return new Date(date).toLocaleString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+/*
+ * `formatDate` and `formatDateTime` used to sit here. They are **deleted**, not
+ * moved, and the deletion is the fix for a defect this change created.
+ *
+ * `formatDateTime` had exactly one caller — the club page's ride card — and
+ * `formatDate` had none at all. Pinning the three `formatRide*` helpers to
+ * APP_TIME_ZONE while leaving that caller unpinned made two screens one tap
+ * apart disagree about the same ride: `/clubs/[id]` said `06:00 PM` where
+ * `/rides/[id]` said `20:00`, and past 22:00 UTC they disagreed about the day.
+ * Uniformly wrong had become inconsistently wrong, which is worse.
+ *
+ * That caller now uses the ride helpers, which is what a ride time should have
+ * used regardless — and with it gone both functions had zero callers. Deleting
+ * them is therefore the whole fix for their long-standing hardcoded `en-US`
+ * too: a bug CLAUDE.md has carried as "known" for two epics, resolved at no
+ * cost because nothing was using the code that had it.
+ *
+ * This is also the grain of the file. Every surviving formatter is named for
+ * the screen it serves — `formatPostcardDate`, `formatRideDate`,
+ * `formatRideDateLong`, `formatRideTime` — because each design draws a
+ * genuinely different shape. A generic `formatDate` invites a call site to take
+ * whatever it gives; write the screen's own and let the name say where it
+ * belongs.
+ */
 
 /**
  * The ride *detail's* date row — `Saturday, 12 Nov`.
@@ -189,9 +195,13 @@ const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
  * Anything under a minute reads "just now" rather than "0 seconds ago", which
  * is what the API would otherwise produce for a postcard posted this second.
  *
- * Locale is hardcoded `en-US` to match formatDate/formatDateTime. That is the
- * same known bug they carry for a European rider app, not a new decision —
- * fixing it means fixing all three together.
+ * Locale is `en-US` and that is now the only place in the file it survives.
+ * Unlike the date formatters it is defensible here: this produces English
+ * prose ("3 hours ago"), so the locale is the app's language rather than a
+ * date format, and every string the app writes around it is English too.
+ *
+ * Needs no timezone. It formats the *distance* between two instants, and the
+ * gap between them is the same number of hours in every zone on earth.
  */
 export function formatRelativeTime(date: string, now: Date = new Date()) {
   const seconds = Math.round((new Date(date).getTime() - now.getTime()) / 1000)
