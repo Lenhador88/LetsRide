@@ -35,8 +35,34 @@
   --color-muted: #666666;           /* Grey/80 — secondary / muted text (~4.9:1 on cream, do not lighten) */
   --color-border: #0000001A;        /* Grey/10% — dividers, subtle borders */
   --color-border-strong: #00000033; /* Grey/20% — stronger borders */
+  /* Grey/10 (#E5DACF, n=73) — an opaque warm neutral, and a DIFFERENT token
+     from `Grey/10%` (#0000001A) above despite the near-identical name. The
+     ride detail screen uses it for two things: the segmented-control track
+     behind the RSVP buttons, and the hairline under the date and location
+     rows. Those rows are the reason it is not simply `--color-border`: on the
+     cream gradient an opaque beige line and a 10%-black line read differently,
+     and the design picked the former here. */
+  --color-track: #E5DACF;
+  /* Grey/70% — the scrim behind a context menu / bottom sheet. */
+  --color-scrim: #000000B3;
   --color-accent: #3D996B;          /* Accent Brand/100 — brand green. Sparing accent only: splash, success, active. Never default button fill. */
   --color-accent-foreground: #FFFFFF;
+  /* Accent Brand/110 — the darker green. Its documented role is pressed/hover,
+     and `v2 / Component / List / User` also uses it for the "Ride host" label,
+     where it is carrying text rather than a state.
+
+     ACCESSIBILITY, measured not asserted: **4.10:1** on `Grey/5` cream, and
+     2.50:1 against the gradient's far end `#CCB8A3`. A 12px medium label is not
+     WCAG large text, so the bar is 4.5:1 and this FAILS — the same palette-wide
+     problem the rides list surfaced with the two RSVP pills, not a new one.
+     Left exactly as drawn, because the fill is the designer's call and a silent
+     substitution is how a palette drifts. Logged with a costed remedy in
+     docs/FIGMA-FIDELITY-TODO.md §Ride detail.
+
+     The first draft of this comment claimed 5.11:1 from memory. It was wrong by
+     a full point and in the direction that would have let a failure ship as a
+     pass, which is why the number is computed rather than recalled. */
+  --color-accent-strong: #338059;
   --color-danger: #D92140;          /* Warning/100 — destructive / error. <Button variant="danger">, form error text. */
   /* Pink/100 — CLAUDE.md listed this as "purpose not established". It is the
      liked heart, and only that: `Button / Postcard Action` Type=Like
@@ -115,10 +141,19 @@ body {
 :root {
   --navbar-tabs: 3.5rem;
   --navbar-action: 4rem; /* 16 pad + 40 button + 8 */
+  --ride-rsvp-bar: 6rem; /* 16 pad + 20 prompt + 12 gap + 40 group + 8 */
   --safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 .pt-header {
   padding-top: calc(max(0.5rem, env(safe-area-inset-top)) + 3rem);
+}
+/* The taller header — the one carrying a sub-page switcher under the title row
+   (`v2 / Component / Header` Type=User / Type=Club, 120px against Regular's 96).
+   The shell already applies `.pt-header`, so like `.pb-navbar-action-extra`
+   below this TOPS THAT UP rather than replacing it: the switcher row is 20px
+   and its gap 4, so the difference between the two headers is 24. */
+.pt-header-sub-extra {
+  padding-top: 1.5rem;
 }
 .pb-navbar {
   padding-bottom: calc(var(--safe-bottom) + var(--navbar-tabs));
@@ -130,4 +165,17 @@ body {
    the shell's `.pb-navbar` — it tops it up by exactly the action's height. */
 .pb-navbar-action-extra {
   padding-bottom: var(--navbar-action);
+}
+
+/* The ride detail's RSVP bar. Unlike `/rides`'s "Create ride", this is NOT the
+   nav bar's action slot: the design draws `Content / Ride Details / Join Ride
+   Selector` as its own 96px frame sitting on top of the 88px bar (y836 against
+   y931 in `2375:8771`), where the sticky action renders *inside* the 152px bar.
+   So it is positioned off the bar's height rather than nested in it, and the
+   page tops up its own padding by the same 96. */
+.bottom-navbar {
+  bottom: calc(var(--safe-bottom) + var(--navbar-tabs));
+}
+.pb-rsvp-bar-extra {
+  padding-bottom: var(--ride-rsvp-bar);
 }

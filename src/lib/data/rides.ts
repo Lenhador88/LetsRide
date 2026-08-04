@@ -1,9 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
-import { unwrapList } from '@/lib/data/unwrap'
+import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import type {
   PublicProfile,
   RideAttendance,
+  RideCrew,
+  RideCrewMember,
+  RideDetail,
   RideFilter,
   RideFilterOption,
   RideFilters,
@@ -196,6 +199,139 @@ export async function getRides(
 
   const rows = unwrapList(await query, 'the rides list') as unknown as RideRow[]
   return rows.map((row) => toRideListItem(row, user?.id, now))
+}
+
+/**
+ * One ride, for `/rides/[id]`.
+ *
+ * Returns `null` for both "no such ride" and "you may not see this one", and
+ * that conflation is deliberate: PostgREST answers a row hidden by RLS exactly
+ * as it answers a row that does not exist, and telling the two apart in the UI
+ * would leak the existence of private rides to anyone who can guess a UUID. The
+ * page renders `notFound()` either way.
+ *
+ * `maybeSingle` rather than `single`, because `single` treats zero rows as a
+ * query *error* — which `unwrap` would then correctly throw on, turning every
+ * stale ride link into a 500 instead of a 404.
+ */
+export async function getRide(id: string): Promise<RideDetail | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const row = unwrap(
+    await supabase
+      .from('rides')
+      .select(`
+        id, title, description, route_description, meeting_point, departure_at,
+        max_riders, club_id, organizer_id,
+        organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
+        club:clubs(id, name, avatar_url),
+        riders:ride_members(user_id, status)
+      `)
+      .eq('id', id)
+      .maybeSingle(),
+    'this ride',
+  ) as unknown as
+    | (Omit<RideDetail, 'attendance' | 'riders_count' | 'is_organizer' | 'is_upcoming'> & {
+        riders: { user_id: string; status: 'going' | 'maybe' }[] | null
+      })
+    | null
+
+  if (!row) return null
+
+  const crew = row.riders ?? []
+  const ownRow = user ? crew.find((member) => member.user_id === user.id) : undefined
+  const isOrganizer = !!user && user.id === row.organizer_id
+
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    route_description: row.route_description,
+    meeting_point: row.meeting_point,
+    departure_at: row.departure_at,
+    max_riders: row.max_riders,
+    club_id: row.club_id,
+    organizer_id: row.organizer_id,
+    organizer: row.organizer,
+    club: row.club,
+    // Same rule as the list card: an explicit row wins, and an organizer
+    // without one reads as `going` rather than as unanswered.
+    attendance: ownRow?.status ?? (isOrganizer ? 'going' : null),
+    // The organizer counts whether or not they hold a ride_members row, and is
+    // de-duplicated against the crew so organising *and* RSVPing is not two.
+    riders_count: crew.filter((member) => member.user_id !== row.organizer_id).length + 1,
+    is_organizer: isOrganizer,
+    is_upcoming: new Date(row.departure_at).getTime() >= Date.now(),
+  }
+}
+
+/**
+ * The crew roster for `/rides/[id]/crew`, split the way the design's two
+ * sections are: `Going` and `May be going`.
+ *
+ * There is no block filtering here and there must not be. 009 put
+ * `private.is_blocked` on the `ride_members` SELECT policy itself, so a blocked
+ * rider is already absent from the rows this reads — re-filtering in
+ * application code would be a second copy of that rule, free to drift, and is
+ * the same mistake as the `is_public` filter this file's header describes.
+ *
+ * A rider who declined is not a third section: `No` deletes the row, so the
+ * only states a roster can hold are the two the design draws.
+ */
+export async function getRideCrew(rideId: string): Promise<RideCrew> {
+  const supabase = await createClient()
+
+  const rows = unwrapList(
+    await supabase
+      .from('ride_members')
+      .select(`user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`)
+      .eq('ride_id', rideId)
+      .order('joined_at', { ascending: true }),
+    'this ride crew',
+  ) as unknown as {
+    user_id: string
+    status: 'going' | 'maybe'
+    profile: PublicProfile | null
+  }[]
+
+  const going = rows.filter((row) => row.status === 'going')
+  const maybe = rows.filter((row) => row.status === 'maybe')
+
+  return {
+    going: going.map((row) => ({ user_id: row.user_id, profile: row.profile })),
+    maybe: maybe.map((row) => ({ user_id: row.user_id, profile: row.profile })),
+  }
+}
+
+/**
+ * Puts the organizer at the head of `going` and marks them the host.
+ *
+ * Separate from `getRideCrew` and pure, because it encodes a rule rather than a
+ * query: the organizer is on their own ride by construction, whether or not
+ * they ever pressed `Yes!`. Reading the roster alone would drop the host off
+ * their own crew list — which is the state the design's `Ride host` row exists
+ * to draw.
+ *
+ * De-duplicates, so an organizer who also RSVP'd appears once. If that RSVP was
+ * `maybe`, `going` still wins: the design has one host row and it sits in the
+ * first section.
+ */
+export function withOrganizer(
+  crew: RideCrew,
+  organizerId: string,
+  organizer: PublicProfile | null
+): RideCrew {
+  const host: RideCrewMember = {
+    user_id: organizerId,
+    profile: organizer ?? crew.going.concat(crew.maybe).find((m) => m.user_id === organizerId)?.profile ?? null,
+    is_host: true,
+  }
+
+  return {
+    going: [host, ...crew.going.filter((member) => member.user_id !== organizerId)],
+    maybe: crew.maybe.filter((member) => member.user_id !== organizerId),
+  }
 }
 
 type FilterRow = {

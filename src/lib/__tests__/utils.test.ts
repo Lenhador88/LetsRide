@@ -3,6 +3,7 @@ import {
   formatPostcardDate,
   formatRelativeTime,
   formatRideDate,
+  formatRideDateLong,
   formatRideTime,
   getInitials,
 } from '@/lib/utils'
@@ -18,6 +19,24 @@ describe('formatRideDate', () => {
   it('puts the day before the month, unlike formatDate', () => {
     // en-GB, for a European rider app. The en-US ordering would read "NOV 16".
     expect(formatRideDate('2026-01-02T09:00:00Z')).toBe('FRI, 2 JAN')
+  })
+})
+
+describe('formatRideDateLong', () => {
+  it('reads as the ride detail draws it — long weekday, sentence case, no year', () => {
+    expect(formatRideDateLong('2024-11-16T10:00:00Z')).toBe('Saturday, 16 Nov')
+    expect(formatRideDateLong('2026-01-02T09:00:00Z')).toBe('Friday, 2 Jan')
+  })
+
+  it('differs from the list card only in weekday length and case', () => {
+    // The two are separate functions rather than one with a flag, so this is
+    // the assertion that keeps them from quietly converging.
+    expect(formatRideDate('2024-11-16T10:00:00Z')).toBe('SAT, 16 NOV')
+    expect(formatRideDateLong('2024-11-16T10:00:00Z')).toBe('Saturday, 16 Nov')
+  })
+
+  it('keeps the comma after the weekday that en-GB omits on its own', () => {
+    expect(formatRideDateLong('2024-11-16T10:00:00Z')).toContain(', ')
   })
 })
 

@@ -84,6 +84,35 @@ export function formatDateTime(date: string) {
   })
 }
 
+/**
+ * The ride *detail's* date row — `Saturday, 12 Nov`.
+ *
+ * Separate from `formatRideDate` above rather than a parameter on it, because
+ * the two designs genuinely differ: the list card draws a short uppercased
+ * weekday (`SAT, 16 NOV`, Poppins/14/Medium) and the detail draws a long one in
+ * sentence case (Poppins/14/Semibold). A `long`/`short` flag would read as a
+ * preference at every call site when it is really "which screen is this".
+ *
+ * Same `en-GB`, same parts-assembly, and same reason — see `formatRideDate`.
+ *
+ * Renders in the **server's** timezone, so a ride at 14:00 local shows as 14:00
+ * UTC on Vercel. `formatRideTime` has always had this; rides are simply the
+ * first screen where a wrong hour misleads rather than merely looks off.
+ * Logged in docs/FIGMA-FIDELITY-TODO.md §Ride detail.
+ */
+export function formatRideDateLong(date: string) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+  }).formatToParts(new Date(date))
+
+  const find = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+
+  return `${find('weekday')}, ${find('day')} ${find('month')}`
+}
+
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['year', 365 * 24 * 60 * 60],
   ['month', 30 * 24 * 60 * 60],

@@ -7,12 +7,33 @@ type HeaderProps = {
   title: string
   /** Renders the 40×40 back control at the left of the title row. */
   backHref?: string
+  /**
+   * The 20px sub-page row beneath the title, centred. The ride detail puts its
+   * `Ride plan ⌄` switcher here.
+   *
+   * A page rendering this must reserve `.pt-header-sub` (72px) rather than
+   * `.pt-header` (48px) — the two are 24px apart and the difference is a title
+   * hidden under the bar.
+   */
+  subRow?: React.ReactNode
   className?: string
 }
 
 /**
- * `v2 / Component / Header`, variant `Type=Regular` — measured from the committed
- * snapshot (`npm run figma -- tree "v2 / Component / Header"`), not inferred.
+ * `v2 / Component / Header` — measured from the committed snapshot
+ * (`npm run figma -- tree "v2 / Component / Header"`), not inferred.
+ *
+ * `Type=Regular` is the bare title (390×96). Passing `subRow` produces the
+ * 390×120 shape that `Type=User` and `Type=Club` share and that
+ * `Ride - Ride plan (Details)` (`2375:8771`) uses: back at x8, title centred at
+ * y56, switcher row centred at y88.
+ *
+ * The design also puts two 40×40 icon controls at x302/x342 of that header —
+ * chat and an overflow menu. Neither is built and neither is stubbed here: an
+ * action row with nothing behind it is a worse artifact than an absent one, and
+ * the slot is three lines to add once Chat has a route. See
+ * `RideHeader` for the full reasoning and docs/FIGMA-FIDELITY-TODO.md §Ride
+ * detail for the log.
  *
  * The design's 48px top padding is the iOS status bar, which the OS draws over the
  * frame. A browser has no status bar there, so reproducing 48px literally would
@@ -20,10 +41,10 @@ type HeaderProps = {
  * the app is installed and to the design's 8px content padding otherwise, which
  * is the same 48px visible header height on device.
  *
- * The `Type=User` and `Type=Club` variants (avatar + name, options button) are not
- * built — no screen using them exists yet.
+ * The avatar-and-name title of `Type=User` / `Type=Club` is still not built —
+ * the profile and club screens are the ones that need it.
  */
-export function Header({ title, backHref, className }: HeaderProps) {
+export function Header({ title, backHref, subRow, className }: HeaderProps) {
   return (
     <header
       className={cn(
@@ -43,8 +64,53 @@ export function Header({ title, backHref, className }: HeaderProps) {
             <ArrowLeftIcon className="h-6 w-6" />
           </Link>
         )}
+        {/* Symmetric so the title stays centred on the header rather than on the
+            space left beside the back button. Asymmetric padding would shift it
+            off-centre, which the design does not do. */}
         <h1 className="truncate px-12 text-base font-semibold text-foreground">{title}</h1>
       </div>
+      {subRow && <div className="flex h-5 items-center justify-center">{subRow}</div>}
     </header>
+  )
+}
+
+/** One 40×40 control in the header's action row — `v2 / Component / Button / Icon`. */
+export function HeaderAction({
+  href,
+  onClick,
+  label,
+  badge,
+  children,
+}: {
+  href?: string
+  onClick?: () => void
+  label: string
+  /** The `Warning/100` unread dot. */
+  badge?: boolean
+  children: React.ReactNode
+}) {
+  const className =
+    'relative flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border'
+  const content = (
+    <>
+      {children}
+      {badge && (
+        <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-danger ring-2 ring-background" />
+      )}
+    </>
+  )
+
+  if (href) {
+    return (
+      <Link href={href} aria-label={label} className={className}>
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <button type="button" onClick={onClick} aria-label={label} className={className}>
+      {content}
+    </button>
   )
 }
