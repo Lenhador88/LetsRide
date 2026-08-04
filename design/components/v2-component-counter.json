@@ -1,0 +1,296 @@
+{
+  "page": "Components",
+  "id": "1918:8056",
+  "name": "v2 / Component / Counter",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 13040,
+    "y": 3988,
+    "w": 104,
+    "h": 96
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "styles": {
+    "fills": "White/100",
+    "fill": "White/100"
+  },
+  "componentPropertyDefinitions": {
+    "Notifications#1918:56": {
+      "type": "TEXT",
+      "defaultValue": "1"
+    },
+    "Type": {
+      "type": "VARIANT",
+      "defaultValue": "Notification",
+      "variantOptions": [
+        "Regular",
+        "Notification"
+      ]
+    },
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Default",
+      "variantOptions": [
+        "Default",
+        "Selected"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "1918:7869",
+      "name": "Type=Notification, State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 4004,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 2,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#D92140"
+        }
+      ],
+      "styles": {
+        "fills": "Warning/100",
+        "fill": "Warning/100"
+      },
+      "children": [
+        {
+          "id": "1918:7868",
+          "name": "1",
+          "type": "TEXT",
+          "box": {
+            "x": 13058,
+            "y": 4007.5,
+            "w": 20,
+            "h": 18
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100",
+            "text": "Poppins/12/Semibold"
+          },
+          "characters": "1",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 12,
+            "fontWeight": 600,
+            "lineHeightPx": 18,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1918:8057",
+      "name": "Type=Regular, State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13104,
+        "y": 4004,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 2,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/100",
+        "fill": "Grey/100"
+      },
+      "children": [
+        {
+          "id": "1918:8058",
+          "name": "1",
+          "type": "TEXT",
+          "box": {
+            "x": 13106,
+            "y": 4007.5,
+            "w": 20,
+            "h": 18
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100",
+            "text": "Poppins/12/Semibold"
+          },
+          "characters": "1",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 12,
+            "fontWeight": 600,
+            "lineHeightPx": 18,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1918:8063",
+      "name": "Type=Regular, State=Selected",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13104,
+        "y": 4044,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 2,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#3D996B"
+        }
+      ],
+      "styles": {
+        "fills": "Accent Brand/100",
+        "fill": "Accent Brand/100"
+      },
+      "children": [
+        {
+          "id": "1918:8064",
+          "name": "1",
+          "type": "TEXT",
+          "box": {
+            "x": 13106,
+            "y": 4047.5,
+            "w": 20,
+            "h": 18
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100",
+            "text": "Poppins/12/Semibold"
+          },
+          "characters": "1",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 12,
+            "fontWeight": 600,
+            "lineHeightPx": 18,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1918:8059",
+      "name": "Type=Notification, State=Selected",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 4044,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 2,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#3D996B"
+        }
+      ],
+      "styles": {
+        "fills": "Accent Brand/100",
+        "fill": "Accent Brand/100"
+      },
+      "children": [
+        {
+          "id": "1918:8060",
+          "name": "1",
+          "type": "TEXT",
+          "box": {
+            "x": 13058,
+            "y": 4047.5,
+            "w": 20,
+            "h": 18
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100",
+            "text": "Poppins/12/Semibold"
+          },
+          "characters": "1",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 12,
+            "fontWeight": 600,
+            "lineHeightPx": 18,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

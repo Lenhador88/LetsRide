@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "1424:14581",
+  "name": "F68E94FD-89FB-4EE1-A30F-BF649CF4D65B_1_105_c 1",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -8178,
+    "y": 40510,
+    "w": 390,
+    "h": 846.08
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "139328fb4fd4abffbd55ca6eb8870cdfe8fb7094",
+      "scaleMode": "FILL"
+    }
+  ]
+}

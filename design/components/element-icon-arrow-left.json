@@ -1,0 +1,41 @@
+{
+  "page": "Components",
+  "id": "339:1724",
+  "name": "Element / Icon / Arrow Left",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": -24,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "rotation": 0,
+  "children": [
+    {
+      "id": "2483:7561",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12620,
+        "y": -20,
+        "w": 16,
+        "h": 16
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "rotation": 0,
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

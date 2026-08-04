@@ -1,0 +1,342 @@
+{
+  "page": "Components",
+  "id": "339:1858",
+  "name": "Component / Input / Image",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 6194,
+    "y": 332,
+    "w": 788,
+    "h": 496
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Type": {
+      "type": "VARIANT",
+      "defaultValue": "Ride Header",
+      "variantOptions": [
+        "Ride Header",
+        "Equipment"
+      ]
+    },
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Empty",
+      "variantOptions": [
+        "Empty",
+        "Filled"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "321:3213",
+      "name": "Type=Ride Header, State=Empty",
+      "type": "COMPONENT",
+      "box": {
+        "x": 6210,
+        "y": 348,
+        "w": 358,
+        "h": 200
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "321:3219",
+          "name": "Content",
+          "type": "FRAME",
+          "box": {
+            "x": 6357.5,
+            "y": 425,
+            "w": 64,
+            "h": 46
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 4,
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "321:3293",
+              "name": "Element / Icon / Image",
+              "type": "INSTANCE",
+              "box": {
+                "x": 6377.5,
+                "y": 425,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "321:3360",
+              "component": "Element / Icon / Image",
+              "children": [
+                {
+                  "id": "I321:3293;2241:10925",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 6377.5,
+                    "y": 428,
+                    "w": 24,
+                    "h": 18
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "321:3224",
+              "name": "Add photo",
+              "type": "TEXT",
+              "box": {
+                "x": 6357.5,
+                "y": 453,
+                "w": 64,
+                "h": 18
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#808080"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/50",
+                "text": "Poppins/12/Regular"
+              },
+              "characters": "Add photo",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 400,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "339:1879",
+      "name": "Type=Equipment, State=Empty",
+      "type": "COMPONENT",
+      "box": {
+        "x": 6608,
+        "y": 348,
+        "w": 358,
+        "h": 224
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "339:1880",
+          "name": "Content",
+          "type": "FRAME",
+          "box": {
+            "x": 6755.5,
+            "y": 437,
+            "w": 64,
+            "h": 46
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 4,
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "339:1881",
+              "name": "Element / Icon / Image",
+              "type": "INSTANCE",
+              "box": {
+                "x": 6775.5,
+                "y": 437,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "321:3360",
+              "component": "Element / Icon / Image",
+              "children": [
+                {
+                  "id": "I339:1881;2241:10925",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 6775.5,
+                    "y": 440,
+                    "w": 24,
+                    "h": 18
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "339:1882",
+              "name": "Add photo",
+              "type": "TEXT",
+              "box": {
+                "x": 6755.5,
+                "y": 465,
+                "w": 64,
+                "h": 18
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#808080"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/50",
+                "text": "Poppins/12/Regular"
+              },
+              "characters": "Add photo",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 400,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "339:1859",
+      "name": "Type=Ride Header, State=Filled",
+      "type": "COMPONENT",
+      "box": {
+        "x": 6210,
+        "y": 564,
+        "w": 358,
+        "h": 200
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "eae313a48883a46e7a2a60ee806e73a8052191be",
+          "scaleMode": "FILL"
+        }
+      ]
+    },
+    {
+      "id": "339:1883",
+      "name": "Type=Equipment, State=Filled",
+      "type": "COMPONENT",
+      "box": {
+        "x": 6608,
+        "y": 588,
+        "w": 358,
+        "h": 224
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "eae313a48883a46e7a2a60ee806e73a8052191be",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+{
+  "page": "Components",
+  "id": "318:1675",
+  "name": "Component / Section / Gear",
+  "type": "COMPONENT",
+  "box": {
+    "x": 10548,
+    "y": 0,
+    "w": 256,
+    "h": 234
+  },
+  "clipsContent": true,
+  "cornerRadius": 4,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "318:1669",
+      "name": "Content",
+      "type": "FRAME",
+      "box": {
+        "x": 10548,
+        "y": 160,
+        "w": 256,
+        "h": 74
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 2,
+      "paddingLeft": 16,
+      "paddingRight": 16,
+      "paddingTop": 12,
+      "paddingBottom": 16,
+      "counterAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "318:1665",
+          "name": "N80-8 Powerglide",
+          "type": "TEXT",
+          "box": {
+            "x": 10564,
+            "y": 172,
+            "w": 224,
+            "h": 24
+          },
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90",
+            "text": "Poppins/16/Semibold"
+          },
+          "characters": "N80-8 Powerglide",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 600,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "318:1666",
+          "name": "Nolan",
+          "type": "TEXT",
+          "box": {
+            "x": 10564,
+            "y": 198,
+            "w": 224,
+            "h": 20
+          },
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#B3B3B3"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/70",
+            "text": "Poppins/14/Regular"
+          },
+          "characters": "Nolan",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 400,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "318:1667",
+      "name": "Image",
+      "type": "FRAME",
+      "box": {
+        "x": 10548,
+        "y": 0,
+        "w": 256,
+        "h": 160
+      },
+      "clipsContent": true,
+      "rectangleCornerRadii": [
+        4,
+        4,
+        0,
+        0
+      ],
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "styles": {
+        "fills": "White/100",
+        "fill": "White/100"
+      },
+      "children": [
+        {
+          "id": "318:1668",
+          "name": "image 15",
+          "type": "RECTANGLE",
+          "box": {
+            "x": 10596,
+            "y": 0,
+            "w": 160,
+            "h": 160
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "3be66dea22042970d03ff8f9a122305274271ace",
+              "scaleMode": "FILL"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

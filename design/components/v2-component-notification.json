@@ -1,0 +1,40 @@
+{
+  "page": "Components",
+  "id": "2370:7297",
+  "name": "v2 / Component / Notification",
+  "type": "COMPONENT",
+  "box": {
+    "x": 13168,
+    "y": 3988,
+    "w": 16,
+    "h": 16
+  },
+  "clipsContent": true,
+  "cornerRadius": 100,
+  "strokeWeight": 3,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#D92140"
+    }
+  ],
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#F2ECE6"
+    }
+  ],
+  "styles": {
+    "fills": "Warning/100",
+    "strokes": "Grey/5",
+    "fill": "Warning/100",
+    "stroke": "Grey/5"
+  },
+  "componentPropertyDefinitions": {
+    "Notifications#1918:55": {
+      "type": "TEXT",
+      "defaultValue": "1"
+    }
+  }
+}

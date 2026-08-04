@@ -56,11 +56,24 @@ export const file = {
           },
           {
             id: '11:1', name: 'Section wrapper', type: 'SECTION',
-            children: [{
-              id: '11:2', name: 'Create Postcard', type: 'FRAME',
-              absoluteBoundingBox: { x: 0, y: 0, width: 390, height: 844 },
-              children: [text('11:3', 'CTA', 'Share a postcard', 'style-text-1')],
-            }],
+            children: [
+              {
+                id: '11:2', name: 'Create Postcard', type: 'FRAME',
+                absoluteBoundingBox: { x: 0, y: 0, width: 390, height: 844 },
+                children: [text('11:3', 'CTA', 'Share a postcard', 'style-text-1')],
+              },
+              // Sections nest: the real file groups its flows in an outer section
+              // whose children are themselves sections, which left every screen
+              // addressable only through the flow containing it.
+              {
+                id: '11:4', name: 'Inner section', type: 'SECTION',
+                children: [{
+                  id: '11:5', name: 'Nested Screen', type: 'FRAME',
+                  absoluteBoundingBox: { x: 0, y: 0, width: 390, height: 844 },
+                  children: [text('11:6', 'Title', 'Nested', 'style-text-1')],
+                }],
+              },
+            ],
           },
         ],
       },

@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "856:5531",
+  "name": "image 22",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -12101,
+    "y": 38344,
+    "w": 2048,
+    "h": 996.5
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "06357a5590b317067ad18a986a55b07b66c4788d",
+      "scaleMode": "FILL"
+    }
+  ]
+}

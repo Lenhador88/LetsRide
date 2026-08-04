@@ -1,0 +1,43 @@
+{
+  "page": "Components",
+  "id": "2288:10338",
+  "name": "iPhone 3",
+  "type": "FRAME",
+  "box": {
+    "x": 19551,
+    "y": -107,
+    "w": 1320,
+    "h": 2868
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "children": [
+    {
+      "id": "2288:10349",
+      "name": "AB2E1710-DE11-4F13-9D20-ED664C2E59AB_1_102_o",
+      "type": "RECTANGLE",
+      "box": {
+        "x": 19551,
+        "y": -107,
+        "w": 1320,
+        "h": 2867.97
+      },
+      "strokeWeight": 3.68,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "c547ed4ce479a783c3d27051a0871c64981fdf34",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "page": "Components",
+  "id": "50:844",
+  "name": "Annotation / Status / On hold",
+  "type": "COMPONENT",
+  "box": {
+    "x": 1958,
+    "y": 438,
+    "w": 160,
+    "h": 46
+  },
+  "clipsContent": false,
+  "cornerRadius": 4,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#CC2929"
+    }
+  ],
+  "children": [
+    {
+      "id": "50:843",
+      "name": "On hold",
+      "type": "TEXT",
+      "box": {
+        "x": 1974,
+        "y": 446,
+        "w": 128,
+        "h": 30
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "styles": {
+        "fill": "White/100"
+      },
+      "characters": "On hold",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 20,
+        "fontWeight": 600,
+        "lineHeightPx": 30,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "CENTER",
+        "textAlignVertical": "TOP"
+      }
+    }
+  ]
+}

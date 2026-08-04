@@ -1,20 +1,31 @@
 # Handoff — where things stand
 
-Last shipped, 2026-08-03/04: the **Postcards home screen and every interaction behind it** —
-`#17` the committed Figma snapshot pipeline, `#18` a startup-context dedup, `#19` the feed and
-create screens, `#20` reading Figma's `Retry-After`, `#21` a route that shipped dead, `#22`
-migration `011` with comments / hides / reports / blocks, `#23` reads that no longer swallow
-errors, `#24` the orphan sweep, `#25` this file's own rewrite, `#26` the comments UI, `#27` a
-latent gap recorded, `#28` migrations `012` and `013`.
+**The Figma snapshot landed on 2026-08-04, and the home screen was rebuilt against it.** That
+was the highest-value item in this repo and it is done: `design/` holds 195 frames (298
+addressable screens), 140 components and 53 icons, committed. Every future design question is
+a local file read — `npm run figma -- tree "<screen>"` — and no rate limit can take that away.
 
-**Nothing is in flight — start new work from `main`.** `#26` gave comments a screen
-(`/postcards/[id]`, the composer, the card's comment control); **hiding, reporting, blocking
-and deleting still have no UI.** `#28` wrote two migrations that are **not applied** — see
-*Do this first*, item 1.
+What the pull changed, beyond retiring most of `docs/FIGMA-FIDELITY-TODO.md`:
 
-**Nothing in the UI has ever been compared to the design.** Figma was rate limited throughout,
-so every composition value is an inferred guess, each one recorded as *chose:* in
-`docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff rather than a re-derivation.
+- **The home screen is a swipeable card deck, not a scrolling feed.** Three cards stacked, the
+  two behind fanned at exactly ±2°. It was built as a vertical feed because nobody could see
+  the design.
+- **The photo is 5:3, not the 4:5 that was guessed.** Card 342×448, radius 8, three tinted
+  drop shadows.
+- **The active nav tab is near-black, not brand green**, and the bar sits on the page colour
+  with a 1px top border. Green was wrong.
+- **`Pink/100` is the liked heart** — the one open question in the token table, now settled.
+- **The 53 icons are React components** (`npm run figma:components`), so the text-labelled
+  like and comment controls are gone.
+
+**Nothing is in flight — start new work from `main`.** Migrations `012` and `013` are still
+**not applied** — see *Do this first*, item 1; that did not change.
+
+**What is still unverified is the parts the design cannot settle.** Three home-screen elements
+are blocked on schema rather than on Figma — unread badges, photo location, and the
+hide/block/report menu — and they are tabulated in `docs/FIGMA-FIDELITY-TODO.md`. The other
+screens (create, thread) still carry their inferred composition; the snapshot can now settle
+them cheaply.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -71,41 +82,40 @@ The next actions, in the order they are worth doing:
    `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21. #24
    shipped the tool; whether it has since been *run* could not be checked from this container,
    which cannot reach `supabase.co`. The dry run is free and settles it.
-4. **Pull the Figma snapshot — this is the intended next session, and the plan was upgraded
-   on 2026-08-04 to make it possible.** Follow the sequence in *Figma — the pull, and how not
-   to burn it* below **in order**; it is six steps and only two of them are expensive. Do not
-   skip the probe. One successful pull is the highest-value thing left in this repo: it
-   retires most of `docs/FIGMA-FIDELITY-TODO.md` permanently and makes every future design
-   question a local file read.
-5. **Then verify the Postcards screens against the design**, working through the `chose:`
-   entries in `docs/FIGMA-FIDELITY-TODO.md` — now four screens' worth, including the comment
-   thread. Every composition value in them is a guess; the tokens are not.
-6. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
+4. ~~**Pull the Figma snapshot.**~~ **Done 2026-08-04** — see the top of this file. The
+   sequence below is kept as the refresh procedure, which is now a *monthly* job.
+5. **Verify the remaining Postcards screens against the design.** Home is done and
+   screenshotted; `/postcards/new` and `/postcards/[id]` still carry their inferred
+   composition, and the design has frames for both (`Create postcard`, `Home - Postcards -
+   Postcard details`). This is now a diff, not a re-derivation.
+6. **Decide the unread model** — the one product question the home screen is waiting on. The
+   design badges each filter tile and calls the deck "all new", but nothing tracks what a
+   rider has seen. Either a `postcard_views` table (exact, a row per card seen, marks on
+   swipe) or a single `profiles.postcards_seen_at` stamp (cheap, but leaving the screen marks
+   everything seen). Until then the badge counts postcards in the feed window, which is the
+   same number while nothing is marked seen. **`012` and `013` must be applied before this
+   becomes `014`.**
+7. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
-**The rest of the Postcards interaction UI is the next build.** `#26` took the comments half —
-`getPostcardComments`, `addComment` and `deleteComment` now have a screen, and the
-`comments_count` the feed had been paying for is displayed. Still callable and still called by
-nothing: `hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`, `unblockRider`,
-`deletePostcard`. Those are one surface — an overflow menu on a card — rather than six.
+**The card's overflow menu is the next build, and it is now fully specified.** Still callable
+and still called by nothing: `hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`,
+`unblockRider`, `deletePostcard`. That is one surface — an overflow menu on a card — rather
+than six, and the design draws all of it:
 
-Two things to know before starting it, both of which `#26` followed:
+| Frame | What it shows |
+|---|---|
+| `Postcard options` (`2302:5395`) | The sheet: `Hide postcard for me`, `Block account`, `Report post`, Poppins/16/Medium |
+| `Postcard hidden banner` (`2303:6009`) | The confirmation after hiding |
+| `Account blocked banner` (`2303:6169`), `Post reported banner` (`2303:6300`) | The other two confirmations |
 
-- **Extend the existing guesses, do not invent a third style.** Every composition value
-  already in the feed, create and thread screens is recorded as *chose:* in
-  `docs/FIGMA-FIDELITY-TODO.md`. A menu built to a different rhythm than the card above it is
-  worse than one built to the same wrong rhythm, because the second is one find-and-replace
-  to correct.
-- **The icons still cannot be exported**, so per decision #4 no lookalike is substituted. The
-  like and comment controls are text-labelled for that reason; hide and report should match
-  them rather than reaching for `lucide-react`.
-
-**The product call in `#25` — whether to build before the Figma window opens — was taken, not
-dodged:** `#26` built it, accepting that composition gets done twice. Worth knowing the trade
-was made deliberately if the thread comes back looking wrong on 2026-08-06.
+Build it from those frames, not by extending the old guesses — and use the real icons
+(`Hide`, `Block Account`, `Report` are all in `src/components/icons/generated.tsx`). The
+"no lookalike substitutes" workaround that made the like and comment controls text-labelled
+is retired; those controls now carry their real icons.
 
 **None of the comments UI has been run against the real database.** This container cannot
-reach `supabase.co`, so type check, lint, `next build` and 222 unit tests are the whole of its
+reach `supabase.co`, so type check, lint, `next build` and 229 unit tests are the whole of its
 verification — and the `/postcards/new` incident below is the standing proof that those four
 say the code compiles, not that the screen works. Load `/postcards/[id]` on the deployment and
 post one comment before calling it done.
@@ -138,28 +148,35 @@ a command are OR'd, so a single leftover silently undoes the whole predicate. Ea
 carries the reproducible queries in its own §Verification footer; run those rather than
 trusting this paragraph.
 
-**The one caveat that outlives all of it:** the Postcards UI has never been compared to the
-design. It was built while Figma was rate limited, so aspect ratios, spacing, byline
-placement, the whole create flow and now the comment thread are defensible guesses, each
-recorded as *chose:* so verification is a diff. It is not finished until someone has looked.
+**The home screen has now been compared to the design and rebuilt against it**, including a
+screenshot at a real 390×844 viewport. `/postcards/new` and `/postcards/[id]` have not — their
+composition is still the *chose:* guesses in `docs/FIGMA-FIDELITY-TODO.md`, and the snapshot
+settles them cheaply now.
 
-The largest of those guesses, and the one most worth challenging first: **comments live on
-their own route rather than inline on the feed card.** That shape is what `011`'s
-`revalidatePath('/postcards/${id}')` and the unused `getPostcard()` were both already built
-for, but it is a shape nobody has read off the design.
+The guess most worth challenging on the thread screen: **comments live on their own route
+rather than inline on the card.** The design has `Home - Postcards - Postcard details`
+(`1883:22772`) and a `Comment on a postcard` flow — read those before assuming the shape is
+right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and the unused
+`getPostcard()` were already built for it, which is a reason but not evidence.
 
 ## State
 
 | | |
 |---|---|
 | Migrations | `001`–`011` applied and verified live. **`012` and `013` are written and NOT applied** — see *Do this first*. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **222** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255 and 195, and the RLS baseline before this session was 264 (+5 consent, −6 friendships). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **229** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255/195 and then 263/222. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
-| Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
+| Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
 | Squad | Nine agents in `.claude/agents/`. |
-| CI | Green: type check, lint, build, RLS suite against Postgres 17. |
+| CI | Green, and **path-scoped as of 2026-08-04**: a `changes` job diffs the merge base and skips `Type Check, Lint & Build` for docs/design-only PRs and `RLS Policy Tests` for anything not touching `supabase/**`. Pushes to `main` always run both. Job names are unchanged, so the branch-protection rule below still applies. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
+
+**The v1 pages are now visibly broken, not merely inconsistent.** `rides`, `clubs` and
+`profile` still render `text-white` headings, which were legible on the v1 dark background and
+are invisible on the v2 cream gradient. Pre-existing and out of scope for the home-screen work,
+but it is a real defect a rider would see, not a styling preference. Fix it with their v2
+migration, or sooner if anyone demos those tabs.
 
 The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`
 and now `app/(app)/postcards/*` are v2, along with the `(app)` shell — its layout and the
@@ -181,10 +198,20 @@ references are gone; `grep -rn full_name src/` returns nothing.
 
 ## Figma — read `design/`, don't call the API
 
-**Built 2026-08-03.** `scripts/figma/` generates a committed, offline snapshot under
-`design/`, read with `npm run figma -- tree "<screen>"`. The pipeline is done; **the snapshot
-itself is still empty** — see the section below for the sequence that fills it.
-`design/README.md` is the full account.
+**Built 2026-08-03, populated 2026-08-04.** `scripts/figma/` generates a committed, offline
+snapshot under `design/`, read with `npm run figma -- tree "<screen>"`. Both the pipeline and
+the snapshot are done. `design/README.md` is the full account.
+
+Two things about reading it that are easy to get wrong, both learned the hard way in the same
+session:
+
+- **Hidden layers.** Figma keeps toggled-off layers in the file, so a component instance
+  carries every variant slot it does not use — the Home header still *contains* the back
+  button it hides. `tree`/`text` now omit hidden subtrees by default; `--all` shows them
+  marked `[hidden]`.
+- **Rotation is not in the bounding box.** A rotated node reports a larger box, which made the
+  fanned card stack read as three differently-sized cards. `rotation` is now carried, in
+  degrees, clockwise-positive so it drops straight into CSS.
 
 The root cause of the repeated blocks was not only the rate limit. The previous cache wrote
 to `.figma-cache.json`, which is **gitignored**, and this container is rebuilt every session —
@@ -199,82 +226,51 @@ for a file that changes about once a month. The snapshot is committed for exactl
 | `npm run figma:pull` | **yes** | Refresh — the expensive call. Monthly |
 | `npm run figma:icons` | **yes** | Export `Element / Icon / *` as SVG |
 
-## Figma — the pull, and how not to burn it
+## Figma — refreshing the snapshot
 
-**The snapshot is still not populated. `design/` holds only its README.** The pipeline is
-built, tested and committed; it has never had a window to run in.
+**The pull is done. This section is now the *refresh* procedure — a monthly job, not a
+per-session one.** It is kept because the cost model has not changed: `figma:pull` and
+`figma:icons` are the only two commands that can be rate limited, and a 429 there is measured
+in days.
 
-**The product owner upgraded the Figma plan on 2026-08-04.** That is new, and it is why this
-is now the next session's job rather than a date to wait out. What it does *not* do is make
-the sequence below optional.
-
-**Two things are genuinely unknown, and guessing wrong costs days:**
-
-- **Whether the upgrade clears the countdown already running.** `Retry-After` read `2d 4h` at
-  07:40 on 2026-08-04, clearing about 2026-08-06 12:32 UTC, and it is a real decrementing
-  counter — sampled 61 seconds apart on 2026-08-03 and observed falling by 64. A plan change
-  may reset that window or may only widen the next one. Nobody here has tested it.
-- **Whether the new tier reaches this file's token at all.** `FIGMA_ACCESS_TOKEN` is a PAT in
-  the session environment; the plan attaches to the account behind it.
-
-### The sequence — run it in order, stop where it says stop
+Run it in order and stop where it says stop:
 
 | # | Command | Cost | What it settles |
 |---|---|---|---|
-| 1 | `npm run figma:check` | 1 cheap call | Auth works; snapshot is stale (it is empty, so this is really an auth probe) |
-| 2 | `npm run figma:check -- --probe` | 7 cheap calls | Every endpoint family, with `Retry-After` per route **and the plan tier** |
-| 3 | **read the output** | 0 | It printed `plan tier starter` before the upgrade. A different tier confirms the upgrade reached this token. **If `/files/:key` or `/nodes` still say 429, STOP — do not pull, do not poll.** Come back after the printed clearing time |
+| 1 | `npm run figma:check` | 1 cheap call | Is the snapshot stale? Compares `/versions` against `design/manifest.json` |
+| 2 | `npm run figma:check -- --probe` | 7 cheap calls | Every endpoint family, with `Retry-After` per route and the plan tier |
+| 3 | **read the output** | 0 | **If `/files/:key` or `/nodes` say 429, STOP — do not pull, do not poll.** Come back after the printed clearing time |
 | 4 | `npm run figma:pull` | **expensive** | Only if step 3 is clear. Extracts automatically |
-| 5 | `npm run figma:icons` | **expensive** | All 44 `Element / Icon / *` as SVG — starts retiring `lucide-react` (11 files) |
-| 6 | commit `design/` | 0 | Permanent. Every later design question is a local read, forever |
+| 5 | `npm run figma:icons` | **expensive** | Re-export the icon set as SVG |
+| 6 | `npm run figma:components` | 0 | Regenerate the React icon components from those SVGs |
+| 7 | commit `design/` | 0 | The snapshot is worthless to the next session unless it is committed |
 
 Step 2 is what makes this deliberate rather than hopeful, and it is cheap precisely because
 the limit is **per endpoint family** — `/versions` and `/me` stay green through an outage on
 `/nodes`, which is why the probe can answer "is the door open" without touching the door.
 
-### Two things the upgrade does not fix
+**On 2026-08-04, after the plan upgrade, all seven probed 200** — including the two that had
+been 429 with a multi-day `Retry-After` the day before. So the upgrade did clear the running
+countdown, which was genuinely unknown until it was tested. The pull cost one request and
+returned 27.4 MB.
+
+### Two things the upgrade did not fix
 
 - **The library is unpublished**, so `/styles` and `/components` return 200 with empty bodies.
-  That is a publish action inside Figma, not a plan gate. Not blocking: 87% of fills reference
-  a named style and those names ship in the `styles` map of every `/nodes` response.
+  That is a publish action inside Figma, not a plan gate. Not blocking, and the pull proved
+  it: 87% of fills reference a named style and those names ship in the `styles` map of every
+  node response, which is where `design/tokens.json` comes from.
 - **The MCP server is still the wrong path.** `design/README.md` settled this — refresh over
-  REST on a PAT. Do not spend the pull through MCP tool calls.
+  REST on a PAT. Do not spend a pull through MCP tool calls.
 
-**The Variables API may now work** (it 403s below Enterprise). Reading it is fine and may be
-useful. This does **not** reopen converting the file's paint styles to variables — that would
-move the whole token layer behind that API, and the rule in `CLAUDE.md` §What Not To Do stands
-regardless of plan.
-
-**After the pull, the home-page work is a diff, not a re-derivation.** Every guessed value in
-the feed, card, create and thread screens is recorded as *chose:* in
-`docs/FIGMA-FIDELITY-TODO.md` with the file it lives in. Start with §Home / Postcards feed.
-
-### The evidence behind all of the above — measured, not assumed
-
-From `npm run figma:check -- --probe` at 2026-08-03 15:22. Re-run it rather than trusting
-this table; it is a snapshot of a countdown, and the plan has since changed.
-
-| Endpoint | State |
-|---|---|
-| `/v1/me` | 200 — proves nothing, stays green through every outage |
-| `/v1/files/:key/versions` | 200 — different bucket, which is why `figma:check` works when `figma:pull` cannot |
-| `/v1/files/:key`, `/nodes` | **429**, `Retry-After` 2d 21h — gates `figma:pull` |
-| `/v1/images/:key` | **429**, `Retry-After` 2d 21h — gates `figma:icons` |
-| `/v1/files/:key/styles`, `/components` | 200 but empty (library unpublished) |
-
-**The 429 carries `Retry-After`, and it is in seconds.** Measured 2026-08-03 by sampling it
-61 seconds apart and watching it fall by 64 — a real countdown, not a constant, and requests
-neither reset nor shorten it. `npm run figma:check -- --probe` now prints the wait per
-endpoint and when it clears, so "when can I pull?" has an exact answer.
-
-This retired a belief that had been repeated in three files and cost real time: windows do
-**not** "last hours". The live header said **69 hours**. Anyone told to "try again in a few
-hours" was going to fail three times and learn nothing.
+**The 429 carries `Retry-After`, and it is in seconds.** Measured 2026-08-03 by sampling it 61
+seconds apart and watching it fall by 64 — a real countdown, not a constant, and requests
+neither reset nor shorten it. This retired a belief repeated in three files and costing real
+time: windows do **not** "last hours". The live header said **69 hours**.
 
 Two lessons still stand: **the limit is per endpoint family**, so one 429 is never evidence
 about another route; and **when both routes to design data are shut, stop and say so** rather
-than eyeballing values off a screenshot — register the gap in `docs/FIGMA-FIDELITY-TODO.md`
-and build what does not need the design.
+than eyeballing values off a screenshot.
 
 Everything extracted from the 2026-08-02 whole-file pull is written up under *Verified
 measurements* in `docs/specs/login-onboarding.md`: every string verbatim, component geometry,
@@ -329,8 +325,8 @@ not cosmetic:
   `/friends` is not restyled, it is **deleted**. Signed off 2026-08-02 and **carried out**:
   the code half is gone, and the table drop is `013`, written and awaiting apply. See the
   half-done note in *Do this first*.
-- **The design's home is Postcards**, a photo feed. The app's home is `/dashboard`. The
-  central screen of the product is not built.
+- **The design's home is Postcards** — and as of 2026-08-04 it is built to the design: a
+  swipeable card deck with a rider/club filter bar at `/postcards`. `/dashboard` is gone.
 - **Inbox and Garage have no routes and no tables.** The schema is `profiles`, `rides`,
   `ride_members`, `clubs`, `club_members`, plus `postcards`, `postcard_likes` and `blocks`
   from `009` and `postcard_comments`, `postcard_hides` and `postcard_reports` from `011` —
@@ -344,10 +340,10 @@ not cosmetic:
 
 | # | Work | Impact | Notes |
 |---|---|---|---|
-| ~~1~~ | ~~`design-system` — login primitives~~ | — | **Done** for the login set: Button, Input, Checkbox, Pagination, AppBackground. The 44 icons and retiring `lucide-react` are still outstanding |
+| ~~1~~ | ~~`design-system` — login primitives~~ | — | **Done.** Button, Input, Checkbox, Pagination, AppBackground, plus Header, Navbar and the 53 icons as of 2026-08-04. Retiring the last `lucide-react` imports goes with the v1 pages |
 | ~~2~~ | ~~Login epic~~ | — | **Shipped** — PR #8 |
 | 3 | Restyle the 12 existing routes v1 → v2 | 4/10 | Only `app/(app)/*` remains v1 now |
-| 4 | **Postcards / Home** | 10/10 | New tables + Storage + EXIF; the core loop |
+| ~~4~~ | ~~**Postcards / Home**~~ | — | **Built to the design 2026-08-04.** What is left is the overflow menu and the unread model, both listed in *Do this first* |
 | 5 | Inbox — DMs, ride chat, notifications | 8/10 | New tables + `realtime` |
 | 6 | Trust & safety — block, report, hide | 7/10 | RLS-level; needed before real users |
 | 7 | Garage | 5/10 | Self-contained, lowest urgency |
@@ -434,6 +430,11 @@ badge says.
   which is a migration. Full note at the call site in `src/lib/actions/comments.ts`.
 - **Leaked password protection is disabled.** Supabase advisor flags it; a dashboard toggle
   that checks signups against HaveIBeenPwned.
+- **The v1 pages have white headings on a cream background** — `rides`, `clubs`, `profile`.
+  Invisible, not merely off-brand. Three `text-white` occurrences; goes with their migration.
+- **The swipe deck only moves forward.** A swipe in either direction advances, per the product
+  owner's description, so there is no way back to a card you have passed except "Start over".
+  If a carousel was meant instead, it is one change in `PostcardDeck.tsx`.
 - **Free tier auto-pauses after ~7 days idle**, taking the deployment down with no alerting.
   This already happened once, and restoring it is what reopened the anon hole. Pro before
   anything resembling launch.

@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1763:18428",
+  "name": "Element / Icon / Lock",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 2852,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "2241:10423",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12618,
+        "y": 2853,
+        "w": 20,
+        "h": 22
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "page": "Design",
+  "id": "2020:5013",
+  "name": "Annotation / Note",
+  "type": "INSTANCE",
+  "box": {
+    "x": 28384,
+    "y": 7953,
+    "w": 280,
+    "h": 64
+  },
+  "layoutMode": "VERTICAL",
+  "layoutWrap": "NO_WRAP",
+  "itemSpacing": 8,
+  "paddingLeft": 16,
+  "paddingRight": 16,
+  "paddingTop": 12,
+  "paddingBottom": 12,
+  "primaryAxisAlignItems": "CENTER",
+  "counterAxisAlignItems": "CENTER",
+  "counterAxisSizingMode": "FIXED",
+  "layoutSizingHorizontal": "FIXED",
+  "layoutSizingVertical": "HUG",
+  "clipsContent": false,
+  "rectangleCornerRadii": [
+    0,
+    8,
+    8,
+    8
+  ],
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#000000"
+    }
+  ],
+  "componentId": "1951:12880",
+  "component": "Annotation / Note",
+  "componentProperties": {
+    "Note#1951:16": {
+      "type": "TEXT",
+      "value": "The edit button is only visible when you're an admin of the club."
+    }
+  },
+  "children": [
+    {
+      "id": "I2020:5013;1951:12877",
+      "name": "Note",
+      "type": "TEXT",
+      "box": {
+        "x": 28400,
+        "y": 7965,
+        "w": 248,
+        "h": 40
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "opacity": 0.8,
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "styles": {
+        "fill": "White/100"
+      },
+      "characters": "The edit button is only visible when you're an admin of the club.",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 14,
+        "fontWeight": 500,
+        "lineHeightPx": 20,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP"
+      }
+    },
+    {
+      "id": "I2020:5013;1951:12884",
+      "name": "Corner",
+      "type": "VECTOR",
+      "box": {
+        "x": 28368,
+        "y": 7953,
+        "w": 16,
+        "h": 16
+      },
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "INHERIT",
+      "layoutGrow": 0,
+      "rectangleCornerRadii": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ]
+    }
+  ]
+}

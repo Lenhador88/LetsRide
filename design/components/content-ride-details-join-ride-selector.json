@@ -1,0 +1,368 @@
+{
+  "page": "Components",
+  "id": "1303:9425",
+  "name": "Content / Ride Details / Join Ride Selector",
+  "type": "COMPONENT",
+  "box": {
+    "x": 11338,
+    "y": 848,
+    "w": 390,
+    "h": 104
+  },
+  "layoutMode": "VERTICAL",
+  "layoutWrap": "NO_WRAP",
+  "itemSpacing": 12,
+  "paddingLeft": 16,
+  "paddingRight": 16,
+  "paddingTop": 16,
+  "paddingBottom": 16,
+  "counterAxisAlignItems": "CENTER",
+  "counterAxisSizingMode": "FIXED",
+  "layoutSizingHorizontal": "FIXED",
+  "layoutSizingVertical": "HUG",
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "children": [
+    {
+      "id": "1303:9415",
+      "name": "Are you going?",
+      "type": "TEXT",
+      "box": {
+        "x": 11479.5,
+        "y": 864,
+        "w": 107,
+        "h": 20
+      },
+      "layoutSizingHorizontal": "HUG",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "INHERIT",
+      "layoutGrow": 0,
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "text": "Poppins/14/Semibold"
+      },
+      "characters": "Are you going?",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 14,
+        "fontWeight": 600,
+        "lineHeightPx": 20,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP"
+      }
+    },
+    {
+      "id": "1303:9417",
+      "name": "v2 / Component / Button Group",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 896,
+        "w": 358,
+        "h": 40
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "paddingLeft": 1,
+      "paddingRight": 1,
+      "paddingTop": 1,
+      "paddingBottom": 1,
+      "counterAxisAlignItems": "CENTER",
+      "primaryAxisSizingMode": "FIXED",
+      "counterAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "INHERIT",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "cornerRadius": 4,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "fill": "Grey/5"
+      },
+      "componentId": "1111:6778",
+      "component": "Theme=Light, Selected=None",
+      "componentSet": "v2 / Component / Button Group",
+      "componentProperties": {
+        "Theme": {
+          "value": "Light",
+          "type": "VARIANT",
+          "boundVariables": {}
+        },
+        "Selected": {
+          "value": "None",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1303:9417;1111:6864",
+          "name": "Component / Button Group / Button",
+          "type": "INSTANCE",
+          "box": {
+            "x": 11355,
+            "y": 897,
+            "w": 118.67,
+            "h": 38
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 9,
+          "paddingBottom": 9,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 1,
+          "clipsContent": false,
+          "cornerRadius": 3,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1111:6853",
+          "component": "State=Default",
+          "componentSet": "Component / Button Group / Button",
+          "componentProperties": {
+            "Label#1111:15": {
+              "type": "TEXT",
+              "value": "Yes!"
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1303:9417;1111:6864;1111:6852",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 11371,
+                "y": 906,
+                "w": 86.67,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#666666"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/80",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "Yes!",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "I1303:9417;1111:6858",
+          "name": "Component / Button Group / Button",
+          "type": "INSTANCE",
+          "box": {
+            "x": 11473.67,
+            "y": 897,
+            "w": 118.67,
+            "h": 38
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 9,
+          "paddingBottom": 9,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 1,
+          "clipsContent": false,
+          "cornerRadius": 3,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1111:6853",
+          "component": "State=Default",
+          "componentSet": "Component / Button Group / Button",
+          "componentProperties": {
+            "Label#1111:15": {
+              "type": "TEXT",
+              "value": "Maybe"
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1303:9417;1111:6858;1111:6852",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 11489.67,
+                "y": 906,
+                "w": 86.67,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#666666"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/80",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "Maybe",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "I1303:9417;1111:6861",
+          "name": "Component / Button Group / Button",
+          "type": "INSTANCE",
+          "box": {
+            "x": 11592.33,
+            "y": 897,
+            "w": 118.67,
+            "h": 38
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 9,
+          "paddingBottom": 9,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 1,
+          "clipsContent": false,
+          "cornerRadius": 3,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1111:6853",
+          "component": "State=Default",
+          "componentSet": "Component / Button Group / Button",
+          "componentProperties": {
+            "Label#1111:15": {
+              "type": "TEXT",
+              "value": "No.."
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1303:9417;1111:6861;1111:6852",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 11608.33,
+                "y": 906,
+                "w": 86.67,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#666666"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/80",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "No..",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

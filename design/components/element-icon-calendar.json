@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1030:6130",
+  "name": "Element / Icon / Calendar",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 620,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1071:6092",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12618,
+        "y": 621,
+        "w": 20,
+        "h": 22
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

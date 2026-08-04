@@ -7,8 +7,71 @@ on:
     branches: [main]
 
 jobs:
+  # Which suites this change can actually affect. A docs or design-snapshot PR
+  # cannot break a type check or an RLS policy, and the snapshot in particular is
+  # ~35 MB of generated JSON that changes wholesale on every monthly refresh.
+  #
+  # Deliberately NOT a workflow-level `paths:` filter. That skips the workflow
+  # entirely, so the check never reports — and a required status check that never
+  # reports leaves the PR blocked forever. A job skipped by `if:` still reports,
+  # and branch protection counts it as satisfied. That matters here because the
+  # protection rule recommended in docs/HANDOFF.md requires both job names below.
+  changes:
+    name: Detect what changed
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      db: ${{ steps.filter.outputs.db }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge-base diff below needs history, not just the tip commit.
+          fetch-depth: 0
+
+      - id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          # A push to main is the deploy gate, and it is rare. Never narrow it.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+            echo "db=true" >> "$GITHUB_OUTPUT"
+            echo "Not a pull request — running everything."
+            exit 0
+          fi
+
+          files=$(git diff --name-only "$BASE_SHA"...HEAD)
+          echo "Changed files:"
+          echo "$files" | sed 's/^/  /'
+
+          # A DENYLIST of paths that cannot affect the app, not an allowlist of
+          # paths that can — the same reasoning as the public-path list in
+          # proxy.ts. A new top-level directory therefore runs CI by default:
+          # forgetting to list something costs one green run, never a missed break.
+          if echo "$files" | grep -qvE '^(docs/|design/|openspec/|\.claude/|[^/]*\.md$)'; then
+            app=true
+          else
+            app=false
+          fi
+
+          # The RLS suite's only inputs are the migration chain and the assertions
+          # themselves, so an allowlist is correct here rather than merely cheap.
+          if echo "$files" | grep -qE '^(supabase/|\.github/workflows/)'; then
+            db=true
+          else
+            db=false
+          fi
+
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "db=$db" >> "$GITHUB_OUTPUT"
+          echo "-> app=$app db=$db"
+
   ci:
     name: Type Check, Lint & Build
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -43,6 +106,8 @@ jobs:
 
   rls:
     name: RLS Policy Tests
+    needs: changes
+    if: needs.changes.outputs.db == 'true'
     runs-on: ubuntu-latest
 
     # Matches the Postgres major version the Supabase project runs.

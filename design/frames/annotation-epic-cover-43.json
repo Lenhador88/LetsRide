@@ -1,0 +1,285 @@
+{
+  "page": "Archive",
+  "id": "50:708",
+  "name": "Annotation / Epic Cover",
+  "type": "INSTANCE",
+  "box": {
+    "x": 13360,
+    "y": 1232,
+    "w": 480,
+    "h": 844
+  },
+  "clipsContent": true,
+  "cornerRadius": 8,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#000000"
+    }
+  ],
+  "componentId": "50:565",
+  "component": "Annotation / Epic Cover",
+  "componentProperties": {
+    "Epic Name#2067:7": {
+      "type": "TEXT",
+      "value": "View my own profile"
+    },
+    "Notes#1527:1": {
+      "type": "TEXT",
+      "value": "..."
+    },
+    "has Notes#1527:0": {
+      "type": "BOOLEAN",
+      "value": true
+    },
+    "Status#50:1": {
+      "type": "INSTANCE_SWAP",
+      "value": "50:845",
+      "preferredValues": [
+        {
+          "type": "COMPONENT_SET",
+          "key": "729b5354f518908496c3afd0e5f1068b25e9af8d"
+        },
+        {
+          "type": "COMPONENT",
+          "key": "c695b8f75de40b29ee8cfc8d2bbb813f58da9fb2"
+        },
+        {
+          "type": "COMPONENT",
+          "key": "eef51b40e52c031a9a75c0960cc9785db1001a31"
+        },
+        {
+          "type": "COMPONENT",
+          "key": "5db9feb4d46acb34952f63812fb5b914f429e6b0"
+        },
+        {
+          "type": "COMPONENT",
+          "key": "b4bce7615d32c33b749db08ce5c78b6a3e54e928"
+        },
+        {
+          "type": "COMPONENT",
+          "key": "4e5d49a7273a51eed0dacde1364f712d6fb15ad8"
+        }
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "I50:708;50:568",
+      "name": "Content",
+      "type": "FRAME",
+      "box": {
+        "x": 13416,
+        "y": 1312,
+        "w": 368,
+        "h": 708
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 40,
+      "primaryAxisSizingMode": "FIXED",
+      "counterAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "FIXED",
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "I50:708;50:561",
+          "name": "Epic name",
+          "type": "TEXT",
+          "box": {
+            "x": 13416,
+            "y": 1312,
+            "w": 368,
+            "h": 48
+          },
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "opacity": 0.8,
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100"
+          },
+          "characters": "View my own profile",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 32,
+            "fontWeight": 400,
+            "lineHeightPx": 48,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "I50:708;50:567",
+          "name": "Notes",
+          "type": "FRAME",
+          "box": {
+            "x": 13416,
+            "y": 1400,
+            "w": 368,
+            "h": 52
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 8,
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "I50:708;50:562",
+              "name": "Notes",
+              "type": "TEXT",
+              "box": {
+                "x": 13416,
+                "y": 1400,
+                "w": 368,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "STRETCH",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "opacity": 0.5,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              },
+              "characters": "Notes",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "I50:708;50:563",
+              "name": "...",
+              "type": "TEXT",
+              "box": {
+                "x": 13416,
+                "y": 1432,
+                "w": 368,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "STRETCH",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "opacity": 0.8,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              },
+              "characters": "...",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 400,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "I50:708;50:878",
+      "name": "Annotation / Status / Done",
+      "type": "INSTANCE",
+      "box": {
+        "x": 13672,
+        "y": 1240,
+        "w": 160,
+        "h": 46
+      },
+      "clipsContent": false,
+      "cornerRadius": 4,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#74B236"
+        }
+      ],
+      "componentId": "50:845",
+      "component": "Annotation / Status / Done",
+      "children": [
+        {
+          "id": "I50:708;50:878;50:841",
+          "name": "Done",
+          "type": "TEXT",
+          "box": {
+            "x": 13688,
+            "y": 1248,
+            "w": 128,
+            "h": 30
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/10"
+          },
+          "characters": "Done",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 20,
+            "fontWeight": 600,
+            "lineHeightPx": 30,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

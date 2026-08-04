@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "273:3790",
+  "name": "Element / Icon / Chevron Right",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 992,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "273:3792",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12625,
+        "y": 998,
+        "w": 7,
+        "h": 12
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

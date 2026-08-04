@@ -1,0 +1,638 @@
+{
+  "page": "Components",
+  "id": "2059:5732",
+  "name": "v2 / Component / Collection / Ride",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 13040,
+    "y": 3152,
+    "w": 232,
+    "h": 160
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Start Time#2059:21": {
+      "type": "TEXT",
+      "defaultValue": "14:00"
+    },
+    "Month#2059:22": {
+      "type": "TEXT",
+      "defaultValue": "NOV"
+    },
+    "Location#2059:23": {
+      "type": "TEXT",
+      "defaultValue": "Location"
+    },
+    "Date#2059:24": {
+      "type": "TEXT",
+      "defaultValue": "16"
+    },
+    "End Time#2059:25": {
+      "type": "TEXT",
+      "defaultValue": "18:00"
+    },
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Default",
+      "variantOptions": [
+        "Default",
+        "Down"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "2059:5707",
+      "name": "State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 3168,
+        "w": 200,
+        "h": 56
+      },
+      "clipsContent": false,
+      "cornerRadius": 8,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/100",
+        "fill": "Grey/100"
+      },
+      "children": [
+        {
+          "id": "2059:5651",
+          "name": "Date",
+          "type": "FRAME",
+          "box": {
+            "x": 13060,
+            "y": 3172,
+            "w": 48,
+            "h": 48
+          },
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#F2ECE6"
+            }
+          ],
+          "styles": {
+            "fills": "Grey/5",
+            "fill": "Grey/5"
+          },
+          "children": [
+            {
+              "id": "2059:5652",
+              "name": "16",
+              "type": "TEXT",
+              "box": {
+                "x": 13064,
+                "y": 3175,
+                "w": 40,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "16",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2059:5653",
+              "name": "NOV",
+              "type": "TEXT",
+              "box": {
+                "x": 13064,
+                "y": 3199,
+                "w": 40,
+                "h": 18
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#666666"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/80",
+                "text": "Poppins/12/Semibold"
+              },
+              "characters": "NOV",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 600,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2059:5712",
+          "name": "Time",
+          "type": "FRAME",
+          "box": {
+            "x": 13120,
+            "y": 3176,
+            "w": 124,
+            "h": 20
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 3,
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "2059:5709",
+              "name": "14:00",
+              "type": "TEXT",
+              "box": {
+                "x": 13120,
+                "y": 3176,
+                "w": 37,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100",
+                "text": "Poppins/14/Semibold"
+              },
+              "characters": "14:00",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2059:5710",
+              "name": "-",
+              "type": "TEXT",
+              "box": {
+                "x": 13160,
+                "y": 3176,
+                "w": 9,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100",
+                "text": "Poppins/14/Semibold"
+              },
+              "characters": "-",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2059:5711",
+              "name": "18:00",
+              "type": "TEXT",
+              "box": {
+                "x": 13172,
+                "y": 3176,
+                "w": 72,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100",
+                "text": "Poppins/14/Semibold"
+              },
+              "characters": "18:00",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2059:5656",
+          "name": "Location",
+          "type": "TEXT",
+          "box": {
+            "x": 13120,
+            "y": 3196,
+            "w": 124,
+            "h": 20
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#F2ECE6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/5",
+            "text": "Poppins/14/Medium"
+          },
+          "characters": "Location",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 500,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "2059:5733",
+      "name": "State=Down",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 3240,
+        "w": 200,
+        "h": 56
+      },
+      "clipsContent": false,
+      "cornerRadius": 8,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/100",
+        "fill": "Grey/100"
+      },
+      "children": [
+        {
+          "id": "2059:5734",
+          "name": "Date",
+          "type": "FRAME",
+          "box": {
+            "x": 13060,
+            "y": 3244,
+            "w": 48,
+            "h": 48
+          },
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#F2ECE6"
+            }
+          ],
+          "styles": {
+            "fills": "Grey/5",
+            "fill": "Grey/5"
+          },
+          "children": [
+            {
+              "id": "2059:5735",
+              "name": "16",
+              "type": "TEXT",
+              "box": {
+                "x": 13064,
+                "y": 3247,
+                "w": 40,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "16",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2059:5736",
+              "name": "NOV",
+              "type": "TEXT",
+              "box": {
+                "x": 13064,
+                "y": 3271,
+                "w": 40,
+                "h": 18
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#666666"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/80",
+                "text": "Poppins/12/Semibold"
+              },
+              "characters": "NOV",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 600,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2059:5737",
+          "name": "Time",
+          "type": "FRAME",
+          "box": {
+            "x": 13120,
+            "y": 3248,
+            "w": 124,
+            "h": 20
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 3,
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "2059:5738",
+              "name": "14:00",
+              "type": "TEXT",
+              "box": {
+                "x": 13120,
+                "y": 3248,
+                "w": 37,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100",
+                "text": "Poppins/14/Semibold"
+              },
+              "characters": "14:00",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2059:5739",
+              "name": "-",
+              "type": "TEXT",
+              "box": {
+                "x": 13160,
+                "y": 3248,
+                "w": 9,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100",
+                "text": "Poppins/14/Semibold"
+              },
+              "characters": "-",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2059:5740",
+              "name": "18:00",
+              "type": "TEXT",
+              "box": {
+                "x": 13172,
+                "y": 3248,
+                "w": 72,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100",
+                "text": "Poppins/14/Semibold"
+              },
+              "characters": "18:00",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2059:5741",
+          "name": "Location",
+          "type": "TEXT",
+          "box": {
+            "x": 13120,
+            "y": 3268,
+            "w": 124,
+            "h": 20
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#F2ECE6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/5",
+            "text": "Poppins/14/Medium"
+          },
+          "characters": "Location",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 500,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

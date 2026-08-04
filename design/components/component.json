@@ -1,0 +1,270 @@
+{
+  "page": "Components",
+  "id": "321:1653",
+  "name": "Component",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 0,
+    "y": 0,
+    "w": 390,
+    "h": 160
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Selected": {
+      "type": "VARIANT",
+      "defaultValue": "False",
+      "variantOptions": [
+        "False",
+        "True"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "321:1652",
+      "name": "Selected=False",
+      "type": "COMPONENT",
+      "box": {
+        "x": 16,
+        "y": 16,
+        "w": 358,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "321:1641",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 32,
+            "y": 32,
+            "w": 258,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#808080"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/50",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "321:1650",
+          "name": "Component / Toggle",
+          "type": "INSTANCE",
+          "box": {
+            "x": 306,
+            "y": 28,
+            "w": 52,
+            "h": 32
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#404040"
+            }
+          ],
+          "styles": {
+            "fills": "Grey (OLD)/25",
+            "fill": "Grey (OLD)/25"
+          },
+          "componentId": "321:1646",
+          "component": "Selected=False",
+          "componentSet": "Component / Toggle",
+          "componentProperties": {
+            "Selected": {
+              "value": "False",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I321:1650;321:1645",
+              "name": "Handle",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 308,
+                "y": 30,
+                "w": 28,
+                "h": 28
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#E6E6E6"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/90"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "321:1654",
+      "name": "Selected=True",
+      "type": "COMPONENT",
+      "box": {
+        "x": 16,
+        "y": 88,
+        "w": 358,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "321:1655",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 32,
+            "y": 104,
+            "w": 258,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#808080"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/50",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "321:1656",
+          "name": "Component / Toggle",
+          "type": "INSTANCE",
+          "box": {
+            "x": 306,
+            "y": 100,
+            "w": 52,
+            "h": 32
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#36B289"
+            }
+          ],
+          "styles": {
+            "fills": "Accent (OLD)/100",
+            "fill": "Accent (OLD)/100"
+          },
+          "componentId": "321:1648",
+          "component": "Selected=True",
+          "componentSet": "Component / Toggle",
+          "componentProperties": {
+            "Selected": {
+              "value": "True",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I321:1656;321:1649",
+              "name": "Handle",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 328,
+                "y": 102,
+                "w": 28,
+                "h": 28
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#262626"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/15"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

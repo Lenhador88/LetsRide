@@ -1,0 +1,571 @@
+{
+  "page": "Components",
+  "id": "1303:8411",
+  "name": "Content / Ride Details / About",
+  "type": "COMPONENT",
+  "box": {
+    "x": 11338,
+    "y": 0,
+    "w": 390,
+    "h": 408
+  },
+  "layoutMode": "VERTICAL",
+  "layoutWrap": "NO_WRAP",
+  "itemSpacing": 16,
+  "paddingTop": 16,
+  "paddingBottom": 16,
+  "counterAxisSizingMode": "FIXED",
+  "layoutSizingHorizontal": "FIXED",
+  "layoutSizingVertical": "HUG",
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1303:8277",
+      "name": "Header",
+      "type": "FRAME",
+      "box": {
+        "x": 11338,
+        "y": 16,
+        "w": 390,
+        "h": 84
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1303:8278",
+          "name": "Date + Time",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 56,
+            "w": 185,
+            "h": 48
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 4,
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1303:8279",
+              "name": "Date + Time",
+              "type": "FRAME",
+              "box": {
+                "x": 11362,
+                "y": 56,
+                "w": 185,
+                "h": 20
+              },
+              "layoutMode": "HORIZONTAL",
+              "layoutWrap": "NO_WRAP",
+              "itemSpacing": 8,
+              "counterAxisAlignItems": "CENTER",
+              "primaryAxisSizingMode": "FIXED",
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "STRETCH",
+              "layoutGrow": 0,
+              "clipsContent": false,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1303:8280",
+                  "name": "SAT, 12 NOV",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 11362,
+                    "y": 56,
+                    "w": 81,
+                    "h": 20
+                  },
+                  "layoutSizingHorizontal": "HUG",
+                  "layoutSizingVertical": "HUG",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#4D4D4D"
+                    }
+                  ],
+                  "styles": {
+                    "text": "Poppins/14/Medium"
+                  },
+                  "characters": "SAT, 12 NOV",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 14,
+                    "fontWeight": 500,
+                    "lineHeightPx": 20,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                },
+                {
+                  "id": "1303:8281",
+                  "name": "Divider",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 11451,
+                    "y": 65,
+                    "w": 2,
+                    "h": 2
+                  },
+                  "layoutSizingHorizontal": "FIXED",
+                  "layoutSizingVertical": "FIXED",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "cornerRadius": 1,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#4D4D4D"
+                    }
+                  ]
+                },
+                {
+                  "id": "1303:8282",
+                  "name": "10:00 - 15:00",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 11461,
+                    "y": 56,
+                    "w": 86,
+                    "h": 20
+                  },
+                  "layoutSizingHorizontal": "HUG",
+                  "layoutSizingVertical": "HUG",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#4D4D4D"
+                    }
+                  ],
+                  "styles": {
+                    "text": "Poppins/14/Medium"
+                  },
+                  "characters": "10:00 - 15:00",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 14,
+                    "fontWeight": 500,
+                    "lineHeightPx": 20,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1303:8283",
+              "name": "Ride type",
+              "type": "FRAME",
+              "box": {
+                "x": 11362,
+                "y": 80,
+                "w": 102,
+                "h": 24
+              },
+              "layoutMode": "HORIZONTAL",
+              "layoutWrap": "NO_WRAP",
+              "itemSpacing": 4,
+              "counterAxisAlignItems": "CENTER",
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": false,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1303:8284",
+                  "name": "Element / Icon / Globe 2",
+                  "type": "INSTANCE",
+                  "box": {
+                    "x": 11362,
+                    "y": 80,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "layoutSizingHorizontal": "FIXED",
+                  "layoutSizingVertical": "FIXED",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "componentId": "367:2468",
+                  "component": "Element / Icon / Globe 2",
+                  "children": [
+                    {
+                      "id": "I1303:8284;367:2481",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 11367,
+                        "y": 85,
+                        "w": 14,
+                        "h": 14
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#4D4D4D"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "1303:8285",
+                  "name": "Public ride",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 11390,
+                    "y": 82,
+                    "w": 74,
+                    "h": 20
+                  },
+                  "layoutSizingHorizontal": "HUG",
+                  "layoutSizingVertical": "HUG",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#4D4D4D"
+                    }
+                  ],
+                  "styles": {
+                    "text": "Poppins/14/Medium"
+                  },
+                  "characters": "Public ride",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 14,
+                    "fontWeight": 500,
+                    "lineHeightPx": 20,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "1303:8286",
+          "name": "Movember Ride",
+          "type": "TEXT",
+          "box": {
+            "x": 11362,
+            "y": 16,
+            "w": 191,
+            "h": 36
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "text": "Poppins/24/Semibold"
+          },
+          "characters": "Movember Ride",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 24,
+            "fontWeight": 600,
+            "lineHeightPx": 36,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1303:8287",
+      "name": "Location",
+      "type": "FRAME",
+      "box": {
+        "x": 11338,
+        "y": 116,
+        "w": 390,
+        "h": 120
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 8,
+      "paddingLeft": 16,
+      "paddingRight": 16,
+      "counterAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1303:8288",
+          "name": "v2 / Component / Location",
+          "type": "INSTANCE",
+          "box": {
+            "x": 11354,
+            "y": 116,
+            "w": 358,
+            "h": 120
+          },
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 8,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1142:7147",
+          "component": "Version=2",
+          "componentSet": "v2 / Component / Location",
+          "componentProperties": {
+            "Version": {
+              "value": "2",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1303:8288;1142:7153",
+              "name": "Map",
+              "type": "RECTANGLE",
+              "box": {
+                "x": 11354,
+                "y": 62,
+                "w": 358,
+                "h": 256
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "3f1c8b36b3ddb305f60d15045335f602b68ff134",
+                  "scaleMode": "FILL"
+                }
+              ]
+            },
+            {
+              "id": "I1303:8288;1142:7154",
+              "name": "Element / Icon / Location Filled",
+              "type": "INSTANCE",
+              "box": {
+                "x": 11521,
+                "y": 164,
+                "w": 24,
+                "h": 24
+              },
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "1080:6666",
+              "component": "Element / Icon / Location Filled",
+              "children": [
+                {
+                  "id": "I1303:8288;1142:7154;1080:6671",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 11524,
+                    "y": 165,
+                    "w": 18,
+                    "h": 22
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1303:8288;1142:7158",
+              "name": "Frame 29",
+              "type": "FRAME",
+              "box": {
+                "x": 11583,
+                "y": 208,
+                "w": 125,
+                "h": 24
+              },
+              "layoutMode": "HORIZONTAL",
+              "layoutWrap": "NO_WRAP",
+              "paddingLeft": 8,
+              "paddingRight": 8,
+              "paddingTop": 4,
+              "paddingBottom": 4,
+              "primaryAxisAlignItems": "CENTER",
+              "counterAxisAlignItems": "CENTER",
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "clipsContent": false,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fills": "White/100",
+                "fill": "White/100"
+              },
+              "children": [
+                {
+                  "id": "I1303:8288;1142:7157",
+                  "name": "Open in Google Maps",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 11591,
+                    "y": 212,
+                    "w": 109,
+                    "h": 16
+                  },
+                  "layoutSizingHorizontal": "HUG",
+                  "layoutSizingVertical": "HUG",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#666666"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/80",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Open in Google Maps",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1303:8289",
+      "name": "Description",
+      "type": "FRAME",
+      "box": {
+        "x": 11338,
+        "y": 252,
+        "w": 390,
+        "h": 140
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "paddingLeft": 24,
+      "paddingRight": 24,
+      "layoutSizingHorizontal": "HUG",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "INHERIT",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1303:8290",
+          "name": "Lorem ipsum dolor sit amet consectetur. Velit tincidunt cras viverra non ullamcorper elementum laoreet aliquam. Nullam cursus purus tellus dignissim nec aenean id non. Tellus proin luctus et eget blandit.",
+          "type": "TEXT",
+          "box": {
+            "x": 11362,
+            "y": 252,
+            "w": 342,
+            "h": 140
+          },
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "text": "Poppins/14/Regular"
+          },
+          "characters": "Lorem ipsum dolor sit amet consectetur. Velit tincidunt cras viverra non ullamcorper elementum laoreet aliquam.\n\nNullam cursus purus tellus dignissim nec aenean id non. Tellus proin luctus et eget blandit.",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 400,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

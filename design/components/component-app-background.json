@@ -1,0 +1,25 @@
+{
+  "page": "Components",
+  "id": "1080:6528",
+  "name": "Component / App Background",
+  "type": "COMPONENT",
+  "box": {
+    "x": 2518,
+    "y": 0,
+    "w": 390,
+    "h": 844
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#1A1A1A"
+    }
+  ],
+  "styles": {
+    "fills": "Grey (OLD)/10",
+    "fill": "Grey (OLD)/10"
+  }
+}

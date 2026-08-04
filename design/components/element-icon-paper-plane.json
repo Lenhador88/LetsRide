@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1606:15629",
+  "name": "Element / Icon / Paper Plane",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 3472,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1606:15628",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12616,
+        "y": 3474,
+        "w": 22,
+        "h": 22
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

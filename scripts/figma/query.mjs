@@ -17,7 +17,8 @@ import { argv, exit } from 'node:process'
 import { DESIGN_DIR } from './lib.mjs'
 
 const [command, ...rest] = argv.slice(2)
-const term = rest.join(' ').trim()
+const flags = rest.filter((a) => a.startsWith('--'))
+const term = rest.filter((a) => !a.startsWith('--')).join(' ').trim()
 
 async function readDesign(relative) {
   try {
@@ -58,10 +59,21 @@ function resolve(needle) {
   return matches[0]
 }
 
-function* walkPruned(node, depth = 0) {
-  yield { node, depth }
-  for (const child of node.children ?? []) yield* walkPruned(child, depth + 1)
+/**
+ * Figma keeps toggled-off layers in the file, so a component instance carries every
+ * variant slot it does not use — a Home header still contains the back button it
+ * hides. Building from those is a real and repeated mistake, so hidden subtrees are
+ * omitted by default; pass --all to see them marked instead.
+ */
+const SHOW_HIDDEN = flags.includes('--all')
+
+function* walkPruned(node, depth = 0, hidden = false) {
+  const isHidden = hidden || node.visible === false
+  if (isHidden && !SHOW_HIDDEN) return
+  yield { node, depth, hidden: isHidden }
+  for (const child of node.children ?? []) yield* walkPruned(child, depth + 1, isHidden)
 }
+
 
 switch (command) {
   case 'ls': {
@@ -84,11 +96,13 @@ switch (command) {
   case 'tree': {
     const entry = resolve(term)
     const root = await readDesign(entry.file)
-    for (const { node, depth } of walkPruned(root)) {
+    for (const { node, depth, hidden } of walkPruned(root)) {
       const box = node.box ? ` ${node.box.w}×${node.box.h}` : ''
       const style = node.styles ? `  {${Object.values(node.styles).join(', ')}}` : ''
       const chars = node.characters ? `  "${node.characters.replace(/\n/g, '\\n').slice(0, 40)}"` : ''
-      console.log(`${'  '.repeat(depth)}${node.type} · ${node.name}${box}${style}${chars}`)
+      const rot = node.rotation ? `  rotate(${node.rotation}deg)` : ''
+      const flag = hidden ? '  [hidden]' : ''
+      console.log(`${'  '.repeat(depth)}${node.type} · ${node.name}${box}${rot}${style}${chars}${flag}`)
     }
     break
   }
@@ -132,6 +146,7 @@ switch (command) {
         '  npm run figma -- show <name|id>    print one frame or component as JSON\n' +
         '  npm run figma -- tree <name|id>    print its structure, one line per node\n' +
         '  npm run figma -- text <name|id>    print every string in it\n' +
+        '      add --all to tree/text to include layers Figma has toggled off\n' +
         '  npm run figma -- tokens [pattern]  print the token tables\n' +
         '  npm run figma -- icons             list exported icons',
     )

@@ -1,0 +1,495 @@
+{
+  "page": "Components",
+  "id": "318:4527",
+  "name": "Component / Search Card",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 2518,
+    "y": 4122,
+    "w": 852,
+    "h": 780
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Default",
+      "variantOptions": [
+        "Default",
+        "Focus"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "318:4526",
+      "name": "State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 2534,
+        "y": 4138,
+        "w": 390,
+        "h": 748
+      },
+      "clipsContent": true,
+      "rectangleCornerRadii": [
+        12,
+        12,
+        0,
+        0
+      ],
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "318:4350",
+          "name": "Header",
+          "type": "FRAME",
+          "box": {
+            "x": 2534,
+            "y": 4138,
+            "w": 390,
+            "h": 88
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:4351",
+              "name": "Search bar",
+              "type": "FRAME",
+              "box": {
+                "x": 2550,
+                "y": 4162,
+                "w": 350,
+                "h": 48
+              },
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#333333"
+                }
+              ],
+              "styles": {
+                "fills": "Grey (OLD)/20",
+                "fill": "Grey (OLD)/20"
+              },
+              "children": [
+                {
+                  "id": "318:4542",
+                  "name": "Component / Search",
+                  "type": "INSTANCE",
+                  "box": {
+                    "x": 2562,
+                    "y": 4174,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "componentId": "259:7641",
+                  "component": "Component / Search",
+                  "children": [
+                    {
+                      "id": "I318:4542;259:7645",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 2564,
+                        "y": 4176,
+                        "w": 20,
+                        "h": 20
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4356",
+                  "name": "Placeholder",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 2602,
+                    "y": 4174,
+                    "w": 274,
+                    "h": 24
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/50",
+                    "text": "Poppins/16/Regular"
+                  },
+                  "characters": "Placeholder",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 16,
+                    "fontWeight": 400,
+                    "lineHeightPx": 24,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:4357",
+          "name": "Scroll area",
+          "type": "FRAME",
+          "box": {
+            "x": 2534,
+            "y": 4226,
+            "w": 390,
+            "h": 311
+          },
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:4358",
+              "name": "List",
+              "type": "FRAME",
+              "box": {
+                "x": 2534,
+                "y": 4226,
+                "w": 390,
+                "h": 360
+              },
+              "layoutMode": "VERTICAL",
+              "layoutWrap": "NO_WRAP",
+              "counterAxisSizingMode": "FIXED",
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "HUG",
+              "clipsContent": false,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:4525",
+      "name": "State=Focus",
+      "type": "COMPONENT",
+      "box": {
+        "x": 2964,
+        "y": 4138,
+        "w": 390,
+        "h": 748
+      },
+      "clipsContent": true,
+      "rectangleCornerRadii": [
+        12,
+        12,
+        0,
+        0
+      ],
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "318:4361",
+          "name": "Header",
+          "type": "FRAME",
+          "box": {
+            "x": 2964,
+            "y": 4138,
+            "w": 390,
+            "h": 88
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:4362",
+              "name": "Search bar",
+              "type": "FRAME",
+              "box": {
+                "x": 2980,
+                "y": 4162,
+                "w": 350,
+                "h": 48
+              },
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#333333"
+                }
+              ],
+              "styles": {
+                "fills": "Grey (OLD)/20",
+                "fill": "Grey (OLD)/20"
+              },
+              "children": [
+                {
+                  "id": "318:4544",
+                  "name": "Component / Search",
+                  "type": "INSTANCE",
+                  "box": {
+                    "x": 2992,
+                    "y": 4174,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "componentId": "259:7641",
+                  "component": "Component / Search",
+                  "children": [
+                    {
+                      "id": "I318:4544;259:7645",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 2994,
+                        "y": 4176,
+                        "w": 20,
+                        "h": 20
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4366",
+                  "name": "Value",
+                  "type": "FRAME",
+                  "box": {
+                    "x": 3032,
+                    "y": 4174,
+                    "w": 161,
+                    "h": 24
+                  },
+                  "layoutMode": "HORIZONTAL",
+                  "layoutWrap": "NO_WRAP",
+                  "counterAxisAlignItems": "CENTER",
+                  "layoutSizingHorizontal": "HUG",
+                  "layoutSizingVertical": "HUG",
+                  "clipsContent": false,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "318:4367",
+                      "name": "Value",
+                      "type": "TEXT",
+                      "box": {
+                        "x": 3032,
+                        "y": 4174,
+                        "w": 46,
+                        "h": 24
+                      },
+                      "layoutSizingHorizontal": "HUG",
+                      "layoutSizingVertical": "HUG",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#E6E6E6"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/90",
+                        "text": "Poppins/16/Regular"
+                      },
+                      "characters": "Value",
+                      "text": {
+                        "fontFamily": "Poppins",
+                        "fontSize": 16,
+                        "fontWeight": 400,
+                        "lineHeightPx": 24,
+                        "letterSpacing": 0,
+                        "textAlignHorizontal": "LEFT",
+                        "textAlignVertical": "TOP"
+                      }
+                    },
+                    {
+                      "id": "318:4530",
+                      "name": "Element / Type Indicator",
+                      "type": "INSTANCE",
+                      "box": {
+                        "x": 3078,
+                        "y": 4178,
+                        "w": 1,
+                        "h": 16
+                      },
+                      "layoutSizingHorizontal": "FIXED",
+                      "layoutSizingVertical": "FIXED",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "clipsContent": false,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#36B289"
+                        }
+                      ],
+                      "styles": {
+                        "fills": "Accent (OLD)/100",
+                        "fill": "Accent (OLD)/100"
+                      },
+                      "componentId": "318:1088",
+                      "component": "Element / Type Indicator"
+                    },
+                    {
+                      "id": "319:923",
+                      "name": "Autocomplete",
+                      "type": "TEXT",
+                      "box": {
+                        "x": 3079,
+                        "y": 4174,
+                        "w": 114,
+                        "h": 24
+                      },
+                      "layoutSizingHorizontal": "HUG",
+                      "layoutSizingVertical": "HUG",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50",
+                        "text": "Poppins/16/Regular"
+                      },
+                      "characters": "Autocomplete",
+                      "text": {
+                        "fontFamily": "Poppins",
+                        "fontSize": 16,
+                        "fontWeight": 400,
+                        "lineHeightPx": 24,
+                        "letterSpacing": 0,
+                        "textAlignHorizontal": "LEFT",
+                        "textAlignVertical": "TOP"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:4406",
+          "name": "Component / iOS / Keyboard",
+          "type": "INSTANCE",
+          "box": {
+            "x": 2964,
+            "y": 4537,
+            "w": 390,
+            "h": 349
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "146:916",
+          "component": "Component / iOS / Keyboard",
+          "children": [
+            {
+              "id": "I318:4406;146:913",
+              "name": "IMG_2734",
+              "type": "RECTANGLE",
+              "box": {
+                "x": 2964,
+                "y": 4537,
+                "w": 390,
+                "h": 349
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "049dbec65d3498e1d4f78ec60012db607935ac50",
+                  "scaleMode": "STRETCH"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "page": "Archive",
+  "id": "1683:9600",
+  "name": "Frame 70",
+  "type": "FRAME",
+  "box": {
+    "x": -14283,
+    "y": 34399,
+    "w": 390,
+    "h": 847.35
+  },
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1683:8694",
+      "name": "BB07AF28-C061-4587-9CEB-49E08FD9265B_4_5005_c",
+      "type": "RECTANGLE",
+      "box": {
+        "x": -14283,
+        "y": 34399,
+        "w": 390,
+        "h": 847.35
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "4791c87c0df40121a4bb4d0ca7e5e513a40e08c4",
+          "scaleMode": "FILL"
+        }
+      ]
+    },
+    {
+      "id": "1683:9601",
+      "name": "Rectangle 35",
+      "type": "RECTANGLE",
+      "box": {
+        "x": -14283,
+        "y": 34399,
+        "w": 16,
+        "h": 64
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#D9D9D9"
+        }
+      ]
+    }
+  ]
+}

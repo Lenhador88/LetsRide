@@ -1,0 +1,254 @@
+{
+  "page": "Components",
+  "id": "1111:6855",
+  "name": "Component / Button Group / Button",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 0,
+    "y": 260,
+    "w": 112,
+    "h": 178
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Label#1111:15": {
+      "type": "TEXT",
+      "defaultValue": "Label"
+    },
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Default",
+      "variantOptions": [
+        "Default",
+        "Down",
+        "Selected"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "1111:6854",
+      "name": "State=Selected",
+      "type": "COMPONENT",
+      "box": {
+        "x": 16,
+        "y": 384,
+        "w": 80,
+        "h": 38
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "paddingLeft": 16,
+      "paddingRight": 16,
+      "paddingTop": 9,
+      "paddingBottom": 9,
+      "primaryAxisAlignItems": "CENTER",
+      "counterAxisAlignItems": "CENTER",
+      "primaryAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "cornerRadius": 3,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "styles": {
+        "fills": "White/100",
+        "fill": "White/100"
+      },
+      "children": [
+        {
+          "id": "1111:6850",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 32,
+            "y": 393,
+            "w": 48,
+            "h": 20
+          },
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 1,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/10",
+            "text": "Poppins/14/Semibold"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 600,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1111:6853",
+      "name": "State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 16,
+        "y": 276,
+        "w": 80,
+        "h": 38
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "paddingLeft": 16,
+      "paddingRight": 16,
+      "paddingTop": 9,
+      "paddingBottom": 9,
+      "primaryAxisAlignItems": "CENTER",
+      "counterAxisAlignItems": "CENTER",
+      "primaryAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "cornerRadius": 3,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1111:6852",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 32,
+            "y": 285,
+            "w": 48,
+            "h": 20
+          },
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 1,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#4D4D4D"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/30",
+            "text": "Poppins/14/Medium"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 500,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1111:6856",
+      "name": "State=Down",
+      "type": "COMPONENT",
+      "box": {
+        "x": 16,
+        "y": 330,
+        "w": 80,
+        "h": 38
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "paddingLeft": 16,
+      "paddingRight": 16,
+      "paddingTop": 9,
+      "paddingBottom": 9,
+      "primaryAxisAlignItems": "CENTER",
+      "counterAxisAlignItems": "CENTER",
+      "primaryAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "cornerRadius": 3,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#B3B3B3"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/70",
+        "fill": "Grey (OLD)/70"
+      },
+      "children": [
+        {
+          "id": "1111:6857",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 32,
+            "y": 339,
+            "w": 48,
+            "h": 20
+          },
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 1,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#4D4D4D"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/30",
+            "text": "Poppins/14/Medium"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 500,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

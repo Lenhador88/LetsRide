@@ -1,0 +1,102 @@
+{
+  "page": "Components",
+  "id": "2209:5444",
+  "name": "v2 / Component / App Background",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 13040,
+    "y": 0,
+    "w": 852,
+    "h": 876
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Type": {
+      "type": "VARIANT",
+      "defaultValue": "Regular",
+      "variantOptions": [
+        "Regular",
+        "Login / Onboarding"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "1054:5879",
+      "name": "Type=Regular",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 16,
+        "w": 390,
+        "h": 844
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "fill": "Grey/5"
+      }
+    },
+    {
+      "id": "2209:5445",
+      "name": "Type=Login / Onboarding",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13486,
+        "y": 16,
+        "w": 390,
+        "h": 844
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "angle": 135,
+          "handles": [
+            {
+              "x": -2.7755575615628914e-16,
+              "y": -2.636779683484747e-16
+            },
+            {
+              "x": 0.9999999701976783,
+              "y": 0.9999999701976783
+            },
+            {
+              "x": -0.49999998509883953,
+              "y": 0.10676141329367757
+            }
+          ],
+          "stops": [
+            {
+              "position": 0,
+              "color": "#F2ECE6"
+            },
+            {
+              "position": 1,
+              "color": "#CCB8A3"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

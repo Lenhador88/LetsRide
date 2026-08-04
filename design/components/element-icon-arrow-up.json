@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1663:11539",
+  "name": "Element / Icon / Arrow Up",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 248,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1663:11538",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12620,
+        "y": 252,
+        "w": 16,
+        "h": 16
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

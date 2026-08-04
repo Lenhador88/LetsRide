@@ -1,0 +1,41 @@
+{
+  "page": "Components",
+  "id": "2483:7559",
+  "name": "Element / Icon / Check",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12650,
+    "y": -24,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "rotation": 0,
+  "children": [
+    {
+      "id": "2483:7557",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12656,
+        "y": -16,
+        "w": 12,
+        "h": 9
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "rotation": 0,
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

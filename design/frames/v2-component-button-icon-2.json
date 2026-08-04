@@ -1,0 +1,119 @@
+{
+  "page": "Archive",
+  "id": "1200:6074",
+  "name": "v2 / Component / Button / Icon",
+  "type": "INSTANCE",
+  "box": {
+    "x": -11117,
+    "y": 39720,
+    "w": 40,
+    "h": 40
+  },
+  "clipsContent": false,
+  "cornerRadius": 8,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "componentId": "1111:6034",
+  "component": "State=Default",
+  "componentSet": "v2 / Component / Button / Icon",
+  "componentProperties": {
+    "Icon#1883:26": {
+      "type": "INSTANCE_SWAP",
+      "value": "241:7017",
+      "preferredValues": []
+    },
+    "has Notification#2370:0": {
+      "type": "BOOLEAN",
+      "value": false
+    },
+    "State": {
+      "value": "Default",
+      "type": "VARIANT",
+      "boundVariables": {}
+    }
+  },
+  "children": [
+    {
+      "id": "I1200:6074;1111:6035",
+      "name": "Element / Icon / Options",
+      "type": "INSTANCE",
+      "box": {
+        "x": -11109,
+        "y": 39728,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "241:7017",
+      "component": "Element / Icon / Options",
+      "children": [
+        {
+          "id": "I1200:6074;1111:6035;241:7415",
+          "name": "Icon",
+          "type": "VECTOR",
+          "box": {
+            "x": -11099,
+            "y": 39731,
+            "w": 4,
+            "h": 18
+          },
+          "strokeWeight": 0,
+          "strokeAlign": "CENTER",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I1200:6074;2370:6900",
+      "name": "v2 / Component / Notification",
+      "type": "INSTANCE",
+      "box": {
+        "x": -11089,
+        "y": 39716,
+        "w": 16,
+        "h": 16
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 3,
+      "strokeAlign": "INSIDE",
+      "visible": false,
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#D92140"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "styles": {
+        "fills": "Warning/100",
+        "strokes": "Grey/5",
+        "fill": "Warning/100",
+        "stroke": "Grey/5"
+      },
+      "componentId": "2370:7297",
+      "component": "v2 / Component / Notification",
+      "componentProperties": {
+        "Notifications#1918:55": {
+          "type": "TEXT",
+          "value": "1"
+        }
+      }
+    }
+  ]
+}

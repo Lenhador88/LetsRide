@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1508:8475",
+  "name": "Element / Icon / Wrench",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 4340,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1508:8472",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12618,
+        "y": 4341,
+        "w": 21,
+        "h": 21
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

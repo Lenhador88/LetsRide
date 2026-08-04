@@ -2,9 +2,18 @@ import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
-import type { Postcard, FeedPage } from '@/types'
+import type { Postcard, FeedPage, PostcardFilterOption, PostcardFilters } from '@/types'
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
+
+/** Which slice of the feed the home screen is showing. */
+export type FeedFilter = { kind: 'rider' | 'club'; id: string }
+
+type FilterRow = {
+  image_path: string
+  author: { id: string; username: string | null; avatar_url: string | null } | null
+  club: { id: string; name: string; avatar_url: string | null } | null
+}
 
 // The raw shape PostgREST returns before the like state is folded in:
 // `likes_count` arrives as the one-row aggregate array Supabase's `(count)`
@@ -26,7 +35,7 @@ export const FEED_PAGE_SIZE = 30
 const POSTCARD_SELECT = `
   *,
   author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}),
-  club:clubs(id, name),
+  club:clubs(id, name, avatar_url),
   likes_count:postcard_likes(count),
   comments_count:postcard_comments(count)
 `
@@ -90,7 +99,10 @@ async function attachLikeState(
  * here would be the exact drift trap 009 warns about — a second copy of a
  * predicate that can silently disagree with the policy it duplicates.
  */
-export async function getFeed({ before, limit = FEED_PAGE_SIZE }: FeedPage = {}): Promise<Postcard[]> {
+export async function getFeed(
+  { before, limit = FEED_PAGE_SIZE }: FeedPage = {},
+  filter?: FeedFilter
+): Promise<Postcard[]> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -101,8 +113,79 @@ export async function getFeed({ before, limit = FEED_PAGE_SIZE }: FeedPage = {})
     .limit(limit)
   if (before) query = query.lt('created_at', before)
 
+  // Narrowing *within* what the policy already allows. Neither of these restates
+  // the audience rule — a rider filter still cannot surface a club postcard the
+  // viewer is not a member of, because the policy runs first either way.
+  if (filter?.kind === 'rider') query = query.eq('author_id', filter.id)
+  if (filter?.kind === 'club') query = query.eq('club_id', filter.id)
+
   const rows = unwrapList(await query, 'the postcard feed')
   return attachLikeState(supabase, rows as PostcardRow[], user?.id)
+}
+
+/**
+ * The riders and clubs behind the current feed window, for the filter bar.
+ *
+ * Derived from the same bounded window the feed itself reads rather than from
+ * separate `profiles` / `clubs` queries. Two reasons: the filter bar must never
+ * offer a filter that yields an empty deck, and going through `postcards` means
+ * one policy decides what appears here and what appears in the deck. Asking
+ * `clubs` directly would be a second visibility predicate to keep in step.
+ */
+export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<PostcardFilters> {
+  const supabase = await createClient()
+
+  const rows = unwrapList(
+    await supabase
+      .from('postcards')
+      .select(
+        `image_path, author:profiles!author_id(id, username, avatar_url), club:clubs(id, name, avatar_url)`
+      )
+      .order('created_at', { ascending: false })
+      .limit(limit),
+    'your postcard filters',
+  ) as unknown as FilterRow[]
+
+  const riders = new Map<string, PostcardFilterOption>()
+  const clubs = new Map<string, PostcardFilterOption>()
+
+  for (const row of rows) {
+    if (row.author) {
+      const existing = riders.get(row.author.id)
+      if (existing) existing.count += 1
+      else
+        riders.set(row.author.id, {
+          kind: 'rider',
+          id: row.author.id,
+          name: row.author.username ?? 'Rider',
+          imageUrl: row.author.avatar_url,
+          count: 1,
+        })
+    }
+    // A null club is the app-wide feed, not an unnamed club — it has no tile.
+    if (row.club) {
+      const existing = clubs.get(row.club.id)
+      if (existing) existing.count += 1
+      else
+        clubs.set(row.club.id, {
+          kind: 'club',
+          id: row.club.id,
+          name: row.club.name,
+          imageUrl: row.club.avatar_url,
+          count: 1,
+        })
+    }
+  }
+
+  const collagePaths = rows.slice(0, 4).map((row) => row.image_path)
+  const signed = await signImagePaths(collagePaths, supabase)
+
+  return {
+    total: rows.length,
+    collage: collagePaths.map((path) => signed.get(path)).filter((url): url is string => !!url),
+    riders: [...riders.values()],
+    clubs: [...clubs.values()],
+  }
 }
 
 /** The same feed, scoped to one club. RLS still decides whether the viewer

@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "259:7641",
+  "name": "Component / Search",
+  "type": "COMPONENT",
+  "box": {
+    "x": 2518,
+    "y": 3998,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "259:7645",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 2520,
+        "y": 4000,
+        "w": 20,
+        "h": 20
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#E6E6E6"
+        }
+      ],
+      "styles": {
+        "fill": "Grey (OLD)/90"
+      }
+    }
+  ]
+}

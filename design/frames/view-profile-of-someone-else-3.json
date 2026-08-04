@@ -1,0 +1,1998 @@
+{
+  "page": "Archive",
+  "id": "871:11457",
+  "name": "View profile of someone else",
+  "type": "FRAME",
+  "box": {
+    "x": -11516,
+    "y": 39664,
+    "w": 390,
+    "h": 1652
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "styles": {
+    "fills": "White/100",
+    "fill": "White/100"
+  },
+  "children": [
+    {
+      "id": "1883:20357",
+      "name": "v2 / Component / App Background",
+      "type": "FRAME",
+      "box": {
+        "x": -11516,
+        "y": 39664,
+        "w": 390,
+        "h": 1652
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "fill": "Grey/5"
+      }
+    },
+    {
+      "id": "871:11460",
+      "name": "Header image",
+      "type": "FRAME",
+      "box": {
+        "x": -11508,
+        "y": 39768,
+        "w": 374,
+        "h": 160
+      },
+      "clipsContent": true,
+      "cornerRadius": 8,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "871:12504",
+          "name": "image 22",
+          "type": "RECTANGLE",
+          "box": {
+            "x": -11862,
+            "y": 39737,
+            "w": 912,
+            "h": 444
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "06357a5590b317067ad18a986a55b07b66c4788d",
+              "scaleMode": "FILL"
+            }
+          ]
+        },
+        {
+          "id": "871:12518",
+          "name": "Tour line",
+          "type": "GROUP",
+          "box": {
+            "x": -11367.5,
+            "y": 39783,
+            "w": 197,
+            "h": 147
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "871:12515",
+              "name": "Dashed line",
+              "type": "VECTOR",
+              "box": {
+                "x": -11329,
+                "y": 39783.5,
+                "w": 158.5,
+                "h": 146.5
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "stroke": "White/100"
+              }
+            },
+            {
+              "id": "871:12514",
+              "name": "Solid line",
+              "type": "VECTOR",
+              "box": {
+                "x": -11367.5,
+                "y": 39783,
+                "w": 96.5,
+                "h": 90
+              },
+              "strokeWeight": 2,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFC000"
+                }
+              ]
+            },
+            {
+              "id": "871:12516",
+              "name": "Ellipse 6",
+              "type": "ELLIPSE",
+              "box": {
+                "x": -11336,
+                "y": 39872,
+                "w": 12,
+                "h": 12
+              },
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFC000"
+                }
+              ]
+            },
+            {
+              "id": "871:12519",
+              "name": "Ellipse 7",
+              "type": "ELLIPSE",
+              "box": {
+                "x": -11332,
+                "y": 39876,
+                "w": 4,
+                "h": 4
+              },
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFC000"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "871:11462",
+      "name": "Avatar",
+      "type": "FRAME",
+      "box": {
+        "x": -11492,
+        "y": 39840,
+        "w": 128,
+        "h": 128
+      },
+      "clipsContent": false,
+      "cornerRadius": 100,
+      "strokeWeight": 4,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/10",
+        "fill": "Grey (OLD)/10"
+      },
+      "children": [
+        {
+          "id": "871:11463",
+          "name": "image",
+          "type": "ELLIPSE",
+          "box": {
+            "x": -11488,
+            "y": 39844,
+            "w": 120,
+            "h": 120
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "a6d87029b1c769393a545493a2927b1bc9e1f11d",
+              "scaleMode": "FILL"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "871:12530",
+      "name": "Location",
+      "type": "FRAME",
+      "box": {
+        "x": -11492,
+        "y": 40012,
+        "w": 144,
+        "h": 20
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 4,
+      "counterAxisAlignItems": "CENTER",
+      "layoutSizingHorizontal": "HUG",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1883:20513",
+          "name": "Element / Icon / Location Outline",
+          "type": "FRAME",
+          "box": {
+            "x": -11492,
+            "y": 40014,
+            "w": 16,
+            "h": 16
+          },
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1883:20514",
+              "name": "Icon",
+              "type": "VECTOR",
+              "box": {
+                "x": -11490,
+                "y": 40014.67,
+                "w": 12,
+                "h": 14.67
+              },
+              "strokeWeight": 2,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#4D4D4D"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/30"
+              }
+            }
+          ]
+        },
+        {
+          "id": "871:12539",
+          "name": "Rochefort, France",
+          "type": "TEXT",
+          "box": {
+            "x": -11472,
+            "y": 40012,
+            "w": 124,
+            "h": 20
+          },
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#4D4D4D"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/30",
+            "text": "Poppins/14/Medium"
+          },
+          "characters": "Rochefort, France",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 500,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1043:6679",
+      "name": "Title",
+      "type": "FRAME",
+      "box": {
+        "x": -11492,
+        "y": 39976,
+        "w": 219,
+        "h": 36
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 8,
+      "counterAxisAlignItems": "CENTER",
+      "layoutSizingHorizontal": "HUG",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "871:12527",
+          "name": "Itchy Boots",
+          "type": "TEXT",
+          "box": {
+            "x": -11492,
+            "y": 39976,
+            "w": 135,
+            "h": 36
+          },
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/10",
+            "text": "Poppins/24/Semibold"
+          },
+          "characters": "Itchy Boots",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 24,
+            "fontWeight": 600,
+            "lineHeightPx": 36,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "871:12531",
+          "name": "Touring",
+          "type": "FRAME",
+          "box": {
+            "x": -11349,
+            "y": 39985,
+            "w": 76,
+            "h": 18
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 4,
+          "paddingLeft": 6,
+          "paddingRight": 6,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#CC4429"
+            }
+          ],
+          "children": [
+            {
+              "id": "871:12532",
+              "name": "Circle",
+              "type": "ELLIPSE",
+              "box": {
+                "x": -11343,
+                "y": 39991,
+                "w": 6,
+                "h": 6
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "871:12533",
+              "name": "TOURING",
+              "type": "TEXT",
+              "box": {
+                "x": -11333,
+                "y": 39985,
+                "w": 54,
+                "h": 18
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100",
+                "text": "Poppins/12/Semibold"
+              },
+              "characters": "TOURING",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 600,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1043:6680",
+      "name": "Stats",
+      "type": "FRAME",
+      "box": {
+        "x": -11492,
+        "y": 40056,
+        "w": 342,
+        "h": 42
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 40,
+      "paddingLeft": 16,
+      "paddingRight": 16,
+      "counterAxisAlignItems": "CENTER",
+      "primaryAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1043:6681",
+          "name": "Frame 42",
+          "type": "FRAME",
+          "box": {
+            "x": -11476,
+            "y": 40056,
+            "w": 45,
+            "h": 42
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 12,
+          "primaryAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1043:6682",
+              "name": "87",
+              "type": "TEXT",
+              "box": {
+                "x": -11464,
+                "y": 40056,
+                "w": 20,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/10",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "87",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "1043:6683",
+              "name": "Rides",
+              "type": "TEXT",
+              "box": {
+                "x": -11464,
+                "y": 40080,
+                "w": 33,
+                "h": 18
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#4D4D4D"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/30",
+                "text": "Poppins/12/Regular"
+              },
+              "characters": "Rides",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 400,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "1043:6684",
+              "name": "Line",
+              "type": "RECTANGLE",
+              "box": {
+                "x": -11476,
+                "y": 40056,
+                "w": 1,
+                "h": 42
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#B3B3B3"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/70"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1043:6685",
+          "name": "Frame 41",
+          "type": "FRAME",
+          "box": {
+            "x": -11391,
+            "y": 40056,
+            "w": 76,
+            "h": 42
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 12,
+          "primaryAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1043:6686",
+              "name": "11.561",
+              "type": "TEXT",
+              "box": {
+                "x": -11379,
+                "y": 40056,
+                "w": 43,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/10",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "11.561",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "1043:6687",
+              "name": "Line",
+              "type": "RECTANGLE",
+              "box": {
+                "x": -11391,
+                "y": 40056,
+                "w": 1,
+                "h": 42
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#B3B3B3"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/70"
+              }
+            },
+            {
+              "id": "1043:6688",
+              "name": "Kilometers",
+              "type": "TEXT",
+              "box": {
+                "x": -11379,
+                "y": 40080,
+                "w": 64,
+                "h": 18
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#4D4D4D"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/30",
+                "text": "Poppins/12/Regular"
+              },
+              "characters": "Kilometers",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 400,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1043:6689",
+          "name": "Frame 43",
+          "type": "FRAME",
+          "box": {
+            "x": -11275,
+            "y": 40056,
+            "w": 70,
+            "h": 42
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 12,
+          "primaryAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1043:6690",
+              "name": "22",
+              "type": "TEXT",
+              "box": {
+                "x": -11263,
+                "y": 40056,
+                "w": 19,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/10",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "22",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "1043:6691",
+              "name": "Line",
+              "type": "RECTANGLE",
+              "box": {
+                "x": -11275,
+                "y": 40056,
+                "w": 1,
+                "h": 42
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#B3B3B3"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/70"
+              }
+            },
+            {
+              "id": "1043:6692",
+              "name": "Countries",
+              "type": "TEXT",
+              "box": {
+                "x": -11263,
+                "y": 40080,
+                "w": 58,
+                "h": 18
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#4D4D4D"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/30",
+                "text": "Poppins/12/Regular"
+              },
+              "characters": "Countries",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 400,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1043:6693",
+      "name": "Actions",
+      "type": "FRAME",
+      "box": {
+        "x": -11492,
+        "y": 40238,
+        "w": 342,
+        "h": 40
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 8,
+      "primaryAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1883:20517",
+          "name": "Component / Button",
+          "type": "FRAME",
+          "box": {
+            "x": -11492,
+            "y": 40238,
+            "w": 143,
+            "h": 40
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 10,
+          "paddingBottom": 10,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 1,
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#36B289"
+            }
+          ],
+          "styles": {
+            "fills": "Accent (OLD)/100",
+            "fill": "Accent (OLD)/100"
+          },
+          "children": [
+            {
+              "id": "1883:20518",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": -11458,
+                "y": 40248,
+                "w": 75,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/10",
+                "text": "Poppins/14/Semibold"
+              },
+              "characters": "Add friend",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1883:20519",
+          "name": "Component / Button",
+          "type": "FRAME",
+          "box": {
+            "x": -11341,
+            "y": 40238,
+            "w": 143,
+            "h": 40
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 10,
+          "paddingBottom": 10,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 1,
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fills": "White/5%",
+            "fill": "White/5%"
+          },
+          "children": [
+            {
+              "id": "1883:20520",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": -11315,
+                "y": 40248,
+                "w": 91,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#B3B3B3"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/70",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "Invite to club",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1883:20521",
+          "name": "Component / Button",
+          "type": "FRAME",
+          "box": {
+            "x": -11190,
+            "y": 40238,
+            "w": 40,
+            "h": 40
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 8,
+          "paddingRight": 8,
+          "paddingTop": 8,
+          "paddingBottom": 8,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fills": "White/5%",
+            "fill": "White/5%"
+          },
+          "children": [
+            {
+              "id": "1883:20569",
+              "name": "Element / Icon / Kebab",
+              "type": "FRAME",
+              "box": {
+                "x": -11182,
+                "y": 40246,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:20570",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": -11172,
+                    "y": 40249,
+                    "w": 4,
+                    "h": 18
+                  },
+                  "strokeWeight": 0,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#B3B3B3"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/70"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1043:6697",
+      "name": "Description",
+      "type": "FRAME",
+      "box": {
+        "x": -11492,
+        "y": 40122,
+        "w": 342,
+        "h": 92
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1043:6698",
+          "name": "Lorem ipsum dolor sit amet consectetur. Elit pulvinar gravida faucibus in mus nulla. Lectus odio amet vitae sed. Est libero eget duis...",
+          "type": "TEXT",
+          "box": {
+            "x": -11492,
+            "y": 40122,
+            "w": 342,
+            "h": 60
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/10",
+            "text": "Poppins/14/Regular"
+          },
+          "characters": "Lorem ipsum dolor sit amet consectetur. Elit pulvinar gravida faucibus in mus nulla. Lectus odio amet vitae sed. Est libero eget duis...",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 400,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "1883:20515",
+          "name": "Component / Button",
+          "type": "FRAME",
+          "box": {
+            "x": -11492,
+            "y": 40182,
+            "w": 68,
+            "h": 32
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 8,
+          "paddingTop": 7,
+          "paddingBottom": 7,
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1883:20516",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": -11492,
+                "y": 40189,
+                "w": 68,
+                "h": 18
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#4D4D4D"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/30",
+                "text": "Poppins/12/Medium"
+              },
+              "characters": "Show more",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 500,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1883:20358",
+      "name": "v2 / Component / Navigation / Bar",
+      "type": "FRAME",
+      "box": {
+        "x": -11516,
+        "y": 41228,
+        "w": 390,
+        "h": 88
+      },
+      "clipsContent": false,
+      "strokeWeight": 2,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#E6E6E6"
+        }
+      ],
+      "styles": {
+        "fills": "White/100",
+        "strokes": "Grey (OLD)/90",
+        "fill": "White/100",
+        "stroke": "Grey (OLD)/90"
+      },
+      "children": [
+        {
+          "id": "1883:20359",
+          "name": "Buttons",
+          "type": "FRAME",
+          "box": {
+            "x": -11492,
+            "y": 41228,
+            "w": 342,
+            "h": 56
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1883:20681",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -11492,
+                "y": 41228,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:21602",
+                  "name": "Element / Icon / Home",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11470,
+                    "y": 41236,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:21603",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11467,
+                        "y": 41238.5,
+                        "w": 18,
+                        "h": 19.5
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#1A1A1A"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey/100"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:20683",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -11473,
+                    "y": 41264,
+                    "w": 31,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Home",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:20687",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -11423.6,
+                "y": 41228,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:21723",
+                  "name": "Element / Icon / Calendar",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11401.6,
+                    "y": 41236,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:21724",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11399.6,
+                        "y": 41237,
+                        "w": 20,
+                        "h": 22
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:20689",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -11403.6,
+                    "y": 41264,
+                    "w": 28,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/60",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Rides",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:20684",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -11355.2,
+                "y": 41228,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:21312",
+                  "name": "Element / Icon / Clubs",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11333.2,
+                    "y": 41236,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:21313",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11332.2,
+                        "y": 41238,
+                        "w": 22,
+                        "h": 20
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:20686",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -11336.2,
+                    "y": 41264,
+                    "w": 30,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/60",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Clubs",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:20690",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -11286.8,
+                "y": 41228,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:21137",
+                  "name": "Element / Icon / Profile",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11264.8,
+                    "y": 41236,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:21138",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11263.8,
+                        "y": 41237,
+                        "w": 22,
+                        "h": 22
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:20692",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -11268.8,
+                    "y": 41264,
+                    "w": 32,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/60",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Profile",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:20693",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -11218.4,
+                "y": 41228,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:21180",
+                  "name": "Element / Icon / Menu",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11196.4,
+                    "y": 41236,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:21181",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11192.4,
+                        "y": 41242,
+                        "w": 16,
+                        "h": 12
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:20695",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -11198.4,
+                    "y": 41264,
+                    "w": 29,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/60",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Menu",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "871:12490",
+      "name": "Component / Header",
+      "type": "FRAME",
+      "box": {
+        "x": -11516,
+        "y": 39664,
+        "w": 390,
+        "h": 104
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "styles": {
+        "fills": "White/100",
+        "fill": "White/100"
+      },
+      "children": [
+        {
+          "id": "871:12495",
+          "name": "Control bar",
+          "type": "FRAME",
+          "box": {
+            "x": -11508,
+            "y": 39720,
+            "w": 374,
+            "h": 40
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 8,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1883:20961",
+              "name": "Component / Button",
+              "type": "FRAME",
+              "box": {
+                "x": -11508,
+                "y": 39720,
+                "w": 40,
+                "h": 40
+              },
+              "layoutMode": "HORIZONTAL",
+              "layoutWrap": "NO_WRAP",
+              "paddingLeft": 8,
+              "paddingRight": 8,
+              "paddingTop": 8,
+              "paddingBottom": 8,
+              "primaryAxisAlignItems": "CENTER",
+              "counterAxisAlignItems": "CENTER",
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": false,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:21316",
+                  "name": "Element / Icon / Arrow Left",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11500,
+                    "y": 39728,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "layoutSizingHorizontal": "FIXED",
+                  "layoutSizingVertical": "FIXED",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:21317",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11496,
+                        "y": 39732,
+                        "w": 16,
+                        "h": 16
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "rotation": -180,
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#4D4D4D"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/30"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "871:12506",
+              "name": "Itchy Boots",
+              "type": "TEXT",
+              "box": {
+                "x": -11460,
+                "y": 39728,
+                "w": 278,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/10",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "Itchy Boots",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "1883:20963",
+              "name": "Component / Button",
+              "type": "FRAME",
+              "box": {
+                "x": -11174,
+                "y": 39720,
+                "w": 40,
+                "h": 40
+              },
+              "layoutMode": "HORIZONTAL",
+              "layoutWrap": "NO_WRAP",
+              "paddingLeft": 8,
+              "paddingRight": 8,
+              "paddingTop": 8,
+              "paddingBottom": 8,
+              "primaryAxisAlignItems": "CENTER",
+              "counterAxisAlignItems": "CENTER",
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": false,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:21320",
+                  "name": "Element / Icon / Kebab",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11166,
+                    "y": 39728,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "layoutSizingHorizontal": "FIXED",
+                  "layoutSizingVertical": "FIXED",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:21321",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11156,
+                        "y": 39731,
+                        "w": 4,
+                        "h": 18
+                      },
+                      "strokeWeight": 0,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#4D4D4D"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/30"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

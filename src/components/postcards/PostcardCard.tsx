@@ -1,7 +1,8 @@
 import { Avatar } from '@/components/ui/Avatar'
 import { LikeButton } from '@/components/postcards/LikeButton'
 import { CommentsLink } from '@/components/postcards/CommentsLink'
-import { formatRelativeTime } from '@/lib/utils'
+import { ShareButton } from '@/components/postcards/ShareButton'
+import { cn, formatPostcardDate } from '@/lib/utils'
 import type { Postcard } from '@/types'
 
 type PostcardCardProps = {
@@ -11,87 +12,129 @@ type PostcardCardProps = {
    * comment control would otherwise link to the page it is already on.
    */
   linkToThread?: boolean
+  /**
+   * True in the deck, where the card is a fixed 342×448 slot and a long caption
+   * has to scroll inside itself rather than push the action row off the bottom.
+   *
+   * False on the thread screen, where the card sits in normal flow and grows to
+   * its content. The distinction is load-bearing, not cosmetic: `flex-1` with
+   * `min-h-0` inside an auto-height column collapses to zero, so a filling
+   * caption in a flow context would render the card with no caption at all.
+   */
+  fill?: boolean
 }
 
 /**
- * One card in the feed.
+ * `v2 / Component / Postcard`, variant `Type=Home` — every dimension below is
+ * measured from the committed snapshot, replacing the guesses this file used to
+ * carry. `npm run figma -- tree "v2 / Component / Postcard"` reproduces them.
  *
- * **Every dimension here is inferred, not read.** The Figma file is rate
- * limited, so the 29 Home frames could not be opened — image aspect ratio,
- * whether the image is edge-to-edge or inset, byline placement, and the
- * caption treatment are all defensible guesses drawn from the verified token
- * set (radius 12, spacing 16/8, Grey/80 for secondary text). Each one is an
- * unchecked box in docs/FIGMA-FIDELITY-TODO.md §Home / Postcards feed and must
- * be verified against the design before this is called finished.
+ *   342×448 · 4px padding · 8px radius · 8px gap between rows
+ *   photo 334×200 (5:3, not the 4:5 previously inferred), 4px radius
+ *   caption row fills the remaining 140px
+ *   actions row 52px: like / comment / share, options pushed right
  *
- * What is NOT inferred: the colours and type sizes, which come from the token
- * tables in CLAUDE.md §Design System.
+ * The card is #FAFAFA in Figma but its fill *style* is White/100. A 1.5%
+ * difference is invisible and `bg-surface` keeps it on the token, so the token
+ * wins; the 2px white inner stroke is invisible against it for the same reason
+ * and is not reproduced.
+ *
+ * **The design's photo overlay carries city and country and the schema has
+ * neither** — `postcards` has no location columns. The date is real and renders;
+ * the location does not, rather than borrowing the author's profile location,
+ * which is where they live and not where the photo was taken. Registered in
+ * docs/FIGMA-FIDELITY-TODO.md.
  */
-export function PostcardCard({ postcard, linkToThread = true }: PostcardCardProps) {
+export function PostcardCard({ postcard, linkToThread = true, fill = false }: PostcardCardProps) {
   const username = postcard.author?.username ?? 'Rider'
 
   return (
-    <article className="overflow-hidden rounded-xl border border-border bg-surface">
-      <header className="flex items-center gap-3 p-4">
-        <Avatar src={postcard.author?.avatar_url} name={username} size="md" />
-        <div className="min-w-0 flex-1">
-          {/* Decision #7: the username is the identity everywhere a person is
-              shown. There is no full_name column to fall back to. */}
-          <p className="truncate text-sm font-semibold text-foreground">{username}</p>
-          <p className="truncate text-xs text-muted">
-            <time dateTime={postcard.created_at}>{formatRelativeTime(postcard.created_at)}</time>
-            {/* club_id IS the audience — a club name here means club-members-only,
-                its absence means the app-wide feed. */}
-            {postcard.club?.name && <> · {postcard.club.name}</>}
-          </p>
-        </div>
-      </header>
-
-      {postcard.image_url ? (
-        /* A signed URL that expires hourly. next/image would key its optimiser cache on a
-           URL that changes every hour, so every render is a cache miss and the private
-           bucket gets proxied through the optimiser for no benefit. Avatar does the same. */
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={postcard.image_url}
-          // The caption is the only text the author wrote about the photo; when
-          // there is none there is nothing truthful to describe it with, and a
-          // generated guess would be worse than an empty alt for a screen reader.
-          alt={postcard.caption ?? ''}
-          // 4:5 portrait is the inferred ratio — it suits a phone-shot photo on a
-          // 390px frame. Unverified; see the file comment above.
-          className="aspect-4/5 w-full bg-background object-cover"
-          loading="lazy"
-        />
-      ) : (
-        // A signed URL that failed rather than an image that does not exist.
-        // Saying so beats a broken-image icon.
-        <div className="flex aspect-4/5 w-full items-center justify-center bg-background px-6 text-center text-sm text-muted">
-          This photo could not be loaded.
-        </div>
+    <article
+      className={cn(
+        'flex flex-col gap-2 overflow-hidden rounded-lg bg-surface p-1',
+        fill && 'h-full'
       )}
-
-      <div className="flex flex-col gap-2 p-4">
-        {/* items-start so LikeButton's error message pushes down rather than
-            re-centring the whole row. */}
-        <div className="flex items-start gap-1">
-          <LikeButton
-            postcardId={postcard.id}
-            likesCount={postcard.likes_count ?? 0}
-            isLiked={postcard.is_liked ?? false}
+      style={{
+        // Three stacked drop shadows, measured exactly: a neutral one below and a
+        // cool/warm pair either side. The tint is what stops a white card on a
+        // cream gradient reading as flat, and it is invisible if simplified to one.
+        boxShadow:
+          '0 4px 8px #00000014, -4px -2px 16px #00AAFF14, 4px 2px 16px #FF005514',
+      }}
+    >
+      <div className="relative shrink-0 overflow-hidden rounded" style={{ aspectRatio: '334 / 200' }}>
+        {postcard.image_url ? (
+          /* A signed URL that expires hourly. next/image would key its optimiser cache on a
+             URL that changes every hour, so every render is a cache miss and the private
+             bucket gets proxied through the optimiser for no benefit. Avatar does the same. */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={postcard.image_url}
+            // The caption is the only text the author wrote about the photo; when
+            // there is none there is nothing truthful to describe it with, and a
+            // generated guess would be worse than an empty alt for a screen reader.
+            alt={postcard.caption ?? ''}
+            className="h-full w-full bg-background object-cover"
+            loading="lazy"
+            draggable={false}
           />
-          <CommentsLink
-            postcardId={postcard.id}
-            count={postcard.comments_count ?? 0}
-            linkToThread={linkToThread}
-          />
-        </div>
-        {postcard.caption && (
-          // No line clamp: the design's truncation rule and "more" affordance are
-          // unread, and inventing a clamp would silently hide a rider's words.
-          // Showing the caption in full is the reversible choice.
-          <p className="text-sm whitespace-pre-line text-foreground">{postcard.caption}</p>
+        ) : (
+          // A signed URL that failed rather than an image that does not exist.
+          // Saying so beats a broken-image icon.
+          <div className="flex h-full w-full items-center justify-center bg-background px-6 text-center text-sm text-muted">
+            This photo could not be loaded.
+          </div>
         )}
+
+        {/* 40px scrim, transparent to Grey/70%, so the date stays legible on a
+            bright photo. Measured, including the 70% end stop. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-10"
+          style={{ background: 'linear-gradient(180deg, #00000000 0%, #000000B3 100%)' }}
+        />
+        <time
+          dateTime={postcard.created_at}
+          className="absolute right-2 bottom-1.5 text-2xs font-medium text-white"
+        >
+          {formatPostcardDate(postcard.created_at)}
+        </time>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-0.5 px-3">
+        <Avatar src={postcard.author?.avatar_url} name={username} size="xs" className="mr-1" />
+        {/* Decision #7: the username is the identity everywhere a person is
+            shown. There is no full_name column to fall back to. */}
+        <span className="truncate text-xs font-semibold text-foreground">{username}</span>
+        {/* club_id IS the audience — a club name here means club-members-only,
+            its absence means the app-wide feed. */}
+        {postcard.club?.name && (
+          <>
+            <span className="shrink-0 text-xs font-semibold text-foreground">&nbsp;in&nbsp;</span>
+            <span className="truncate text-xs font-semibold text-foreground">{postcard.club.name}</span>
+          </>
+        )}
+      </div>
+
+      <div className={cn('px-3', fill && 'min-h-0 flex-1 overflow-y-auto')}>
+        <p className="text-sm whitespace-pre-line text-foreground">{postcard.caption}</p>
+      </div>
+
+      <div className="relative flex shrink-0 items-center gap-0 px-2 pt-1 pb-2">
+        <LikeButton
+          postcardId={postcard.id}
+          likesCount={postcard.likes_count ?? 0}
+          isLiked={postcard.is_liked ?? false}
+        />
+        <CommentsLink
+          postcardId={postcard.id}
+          count={postcard.comments_count ?? 0}
+          linkToThread={linkToThread}
+        />
+        <ShareButton postcardId={postcard.id} />
+        {/* The design closes this row with an overflow menu — hide, block,
+            report. Those server actions exist and nothing calls them yet, so the
+            slot is left empty rather than shipping a button that does nothing. */}
       </div>
     </article>
   )

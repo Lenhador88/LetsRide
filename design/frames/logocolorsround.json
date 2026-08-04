@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "425:4443",
+  "name": "LogoColorsRound",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -2210,
+    "y": 3305,
+    "w": 597,
+    "h": 396
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "1171f8bfa5872c9609ba435a16a08937878c2bc4",
+      "scaleMode": "FILL"
+    }
+  ]
+}

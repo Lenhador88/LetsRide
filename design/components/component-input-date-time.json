@@ -1,0 +1,401 @@
+{
+  "page": "Components",
+  "id": "321:1283",
+  "name": "Component / Input / Date + Time",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 6194,
+    "y": 0,
+    "w": 390,
+    "h": 232
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Default",
+      "variantOptions": [
+        "Default",
+        "Focus Date",
+        "Focus Time"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "321:1275",
+      "name": "State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 6210,
+        "y": 16,
+        "w": 358,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "321:1276",
+          "name": "Content",
+          "type": "FRAME",
+          "box": {
+            "x": 6226,
+            "y": 32,
+            "w": 326,
+            "h": 24
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "321:1249",
+              "name": "Saturday, 12 Nov 2022",
+              "type": "TEXT",
+              "box": {
+                "x": 6226,
+                "y": 32,
+                "w": 271,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#E6E6E6"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/90",
+                "text": "Poppins/16/Regular"
+              },
+              "characters": "Saturday, 12 Nov 2022",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 400,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "321:1250",
+              "name": "10:00",
+              "type": "TEXT",
+              "box": {
+                "x": 6513,
+                "y": 32,
+                "w": 39,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#E6E6E6"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/90",
+                "text": "Poppins/16/Regular"
+              },
+              "characters": "10:00",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 400,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "RIGHT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "321:1284",
+      "name": "State=Focus Date",
+      "type": "COMPONENT",
+      "box": {
+        "x": 6210,
+        "y": 88,
+        "w": 358,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "321:1285",
+          "name": "Content",
+          "type": "FRAME",
+          "box": {
+            "x": 6226,
+            "y": 104,
+            "w": 326,
+            "h": 24
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "321:1286",
+              "name": "Saturday, 12 Nov 2022",
+              "type": "TEXT",
+              "box": {
+                "x": 6226,
+                "y": 104,
+                "w": 271,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#36B289"
+                }
+              ],
+              "styles": {
+                "fill": "Accent (OLD)/100",
+                "text": "Poppins/16/Regular"
+              },
+              "characters": "Saturday, 12 Nov 2022",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 400,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "321:1287",
+              "name": "10:00",
+              "type": "TEXT",
+              "box": {
+                "x": 6513,
+                "y": 104,
+                "w": 39,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#E6E6E6"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/90",
+                "text": "Poppins/16/Regular"
+              },
+              "characters": "10:00",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 400,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "RIGHT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "321:1288",
+      "name": "State=Focus Time",
+      "type": "COMPONENT",
+      "box": {
+        "x": 6210,
+        "y": 160,
+        "w": 358,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#262626"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/15",
+        "fill": "Grey (OLD)/15"
+      },
+      "children": [
+        {
+          "id": "321:1289",
+          "name": "Content",
+          "type": "FRAME",
+          "box": {
+            "x": 6226,
+            "y": 176,
+            "w": 326,
+            "h": 24
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "321:1290",
+              "name": "Saturday, 12 Nov 2022",
+              "type": "TEXT",
+              "box": {
+                "x": 6226,
+                "y": 176,
+                "w": 271,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#E6E6E6"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/90",
+                "text": "Poppins/16/Regular"
+              },
+              "characters": "Saturday, 12 Nov 2022",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 400,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "321:1291",
+              "name": "10:00",
+              "type": "TEXT",
+              "box": {
+                "x": 6513,
+                "y": 176,
+                "w": 39,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#36B289"
+                }
+              ],
+              "styles": {
+                "fill": "Accent (OLD)/100",
+                "text": "Poppins/16/Regular"
+              },
+              "characters": "10:00",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 400,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "RIGHT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

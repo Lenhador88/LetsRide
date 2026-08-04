@@ -1,0 +1,261 @@
+{
+  "page": "Components",
+  "id": "1883:10123",
+  "name": "v2 / Component / Button / Icon",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 13040,
+    "y": 1140,
+    "w": 72,
+    "h": 128
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "styles": {
+    "fills": "White/100",
+    "fill": "White/100"
+  },
+  "componentPropertyDefinitions": {
+    "Icon#1883:26": {
+      "type": "INSTANCE_SWAP",
+      "defaultValue": "241:7017",
+      "preferredValues": []
+    },
+    "has Notification#2370:0": {
+      "type": "BOOLEAN",
+      "defaultValue": false
+    },
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Default",
+      "variantOptions": [
+        "Default",
+        "Down"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "1111:6034",
+      "name": "State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 1156,
+        "w": 40,
+        "h": 40
+      },
+      "clipsContent": false,
+      "cornerRadius": 8,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1111:6035",
+          "name": "Element / Icon / Options",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13064,
+            "y": 1164,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "241:7017",
+          "component": "Element / Icon / Options",
+          "children": [
+            {
+              "id": "I1111:6035;241:7415",
+              "name": "Icon",
+              "type": "VECTOR",
+              "box": {
+                "x": 13074,
+                "y": 1167,
+                "w": 4,
+                "h": 18
+              },
+              "strokeWeight": 0,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2370:6900",
+          "name": "v2 / Component / Notification",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13084,
+            "y": 1152,
+            "w": 16,
+            "h": 16
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 3,
+          "strokeAlign": "INSIDE",
+          "visible": false,
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#D92140"
+            }
+          ],
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#F2ECE6"
+            }
+          ],
+          "styles": {
+            "fills": "Warning/100",
+            "strokes": "Grey/5",
+            "fill": "Warning/100",
+            "stroke": "Grey/5"
+          },
+          "componentId": "2370:7297",
+          "component": "v2 / Component / Notification",
+          "componentProperties": {
+            "Notifications#1918:55": {
+              "type": "TEXT",
+              "value": "1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "1111:6038",
+      "name": "State=Down",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 1212,
+        "w": 40,
+        "h": 40
+      },
+      "clipsContent": false,
+      "cornerRadius": 8,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/10%",
+        "fill": "Grey/10%"
+      },
+      "children": [
+        {
+          "id": "1111:6039",
+          "name": "Element / Icon / Options",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13064,
+            "y": 1220,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "241:7017",
+          "component": "Element / Icon / Options",
+          "children": [
+            {
+              "id": "I1111:6039;241:7415",
+              "name": "Icon",
+              "type": "VECTOR",
+              "box": {
+                "x": 13074,
+                "y": 1223,
+                "w": 4,
+                "h": 18
+              },
+              "strokeWeight": 0,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2370:6891",
+          "name": "v2 / Component / Notification",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13084,
+            "y": 1208,
+            "w": 16,
+            "h": 16
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 3,
+          "strokeAlign": "INSIDE",
+          "visible": false,
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#D92140"
+            }
+          ],
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#F2ECE6"
+            }
+          ],
+          "styles": {
+            "fills": "Warning/100",
+            "strokes": "Grey/5",
+            "fill": "Warning/100",
+            "stroke": "Grey/5"
+          },
+          "componentId": "2370:7297",
+          "component": "v2 / Component / Notification",
+          "componentProperties": {
+            "Notifications#1918:55": {
+              "type": "TEXT",
+              "value": "1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,671 @@
+{
+  "page": "Components",
+  "id": "318:5194",
+  "name": "Component / Search Results / User",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 9726,
+    "y": 328,
+    "w": 422,
+    "h": 376
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Type": {
+      "type": "VARIANT",
+      "defaultValue": "Admin",
+      "variantOptions": [
+        "Admin",
+        "Invited + Pending",
+        "Invited + Accepted",
+        "Public rider",
+        "Open to invite"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "318:4730",
+      "name": "Type=Open to invite",
+      "type": "COMPONENT",
+      "box": {
+        "x": 9742,
+        "y": 632,
+        "w": 390,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:4554",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 9770,
+            "y": 648,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:4555",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 9770,
+                "y": 648,
+                "w": 24,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "032cbda0d4bf4f7c13f1f38ae7b226e726fb1132",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:4557",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 9810,
+            "y": 648,
+            "w": 298,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "319:1443",
+      "name": "Type=Invited + Accepted",
+      "type": "COMPONENT",
+      "box": {
+        "x": 9742,
+        "y": 488,
+        "w": 390,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "319:1444",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 9770,
+            "y": 504,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "319:1445",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 9770,
+                "y": 504,
+                "w": 24,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "032cbda0d4bf4f7c13f1f38ae7b226e726fb1132",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "319:1447",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 9810,
+            "y": 504,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "319:1448",
+          "name": "Element / Icon / Delete",
+          "type": "INSTANCE",
+          "box": {
+            "x": 10084,
+            "y": 504,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "318:4702",
+          "component": "Element / Icon / Delete",
+          "children": [
+            {
+              "id": "I319:1448;318:4701",
+              "name": "Icon",
+              "type": "VECTOR",
+              "box": {
+                "x": 10089,
+                "y": 509,
+                "w": 14,
+                "h": 14
+              },
+              "strokeWeight": 2,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#808080"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/50"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "367:6265",
+      "name": "Type=Invited + Pending",
+      "type": "COMPONENT",
+      "box": {
+        "x": 9742,
+        "y": 416,
+        "w": 390,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "367:6266",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 9770,
+            "y": 432,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "367:6267",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 9770,
+                "y": 432,
+                "w": 24,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "032cbda0d4bf4f7c13f1f38ae7b226e726fb1132",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "367:6273",
+          "name": "Frame 28",
+          "type": "FRAME",
+          "box": {
+            "x": 9810,
+            "y": 432,
+            "w": 107,
+            "h": 24
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 4,
+          "counterAxisAlignItems": "BASELINE",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "367:6268",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 9810,
+                "y": 432,
+                "w": 43,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#808080"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/50",
+                "text": "Poppins/16/Regular"
+              },
+              "characters": "Label",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 400,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "367:6272",
+              "name": "(Pending)",
+              "type": "TEXT",
+              "box": {
+                "x": 9857,
+                "y": 437,
+                "w": 60,
+                "h": 18
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#808080"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/50",
+                "text": "Poppins/12/Regular"
+              },
+              "characters": "(Pending)",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 12,
+                "fontWeight": 400,
+                "lineHeightPx": 18,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "367:6269",
+          "name": "Element / Icon / Delete",
+          "type": "INSTANCE",
+          "box": {
+            "x": 10084,
+            "y": 432,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "318:4702",
+          "component": "Element / Icon / Delete",
+          "children": [
+            {
+              "id": "I367:6269;318:4701",
+              "name": "Icon",
+              "type": "VECTOR",
+              "box": {
+                "x": 10089,
+                "y": 437,
+                "w": 14,
+                "h": 14
+              },
+              "strokeWeight": 2,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#808080"
+                }
+              ],
+              "styles": {
+                "fill": "Grey (OLD)/50"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:5195",
+      "name": "Type=Public rider",
+      "type": "COMPONENT",
+      "box": {
+        "x": 9742,
+        "y": 560,
+        "w": 390,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:5196",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 9770,
+            "y": 576,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:5197",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 9770,
+                "y": 576,
+                "w": 24,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "032cbda0d4bf4f7c13f1f38ae7b226e726fb1132",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:5199",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 9810,
+            "y": 576,
+            "w": 254,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "318:5202",
+          "name": "Public",
+          "type": "TEXT",
+          "box": {
+            "x": 10072,
+            "y": 579,
+            "w": 36,
+            "h": 18
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#808080"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/50",
+            "text": "Poppins/12/Regular"
+          },
+          "characters": "Public",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 12,
+            "fontWeight": 400,
+            "lineHeightPx": 18,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "RIGHT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "367:5859",
+      "name": "Type=Admin",
+      "type": "COMPONENT",
+      "box": {
+        "x": 9742,
+        "y": 344,
+        "w": 390,
+        "h": 56
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "367:5860",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 9770,
+            "y": 360,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "367:5861",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 9770,
+                "y": 360,
+                "w": 24,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "032cbda0d4bf4f7c13f1f38ae7b226e726fb1132",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "367:5863",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 9810,
+            "y": 360,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "367:5866",
+          "name": "Admin",
+          "type": "TEXT",
+          "box": {
+            "x": 10068,
+            "y": 363,
+            "w": 40,
+            "h": 18
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#808080"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/50",
+            "text": "Poppins/12/Regular"
+          },
+          "characters": "Admin",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 12,
+            "fontWeight": 400,
+            "lineHeightPx": 18,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "RIGHT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

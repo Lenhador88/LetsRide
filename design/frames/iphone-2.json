@@ -1,0 +1,43 @@
+{
+  "page": "Components",
+  "id": "2288:10337",
+  "name": "iPhone 2",
+  "type": "FRAME",
+  "box": {
+    "x": 18031,
+    "y": -107,
+    "w": 1320,
+    "h": 2868
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "children": [
+    {
+      "id": "2288:10359",
+      "name": "DE28D7B5-7D47-413E-A163-34ACA583AF7E_1_102_o 1",
+      "type": "RECTANGLE",
+      "box": {
+        "x": 18031,
+        "y": -107,
+        "w": 1320,
+        "h": 2862
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "fa91e9d79468db3a2543fff76b6ddec516cd38d7",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}

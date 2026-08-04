@@ -38,6 +38,10 @@
   --color-accent: #3D996B;          /* Accent Brand/100 — brand green. Sparing accent only: splash, success, active. Never default button fill. */
   --color-accent-foreground: #FFFFFF;
   --color-danger: #D92140;          /* Warning/100 — destructive / error. <Button variant="danger">, form error text. */
+  /* Pink/100 — CLAUDE.md listed this as "purpose not established". It is the
+     liked heart, and only that: `Button / Postcard Action` Type=Like
+     Toggled=True fills `Element / Icon / Heart Filled` with it. */
+  --color-like: #F23071;
   --color-danger-strong: #99001A;   /* Warning/110 — Warning, darker. Hover/pressed on danger. */
 
   /* App Background gradient end stop — Figma `v2 / Component / App Background`,
@@ -66,4 +70,29 @@ body {
 
 .pb-safe {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/* The design frames budget 48px above the header for the iOS status bar, which the
+   OS paints over the frame. A browser has no status bar there, so a literal 48px
+   would be a dead band under the URL bar. This resolves to the real inset when
+   installed and to the header's own 8px padding otherwise. */
+.pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+/* Both bars are `fixed`, so page content has to reserve their height itself.
+   Defined once here because the numbers come straight off the design and are
+   wrong in three different ways when each page re-derives them.
+
+   Header  = pt-safe + 40 row + 8    (`v2 / Component / Header` Type=Regular)
+   Navbar  = 56 tabs + pb-safe       (`Navigation / Bar`, the 88px variant)
+   ...with a sticky action, + 16 pad + 40 button + 8  (the 152px variant) */
+.pt-header {
+  padding-top: calc(max(0.5rem, env(safe-area-inset-top)) + 3rem);
+}
+.pb-navbar {
+  padding-bottom: calc(max(0.75rem, env(safe-area-inset-bottom)) + 3.5rem);
+}
+.pb-navbar-action {
+  padding-bottom: calc(max(0.75rem, env(safe-area-inset-bottom)) + 7.5rem);
 }

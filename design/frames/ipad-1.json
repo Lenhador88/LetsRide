@@ -1,0 +1,43 @@
+{
+  "page": "Components",
+  "id": "2288:10339",
+  "name": "iPad 1",
+  "type": "FRAME",
+  "box": {
+    "x": 21071,
+    "y": -107,
+    "w": 2064,
+    "h": 2752
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#000000"
+    }
+  ],
+  "children": [
+    {
+      "id": "2288:10361",
+      "name": "0DA38305-E11F-49FF-B136-1EBCE137A40A_1_102_o 1",
+      "type": "RECTANGLE",
+      "box": {
+        "x": 21469,
+        "y": -107,
+        "w": 1269,
+        "h": 2752
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "51dcaa3e06829c815b81b24332453c033532f57b",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}
