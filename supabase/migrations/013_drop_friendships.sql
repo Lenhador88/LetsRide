@@ -1,20 +1,16 @@
 -- 013: Remove `friendships` — a v1 feature the product no longer has.
 --
--- ###########################################################################
--- NOT YET APPLIED TO THE HOSTED PROJECT, and this one DESTROYS DATA. Written
--- 2026-08-04. Apply 012 first; then, before applying this:
+-- APPLIED 2026-08-04 as `drop_friendships` (20260804162819), after 012.
 --
---   select count(*) from public.friendships;
+-- The pre-flight this header used to demand was run first and came back **0
+-- rows**, so nothing was destroyed. That closed the open question in the
+-- original header: whether the deleted SearchRiders.tsx "Add" button had ever
+-- written a friendship. It had not.
 --
--- The expectation is 0 — at the time of writing the project held one rider,
--- one club and one ride, all created through the deployed app. Whether a
--- friendship was ever written is [INFERRED, not checked]: the deleted
--- SearchRiders.tsx did have a working "Add" button and the INSERT policy
--- permitted it, and the session that wrote this could not reach the project to
--- count. That is exactly why the check above is a STOP and not a formality.
--- If the count is not 0, get a decision: this drop is irreversible and there is
--- no export step below.
--- ###########################################################################
+-- Every number the footer predicts was checked live and matched exactly:
+-- `to_regclass` NULL, 0 friendships policies, and the total 40 -> 36 — which is
+-- the four policies this table carried, not the two an earlier draft claimed.
+-- The security advisors reported no new findings.
 --
 -- ---------------------------------------------------------------------------
 -- Why

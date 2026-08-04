@@ -18,8 +18,8 @@ What the pull changed, beyond retiring most of `docs/FIGMA-FIDELITY-TODO.md`:
 - **The 53 icons are React components** (`npm run figma:components`), so the text-labelled
   like and comment controls are gone.
 
-**Nothing is in flight — start new work from `main`.** Migrations `012` and `013` are still
-**not applied** — see *Do this first*, item 1; that did not change.
+**Nothing is in flight — start new work from `main`.** Migrations `012` and `013` were applied
+on 2026-08-04, so **the repo and the hosted schema agree for the first time since `011`**.
 
 **What is still unverified is the parts the design cannot settle.** Three home-screen elements
 are blocked on schema rather than on Figma — unread badges, photo location, and the
@@ -88,19 +88,17 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 ## Do this first
 
-**`001`–`011` are applied. `012` and `013` are written and are NOT** — the repo and the hosted
-schema disagree right now, which this project's own rules call drift. That is the top item
-below, not a footnote.
+**`001`–`013` are applied. There is no drift** — the repo and the hosted schema agree for the
+first time since `011` landed.
 
 The next actions, in the order they are worth doing:
 
-1. **Apply `012` then `013`, in that order.** `012` is a `create or replace function` and is
-   safe. **`013` drops `friendships` and destroys data** — run its pre-flight
-   (`select count(*) from public.friendships;`, expect 0) and stop if it is not 0. Both were
-   written on 2026-08-04 by a session whose Supabase write tool required an approval it did
-   not have; both carry the reason in their headers. The RLS suite already applies the whole
-   chain to a scratch database on every PR, so they are verified against the chain — just not
-   against production.
+1. ~~**Apply `012` then `013`.**~~ **Done 2026-08-04.** `013`'s pre-flight returned **0 rows**,
+   so nothing was destroyed — that settled the open question of whether the deleted
+   `SearchRiders.tsx` "Add" button had ever written a friendship. It had not. Every number
+   `013`'s footer predicts was confirmed live: `to_regclass` NULL, 0 friendships policies,
+   total 40 -> 36, every policy still `to authenticated`, `anon` still holding zero grants,
+   and the advisors reporting no new findings.
 2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project
    serves nothing and there is no alert, so the deployed app goes down silently. This needs a
    card, not a commit, and it will bite at the worst possible moment.
@@ -119,14 +117,14 @@ The next actions, in the order they are worth doing:
    rider has seen. Either a `postcard_views` table (exact, a row per card seen, marks on
    swipe) or a single `profiles.postcards_seen_at` stamp (cheap, but leaving the screen marks
    everything seen). Until then the badge counts postcards in the feed window, which is the
-   same number while nothing is marked seen. **`012` and `013` must be applied before this
-   becomes `014`.**
+   same number while nothing is marked seen. **No longer blocked** — `012`/`013` are applied,
+   so this is simply the next migration, `014`.
 7. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
 **The suggested next build is the rides list**, and it is a good one: `Rides / View all
-rides` is marked `Done`, the schema already exists (no migration, so it is not blocked
-behind `012`/`013`), and it reuses almost everything this session built.
+rides` is marked `Done`, the schema already exists (no migration needed at all), and it
+reuses almost everything this session built.
 
 | Needs | Status |
 |---|---|
@@ -174,11 +172,11 @@ would silently restore that hole. Its safety is narrowness — `search_path` pin
 schema-qualified, revoked from `public` and `anon`, and the authorization checked *inside*
 the function against `auth.uid()`. Asserted both ways in the suite.
 
-**The `/friends` + `friendships` deletion is half done.** The code half landed: the route,
-both components, the Navbar tab, the `Friendship` type, the profile page's friend count and
-the RLS fixtures are all gone. The schema half is `013`, which is **written and unapplied** —
-so the table still exists in production with nothing referencing it. That is the safe order
-for a removal (code first, schema second) and it is not finished until `013` runs.
+~~**The `/friends` + `friendships` deletion is half done.**~~ **Finished 2026-08-04.** The code
+half landed earlier — route, both components, the Navbar tab, the `Friendship` type, the
+profile page's friend count and the RLS fixtures. The schema half was `013`, now applied
+against zero rows. Code first, schema second, is the safe order for a removal, and it is the
+order this took.
 
 **Comments came back into scope on 2026-08-03**, reversing the earlier "no tables for
 comments or shares" decision. `009`'s header still says they are out of scope — that is now
@@ -208,7 +206,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 
 | | |
 |---|---|
-| Migrations | `001`–`011` applied and verified live. **`012` and `013` are written and NOT applied** — see *Do this first*. Ordering note below. |
+| Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
 | Tests | RLS suite **263** assertions (`npm test`) + Vitest **230** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255/195 and then 263/222, then 263/229. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
