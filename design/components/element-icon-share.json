@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1241:6355",
+  "name": "Element / Icon / Share",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 4092,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1241:6352",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12619,
+        "y": 4093,
+        "w": 18,
+        "h": 22
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

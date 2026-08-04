@@ -1,0 +1,157 @@
+{
+  "page": "Archive",
+  "id": "7:4",
+  "name": "Thumbnail",
+  "type": "FRAME",
+  "box": {
+    "x": -3401,
+    "y": 2790,
+    "w": 660,
+    "h": 400
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#3D996B"
+    }
+  ],
+  "styles": {
+    "fills": "Accent Brand/100",
+    "fill": "Accent Brand/100"
+  },
+  "children": [
+    {
+      "id": "7:10",
+      "name": "Text",
+      "type": "FRAME",
+      "box": {
+        "x": -3254.5,
+        "y": 2898,
+        "w": 368,
+        "h": 184
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 16,
+      "primaryAxisAlignItems": "CENTER",
+      "counterAxisAlignItems": "CENTER",
+      "layoutSizingHorizontal": "HUG",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "7:5",
+          "name": "Mobile App",
+          "type": "TEXT",
+          "box": {
+            "x": -3254.5,
+            "y": 2898,
+            "w": 368,
+            "h": 96
+          },
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100"
+          },
+          "characters": "Mobile App",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 64,
+            "fontWeight": 700,
+            "lineHeightPx": 96,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "1527:10413",
+          "name": "Frame 64",
+          "type": "FRAME",
+          "box": {
+            "x": -3188,
+            "y": 3010,
+            "w": 235,
+            "h": 72
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 24,
+          "paddingRight": 24,
+          "paddingTop": 6,
+          "paddingBottom": 6,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "cornerRadius": 12,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "children": [
+            {
+              "id": "7:6",
+              "name": "Let's Ride",
+              "type": "TEXT",
+              "box": {
+                "x": -3164,
+                "y": 3016,
+                "w": 187,
+                "h": 60
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              },
+              "characters": "Let's Ride",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 40,
+                "fontWeight": 600,
+                "lineHeightPx": 60,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

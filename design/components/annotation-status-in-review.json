@@ -1,0 +1,56 @@
+{
+  "page": "Components",
+  "id": "50:846",
+  "name": "Annotation / Status / In review",
+  "type": "COMPONENT",
+  "box": {
+    "x": 1958,
+    "y": 292,
+    "w": 160,
+    "h": 46
+  },
+  "clipsContent": false,
+  "cornerRadius": 4,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#E5B217"
+    }
+  ],
+  "children": [
+    {
+      "id": "50:839",
+      "name": "In review",
+      "type": "TEXT",
+      "box": {
+        "x": 1974,
+        "y": 300,
+        "w": 128,
+        "h": 30
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey (OLD)/10"
+      },
+      "characters": "In review",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 20,
+        "fontWeight": 600,
+        "lineHeightPx": 30,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "CENTER",
+        "textAlignVertical": "TOP"
+      }
+    }
+  ]
+}

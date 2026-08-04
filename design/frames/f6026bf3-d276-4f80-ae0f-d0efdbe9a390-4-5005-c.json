@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "1683:8699",
+  "name": "F6026BF3-D276-4F80-AE0F-D0EFDBE9A390_4_5005_c",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -13487,
+    "y": 34399,
+    "w": 390,
+    "h": 847.35
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "cd4254c41e0193269dae3836521597856b276579",
+      "scaleMode": "FILL"
+    }
+  ]
+}

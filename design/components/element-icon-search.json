@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "318:4536",
+  "name": "Element / Icon / Search",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 3968,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "318:4539",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12618,
+        "y": 3970,
+        "w": 20,
+        "h": 20
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

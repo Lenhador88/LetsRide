@@ -1,0 +1,56 @@
+{
+  "page": "Components",
+  "id": "50:845",
+  "name": "Annotation / Status / Done",
+  "type": "COMPONENT",
+  "box": {
+    "x": 1958,
+    "y": 0,
+    "w": 160,
+    "h": 46
+  },
+  "clipsContent": false,
+  "cornerRadius": 4,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#74B236"
+    }
+  ],
+  "children": [
+    {
+      "id": "50:841",
+      "name": "Done",
+      "type": "TEXT",
+      "box": {
+        "x": 1974,
+        "y": 8,
+        "w": 128,
+        "h": 30
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey (OLD)/10"
+      },
+      "characters": "Done",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 20,
+        "fontWeight": 600,
+        "lineHeightPx": 30,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "CENTER",
+        "textAlignVertical": "TOP"
+      }
+    }
+  ]
+}

@@ -1,0 +1,283 @@
+{
+  "page": "Components",
+  "id": "321:1472",
+  "name": "Component / Date Selector / Item",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 0,
+    "y": 538,
+    "w": 168,
+    "h": 184
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Type": {
+      "type": "VARIANT",
+      "defaultValue": "Date",
+      "variantOptions": [
+        "Day",
+        "Date"
+      ]
+    },
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Default",
+      "variantOptions": [
+        "Default",
+        "Down",
+        "Selected"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "321:1471",
+      "name": "Type=Day, State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 104,
+        "y": 554,
+        "w": 48,
+        "h": 40
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "321:1463",
+          "name": "M",
+          "type": "TEXT",
+          "box": {
+            "x": 112,
+            "y": 564,
+            "w": 32,
+            "h": 20
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#808080"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/50",
+            "text": "Poppins/14/Regular"
+          },
+          "characters": "M",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 400,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "321:1470",
+      "name": "Type=Date, State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 16,
+        "y": 554,
+        "w": 48,
+        "h": 40
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "321:1465",
+          "name": "1",
+          "type": "TEXT",
+          "box": {
+            "x": 24,
+            "y": 564,
+            "w": 32,
+            "h": 20
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90",
+            "text": "Poppins/14/Regular"
+          },
+          "characters": "1",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 400,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "321:1469",
+      "name": "Type=Date, State=Selected",
+      "type": "COMPONENT",
+      "box": {
+        "x": 16,
+        "y": 666,
+        "w": 48,
+        "h": 40
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "321:1467",
+          "name": "Selected",
+          "type": "ELLIPSE",
+          "box": {
+            "x": 24,
+            "y": 670,
+            "w": 32,
+            "h": 32
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#36B289"
+            }
+          ],
+          "styles": {
+            "fill": "Accent (OLD)/100"
+          }
+        },
+        {
+          "id": "321:1468",
+          "name": "1",
+          "type": "TEXT",
+          "box": {
+            "x": 24,
+            "y": 676,
+            "w": 32,
+            "h": 20
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/10",
+            "text": "Poppins/14/Medium"
+          },
+          "characters": "1",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 500,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "321:1476",
+      "name": "Type=Date, State=Down",
+      "type": "COMPONENT",
+      "box": {
+        "x": 16,
+        "y": 610,
+        "w": 48,
+        "h": 40
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "321:1477",
+          "name": "Selected",
+          "type": "ELLIPSE",
+          "box": {
+            "x": 24,
+            "y": 614,
+            "w": 32,
+            "h": 32
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/10"
+          }
+        },
+        {
+          "id": "321:1478",
+          "name": "1",
+          "type": "TEXT",
+          "box": {
+            "x": 24,
+            "y": 620,
+            "w": 32,
+            "h": 20
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90",
+            "text": "Poppins/14/Regular"
+          },
+          "characters": "1",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 400,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "5:3",
+  "name": "Logo2",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -3401,
+    "y": 1433,
+    "w": 841,
+    "h": 560
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "5f1364f751c76ea06049bff2de9ed7328c487b6a",
+      "scaleMode": "FILL"
+    }
+  ]
+}

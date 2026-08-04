@@ -1,0 +1,25 @@
+{
+  "page": "Components",
+  "id": "270:1376",
+  "name": "Component / Overlay",
+  "type": "COMPONENT",
+  "box": {
+    "x": 2518,
+    "y": 3054,
+    "w": 390,
+    "h": 844
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#000000"
+    }
+  ],
+  "styles": {
+    "fills": "Grey/70%",
+    "fill": "Grey/70%"
+  }
+}

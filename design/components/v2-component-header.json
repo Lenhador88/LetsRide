@@ -1,0 +1,1365 @@
+{
+  "page": "Components",
+  "id": "1951:12460",
+  "name": "v2 / Component / Header",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 13040,
+    "y": 4916,
+    "w": 422,
+    "h": 400
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "has Back Button#1951:14": {
+      "type": "BOOLEAN",
+      "defaultValue": false
+    },
+    "Page Name#1951:15": {
+      "type": "TEXT",
+      "defaultValue": "Page Name"
+    },
+    "has Options Button#1967:0": {
+      "type": "BOOLEAN",
+      "defaultValue": true
+    },
+    "Sub Page Name#2057:0": {
+      "type": "TEXT",
+      "defaultValue": "Sub Page Name"
+    },
+    "User Name#2057:4": {
+      "type": "TEXT",
+      "defaultValue": "User Name"
+    },
+    "Club Name#2057:8": {
+      "type": "TEXT",
+      "defaultValue": "Club Name"
+    },
+    "has Sub Pages#2067:3": {
+      "type": "BOOLEAN",
+      "defaultValue": false
+    },
+    "Type": {
+      "type": "VARIANT",
+      "defaultValue": "Regular",
+      "variantOptions": [
+        "Regular",
+        "User",
+        "Club"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "1883:22765",
+      "name": "Type=Regular",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 4932,
+        "w": 390,
+        "h": 96
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "paddingLeft": 8,
+      "paddingRight": 8,
+      "paddingTop": 48,
+      "paddingBottom": 8,
+      "counterAxisAlignItems": "CENTER",
+      "counterAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "HUG",
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "strokes": "Grey/10%",
+        "fill": "Grey/5",
+        "stroke": "Grey/10%"
+      },
+      "children": [
+        {
+          "id": "2067:10857",
+          "name": "Main",
+          "type": "FRAME",
+          "box": {
+            "x": 13064,
+            "y": 4980,
+            "w": 374,
+            "h": 40
+          },
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1891:1976",
+              "name": "v2 / Component / Button / Icon",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13064,
+                "y": 4980,
+                "w": 40,
+                "h": 40
+              },
+              "clipsContent": false,
+              "cornerRadius": 8,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "visible": false,
+              "componentId": "1111:6034",
+              "component": "State=Default",
+              "componentSet": "v2 / Component / Button / Icon",
+              "componentProperties": {
+                "has Notification#2370:0": {
+                  "type": "BOOLEAN",
+                  "value": false
+                },
+                "Icon#1883:26": {
+                  "type": "INSTANCE_SWAP",
+                  "value": "339:1724",
+                  "preferredValues": []
+                },
+                "State": {
+                  "value": "Default",
+                  "type": "VARIANT",
+                  "boundVariables": {}
+                }
+              },
+              "children": [
+                {
+                  "id": "I1891:1976;1111:6035",
+                  "name": "Element / Icon / Arrow Left",
+                  "type": "INSTANCE",
+                  "box": {
+                    "x": 13072,
+                    "y": 4988,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "componentId": "339:1724",
+                  "component": "Element / Icon / Arrow Left",
+                  "children": [
+                    {
+                      "id": "I1891:1976;1111:6035;2483:7561",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 13076,
+                        "y": 4992,
+                        "w": 16,
+                        "h": 16
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#1A1A1A"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey/100"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "I1891:1976;2370:6900",
+                  "name": "v2 / Component / Notification",
+                  "type": "INSTANCE",
+                  "box": {
+                    "x": 13092,
+                    "y": 4976,
+                    "w": 16,
+                    "h": 16
+                  },
+                  "clipsContent": true,
+                  "cornerRadius": 100,
+                  "strokeWeight": 3,
+                  "strokeAlign": "INSIDE",
+                  "visible": false,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#D92140"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#F2ECE6"
+                    }
+                  ],
+                  "styles": {
+                    "fills": "Warning/100",
+                    "strokes": "Grey/5",
+                    "fill": "Warning/100",
+                    "stroke": "Grey/5"
+                  },
+                  "componentId": "2370:7297",
+                  "component": "v2 / Component / Notification",
+                  "componentProperties": {
+                    "Notifications#1918:55": {
+                      "type": "TEXT",
+                      "value": "1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:22763",
+              "name": "Page Name",
+              "type": "TEXT",
+              "box": {
+                "x": 13204,
+                "y": 4988,
+                "w": 95,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "Page Name",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2067:10643",
+          "name": "Sub Page",
+          "type": "FRAME",
+          "box": {
+            "x": 13207.5,
+            "y": 5020,
+            "w": 87,
+            "h": 20
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingBottom": 4,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "visible": false,
+          "children": [
+            {
+              "id": "2067:10644",
+              "name": "Sub Page Name",
+              "type": "TEXT",
+              "box": {
+                "x": 13207.5,
+                "y": 5020,
+                "w": 114,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "Sub Page Name",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2067:10645",
+              "name": "Element / Icon / Chevron Down",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13274.5,
+                "y": 5020,
+                "w": 20,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "1951:11732",
+              "component": "Element / Icon / Chevron Down",
+              "children": [
+                {
+                  "id": "I2067:10645;1951:11731",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13279.5,
+                    "y": 5027.5,
+                    "w": 10,
+                    "h": 5.83
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1951:12464",
+      "name": "Type=User",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 5044,
+        "w": 390,
+        "h": 120
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "strokes": "Grey/10%",
+        "fill": "Grey/5",
+        "stroke": "Grey/10%"
+      },
+      "children": [
+        {
+          "id": "1951:12665",
+          "name": "Title",
+          "type": "FRAME",
+          "box": {
+            "x": 13186,
+            "y": 5096,
+            "w": 130,
+            "h": 32
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 8,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "2083:6536",
+              "name": "v2 / Component / Avatar",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13186,
+                "y": 5096,
+                "w": 32,
+                "h": 32
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#000000"
+                }
+              ],
+              "styles": {
+                "strokes": "Grey/20%",
+                "stroke": "Grey/20%"
+              },
+              "componentId": "2023:8903",
+              "component": "Size=Large",
+              "componentSet": "v2 / Component / Avatar",
+              "componentProperties": {
+                "Size": {
+                  "value": "Large",
+                  "type": "VARIANT",
+                  "boundVariables": {}
+                }
+              },
+              "children": [
+                {
+                  "id": "I2083:6536;2023:8904",
+                  "name": "Image",
+                  "type": "ELLIPSE",
+                  "box": {
+                    "x": 13188,
+                    "y": 5098,
+                    "w": 28,
+                    "h": 28
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "IMAGE",
+                      "imageRef": "84e266760635d626ea53b06e08d923bb5f767ab1",
+                      "scaleMode": "FILL"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "1951:12465",
+              "name": "User Name",
+              "type": "TEXT",
+              "box": {
+                "x": 13226,
+                "y": 5100,
+                "w": 90,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "User Name",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1951:12466",
+          "name": "v2 / Component / Button / Icon",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13064,
+            "y": 5092,
+            "w": 40,
+            "h": 40
+          },
+          "clipsContent": false,
+          "cornerRadius": 8,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "visible": false,
+          "componentId": "1111:6034",
+          "component": "State=Default",
+          "componentSet": "v2 / Component / Button / Icon",
+          "componentProperties": {
+            "has Notification#2370:0": {
+              "type": "BOOLEAN",
+              "value": false
+            },
+            "Icon#1883:26": {
+              "type": "INSTANCE_SWAP",
+              "value": "339:1724",
+              "preferredValues": []
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1951:12466;1111:6035",
+              "name": "Element / Icon / Arrow Left",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13072,
+                "y": 5100,
+                "w": 24,
+                "h": 24
+              },
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "339:1724",
+              "component": "Element / Icon / Arrow Left",
+              "children": [
+                {
+                  "id": "I1951:12466;1111:6035;2483:7561",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13076,
+                    "y": 5104,
+                    "w": 16,
+                    "h": 16
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1951:12466;2370:6900",
+              "name": "v2 / Component / Notification",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13092,
+                "y": 5088,
+                "w": 16,
+                "h": 16
+              },
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 3,
+              "strokeAlign": "INSIDE",
+              "visible": false,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D92140"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#F2ECE6"
+                }
+              ],
+              "styles": {
+                "fills": "Warning/100",
+                "strokes": "Grey/5",
+                "fill": "Warning/100",
+                "stroke": "Grey/5"
+              },
+              "componentId": "2370:7297",
+              "component": "v2 / Component / Notification",
+              "componentProperties": {
+                "Notifications#1918:55": {
+                  "type": "TEXT",
+                  "value": "1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "1967:4667",
+          "name": "v2 / Component / Button / Icon",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13398,
+            "y": 5092,
+            "w": 40,
+            "h": 40
+          },
+          "clipsContent": false,
+          "cornerRadius": 8,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1111:6034",
+          "component": "State=Default",
+          "componentSet": "v2 / Component / Button / Icon",
+          "componentProperties": {
+            "has Notification#2370:0": {
+              "type": "BOOLEAN",
+              "value": false
+            },
+            "Icon#1883:26": {
+              "type": "INSTANCE_SWAP",
+              "value": "241:7017",
+              "preferredValues": []
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1967:4667;1111:6035",
+              "name": "Element / Icon / Options",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13406,
+                "y": 5100,
+                "w": 24,
+                "h": 24
+              },
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "241:7017",
+              "component": "Element / Icon / Options",
+              "children": [
+                {
+                  "id": "I1967:4667;1111:6035;241:7415",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13416,
+                    "y": 5103,
+                    "w": 4,
+                    "h": 18
+                  },
+                  "strokeWeight": 0,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1967:4667;2370:6900",
+              "name": "v2 / Component / Notification",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13426,
+                "y": 5088,
+                "w": 16,
+                "h": 16
+              },
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 3,
+              "strokeAlign": "INSIDE",
+              "visible": false,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D92140"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#F2ECE6"
+                }
+              ],
+              "styles": {
+                "fills": "Warning/100",
+                "strokes": "Grey/5",
+                "fill": "Warning/100",
+                "stroke": "Grey/5"
+              },
+              "componentId": "2370:7297",
+              "component": "v2 / Component / Notification",
+              "componentProperties": {
+                "Notifications#1918:55": {
+                  "type": "TEXT",
+                  "value": "1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "2057:5280",
+          "name": "Page",
+          "type": "FRAME",
+          "box": {
+            "x": 13184,
+            "y": 5132,
+            "w": 134,
+            "h": 20
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "2057:5281",
+              "name": "Sub Page Name",
+              "type": "TEXT",
+              "box": {
+                "x": 13184,
+                "y": 5132,
+                "w": 114,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "Sub Page Name",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2057:5282",
+              "name": "Element / Icon / Chevron Down",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13298,
+                "y": 5132,
+                "w": 20,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "1951:11732",
+              "component": "Element / Icon / Chevron Down",
+              "children": [
+                {
+                  "id": "I2057:5282;1951:11731",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13303,
+                    "y": 5139.5,
+                    "w": 10,
+                    "h": 5.83
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1951:12472",
+      "name": "Type=Club",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 5180,
+        "w": 390,
+        "h": 120
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "strokes": "Grey/10%",
+        "fill": "Grey/5",
+        "stroke": "Grey/10%"
+      },
+      "children": [
+        {
+          "id": "1951:12669",
+          "name": "Title",
+          "type": "FRAME",
+          "box": {
+            "x": 13187,
+            "y": 5234,
+            "w": 128,
+            "h": 28
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 8,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1951:12682",
+              "name": "Avatar",
+              "type": "FRAME",
+              "box": {
+                "x": 13187,
+                "y": 5234,
+                "w": 28,
+                "h": 28
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "cornerRadius": 6,
+              "strokeWeight": 2,
+              "strokeAlign": "OUTSIDE",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#000000"
+                }
+              ],
+              "styles": {
+                "strokes": "Grey/20%",
+                "stroke": "Grey/20%"
+              },
+              "children": [
+                {
+                  "id": "1951:12683",
+                  "name": "image 39",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 13179,
+                    "y": 5227,
+                    "w": 44,
+                    "h": 42
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "IMAGE",
+                      "imageRef": "cdbcbb90322344e262cf3c95ad364011ba372c7d",
+                      "scaleMode": "STRETCH"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "1951:12473",
+              "name": "Club Name",
+              "type": "TEXT",
+              "box": {
+                "x": 13223,
+                "y": 5236,
+                "w": 92,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Semibold"
+              },
+              "characters": "Club Name",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 600,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1951:12474",
+          "name": "v2 / Component / Button / Icon",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13064,
+            "y": 5228,
+            "w": 40,
+            "h": 40
+          },
+          "clipsContent": false,
+          "cornerRadius": 8,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1111:6034",
+          "component": "State=Default",
+          "componentSet": "v2 / Component / Button / Icon",
+          "componentProperties": {
+            "has Notification#2370:0": {
+              "type": "BOOLEAN",
+              "value": false
+            },
+            "Icon#1883:26": {
+              "type": "INSTANCE_SWAP",
+              "value": "339:1724",
+              "preferredValues": []
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1951:12474;1111:6035",
+              "name": "Element / Icon / Arrow Left",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13072,
+                "y": 5236,
+                "w": 24,
+                "h": 24
+              },
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "339:1724",
+              "component": "Element / Icon / Arrow Left",
+              "children": [
+                {
+                  "id": "I1951:12474;1111:6035;2483:7561",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13076,
+                    "y": 5240,
+                    "w": 16,
+                    "h": 16
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1951:12474;2370:6900",
+              "name": "v2 / Component / Notification",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13092,
+                "y": 5224,
+                "w": 16,
+                "h": 16
+              },
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 3,
+              "strokeAlign": "INSIDE",
+              "visible": false,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D92140"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#F2ECE6"
+                }
+              ],
+              "styles": {
+                "fills": "Warning/100",
+                "strokes": "Grey/5",
+                "fill": "Warning/100",
+                "stroke": "Grey/5"
+              },
+              "componentId": "2370:7297",
+              "component": "v2 / Component / Notification",
+              "componentProperties": {
+                "Notifications#1918:55": {
+                  "type": "TEXT",
+                  "value": "1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "1967:4668",
+          "name": "v2 / Component / Button / Icon",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13398,
+            "y": 5228,
+            "w": 40,
+            "h": 40
+          },
+          "clipsContent": false,
+          "cornerRadius": 8,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1111:6034",
+          "component": "State=Default",
+          "componentSet": "v2 / Component / Button / Icon",
+          "componentProperties": {
+            "has Notification#2370:0": {
+              "type": "BOOLEAN",
+              "value": false
+            },
+            "Icon#1883:26": {
+              "type": "INSTANCE_SWAP",
+              "value": "241:7017",
+              "preferredValues": []
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1967:4668;1111:6035",
+              "name": "Element / Icon / Options",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13406,
+                "y": 5236,
+                "w": 24,
+                "h": 24
+              },
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "241:7017",
+              "component": "Element / Icon / Options",
+              "children": [
+                {
+                  "id": "I1967:4668;1111:6035;241:7415",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13416,
+                    "y": 5239,
+                    "w": 4,
+                    "h": 18
+                  },
+                  "strokeWeight": 0,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1967:4668;2370:6900",
+              "name": "v2 / Component / Notification",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13426,
+                "y": 5224,
+                "w": 16,
+                "h": 16
+              },
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 3,
+              "strokeAlign": "INSIDE",
+              "visible": false,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D92140"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#F2ECE6"
+                }
+              ],
+              "styles": {
+                "fills": "Warning/100",
+                "strokes": "Grey/5",
+                "fill": "Warning/100",
+                "stroke": "Grey/5"
+              },
+              "componentId": "2370:7297",
+              "component": "v2 / Component / Notification",
+              "componentProperties": {
+                "Notifications#1918:55": {
+                  "type": "TEXT",
+                  "value": "1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "2057:5285",
+          "name": "Page",
+          "type": "FRAME",
+          "box": {
+            "x": 13184,
+            "y": 5268,
+            "w": 134,
+            "h": 20
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "2057:5286",
+              "name": "Sub Page Name",
+              "type": "TEXT",
+              "box": {
+                "x": 13184,
+                "y": 5268,
+                "w": 114,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "Sub Page Name",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "2057:5287",
+              "name": "Element / Icon / Chevron Down",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13298,
+                "y": 5268,
+                "w": 20,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "1951:11732",
+              "component": "Element / Icon / Chevron Down",
+              "children": [
+                {
+                  "id": "I2057:5287;1951:11731",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13303,
+                    "y": 5275.5,
+                    "w": 10,
+                    "h": 5.83
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

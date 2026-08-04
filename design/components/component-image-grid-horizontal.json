@@ -1,0 +1,211 @@
+{
+  "page": "Components",
+  "id": "339:1829",
+  "name": "Component / Image Grid / Horizontal",
+  "type": "COMPONENT",
+  "box": {
+    "x": 0,
+    "y": 822,
+    "w": 678,
+    "h": 256
+  },
+  "layoutMode": "HORIZONTAL",
+  "layoutWrap": "NO_WRAP",
+  "itemSpacing": 4,
+  "paddingLeft": 16,
+  "paddingRight": 16,
+  "layoutSizingHorizontal": "HUG",
+  "layoutSizingVertical": "HUG",
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "339:1820",
+      "name": "Image",
+      "type": "FRAME",
+      "box": {
+        "x": 16,
+        "y": 822,
+        "w": 256,
+        "h": 256
+      },
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "INHERIT",
+      "layoutGrow": 0,
+      "clipsContent": true,
+      "cornerRadius": 4,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "339:1821",
+          "name": "image 6",
+          "type": "RECTANGLE",
+          "box": {
+            "x": -12,
+            "y": 822,
+            "w": 435.64,
+            "h": 256
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "b1ec115b140a91f78933ea7a62c29b056ca51f3e",
+              "scaleMode": "FILL"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "339:1822",
+      "name": "Vertical",
+      "type": "FRAME",
+      "box": {
+        "x": 276,
+        "y": 822,
+        "w": 126,
+        "h": 256
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 4,
+      "layoutSizingHorizontal": "HUG",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "INHERIT",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "339:1823",
+          "name": "Image",
+          "type": "FRAME",
+          "box": {
+            "x": 276,
+            "y": 822,
+            "w": 126,
+            "h": 126
+          },
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "339:1824",
+              "name": "image 7",
+              "type": "RECTANGLE",
+              "box": {
+                "x": 256,
+                "y": 822,
+                "w": 205.63,
+                "h": 126
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "61e29e366c3160009500b5368bc3fdb5820c243c",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "339:1825",
+          "name": "Image",
+          "type": "FRAME",
+          "box": {
+            "x": 276,
+            "y": 952,
+            "w": 126,
+            "h": 126
+          },
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "339:1826",
+              "name": "image 8",
+              "type": "RECTANGLE",
+              "box": {
+                "x": 276,
+                "y": 916.53,
+                "w": 126,
+                "h": 188.76
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "48514553373f26ec4d6cc9868f0f8083b38b4e97",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "339:1827",
+      "name": "Image",
+      "type": "FRAME",
+      "box": {
+        "x": 406,
+        "y": 822,
+        "w": 256,
+        "h": 256
+      },
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "INHERIT",
+      "layoutGrow": 0,
+      "clipsContent": true,
+      "cornerRadius": 4,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "339:1828",
+          "name": "image 4",
+          "type": "RECTANGLE",
+          "box": {
+            "x": 390,
+            "y": 822,
+            "w": 384,
+            "h": 256
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "116636bff9bc23f0566ebed9cc0df6c1833bb3f6",
+              "scaleMode": "FILL"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

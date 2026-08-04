@@ -1,0 +1,1643 @@
+{
+  "page": "Components",
+  "id": "1303:8389",
+  "name": "Content / Ride Details / Riders",
+  "type": "COMPONENT",
+  "box": {
+    "x": 11338,
+    "y": 3158.98,
+    "w": 390,
+    "h": 668
+  },
+  "layoutMode": "VERTICAL",
+  "layoutWrap": "NO_WRAP",
+  "paddingLeft": 16,
+  "paddingRight": 16,
+  "paddingTop": 16,
+  "paddingBottom": 16,
+  "counterAxisSizingMode": "FIXED",
+  "layoutSizingHorizontal": "FIXED",
+  "layoutSizingVertical": "HUG",
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1377:11482",
+      "name": "Button Container",
+      "type": "FRAME",
+      "box": {
+        "x": 11354,
+        "y": 3174.98,
+        "w": 358,
+        "h": 56
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 8,
+      "paddingBottom": 16,
+      "counterAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1377:11269",
+          "name": "v2 / Component / Button / Regular / Secondary",
+          "type": "INSTANCE",
+          "box": {
+            "x": 11354,
+            "y": 3174.98,
+            "w": 358,
+            "h": 40
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 8,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "componentId": "1111:6020",
+          "component": "State=Default",
+          "componentSet": "v2 / Component / Button / Regular / Secondary",
+          "componentProperties": {
+            "Icon#1883:13": {
+              "type": "INSTANCE_SWAP",
+              "value": "241:7017",
+              "preferredValues": []
+            },
+            "Label#1857:7": {
+              "type": "TEXT",
+              "value": "Invite a friend"
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1377:11269;2494:8052",
+              "name": "Gradient Overlay",
+              "type": "RECTANGLE",
+              "box": {
+                "x": 11355,
+                "y": 3175.98,
+                "w": 356,
+                "h": 38
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "cornerRadius": 7,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "GRADIENT_LINEAR",
+                  "angle": 135,
+                  "handles": [
+                    {
+                      "x": 1.4432899320127035e-15,
+                      "y": 1.3322676295501878e-15
+                    },
+                    {
+                      "x": 0.9999999850988405,
+                      "y": 0.9999999850988404
+                    },
+                    {
+                      "x": -0.49999999254941807,
+                      "y": 1.5312500055588327
+                    }
+                  ],
+                  "stops": [
+                    {
+                      "position": 0,
+                      "color": "#FFFFFF33"
+                    },
+                    {
+                      "position": 1,
+                      "color": "#FFFFFF00"
+                    }
+                  ]
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ]
+            },
+            {
+              "id": "I1377:11269;1111:6021",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 11484.5,
+                "y": 3184.98,
+                "w": 97,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "Invite a friend",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1377:12293",
+      "name": "Frame 30",
+      "type": "FRAME",
+      "box": {
+        "x": 11354,
+        "y": 3230.98,
+        "w": 358,
+        "h": 38
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 4,
+      "paddingLeft": 8,
+      "paddingBottom": 8,
+      "counterAxisAlignItems": "BASELINE",
+      "primaryAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1377:12006",
+          "name": "Going",
+          "type": "TEXT",
+          "box": {
+            "x": 11362,
+            "y": 3230.98,
+            "w": 61,
+            "h": 30
+          },
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "text": "Poppins/20/Semibold"
+          },
+          "characters": "Going",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 20,
+            "fontWeight": 600,
+            "lineHeightPx": 30,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "1424:15657",
+          "name": "(7)",
+          "type": "TEXT",
+          "box": {
+            "x": 11427,
+            "y": 3237.98,
+            "w": 22,
+            "h": 20
+          },
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#4D4D4D"
+            }
+          ],
+          "styles": {
+            "text": "Poppins/14/Medium"
+          },
+          "characters": "(7)",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 500,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1303:8370",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3268.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1080:6585",
+      "component": "is Host=True",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Pedro Abreu"
+        },
+        "is Host": {
+          "value": "True",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1303:8370;1080:6586",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3274.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": false,
+          "cornerRadius": 100,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "I1303:8370;1377:14228",
+              "name": "Border",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11360,
+                "y": 3272.98,
+                "w": 40,
+                "h": 40
+              },
+              "strokeWeight": 2,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#F2ECE6"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#3D996B"
+                }
+              ],
+              "effects": [
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 0,
+                  "offset": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "spread": 2,
+                  "color": "#36B28980"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/5",
+                "stroke": "Accent Brand/100"
+              }
+            },
+            {
+              "id": "I1303:8370;1080:6587",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3274.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "032cbda0d4bf4f7c13f1f38ae7b226e726fb1132",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1303:8370;1080:6588",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3272.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Pedro Abreu",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "I1303:8370;1377:13369",
+          "name": "Host",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3294.98,
+            "w": 27,
+            "h": 18
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#338059"
+            }
+          ],
+          "styles": {
+            "fill": "Accent Brand/110",
+            "text": "Poppins/12/Medium"
+          },
+          "characters": "Host",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 12,
+            "fontWeight": 500,
+            "lineHeightPx": 18,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1303:8372",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3316.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Jacky Carter"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1303:8372;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3322.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1303:8372;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3322.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "84e266760635d626ea53b06e08d923bb5f767ab1",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1303:8372;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3328.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Jacky Carter",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1424:15062",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3364.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Stella Hughes"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1424:15062;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3370.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1424:15062;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3370.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "978252f5dd4d4cc0c72e919050346e9ac3305611",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1424:15062;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3376.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Stella Hughes",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1424:15136",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3412.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Zola Ndlovu"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1424:15136;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3418.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1424:15136;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3418.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "fd3b912d143b4e245fd1bee4d27074e8516936ad",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1424:15136;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3424.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Zola Ndlovu",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1303:8373",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3460.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Ron Wilson"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1303:8373;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3466.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1303:8373;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3466.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "41108f27456b674ca97bb93c227212fcf0256e69",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1303:8373;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3472.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Ron Wilson",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1424:15063",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3508.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Ari Sørensen"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1424:15063;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3514.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1424:15063;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3514.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "60b832260b4cfc1e3277b5f92ad3bacbed8220a6",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1424:15063;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3520.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Ari Sørensen",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1424:15137",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3556.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Skylar Peterson"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1424:15137;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3562.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1424:15137;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3562.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "aa149731ae4149631f450c7097f8f2f0935cfe4f",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1424:15137;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3568.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Skylar Peterson",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1377:12344",
+      "name": "Frame 31",
+      "type": "FRAME",
+      "box": {
+        "x": 11354,
+        "y": 3604.98,
+        "w": 358,
+        "h": 62
+      },
+      "layoutMode": "HORIZONTAL",
+      "layoutWrap": "NO_WRAP",
+      "itemSpacing": 4,
+      "paddingLeft": 8,
+      "paddingTop": 24,
+      "paddingBottom": 8,
+      "counterAxisAlignItems": "BASELINE",
+      "primaryAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1377:12100",
+          "name": "May be going",
+          "type": "TEXT",
+          "box": {
+            "x": 11362,
+            "y": 3628.98,
+            "w": 138,
+            "h": 30
+          },
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "text": "Poppins/20/Semibold"
+          },
+          "characters": "May be going",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 20,
+            "fontWeight": 600,
+            "lineHeightPx": 30,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "1424:15666",
+          "name": "(3)",
+          "type": "TEXT",
+          "box": {
+            "x": 11504,
+            "y": 3635.98,
+            "w": 23,
+            "h": 20
+          },
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "layoutAlign": "INHERIT",
+          "layoutGrow": 0,
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#4D4D4D"
+            }
+          ],
+          "styles": {
+            "text": "Poppins/14/Medium"
+          },
+          "characters": "(3)",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 14,
+            "fontWeight": 500,
+            "lineHeightPx": 20,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1303:8371",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3666.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Maddy Montfort"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1303:8371;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3672.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1303:8371;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3672.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "5ae6ae7b8867231fb81ad44cdb170a2641b7b347",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1303:8371;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3678.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Maddy Montfort",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1424:15226",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3714.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Nova Peterson"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1424:15226;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3720.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1424:15226;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3720.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "05e5d6c554a3089511bfb61cf08635410f163ee8",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1424:15226;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3726.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Nova Peterson",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1424:15320",
+      "name": "v2 / Component / List / User",
+      "type": "INSTANCE",
+      "box": {
+        "x": 11354,
+        "y": 3762.98,
+        "w": 358,
+        "h": 48
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "1424:14686",
+      "component": "is Host=False",
+      "componentSet": "v2 / Component / List / User",
+      "componentProperties": {
+        "Host/Admin#1951:7": {
+          "type": "TEXT",
+          "value": "Host"
+        },
+        "Label#1951:6": {
+          "type": "TEXT",
+          "value": "Daisy Jenkins"
+        },
+        "is Host": {
+          "value": "False",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I1424:15320;1424:14687",
+          "name": "Avatar",
+          "type": "FRAME",
+          "box": {
+            "x": 11362,
+            "y": 3768.98,
+            "w": 36,
+            "h": 36
+          },
+          "clipsContent": true,
+          "cornerRadius": 100,
+          "strokeWeight": 2,
+          "strokeAlign": "OUTSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey/20%",
+            "stroke": "Grey/20%"
+          },
+          "children": [
+            {
+              "id": "I1424:15320;1424:14689",
+              "name": "Photo",
+              "type": "ELLIPSE",
+              "box": {
+                "x": 11362,
+                "y": 3768.98,
+                "w": 36,
+                "h": 36
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "IMAGE",
+                  "imageRef": "cdac98998c90f96526373b774ef80741763f4a50",
+                  "scaleMode": "FILL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I1424:15320;1424:14691",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 11414,
+            "y": 3774.98,
+            "w": 266,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Regular"
+          },
+          "characters": "Daisy Jenkins",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 400,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

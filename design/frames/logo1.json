@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "416:12385",
+  "name": "logo1",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -3401,
+    "y": 2071,
+    "w": 540,
+    "h": 559
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "4e5c3789222df1b6ba00efe7c74f161c385433cf",
+      "scaleMode": "FILL"
+    }
+  ]
+}

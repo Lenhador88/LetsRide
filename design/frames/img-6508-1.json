@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "1580:12865",
+  "name": "IMG_6508 1",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -10802,
+    "y": 32346,
+    "w": 390,
+    "h": 845.5
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "6cecce442e075c6d48564b8ce1ee39100c0a1552",
+      "scaleMode": "FILL"
+    }
+  ]
+}

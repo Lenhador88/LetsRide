@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "882:5689",
+  "name": "BB07AF28-C061-4587-9CEB-49E08FD9265B_4_5005_c",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -9823,
+    "y": 40508,
+    "w": 390,
+    "h": 847.35
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "4791c87c0df40121a4bb4d0ca7e5e513a40e08c4",
+      "scaleMode": "FILL"
+    }
+  ]
+}

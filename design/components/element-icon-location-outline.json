@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "318:4717",
+  "name": "Element / Icon / Location Outline",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 2728,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "318:4716",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12619,
+        "y": 2729,
+        "w": 18,
+        "h": 22
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

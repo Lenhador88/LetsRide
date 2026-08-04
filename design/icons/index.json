@@ -1,0 +1,271 @@
+{
+  "prefix": "Element / Icon / ",
+  "count": 53,
+  "icons": [
+    {
+      "id": "1883:21318",
+      "name": "Arrow Left",
+      "slug": "arrow-left"
+    },
+    {
+      "id": "I416:6823;339:1745",
+      "name": "Arrow Right",
+      "slug": "arrow-right"
+    },
+    {
+      "id": "1883:21737",
+      "name": "Arrow Up",
+      "slug": "arrow-up"
+    },
+    {
+      "id": "I371:5616;367:5196",
+      "name": "Avatar",
+      "slug": "avatar"
+    },
+    {
+      "id": "1883:16366",
+      "name": "Bike",
+      "slug": "bike"
+    },
+    {
+      "id": "I2303:5951;1967:10699",
+      "name": "Block Account",
+      "slug": "block-account"
+    },
+    {
+      "id": "1883:22346",
+      "name": "Calendar",
+      "slug": "calendar"
+    },
+    {
+      "id": "1739:14383",
+      "name": "Chat Bubble",
+      "slug": "chat-bubble"
+    },
+    {
+      "id": "1883:22366",
+      "name": "Chat Bubble Outline",
+      "slug": "chat-bubble-outline"
+    },
+    {
+      "id": "2483:7559",
+      "name": "Check",
+      "slug": "check"
+    },
+    {
+      "id": "1951:11732",
+      "name": "Chevron Down",
+      "slug": "chevron-down"
+    },
+    {
+      "id": "273:3790",
+      "name": "Chevron Right",
+      "slug": "chevron-right"
+    },
+    {
+      "id": "2226:11258",
+      "name": "Clock",
+      "slug": "clock"
+    },
+    {
+      "id": "1883:16368",
+      "name": "Close",
+      "slug": "close"
+    },
+    {
+      "id": "1883:21161",
+      "name": "Clubs",
+      "slug": "clubs"
+    },
+    {
+      "id": "I416:6823;339:1739",
+      "name": "Coordinates",
+      "slug": "coordinates"
+    },
+    {
+      "id": "I339:3211;321:1944;270:284",
+      "name": "Delete",
+      "slug": "delete"
+    },
+    {
+      "id": "I1303:9624;1303:9500;1111:6035",
+      "name": "Edit",
+      "slug": "edit"
+    },
+    {
+      "id": "318:2940",
+      "name": "Edit 1",
+      "slug": "edit-1"
+    },
+    {
+      "id": "1883:21218",
+      "name": "Edit 2",
+      "slug": "edit-2"
+    },
+    {
+      "id": "1883:21174",
+      "name": "Garage",
+      "slug": "garage"
+    },
+    {
+      "id": "1763:18431",
+      "name": "Globe",
+      "slug": "globe"
+    },
+    {
+      "id": "1883:20706",
+      "name": "Globe 2",
+      "slug": "globe-2"
+    },
+    {
+      "id": "1739:14380",
+      "name": "Heart Filled",
+      "slug": "heart-filled"
+    },
+    {
+      "id": "1883:22370",
+      "name": "Heart Outline",
+      "slug": "heart-outline"
+    },
+    {
+      "id": "I2303:5950;1967:10699",
+      "name": "Hide",
+      "slug": "hide"
+    },
+    {
+      "id": "1883:21113",
+      "name": "Home",
+      "slug": "home"
+    },
+    {
+      "id": "I321:3389;321:3293",
+      "name": "Image",
+      "slug": "image"
+    },
+    {
+      "id": "1883:21749",
+      "name": "Kebab",
+      "slug": "kebab"
+    },
+    {
+      "id": "1883:22298",
+      "name": "Location Filled",
+      "slug": "location-filled"
+    },
+    {
+      "id": "1883:20531",
+      "name": "Location Outline",
+      "slug": "location-outline"
+    },
+    {
+      "id": "1763:18428",
+      "name": "Lock",
+      "slug": "lock"
+    },
+    {
+      "id": "I371:5610;367:5172",
+      "name": "Lock 2",
+      "slug": "lock-2"
+    },
+    {
+      "id": "1883:16372",
+      "name": "Log Out",
+      "slug": "log-out"
+    },
+    {
+      "id": "1883:21214",
+      "name": "Mailbox",
+      "slug": "mailbox"
+    },
+    {
+      "id": "1883:21456",
+      "name": "Menu",
+      "slug": "menu"
+    },
+    {
+      "id": "2370:8656",
+      "name": "Mute",
+      "slug": "mute"
+    },
+    {
+      "id": "I1200:6074;1111:6035",
+      "name": "Options",
+      "slug": "options"
+    },
+    {
+      "id": "1883:22360",
+      "name": "Paper Airplane",
+      "slug": "paper-airplane"
+    },
+    {
+      "id": "1739:14386",
+      "name": "Paper Plane",
+      "slug": "paper-plane"
+    },
+    {
+      "id": "2370:8655",
+      "name": "Pin",
+      "slug": "pin"
+    },
+    {
+      "id": "1786:10098",
+      "name": "Plus",
+      "slug": "plus"
+    },
+    {
+      "id": "1786:10097",
+      "name": "Plus Circle",
+      "slug": "plus-circle"
+    },
+    {
+      "id": "2311:711",
+      "name": "Preferences",
+      "slug": "preferences"
+    },
+    {
+      "id": "1883:21151",
+      "name": "Profile",
+      "slug": "profile"
+    },
+    {
+      "id": "1883:16271",
+      "name": "Public",
+      "slug": "public"
+    },
+    {
+      "id": "I2303:5952;1967:10699",
+      "name": "Report",
+      "slug": "report"
+    },
+    {
+      "id": "1883:21339",
+      "name": "Search",
+      "slug": "search"
+    },
+    {
+      "id": "1883:21216",
+      "name": "Share",
+      "slug": "share"
+    },
+    {
+      "id": "1883:16370",
+      "name": "Store",
+      "slug": "store"
+    },
+    {
+      "id": "2483:7560",
+      "name": "Tilde",
+      "slug": "tilde"
+    },
+    {
+      "id": "2303:9358",
+      "name": "Trash",
+      "slug": "trash"
+    },
+    {
+      "id": "1883:16376",
+      "name": "Wrench",
+      "slug": "wrench"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1080:5959",
+  "name": "Element / Icon / Clubs",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 1364,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1080:5955",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12617,
+        "y": 1366,
+        "w": 22,
+        "h": 20
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

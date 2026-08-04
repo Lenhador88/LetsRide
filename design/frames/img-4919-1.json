@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "917:6064",
+  "name": "IMG_4919 1",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -8608,
+    "y": 40508,
+    "w": 390,
+    "h": 845
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "8fee42acf632306b664edf219c78e0c4265563ea",
+      "scaleMode": "FILL"
+    }
+  ]
+}

@@ -1,0 +1,313 @@
+{
+  "page": "Design",
+  "id": "2303:7974",
+  "name": "...",
+  "type": "SECTION",
+  "box": {
+    "x": 41192,
+    "y": 6097,
+    "w": 5000,
+    "h": 1244
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#444444"
+    }
+  ],
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "children": [
+    {
+      "id": "2303:7975",
+      "name": "Annotation / Epic Cover",
+      "type": "INSTANCE",
+      "box": {
+        "x": 41392,
+        "y": 6297,
+        "w": 480,
+        "h": 844
+      },
+      "clipsContent": true,
+      "cornerRadius": 8,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ],
+      "componentId": "50:565",
+      "component": "Annotation / Epic Cover",
+      "componentProperties": {
+        "Status#50:1": {
+          "type": "INSTANCE_SWAP",
+          "value": "50:848",
+          "preferredValues": [
+            {
+              "type": "COMPONENT_SET",
+              "key": "729b5354f518908496c3afd0e5f1068b25e9af8d"
+            },
+            {
+              "type": "COMPONENT",
+              "key": "c695b8f75de40b29ee8cfc8d2bbb813f58da9fb2"
+            },
+            {
+              "type": "COMPONENT",
+              "key": "eef51b40e52c031a9a75c0960cc9785db1001a31"
+            },
+            {
+              "type": "COMPONENT",
+              "key": "5db9feb4d46acb34952f63812fb5b914f429e6b0"
+            },
+            {
+              "type": "COMPONENT",
+              "key": "b4bce7615d32c33b749db08ce5c78b6a3e54e928"
+            },
+            {
+              "type": "COMPONENT",
+              "key": "4e5d49a7273a51eed0dacde1364f712d6fb15ad8"
+            }
+          ]
+        },
+        "Epic Name#2067:7": {
+          "type": "TEXT",
+          "value": "..."
+        },
+        "Notes#1527:1": {
+          "type": "TEXT",
+          "value": "..."
+        },
+        "has Notes#1527:0": {
+          "type": "BOOLEAN",
+          "value": false
+        }
+      },
+      "children": [
+        {
+          "id": "I2303:7975;50:568",
+          "name": "Content",
+          "type": "FRAME",
+          "box": {
+            "x": 41448,
+            "y": 6377,
+            "w": 368,
+            "h": 708
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 40,
+          "primaryAxisSizingMode": "FIXED",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "FIXED",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "I2303:7975;50:561",
+              "name": "Epic name",
+              "type": "TEXT",
+              "box": {
+                "x": 41448,
+                "y": 6377,
+                "w": 368,
+                "h": 48
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "STRETCH",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "opacity": 0.8,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              },
+              "characters": "...",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 32,
+                "fontWeight": 400,
+                "lineHeightPx": 48,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            },
+            {
+              "id": "I2303:7975;50:567",
+              "name": "Notes",
+              "type": "FRAME",
+              "box": {
+                "x": 41448,
+                "y": 6465,
+                "w": 368,
+                "h": 52
+              },
+              "layoutMode": "VERTICAL",
+              "layoutWrap": "NO_WRAP",
+              "itemSpacing": 8,
+              "counterAxisSizingMode": "FIXED",
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": false,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "visible": false,
+              "children": [
+                {
+                  "id": "I2303:7975;50:562",
+                  "name": "Notes",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 41448,
+                    "y": 6465,
+                    "w": 368,
+                    "h": 24
+                  },
+                  "layoutSizingHorizontal": "FILL",
+                  "layoutSizingVertical": "HUG",
+                  "layoutAlign": "STRETCH",
+                  "layoutGrow": 0,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "opacity": 0.5,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  },
+                  "characters": "Notes",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 16,
+                    "fontWeight": 600,
+                    "lineHeightPx": 24,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                },
+                {
+                  "id": "I2303:7975;50:563",
+                  "name": "...",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 41448,
+                    "y": 6497,
+                    "w": 368,
+                    "h": 20
+                  },
+                  "layoutSizingHorizontal": "FILL",
+                  "layoutSizingVertical": "HUG",
+                  "layoutAlign": "STRETCH",
+                  "layoutGrow": 0,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "opacity": 0.8,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  },
+                  "characters": "...",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 14,
+                    "fontWeight": 400,
+                    "lineHeightPx": 20,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "I2303:7975;50:878",
+          "name": "Annotation / Status / Todo",
+          "type": "INSTANCE",
+          "box": {
+            "x": 41704,
+            "y": 6305,
+            "w": 160,
+            "h": 46
+          },
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1739E5"
+            }
+          ],
+          "componentId": "50:848",
+          "component": "Annotation / Status / Todo",
+          "children": [
+            {
+              "id": "I2303:7975;50:878;50:755",
+              "name": "To do",
+              "type": "TEXT",
+              "box": {
+                "x": 41720,
+                "y": 6313,
+                "w": 128,
+                "h": 30
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              },
+              "characters": "To do",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 20,
+                "fontWeight": 600,
+                "lineHeightPx": 30,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "CENTER",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

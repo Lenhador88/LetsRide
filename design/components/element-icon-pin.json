@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "2370:8655",
+  "name": "Element / Icon / Pin",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12689,
+    "y": 4461,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "2370:8654",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12693,
+        "y": 4462,
+        "w": 16,
+        "h": 22
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

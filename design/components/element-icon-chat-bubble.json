@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1606:15630",
+  "name": "Element / Icon / Chat Bubble",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 744,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1606:15627",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12617,
+        "y": 745.99,
+        "w": 21.01,
+        "h": 21.01
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

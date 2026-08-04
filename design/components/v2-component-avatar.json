@@ -1,0 +1,176 @@
+{
+  "page": "Components",
+  "id": "2023:8900",
+  "name": "v2 / Component / Avatar",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 13040,
+    "y": 976,
+    "w": 148,
+    "h": 64
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Size": {
+      "type": "VARIANT",
+      "defaultValue": "Small",
+      "variantOptions": [
+        "Small",
+        "Medium",
+        "Large"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "2023:8899",
+      "name": "Size=Small",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13056,
+        "y": 992,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 2,
+      "strokeAlign": "INSIDE",
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ],
+      "styles": {
+        "strokes": "Grey/20%",
+        "stroke": "Grey/20%"
+      },
+      "children": [
+        {
+          "id": "2023:8896",
+          "name": "Image",
+          "type": "ELLIPSE",
+          "box": {
+            "x": 13058,
+            "y": 994,
+            "w": 20,
+            "h": 20
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "41108f27456b674ca97bb93c227212fcf0256e69",
+              "scaleMode": "FILL"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "2023:8925",
+      "name": "Size=Medium",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13096,
+        "y": 992,
+        "w": 28,
+        "h": 28
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 2,
+      "strokeAlign": "INSIDE",
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ],
+      "styles": {
+        "strokes": "Grey/20%",
+        "stroke": "Grey/20%"
+      },
+      "children": [
+        {
+          "id": "2023:8926",
+          "name": "Image",
+          "type": "ELLIPSE",
+          "box": {
+            "x": 13098,
+            "y": 994,
+            "w": 24,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "41108f27456b674ca97bb93c227212fcf0256e69",
+              "scaleMode": "FILL"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "2023:8903",
+      "name": "Size=Large",
+      "type": "COMPONENT",
+      "box": {
+        "x": 13140,
+        "y": 992,
+        "w": 32,
+        "h": 32
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 2,
+      "strokeAlign": "INSIDE",
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ],
+      "styles": {
+        "strokes": "Grey/20%",
+        "stroke": "Grey/20%"
+      },
+      "children": [
+        {
+          "id": "2023:8904",
+          "name": "Image",
+          "type": "ELLIPSE",
+          "box": {
+            "x": 13142,
+            "y": 994,
+            "w": 28,
+            "h": 28
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "41108f27456b674ca97bb93c227212fcf0256e69",
+              "scaleMode": "FILL"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

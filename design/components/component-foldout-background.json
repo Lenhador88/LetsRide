@@ -1,0 +1,31 @@
+{
+  "page": "Components",
+  "id": "270:1436",
+  "name": "Component / Foldout / Background",
+  "type": "COMPONENT",
+  "box": {
+    "x": 4560,
+    "y": 0,
+    "w": 390,
+    "h": 200
+  },
+  "clipsContent": true,
+  "rectangleCornerRadii": [
+    16,
+    16,
+    0,
+    0
+  ],
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#1A1A1A"
+    }
+  ],
+  "styles": {
+    "fills": "Grey (OLD)/10",
+    "fill": "Grey (OLD)/10"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "page": "Components",
+  "id": "146:916",
+  "name": "Component / iOS / Keyboard",
+  "type": "COMPONENT",
+  "box": {
+    "x": 0,
+    "y": 1178,
+    "w": 390,
+    "h": 349
+  },
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "146:913",
+      "name": "IMG_2734",
+      "type": "RECTANGLE",
+      "box": {
+        "x": 0,
+        "y": 1178,
+        "w": 390,
+        "h": 349
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "049dbec65d3498e1d4f78ec60012db607935ac50",
+          "scaleMode": "STRETCH"
+        }
+      ]
+    }
+  ]
+}

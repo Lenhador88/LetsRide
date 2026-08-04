@@ -1,0 +1,1212 @@
+{
+  "page": "Components",
+  "id": "241:7428",
+  "name": "Component / Navigation / Bar / Tile",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 8936,
+    "y": 188,
+    "w": 88,
+    "h": 232
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Label#1071:0": {
+      "type": "TEXT",
+      "defaultValue": "Label"
+    },
+    "State": {
+      "type": "VARIANT",
+      "defaultValue": "Default",
+      "variantOptions": [
+        "Default",
+        "Down",
+        "Selected"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "241:7366",
+      "name": "State=Default",
+      "type": "COMPONENT",
+      "box": {
+        "x": 8952,
+        "y": 204,
+        "w": 56,
+        "h": 56
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "303:10166",
+          "name": "Element / Icon / Calendar",
+          "type": "INSTANCE",
+          "box": {
+            "x": 8968,
+            "y": 212,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "303:9752",
+          "component": "State=Default",
+          "componentSet": "Element / Icon / Calendar",
+          "componentProperties": {
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I303:10166;303:9750",
+              "name": "Icon",
+              "type": "GROUP",
+              "box": {
+                "x": 8970,
+                "y": 214,
+                "w": 20,
+                "h": 20
+              },
+              "clipsContent": false,
+              "rectangleCornerRadii": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "I303:10166;303:9735",
+                  "name": "Rectangle 16",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 8974,
+                    "y": 214,
+                    "w": 1,
+                    "h": 4
+                  },
+                  "cornerRadius": 1,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#4D4D4D"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/30"
+                  }
+                },
+                {
+                  "id": "I303:10166;303:9736",
+                  "name": "Subtract",
+                  "type": "BOOLEAN_OPERATION",
+                  "box": {
+                    "x": 8970,
+                    "y": 216,
+                    "w": 20,
+                    "h": 5
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#4D4D4D"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/30"
+                  },
+                  "children": [
+                    {
+                      "id": "I303:10166;303:9737",
+                      "name": "Rectangle 18",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8970,
+                        "y": 216,
+                        "w": 20,
+                        "h": 5
+                      },
+                      "cornerRadius": 1,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10166;303:9738",
+                      "name": "Rectangle 26",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8973,
+                        "y": 213,
+                        "w": 3,
+                        "h": 6
+                      },
+                      "cornerRadius": 3,
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10166;303:9739",
+                      "name": "Rectangle 27",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 213,
+                        "w": 3,
+                        "h": 6
+                      },
+                      "cornerRadius": 3,
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "I303:10166;303:9740",
+                  "name": "Rectangle 17",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 8985,
+                    "y": 214,
+                    "w": 1,
+                    "h": 4
+                  },
+                  "cornerRadius": 1,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#4D4D4D"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/30"
+                  }
+                },
+                {
+                  "id": "I303:10166;303:9741",
+                  "name": "Subtract",
+                  "type": "BOOLEAN_OPERATION",
+                  "box": {
+                    "x": 8970,
+                    "y": 222,
+                    "w": 20,
+                    "h": 12
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/50"
+                  },
+                  "children": [
+                    {
+                      "id": "I303:10166;303:9742",
+                      "name": "Rectangle 19",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8970,
+                        "y": 222,
+                        "w": 20,
+                        "h": 12
+                      },
+                      "cornerRadius": 1,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#36B289"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10166;303:9743",
+                      "name": "Rectangle 20",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8974,
+                        "y": 225,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10166;303:9744",
+                      "name": "Rectangle 23",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8974,
+                        "y": 229,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10166;303:9745",
+                      "name": "Rectangle 21",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8979,
+                        "y": 225,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10166;303:9746",
+                      "name": "Rectangle 24",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8979,
+                        "y": 229,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10166;303:9747",
+                      "name": "Rectangle 22",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 225,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10166;303:9748",
+                      "name": "Rectangle 25",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 229,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "241:7365",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 8967,
+            "y": 240,
+            "w": 27,
+            "h": 16
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#B3B3B3"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/70",
+            "text": "Poppins/10/Medium"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 10,
+            "fontWeight": 500,
+            "lineHeightPx": 16,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "241:7429",
+      "name": "State=Down",
+      "type": "COMPONENT",
+      "box": {
+        "x": 8952,
+        "y": 276,
+        "w": 56,
+        "h": 56
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "303:10652",
+          "name": "Element / Icon / Calendar",
+          "type": "INSTANCE",
+          "box": {
+            "x": 8968,
+            "y": 284,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "303:9753",
+          "component": "State=Down",
+          "componentSet": "Element / Icon / Calendar",
+          "componentProperties": {
+            "State": {
+              "value": "Down",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I303:10652;303:9749",
+              "name": "Icon",
+              "type": "GROUP",
+              "box": {
+                "x": 8970,
+                "y": 286,
+                "w": 20,
+                "h": 20
+              },
+              "clipsContent": false,
+              "rectangleCornerRadii": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "I303:10652;303:9694",
+                  "name": "Rectangle 16",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 8974,
+                    "y": 286,
+                    "w": 1,
+                    "h": 4
+                  },
+                  "cornerRadius": 1,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/50"
+                  }
+                },
+                {
+                  "id": "I303:10652;303:9732",
+                  "name": "Subtract",
+                  "type": "BOOLEAN_OPERATION",
+                  "box": {
+                    "x": 8970,
+                    "y": 288,
+                    "w": 20,
+                    "h": 5
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/50"
+                  },
+                  "children": [
+                    {
+                      "id": "I303:10652;303:9691",
+                      "name": "Rectangle 18",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8970,
+                        "y": 288,
+                        "w": 20,
+                        "h": 5
+                      },
+                      "cornerRadius": 1,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10652;303:9730",
+                      "name": "Rectangle 26",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8973,
+                        "y": 285,
+                        "w": 3,
+                        "h": 6
+                      },
+                      "cornerRadius": 3,
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10652;303:9731",
+                      "name": "Rectangle 27",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 285,
+                        "w": 3,
+                        "h": 6
+                      },
+                      "cornerRadius": 3,
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "I303:10652;303:9695",
+                  "name": "Rectangle 17",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 8985,
+                    "y": 286,
+                    "w": 1,
+                    "h": 4
+                  },
+                  "cornerRadius": 1,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/50"
+                  }
+                },
+                {
+                  "id": "I303:10652;303:9733",
+                  "name": "Subtract",
+                  "type": "BOOLEAN_OPERATION",
+                  "box": {
+                    "x": 8970,
+                    "y": 294,
+                    "w": 20,
+                    "h": 12
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#B3B3B3"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/70"
+                  },
+                  "children": [
+                    {
+                      "id": "I303:10652;303:9692",
+                      "name": "Rectangle 19",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8970,
+                        "y": 294,
+                        "w": 20,
+                        "h": 12
+                      },
+                      "cornerRadius": 1,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#36B289"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10652;303:9696",
+                      "name": "Rectangle 20",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8974,
+                        "y": 297,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10652;303:9697",
+                      "name": "Rectangle 23",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8974,
+                        "y": 301,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10652;303:9698",
+                      "name": "Rectangle 21",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8979,
+                        "y": 297,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10652;303:9699",
+                      "name": "Rectangle 24",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8979,
+                        "y": 301,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10652;303:9700",
+                      "name": "Rectangle 22",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 297,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10652;303:9701",
+                      "name": "Rectangle 25",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 301,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "241:7431",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 8967,
+            "y": 312,
+            "w": 27,
+            "h": 16
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90",
+            "text": "Poppins/10/Medium"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 10,
+            "fontWeight": 500,
+            "lineHeightPx": 16,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    },
+    {
+      "id": "241:7433",
+      "name": "State=Selected",
+      "type": "COMPONENT",
+      "box": {
+        "x": 8952,
+        "y": 348,
+        "w": 56,
+        "h": 56
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "303:10668",
+          "name": "Element / Icon / Calendar",
+          "type": "INSTANCE",
+          "box": {
+            "x": 8968,
+            "y": 356,
+            "w": 24,
+            "h": 24
+          },
+          "clipsContent": true,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "303:11121",
+          "component": "State=Selected",
+          "componentSet": "Element / Icon / Calendar",
+          "componentProperties": {
+            "State": {
+              "value": "Selected",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I303:10668;303:11122",
+              "name": "Icon",
+              "type": "GROUP",
+              "box": {
+                "x": 8970,
+                "y": 358,
+                "w": 20,
+                "h": 20
+              },
+              "clipsContent": false,
+              "rectangleCornerRadii": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "I303:10668;303:11123",
+                  "name": "Rectangle 16",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 8974,
+                    "y": 358,
+                    "w": 1,
+                    "h": 4
+                  },
+                  "cornerRadius": 1,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#364D4D"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Accent (OLD)/150"
+                  }
+                },
+                {
+                  "id": "I303:10668;303:11124",
+                  "name": "Subtract",
+                  "type": "BOOLEAN_OPERATION",
+                  "box": {
+                    "x": 8970,
+                    "y": 360,
+                    "w": 20,
+                    "h": 5
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#364D4D"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Accent (OLD)/150"
+                  },
+                  "children": [
+                    {
+                      "id": "I303:10668;303:11125",
+                      "name": "Rectangle 18",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8970,
+                        "y": 360,
+                        "w": 20,
+                        "h": 5
+                      },
+                      "cornerRadius": 1,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10668;303:11126",
+                      "name": "Rectangle 26",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8973,
+                        "y": 357,
+                        "w": 3,
+                        "h": 6
+                      },
+                      "cornerRadius": 3,
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10668;303:11127",
+                      "name": "Rectangle 27",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 357,
+                        "w": 3,
+                        "h": 6
+                      },
+                      "cornerRadius": 3,
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#364D4D"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "I303:10668;303:11128",
+                  "name": "Rectangle 17",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 8985,
+                    "y": 358,
+                    "w": 1,
+                    "h": 4
+                  },
+                  "cornerRadius": 1,
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#364D4D"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Accent (OLD)/150"
+                  }
+                },
+                {
+                  "id": "I303:10668;303:11129",
+                  "name": "Subtract",
+                  "type": "BOOLEAN_OPERATION",
+                  "box": {
+                    "x": 8970,
+                    "y": 366,
+                    "w": 20,
+                    "h": 12
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#36B289"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Accent (OLD)/100"
+                  },
+                  "children": [
+                    {
+                      "id": "I303:10668;303:11130",
+                      "name": "Rectangle 19",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8970,
+                        "y": 366,
+                        "w": 20,
+                        "h": 12
+                      },
+                      "cornerRadius": 1,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#36B289"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10668;303:11131",
+                      "name": "Rectangle 20",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8974,
+                        "y": 369,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10668;303:11132",
+                      "name": "Rectangle 23",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8974,
+                        "y": 373,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10668;303:11133",
+                      "name": "Rectangle 21",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8979,
+                        "y": 369,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10668;303:11134",
+                      "name": "Rectangle 24",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8979,
+                        "y": 373,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10668;303:11135",
+                      "name": "Rectangle 22",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 369,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "I303:10668;303:11136",
+                      "name": "Rectangle 25",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": 8984,
+                        "y": 373,
+                        "w": 2,
+                        "h": 2
+                      },
+                      "cornerRadius": 0.5,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#262626"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "241:7435",
+          "name": "Label",
+          "type": "TEXT",
+          "box": {
+            "x": 8967,
+            "y": 384,
+            "w": 27,
+            "h": 16
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#36B289"
+            }
+          ],
+          "styles": {
+            "fill": "Accent (OLD)/100",
+            "text": "Poppins/10/Medium"
+          },
+          "characters": "Label",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 10,
+            "fontWeight": 500,
+            "lineHeightPx": 16,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

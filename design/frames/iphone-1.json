@@ -1,0 +1,43 @@
+{
+  "page": "Components",
+  "id": "2288:10336",
+  "name": "iPhone 1",
+  "type": "FRAME",
+  "box": {
+    "x": 16511,
+    "y": -107,
+    "w": 1320,
+    "h": 2868
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "children": [
+    {
+      "id": "2288:10354",
+      "name": "0DA38305-E11F-49FF-B136-1EBCE137A40A_1_102_o 1",
+      "type": "RECTANGLE",
+      "box": {
+        "x": 16511,
+        "y": -107,
+        "w": 1320,
+        "h": 2862
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "51dcaa3e06829c815b81b24332453c033532f57b",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}

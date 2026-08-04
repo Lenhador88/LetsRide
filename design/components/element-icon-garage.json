@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1580:10156",
+  "name": "Element / Icon / Garage",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 1860,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1580:10155",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12617,
+        "y": 1862.16,
+        "w": 22,
+        "h": 20.84
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

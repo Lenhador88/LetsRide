@@ -1,0 +1,37 @@
+{
+  "page": "Archive",
+  "id": "908:5806",
+  "name": "Frame 60",
+  "type": "FRAME",
+  "box": {
+    "x": -9025,
+    "y": 40508,
+    "w": 390,
+    "h": 780
+  },
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "882:5691",
+      "name": "F6026BF3-D276-4F80-AE0F-D0EFDBE9A390_4_5005_c",
+      "type": "RECTANGLE",
+      "box": {
+        "x": -9025,
+        "y": 40508,
+        "w": 359,
+        "h": 780
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "cd4254c41e0193269dae3836521597856b276579",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}

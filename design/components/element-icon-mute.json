@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "2370:8656",
+  "name": "Element / Icon / Mute",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12650,
+    "y": 4461,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "2370:8653",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12651,
+        "y": 4462,
+        "w": 22,
+        "h": 22
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

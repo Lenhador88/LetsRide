@@ -1,0 +1,6515 @@
+{
+  "page": "Components",
+  "id": "318:5166",
+  "name": "Element / Flag",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 12160,
+    "y": 0,
+    "w": 56,
+    "h": 288
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Country": {
+      "type": "VARIANT",
+      "defaultValue": "Netherlands",
+      "variantOptions": [
+        "Afghanistan",
+        "Albania",
+        "Algeria",
+        "Andorra",
+        "Angola",
+        "Antigua and Barbuda",
+        "Germany",
+        "Netherlands"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "318:5161",
+      "name": "Country=Afghanistan",
+      "type": "COMPONENT",
+      "box": {
+        "x": 12176,
+        "y": 84,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:4837",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12176,
+            "y": 84,
+            "w": 24,
+            "h": 18
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:4838",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12176,
+                "y": 84,
+                "w": 24,
+                "h": 18
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#000000"
+                }
+              ]
+            },
+            {
+              "id": "318:4839",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12192,
+                "y": 84,
+                "w": 8,
+                "h": 18
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#009900"
+                }
+              ]
+            },
+            {
+              "id": "318:4840",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12184,
+                "y": 84,
+                "w": 8,
+                "h": 18
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#BF0000"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:4841",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12164.09,
+            "y": 89.3,
+            "w": 26.16,
+            "h": 7.39
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:4842",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12188.65,
+                "y": 94.03,
+                "w": 0.64,
+                "h": 0.34
+              },
+              "strokeWeight": 0.07,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#BD6B00"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:4843",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.67,
+                "y": 91.94,
+                "w": 2.64,
+                "h": 0.41
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:4844",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12187.47,
+                "y": 90.97,
+                "w": 1.06,
+                "h": 0.94
+              },
+              "strokeWeight": 0.07,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#BD6B00"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:4845",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.31,
+                "y": 94.46,
+                "w": 3.37,
+                "h": 0.24
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:4846",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.68,
+                "y": 92.41,
+                "w": 2.42,
+                "h": 1.98
+              },
+              "strokeWeight": 0.07,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#BD6B00"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:4847",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12187.58,
+                "y": 93.47,
+                "w": 0.13,
+                "h": 0.3
+              },
+              "strokeWeight": 0.07,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#BD6B00"
+                }
+              ]
+            },
+            {
+              "id": "318:4848",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12187.39,
+                "y": 93.22,
+                "w": 1.18,
+                "h": 0.83
+              },
+              "strokeWeight": 0.07,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#BD6B00"
+                }
+              ]
+            },
+            {
+              "id": "318:4849",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12187.92,
+                "y": 93.22,
+                "w": 0.46,
+                "h": 0.83
+              },
+              "strokeWeight": 0.07,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#BD6B00"
+                }
+              ]
+            },
+            {
+              "id": "318:4850",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12188.62,
+                "y": 93.41,
+                "w": 0.04,
+                "h": 0.28
+              },
+              "strokeWeight": 0.07,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#BD6B00"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:4851",
+              "name": "a",
+              "type": "GROUP",
+              "box": {
+                "x": 12184.34,
+                "y": 90.43,
+                "w": 3.64,
+                "h": 5.73
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:4852",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.8,
+                    "y": 92.44,
+                    "w": 0.76,
+                    "h": 1.3
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4853",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.83,
+                    "y": 92.7,
+                    "w": 0.46,
+                    "h": 0.75
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BF0000"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4854",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.82,
+                    "y": 92.7,
+                    "w": 0.47,
+                    "h": 0.76
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4855",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12186.23,
+                    "y": 92.36,
+                    "w": 0.75,
+                    "h": 1.22
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4856",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12186.15,
+                    "y": 91.08,
+                    "w": 1.07,
+                    "h": 1.34
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4857",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.54,
+                    "y": 91.23,
+                    "w": 0.24,
+                    "h": 0.5
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4858",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.67,
+                    "y": 91.31,
+                    "w": 0.21,
+                    "h": 0.49
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4859",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12186.88,
+                    "y": 92.5,
+                    "w": 0.62,
+                    "h": 1.47
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4860",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12186.95,
+                    "y": 92.54,
+                    "w": 0.23,
+                    "h": 1.14
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4861",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.46,
+                    "y": 90.43,
+                    "w": 1.72,
+                    "h": 3.25
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4862",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.21,
+                    "y": 90.64,
+                    "w": 0.69,
+                    "h": 0.83
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4863",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.11,
+                    "y": 90.92,
+                    "w": 0.13,
+                    "h": 0.75
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4864",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.24,
+                    "y": 90.77,
+                    "w": 1.11,
+                    "h": 0.9
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4865",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.84,
+                    "y": 90.82,
+                    "w": 0.3,
+                    "h": 0.64
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4866",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.71,
+                    "y": 91.05,
+                    "w": 0.13,
+                    "h": 0.4
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4867",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.6,
+                    "y": 91.26,
+                    "w": 0.13,
+                    "h": 0.41
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4868",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.96,
+                    "y": 91.44,
+                    "w": 2.05,
+                    "h": 4.14
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4869",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.81,
+                    "y": 92,
+                    "w": 0.81,
+                    "h": 1.37
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4870",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.27,
+                    "y": 93.26,
+                    "w": 1.72,
+                    "h": 2.55
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4871",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.66,
+                    "y": 95.71,
+                    "w": 0.47,
+                    "h": 0.1
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4872",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.82,
+                    "y": 95.38,
+                    "w": 0.73,
+                    "h": 0.59
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4873",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.37,
+                    "y": 93.17,
+                    "w": 2.23,
+                    "h": 2.99
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4874",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.8,
+                    "y": 94.05,
+                    "w": 0.14,
+                    "h": 0.35
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4875",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.87,
+                    "y": 94.27,
+                    "w": 0.14,
+                    "h": 0.31
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4876",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.96,
+                    "y": 94.45,
+                    "w": 0.13,
+                    "h": 0.29
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4877",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.63,
+                    "y": 94.51,
+                    "w": 0.32,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4878",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.42,
+                    "y": 94.21,
+                    "w": 0.42,
+                    "h": 0.37
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4879",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.31,
+                    "y": 93.96,
+                    "w": 0.5,
+                    "h": 0.44
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4880",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.36,
+                    "y": 93.56,
+                    "w": 1.83,
+                    "h": 1.19
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4881",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.49,
+                    "y": 93.87,
+                    "w": 0.39,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4882",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.56,
+                    "y": 94.02,
+                    "w": 0.44,
+                    "h": 0.29
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4883",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.56,
+                    "y": 93.64,
+                    "w": 0.44,
+                    "h": 0.79
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4884",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.59,
+                    "y": 93.87,
+                    "w": 0.51,
+                    "h": 0.7
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4885",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.7,
+                    "y": 94.48,
+                    "w": 0.47,
+                    "h": 0.29
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4886",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.87,
+                    "y": 94.09,
+                    "w": 0.5,
+                    "h": 0.9
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4887",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.9,
+                    "y": 92.5,
+                    "w": 0.56,
+                    "h": 2.52
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4888",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.93,
+                    "y": 93,
+                    "w": 0.36,
+                    "h": 0.29
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4889",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.94,
+                    "y": 93.21,
+                    "w": 0.21,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4890",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.48,
+                    "y": 91.91,
+                    "w": 0.85,
+                    "h": 1.58
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4891",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.42,
+                    "y": 92.22,
+                    "w": 0.44,
+                    "h": 0.49
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4892",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.37,
+                    "y": 92.45,
+                    "w": 0.51,
+                    "h": 0.48
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4893",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.4,
+                    "y": 92.69,
+                    "w": 0.3,
+                    "h": 0.44
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4894",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.45,
+                    "y": 92.82,
+                    "w": 0.44,
+                    "h": 0.54
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4895",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.34,
+                    "y": 91.13,
+                    "w": 1.53,
+                    "h": 3.73
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4896",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.04,
+                    "y": 95.04,
+                    "w": 0.94,
+                    "h": 0.65
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "318:4897",
+              "name": "Group",
+              "type": "GROUP",
+              "box": {
+                "x": 12164.09,
+                "y": 90.43,
+                "w": 3.64,
+                "h": 5.73
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:4898",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.52,
+                    "y": 92.44,
+                    "w": 0.76,
+                    "h": 1.3
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4899",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.78,
+                    "y": 92.7,
+                    "w": 0.46,
+                    "h": 0.75
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BF0000"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4900",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.79,
+                    "y": 92.7,
+                    "w": 0.47,
+                    "h": 0.76
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4901",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.1,
+                    "y": 92.36,
+                    "w": 0.75,
+                    "h": 1.22
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4902",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12164.86,
+                    "y": 91.08,
+                    "w": 1.07,
+                    "h": 1.34
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4903",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12164.3,
+                    "y": 91.23,
+                    "w": 0.24,
+                    "h": 0.5
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4904",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12164.2,
+                    "y": 91.31,
+                    "w": 0.21,
+                    "h": 0.49
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4905",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12164.58,
+                    "y": 92.5,
+                    "w": 0.62,
+                    "h": 1.47
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4906",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12164.9,
+                    "y": 92.54,
+                    "w": 0.23,
+                    "h": 1.14
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4907",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12164.9,
+                    "y": 90.43,
+                    "w": 1.72,
+                    "h": 3.25
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4908",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.17,
+                    "y": 90.64,
+                    "w": 0.69,
+                    "h": 0.83
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4909",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.84,
+                    "y": 90.92,
+                    "w": 0.13,
+                    "h": 0.75
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4910",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.73,
+                    "y": 90.77,
+                    "w": 1.11,
+                    "h": 0.9
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4911",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.93,
+                    "y": 90.82,
+                    "w": 0.3,
+                    "h": 0.64
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4912",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.24,
+                    "y": 91.05,
+                    "w": 0.13,
+                    "h": 0.4
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4913",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.34,
+                    "y": 91.26,
+                    "w": 0.13,
+                    "h": 0.41
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4914",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.07,
+                    "y": 91.44,
+                    "w": 2.05,
+                    "h": 4.14
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4915",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.46,
+                    "y": 92,
+                    "w": 0.81,
+                    "h": 1.37
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4916",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.09,
+                    "y": 93.26,
+                    "w": 1.72,
+                    "h": 2.55
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4917",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.95,
+                    "y": 95.71,
+                    "w": 0.47,
+                    "h": 0.1
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4918",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.53,
+                    "y": 95.38,
+                    "w": 0.73,
+                    "h": 0.59
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4919",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.47,
+                    "y": 93.17,
+                    "w": 2.23,
+                    "h": 2.99
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4920",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.14,
+                    "y": 94.05,
+                    "w": 0.14,
+                    "h": 0.35
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4921",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.06,
+                    "y": 94.27,
+                    "w": 0.14,
+                    "h": 0.31
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4922",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.98,
+                    "y": 94.45,
+                    "w": 0.13,
+                    "h": 0.29
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4923",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.13,
+                    "y": 94.51,
+                    "w": 0.32,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4924",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.24,
+                    "y": 94.21,
+                    "w": 0.42,
+                    "h": 0.37
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4925",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.26,
+                    "y": 93.96,
+                    "w": 0.5,
+                    "h": 0.44
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4926",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12165.88,
+                    "y": 93.56,
+                    "w": 1.83,
+                    "h": 1.19
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4927",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12167.19,
+                    "y": 93.87,
+                    "w": 0.39,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4928",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12167.07,
+                    "y": 94.02,
+                    "w": 0.44,
+                    "h": 0.29
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4929",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12167.08,
+                    "y": 93.64,
+                    "w": 0.44,
+                    "h": 0.79
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4930",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.98,
+                    "y": 93.87,
+                    "w": 0.51,
+                    "h": 0.7
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4931",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.9,
+                    "y": 94.48,
+                    "w": 0.47,
+                    "h": 0.29
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4932",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.71,
+                    "y": 94.09,
+                    "w": 0.5,
+                    "h": 0.9
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4933",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.61,
+                    "y": 92.5,
+                    "w": 0.56,
+                    "h": 2.52
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4934",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.78,
+                    "y": 93,
+                    "w": 0.36,
+                    "h": 0.29
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4935",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.93,
+                    "y": 93.21,
+                    "w": 0.21,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4936",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.75,
+                    "y": 91.91,
+                    "w": 0.85,
+                    "h": 1.58
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4937",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12167.22,
+                    "y": 92.22,
+                    "w": 0.44,
+                    "h": 0.49
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4938",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12167.19,
+                    "y": 92.45,
+                    "w": 0.51,
+                    "h": 0.48
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4939",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12167.37,
+                    "y": 92.69,
+                    "w": 0.3,
+                    "h": 0.44
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4940",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12167.18,
+                    "y": 92.82,
+                    "w": 0.44,
+                    "h": 0.54
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4941",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12166.2,
+                    "y": 91.13,
+                    "w": 1.53,
+                    "h": 3.73
+                  },
+                  "strokeWeight": 0.07,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4942",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12164.09,
+                    "y": 95.04,
+                    "w": 0.94,
+                    "h": 0.65
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "318:4943",
+              "name": "Group",
+              "type": "GROUP",
+              "box": {
+                "x": 12185.86,
+                "y": 89.3,
+                "w": 4.4,
+                "h": 7.39
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:4944",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12186.25,
+                    "y": 95.57,
+                    "w": 3.5,
+                    "h": 1.13
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4945",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12186.38,
+                    "y": 95.61,
+                    "w": 3.24,
+                    "h": 0.87
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#BD6B00"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4946",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12186.61,
+                    "y": 89.3,
+                    "w": 2.53,
+                    "h": 1.07
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4947",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.86,
+                    "y": 89.64,
+                    "w": 0.53,
+                    "h": 0.68
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4948",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12189.09,
+                    "y": 89.63,
+                    "w": 0.51,
+                    "h": 0.65
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4949",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12189.15,
+                    "y": 89.94,
+                    "w": 0.82,
+                    "h": 0.65
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4950",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.86,
+                    "y": 89.41,
+                    "w": 4.09,
+                    "h": 1.38
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4951",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12189.78,
+                    "y": 90.02,
+                    "w": 0.32,
+                    "h": 0.58
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4952",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.78,
+                    "y": 90.12,
+                    "w": 2.48,
+                    "h": 0.78
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4953",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.43,
+                    "y": 90.56,
+                    "w": 1.11,
+                    "h": 0.36
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "318:4954",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.13,
+                    "y": 90.22,
+                    "w": 1.7,
+                    "h": 0.35
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:4955",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12187.57,
+            "y": 94.85,
+            "w": 0.85,
+            "h": 0.32
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100"
+          }
+        },
+        {
+          "id": "318:4956",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12186.74,
+            "y": 95.76,
+            "w": 2.45,
+            "h": 0.55
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#BF0000"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:5163",
+      "name": "Country=Albania",
+      "type": "COMPONENT",
+      "box": {
+        "x": 12176,
+        "y": 118,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:4963",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 118,
+            "w": 24,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E41E20"
+            }
+          ]
+        },
+        {
+          "id": "318:4964",
+          "name": "a",
+          "type": "VECTOR",
+          "box": {
+            "x": 12182.86,
+            "y": 121.5,
+            "w": 5.87,
+            "h": 11
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ]
+        },
+        {
+          "id": "318:4965",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12187.28,
+            "y": 121.5,
+            "w": 5.87,
+            "h": 11
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:5165",
+      "name": "Country=Algeria",
+      "type": "COMPONENT",
+      "box": {
+        "x": 12176,
+        "y": 152,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:4971",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12188,
+            "y": 152,
+            "w": 12,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100"
+          }
+        },
+        {
+          "id": "318:4972",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 152,
+            "w": 12,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#006233"
+            }
+          ]
+        },
+        {
+          "id": "318:4973",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12183.5,
+            "y": 156.5,
+            "w": 8.55,
+            "h": 9
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#D21034"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:5162",
+      "name": "Country=Andorra",
+      "type": "COMPONENT",
+      "box": {
+        "x": 12176,
+        "y": 186,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:4980",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 186,
+            "w": 24,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#D0103A"
+            }
+          ]
+        },
+        {
+          "id": "318:4981",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 186,
+            "w": 16.32,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FEDF00"
+            }
+          ]
+        },
+        {
+          "id": "318:4982",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 186,
+            "w": 7.68,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#0018A8"
+            }
+          ]
+        },
+        {
+          "id": "318:4983",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12184.4,
+            "y": 191.12,
+            "w": 7.16,
+            "h": 7.75
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#C7B37F"
+            }
+          ]
+        },
+        {
+          "id": "318:4984",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12184.42,
+            "y": 191.13,
+            "w": 7.17,
+            "h": 7.74
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:4985",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.21,
+                "y": 191.77,
+                "w": 0.26,
+                "h": 0.29
+              },
+              "strokeWeight": 0.09,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4986",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12190.48,
+                "y": 194.67,
+                "w": 0.9,
+                "h": 1.61
+              },
+              "strokeWeight": 0.09,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4987",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12188.78,
+                "y": 196.13,
+                "w": 2.57,
+                "h": 2.03
+              },
+              "strokeWeight": 0.1,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4988",
+              "name": "Group",
+              "type": "GROUP",
+              "box": {
+                "x": 12187.12,
+                "y": 191.3,
+                "w": 3.83,
+                "h": 7.18
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:4989",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.12,
+                    "y": 191.3,
+                    "w": 3.83,
+                    "h": 7.18
+                  },
+                  "strokeWeight": 0.09,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:4990",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.78,
+                    "y": 192,
+                    "w": 0.11,
+                    "h": 0.36
+                  },
+                  "strokeWeight": 0.09,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "318:4991",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.2,
+                "y": 191.75,
+                "w": 0.26,
+                "h": 0.3
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#C7B37F"
+                }
+              ]
+            },
+            {
+              "id": "318:4992",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.04,
+                "y": 191.7,
+                "w": 1.66,
+                "h": 0.65
+              },
+              "strokeWeight": 0.09,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4993",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12185.03,
+                "y": 196.55,
+                "w": 0.71,
+                "h": 0.39
+              },
+              "strokeWeight": 0.09,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4994",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12187.77,
+                "y": 198.34,
+                "w": 0.22,
+                "h": 0.16
+              },
+              "strokeWeight": 0.1,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4995",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12188.81,
+                "y": 196.36,
+                "w": 2.56,
+                "h": 1.81
+              },
+              "strokeWeight": 0.11,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4996",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12190.53,
+                "y": 196.55,
+                "w": 0.3,
+                "h": 0.09
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4997",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12191.06,
+                "y": 195.95,
+                "w": 0.34,
+                "h": 0.35
+              },
+              "strokeWeight": 0.11,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4998",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12184.73,
+                "y": 191.93,
+                "w": 1.72,
+                "h": 1.94
+              },
+              "strokeWeight": 0.09,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:4999",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12190.89,
+                "y": 193.2,
+                "w": 0.7,
+                "h": 1.48
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:5000",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12190.94,
+                "y": 193.2,
+                "w": 0.63,
+                "h": 1.45
+              },
+              "strokeWeight": 0.09,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:5001",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12184.76,
+                "y": 192.1,
+                "w": 6.42,
+                "h": 4.81
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "CENTER",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:5002",
+              "name": "Group",
+              "type": "GROUP",
+              "box": {
+                "x": 12184.42,
+                "y": 191.13,
+                "w": 7.14,
+                "h": 7.74
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:5003",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.46,
+                    "y": 194.4,
+                    "w": 5.8,
+                    "h": 1.75
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5004",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.71,
+                    "y": 194.7,
+                    "w": 3.63,
+                    "h": 4.16
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5005",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.71,
+                    "y": 198.47,
+                    "w": 0.08,
+                    "h": 0.16
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5006",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.14,
+                    "y": 191.31,
+                    "w": 3.85,
+                    "h": 7.54
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5007",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.5,
+                    "y": 192.08,
+                    "w": 0.21,
+                    "h": 0.13
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5008",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.1,
+                    "y": 192.13,
+                    "w": 6.1,
+                    "h": 6.33
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5009",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.9,
+                    "y": 193.71,
+                    "w": 0.77,
+                    "h": 0.41
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5010",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.34,
+                    "y": 193.06,
+                    "w": 5.39,
+                    "h": 5.67
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5011",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.14,
+                    "y": 193.42,
+                    "w": 0.11,
+                    "h": 0.18
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5012",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.04,
+                    "y": 196.56,
+                    "w": 0.46,
+                    "h": 0.84
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5013",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.59,
+                    "y": 198.29,
+                    "w": 0.2,
+                    "h": 0.16
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5014",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.29,
+                    "y": 191.81,
+                    "w": 0.96,
+                    "h": 4.12
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5015",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.74,
+                    "y": 193.32,
+                    "w": 6.13,
+                    "h": 5.41
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5016",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.43,
+                    "y": 194.87,
+                    "w": 0.24,
+                    "h": 1.04
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5017",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.37,
+                    "y": 192.12,
+                    "w": 1.95,
+                    "h": 4.23
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5018",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.29,
+                    "y": 193.87,
+                    "w": 5.02,
+                    "h": 3.3
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5019",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.88,
+                    "y": 196.46,
+                    "w": 3.86,
+                    "h": 2.41
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5020",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.52,
+                    "y": 198.62,
+                    "w": 0.19,
+                    "h": 0.11
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5021",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.51,
+                    "y": 191.74,
+                    "w": 2.51,
+                    "h": 6.9
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5022",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.84,
+                    "y": 191.16,
+                    "w": 0.84,
+                    "h": 0.99
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5023",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.87,
+                    "y": 191.49,
+                    "w": 1.84,
+                    "h": 5.41
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5024",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.59,
+                    "y": 193.72,
+                    "w": 1.08,
+                    "h": 2.58
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5025",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.91,
+                    "y": 193.86,
+                    "w": 0.76,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5026",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.58,
+                    "y": 193.32,
+                    "w": 0.09,
+                    "h": 0.13
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5027",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.1,
+                    "y": 193.62,
+                    "w": 0.57,
+                    "h": 0.3
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5028",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185,
+                    "y": 193.34,
+                    "w": 0.41,
+                    "h": 0.43
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5029",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.6,
+                    "y": 194.22,
+                    "w": 0.74,
+                    "h": 0.46
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5030",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.37,
+                    "y": 193.05,
+                    "w": 0.11,
+                    "h": 0.11
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5031",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.35,
+                    "y": 192.11,
+                    "w": 5.62,
+                    "h": 1.65
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5032",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.31,
+                    "y": 192.34,
+                    "w": 0,
+                    "h": 0.6
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5033",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.42,
+                    "y": 191.63,
+                    "w": 5.91,
+                    "h": 3.04
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5034",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.27,
+                    "y": 191.66,
+                    "w": 0.37,
+                    "h": 0.67
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5035",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.45,
+                    "y": 191.97,
+                    "w": 0.54,
+                    "h": 1.24
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5036",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.58,
+                    "y": 193.2,
+                    "w": 0.98,
+                    "h": 1.47
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5037",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.73,
+                    "y": 193.35,
+                    "w": 0.65,
+                    "h": 1.16
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5038",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.86,
+                    "y": 193.44,
+                    "w": 0.38,
+                    "h": 1.04
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5039",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12191.02,
+                    "y": 195.78,
+                    "w": 0.29,
+                    "h": 0.26
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5040",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.23,
+                    "y": 195.73,
+                    "w": 0.79,
+                    "h": 1.16
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5041",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.41,
+                    "y": 196.36,
+                    "w": 2.72,
+                    "h": 2.26
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5042",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.17,
+                    "y": 197.86,
+                    "w": 0.53,
+                    "h": 0.87
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5043",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.29,
+                    "y": 194.4,
+                    "w": 0.15,
+                    "h": 0.56
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5044",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.29,
+                    "y": 194.87,
+                    "w": 0.24,
+                    "h": 1.04
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5045",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12189.72,
+                    "y": 191.59,
+                    "w": 0.38,
+                    "h": 0.58
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5046",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.64,
+                    "y": 191.63,
+                    "w": 0.3,
+                    "h": 0.55
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5047",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.33,
+                    "y": 191.66,
+                    "w": 0.37,
+                    "h": 0.67
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5048",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.14,
+                    "y": 191.81,
+                    "w": 0.53,
+                    "h": 1.56
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5049",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.96,
+                    "y": 191.97,
+                    "w": 0.54,
+                    "h": 1.25
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5050",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.59,
+                    "y": 194.67,
+                    "w": 0.9,
+                    "h": 1.61
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5051",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.65,
+                    "y": 194.79,
+                    "w": 0.7,
+                    "h": 1.36
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5052",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.71,
+                    "y": 195.69,
+                    "w": 0.27,
+                    "h": 0.24
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5053",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.98,
+                    "y": 194.96,
+                    "w": 0.23,
+                    "h": 0.84
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5054",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.94,
+                    "y": 195.73,
+                    "w": 0.24,
+                    "h": 0.23
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5055",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.62,
+                    "y": 196.13,
+                    "w": 2.57,
+                    "h": 2.02
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5056",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.99,
+                    "y": 196.22,
+                    "w": 0.75,
+                    "h": 0.67
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5057",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.02,
+                    "y": 196.53,
+                    "w": 2.96,
+                    "h": 1.94
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5058",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.84,
+                    "y": 196.36,
+                    "w": 2.71,
+                    "h": 2.26
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5059",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.87,
+                    "y": 191.59,
+                    "w": 0.38,
+                    "h": 0.58
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5060",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12186.21,
+                    "y": 191.13,
+                    "w": 3.54,
+                    "h": 1.08
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5061",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.15,
+                    "y": 197.79,
+                    "w": 0.67,
+                    "h": 0.68
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5062",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.16,
+                    "y": 198.08,
+                    "w": 0.4,
+                    "h": 0.56
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5063",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12187.18,
+                    "y": 198.18,
+                    "w": 0.22,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5064",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12190.54,
+                    "y": 191.81,
+                    "w": 0.31,
+                    "h": 0.78
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5065",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.72,
+                    "y": 191.64,
+                    "w": 6.16,
+                    "h": 4.51
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5066",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.85,
+                    "y": 194.67,
+                    "w": 0.66,
+                    "h": 1.47
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5067",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.8,
+                    "y": 195.78,
+                    "w": 0.15,
+                    "h": 0.27
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5068",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.48,
+                    "y": 194.98,
+                    "w": 0.19,
+                    "h": 0.93
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5069",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.54,
+                    "y": 194.41,
+                    "w": 0.13,
+                    "h": 0.18
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5070",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.2,
+                    "y": 193.53,
+                    "w": 0.47,
+                    "h": 0.87
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5071",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.71,
+                    "y": 193.47,
+                    "w": 0.32,
+                    "h": 0.95
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5072",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.38,
+                    "y": 193.12,
+                    "w": 0.11,
+                    "h": 0.1
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5073",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.61,
+                    "y": 193.38,
+                    "w": 0.61,
+                    "h": 1.14
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5074",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.26,
+                    "y": 191.7,
+                    "w": 1.66,
+                    "h": 0.65
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5075",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12189.69,
+                    "y": 191.83,
+                    "w": 0.83,
+                    "h": 2.61
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5076",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.67,
+                    "y": 192.35,
+                    "w": 5.4,
+                    "h": 4.82
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#703D29"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "318:5077",
+              "name": "Group",
+              "type": "GROUP",
+              "box": {
+                "x": 12184.72,
+                "y": 191.85,
+                "w": 1.6,
+                "h": 4.95
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:5078",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.72,
+                    "y": 195.96,
+                    "w": 0.77,
+                    "h": 0.84
+                  },
+                  "strokeWeight": 0.04,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#C7B37F"
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#C7B37F"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5079",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.05,
+                    "y": 191.85,
+                    "w": 1.27,
+                    "h": 2.6
+                  },
+                  "strokeWeight": 0.13,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#C7B37F"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "318:5080",
+              "name": "Group",
+              "type": "GROUP",
+              "box": {
+                "x": 12184.9,
+                "y": 191.99,
+                "w": 1.14,
+                "h": 4.37
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:5081",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.91,
+                    "y": 194.78,
+                    "w": 0.6,
+                    "h": 1.58
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#C7B37F"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5082",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12185.43,
+                    "y": 194.44,
+                    "w": 0.1,
+                    "h": 0.03
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#C7B37F"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5083",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12184.9,
+                    "y": 191.99,
+                    "w": 1.14,
+                    "h": 2.08
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "CENTER",
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": "#C7B37F"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "318:5084",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12187.48,
+                "y": 191.62,
+                "w": 1.02,
+                "h": 0.2
+              },
+              "strokeWeight": 0.03,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:5085",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12185.67,
+            "y": 196.88,
+            "w": 4.75,
+            "h": 0.75
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:5086",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12185.67,
+                "y": 196.89,
+                "w": 0.28,
+                "h": 0.36
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:5087",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12185.88,
+                "y": 197,
+                "w": 1.62,
+                "h": 0.63
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            },
+            {
+              "id": "318:5088",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12187.49,
+                "y": 196.88,
+                "w": 2.93,
+                "h": 0.75
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#703D29"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:5089",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12185.91,
+            "y": 192.58,
+            "w": 1.97,
+            "h": 1.97
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.08,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:5090",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12185.91,
+                "y": 192.58,
+                "w": 1.97,
+                "h": 1.97
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D52B1E"
+                }
+              ]
+            },
+            {
+              "id": "318:5091",
+              "name": "a",
+              "type": "VECTOR",
+              "box": {
+                "x": 12185.97,
+                "y": 193.95,
+                "w": 0.86,
+                "h": 0.54
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:5092",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.95,
+                "y": 193.95,
+                "w": 0.86,
+                "h": 0.54
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:5093",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.03,
+                "y": 192.65,
+                "w": 1.78,
+                "h": 1.84
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FEDF00"
+                }
+              ]
+            },
+            {
+              "id": "318:5094",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.31,
+                "y": 192.65,
+                "w": 1.17,
+                "h": 1.55
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:5095",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.43,
+                "y": 192.9,
+                "w": 0.92,
+                "h": 1.15
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FEDF00"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:5096",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12188.09,
+            "y": 192.58,
+            "w": 1.97,
+            "h": 1.97
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:5097",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12188.09,
+                "y": 192.58,
+                "w": 1.97,
+                "h": 1.97
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FEDF00"
+                }
+              ]
+            },
+            {
+              "id": "318:5098",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12188.36,
+                "y": 192.58,
+                "w": 1.42,
+                "h": 1.97
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D52B1E"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:5099",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12185.9,
+            "y": 194.76,
+            "w": 1.97,
+            "h": 2.05
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:5100",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12185.9,
+                "y": 194.76,
+                "w": 1.97,
+                "h": 2.05
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FEDF00"
+                }
+              ]
+            },
+            {
+              "id": "318:5101",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12186.14,
+                "y": 194.76,
+                "w": 1.53,
+                "h": 2.01
+              },
+              "strokeWeight": 0.04,
+              "strokeAlign": "CENTER",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D52B1E"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#D52B1E"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:5102",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12188.09,
+            "y": 194.76,
+            "w": 1.97,
+            "h": 2.06
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.08,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:5103",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12188.09,
+                "y": 194.76,
+                "w": 1.97,
+                "h": 2.06
+              },
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FEDF00"
+                }
+              ]
+            },
+            {
+              "id": "318:5104",
+              "name": "b",
+              "type": "GROUP",
+              "box": {
+                "x": 12188.4,
+                "y": 194.82,
+                "w": 1.31,
+                "h": 0.94
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:5105",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.4,
+                    "y": 194.92,
+                    "w": 1.31,
+                    "h": 0.82
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#D52B1E"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5106",
+                  "name": "Group",
+                  "type": "GROUP",
+                  "box": {
+                    "x": 12188.42,
+                    "y": 195.01,
+                    "w": 1.23,
+                    "h": 0.46
+                  },
+                  "clipsContent": false,
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "318:5107",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12189.17,
+                        "y": 195.08,
+                        "w": 0.48,
+                        "h": 0.19
+                      },
+                      "strokeWeight": 0.08,
+                      "strokeAlign": "CENTER",
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5108",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12188.54,
+                        "y": 195.01,
+                        "w": 0.06,
+                        "h": 0.04
+                      },
+                      "strokeWeight": 0.04,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FCD900"
+                        }
+                      ],
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5109",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12188.76,
+                        "y": 195.3,
+                        "w": 0.3,
+                        "h": 0.17
+                      },
+                      "strokeWeight": 0.08,
+                      "strokeAlign": "CENTER",
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5110",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12189.44,
+                        "y": 195.42,
+                        "w": 0.07,
+                        "h": 0.05
+                      },
+                      "strokeWeight": 0.08,
+                      "strokeAlign": "CENTER",
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5111",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12189.26,
+                        "y": 195.32,
+                        "w": 0.3,
+                        "h": 0.12
+                      },
+                      "strokeWeight": 0.08,
+                      "strokeAlign": "CENTER",
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5112",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12188.42,
+                        "y": 195.1,
+                        "w": 0.06,
+                        "h": 0.03
+                      },
+                      "strokeWeight": 0.04,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FCD900"
+                        }
+                      ],
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5113",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.5,
+                    "y": 194.82,
+                    "w": 1.11,
+                    "h": 0.94
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#0065BD"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "318:5114",
+              "name": "Group",
+              "type": "GROUP",
+              "box": {
+                "x": 12188.4,
+                "y": 194.82,
+                "w": 1.31,
+                "h": 0.94
+              },
+              "clipsContent": false,
+              "strokeWeight": 0.08,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "318:5115",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.4,
+                    "y": 194.92,
+                    "w": 1.31,
+                    "h": 0.82
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#D52B1E"
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5116",
+                  "name": "Group",
+                  "type": "GROUP",
+                  "box": {
+                    "x": 12188.42,
+                    "y": 195.01,
+                    "w": 1.23,
+                    "h": 0.46
+                  },
+                  "clipsContent": false,
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "318:5117",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12189.17,
+                        "y": 195.08,
+                        "w": 0.48,
+                        "h": 0.19
+                      },
+                      "strokeWeight": 0.08,
+                      "strokeAlign": "CENTER",
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5118",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12188.54,
+                        "y": 195.01,
+                        "w": 0.06,
+                        "h": 0.04
+                      },
+                      "strokeWeight": 0.04,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FCD900"
+                        }
+                      ],
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5119",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12188.76,
+                        "y": 195.3,
+                        "w": 0.3,
+                        "h": 0.17
+                      },
+                      "strokeWeight": 0.08,
+                      "strokeAlign": "CENTER",
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5120",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12189.44,
+                        "y": 195.42,
+                        "w": 0.07,
+                        "h": 0.05
+                      },
+                      "strokeWeight": 0.08,
+                      "strokeAlign": "CENTER",
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5121",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12189.26,
+                        "y": 195.32,
+                        "w": 0.3,
+                        "h": 0.12
+                      },
+                      "strokeWeight": 0.08,
+                      "strokeAlign": "CENTER",
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "318:5122",
+                      "name": "Vector",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": 12188.42,
+                        "y": 195.1,
+                        "w": 0.06,
+                        "h": 0.03
+                      },
+                      "strokeWeight": 0.04,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FCD900"
+                        }
+                      ],
+                      "strokes": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FEDF00"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "318:5123",
+                  "name": "Vector",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 12188.5,
+                    "y": 194.82,
+                    "w": 1.11,
+                    "h": 0.94
+                  },
+                  "strokeWeight": 0.08,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#0065BD"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:5124",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12185.9,
+            "y": 192.58,
+            "w": 4.16,
+            "h": 4.23
+          },
+          "strokeWeight": 0.06,
+          "strokeAlign": "CENTER",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#703D29"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:5160",
+      "name": "Country=Angola",
+      "type": "COMPONENT",
+      "box": {
+        "x": 12176,
+        "y": 220,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:5131",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12176,
+            "y": 220,
+            "w": 24,
+            "h": 18
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:5132",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12176,
+                "y": 220,
+                "w": 24,
+                "h": 9.14
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FF0000"
+                }
+              ]
+            },
+            {
+              "id": "318:5133",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12176,
+                "y": 228.87,
+                "w": 24,
+                "h": 9.14
+              },
+              "strokeWeight": 0.13,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#000000"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "318:5134",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12181.57,
+            "y": 224.97,
+            "w": 6.79,
+            "h": 8.3
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFEC00"
+            }
+          ]
+        },
+        {
+          "id": "318:5135",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12181.99,
+            "y": 224.63,
+            "w": 6.87,
+            "h": 9.12
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFEC00"
+            }
+          ]
+        },
+        {
+          "id": "318:5136",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12188.24,
+            "y": 232.99,
+            "w": 1.81,
+            "h": 1.46
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFEE00"
+            }
+          ]
+        },
+        {
+          "id": "318:5137",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12188.57,
+            "y": 233.31,
+            "w": 1.13,
+            "h": 0.84
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ]
+        },
+        {
+          "id": "318:5138",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12182.71,
+            "y": 228.9,
+            "w": 5.81,
+            "h": 4.74
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFEE00"
+            }
+          ]
+        },
+        {
+          "id": "318:5139",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12186.54,
+            "y": 231.46,
+            "w": 1.27,
+            "h": 1.27
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFEC00"
+            }
+          ]
+        },
+        {
+          "id": "318:5140",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12183.74,
+            "y": 230.25,
+            "w": 4.69,
+            "h": 2.83
+          },
+          "strokeWeight": 0.38,
+          "strokeAlign": "CENTER",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:5164",
+      "name": "Country=Antigua and Barbuda",
+      "type": "COMPONENT",
+      "box": {
+        "x": 12176,
+        "y": 254,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:5146",
+          "name": "Group",
+          "type": "GROUP",
+          "box": {
+            "x": 12174.58,
+            "y": 254,
+            "w": 26.83,
+            "h": 18
+          },
+          "clipsContent": false,
+          "strokeWeight": 0.12,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "318:5147",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12174.58,
+                "y": 254,
+                "w": 26.83,
+                "h": 17.98
+              },
+              "strokeWeight": 0.12,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100"
+              }
+            },
+            {
+              "id": "318:5148",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12174.64,
+                "y": 254.02,
+                "w": 26.75,
+                "h": 7.6
+              },
+              "strokeWeight": 0.12,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#000000"
+                }
+              ]
+            },
+            {
+              "id": "318:5149",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12179.55,
+                "y": 261.14,
+                "w": 17.75,
+                "h": 4
+              },
+              "strokeWeight": 0.12,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#0061FF"
+                }
+              ]
+            },
+            {
+              "id": "318:5150",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12174.63,
+                "y": 254.06,
+                "w": 26.77,
+                "h": 17.94
+              },
+              "strokeWeight": 0.12,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#E20000"
+                }
+              ]
+            },
+            {
+              "id": "318:5151",
+              "name": "Vector",
+              "type": "VECTOR",
+              "box": {
+                "x": 12181.82,
+                "y": 254.94,
+                "w": 12.46,
+                "h": 6.21
+              },
+              "strokeWeight": 0.12,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFD600"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:5159",
+      "name": "Country=Netherlands",
+      "type": "COMPONENT",
+      "box": {
+        "x": 12176,
+        "y": 16,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:5156",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 16,
+            "w": 24,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#21468B"
+            }
+          ]
+        },
+        {
+          "id": "318:5157",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 16,
+            "w": 24,
+            "h": 12
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100"
+          }
+        },
+        {
+          "id": "318:5158",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 16,
+            "w": 24,
+            "h": 6
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#AE1C28"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1951:12077",
+      "name": "Country=Germany",
+      "type": "COMPONENT",
+      "box": {
+        "x": 12176,
+        "y": 50,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1951:12078",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 50,
+            "w": 24,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFCE00"
+            }
+          ]
+        },
+        {
+          "id": "1951:12079",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 50,
+            "w": 24,
+            "h": 12
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#DD0000"
+            }
+          ]
+        },
+        {
+          "id": "1951:12080",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 12176,
+            "y": 50,
+            "w": 24,
+            "h": 6
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

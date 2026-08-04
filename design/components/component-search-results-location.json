@@ -1,0 +1,123 @@
+{
+  "page": "Components",
+  "id": "318:4731",
+  "name": "Component / Search Results / Location",
+  "type": "COMPONENT",
+  "box": {
+    "x": 9726,
+    "y": 156,
+    "w": 390,
+    "h": 72
+  },
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "318:4718",
+      "name": "Element / Icon / Location Outline",
+      "type": "INSTANCE",
+      "box": {
+        "x": 9754,
+        "y": 180,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "318:4717",
+      "component": "Element / Icon / Location Outline",
+      "children": [
+        {
+          "id": "I318:4718;318:4716",
+          "name": "Icon",
+          "type": "VECTOR",
+          "box": {
+            "x": 9757,
+            "y": 181,
+            "w": 18,
+            "h": 22
+          },
+          "strokeWeight": 2,
+          "strokeAlign": "CENTER",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#808080"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/50"
+          }
+        }
+      ]
+    },
+    {
+      "id": "318:4551",
+      "name": "Label",
+      "type": "TEXT",
+      "box": {
+        "x": 9794,
+        "y": 169,
+        "w": 298,
+        "h": 24
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#E6E6E6"
+        }
+      ],
+      "styles": {
+        "fill": "Grey (OLD)/90",
+        "text": "Poppins/16/Regular"
+      },
+      "characters": "Label",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 16,
+        "fontWeight": 400,
+        "lineHeightPx": 24,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP"
+      }
+    },
+    {
+      "id": "318:4552",
+      "name": "Meta",
+      "type": "TEXT",
+      "box": {
+        "x": 9794,
+        "y": 195,
+        "w": 298,
+        "h": 20
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#B3B3B3"
+        }
+      ],
+      "styles": {
+        "fill": "Grey (OLD)/70",
+        "text": "Poppins/14/Regular"
+      },
+      "characters": "Meta",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 14,
+        "fontWeight": 400,
+        "lineHeightPx": 20,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP"
+      }
+    }
+  ]
+}

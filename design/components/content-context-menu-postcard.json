@@ -1,0 +1,486 @@
+{
+  "page": "Components",
+  "id": "2303:5963",
+  "name": "Content / Context Menu / Postcard",
+  "type": "COMPONENT",
+  "box": {
+    "x": 11338,
+    "y": 4092,
+    "w": 390,
+    "h": 240
+  },
+  "layoutMode": "VERTICAL",
+  "layoutWrap": "NO_WRAP",
+  "itemSpacing": 16,
+  "paddingLeft": 24,
+  "paddingRight": 24,
+  "paddingTop": 16,
+  "paddingBottom": 56,
+  "counterAxisSizingMode": "FIXED",
+  "layoutSizingHorizontal": "FIXED",
+  "layoutSizingVertical": "HUG",
+  "clipsContent": true,
+  "rectangleCornerRadii": [
+    16,
+    16,
+    0,
+    0
+  ],
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "styles": {
+    "fills": "White/100",
+    "fill": "White/100"
+  },
+  "children": [
+    {
+      "id": "2303:5949",
+      "name": "List",
+      "type": "FRAME",
+      "box": {
+        "x": 11362,
+        "y": 4108,
+        "w": 342,
+        "h": 168
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "counterAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "2303:5950",
+          "name": "v2 / Component / Context Menu / Item",
+          "type": "INSTANCE",
+          "box": {
+            "x": 11362,
+            "y": 4108,
+            "w": 342,
+            "h": 56
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 5,
+          "paddingBottom": 5,
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1967:10698",
+          "component": "Type=Regular, State=Default",
+          "componentSet": "v2 / Component / Context Menu / Item",
+          "componentProperties": {
+            "has Icon#2059:26": {
+              "type": "BOOLEAN",
+              "value": true
+            },
+            "Icon#1512:3": {
+              "type": "INSTANCE_SWAP",
+              "value": "2303:5329",
+              "preferredValues": []
+            },
+            "Label#1512:0": {
+              "type": "TEXT",
+              "value": "Hide postcard for me"
+            },
+            "Type": {
+              "value": "Regular",
+              "type": "VARIANT",
+              "boundVariables": {}
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I2303:5950;1967:10699",
+              "name": "Element / Icon / Hide",
+              "type": "INSTANCE",
+              "box": {
+                "x": 11378,
+                "y": 4124,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "2303:5329",
+              "component": "Element / Icon / Hide",
+              "children": [
+                {
+                  "id": "I2303:5950;1967:10699;2303:5338",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 11379,
+                    "y": 4125,
+                    "w": 22,
+                    "h": 22
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I2303:5950;1967:10700",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 11418,
+                "y": 4124,
+                "w": 270,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Medium"
+              },
+              "characters": "Hide postcard for me",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 500,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2303:5951",
+          "name": "v2 / Component / Context Menu / Item",
+          "type": "INSTANCE",
+          "box": {
+            "x": 11362,
+            "y": 4164,
+            "w": 342,
+            "h": 56
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 5,
+          "paddingBottom": 5,
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1967:10698",
+          "component": "Type=Regular, State=Default",
+          "componentSet": "v2 / Component / Context Menu / Item",
+          "componentProperties": {
+            "has Icon#2059:26": {
+              "type": "BOOLEAN",
+              "value": true
+            },
+            "Icon#1512:3": {
+              "type": "INSTANCE_SWAP",
+              "value": "2303:5333",
+              "preferredValues": []
+            },
+            "Label#1512:0": {
+              "type": "TEXT",
+              "value": "Block account"
+            },
+            "Type": {
+              "value": "Regular",
+              "type": "VARIANT",
+              "boundVariables": {}
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I2303:5951;1967:10699",
+              "name": "Element / Icon / Block Account",
+              "type": "INSTANCE",
+              "box": {
+                "x": 11378,
+                "y": 4180,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "2303:5333",
+              "component": "Element / Icon / Block Account",
+              "children": [
+                {
+                  "id": "I2303:5951;1967:10699;2303:5334",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 11379,
+                    "y": 4182,
+                    "w": 22,
+                    "h": 20
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I2303:5951;1967:10700",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 11418,
+                "y": 4180,
+                "w": 270,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Medium"
+              },
+              "characters": "Block account",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 500,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "2303:5952",
+          "name": "v2 / Component / Context Menu / Item",
+          "type": "INSTANCE",
+          "box": {
+            "x": 11362,
+            "y": 4220,
+            "w": 342,
+            "h": 56
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 5,
+          "paddingBottom": 5,
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1967:10698",
+          "component": "Type=Regular, State=Default",
+          "componentSet": "v2 / Component / Context Menu / Item",
+          "componentProperties": {
+            "has Icon#2059:26": {
+              "type": "BOOLEAN",
+              "value": true
+            },
+            "Icon#1512:3": {
+              "type": "INSTANCE_SWAP",
+              "value": "2303:5330",
+              "preferredValues": []
+            },
+            "Label#1512:0": {
+              "type": "TEXT",
+              "value": "Report post"
+            },
+            "Type": {
+              "value": "Regular",
+              "type": "VARIANT",
+              "boundVariables": {}
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I2303:5952;1967:10699",
+              "name": "Element / Icon / Report",
+              "type": "INSTANCE",
+              "box": {
+                "x": 11378,
+                "y": 4236,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "2303:5330",
+              "component": "Element / Icon / Report",
+              "children": [
+                {
+                  "id": "I2303:5952;1967:10699;2303:5337",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 11378.98,
+                    "y": 4237.99,
+                    "w": 22.02,
+                    "h": 20.01
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I2303:5952;1967:10700",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 11418,
+                "y": 4236,
+                "w": 270,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Medium"
+              },
+              "characters": "Report post",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 500,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

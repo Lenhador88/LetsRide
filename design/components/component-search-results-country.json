@@ -1,0 +1,212 @@
+{
+  "page": "Components",
+  "id": "318:4732",
+  "name": "Component / Search Results / Country",
+  "type": "COMPONENT",
+  "box": {
+    "x": 9726,
+    "y": 0,
+    "w": 390,
+    "h": 56
+  },
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "318:5167",
+      "name": "Element / Flag",
+      "type": "INSTANCE",
+      "box": {
+        "x": 9754,
+        "y": 19,
+        "w": 24,
+        "h": 18
+      },
+      "clipsContent": true,
+      "strokeWeight": 0.13,
+      "strokeAlign": "INSIDE",
+      "componentId": "318:5159",
+      "component": "Country=Netherlands",
+      "componentSet": "Element / Flag",
+      "componentProperties": {
+        "Country": {
+          "value": "Netherlands",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I318:5167;318:5156",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 9754,
+            "y": 19,
+            "w": 24,
+            "h": 18
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#21468B"
+            }
+          ]
+        },
+        {
+          "id": "I318:5167;318:5157",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 9754,
+            "y": 19,
+            "w": 24,
+            "h": 12
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fill": "White/100"
+          }
+        },
+        {
+          "id": "I318:5167;318:5158",
+          "name": "Vector",
+          "type": "VECTOR",
+          "box": {
+            "x": 9754,
+            "y": 19,
+            "w": 24,
+            "h": 6
+          },
+          "strokeWeight": 0.13,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#AE1C28"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:4682",
+      "name": "Label",
+      "type": "TEXT",
+      "box": {
+        "x": 9794,
+        "y": 16,
+        "w": 258,
+        "h": 24
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#E6E6E6"
+        }
+      ],
+      "styles": {
+        "fill": "Grey (OLD)/90",
+        "text": "Poppins/16/Regular"
+      },
+      "characters": "Label",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 16,
+        "fontWeight": 400,
+        "lineHeightPx": 24,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP"
+      }
+    },
+    {
+      "id": "318:4706",
+      "name": "Component / Checkbox",
+      "type": "INSTANCE",
+      "box": {
+        "x": 10068,
+        "y": 16,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "componentId": "318:4704",
+      "component": "Selected=True",
+      "componentSet": "Component / Checkbox",
+      "componentProperties": {
+        "Selected": {
+          "value": "True",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      },
+      "children": [
+        {
+          "id": "I318:4706;318:4697",
+          "name": "Checkbox",
+          "type": "FRAME",
+          "box": {
+            "x": 10070,
+            "y": 18,
+            "w": 20,
+            "h": 20
+          },
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#36B289"
+            }
+          ],
+          "styles": {
+            "strokes": "Accent (OLD)/100",
+            "stroke": "Accent (OLD)/100"
+          },
+          "children": [
+            {
+              "id": "I318:4706;318:4698",
+              "name": "Fill",
+              "type": "RECTANGLE",
+              "box": {
+                "x": 10074,
+                "y": 22,
+                "w": 12,
+                "h": 12
+              },
+              "cornerRadius": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#36B289"
+                }
+              ],
+              "styles": {
+                "fill": "Accent (OLD)/100"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

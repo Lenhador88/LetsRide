@@ -1,0 +1,45 @@
+{
+  "page": "Components",
+  "id": "1739:13064",
+  "name": "Element / Icon / Heart Filled",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 2108,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1739:13527",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12616.99,
+        "y": 2111,
+        "w": 22.02,
+        "h": 18.68
+      },
+      "rectangleCornerRadii": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "strokeWeight": 8,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

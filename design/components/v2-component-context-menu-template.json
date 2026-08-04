@@ -1,0 +1,486 @@
+{
+  "page": "Components",
+  "id": "1967:10831",
+  "name": "v2 / Component / Context Menu / Template",
+  "type": "COMPONENT",
+  "box": {
+    "x": 13040,
+    "y": 3672,
+    "w": 390,
+    "h": 240
+  },
+  "layoutMode": "VERTICAL",
+  "layoutWrap": "NO_WRAP",
+  "itemSpacing": 16,
+  "paddingLeft": 24,
+  "paddingRight": 24,
+  "paddingTop": 16,
+  "paddingBottom": 56,
+  "counterAxisSizingMode": "FIXED",
+  "layoutSizingHorizontal": "FIXED",
+  "layoutSizingVertical": "HUG",
+  "clipsContent": true,
+  "rectangleCornerRadii": [
+    16,
+    16,
+    0,
+    0
+  ],
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "styles": {
+    "fills": "White/100",
+    "fill": "White/100"
+  },
+  "children": [
+    {
+      "id": "1967:10756",
+      "name": "List",
+      "type": "FRAME",
+      "box": {
+        "x": 13064,
+        "y": 3688,
+        "w": 342,
+        "h": 168
+      },
+      "layoutMode": "VERTICAL",
+      "layoutWrap": "NO_WRAP",
+      "counterAxisSizingMode": "FIXED",
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1967:10759",
+          "name": "v2 / Component / Context Menu / Item",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13064,
+            "y": 3688,
+            "w": 342,
+            "h": 56
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 5,
+          "paddingBottom": 5,
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1967:10698",
+          "component": "Type=Regular, State=Default",
+          "componentSet": "v2 / Component / Context Menu / Item",
+          "componentProperties": {
+            "Icon#1512:3": {
+              "type": "INSTANCE_SWAP",
+              "value": "1030:6075",
+              "preferredValues": []
+            },
+            "has Icon#2059:26": {
+              "type": "BOOLEAN",
+              "value": true
+            },
+            "Label#1512:0": {
+              "type": "TEXT",
+              "value": "Label"
+            },
+            "Type": {
+              "value": "Regular",
+              "type": "VARIANT",
+              "boundVariables": {}
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1967:10759;1967:10699",
+              "name": "Element / Icon / Home",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13080,
+                "y": 3704,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "1030:6075",
+              "component": "Element / Icon / Home",
+              "children": [
+                {
+                  "id": "I1967:10759;1967:10699;1071:6033",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13083,
+                    "y": 3706.5,
+                    "w": 18,
+                    "h": 19.5
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1967:10759;1967:10700",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 13120,
+                "y": 3704,
+                "w": 270,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Medium"
+              },
+              "characters": "Label",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 500,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1967:10760",
+          "name": "v2 / Component / Context Menu / Item",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13064,
+            "y": 3744,
+            "w": 342,
+            "h": 56
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 5,
+          "paddingBottom": 5,
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1967:10698",
+          "component": "Type=Regular, State=Default",
+          "componentSet": "v2 / Component / Context Menu / Item",
+          "componentProperties": {
+            "Icon#1512:3": {
+              "type": "INSTANCE_SWAP",
+              "value": "1030:6075",
+              "preferredValues": []
+            },
+            "has Icon#2059:26": {
+              "type": "BOOLEAN",
+              "value": true
+            },
+            "Label#1512:0": {
+              "type": "TEXT",
+              "value": "Label"
+            },
+            "Type": {
+              "value": "Regular",
+              "type": "VARIANT",
+              "boundVariables": {}
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1967:10760;1967:10699",
+              "name": "Element / Icon / Home",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13080,
+                "y": 3760,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "1030:6075",
+              "component": "Element / Icon / Home",
+              "children": [
+                {
+                  "id": "I1967:10760;1967:10699;1071:6033",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13083,
+                    "y": 3762.5,
+                    "w": 18,
+                    "h": 19.5
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1967:10760;1967:10700",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 13120,
+                "y": 3760,
+                "w": 270,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#1A1A1A"
+                }
+              ],
+              "styles": {
+                "fill": "Grey/100",
+                "text": "Poppins/16/Medium"
+              },
+              "characters": "Label",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 500,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1967:10761",
+          "name": "v2 / Component / Context Menu / Item",
+          "type": "INSTANCE",
+          "box": {
+            "x": 13064,
+            "y": 3800,
+            "w": 342,
+            "h": 56
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 16,
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 5,
+          "paddingBottom": 5,
+          "counterAxisAlignItems": "CENTER",
+          "primaryAxisSizingMode": "FIXED",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FILL",
+          "layoutSizingVertical": "FIXED",
+          "layoutAlign": "STRETCH",
+          "layoutGrow": 0,
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1967:10800",
+          "component": "Type=Warning, State=Default",
+          "componentSet": "v2 / Component / Context Menu / Item",
+          "componentProperties": {
+            "Icon#1512:3": {
+              "type": "INSTANCE_SWAP",
+              "value": "1030:6075",
+              "preferredValues": []
+            },
+            "has Icon#2059:26": {
+              "type": "BOOLEAN",
+              "value": true
+            },
+            "Label#1512:0": {
+              "type": "TEXT",
+              "value": "Label"
+            },
+            "Type": {
+              "value": "Warning",
+              "type": "VARIANT",
+              "boundVariables": {}
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1967:10761;1967:10801",
+              "name": "Element / Icon / Home",
+              "type": "INSTANCE",
+              "box": {
+                "x": 13080,
+                "y": 3816,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "1030:6075",
+              "component": "Element / Icon / Home",
+              "children": [
+                {
+                  "id": "I1967:10761;1967:10801;1071:6033",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 13083,
+                    "y": 3818.5,
+                    "w": 18,
+                    "h": 19.5
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#D92140"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Warning/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1967:10761;1967:10802",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 13120,
+                "y": 3816,
+                "w": 270,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D92140"
+                }
+              ],
+              "styles": {
+                "fill": "Warning/100",
+                "text": "Poppins/16/Medium"
+              },
+              "characters": "Label",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 16,
+                "fontWeight": 500,
+                "lineHeightPx": 24,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

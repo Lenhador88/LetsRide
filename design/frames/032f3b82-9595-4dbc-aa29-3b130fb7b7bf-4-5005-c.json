@@ -1,0 +1,21 @@
+{
+  "page": "Archive",
+  "id": "856:5533",
+  "name": "032F3B82-9595-4DBC-AA29-3B130FB7B7BF_4_5005_c",
+  "type": "RECTANGLE",
+  "box": {
+    "x": -9823,
+    "y": 39649,
+    "w": 390,
+    "h": 847.35
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "fad4c4f126ea9891213bb07c6a76166fed50fa6b",
+      "scaleMode": "FILL"
+    }
+  ]
+}

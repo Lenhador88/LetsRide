@@ -1,0 +1,132 @@
+{
+  "page": "Components",
+  "id": "321:1647",
+  "name": "Component / Toggle",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 2518,
+    "y": 5358,
+    "w": 84,
+    "h": 112
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Selected": {
+      "type": "VARIANT",
+      "defaultValue": "False",
+      "variantOptions": [
+        "False",
+        "True"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "321:1646",
+      "name": "Selected=False",
+      "type": "COMPONENT",
+      "box": {
+        "x": 2534,
+        "y": 5374,
+        "w": 52,
+        "h": 32
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#404040"
+        }
+      ],
+      "styles": {
+        "fills": "Grey (OLD)/25",
+        "fill": "Grey (OLD)/25"
+      },
+      "children": [
+        {
+          "id": "321:1645",
+          "name": "Handle",
+          "type": "ELLIPSE",
+          "box": {
+            "x": 2536,
+            "y": 5376,
+            "w": 28,
+            "h": 28
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#E6E6E6"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/90"
+          }
+        }
+      ]
+    },
+    {
+      "id": "321:1648",
+      "name": "Selected=True",
+      "type": "COMPONENT",
+      "box": {
+        "x": 2534,
+        "y": 5422,
+        "w": 52,
+        "h": 32
+      },
+      "clipsContent": true,
+      "cornerRadius": 100,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#36B289"
+        }
+      ],
+      "styles": {
+        "fills": "Accent (OLD)/100",
+        "fill": "Accent (OLD)/100"
+      },
+      "children": [
+        {
+          "id": "321:1649",
+          "name": "Handle",
+          "type": "ELLIPSE",
+          "box": {
+            "x": 2556,
+            "y": 5424,
+            "w": 28,
+            "h": 28
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#262626"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/15"
+          }
+        }
+      ]
+    }
+  ]
+}

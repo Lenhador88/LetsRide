@@ -1,0 +1,141 @@
+{
+  "page": "Components",
+  "id": "318:4705",
+  "name": "Component / Checkbox",
+  "type": "COMPONENT_SET",
+  "box": {
+    "x": 2518,
+    "y": 1812,
+    "w": 93,
+    "h": 56
+  },
+  "clipsContent": true,
+  "cornerRadius": 5,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#9747FF"
+    }
+  ],
+  "componentPropertyDefinitions": {
+    "Selected": {
+      "type": "VARIANT",
+      "defaultValue": "True",
+      "variantOptions": [
+        "False",
+        "True"
+      ]
+    }
+  },
+  "children": [
+    {
+      "id": "318:4704",
+      "name": "Selected=True",
+      "type": "COMPONENT",
+      "box": {
+        "x": 2534,
+        "y": 1828,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:4697",
+          "name": "Checkbox",
+          "type": "FRAME",
+          "box": {
+            "x": 2536,
+            "y": 1830,
+            "w": 20,
+            "h": 20
+          },
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#36B289"
+            }
+          ],
+          "styles": {
+            "strokes": "Accent (OLD)/100",
+            "stroke": "Accent (OLD)/100"
+          },
+          "children": [
+            {
+              "id": "318:4698",
+              "name": "Fill",
+              "type": "RECTANGLE",
+              "box": {
+                "x": 2540,
+                "y": 1834,
+                "w": 12,
+                "h": 12
+              },
+              "cornerRadius": 1,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#36B289"
+                }
+              ],
+              "styles": {
+                "fill": "Accent (OLD)/100"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "318:4703",
+      "name": "Selected=False",
+      "type": "COMPONENT",
+      "box": {
+        "x": 2571,
+        "y": 1828,
+        "w": 24,
+        "h": 24
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "318:4695",
+          "name": "Checkbox",
+          "type": "FRAME",
+          "box": {
+            "x": 2573,
+            "y": 1830,
+            "w": 20,
+            "h": 20
+          },
+          "clipsContent": true,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": "#808080"
+            }
+          ],
+          "styles": {
+            "strokes": "Grey (OLD)/50",
+            "stroke": "Grey (OLD)/50"
+          }
+        }
+      ]
+    }
+  ]
+}

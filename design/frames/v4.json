@@ -1,0 +1,30 @@
+{
+  "page": "Archive",
+  "id": "1729:11598",
+  "name": "v4",
+  "type": "TEXT",
+  "box": {
+    "x": -13049,
+    "y": 43093,
+    "w": 1303,
+    "h": 1500
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "OUTSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "characters": "v4",
+  "text": {
+    "fontFamily": "Poppins",
+    "fontSize": 1000,
+    "fontWeight": 700,
+    "lineHeightPx": 1500,
+    "letterSpacing": 0,
+    "textAlignHorizontal": "LEFT",
+    "textAlignVertical": "TOP"
+  }
+}

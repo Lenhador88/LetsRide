@@ -1,0 +1,37 @@
+{
+  "page": "Archive",
+  "id": "1663:9103",
+  "name": "Inspiration",
+  "type": "FRAME",
+  "box": {
+    "x": -8063,
+    "y": 32350,
+    "w": 202,
+    "h": 355
+  },
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1629:19092",
+      "name": "image 21",
+      "type": "RECTANGLE",
+      "box": {
+        "x": -8063,
+        "y": 32350,
+        "w": 202,
+        "h": 355
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "b99ad6ec30f25d1560585430f6fae55291f4c792",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}

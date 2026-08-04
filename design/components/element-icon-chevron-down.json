@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "1951:11732",
+  "name": "Element / Icon / Chevron Down",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 868,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "1951:11731",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12622,
+        "y": 877,
+        "w": 12,
+        "h": 7
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

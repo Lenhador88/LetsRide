@@ -1,0 +1,39 @@
+{
+  "page": "Components",
+  "id": "2483:7560",
+  "name": "Element / Icon / Tilde",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12676,
+    "y": -24,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "2483:7558",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12682,
+        "y": -14.5,
+        "w": 12,
+        "h": 5
+      },
+      "strokeWeight": 2,
+      "strokeAlign": "CENTER",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ],
+      "styles": {
+        "fill": "Grey/100"
+      }
+    }
+  ]
+}

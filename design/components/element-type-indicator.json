@@ -1,0 +1,25 @@
+{
+  "page": "Components",
+  "id": "318:1088",
+  "name": "Element / Type Indicator",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12160,
+    "y": 388,
+    "w": 1,
+    "h": 16
+  },
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#36B289"
+    }
+  ],
+  "styles": {
+    "fills": "Accent (OLD)/100",
+    "fill": "Accent (OLD)/100"
+  }
+}
