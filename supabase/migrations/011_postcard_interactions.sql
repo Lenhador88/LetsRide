@@ -313,6 +313,14 @@ create policy "Riders can unhide only their own hide"
 -- hidden on the screens someone remembered. The predicate belongs in the
 -- policy, where every reader gets it.
 --
+-- A note for anyone re-running this, or writing the next drop-and-recreate:
+-- between the loop below and the CREATE POLICY that follows, `postcards` has NO
+-- select policy, which is deny-all. An abort in that window leaves riders
+-- seeing nothing rather than seeing everything — it fails CLOSED, unlike `002`,
+-- so the damage mode is an outage rather than a leak. That is the right way
+-- round, and it is why the drop and the create must stay in one migration and
+-- therefore one transaction.
+--
 -- Dropped by catalog lookup rather than by name, the same way 009 §6 did it.
 -- Policies for one command are OR'd, so a leftover SELECT policy under a name
 -- this file did not predict would silently restore every hidden postcard. The

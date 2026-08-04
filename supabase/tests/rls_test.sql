@@ -205,10 +205,16 @@ select assert_rejected($$
   where id = '00000000-0000-0000-0000-00000000000d'$$,
   '23514', 'completion cannot be claimed with a NULL location');
 
-select assert_allowed($$
-  update profiles set location = 'Braga', onboarding_completed_at = now()
-  where id = '00000000-0000-0000-0000-00000000000d'$$,
-  'the last wizard step completes once username and location are both set');
+-- Written for real and read back: an UPDATE filtered to zero rows does not
+-- error, so assert_allowed cannot tell "permitted" from "forbidden entirely".
+savepoint wizard_completes;
+update profiles set location = 'Braga', onboarding_completed_at = now()
+  where id = '00000000-0000-0000-0000-00000000000d';
+select assert_eq(
+  (select (location = 'Braga' and onboarding_completed_at is not null)
+     from profiles where id = '00000000-0000-0000-0000-00000000000d')::text,
+  'true', 'the last wizard step completes once username and location are both set');
+rollback to savepoint wizard_completes;
 
 \echo ''
 \echo '# Onboarding completion is a one-way door (migration 003)'
@@ -269,9 +275,15 @@ select assert_rejected($$update profiles set username = 'clubowner'
   where id = '00000000-0000-0000-0000-00000000000e'$$,
   '23505', 'a username already taken is rejected');
 
-select assert_allowed($$update profiles set username = 'rookie_99'
-  where id = '00000000-0000-0000-0000-00000000000e'$$,
-  'a legal username is accepted (guards against over-tightening)');
+-- The positive case has to write for real and read the value back. An UPDATE
+-- filtered to zero rows does not error, so assert_allowed would pass here even
+-- against a policy permitting nothing — see the comment on that function.
+savepoint legal_username_accepted;
+update profiles set username = 'rookie_99'
+  where id = '00000000-0000-0000-0000-00000000000e';
+select assert_eq((select username from profiles where id = '00000000-0000-0000-0000-00000000000e'),
+  'rookie_99', 'a legal username is accepted (guards against over-tightening)');
+rollback to savepoint legal_username_accepted;
 
 \echo ''
 \echo '# Case-insensitive uniqueness lives in the index, not in the charset rule'
@@ -568,10 +580,12 @@ select assert_denied($$
   update postcards set club_id = '00000000-0000-0000-0000-0000000000c5'
   where id = '00000000-0000-0000-0000-0000000000e1'$$,
   'an author cannot move a postcard into a club they are not a member of');
-select assert_allowed($$
-  update postcards set caption = 'Sunrise on the N222, again'
-  where id = '00000000-0000-0000-0000-0000000000e1'$$,
-  'an author can edit their own caption');
+savepoint author_edits_caption;
+update postcards set caption = 'Sunrise on the N222, again'
+  where id = '00000000-0000-0000-0000-0000000000e1';
+select assert_eq((select caption from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  'Sunrise on the N222, again', 'an author can edit their own caption');
+rollback to savepoint author_edits_caption;
 -- Not assert_allowed. That helper runs the statement and then raises to undo
 -- it, so it only ever proves the statement did not ERROR — and a DELETE
 -- filtered to zero rows by its USING clause does not error. This assertion
@@ -766,9 +780,12 @@ select assert_eq((select count(*)::int from blocks
   1, 'a rider cannot lift a block someone else placed on them');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
-select assert_allowed($$
-  delete from blocks where blocker_id = '00000000-0000-0000-0000-00000000001a'$$,
-  'a rider can lift their own block');
+savepoint rider_lifts_own_block;
+delete from blocks where blocker_id = '00000000-0000-0000-0000-00000000001a';
+select assert_eq((select count(*)::int from blocks
+                   where blocker_id = '00000000-0000-0000-0000-00000000001a'),
+  0, 'a rider can lift their own block');
+rollback to savepoint rider_lifts_own_block;
 
 \echo ''
 \echo '# is_blocked stays off the public API and is symmetric (migration 009)'
