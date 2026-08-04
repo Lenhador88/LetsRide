@@ -1,13 +1,19 @@
 # Handoff — where things stand
 
-Last shipped: the **Postcards/Home backend** (PR #15, merged `dd72c96`) — migrations `009`
-and `010`, the feed data layer and actions, and client-side EXIF stripping. Before that, the
-**login & onboarding epic** (PR #8, merged `0e30556`). No branch is in flight — start new
-work from `main`.
+Last shipped, 2026-08-03/04: the **Postcards home screen and every interaction behind it** —
+`#17` the committed Figma snapshot pipeline, `#18` a startup-context dedup, `#19` the feed and
+create screens, `#20` reading Figma's `Retry-After`, `#21` a route that shipped dead, `#22`
+migration `011` with comments / hides / reports / blocks, `#23` reads that no longer swallow
+errors, `#24` the orphan sweep. Before that, the Postcards backend (`#15`) and the login epic
+(`#8`). No branch is in flight — start new work from `main`.
 
-**The Postcards UI now exists — view, like and create — but it has never been compared to
-the design.** Figma was rate limited throughout the build, so every composition value in it
-is an inferred guess, registered in `docs/FIGMA-FIDELITY-TODO.md`. See *Do this first*.
+**The UI exists for view, like and create; the backend exists for everything else** —
+comments, hiding, reporting, blocking, deleting — **and nothing calls it yet.** That gap is
+the intended next build, and *Do this first* says what to know before starting it.
+
+**Nothing in the UI has ever been compared to the design.** Figma was rate limited throughout,
+so every composition value is an inferred guess, each one recorded as *chose:* in
+`docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff rather than a re-derivation.
 
 Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
@@ -64,6 +70,28 @@ The next actions, in the order they are worth doing:
    the tokens are not.
 5. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
+
+**The intended next build is the Postcards interaction UI**, and the backend for all of it is
+already live and callable: `getPostcardComments`, `addComment`, `deleteComment`,
+`hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`, `unblockRider`,
+`deletePostcard`. Nothing in `src/components` or `src/app` references any of them yet — the
+feed already pays for a `comments_count` aggregate it does not display, which is the visible
+gap to close first.
+
+Two things to know before starting it:
+
+- **Extend the existing guesses, do not invent a third style.** Every composition value
+  already in the feed and create screens is recorded as *chose:* in
+  `docs/FIGMA-FIDELITY-TODO.md`. A comment thread built to a different rhythm than the card
+  above it is worse than one built to the same wrong rhythm, because the second is one
+  find-and-replace to correct.
+- **The icons still cannot be exported**, so per decision #4 no lookalike is substituted. The
+  like control is text-labelled for that reason; comment, hide and report should match it
+  rather than reaching for `lucide-react`.
+
+Whether to build it *before* the Figma window opens is a product call, not a technical one:
+the backend does not care, and the cost is that composition gets built twice. It was raised
+and is recorded here so the trade is visible rather than rediscovered.
 
 **A security advisor fires on `public.moderate_comment` and it is expected — do not "fix" it.**
 `authenticated_security_definer_function_executable` flags it as a `SECURITY DEFINER`
