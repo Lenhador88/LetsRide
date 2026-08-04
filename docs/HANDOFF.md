@@ -51,21 +51,48 @@ ratio, byline placement, the like control, spacing, the whole create flow — is
 one recorded as *chose:* in `docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff. It is not
 finished until someone has compared it to the design.
 
-**FIRST ACTION: apply migration `011`, and do it BEFORE merging PR #22.** The order is not
-cosmetic. `POSTCARD_SELECT` now embeds `comments_count:postcard_comments(count)`; if that
-table does not exist, PostgREST fails the whole feed query, and `getFeed` does
-`const { data } = await query; return data ?? []` — it swallows the error. So merging first
-does not produce a 500 anyone would notice. It produces `/postcards` rendering "No postcards
-yet" to every rider, with nothing in the logs. Same shape as the `/dashboard` ordering trap,
-and the same lesson.
+**Migration `011` is applied and verified live** (2026-08-04). `001`–`011` are all applied;
+no drift. It adds `postcard_comments`, `postcard_hides` and `postcard_reports`, and rewrites
+the `postcards` SELECT policy to enforce per-viewer hiding.
 
-**Applying `011`.** It is written, reviewed, mutation-tested and green
-(264 RLS assertions), but **not applied** — which is drift by this repo's own rule, and the
-one thing deliberately left for a waking human. It rewrites the `postcards` SELECT policy
-that governs the whole feed's visibility, so it was held rather than pushed through
-unattended. Apply it, then run `mcp__Supabase__get_advisors` — the RLS suite runs on plain
-Postgres and structurally cannot see role grants, PostgREST exposure or Supabase defaults,
-which is exactly how a migration once passed locally and stayed broken in production.
+Verified on the hosted project after applying — the environment-specific things the RLS suite
+runs on plain Postgres and structurally cannot see:
+
+| Check | Result |
+|---|---|
+| Three new tables exist, RLS enabled | ✅ all three |
+| Policies not `to authenticated` | 0 |
+| `anon` table privileges | 0 |
+| SELECT policies on `postcards` | **exactly 1** — no leftover from the drop loop |
+| UPDATE policies on the new tables | 0 |
+| `authenticated` UPDATE on comments / DELETE on reports | false / false |
+| Total `public` policies | 32 → 40 |
+| Live regression as the real rider | feed, profiles, clubs and rides all still readable |
+
+**A NEW security advisor fires, and it is expected — do not "fix" it.**
+`authenticated_security_definer_function_executable` flags
+`public.moderate_comment(uuid)` as a `SECURITY DEFINER` function callable via
+`/rest/v1/rpc/`. That is the entire point: it exists so a rider can remove a comment from a
+harasser they blocked, which RLS alone cannot reach because it filters a DELETE by what the
+caller may *read*. Revoking EXECUTE or switching it to `SECURITY INVOKER` would silently
+restore that hole. What keeps it safe is narrowness, not the grant: `search_path` pinned,
+names schema-qualified, revoked from `public` and `anon`, and the authorization
+(`p.author_id = auth.uid()`) checked *inside* the function against `auth.uid()` rather than
+against anything the caller passes. Asserted both ways in the suite.
+
+The other advisor, leaked-password protection, is still the pre-existing one — a dashboard
+toggle nobody has flipped.
+
+**The create flow is verified end to end.** A real postcard was posted from the deployed app
+on 2026-08-03 at 21:49 UTC, image present in Storage. That closes the caveat carried since
+#15 that no real upload had ever run — upload, compression, EXIF stripping, the Storage
+policies and the insert all work against production.
+
+**Two orphaned Storage objects exist** (3 objects, 1 postcard). One is from the failed
+attempt before #21; both are unreachable, since 010's Storage SELECT policy resolves through
+a `postcards` row that does not exist. They cost storage only. Cleaning them up needs a
+decision about whether to sweep automatically — see `docs/FIGMA-FIDELITY-TODO.md` for the
+known-leak note.
 
 **Try `npm run figma:pull` before anything else** — that comparison is the highest-value
 thing left, and one successful pull unblocks it. **It will not work before roughly
@@ -235,7 +262,7 @@ To change any of those four tables, add a new migration. `008` is the current de
 
 | | |
 |---|---|
-| Migrations | `001`–`010` applied to the hosted project. **`011` is written, reviewed and green but NOT applied** — that is drift by this repo's own definition, and closing it is the first action below. See the ordering note. |
+| Migrations | `001`–`011` all applied to the hosted project and verified live. See the ordering note below. |
 | Tests | RLS suite 255 assertions (`npm test`) + Vitest 195 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
