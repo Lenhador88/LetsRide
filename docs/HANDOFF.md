@@ -115,7 +115,7 @@ Build it from those frames, not by extending the old guesses — and use the rea
 is retired; those controls now carry their real icons.
 
 **None of the comments UI has been run against the real database.** This container cannot
-reach `supabase.co`, so type check, lint, `next build` and 229 unit tests are the whole of its
+reach `supabase.co`, so type check, lint, `next build` and 230 unit tests are the whole of its
 verification — and the `/postcards/new` incident below is the standing proof that those four
 say the code compiles, not that the screen works. Load `/postcards/[id]` on the deployment and
 post one comment before calling it done.
@@ -164,7 +164,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | `001`–`011` applied and verified live. **`012` and `013` are written and NOT applied** — see *Do this first*. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **229** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255/195 and then 263/222. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **230** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255/195 and then 263/222, then 263/229. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
