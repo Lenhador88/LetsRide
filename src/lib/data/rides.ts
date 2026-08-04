@@ -1,9 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
-import { unwrapList } from '@/lib/data/unwrap'
+import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import type {
   PublicProfile,
   RideAttendance,
+  RideCrew,
+  RideCrewMember,
+  RideDetail,
   RideFilter,
   RideFilterOption,
   RideFilters,
@@ -42,6 +45,22 @@ export const RIDE_AVATAR_LIMIT = 5
  * until the numbers justify it.
  */
 export const RIDE_FILTER_SCAN_LIMIT = 500
+
+/**
+ * How much of a crew `/rides/[id]/crew` will read, and **not** because a
+ * motorcycle ride has 200 riders.
+ *
+ * Nothing caps `ride_members`. `max_riders` has existed since 001 and has never
+ * been enforced by the action, a policy or a trigger, so roster size is
+ * unbounded *by construction* rather than merely large in theory. Unbounded,
+ * the crew read selects every row plus a joined profile each and renders one
+ * list item per row with no virtualisation, on a 390px screen.
+ *
+ * Beyond this the list truncates rather than misleads — the same saturating
+ * trade `RIDE_FILTER_SCAN_LIMIT` makes above, and the honest one until either
+ * pagination gets a design or the schema starts enforcing capacity.
+ */
+export const RIDE_CREW_LIMIT = 200
 
 /**
  * The crew is embedded whole and counted in JS rather than read as a separate
@@ -196,6 +215,158 @@ export async function getRides(
 
   const rows = unwrapList(await query, 'the rides list') as unknown as RideRow[]
   return rows.map((row) => toRideListItem(row, user?.id, now))
+}
+
+/**
+ * One ride, for `/rides/[id]`.
+ *
+ * Returns `null` for both "no such ride" and "you may not see this one", and
+ * that conflation is deliberate: PostgREST answers a row hidden by RLS exactly
+ * as it answers a row that does not exist, and telling the two apart in the UI
+ * would leak the existence of private rides to anyone who can guess a UUID. The
+ * page renders `notFound()` either way.
+ *
+ * `maybeSingle` rather than `single`, because `single` treats zero rows as a
+ * query *error* — which `unwrap` would then correctly throw on, turning every
+ * stale ride link into a 500 instead of a 404.
+ *
+ * **The crew is not read here at all.** An earlier version embedded every
+ * `ride_members` row to derive a headline count, which was unbounded on a table
+ * nothing constrains — `max_riders` has never been enforced — and produced a
+ * number labelled "going" that also counted `maybe`, contradicting the crew
+ * page one tap away. Both problems were the same mistake: deriving a summary
+ * from a full roster read that this screen does not otherwise need. The crew
+ * page owns the roster and its two counts; this page links to it.
+ *
+ * That leaves one thing to fetch, the viewer's own RSVP, which is a primary-key
+ * lookup on `(ride_id, user_id)` rather than a scan.
+ */
+export async function getRide(id: string): Promise<RideDetail | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const [rideResult, ownResult] = await Promise.all([
+    supabase
+      .from('rides')
+      .select(`
+        id, title, description, route_description, meeting_point, departure_at,
+        max_riders, club_id, organizer_id,
+        organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
+        club:clubs(id, name, avatar_url)
+      `)
+      .eq('id', id)
+      .maybeSingle(),
+    // A separate read rather than a filtered embed: `ride_members!inner` scoped
+    // to this viewer would drop the ride itself for anyone who has not RSVP'd,
+    // turning "no answer yet" into a 404.
+    user
+      ? supabase
+          .from('ride_members')
+          .select('status')
+          .eq('ride_id', id)
+          .eq('user_id', user.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ])
+
+  const row = unwrap(rideResult, 'this ride') as unknown as
+    | Omit<RideDetail, 'attendance' | 'is_organizer' | 'is_upcoming'>
+    | null
+
+  if (!row) return null
+
+  const ownRow = unwrap(ownResult, 'your RSVP') as { status: 'going' | 'maybe' } | null
+  const isOrganizer = !!user && user.id === row.organizer_id
+
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    route_description: row.route_description,
+    meeting_point: row.meeting_point,
+    departure_at: row.departure_at,
+    max_riders: row.max_riders,
+    club_id: row.club_id,
+    organizer_id: row.organizer_id,
+    organizer: row.organizer,
+    club: row.club,
+    // Same rule as the list card: an explicit row wins, and an organizer
+    // without one reads as `going` rather than as unanswered.
+    attendance: ownRow?.status ?? (isOrganizer ? 'going' : null),
+    is_organizer: isOrganizer,
+    is_upcoming: new Date(row.departure_at).getTime() >= Date.now(),
+  }
+}
+
+/**
+ * The crew roster for `/rides/[id]/crew`, split the way the design's two
+ * sections are: `Going` and `May be going`.
+ *
+ * There is no block filtering here and there must not be. 009 put
+ * `private.is_blocked` on the `ride_members` SELECT policy itself, so a blocked
+ * rider is already absent from the rows this reads — re-filtering in
+ * application code would be a second copy of that rule, free to drift, and is
+ * the same mistake as the `is_public` filter this file's header describes.
+ *
+ * A rider who declined is not a third section: `No` deletes the row, so the
+ * only states a roster can hold are the two the design draws.
+ *
+ * Bounded — see `RIDE_CREW_LIMIT`.
+ */
+export async function getRideCrew(rideId: string): Promise<RideCrew> {
+  const supabase = await createClient()
+
+  const rows = unwrapList(
+    await supabase
+      .from('ride_members')
+      .select(`user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`)
+      .eq('ride_id', rideId)
+      .order('joined_at', { ascending: true })
+      .limit(RIDE_CREW_LIMIT),
+    'this ride crew',
+  ) as unknown as {
+    user_id: string
+    status: 'going' | 'maybe'
+    profile: PublicProfile | null
+  }[]
+
+  const going = rows.filter((row) => row.status === 'going')
+  const maybe = rows.filter((row) => row.status === 'maybe')
+
+  return {
+    going: going.map((row) => ({ user_id: row.user_id, profile: row.profile })),
+    maybe: maybe.map((row) => ({ user_id: row.user_id, profile: row.profile })),
+  }
+}
+
+/**
+ * Puts the organizer at the head of `going` and marks them the host.
+ *
+ * Separate from `getRideCrew` and pure, because it encodes a rule rather than a
+ * query: the organizer is on their own ride by construction, whether or not
+ * they ever pressed `Yes!`. Reading the roster alone would drop the host off
+ * their own crew list — which is the state the design's `Ride host` row exists
+ * to draw.
+ *
+ * De-duplicates, so an organizer who also RSVP'd appears once. If that RSVP was
+ * `maybe`, `going` still wins: the design has one host row and it sits in the
+ * first section.
+ */
+export function withOrganizer(
+  crew: RideCrew,
+  organizerId: string,
+  organizer: PublicProfile | null
+): RideCrew {
+  const host: RideCrewMember = {
+    user_id: organizerId,
+    profile: organizer ?? crew.going.concat(crew.maybe).find((m) => m.user_id === organizerId)?.profile ?? null,
+    is_host: true,
+  }
+
+  return {
+    going: [host, ...crew.going.filter((member) => member.user_id !== organizerId)],
+    maybe: crew.maybe.filter((member) => member.user_id !== organizerId),
+  }
 }
 
 type FilterRow = {

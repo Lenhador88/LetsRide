@@ -140,8 +140,73 @@ It needed **no migration**, as predicted. What it left behind:
 - **`--color-maybe` (`#E58F17`) is the first colour in `globals.css` with no Figma style name
   behind it.** The design attaches no paint style to the Maybe pill. Flagged for the designer.
 
-Still v1 and still carrying the `text-white` legibility defect: `/rides/[id]`, `/rides/new`,
-`/clubs/*`, `/profile`. The list page cleared its own.
+Still v1 and still carrying the `text-white` legibility defect: `/rides/new`, `/clubs/*`,
+`/profile`. `/rides` cleared its own, and `/rides/[id]` cleared its own on 2026-08-04 — see
+the ride detail entry below.
+
+~~**The next build is the ride detail page.**~~ **Built 2026-08-04** — `/rides/[id]` (Ride
+plan) and `/rides/[id]/crew`, from the measured design. **No migration**, as predicted. What
+it left behind:
+
+- **The detail is four sub-pages and two are built.** The header carries a *dropdown page
+  switcher*, not tabs — `v2 / Component / Context Menu` as a bottom sheet over a `Grey/70%`
+  scrim. CLAUDE.md's "Plan/Journal/Crew tabs" had the right three and the wrong mechanism,
+  and it is four, not three: **Chat is the header's chat-bubble button, not a menu row.**
+  Journal needs `postcards.ride_id` plus an audience decision (`club_id` currently *is* the
+  audience); Chat needs the whole Inbox epic. Both are omitted from the menu rather than
+  offered as dead rows.
+- **`No` needed no migration.** `ride_members.status` is `check (status in ('going','maybe'))`
+  and `No` deletes the row. The Crew design draws only `Going` and `May be going`, which is
+  the same fact from the other side. The cost: a decline and a non-answer are
+  indistinguishable, so "who said no" is a migration if anyone ever wants it.
+- **Blocking needed nothing.** `009` already put `private.is_blocked` on both the `rides` and
+  `ride_members` SELECT policies, so the crew roster inherits it. Adding an application-side
+  filter would have repeated the exact `is_public` subtraction bug this file records twice
+  above — worth noticing that the *right* action was to write no code.
+- **Two design tokens were missing from `globals.css`.** `Grey/10` (`#E5DACF`) — which is a
+  **different token from `Grey/10%`** (`#0000001A`) despite the name, and is the RSVP track
+  and this screen's hairlines — and `Accent Brand/110` (`#338059`), the "Ride host" label.
+- **Two more AA failures, measured:** the host label is 4.10:1 and the unselected RSVP label
+  4.17:1, both under the 4.5:1 bar and neither large text. Same palette-wide problem the rides
+  list surfaced, on a second screen. Left as drawn, remedies costed in
+  `docs/FIGMA-FIDELITY-TODO.md` §Ride detail.
+- **`max_riders` has never been enforced** — not by the action, not by a policy, not by a
+  trigger. Since `001`. The ride plan does not draw capacity so nothing here changed, but the
+  column is a promise the database does not keep.
+- **`formatRideDate`/`formatRideTime` already existed** and the compiler caught the duplicate.
+  This is the same trap as the `getRides()` line above, one epic later: check before adding.
+
+**The contrast numbers above cost three attempts to get right.** Two were written from memory
+into a code comment and were wrong by a full point each — once in the direction that would
+have let a failure ship as a pass. The lesson is narrow and mechanical: **compute the ratio,
+then write the sentence.** Never the other way round.
+
+**`reviewer` ran before the merge this time, and found seven things — none of them a data
+leak.** That is the second epic running where the RLS reasoning held under audit and the real
+defects were elsewhere, which is worth knowing when deciding where to spend review attention.
+The shape of them:
+
+- **Two were numbers that disagreed with each other.** "N riders going" counted `maybe` RSVPs,
+  so the detail page and the crew page contradicted each other one tap apart. The fix was to
+  delete the count, not correct it — it also required an unbounded roster read.
+- **Two were claims in comments, again.** A doc naming `.pt-header-sub`, a class that does not
+  exist under that name; and `24/36 measured` written over a `text-2xl` that renders 24/32.
+  The second was the more valuable catch: `text-xl` and `text-2xl` were **missing from the
+  `@theme` scale entirely**, so every screen using them had been silently rendering Tailwind's
+  stock 20/28 and 24/32 against a design asking for 20/30 and 24/36. A ride-detail review
+  found an app-wide defect.
+- **One was dead code that contradicted its own docs** — `HeaderAction`, exported with zero
+  callers, stubbing the control the file said was deliberately not stubbed.
+- **Two were accessibility.** `role={error ? 'status' : undefined}` never announces, because
+  the live region has to exist *before* its content changes. And `ContextMenu` listed an
+  inline-arrow `onClose` in its effect deps, so the effect re-ran every render and re-fired
+  `focus()`.
+
+**Three findings I had already self-fixed before the review landed**, which is the argument
+for reading your own diff rather than waiting: the organizer being offered an RSVP the crew
+page would contradict, unconditional padding for a conditional bar, and invented `ContextMenu`
+surface. **The `reviewer` agent is worth its cost anyway** — it found the type-scale bug, which
+I would not have.
 
 **The `reviewer` agent was run over the merged diff and found four real bugs, all since
 fixed.** Worth recording *what kind* they were, because the pattern repeats: none was a data
@@ -236,7 +301,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **251** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255/195, then 263/222, 263/229, 263/230 and 263/246. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **261** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246 and 263/251. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -244,18 +309,27 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | CI | Green, and **path-scoped as of 2026-08-04**: a `changes` job diffs the merge base and skips `Type Check, Lint & Build` for docs/design-only PRs and `RLS Policy Tests` for anything not touching `supabase/**`. Pushes to `main` always run both. Job names are unchanged, so the branch-protection rule below still applies. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
 
-**The v1 pages are now visibly broken, not merely inconsistent.** `clubs`, `profile` and the
-two remaining `rides` sub-routes (`/rides/new`, `/rides/[id]`) still render `text-white`
-headings, which were legible on the v1 dark background and are invisible on the v2 cream
-gradient. A real defect a rider would see, not a styling preference. Fix it with their v2
-migration, or sooner if anyone demos those tabs. (`/rides` itself was fixed on 2026-08-04
-when the list was rebuilt.)
+**The v1 pages are now visibly broken, not merely inconsistent.** `clubs`, `profile` and
+`/rides/new` still render `text-white` headings, which were legible on the v1 dark background
+and are invisible on the v2 cream gradient. A real defect a rider would see, not a styling
+preference. Fix it with their v2 migration, or sooner if anyone demos those tabs. (`/rides`
+was fixed when the list was rebuilt, `/rides/[id]` when the detail page was.)
+
+**22 of those `text-white` occurrences are the defect; the other 7 are correct.** This line
+used to say "three", which was wrong by an order of magnitude and in the direction that makes
+the job look done. White on a dark fill is right in `Button`, `Checkbox`, `FilterTile`,
+`RideCard` and the two postcard components. Count the real ones with:
+
+```bash
+grep -rn "text-white" src/app/\(app\)/clubs src/app/\(app\)/profile \
+  src/app/\(app\)/rides/new src/components/profile | wc -l
+```
 
 The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`,
-`app/(app)/postcards/*` and now `app/(app)/rides/page.tsx` are v2, along with the `(app)`
-shell — its layout and the Navbar migrated on contact when Home moved to `/postcards`. The
-rest of rides, plus clubs and profile, are still v1 `zinc-*`/`orange-500` and migrate with
-their own epics.
+`app/(app)/postcards/*` and now all of `app/(app)/rides/` except `new/` are v2, along with the
+`(app)` shell — its layout and the Navbar migrated on contact when Home moved to `/postcards`.
+Clubs, profile and `/rides/new` are still v1 `zinc-*`/`orange-500` and migrate with their own
+epics.
 
 **Migration ordering is not file order.** Two chains were written in parallel and each
 recreated the policies the other did. `004`–`007` reached the database before `002` did;

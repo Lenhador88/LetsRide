@@ -95,6 +95,63 @@ export type RideListItem = {
   is_upcoming: boolean
 }
 
+/**
+ * One ride, as `/rides/[id]` renders it — `Ride - Ride plan (Details)`.
+ *
+ * Distinct from `RideListItem` rather than an extension of it: the card needs
+ * five avatars and no prose, the detail page needs the prose and no avatars, and
+ * a shared supertype would have every consumer holding fields its query did not
+ * ask for. `PUBLIC_PROFILE_COLUMNS` reasoning, one level up.
+ */
+export type RideDetail = {
+  id: string
+  title: string
+  description: string | null
+  route_description: string | null
+  meeting_point: string
+  departure_at: string
+  max_riders: number | null
+  club_id: string | null
+  organizer_id: string
+  organizer: PublicProfile | null
+  club: { id: string; name: string; avatar_url: string | null } | null
+  /** This viewer's own RSVP. The organizer reads as `going` without a row. */
+  attendance: RideAttendance
+  is_organizer: boolean
+  is_upcoming: boolean
+}
+
+/**
+ * There is deliberately **no `riders_count`** here, unlike `RideListItem`.
+ * An earlier version carried one and it was wrong twice over: it counted every
+ * `ride_members` row regardless of status while the label said "going", so the
+ * detail page and the crew page one tap away disagreed; and deriving it meant
+ * an unbounded roster read on a table nothing constrains. The crew page owns
+ * the roster and both its counts. If this screen ever needs a headline number,
+ * it needs a `count` aggregate and a label that matches it — not a full read.
+ */
+
+export type RideCrewMember = {
+  user_id: string
+  profile: PublicProfile | null
+  /** The organizer, who leads the Going list whether or not they RSVP'd. */
+  is_host?: boolean
+}
+
+/**
+ * The roster, split into the design's two sections.
+ *
+ * There is no `declined` list, and that is a schema fact rather than an
+ * omission: `No` deletes the `ride_members` row, so a rider who declined is
+ * indistinguishable from one who never answered. The design draws exactly these
+ * two sections, so nothing is lost — but a future "who said no" feature is a
+ * migration, not a query.
+ */
+export type RideCrew = {
+  going: RideCrewMember[]
+  maybe: RideCrewMember[]
+}
+
 /** One club tile in the rides filter bar. */
 export type RideFilterOption = {
   id: string
