@@ -213,6 +213,16 @@ export async function getRides(
  * `maybeSingle` rather than `single`, because `single` treats zero rows as a
  * query *error* — which `unwrap` would then correctly throw on, turning every
  * stale ride link into a 500 instead of a 404.
+ *
+ * The crew is embedded as `(user_id, status)` — two scalars per member, no
+ * profiles. That is linear in crew size, and deliberately so: a bare
+ * `ride_members(count)` aggregate would be O(1) but cannot answer whether the
+ * *organizer* holds a row, which `riders_count` needs in order to count them
+ * exactly once. An off-by-one on a visible number is a worse trade than
+ * fetching a few dozen UUIDs, and unlike `RIDE_SELECT` above this embeds no
+ * joined profiles, so the row is small. If crews ever run to thousands, the fix
+ * is a count filtered to `user_id != organizer_id`, which needs `organizer_id`
+ * before the query and so costs a round trip.
  */
 export async function getRide(id: string): Promise<RideDetail | null> {
   const supabase = await createClient()

@@ -7,7 +7,7 @@ import { RideDescription } from '@/components/rides/RideDescription'
 import { RideHeader } from '@/components/rides/RideHeader'
 import { RideMap } from '@/components/rides/RideMap'
 import { getRide } from '@/lib/data/rides'
-import { formatRideDateLong, formatRideTime } from '@/lib/utils'
+import { cn, formatRideDateLong, formatRideTime } from '@/lib/utils'
 
 /**
  * `Ride - Ride plan (Details)` (`2375:8771`) — the ride's plan.
@@ -32,14 +32,33 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
   // two must stay indistinguishable.
   if (!ride) notFound()
 
+  /**
+   * Two cases the design does not draw, and neither can be "show it anyway":
+   *
+   * - **Past rides.** "Are you going?" about a ride that has already happened is
+   *   nonsense, and answering it would silently edit history.
+   * - **The organizer.** They cannot decline their own ride coherently: `No`
+   *   deletes the `ride_members` row, but `withOrganizer` puts the host in
+   *   `going` unconditionally, so the crew page would still list them as
+   *   going. The control would be lying about what it did. The v1 page hid the
+   *   join button from the organizer for the same reason.
+   */
+  const canRsvp = ride.is_upcoming && !ride.is_organizer
+
   return (
     <>
       <RideHeader rideId={ride.id} title={ride.title} current="plan" />
 
       {/* The shell reserves the 96px header; this screen's is the 120px variant,
           so it owes the 24px difference. Both paddings top up the shell's
-          rather than replacing them — the numbers live in globals.css. */}
-      <div className="pt-header-sub-extra pb-rsvp-bar-extra flex flex-col gap-4 pb-4">
+          rather than replacing them — the numbers live in globals.css. The
+          bottom one is owed only when the bar it clears is actually there. */}
+      <div
+        className={cn(
+          'pt-header-sub-extra flex flex-col gap-4 pb-4',
+          canRsvp && 'pb-rsvp-bar-extra'
+        )}
+      >
         {ride.club && (
           <Link
             href={`/rides?club=${ride.club.id}`}
@@ -87,7 +106,7 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
         </Link>
       </div>
 
-      <RideAttendanceBar rideId={ride.id} attendance={ride.attendance} />
+      {canRsvp && <RideAttendanceBar rideId={ride.id} attendance={ride.attendance} />}
     </>
   )
 }
