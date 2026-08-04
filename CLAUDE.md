@@ -96,11 +96,12 @@ src/
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme)
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
-│   └── globals.css         # Tailwind import + CSS vars + .pt-safe/.pb-safe/.pt-header/.pb-navbar
+│   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
 ├── components/
-│   ├── ui/                 # Button, Input, Card, Avatar, AppBackground, FilterTile (the bar shared by Postcards + Rides)
+│   ├── ui/                 # AppBackground, Avatar, Button, Card, Checkbox, FilterTile, Input, Pagination, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
+│   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
 │   ├── rides/              # RideCard, RideFilterBar, JoinRideButton
 │   ├── clubs/              # JoinClubButton
 │   ├── postcards/          # PostcardDeck, PostcardCard, PostcardFilterBar, PostcardAction, LikeButton, CommentsLink, ShareButton, CommentList, CommentItem, CommentForm, CreatePostcardForm
@@ -143,9 +144,17 @@ openspec/                   # Spec-driven change proposals + config.yaml
 └── settings.json           # Project hook config
 ```
 
+**The per-directory contents above are a hand-copied `ls` and go stale silently** — the `ui/`
+line was edited during the rides epic and still omitted three files, which is worse than
+stale, because a freshly-touched line looks verified. Check it rather than trust it:
+
+```bash
+for d in src/components/*/; do echo "$d: $(ls "$d" | sed 's/\.tsx\?$//' | tr '\n' ' ')"; done
+```
+
 `src/lib/{data,actions,validation,auth}`, `app/auth/*`, `app/onboarding/*` and `app/legal/*`
-were all created by the login epic, which is shipped. What is still v1 is everything under
-`app/(app)/*`.
+were all created by the login epic, which is shipped. What is still v1 under `app/(app)/*` is
+everything except `postcards/*` and `rides/page.tsx`.
 
 ## Critical: proxy.ts (not middleware.ts)
 

@@ -47,11 +47,20 @@
   /* The "Maybe" RSVP pill on `v2 / Component / List / Ride`, and so far only
      that. Read from the snapshot, not eyeballed — but unlike every colour above
      it, it is an **unnamed fill**: the Figma file attaches no paint style to it,
-     so it has no token name to inherit and this one is ours. Worth asking the
-     designer whether it should join the palette as `Warning/…` or `Accent/…`;
-     until then it is named for the single thing it means.
-     Contrast is 3.0:1 for white text — below AA for body copy, and acceptable
-     here only because the pill is 12/Semibold. Do not reuse it for prose. */
+     so it has no token name to inherit and this one is ours.
+
+     ACCESSIBILITY, measured rather than assumed: white on this is **2.54:1**,
+     against a 4.5:1 requirement. A 12px semibold label is NOT WCAG large text
+     (that is 24px, or 18.66px bold), so the large-text 3:1 threshold does not
+     apply. An earlier revision of this comment claimed 3.0:1 and excused it as
+     "acceptable because the pill is 12/Semibold" — both halves were wrong, and
+     invented rather than measured.
+
+     Left exactly as drawn, because the fill is the design's and changing it is
+     the designer's call, not a silent fix. Two remedies are costed in
+     docs/FIGMA-FIDELITY-TODO.md §Rides list; the cheap one keeps this fill and
+     swaps the label to Grey/100, which measures 6.86:1.
+     Do not reuse this colour for prose. */
   --color-maybe: #E58F17;
 
   /* App Background gradient end stop — Figma `v2 / Component / App Background`,
@@ -96,13 +105,29 @@ body {
 
    Header  = pt-safe + 40 row + 8    (`v2 / Component / Header` Type=Regular)
    Navbar  = 56 tabs + pb-safe       (`Navigation / Bar`, the 88px variant)
-   ...with a sticky action, + 16 pad + 40 button + 8  (the 152px variant) */
+   ...with a sticky action, + 16 pad + 40 button + 8  (the 152px variant)
+
+   The custom properties below are that single source. `/rides` re-derived the
+   last one as a literal `pb-16` in the page and happened to get it right, which
+   is luck rather than a system: "wrong in three different ways when each page
+   re-derives them" applies to a page that *adds to* `.pb-navbar` exactly as much
+   as to one that replaces it. */
+:root {
+  --navbar-tabs: 3.5rem;
+  --navbar-action: 4rem; /* 16 pad + 40 button + 8 */
+  --safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
 .pt-header {
   padding-top: calc(max(0.5rem, env(safe-area-inset-top)) + 3rem);
 }
 .pb-navbar {
-  padding-bottom: calc(max(0.75rem, env(safe-area-inset-bottom)) + 3.5rem);
+  padding-bottom: calc(var(--safe-bottom) + var(--navbar-tabs));
 }
 .pb-navbar-action {
-  padding-bottom: calc(max(0.75rem, env(safe-area-inset-bottom)) + 7.5rem);
+  padding-bottom: calc(var(--safe-bottom) + var(--navbar-tabs) + var(--navbar-action));
+}
+/* For a page that scrolls under the taller nav variant and so cannot replace
+   the shell's `.pb-navbar` — it tops it up by exactly the action's height. */
+.pb-navbar-action-extra {
+  padding-bottom: var(--navbar-action);
 }

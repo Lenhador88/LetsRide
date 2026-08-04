@@ -1,11 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
-import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapList } from '@/lib/data/unwrap'
 import type { Club } from '@/types'
 
 type ClubOption = Pick<Club, 'id' | 'name'>
 
 type ClubRow = Omit<Club, 'members_count'> & { members_count: { count: number }[] | null }
+
+/**
+ * Pinned rather than `*`. Nothing on `clubs` is sensitive today — the seven
+ * columns are id, name, description, avatar_url, is_public, owner_id,
+ * created_at — so `*` was not a leak. But `*` on a table means every column
+ * added later ships to the browser the day it is added, with no diff to notice
+ * it in, which is the mechanism `columns.ts` exists to prevent for `profiles`.
+ */
+const CLUB_LIST_COLUMNS = 'id, name, description, avatar_url, is_public, owner_id, created_at'
 
 /**
  * Every club this rider can see, newest first.
@@ -24,7 +32,10 @@ export async function getClubs(): Promise<Club[]> {
   const rows = unwrapList(
     await supabase
       .from('clubs')
-      .select(`*, owner:profiles!owner_id(${PUBLIC_PROFILE_COLUMNS}), members_count:club_members(count)`)
+      // No `owner:profiles` embed — the v1 inline query fetched one and the
+      // page never rendered it, so it was a join and a profile read per club
+      // for nothing. Dropped while the read was being rewritten anyway.
+      .select(`${CLUB_LIST_COLUMNS}, members_count:club_members(count)`)
       .order('created_at', { ascending: false }),
     'the clubs list',
   ) as unknown as ClubRow[]

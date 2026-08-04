@@ -14,7 +14,10 @@ import type { RideAttendance, RideListItem } from '@/types'
  * variant name.
  *
  * Geometry, all read rather than chosen: card radius 8 on White/100 with
- * padding 4/4/4/16 and a 16 gap; the image strip is 80 wide, radius 4; the
+ * padding left 4, top 4, **right 16**, bottom 4 and a 16 gap — spelled out
+ * because the shorthand "4/4/4/16" appeared here first and put the 16 on the
+ * bottom, which would have had someone "fix" the correct `p-1 pr-4` to match
+ * the prose; the image strip is 80 wide, radius 4; the
  * content column is 8-padded top and bottom with a 4 gap; the club chip is
  * Grey/5, radius 4, padding 8/3; avatars are 28 overlapping by 4.
  *
