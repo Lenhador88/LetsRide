@@ -250,6 +250,95 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
       `formatRideDate`/`formatRideTime` use `en-GB` for day-first order and a 24-hour clock,
       matching both the design and `formatPostcardDate`.
 
+### Ride detail — built from the measurements 2026-08-04
+
+`/rides/[id]` and `/rides/[id]/crew`, from `Ride - Ride plan (Details)` (`2375:8771`),
+`Ride - Ride plan - Sub pages` (`2375:9114`) and `Ride - Crew (Riders)` (`2375:9212`).
+
+Every geometry value was read with `npm run figma -- show`, not estimated: banner 390×200,
+club chip at y344, title 24/36 at y364, blurb clamped to 60px (exactly three 20px lines),
+`Show more` link, two 64px rows with `Grey/10` hairlines inset to the text edge, map 358×160
+radius 8 with its button inset 4px bottom-right, and the RSVP bar 390×96 with padding
+16/16/8 and a 358×40 button group. What follows is the design asking for **data the schema
+has not got**, plus deliberate deviations.
+
+**Two sub-pages of four are built.** The switcher lists Ride plan and Crew. That is the
+deviation with the widest blast radius, so it is first:
+
+- [ ] **Journal is drawn and not built.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`)
+      is postcards attached to a ride, and `postcards` has **no `ride_id`**. It needs a
+      migration *and* an audience decision, because `club_id` currently **is** the audience
+      and a ride-scoped postcard would be a second axis. Omitted from the menu rather than
+      offered as a dead row.
+- [ ] **Chat is drawn and not built.** `Ride - Chat`, `- Chat - Options`, `- Chat - Text
+      focus`. No tables at all — this is the Inbox epic and the `realtime` agent. The
+      header's chat button and its `Warning/100` unread dot go with it.
+- [ ] **The header's Options button is omitted, and this one is a question, not a task.**
+      The flow never draws what the sheet contains. Ride overflow is presumably
+      edit / cancel / leave, and "No edit or delete UI anywhere" is a standing known issue —
+      inventing three rows for a destructive menu is the kind of guess that gets trusted
+      later. **Ask the designer what belongs in it.**
+- [ ] **Crew's sticky "Bring a rider" action is omitted.** Inviting is its own flow
+      (`Invite riders`, `Invite riders - Filled`) with no schema behind it.
+
+Blocked on schema, in the same shape as the rides list's image strip:
+
+- [ ] **The 390×200 banner has no image column.** Unlike the map it carries no affordance at
+      all, so it is omitted entirely rather than rendered as a 200px grey slab — an empty
+      fifth of the screen above the fold is worse than a shorter page. *Chose:* omit. Needs
+      the same migration + Storage work as the list card's strip; do both together.
+- [ ] **The map tile has no coordinates — but the deeplink works.** `rides` has no lat/lng,
+      only free-text `meeting_point`, and Google's search endpoint takes a text query. So
+      `Open in Google Maps` genuinely opens the meeting point while the panel behind it stays
+      an empty container with a pin. *Chose:* render the container and a real link. Filling
+      it is a migration **and** a static-tile provider — two decisions, not a styling task.
+- [ ] **`14:00 - 18:00` is a range; the schema has one timestamp.** Same `ends_at` gap the
+      rides list logged. The detail row renders a single departure time.
+- [ ] **The location row draws a place name over a street address.** `meeting_point` is one
+      free-text column, so the primary line carries it and the secondary stays empty. Two
+      columns, or a parse nobody should write.
+- [ ] **`max_riders` is not enforced anywhere.** The column has existed since `001` and
+      nothing has ever checked it — not the RSVP action, not a policy, not a trigger — so a
+      ride can be over-subscribed. Out of scope here because the ride plan does not draw
+      capacity at all, and because the correct fix is a constraint the database owns rather
+      than a check-then-insert that races.
+
+Accessibility — **measured, and both fail**. This is the same palette-wide problem the rides
+list surfaced with its two RSVP pills, arriving on a second screen:
+
+| Element | Fill | Label | Ratio | 4.5:1? |
+|---|---|---|---|---|
+| "Ride host" on a crew row | `Grey/5` `#F2ECE6` | `Accent Brand/110` `#338059` | **4.10:1** | ✗ |
+| Unselected RSVP button | `Grey/10` `#E5DACF` | `Grey/80` `#666666` | **4.17:1** | ✗ |
+| "Ride host", dark label | `Grey/5` | `Grey/100` `#1A1A1A` | 14.85:1 | ✓ |
+| Unselected RSVP, dark label | `Grey/10` | `Grey/100` `#1A1A1A` | 12.65:1 | ✓ |
+
+Neither label is WCAG large text (12px medium and 14px medium; large is 24px, or 18.66px
+bold), so 4.5:1 is the bar in both rows. Both are **left exactly as drawn** — the fills and
+type colours are the designer's, and a silent unilateral change to a token is what decision
+#4 exists to prevent. The cheap remedy in both cases is the dark label, which keeps every
+fill; darkening `Accent Brand/110` to about `#2A6B49` reaches 5.43:1 if the green is wanted.
+Against the app background's far end (`#CCB8A3`) the two measure 2.50:1 and 2.99:1, so the
+gradient makes both worse further down the page — that is a pre-existing app-wide issue,
+not this screen's.
+
+Deviations that are ours, not the design's:
+
+- [ ] **Dates on this screen are `en-GB`; `formatDate`/`formatDateTime` are still `en-US`.**
+      The design draws `Saturday, 12 Nov` and `14:00`, which `en-US` cannot produce — it
+      renders `Saturday, Nov 12` and `02:00 PM`. `formatRideDateLong` and `formatRideTime`
+      match the design; the two older functions were **deliberately not changed**, because
+      that would silently restyle every date on the postcards feed. CLAUDE.md calls their
+      hardcoded `en-US` a bug rather than a decision. The real fix is one locale constant for
+      the app — small, and not approved as part of this epic.
+- [ ] **Times render in the server's timezone.** A ride at 14:00 local shows as 14:00 UTC on
+      Vercel. `formatRideTime` has always had this; rides are simply the first screen where a
+      wrong hour misleads someone rather than merely looking off. Needs a decision about
+      whether ride times are wall-clock at the meeting point or instants.
+- [ ] **`ListUser` renders both avatars at 40px** where the design draws the host at 40 and
+      everyone else at 36. A 4px difference on one row of a roster reads as a rendering bug
+      rather than as emphasis, so the rows share a left edge instead.
+
 ### Create postcard
 
 - [ ] **Flow order** — *chose:* preview → choose-photo button → caption → audience → submit,

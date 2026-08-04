@@ -45,7 +45,8 @@ weight:
 3. `useActionState` gives pending and error states without hand-rolled `useState` triples.
 
 The legacy pattern — a client component calling `supabase.from()` then `router.refresh()` —
-is v1. `JoinRideButton` and `JoinClubButton` still use it. Migrate on contact, the same way
+is v1. `JoinClubButton` is the last one using it — `JoinRideButton` was deleted with the ride
+detail rebuild, which is what "migrate on contact" looks like in practice. Same treatment as
 v1 styling is handled, and never add more.
 
 **Validation: Zod, one schema per concern, shared by both sides.** Lives in
@@ -74,9 +75,14 @@ the framework or auth depends on: `next`, `eslint-config-next`, `react`, `react-
 Supabase is on that list because a minor bump that changes cookie handling breaks sessions
 silently.
 
-**Dates: `Intl` only, no date library.** `formatDate` / `formatDateTime` in
-`src/lib/utils.ts`. Both currently hardcode `en-US`, which is a bug for a European rider app
-rather than a decision.
+**Dates: `Intl` only, no date library.** All in `src/lib/utils.ts`. `formatDate` and
+`formatDateTime` hardcode `en-US`, which is a bug for a European rider app rather than a
+decision. The rides screens could not wait for it — the design draws day-before-month and a
+24-hour clock, which `en-US` cannot produce — so `formatRideDate`, `formatRideDateLong` and
+`formatRideTime` are `en-GB`. **The app therefore renders dates in two locales right now.**
+The fix is one locale constant, not more per-screen formatters; until then, do not add a
+third variant. All of them also render in the *server's* timezone, which is a separate open
+question recorded in `docs/FIGMA-FIDELITY-TODO.md` §Ride detail.
 
 **Deliberately undecided** — raise these rather than inventing an answer: error tracking,
 analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
@@ -89,7 +95,7 @@ src/
 │   ├── (app)/              # Authenticated route group — has Navbar
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
-│   │   ├── rides/          # /rides, /rides/new, /rides/[id]
+│   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew
 │   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
@@ -98,11 +104,11 @@ src/
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
 ├── components/
-│   ├── ui/                 # AppBackground, Avatar, Button, Card, Checkbox, FilterTile, Input, Pagination, Textarea
+│   ├── ui/                 # AppBackground, Avatar, Button, ButtonGroup, Card, Checkbox, ContextMenu, FilterTile, Input, ListUser, Pagination, SectionHeader, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
-│   ├── rides/              # RideCard, RideFilterBar, JoinRideButton
+│   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideDescription, RideMap
 │   ├── clubs/              # JoinClubButton
 │   ├── postcards/          # PostcardDeck, PostcardCard, PostcardFilterBar, PostcardAction, LikeButton, CommentsLink, ShareButton, CommentList, CommentItem, CommentForm, CreatePostcardForm
 │   └── profile/            # EditProfileForm, SignOutButton
@@ -115,7 +121,7 @@ src/
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # recovery.ts — cookie name shared by callback + action
-│   └── utils.ts            # cn(), formatDate(), formatDateTime(), formatPostcardDate(), getInitials()
+│   └── utils.ts            # cn(), formatDate/DateTime(), formatPostcardDate(), formatRideDate/DateLong/Time(), getInitials()
 ├── proxy.ts                # Auth middleware (Next.js 16 uses proxy.ts, not middleware.ts)
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
@@ -594,7 +600,7 @@ blocking.
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | Not built |
-| **Rides** — cover image, static map + Google Maps deeplink, Plan/Journal/Crew tabs, Going/Maybe/No, per-ride chat | Partially built. **The list at `/rides` is v2 and built from the measured design** (2026-08-04): three filters — your rides, all rides, one tile per club — over `src/lib/data/rides.ts`. `/rides/new` and `/rides/[id]` are still v1. The card's map thumbnail is blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list |
+| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan and Crew are built; Journal needs `postcards.ride_id` and Chat needs the Inbox epic.** `/rides/new` is still v1. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
 | **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
