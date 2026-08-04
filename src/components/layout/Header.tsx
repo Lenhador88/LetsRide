@@ -11,9 +11,10 @@ type HeaderProps = {
    * The 20px sub-page row beneath the title, centred. The ride detail puts its
    * `Ride plan ⌄` switcher here.
    *
-   * A page rendering this must reserve `.pt-header-sub` (72px) rather than
-   * `.pt-header` (48px) — the two are 24px apart and the difference is a title
-   * hidden under the bar.
+   * A page rendering this must add `.pt-header-sub-extra` **on top of** the
+   * shell's `.pt-header` — it is a 24px top-up, not a replacement, following
+   * `.pb-navbar-action-extra`. Omitting it leaves 24px of content under the
+   * fixed header.
    */
   subRow?: React.ReactNode
   className?: string
@@ -71,46 +72,5 @@ export function Header({ title, backHref, subRow, className }: HeaderProps) {
       </div>
       {subRow && <div className="flex h-5 items-center justify-center">{subRow}</div>}
     </header>
-  )
-}
-
-/** One 40×40 control in the header's action row — `v2 / Component / Button / Icon`. */
-export function HeaderAction({
-  href,
-  onClick,
-  label,
-  badge,
-  children,
-}: {
-  href?: string
-  onClick?: () => void
-  label: string
-  /** The `Warning/100` unread dot. */
-  badge?: boolean
-  children: React.ReactNode
-}) {
-  const className =
-    'relative flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border'
-  const content = (
-    <>
-      {children}
-      {badge && (
-        <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-danger ring-2 ring-background" />
-      )}
-    </>
-  )
-
-  if (href) {
-    return (
-      <Link href={href} aria-label={label} className={className}>
-        {content}
-      </Link>
-    )
-  }
-
-  return (
-    <button type="button" onClick={onClick} aria-label={label} className={className}>
-      {content}
-    </button>
   )
 }

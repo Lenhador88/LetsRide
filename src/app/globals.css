@@ -10,13 +10,24 @@
      --font-poppins on <html> in layout.tsx; only weights 400/500/600 are loaded. */
   --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
 
-  /* Eight-step type scale collapses to five sizes (weight is applied separately
-     via font-normal/font-medium/font-semibold, which already equal 400/500/600):
+  /* The type scale (weight is applied separately via
+     font-normal/font-medium/font-semibold, which already equal 400/500/600):
        Poppins/10/Medium     -> text-2xs   (10/16)
        Poppins/12/Semibold   -> text-xs    (12/18)
        Poppins/14/*          -> text-sm    (14/20)
        Poppins/16/*          -> text-base  (16/24)
-       Poppins/32/Semibold   -> text-display (32/48) */
+       Poppins/20/*          -> text-xl    (20/30)
+       Poppins/24/Semibold   -> text-2xl   (24/36)
+       Poppins/32/Semibold   -> text-display (32/48)
+
+     `text-xl` and `text-2xl` are **overrides of Tailwind's stock sizes**, which
+     ship 20/28 and 24/32. Both are real design tokens with real weight behind
+     them — `Poppins/20/Semibold` is used 167 times in the file and
+     `Poppins/24/Semibold` 49 — so screens were silently rendering 28 and 32
+     against a design asking for 30 and 36. Found by review on the ride detail,
+     where a comment claimed "24/36, measured" over a `text-2xl` that was not.
+     This corrects every existing caller too, which is the point of fixing it
+     here rather than with a `leading-*` at one call site. */
   --text-2xs: 0.625rem;
   --text-2xs--line-height: 1rem;
   --text-xs: 0.75rem;
@@ -25,6 +36,10 @@
   --text-sm--line-height: 1.25rem;
   --text-base: 1rem;
   --text-base--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2.25rem;
   --text-display: 2rem;
   --text-display--line-height: 3rem;
 

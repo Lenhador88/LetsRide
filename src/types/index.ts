@@ -117,10 +117,19 @@ export type RideDetail = {
   club: { id: string; name: string; avatar_url: string | null } | null
   /** This viewer's own RSVP. The organizer reads as `going` without a row. */
   attendance: RideAttendance
-  riders_count: number
   is_organizer: boolean
   is_upcoming: boolean
 }
+
+/**
+ * There is deliberately **no `riders_count`** here, unlike `RideListItem`.
+ * An earlier version carried one and it was wrong twice over: it counted every
+ * `ride_members` row regardless of status while the label said "going", so the
+ * detail page and the crew page one tap away disagreed; and deriving it meant
+ * an unbounded roster read on a table nothing constrains. The crew page owns
+ * the roster and both its counts. If this screen ever needs a headline number,
+ * it needs a `count` aggregate and a label that matches it — not a full read.
+ */
 
 export type RideCrewMember = {
   user_id: string

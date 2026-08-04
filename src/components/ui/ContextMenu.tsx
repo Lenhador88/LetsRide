@@ -28,22 +28,69 @@ export function ContextMenu({
   children: React.ReactNode
 }) {
   const sheetRef = useRef<HTMLDivElement>(null)
+  // Where focus was before the sheet opened, so it can go back there on close.
+  const triggerRef = useRef<Element | null>(null)
+
+  // `onClose` is an inline arrow at every call site, so its identity changes on
+  // every render. Held in a ref rather than listed as a dependency: naming it
+  // one re-ran the whole effect each render, which re-fired `.focus()` and
+  // yanked focus off whatever item the keyboard user had tabbed to.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
 
   useEffect(() => {
     if (!open) return
 
+    triggerRef.current = document.activeElement
+
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      // Without this, Tab walks the page behind the scrim — the scrim is a
+      // sibling of the sheet, not a wrapper, so `aria-hidden` on it hides
+      // nothing that matters here. A modal that leaks focus is a modal in
+      // appearance only.
+      const focusable = sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled])'
+      )
+      if (!focusable?.length) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
+
     document.addEventListener('keydown', onKeyDown)
 
-    // Moving focus into the sheet is what makes Escape reachable at all: the
-    // trigger stays in the DOM behind the scrim, so without this the keyboard
-    // user is still on the button and tabbing walks the page underneath.
+    // Moving focus into the sheet is what makes Escape and the trap reachable:
+    // the trigger stays in the DOM behind the scrim, so without this the
+    // keyboard user is still standing on the button.
     sheetRef.current?.focus()
 
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open, onClose])
+    const { overflow } = document.body.style
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = overflow
+      // The sheet unmounts with focus inside it, which drops focus to <body>
+      // and restarts the next Tab at the top of the document. Put it back on
+      // the control that opened it.
+      if (triggerRef.current instanceof HTMLElement) triggerRef.current.focus()
+    }
+  }, [open])
 
   if (!open) return null
 

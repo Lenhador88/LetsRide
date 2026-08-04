@@ -98,11 +98,17 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
           </div>
         )}
 
+        {/* Carries no count. The number that used to sit here counted `maybe`
+            RSVPs under a "going" label and disagreed with the crew page one tap
+            away; the roster and its two counts belong to that page. The design
+            draws no crew summary on this screen at all — the header's page
+            switcher is the specified route to Crew, and this is a second, more
+            obvious one. */}
         <Link
           href={`/rides/${ride.id}/crew`}
           className="px-6 text-sm font-semibold text-accent"
         >
-          {ride.riders_count} {ride.riders_count === 1 ? 'rider' : 'riders'} going
+          See who’s riding
         </Link>
       </div>
 

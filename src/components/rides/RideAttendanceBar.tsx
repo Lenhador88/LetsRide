@@ -69,10 +69,12 @@ export function RideAttendanceBar({
             'text-center text-sm font-semibold',
             error ? 'text-danger' : 'text-foreground'
           )}
-          // The prompt is replaced by the failure rather than joined by it, so
-          // it has to announce — otherwise a rolled-back toggle looks like a
-          // tap that did nothing.
-          role={error ? 'status' : undefined}
+          // Unconditional, not `error ? 'status' : undefined`. A live region
+          // created in the same commit as the text it should announce is the
+          // one case assistive tech reliably misses — the region has to exist
+          // *before* the content changes. Otherwise a failed RSVP rolls the
+          // pill back and says nothing.
+          role="status"
         >
           {error ?? 'Are you going?'}
         </p>
