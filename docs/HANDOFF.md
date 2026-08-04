@@ -229,6 +229,44 @@ Two lessons, both cheap to reuse:
   first had already landed. The squad order in `CLAUDE.md` puts `reviewer` before `PR` for
   exactly this reason.
 
+**#37 fixed four defects on the merged ride detail, three of them reported from a real
+iPad.** Worth reading for *how they were found*, because none of the four was visible from
+inside this container:
+
+- **The map panel was invisible.** `bg-border/40` computes to `#0000000a` — 4% black, which
+  over the cream background is **1.09:1 against the page**. Not an iPad bug; blank
+  everywhere, and only noticed on a device someone was actually holding. **The whole class of
+  defect — "renders, compiles, passes CI, cannot be seen" — has no gate in this repo.** A
+  real device on the deployment is the only thing that catches it.
+- **Its deeplink highlighted rather than routed.** `maps/search/?api=1&query=` drops a pin
+  and stops; `maps/dir/?api=1&destination=…` with no `origin` routes from the rider's
+  position. The distinction is one word in a URL and there is no way to notice it without
+  tapping the thing.
+- **The tap target was the 100×20 chip, not the 358×160 panel that looked like one.**
+- **Every ride date and time rendered in UTC.** The `formatRide*` helpers run in server
+  components, so a 20:00 Amsterdam departure was drawn as 18:00 — on the screen where the
+  hour is the fact a rider acts on. `APP_TIME_ZONE` in `lib/utils.ts` pins them to
+  `Europe/Amsterdam`, as a documented **interim**: the correct model is wall-clock at the
+  meeting point, which needs a zone column on `rides`. The viewer's zone was rejected, not
+  overlooked — server and client would render different strings, i.e. a hydration mismatch
+  on every ride card.
+
+**`TZ=UTC` in `vitest.config.ts` is why the tests agreed with a two-hour error.** The
+environment asserting the behaviour was the one hiding the bug, and every assertion was
+"correct" in it. That is the sharper version of this file's existing lesson about claims:
+**a test can be as wrong as a comment, and it is more convincing.** The new assertions check
+the CET *and* CEST offsets and that the date rolls with the clock, which UTC formatting
+cannot fake.
+
+**A plausible mechanism is not a verified one.** The first version of #37 blamed Safari's
+`color-mix()` support for the blank panel — Tailwind v4 genuinely does compile opacity
+modifiers to `color-mix(in oklab, …)`, and Safari genuinely did not ship it until 16.2. The
+story was coherent and wrong. Grepping the *built* CSS showed the static hex sits **outside**
+the `@supports` guard, so a browser without `color-mix()` still gets the fill. It cost one
+`npm run build` to check and would have shipped as a fact nobody rechecked. Third entry in
+this file's running tally of confidently-stated wrong claims, and the first caught before the
+commit rather than by review.
+
 **Both RSVP pills fail WCAG AA and it is now a live question for the designer** —
 `#E58F17` with white is 2.54:1 and `Accent Brand/100` with white is 3.52:1, against a 4.5:1
 requirement (12px semibold is not "large text"). The green one is used well beyond this
@@ -301,7 +339,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **261** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246 and 263/251. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **269** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251 and 263/261. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |

@@ -6,18 +6,25 @@ import {
   formatRideDateLong,
   formatRideTime,
   getInitials,
+  googleMapsDirectionsUrl,
 } from '@/lib/utils'
 
-// TZ is pinned to UTC in vitest.config.ts — these assertions are about the
-// *shape* of the string, and the zone is what makes them reproducible.
+// TZ is pinned to UTC in vitest.config.ts, and for these assertions that pin is
+// now inert: `formatRideDate` carries its own `timeZone`, so it renders the same
+// string on any runner. The pin still matters for `formatPostcardDate` and
+// `formatRelativeTime`, which have none.
+//
+// An earlier version of this comment said the pin "is what makes them
+// reproducible", which was true when the helpers took the process zone and is
+// exactly how the UTC bug hid here — see the timezone block further down.
 describe('formatRideDate', () => {
   it('reads as the design draws it — uppercase, weekday first, no year', () => {
     expect(formatRideDate('2024-11-16T10:00:00Z')).toBe('SAT, 16 NOV')
     expect(formatRideDate('2024-11-17T13:30:00Z')).toBe('SUN, 17 NOV')
   })
 
-  it('puts the day before the month, unlike formatDate', () => {
-    // en-GB, for a European rider app. The en-US ordering would read "NOV 16".
+  it('puts the day before the month, as en-GB does', () => {
+    // For a European rider app. An en-US ordering would read "NOV 16".
     expect(formatRideDate('2026-01-02T09:00:00Z')).toBe('FRI, 2 JAN')
   })
 })
@@ -42,13 +49,76 @@ describe('formatRideDateLong', () => {
 
 describe('formatRideTime', () => {
   it('is a 24-hour clock, zero-padded', () => {
-    expect(formatRideTime('2024-11-16T10:00:00Z')).toBe('10:00')
-    expect(formatRideTime('2024-11-17T13:30:00Z')).toBe('13:30')
-    expect(formatRideTime('2024-11-17T09:05:00Z')).toBe('09:05')
+    // CET in November, so these are the UTC instants plus one hour.
+    expect(formatRideTime('2024-11-16T10:00:00Z')).toBe('11:00')
+    expect(formatRideTime('2024-11-17T13:30:00Z')).toBe('14:30')
+    expect(formatRideTime('2024-11-17T08:05:00Z')).toBe('09:05')
   })
 
   it('does not roll midnight over to 24:00', () => {
-    expect(formatRideTime('2024-11-17T00:00:00Z')).toBe('00:00')
+    expect(formatRideTime('2024-11-16T23:00:00Z')).toBe('00:00')
+  })
+})
+
+/**
+ * The bug these cover: every `formatRide*` helper runs in a **server**
+ * component, so before `APP_TIME_ZONE` they rendered in the server's zone —
+ * UTC on Vercel — and drew a 20:00 ride as 18:00 all summer.
+ *
+ * `vitest.config.ts` pins `TZ=UTC`, which is exactly the environment that hid
+ * it: the assertions above agreed with production precisely because both were
+ * wrong in the same direction. So these do not merely restate the expected
+ * strings — they assert the offset is applied, which UTC formatting cannot fake.
+ */
+describe('ride times are Amsterdam wall clock, not the server’s', () => {
+  it('applies the +2 summer offset (CEST)', () => {
+    expect(formatRideTime('2024-07-16T10:00:00Z')).toBe('12:00')
+  })
+
+  it('applies the +1 winter offset (CET), so DST is handled rather than fixed', () => {
+    expect(formatRideTime('2024-11-16T10:00:00Z')).toBe('11:00')
+  })
+
+  it('rolls the date with the time, so the two helpers cannot disagree', () => {
+    // 23:30 UTC is already the next day in Amsterdam. The date helpers have to
+    // move with the clock or a ride reads "Saturday" over "00:30 Sunday".
+    const lateUtc = '2024-11-16T23:30:00Z'
+    expect(formatRideTime(lateUtc)).toBe('00:30')
+    expect(formatRideDate(lateUtc)).toBe('SUN, 17 NOV')
+    expect(formatRideDateLong(lateUtc)).toBe('Sunday, 17 Nov')
+  })
+})
+
+describe('googleMapsDirectionsUrl', () => {
+  it('asks for directions, not a highlighted pin', () => {
+    // The reported bug: `maps/search/?api=1&query=` drops a marker and stops.
+    const url = googleMapsDirectionsUrl('Dam Square, Amsterdam')
+    expect(url).toContain('/maps/dir/')
+    expect(url).toContain('destination=')
+    expect(url).not.toContain('/maps/search/')
+    expect(url).not.toContain('query=')
+  })
+
+  it('omits an origin, which is what makes Google route from the device', () => {
+    expect(googleMapsDirectionsUrl('Dam Square')).not.toContain('origin=')
+  })
+
+  it('asks for a road route', () => {
+    expect(googleMapsDirectionsUrl('Dam Square')).toContain('travelmode=driving')
+  })
+
+  it('encodes an address so it survives the query string', () => {
+    expect(googleMapsDirectionsUrl('Dam Square, Amsterdam')).toContain(
+      'destination=Dam+Square%2C+Amsterdam'
+    )
+  })
+
+  it('does not let an ampersand or hash truncate the destination', () => {
+    // The hand-built `encodeURIComponent` string this replaced was safe here
+    // too, but only by accident of call order — this pins it.
+    const url = googleMapsDirectionsUrl('Herengracht 1 & 2 #rear')
+    expect(url).toContain('destination=Herengracht+1+%26+2+%23rear')
+    expect(url.split('&')).toHaveLength(3)
   })
 })
 
@@ -123,8 +193,8 @@ describe('formatPostcardDate', () => {
     expect(formatPostcardDate('2024-11-19T10:00:00Z')).toBe('19 Nov 2024')
   })
 
-  it('carries no weekday, unlike formatDate', () => {
-    // The design's stamp sits in the corner of a photo and has room for three parts.
+  it('carries no weekday — the stamp has room for three parts', () => {
+    // It sits in the corner of a photo, which is what bounds it.
     expect(formatPostcardDate('2025-01-01T10:00:00Z')).toBe('1 Jan 2025')
   })
 })

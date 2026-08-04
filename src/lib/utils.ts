@@ -6,17 +6,71 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * The zone every ride time is rendered in.
+ *
+ * Ride dates and times are formatted on the **server**, so without this they
+ * render in the server's zone — which on Vercel is UTC. A ride departing at
+ * 20:00 in Amsterdam was being drawn as `18:00`, two hours wrong, on the one
+ * screen where the hour is the single fact a rider acts on. The unit tests
+ * missed it because `vitest.config.ts` pins `TZ=UTC`, so the environment that
+ * hid the bug in production was also the one asserting the behaviour.
+ *
+ * **This is an interim, and a deliberate one.** The correct answer is the wall
+ * clock *at the meeting point* — a ride in Lisbon reads 10:00 to everyone,
+ * wherever they are looking from — and that needs a zone column on `rides`
+ * beside the timestamp. Until it exists, a fixed European zone is right for the
+ * whole current user base where UTC is wrong for all of it, and it is one
+ * constant to delete when the column lands. It is not the viewer's zone either:
+ * `Intl.DateTimeFormat().resolvedOptions().timeZone` would be per-viewer correct
+ * and would also make the server and client render different strings, which is a
+ * hydration mismatch on every ride card.
+ *
+ * Applies to the three `formatRide*` helpers, which after this change are the
+ * only zone-dependent formatters left — `formatPostcardDate` is a photo stamp
+ * and `formatRelativeTime` works on elapsed instants, which no zone changes.
+ */
+export const APP_TIME_ZONE = 'Europe/Amsterdam'
+
+/**
+ * A Google Maps **directions** link to a free-text destination.
+ *
+ * `maps/dir/?api=1&destination=…`, not `maps/search/?api=1&query=…`. The search
+ * endpoint drops a pin and stops there — which is what riders reported: tapping
+ * the map "only highlights the location". `dir` with a `destination` and no
+ * `origin` makes Google route from wherever the rider currently is, which is the
+ * thing the tap was always meant to do.
+ *
+ * `travelmode=driving` because the Maps **URLs** API documents exactly four
+ * values — `driving`, `walking`, `bicycling`, `transit`. The `two-wheeler` mode
+ * a motorcycle app would want belongs to the Routes/Directions *web service*,
+ * which is a keyed, billed API and not this one; passing it here is not a
+ * degraded option, it is not a value this endpoint accepts.
+ *
+ * `URLSearchParams` rather than `encodeURIComponent`, so an address containing
+ * `&` or `#` cannot truncate the query — the previous hand-built string would
+ * have silently lost everything after an ampersand.
+ */
+export function googleMapsDirectionsUrl(destination: string) {
+  const params = new URLSearchParams({
+    api: '1',
+    destination,
+    travelmode: 'driving',
+  })
+  return `https://www.google.com/maps/dir/?${params.toString()}`
+}
+
+/**
  * The date stamped on a postcard photo — `19 Nov 2024`.
  *
- * Its own formatter rather than `formatDate` because the design gives this one a
+ * Named for its screen rather than generic, because the design gives this one a
  * distinct shape: day first, short month, no weekday, sized to sit in the corner
  * of a photo. `en-GB` gives that day-first order; the design's lowercase month
  * ("19 nov 2024") is Dutch, which is the locale its mock content is written in
  * rather than a choice about the app's.
  *
- * This deliberately does not touch the `en-US` hardcoding in `formatDate` /
- * `formatDateTime` / `formatRelativeTime`. That is a known bug for a European
- * rider app and the three have to move together, which is not this change.
+ * Deliberately **not** pinned to APP_TIME_ZONE. This is the date a photo was
+ * taken, stamped on the photo; the zone that matters is the one the rider was
+ * standing in, which the schema does not record either way.
  */
 export function formatPostcardDate(date: string) {
   return new Date(date).toLocaleDateString('en-GB', {
@@ -48,6 +102,7 @@ export function formatRideDate(date: string) {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
+    timeZone: APP_TIME_ZONE,
   }).formatToParts(new Date(date))
 
   const find = (type: Intl.DateTimeFormatPartTypes) =>
@@ -62,27 +117,37 @@ export function formatRideDate(date: string) {
  * in docs/FIGMA-FIDELITY-TODO.md as blocked on schema, not on the design.
  */
 export function formatRideTime(date: string) {
-  return new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-}
-
-export function formatDate(date: string) {
-  return new Date(date).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
-export function formatDateTime(date: string) {
-  return new Date(date).toLocaleString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
+  return new Date(date).toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: APP_TIME_ZONE,
   })
 }
+
+/*
+ * `formatDate` and `formatDateTime` used to sit here. They are **deleted**, not
+ * moved, and the deletion is the fix for a defect this change created.
+ *
+ * `formatDateTime` had exactly one caller — the club page's ride card — and
+ * `formatDate` had none at all. Pinning the three `formatRide*` helpers to
+ * APP_TIME_ZONE while leaving that caller unpinned made two screens one tap
+ * apart disagree about the same ride: `/clubs/[id]` said `06:00 PM` where
+ * `/rides/[id]` said `20:00`, and past 22:00 UTC they disagreed about the day.
+ * Uniformly wrong had become inconsistently wrong, which is worse.
+ *
+ * That caller now uses the ride helpers, which is what a ride time should have
+ * used regardless — and with it gone both functions had zero callers. Deleting
+ * them is therefore the whole fix for their long-standing hardcoded `en-US`
+ * too: a bug CLAUDE.md has carried as "known" for two epics, resolved at no
+ * cost because nothing was using the code that had it.
+ *
+ * This is also the grain of the file. Every surviving formatter is named for
+ * the screen it serves — `formatPostcardDate`, `formatRideDate`,
+ * `formatRideDateLong`, `formatRideTime` — because each design draws a
+ * genuinely different shape. A generic `formatDate` invites a call site to take
+ * whatever it gives; write the screen's own and let the name say where it
+ * belongs.
+ */
 
 /**
  * The ride *detail's* date row — `Saturday, 12 Nov`.
@@ -95,16 +160,16 @@ export function formatDateTime(date: string) {
  *
  * Same `en-GB`, same parts-assembly, and same reason — see `formatRideDate`.
  *
- * Renders in the **server's** timezone, so a ride at 14:00 local shows as 14:00
- * UTC on Vercel. `formatRideTime` has always had this; rides are simply the
- * first screen where a wrong hour misleads rather than merely looks off.
- * Logged in docs/FIGMA-FIDELITY-TODO.md §Ride detail.
+ * Rendered in `APP_TIME_ZONE`, not the server's. It used to be the server's,
+ * which meant UTC on Vercel and every ride drawn two hours early in summer; see
+ * that constant for why the fix is a fixed zone rather than the viewer's.
  */
 export function formatRideDateLong(date: string) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'short',
+    timeZone: APP_TIME_ZONE,
   }).formatToParts(new Date(date))
 
   const find = (type: Intl.DateTimeFormatPartTypes) =>
@@ -130,9 +195,13 @@ const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
  * Anything under a minute reads "just now" rather than "0 seconds ago", which
  * is what the API would otherwise produce for a postcard posted this second.
  *
- * Locale is hardcoded `en-US` to match formatDate/formatDateTime. That is the
- * same known bug they carry for a European rider app, not a new decision —
- * fixing it means fixing all three together.
+ * Locale is `en-US` and that is now the only place in the file it survives.
+ * Unlike the date formatters it is defensible here: this produces English
+ * prose ("3 hours ago"), so the locale is the app's language rather than a
+ * date format, and every string the app writes around it is English too.
+ *
+ * Needs no timezone. It formats the *distance* between two instants, and the
+ * gap between them is the same number of hours in every zone on earth.
  */
 export function formatRelativeTime(date: string, now: Date = new Date()) {
   const seconds = Math.round((new Date(date).getTime() - now.getTime()) / 1000)

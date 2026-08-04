@@ -21,11 +21,20 @@ export default defineConfig({
     // Explicit imports from 'vitest' everywhere instead — keeps tsconfig.json
     // untouched rather than adding the "vitest/globals" ambient types.
     globals: false,
-    // The date formatters resolve against the *local* zone, so without this a
-    // "SAT, 16 NOV" assertion passes on a UTC runner and fails on a laptop in
-    // Amsterdam. Pinning it here makes the suite say the same thing everywhere;
-    // it does not pin the app, whose own timezone behaviour is a live question
-    // recorded in docs/FIGMA-FIDELITY-TODO.md.
+    // Still needed, but NOT for the reason this comment used to give. It cited
+    // "SAT, 16 NOV" as the assertion that would break on an Amsterdam laptop;
+    // that comes from `formatRideDate`, which now carries its own `timeZone`
+    // and renders identically on any runner. The pin covers what is left with
+    // no zone of its own — `formatPostcardDate`, and any future formatter that
+    // forgets one.
+    //
+    // Worth knowing what this pin cost once: while the ride formatters *did*
+    // take the process zone, UTC here matched UTC on Vercel, so the suite
+    // agreed with production and both were two hours wrong together. A pinned
+    // zone makes a suite reproducible; it does not make it right, and it will
+    // happily reproduce the deployment's bug. See the timezone block in
+    // src/lib/__tests__/utils.test.ts, which asserts the offset rather than
+    // the string.
     env: { TZ: 'UTC' },
   },
 })
