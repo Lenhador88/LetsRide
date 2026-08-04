@@ -35,7 +35,18 @@ async function readDesign(relative) {
 const index = await readDesign('index.json')
 const entries = [...index.frames, ...index.components]
 
-/** Name match is case-insensitive substring, plus exact node id. */
+/** "Hide postcard for me / Home - Postcards - All new" — how a screen is named. */
+const qualified = (e) => (e.section ? `${e.section} / ${e.name}` : e.name)
+
+/**
+ * Name match is case-insensitive substring, plus exact node id.
+ *
+ * Six frames are called `Home - Postcards - All new` — one per flow that shows
+ * the home screen — so a bare name is often ambiguous. Matching the *qualified*
+ * name means the flow disambiguates it ("Hide postcard for me / Home - Postcards
+ * - All new"), and the ambiguity message prints qualified names so the next
+ * command is copy-pasteable rather than something to work out from node ids.
+ */
 function resolve(needle) {
   if (!needle) {
     console.error('Give a frame or component name, or a node id.')
@@ -43,7 +54,7 @@ function resolve(needle) {
   }
   const lower = needle.toLowerCase()
   const matches = entries.filter(
-    (e) => e.id === needle || e.name.toLowerCase().includes(lower),
+    (e) => e.id === needle || qualified(e).toLowerCase().includes(lower),
   )
 
   if (!matches.length) {
@@ -51,9 +62,17 @@ function resolve(needle) {
     exit(1)
   }
   if (matches.length > 1) {
-    const exact = matches.filter((e) => e.name.toLowerCase() === lower || e.id === needle)
+    const exact = matches.filter(
+      (e) => e.id === needle || qualified(e).toLowerCase() === lower || e.name.toLowerCase() === lower,
+    )
     if (exact.length === 1) return exact[0]
-    console.error(`"${needle}" is ambiguous:\n${matches.map((m) => `  ${m.name}  [${m.id}]`).join('\n')}`)
+
+    // All six may be the same screen drawn per flow; say so rather than implying
+    // they are six different things.
+    console.error(
+      `"${needle}" matches ${matches.length}. Narrow it with the flow, or use an id:\n` +
+        matches.map((m) => `  ${qualified(m)}  [${m.id}]`).join('\n'),
+    )
     exit(1)
   }
   return matches[0]
@@ -78,10 +97,13 @@ function* walkPruned(node, depth = 0, hidden = false) {
 switch (command) {
   case 'ls': {
     const lower = term.toLowerCase()
-    const shown = entries.filter((e) => !term || e.name.toLowerCase().includes(lower))
+    const shown = entries.filter((e) => !term || qualified(e).toLowerCase().includes(lower))
     for (const e of shown) {
       const variants = e.variants ? ` (${e.variants} variants)` : ''
-      console.log(`${e.type.padEnd(14)} ${e.name}${variants}\n${' '.repeat(15)}${e.page} · ${e.id}`)
+      // The flow is printed on the detail line because it is what makes an
+      // otherwise duplicated screen name resolvable.
+      const where = e.section ? `${e.page} · ${e.section}` : e.page
+      console.log(`${e.type.padEnd(14)} ${e.name}${variants}\n${' '.repeat(15)}${where} · ${e.id}`)
     }
     console.log(`\n${shown.length} of ${entries.length}`)
     break

@@ -1,0 +1,34 @@
+{
+  "page": "Design",
+  "section": "Home / Create postcard",
+  "id": "2241:10948",
+  "name": "Element / Icon / Image",
+  "type": "TEXT",
+  "box": {
+    "x": 7105.24,
+    "y": 6807.48,
+    "w": 162,
+    "h": 20
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "OUTSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#000000"
+    }
+  ],
+  "styles": {
+    "text": "Poppins/14/Semibold"
+  },
+  "characters": "Element / Icon / Image",
+  "text": {
+    "fontFamily": "Poppins",
+    "fontSize": 14,
+    "fontWeight": 600,
+    "lineHeightPx": 20,
+    "letterSpacing": 0,
+    "textAlignHorizontal": "LEFT",
+    "textAlignVertical": "TOP"
+  }
+}

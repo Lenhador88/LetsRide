@@ -90,9 +90,21 @@ async function emit(relative, data) {
  * than only through the flow that contains it.
  */
 function topLevel(page) {
-  return (page.children ?? []).flatMap(function expand(child) {
-    return child.type === 'SECTION' ? (child.children ?? []).flatMap(expand) : [child]
-  })
+  const out = []
+  const walk = (node, section) => {
+    if (node.type === 'SECTION') {
+      // Nested sections read as a path: "Home / Hide postcard for me".
+      const nested = section ? `${section} / ${node.name}` : node.name
+      for (const child of node.children ?? []) walk(child, nested)
+      return
+    }
+    // The section a screen belongs to is what tells six identically-named
+    // `Home - Postcards - All new` frames apart — recursing made every screen
+    // addressable, but it also made the *names* ambiguous.
+    out.push({ node, section })
+  }
+  for (const child of page.children ?? []) walk(child, null)
+  return out
 }
 
 const index = { fileKey: FILE_KEY, frames: [], components: [] }
@@ -119,15 +131,18 @@ const pages = docs.flatMap((doc) =>
 )
 
 for (const page of pages) {
-  for (const node of topLevel(page)) {
+  for (const { node, section } of topLevel(page)) {
     const isComponent = node.type === 'COMPONENT_SET' || node.type === 'COMPONENT'
     const dir = isComponent ? 'components' : 'frames'
-    const name = uniqueSlug(node.name)
+    // Slug from the section too, so six `Home - Postcards - All new` frames get
+    // meaningful filenames rather than -2 … -6.
+    const name = uniqueSlug(section ? `${section} ${node.name}` : node.name)
     const pruned = pruneNode(node, lookup)
 
-    await emit(`${dir}/${name}.json`, { page: page.name, ...pruned })
+    await emit(`${dir}/${name}.json`, { page: page.name, section, ...pruned })
     index[isComponent ? 'components' : 'frames'].push({
       name: node.name,
+      section,
       page: page.name,
       id: node.id,
       type: node.type,

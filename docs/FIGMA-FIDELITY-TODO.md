@@ -12,7 +12,7 @@ is unreadable" — **no longer holds**.
 
 ```bash
 npm run figma -- ls [pattern]                    # every frame and component
-npm run figma -- tree "Home - Postcards - All new"
+npm run figma -- tree "View all new postcards / Home - Postcards - All new"
 npm run figma -- text "v2 / Component / Postcard"
 ```
 

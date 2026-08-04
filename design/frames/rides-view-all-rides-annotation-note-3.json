@@ -1,0 +1,116 @@
+{
+  "page": "Design",
+  "section": "Rides / View all rides",
+  "id": "2475:14880",
+  "name": "Annotation / Note",
+  "type": "INSTANCE",
+  "box": {
+    "x": 11514,
+    "y": 1199,
+    "w": 280,
+    "h": 64
+  },
+  "layoutMode": "VERTICAL",
+  "layoutWrap": "NO_WRAP",
+  "itemSpacing": 8,
+  "paddingLeft": 16,
+  "paddingRight": 16,
+  "paddingTop": 12,
+  "paddingBottom": 12,
+  "primaryAxisAlignItems": "CENTER",
+  "counterAxisAlignItems": "CENTER",
+  "counterAxisSizingMode": "FIXED",
+  "layoutSizingHorizontal": "FIXED",
+  "layoutSizingVertical": "HUG",
+  "clipsContent": false,
+  "rectangleCornerRadii": [
+    0,
+    8,
+    8,
+    8
+  ],
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#000000"
+    }
+  ],
+  "componentId": "1951:12880",
+  "component": "Annotation / Note",
+  "componentProperties": {
+    "Note#1951:16": {
+      "type": "TEXT",
+      "value": "Rides you might join are marked with a yellow indicator."
+    }
+  },
+  "children": [
+    {
+      "id": "I2475:14880;1951:12877",
+      "name": "Note",
+      "type": "TEXT",
+      "box": {
+        "x": 11530,
+        "y": 1211,
+        "w": 248,
+        "h": 40
+      },
+      "layoutSizingHorizontal": "FILL",
+      "layoutSizingVertical": "HUG",
+      "layoutAlign": "STRETCH",
+      "layoutGrow": 0,
+      "strokeWeight": 1,
+      "strokeAlign": "OUTSIDE",
+      "opacity": 0.8,
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "styles": {
+        "fill": "White/100"
+      },
+      "characters": "Rides you might join are marked with a yellow indicator.",
+      "text": {
+        "fontFamily": "Poppins",
+        "fontSize": 14,
+        "fontWeight": 500,
+        "lineHeightPx": 20,
+        "letterSpacing": 0,
+        "textAlignHorizontal": "LEFT",
+        "textAlignVertical": "TOP"
+      }
+    },
+    {
+      "id": "I2475:14880;1951:12884",
+      "name": "Corner",
+      "type": "VECTOR",
+      "box": {
+        "x": 11498,
+        "y": 1199,
+        "w": 16,
+        "h": 16
+      },
+      "layoutSizingHorizontal": "FIXED",
+      "layoutSizingVertical": "FIXED",
+      "layoutAlign": "INHERIT",
+      "layoutGrow": 0,
+      "rectangleCornerRadii": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#000000"
+        }
+      ]
+    }
+  ]
+}

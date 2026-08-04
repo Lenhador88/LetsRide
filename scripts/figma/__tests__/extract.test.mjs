@@ -59,6 +59,17 @@ describe('extract', () => {
     expect(index.frames.find((f) => f.name === 'Create Postcard').id).toBe('11:2')
   })
 
+  it('records the section path, which is what tells same-named screens apart', async () => {
+    // Recursing into nested sections made every screen addressable but made the
+    // *names* ambiguous — six real frames are called `Home - Postcards - All new`,
+    // one per flow. The flow is the disambiguator, so it has to be in the index.
+    const index = await read('index.json')
+    expect(index.frames.find((f) => f.name === 'Nested Screen').section)
+      .toBe('Section wrapper / Inner section')
+    expect(index.frames.find((f) => f.name === 'Create Postcard').section).toBe('Section wrapper')
+    expect(index.frames.find((f) => f.name === 'Home / Feed').section).toBeNull()
+  })
+
   it('descends through *nested* sections, so every screen is addressable by name', async () => {
     // The real file groups flows in an outer section whose children are sections.
     // Stopping at one level indexed the flow and hid the screens inside it, so

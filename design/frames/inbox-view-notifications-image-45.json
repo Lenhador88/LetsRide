@@ -1,0 +1,22 @@
+{
+  "page": "Design",
+  "section": "Inbox / View notifications",
+  "id": "2322:11320",
+  "name": "image 45",
+  "type": "RECTANGLE",
+  "box": {
+    "x": 34109,
+    "y": 700,
+    "w": 390,
+    "h": 844
+  },
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "IMAGE",
+      "imageRef": "5cd5f46b5918ecf027de8d0148a1ee484af06cae",
+      "scaleMode": "FILL"
+    }
+  ]
+}

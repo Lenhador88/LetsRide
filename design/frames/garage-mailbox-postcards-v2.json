@@ -1,0 +1,1169 @@
+{
+  "page": "Archive",
+  "section": "🟠 Garage",
+  "id": "1683:8630",
+  "name": "Mailbox - Postcards v2",
+  "type": "FRAME",
+  "box": {
+    "x": -12999,
+    "y": 34399,
+    "w": 390,
+    "h": 844
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#1A1A1A"
+    }
+  ],
+  "styles": {
+    "fills": "Grey (OLD)/10",
+    "fill": "Grey (OLD)/10"
+  },
+  "children": [
+    {
+      "id": "1683:9605",
+      "name": "Map",
+      "type": "FRAME",
+      "box": {
+        "x": -12999,
+        "y": 34399,
+        "w": 390,
+        "h": 844
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1683:9598",
+          "name": "Map",
+          "type": "RECTANGLE",
+          "box": {
+            "x": -14343,
+            "y": 34279,
+            "w": 1733.62,
+            "h": 844
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "IMAGE",
+              "imageRef": "06357a5590b317067ad18a986a55b07b66c4788d",
+              "scaleMode": "FILL"
+            }
+          ]
+        },
+        {
+          "id": "1683:9853",
+          "name": "Current location",
+          "type": "FRAME",
+          "box": {
+            "x": -12825,
+            "y": 34662,
+            "w": 42,
+            "h": 42
+          },
+          "clipsContent": false,
+          "cornerRadius": 100,
+          "strokeWeight": 4,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#000000"
+            }
+          ],
+          "children": [
+            {
+              "id": "1683:9854",
+              "name": "Border",
+              "type": "ELLIPSE",
+              "box": {
+                "x": -12823,
+                "y": 34664,
+                "w": 38,
+                "h": 38
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#F27900"
+                }
+              ]
+            },
+            {
+              "id": "1683:9861",
+              "name": "Avatar",
+              "type": "FRAME",
+              "box": {
+                "x": -12820,
+                "y": 34667,
+                "w": 32,
+                "h": 32
+              },
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1683:9862",
+                  "name": "Image",
+                  "type": "ELLIPSE",
+                  "box": {
+                    "x": -12820,
+                    "y": 34667,
+                    "w": 32,
+                    "h": 32
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "IMAGE",
+                      "imageRef": "a6d87029b1c769393a545493a2927b1bc9e1f11d",
+                      "scaleMode": "FILL"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1683:9767",
+      "name": "Main Container",
+      "type": "FRAME",
+      "box": {
+        "x": -12999,
+        "y": 34967,
+        "w": 390,
+        "h": 276
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1683:9768",
+          "name": "Background",
+          "type": "FRAME",
+          "box": {
+            "x": -12999,
+            "y": 35007,
+            "w": 390,
+            "h": 236
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1683:9769",
+              "name": "Bottom",
+              "type": "VECTOR",
+              "box": {
+                "x": -12999,
+                "y": 35031,
+                "w": 390,
+                "h": 212
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#F5F5F5"
+                }
+              ]
+            },
+            {
+              "id": "1683:9770",
+              "name": "Top",
+              "type": "VECTOR",
+              "box": {
+                "x": -12999,
+                "y": 35007,
+                "w": 390,
+                "h": 24
+              },
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#F5F5F5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "1683:9798",
+          "name": "Postcard Stack",
+          "type": "FRAME",
+          "box": {
+            "x": -12975,
+            "y": 34967,
+            "w": 342,
+            "h": 244
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1683:9721",
+              "name": "Postcard",
+              "type": "FRAME",
+              "box": {
+                "x": -12979.15,
+                "y": 34961.11,
+                "w": 350.31,
+                "h": 255.79
+              },
+              "clipsContent": true,
+              "cornerRadius": 8,
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "rotation": 2,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FAFAFA"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "effects": [
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 8,
+                  "offset": {
+                    "x": 0,
+                    "y": 4
+                  },
+                  "color": "#00000014"
+                },
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 16,
+                  "offset": {
+                    "x": -4,
+                    "y": -2
+                  },
+                  "color": "#00AAFF14"
+                },
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 16,
+                  "offset": {
+                    "x": 4,
+                    "y": 2
+                  },
+                  "color": "#FF005514"
+                }
+              ],
+              "styles": {
+                "strokes": "White/100",
+                "stroke": "White/100"
+              }
+            },
+            {
+              "id": "1683:9799",
+              "name": "Postcard",
+              "type": "FRAME",
+              "box": {
+                "x": -12979.15,
+                "y": 34961.11,
+                "w": 350.31,
+                "h": 255.79
+              },
+              "clipsContent": true,
+              "cornerRadius": 8,
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "rotation": -2,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FAFAFA"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "effects": [
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 8,
+                  "offset": {
+                    "x": 0,
+                    "y": 4
+                  },
+                  "color": "#00000014"
+                },
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 16,
+                  "offset": {
+                    "x": -4,
+                    "y": -2
+                  },
+                  "color": "#00AAFF14"
+                },
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 16,
+                  "offset": {
+                    "x": 4,
+                    "y": 2
+                  },
+                  "color": "#FF005514"
+                }
+              ],
+              "styles": {
+                "strokes": "White/100",
+                "stroke": "White/100"
+              }
+            },
+            {
+              "id": "1683:9826",
+              "name": "Postcard",
+              "type": "FRAME",
+              "box": {
+                "x": -12975,
+                "y": 34967,
+                "w": 342,
+                "h": 244
+              },
+              "clipsContent": true,
+              "cornerRadius": 8,
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "rotation": 0,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FAFAFA"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "effects": [
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 8,
+                  "offset": {
+                    "x": 0,
+                    "y": 4
+                  },
+                  "color": "#00000014"
+                },
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 16,
+                  "offset": {
+                    "x": -4,
+                    "y": -2
+                  },
+                  "color": "#00AAFF14"
+                },
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 16,
+                  "offset": {
+                    "x": 4,
+                    "y": 2
+                  },
+                  "color": "#FF005514"
+                }
+              ],
+              "styles": {
+                "strokes": "White/100",
+                "stroke": "White/100"
+              },
+              "children": [
+                {
+                  "id": "1683:9827",
+                  "name": "Photo",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -12971,
+                    "y": 34971,
+                    "w": 334,
+                    "h": 200
+                  },
+                  "clipsContent": true,
+                  "cornerRadius": 4,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1683:9828",
+                      "name": "IMG_6508 2",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": -13008,
+                        "y": 34801,
+                        "w": 372,
+                        "h": 370
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "IMAGE",
+                          "imageRef": "6cecce442e075c6d48564b8ce1ee39100c0a1552",
+                          "scaleMode": "STRETCH"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1683:9829",
+                      "name": "Bottom",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": -13026,
+                        "y": 35139,
+                        "w": 539,
+                        "h": 169
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "visible": false,
+                      "fills": [
+                        {
+                          "type": "IMAGE",
+                          "imageRef": "2fbe34ad03de472d20120cee5b445f5dd2d5acf1",
+                          "scaleMode": "FILL"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1683:9830",
+                      "name": "Left",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": -13107,
+                        "y": 34813,
+                        "w": 169,
+                        "h": 539
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "visible": false,
+                      "rotation": -90,
+                      "fills": [
+                        {
+                          "type": "IMAGE",
+                          "imageRef": "2fbe34ad03de472d20120cee5b445f5dd2d5acf1",
+                          "scaleMode": "FILL"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1683:9831",
+                      "name": "Right",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": -12688,
+                        "y": 34708,
+                        "w": 194.5,
+                        "h": 546.44
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "visible": false,
+                      "rotation": 92.73,
+                      "fills": [
+                        {
+                          "type": "IMAGE",
+                          "imageRef": "2fbe34ad03de472d20120cee5b445f5dd2d5acf1",
+                          "scaleMode": "FILL"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1683:9832",
+                      "name": "Top",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": -13057.86,
+                        "y": 34797.44,
+                        "w": 549.77,
+                        "h": 207.36
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "visible": false,
+                      "rotation": 4.13,
+                      "fills": [
+                        {
+                          "type": "IMAGE",
+                          "imageRef": "2fbe34ad03de472d20120cee5b445f5dd2d5acf1",
+                          "scaleMode": "FILL"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1683:9833",
+                      "name": "Gradient",
+                      "type": "RECTANGLE",
+                      "box": {
+                        "x": -12971,
+                        "y": 35131,
+                        "w": 334,
+                        "h": 40
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "rotation": 0,
+                      "fills": [
+                        {
+                          "type": "GRADIENT_LINEAR",
+                          "angle": 180,
+                          "handles": [
+                            {
+                              "x": 0.5,
+                              "y": 0
+                            },
+                            {
+                              "x": 0.5,
+                              "y": 1
+                            },
+                            {
+                              "x": 0.49320636807623264,
+                              "y": 0
+                            }
+                          ],
+                          "stops": [
+                            {
+                              "position": 0,
+                              "color": "#00000000"
+                            },
+                            {
+                              "position": 1,
+                              "color": "#00000080"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1683:9834",
+                      "name": "14 nov 2024, Türkiye",
+                      "type": "TEXT",
+                      "box": {
+                        "x": -12963,
+                        "y": 35149,
+                        "w": 318,
+                        "h": 16
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "OUTSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#FFFFFF"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "White/100",
+                        "text": "Poppins/10/Semibold"
+                      },
+                      "characters": "14 nov 2024, Türkiye",
+                      "text": {
+                        "fontFamily": "Poppins",
+                        "fontSize": 10,
+                        "fontWeight": 600,
+                        "lineHeightPx": 16,
+                        "letterSpacing": 0,
+                        "textAlignHorizontal": "LEFT",
+                        "textAlignVertical": "TOP"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1683:9835",
+                  "name": "Footer",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -12963,
+                    "y": 35179,
+                    "w": 318,
+                    "h": 24
+                  },
+                  "layoutMode": "HORIZONTAL",
+                  "layoutWrap": "NO_WRAP",
+                  "itemSpacing": 8,
+                  "counterAxisAlignItems": "CENTER",
+                  "primaryAxisSizingMode": "FIXED",
+                  "layoutSizingHorizontal": "FIXED",
+                  "layoutSizingVertical": "HUG",
+                  "clipsContent": false,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1683:9836",
+                      "name": "User",
+                      "type": "FRAME",
+                      "box": {
+                        "x": -12963,
+                        "y": 35179,
+                        "w": 163,
+                        "h": 24
+                      },
+                      "layoutMode": "HORIZONTAL",
+                      "layoutWrap": "NO_WRAP",
+                      "itemSpacing": 4,
+                      "counterAxisAlignItems": "CENTER",
+                      "primaryAxisSizingMode": "FIXED",
+                      "layoutSizingHorizontal": "FILL",
+                      "layoutSizingVertical": "HUG",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 1,
+                      "clipsContent": false,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "children": [
+                        {
+                          "id": "1683:9837",
+                          "name": "Avatar",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12963,
+                            "y": 35179,
+                            "w": 24,
+                            "h": 24
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": false,
+                          "cornerRadius": 100,
+                          "strokeWeight": 4,
+                          "strokeAlign": "INSIDE",
+                          "rotation": 0,
+                          "children": [
+                            {
+                              "id": "1683:9838",
+                              "name": "Image",
+                              "type": "ELLIPSE",
+                              "box": {
+                                "x": -12963,
+                                "y": 35179,
+                                "w": 24,
+                                "h": 24
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "a6d87029b1c769393a545493a2927b1bc9e1f11d",
+                                  "scaleMode": "FILL"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1683:9839",
+                          "name": "itchybootstravel",
+                          "type": "TEXT",
+                          "box": {
+                            "x": -12935,
+                            "y": 35182,
+                            "w": 135,
+                            "h": 18
+                          },
+                          "layoutSizingHorizontal": "FILL",
+                          "layoutSizingVertical": "HUG",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 1,
+                          "strokeWeight": 1,
+                          "strokeAlign": "OUTSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#1A1A1A"
+                            }
+                          ],
+                          "styles": {
+                            "fill": "Grey (OLD)/10",
+                            "text": "Poppins/12/Semibold"
+                          },
+                          "characters": "itchybootstravel",
+                          "text": {
+                            "fontFamily": "Poppins",
+                            "fontSize": 12,
+                            "fontWeight": 600,
+                            "lineHeightPx": 18,
+                            "letterSpacing": 0,
+                            "textAlignHorizontal": "LEFT",
+                            "textAlignVertical": "TOP"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1683:9840",
+                      "name": "Actions",
+                      "type": "FRAME",
+                      "box": {
+                        "x": -12792,
+                        "y": 35179,
+                        "w": 147,
+                        "h": 24
+                      },
+                      "layoutMode": "HORIZONTAL",
+                      "layoutWrap": "NO_WRAP",
+                      "itemSpacing": 8,
+                      "counterAxisAlignItems": "CENTER",
+                      "counterAxisSizingMode": "FIXED",
+                      "layoutSizingHorizontal": "HUG",
+                      "layoutSizingVertical": "FILL",
+                      "layoutAlign": "STRETCH",
+                      "layoutGrow": 0,
+                      "clipsContent": false,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "children": [
+                        {
+                          "id": "1683:9841",
+                          "name": "Likes",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12792,
+                            "y": 35183,
+                            "w": 37,
+                            "h": 16
+                          },
+                          "layoutMode": "HORIZONTAL",
+                          "layoutWrap": "NO_WRAP",
+                          "itemSpacing": 2,
+                          "counterAxisAlignItems": "CENTER",
+                          "layoutSizingHorizontal": "HUG",
+                          "layoutSizingVertical": "HUG",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": false,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "children": [
+                            {
+                              "id": "1883:22410",
+                              "name": "Element / Icon / Heart Outline",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12792,
+                                "y": 35183,
+                                "w": 16,
+                                "h": 16
+                              },
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "FIXED",
+                              "layoutAlign": "INHERIT",
+                              "layoutGrow": 0,
+                              "clipsContent": true,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:22411",
+                                  "name": "Icon",
+                                  "type": "VECTOR",
+                                  "box": {
+                                    "x": -12791.33,
+                                    "y": 35184.33,
+                                    "w": 14.67,
+                                    "h": 13.33
+                                  },
+                                  "strokeWeight": 2,
+                                  "strokeAlign": "CENTER",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1683:9843",
+                              "name": "56k",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12774,
+                                "y": 35183,
+                                "w": 19,
+                                "h": 16
+                              },
+                              "layoutSizingHorizontal": "HUG",
+                              "layoutSizingVertical": "HUG",
+                              "layoutAlign": "INHERIT",
+                              "layoutGrow": 0,
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#4D4D4D"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/30"
+                              },
+                              "characters": "56k",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 10,
+                                "fontWeight": 600,
+                                "lineHeightPx": 16,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1683:9844",
+                          "name": "Comments",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12747,
+                            "y": 35183,
+                            "w": 47,
+                            "h": 16
+                          },
+                          "layoutMode": "HORIZONTAL",
+                          "layoutWrap": "NO_WRAP",
+                          "itemSpacing": 2,
+                          "counterAxisAlignItems": "CENTER",
+                          "layoutSizingHorizontal": "HUG",
+                          "layoutSizingVertical": "HUG",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": false,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "children": [
+                            {
+                              "id": "1883:22398",
+                              "name": "Element / Icon / Chat Bubble Outline",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12747,
+                                "y": 35183,
+                                "w": 16,
+                                "h": 16
+                              },
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "FIXED",
+                              "layoutAlign": "INHERIT",
+                              "layoutGrow": 0,
+                              "clipsContent": true,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:22399",
+                                  "name": "Icon",
+                                  "type": "VECTOR",
+                                  "box": {
+                                    "x": -12746.33,
+                                    "y": 35184.33,
+                                    "w": 14.01,
+                                    "h": 14.01
+                                  },
+                                  "strokeWeight": 2,
+                                  "strokeAlign": "CENTER",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1683:9846",
+                              "name": "14.621",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12729,
+                                "y": 35183,
+                                "w": 29,
+                                "h": 16
+                              },
+                              "layoutSizingHorizontal": "HUG",
+                              "layoutSizingVertical": "HUG",
+                              "layoutAlign": "INHERIT",
+                              "layoutGrow": 0,
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#4D4D4D"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/30"
+                              },
+                              "characters": "14.621",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 10,
+                                "fontWeight": 600,
+                                "lineHeightPx": 16,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1683:9847",
+                          "name": "Shares",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12692,
+                            "y": 35183,
+                            "w": 47,
+                            "h": 16
+                          },
+                          "layoutMode": "HORIZONTAL",
+                          "layoutWrap": "NO_WRAP",
+                          "itemSpacing": 2,
+                          "counterAxisAlignItems": "CENTER",
+                          "layoutSizingHorizontal": "HUG",
+                          "layoutSizingVertical": "HUG",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": false,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "children": [
+                            {
+                              "id": "1883:22390",
+                              "name": "Element / Icon / Paper Airplane",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12692,
+                                "y": 35183,
+                                "w": 16,
+                                "h": 16
+                              },
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "FIXED",
+                              "layoutAlign": "INHERIT",
+                              "layoutGrow": 0,
+                              "clipsContent": true,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:22391",
+                                  "name": "Icon",
+                                  "type": "VECTOR",
+                                  "box": {
+                                    "x": -12691.33,
+                                    "y": 35183.66,
+                                    "w": 14.67,
+                                    "h": 14.67
+                                  },
+                                  "strokeWeight": 2,
+                                  "strokeAlign": "CENTER",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1683:9849",
+                              "name": "9.890",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12674,
+                                "y": 35183,
+                                "w": 29,
+                                "h": 16
+                              },
+                              "layoutSizingHorizontal": "HUG",
+                              "layoutSizingVertical": "HUG",
+                              "layoutAlign": "INHERIT",
+                              "layoutGrow": 0,
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#4D4D4D"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/30"
+                              },
+                              "characters": "9.890",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 10,
+                                "fontWeight": 600,
+                                "lineHeightPx": 16,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1683:8637",
+      "name": "Component / Header",
+      "type": "FRAME",
+      "box": {
+        "x": -12999,
+        "y": 34399,
+        "w": 390,
+        "h": 96
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1683:9602",
+          "name": "Component / Button",
+          "type": "FRAME",
+          "box": {
+            "x": -12991,
+            "y": 34447,
+            "w": 40,
+            "h": 40
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 8,
+          "paddingRight": 8,
+          "paddingTop": 8,
+          "paddingBottom": 8,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#FFFFFF"
+            }
+          ],
+          "styles": {
+            "fills": "White/100",
+            "fill": "White/100"
+          },
+          "children": [
+            {
+              "id": "1883:20670",
+              "name": "Element / Icon / Arrow Left",
+              "type": "FRAME",
+              "box": {
+                "x": -12983,
+                "y": 34455,
+                "w": 24,
+                "h": 24
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:20671",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": -12979,
+                    "y": 34459,
+                    "w": 16,
+                    "h": 16
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "rotation": -180,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey (OLD)/10"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
