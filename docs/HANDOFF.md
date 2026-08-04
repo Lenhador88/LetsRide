@@ -50,27 +50,35 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 ## Do this first
 
-**Everything through migration `011` is shipped and applied.** `001`–`011` are all live on the
-hosted project, and the Postcards backend is complete for every home-screen action.
+**`001`–`011` are applied. `012` and `013` are written and are NOT** — the repo and the hosted
+schema disagree right now, which this project's own rules call drift. That is the top item
+below, not a footnote.
 
 The next actions, in the order they are worth doing:
 
-1. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project
+1. **Apply `012` then `013`, in that order.** `012` is a `create or replace function` and is
+   safe. **`013` drops `friendships` and destroys data** — run its pre-flight
+   (`select count(*) from public.friendships;`, expect 0) and stop if it is not 0. Both were
+   written on 2026-08-04 by a session whose Supabase write tool required an approval it did
+   not have; both carry the reason in their headers. The RLS suite already applies the whole
+   chain to a scratch database on every PR, so they are verified against the chain — just not
+   against production.
+2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project
    serves nothing and there is no alert, so the deployed app goes down silently. This needs a
    card, not a commit, and it will bite at the worst possible moment.
-2. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
+3. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
    `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21. #24
    shipped the tool; whether it has since been *run* could not be checked from this container,
    which cannot reach `supabase.co`. The dry run is free and settles it.
-3. **`npm run figma:pull`, but not before 2026-08-06 12:32 UTC.** Re-probed 2026-08-04: still
+4. **`npm run figma:pull`, but not before 2026-08-06 12:32 UTC.** Re-probed 2026-08-04: still
    429 on `/v1/files/*` and `/v1/images`, `2d 4h` left, which agrees with the 2026-08-03
    reading to within an hour — it really is one countdown, not a fresh window per attempt.
    Check with `npm run figma:check -- --probe` rather than trying blind. One successful pull
    is the highest-value thing left — see *Building to the design*.
-4. **Then verify the Postcards screens against the design**, working through the `chose:`
+5. **Then verify the Postcards screens against the design**, working through the `chose:`
    entries in `docs/FIGMA-FIDELITY-TODO.md` — now four screens' worth, including the comment
    thread. Every composition value in them is a guess; the tokens are not.
-5. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
+6. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
 **The rest of the Postcards interaction UI is the next build.** `#26` took the comments half —
@@ -109,10 +117,11 @@ would silently restore that hole. Its safety is narrowness — `search_path` pin
 schema-qualified, revoked from `public` and `anon`, and the authorization checked *inside*
 the function against `auth.uid()`. Asserted both ways in the suite.
 
-**Still not done, and deliberately so:** the `/friends` + `friendships` deletion. Signed off
-by the product owner, but it needs a migration to drop the table, so it is a `data` change
-rather than a UI one. The Navbar still routes there; deleting the tab without the route
-strands the page.
+**The `/friends` + `friendships` deletion is half done.** The code half landed: the route,
+both components, the Navbar tab, the `Friendship` type, the profile page's friend count and
+the RLS fixtures are all gone. The schema half is `013`, which is **written and unapplied** —
+so the table still exists in production with nothing referencing it. That is the safe order
+for a removal (code first, schema second) and it is not finished until `013` runs.
 
 **Comments came back into scope on 2026-08-03**, reversing the earlier "no tables for
 comments or shares" decision. `009`'s header still says they are out of scope — that is now
@@ -141,8 +150,8 @@ for, but it is a shape nobody has read off the design.
 
 | | |
 |---|---|
-| Migrations | `001`–`011` all applied to the hosted project and verified live. See the ordering note below. |
-| Tests | RLS suite 255 assertions (`npm test`) + Vitest **222** tests (`npm run test:unit`, measured 2026-08-04 — this line said 195). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Migrations | `001`–`011` applied and verified live. **`012` and `013` are written and NOT applied** — see *Do this first*. Ordering note below. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **222** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255 and 195, and the RLS baseline before this session was 264 (+5 consent, −6 friendships). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -248,12 +257,12 @@ input that fails the charset rule), and two dots instead of three.
 
 ### Open, needing a decision
 
-- **`terms_accepted_at` is not protected.** `enforce_onboarding_completion()` pins the
-  onboarding stamp but leaves the consent stamp writable, so a rider can clear or back-date
-  their own. `CLAUDE.md` names T&C acceptance as an integrity rule the client must not own.
-  Worse: if email confirmation is ever switched on (decision #6 says revisit before launch),
-  `signUp` loses its live session and the consent write is refused outright. The action
-  checks its result now; the schema guard is an unwritten migration.
+- ~~**`terms_accepted_at` is not protected.**~~ **Written as `012`, not yet applied.** The
+  guard pins the stamp once set and replaces the client's value with server time on the first
+  write, so it cannot be cleared, back-dated, or chosen. Five assertions cover it. The
+  *second* half of this item still stands: if email confirmation is ever switched on
+  (decision #6), `signUp` loses its live session and the consent write is refused outright.
+  The action checks its result; nothing yet retries it.
 - **`/onboarding/photo` is unbuilt** and needs the `media` agent — Storage bucket, RLS,
   client-side compression, EXIF stripping. When it lands it must **not** re-gate riders who
   already completed onboarding; surface it as a dismissible nudge on the profile screen.

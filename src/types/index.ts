@@ -156,12 +156,5 @@ export type Block = {
   blocked?: PublicProfile
 }
 
-export type Friendship = {
-  id: string
-  requester_id: string
-  addressee_id: string
-  status: 'pending' | 'accepted'
-  created_at: string
-  requester?: PublicProfile
-  addressee?: PublicProfile
-}
+// `Friendship` was removed with the table in 013. The product's social graph is
+// clubs plus blocking; the design has no friendship concept anywhere.
