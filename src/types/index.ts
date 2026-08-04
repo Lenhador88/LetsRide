@@ -89,6 +89,36 @@ export type Postcard = {
   // Null when signing failed, which the UI renders as a missing image rather
   // than a broken one.
   image_url?: string | null
+  // Counted under RLS per viewer, never stored. A comment from a rider you
+  // blocked must not be counted for you — see 011 §1.
+  comments_count?: number
+}
+
+export type PostcardComment = {
+  id: string
+  postcard_id: string
+  author_id: string
+  body: string
+  created_at: string
+  updated_at: string
+  author?: PublicProfile
+}
+
+/**
+ * The six values 011's CHECK constraint allows. **Inferred, not read from the
+ * design** — the Figma snapshot has never been captured, so this is the common
+ * denominator of other platforms' report sheets rather than a transcription of
+ * ours. Registered in docs/FIGMA-FIDELITY-TODO.md.
+ */
+export type ReportReason = 'spam' | 'harassment' | 'hate' | 'nudity' | 'violence' | 'other'
+
+export type PostcardReport = {
+  id: string
+  reporter_id: string
+  postcard_id: string
+  reason: ReportReason
+  note: string | null
+  created_at: string
 }
 
 /**

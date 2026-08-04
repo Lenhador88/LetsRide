@@ -8,8 +8,9 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 // The raw shape PostgREST returns before the like state is folded in:
 // `likes_count` arrives as the one-row aggregate array Supabase's `(count)`
 // embed always produces, and `is_liked` does not exist yet.
-type PostcardRow = Omit<Postcard, 'likes_count' | 'is_liked'> & {
+type PostcardRow = Omit<Postcard, 'likes_count' | 'comments_count' | 'is_liked'> & {
   likes_count: { count: number }[] | null
+  comments_count: { count: number }[] | null
 }
 
 /**
@@ -25,7 +26,8 @@ const POSTCARD_SELECT = `
   *,
   author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
-  likes_count:postcard_likes(count)
+  likes_count:postcard_likes(count),
+  comments_count:postcard_comments(count)
 `
 
 /**
@@ -66,7 +68,11 @@ async function attachLikeState(
 
   return rows.map((row) => ({
     ...row,
+    // Both counts arrive as the one-row aggregate array Supabase's `(count)`
+    // embed always produces, and both are counted under RLS — so a blocked
+    // rider's like or comment never counts for the rider who blocked them.
     likes_count: row.likes_count?.[0]?.count ?? 0,
+    comments_count: row.comments_count?.[0]?.count ?? 0,
     is_liked: likedIds.has(row.id),
     image_url: imageUrls.get(row.image_path) ?? null,
   }))

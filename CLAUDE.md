@@ -195,6 +195,9 @@ Three further rules:
 | `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`. **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
 | `postcard_likes` | `(postcard_id, user_id)` composite PK. No denormalised count — the correct count is per-viewer, so it is counted under RLS. |
 | `blocks` | `(blocker_id, blocked_id)` composite PK. The row is **directional**, the effect **symmetric**. Never query it from a policy — go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row. |
+| `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
+| `postcard_hides` | `(postcard_id, user_id)` composite PK. **Per-viewer and one-directional**, unlike `blocks` — a row only ever removes a postcard from its own `user_id`'s feed. It is an input to the `postcards` SELECT policy, so `club_id` is no longer the sole determinant of what a viewer sees. |
+| `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
@@ -475,7 +478,7 @@ means one of three things and only the first two are open:
   service-role key. Costs a network hop, keeps RLS intact. Justified only by something Node
   or Go can do that Postgres and Edge Functions cannot.
 - **A service-role backend that owns the database.** This voids decision #2. Every visibility
-  rule currently living in 35 policies and 186 test assertions gets reimplemented in
+  rule currently living in 40 policies and 255 test assertions gets reimplemented in
   application code — where, per `openspec/config.yaml`, an unstated rule fails silently
   instead of loudly. Nothing on the roadmap justifies it. Reopening it takes an explicit
   decision, not drift.
@@ -541,7 +544,7 @@ Inbox, Profile**. There is no "Friends" tab; the `friendships` table is a v1 lef
 
 | Domain | Status in code |
 |---|---|
-| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View + like + create built** at `/postcards`; composition unverified against Figma. Comments and shares are deliberately out of scope and have no tables |
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View + like + create built** at `/postcards`; composition unverified against Figma. **Comments are in scope as of 2026-08-03** — the product owner reversed the earlier decision. **Shares remain out**, and deliberately so: it is undefined whether "share" means a native share sheet (no backend at all) or a repost (a substantial feature with its own audience rules), and building either would be a guess |
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | Not built |

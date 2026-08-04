@@ -51,6 +51,49 @@ ratio, byline placement, the like control, spacing, the whole create flow — is
 one recorded as *chose:* in `docs/FIGMA-FIDELITY-TODO.md` so verifying is a diff. It is not
 finished until someone has compared it to the design.
 
+**Migration `011` is applied and verified live** (2026-08-04). `001`–`011` are all applied;
+no drift. It adds `postcard_comments`, `postcard_hides` and `postcard_reports`, and rewrites
+the `postcards` SELECT policy to enforce per-viewer hiding.
+
+Verified on the hosted project after applying — the environment-specific things the RLS suite
+runs on plain Postgres and structurally cannot see:
+
+| Check | Result |
+|---|---|
+| Three new tables exist, RLS enabled | ✅ all three |
+| Policies not `to authenticated` | 0 |
+| `anon` table privileges | 0 |
+| SELECT policies on `postcards` | **exactly 1** — no leftover from the drop loop |
+| UPDATE policies on the new tables | 0 |
+| `authenticated` UPDATE on comments / DELETE on reports | false / false |
+| Total `public` policies | 32 → 40 |
+| Live regression as the real rider | feed, profiles, clubs and rides all still readable |
+
+**A NEW security advisor fires, and it is expected — do not "fix" it.**
+`authenticated_security_definer_function_executable` flags
+`public.moderate_comment(uuid)` as a `SECURITY DEFINER` function callable via
+`/rest/v1/rpc/`. That is the entire point: it exists so a rider can remove a comment from a
+harasser they blocked, which RLS alone cannot reach because it filters a DELETE by what the
+caller may *read*. Revoking EXECUTE or switching it to `SECURITY INVOKER` would silently
+restore that hole. What keeps it safe is narrowness, not the grant: `search_path` pinned,
+names schema-qualified, revoked from `public` and `anon`, and the authorization
+(`p.author_id = auth.uid()`) checked *inside* the function against `auth.uid()` rather than
+against anything the caller passes. Asserted both ways in the suite.
+
+The other advisor, leaked-password protection, is still the pre-existing one — a dashboard
+toggle nobody has flipped.
+
+**The create flow is verified end to end.** A real postcard was posted from the deployed app
+on 2026-08-03 at 21:49 UTC, image present in Storage. That closes the caveat carried since
+#15 that no real upload had ever run — upload, compression, EXIF stripping, the Storage
+policies and the insert all work against production.
+
+**Two orphaned Storage objects exist** (3 objects, 1 postcard). One is from the failed
+attempt before #21; both are unreachable, since 010's Storage SELECT policy resolves through
+a `postcards` row that does not exist. They cost storage only. Cleaning them up needs a
+decision about whether to sweep automatically — see `docs/FIGMA-FIDELITY-TODO.md` for the
+known-leak note.
+
 **Try `npm run figma:pull` before anything else** — that comparison is the highest-value
 thing left, and one successful pull unblocks it. **It will not work before roughly
 2026-08-06 12:30 UTC** — `Retry-After` said 69 hours at 15:22 on 2026-08-03, and it is a real
@@ -110,12 +153,21 @@ Product owner sign-offs taken this session, both previously listed here as uncon
   was kept out of the Postcards work deliberately. The Navbar still routes to it; deleting
   the tab without the route would strand the page.
 
-The approved first UI slice is **view + like + create**. Comments and shares stay out of
-scope, and `009` deliberately creates no table for them. Create was added after it became
+The approved first UI slice was **view + like + create**. Create was added after it became
 clear that view + like alone renders an empty feed forever — nothing can put a postcard in it.
 
-**Migration `010_postcard_storage.sql` is applied and verified live** (2026-08-03). No drift:
-`001`–`010` are all applied. It creates the private `media` bucket and the `storage.objects`
+**Comments came back into scope on 2026-08-03**, by the product owner, reversing the earlier
+"no tables for comments or shares" decision. That reversal is theirs to make and is recorded
+here so it does not read as drift — `009`'s header still says comments are out of scope, and
+that is now historical rather than current.
+
+**Shares are still out**, and this is a genuine open question rather than a deferral:
+"share" could mean a native share sheet, which needs no backend at all, or a repost, which is
+a substantial feature with its own audience rules. Building either without knowing which
+would be a guess.
+
+**Migration `010_postcard_storage.sql` is applied and verified live** (2026-08-03).
+`001`–`010` are all applied; `011` is not — see the State table. It creates the private `media` bucket and the `storage.objects`
 policies, and drops and recreates two of `009`'s postcards policies to bind `image_path` to
 the author's own Storage folder.
 
@@ -210,8 +262,8 @@ To change any of those four tables, add a new migration. `008` is the current de
 
 | | |
 |---|---|
-| Migrations | `001`–`010` all applied to the hosted project. See the ordering note below. |
-| Tests | RLS suite 186 assertions (`npm test`) + Vitest 192 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Migrations | `001`–`011` all applied to the hosted project and verified live. See the ordering note below. |
+| Tests | RLS suite 255 assertions (`npm test`) + Vitest 195 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -456,6 +508,36 @@ table privileges at all. A signed-out visitor can reach the landing and auth pag
 nothing else.
 
 ---
+
+## The test rider account
+
+Created 2026-08-03 so screens can be exercised without using the product owner's own login.
+
+| | |
+|---|---|
+| Email | `duskrider@letsride.test` |
+| Username | `duskrider` |
+| User id | `0f6c4947-7990-475d-9224-2e3011b31923` |
+| State | Onboarding complete — lands straight on `/postcards` |
+
+**The password is not in this repo and must never be.** It lives with the product owner; ask
+them, or reset it from the Supabase dashboard. If CI ever needs it, it belongs in GitHub
+Actions secrets, not in a file.
+
+Two caveats that matter more than they look:
+
+- **`.test` is an RFC 2606 reserved TLD and receives no mail.** Harmless while email
+  confirmation is off (decision #6), but the moment confirmation is turned on, this account
+  cannot sign up, recover a password, or confirm anything. Revisit it with that decision, not
+  after.
+- **It was created by SQL insert into `auth.users`, not through the signup flow**, because
+  this container cannot reach `supabase.co` — so it proves nothing about signup itself. The
+  row shape was mirrored from the one real account and the bcrypt hash was verified with
+  `crypt()`, so password login works; everything upstream of the session is untested.
+
+**The app is not public yet.** That is why a real account on the production project is an
+acceptable test fixture at all. It stops being acceptable the day real riders sign up —
+before launch, either delete it or move testing to a separate Supabase project.
 
 ## Known constraints
 

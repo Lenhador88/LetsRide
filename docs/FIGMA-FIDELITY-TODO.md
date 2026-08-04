@@ -137,6 +137,21 @@ code right now and unverified.
       in Storage. `createPostcard` cleans up only when the *insert* fails, and Storage has no
       cross-system cascade. Costs storage, never correctness.
 
+### Report a postcard — the reason list is a guess
+
+- [ ] **The six report reasons are inferred, not read.** `spam`, `harassment`, `hate`,
+      `nudity`, `violence`, `other` — the common denominator of other platforms' report
+      sheets, not a transcription of the design's Report frame. They are a CHECK constraint
+      in `011`, a Zod enum in `src/lib/validation/comments.ts`, and a union in `src/types`,
+      kept in step by hand and by one unit test that diffs the enum against the migration.
+      Verify with `npm run figma -- text "Report"` once the snapshot is captured. **Adding a
+      value is a cheap drop-and-recreate of one constraint; removing one is not**, which is
+      why the list was kept short rather than generous.
+- [ ] Whether reporting and hiding are one affordance or two in the design. They are two
+      rights and two tables in `011` on purpose — a rider may want either — but if the design
+      shows a single "Report and hide" control, that is a `lib/actions` composition, not a
+      schema change.
+
 ### Navigation
 
 - [ ] **Tab bar** — *chose:* five tabs (Home, Rides, Clubs, Friends, Profile) on `bg-surface`
