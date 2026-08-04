@@ -88,7 +88,7 @@ src/
 ├── app/                    # Next.js App Router pages
 │   ├── (app)/              # Authenticated route group — has Navbar
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed top + fixed bottom tabs)
-│   │   ├── postcards/      # /postcards (the home screen), /postcards/new
+│   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id]
 │   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
 │   │   ├── friends/        # /friends — v1 leftover, signed off for deletion
@@ -103,7 +103,7 @@ src/
 │   ├── layout/             # Navbar
 │   ├── rides/              # JoinRideButton
 │   ├── clubs/              # JoinClubButton
-│   ├── postcards/          # PostcardCard, LikeButton, CreatePostcardForm
+│   ├── postcards/          # PostcardCard, LikeButton, CommentsLink, CommentList, CommentItem, CommentForm, CreatePostcardForm
 │   ├── friends/            # FriendActions, SearchRiders
 │   └── profile/            # EditProfileForm, SignOutButton
 ├── lib/
@@ -208,7 +208,11 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`010` are all applied to the hosted project.** `009_postcards_and_blocks`
+**Applied state: `001`–`011` are all applied to the hosted project.** Re-read from
+`list_migrations` on 2026-08-04, which returns eleven rows ending in `postcard_interactions`
+(`20260804062626`). This line said `001`–`010` for a day after `011` landed, which is the
+worst way for it to be wrong: a session obeying *Unapplied migrations are drift* would have
+re-run `011` against tables that already exist. `009_postcards_and_blocks`
 was applied 2026-08-02 and verified live: 32 policies, all `to authenticated`, exactly one
 SELECT policy per table, `anon` holds zero grants, and `private.is_blocked` is absent from
 `public` so PostgREST does not publish it. `003_onboarding` was
@@ -544,7 +548,7 @@ Inbox, Profile**. There is no "Friends" tab; the `friendships` table is a v1 lef
 
 | Domain | Status in code |
 |---|---|
-| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View + like + create built** at `/postcards`; composition unverified against Figma. **Comments are in scope as of 2026-08-03** — the product owner reversed the earlier decision. **Shares remain out**, and deliberately so: it is undefined whether "share" means a native share sheet (no backend at all) or a repost (a substantial feature with its own audience rules), and building either would be a guess |
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **View, like, create and comment built** — the feed at `/postcards`, the composer at `/postcards/new`, and one card plus its thread at `/postcards/[id]`. Composition unverified against Figma throughout. **Shares remain out**, and deliberately so: it is undefined whether "share" means a native share sheet (no backend at all) or a repost (a substantial feature with its own audience rules), and building either would be a guess |
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | Not built |

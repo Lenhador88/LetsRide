@@ -4,12 +4,12 @@ Last shipped, 2026-08-03/04: the **Postcards home screen and every interaction b
 `#17` the committed Figma snapshot pipeline, `#18` a startup-context dedup, `#19` the feed and
 create screens, `#20` reading Figma's `Retry-After`, `#21` a route that shipped dead, `#22`
 migration `011` with comments / hides / reports / blocks, `#23` reads that no longer swallow
-errors, `#24` the orphan sweep. Before that, the Postcards backend (`#15`) and the login epic
-(`#8`). No branch is in flight — start new work from `main`.
+errors, `#24` the orphan sweep, `#25` this file's own rewrite.
 
-**The UI exists for view, like and create; the backend exists for everything else** —
-comments, hiding, reporting, blocking, deleting — **and nothing calls it yet.** That gap is
-the intended next build, and *Do this first* says what to know before starting it.
+**In flight: the comments UI** (`#26`, `claude/comments-ui-krjuyl`) — the thread route
+`/postcards/[id]`, the composer, and the card's comment control, on `011`'s existing backend.
+No schema change. It closes the first and largest part of the gap `#25` named below; **hiding,
+reporting, blocking and deleting still have no UI.**
 
 **Nothing in the UI has ever been compared to the design.** Figma was rate limited throughout,
 so every composition value is an inferred guess, each one recorded as *chose:* in
@@ -51,8 +51,7 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 ## Do this first
 
 **Everything through migration `011` is shipped and applied.** `001`–`011` are all live on the
-hosted project, the Postcards backend is complete for every home-screen action, and the
-feed / create screens work end to end against production. Nothing is in flight.
+hosted project, and the Postcards backend is complete for every home-screen action.
 
 The next actions, in the order they are worth doing:
 
@@ -60,38 +59,46 @@ The next actions, in the order they are worth doing:
    serves nothing and there is no alert, so the deployed app goes down silently. This needs a
    card, not a commit, and it will bite at the worst possible moment.
 2. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
-   `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21.
-3. **`npm run figma:pull`, but not before roughly 2026-08-06 12:30 UTC.** `Retry-After` read
-   69 hours at 15:22 on 2026-08-03 and it is a real countdown; check with
-   `npm run figma:check -- --probe` rather than trying blind. One successful pull is the
-   highest-value thing left — see *Building to the design*.
+   `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21. #24
+   shipped the tool; whether it has since been *run* could not be checked from this container,
+   which cannot reach `supabase.co`. The dry run is free and settles it.
+3. **`npm run figma:pull`, but not before 2026-08-06 12:32 UTC.** Re-probed 2026-08-04: still
+   429 on `/v1/files/*` and `/v1/images`, `2d 4h` left, which agrees with the 2026-08-03
+   reading to within an hour — it really is one countdown, not a fresh window per attempt.
+   Check with `npm run figma:check -- --probe` rather than trying blind. One successful pull
+   is the highest-value thing left — see *Building to the design*.
 4. **Then verify the Postcards screens against the design**, working through the `chose:`
-   entries in `docs/FIGMA-FIDELITY-TODO.md`. Every composition value in them is a guess;
-   the tokens are not.
+   entries in `docs/FIGMA-FIDELITY-TODO.md` — now four screens' worth, including the comment
+   thread. Every composition value in them is a guess; the tokens are not.
 5. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
-**The intended next build is the Postcards interaction UI**, and the backend for all of it is
-already live and callable: `getPostcardComments`, `addComment`, `deleteComment`,
-`hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`, `unblockRider`,
-`deletePostcard`. Nothing in `src/components` or `src/app` references any of them yet — the
-feed already pays for a `comments_count` aggregate it does not display, which is the visible
-gap to close first.
+**The rest of the Postcards interaction UI is the next build.** `#26` took the comments half —
+`getPostcardComments`, `addComment` and `deleteComment` now have a screen, and the
+`comments_count` the feed had been paying for is displayed. Still callable and still called by
+nothing: `hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`, `unblockRider`,
+`deletePostcard`. Those are one surface — an overflow menu on a card — rather than six.
 
-Two things to know before starting it:
+Two things to know before starting it, both of which `#26` followed:
 
 - **Extend the existing guesses, do not invent a third style.** Every composition value
-  already in the feed and create screens is recorded as *chose:* in
-  `docs/FIGMA-FIDELITY-TODO.md`. A comment thread built to a different rhythm than the card
-  above it is worse than one built to the same wrong rhythm, because the second is one
-  find-and-replace to correct.
+  already in the feed, create and thread screens is recorded as *chose:* in
+  `docs/FIGMA-FIDELITY-TODO.md`. A menu built to a different rhythm than the card above it is
+  worse than one built to the same wrong rhythm, because the second is one find-and-replace
+  to correct.
 - **The icons still cannot be exported**, so per decision #4 no lookalike is substituted. The
-  like control is text-labelled for that reason; comment, hide and report should match it
-  rather than reaching for `lucide-react`.
+  like and comment controls are text-labelled for that reason; hide and report should match
+  them rather than reaching for `lucide-react`.
 
-Whether to build it *before* the Figma window opens is a product call, not a technical one:
-the backend does not care, and the cost is that composition gets built twice. It was raised
-and is recorded here so the trade is visible rather than rediscovered.
+**The product call in `#25` — whether to build before the Figma window opens — was taken, not
+dodged:** `#26` built it, accepting that composition gets done twice. Worth knowing the trade
+was made deliberately if the thread comes back looking wrong on 2026-08-06.
+
+**None of the comments UI has been run against the real database.** This container cannot
+reach `supabase.co`, so type check, lint, `next build` and 222 unit tests are the whole of its
+verification — and the `/postcards/new` incident below is the standing proof that those four
+say the code compiles, not that the screen works. Load `/postcards/[id]` on the deployment and
+post one comment before calling it done.
 
 **A security advisor fires on `public.moderate_comment` and it is expected — do not "fix" it.**
 `authenticated_security_definer_function_executable` flags it as a `SECURITY DEFINER`
@@ -122,15 +129,20 @@ trusting this paragraph.
 
 **The one caveat that outlives all of it:** the Postcards UI has never been compared to the
 design. It was built while Figma was rate limited, so aspect ratios, spacing, byline
-placement and the whole create flow are defensible guesses, each recorded as *chose:* so
-verification is a diff. It is not finished until someone has looked.
+placement, the whole create flow and now the comment thread are defensible guesses, each
+recorded as *chose:* so verification is a diff. It is not finished until someone has looked.
+
+The largest of those guesses, and the one most worth challenging first: **comments live on
+their own route rather than inline on the feed card.** That shape is what `011`'s
+`revalidatePath('/postcards/${id}')` and the unused `getPostcard()` were both already built
+for, but it is a shape nobody has read off the design.
 
 ## State
 
 | | |
 |---|---|
 | Migrations | `001`–`011` all applied to the hosted project and verified live. See the ordering note below. |
-| Tests | RLS suite 255 assertions (`npm test`) + Vitest 195 tests (`npm run test:unit`). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite 255 assertions (`npm test`) + Vitest **222** tests (`npm run test:unit`, measured 2026-08-04 — this line said 195). Both gate every PR. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
