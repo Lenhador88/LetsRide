@@ -166,11 +166,17 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | Migrations | `001`–`011` applied and verified live. **`012` and `013` are written and NOT applied** — see *Do this first*. Ordering note below. |
 | Tests | RLS suite **263** assertions (`npm test`) + Vitest **229** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255/195 and then 263/222. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
-| Design | v2 tokens, Poppins, light theme, and the login primitives landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
+| Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
 | Squad | Nine agents in `.claude/agents/`. |
-| CI | Green: type check, lint, build, RLS suite against Postgres 17. |
+| CI | Green, and **path-scoped as of 2026-08-04**: a `changes` job diffs the merge base and skips `Type Check, Lint & Build` for docs/design-only PRs and `RLS Policy Tests` for anything not touching `supabase/**`. Pushes to `main` always run both. Job names are unchanged, so the branch-protection rule below still applies. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
+
+**The v1 pages are now visibly broken, not merely inconsistent.** `rides`, `clubs` and
+`profile` still render `text-white` headings, which were legible on the v1 dark background and
+are invisible on the v2 cream gradient. Pre-existing and out of scope for the home-screen work,
+but it is a real defect a rider would see, not a styling preference. Fix it with their v2
+migration, or sooner if anyone demos those tabs.
 
 The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`
 and now `app/(app)/postcards/*` are v2, along with the `(app)` shell — its layout and the
@@ -424,6 +430,11 @@ badge says.
   which is a migration. Full note at the call site in `src/lib/actions/comments.ts`.
 - **Leaked password protection is disabled.** Supabase advisor flags it; a dashboard toggle
   that checks signups against HaveIBeenPwned.
+- **The v1 pages have white headings on a cream background** — `rides`, `clubs`, `profile`.
+  Invisible, not merely off-brand. Three `text-white` occurrences; goes with their migration.
+- **The swipe deck only moves forward.** A swipe in either direction advances, per the product
+  owner's description, so there is no way back to a card you have passed except "Start over".
+  If a carousel was meant instead, it is one change in `PostcardDeck.tsx`.
 - **Free tier auto-pauses after ~7 days idle**, taking the deployment down with no alerting.
   This already happened once, and restoring it is what reopened the anon hole. Pro before
   anything resembling launch.
