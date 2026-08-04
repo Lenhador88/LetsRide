@@ -1,8 +1,38 @@
 import { createClient } from '@/lib/supabase/server'
+import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapList } from '@/lib/data/unwrap'
 import type { Club } from '@/types'
 
 type ClubOption = Pick<Club, 'id' | 'name'>
+
+type ClubRow = Omit<Club, 'members_count'> & { members_count: { count: number }[] | null }
+
+/**
+ * Every club this rider can see, newest first.
+ *
+ * Deliberately has no `is_public` filter. The page carried one, and it was the
+ * cause of the "private clubs are unreachable from /clubs" defect: the clubs
+ * SELECT policy already unions public with "owned by you" and "you are a
+ * member", so filtering again in application code *subtracted* from it — a
+ * member of a private club had no way to navigate to it, and direct links were
+ * the only route in. Exactly the same bug the rides list carried, found by
+ * fixing that one; the only correct place for a visibility rule is the policy.
+ */
+export async function getClubs(): Promise<Club[]> {
+  const supabase = await createClient()
+
+  const rows = unwrapList(
+    await supabase
+      .from('clubs')
+      .select(`*, owner:profiles!owner_id(${PUBLIC_PROFILE_COLUMNS}), members_count:club_members(count)`)
+      .order('created_at', { ascending: false }),
+    'the clubs list',
+  ) as unknown as ClubRow[]
+
+  // The one-row aggregate array Supabase's `(count)` embed always produces,
+  // flattened here so the page renders a number rather than reaching into it.
+  return rows.map((row) => ({ ...row, members_count: row.members_count?.[0]?.count ?? 0 }))
+}
 
 /**
  * The clubs this rider belongs to, for the postcard audience selector.

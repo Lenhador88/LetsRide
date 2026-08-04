@@ -462,8 +462,14 @@ badge says.
 - ~~**Duplicate usernames break signup.**~~ **Fixed and deployed** — `handle_new_user` no
   longer guesses a username from the email local part, so two `dave@…` addresses no longer
   collide. Username moved into onboarding.
-- **Private clubs are unreachable from `/clubs`.** The page filters `is_public`, so a member
-  of a private club has no way to navigate to it. Direct links work.
+- ~~**Private clubs are unreachable from `/clubs`.**~~ **Fixed 2026-08-04.** The page filtered
+  `is_public` in application code, which *subtracted* from the clubs SELECT policy — that
+  policy already unions public with "owned by you" and "you are a member". The read moved to
+  `getClubs()` in `lib/data/clubs.ts` and the filter is gone. Found by fixing the identical
+  bug on the rides list, which is the argument for the `lib/data/` boundary in one line: the
+  two pages carried the same mistake because each wrote its own query. **Unverified against
+  the live database** — this container cannot reach `supabase.co`, so load `/clubs` as a
+  member of a private club to confirm it now appears.
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are
   tested, but nothing calls them — you can create a ride and never fix a typo or cancel it.
   Comments are the exception as of `#26`: they can be deleted, though still not edited, which
