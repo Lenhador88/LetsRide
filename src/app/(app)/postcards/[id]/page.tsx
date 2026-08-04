@@ -6,6 +6,7 @@ import { CommentList } from '@/components/postcards/CommentList'
 import { getPostcard } from '@/lib/data/postcards'
 import { getPostcardComments } from '@/lib/data/comments'
 import { getCurrentProfile } from '@/lib/data/profile'
+import { postcardIdSchema } from '@/lib/validation/postcards'
 
 /**
  * One postcard and its thread — the screen `addComment` has been revalidating
@@ -23,6 +24,14 @@ import { getCurrentProfile } from '@/lib/data/profile'
  */
 export default async function PostcardThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+
+  // Before either read, not after: `id` reaches Postgres as a `uuid` and a
+  // malformed segment comes back as 22P02 → 400 → a throw from `unwrap`, which
+  // never reaches the `notFound()` below and renders the error boundary
+  // instead — a "Try again" button on a URL that can never succeed. This is the
+  // first route built on the throwing data layer, which is why /rides/[id] and
+  // /clubs/[id] do not show it.
+  if (!postcardIdSchema.safeParse(id).success) notFound()
 
   // The comments are fetched alongside the postcard rather than after it, which
   // means they are fetched even for a postcard that turns out to be invisible.

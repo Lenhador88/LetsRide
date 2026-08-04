@@ -208,7 +208,11 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`010` are all applied to the hosted project.** `009_postcards_and_blocks`
+**Applied state: `001`–`011` are all applied to the hosted project.** Re-read from
+`list_migrations` on 2026-08-04, which returns eleven rows ending in `postcard_interactions`
+(`20260804062626`). This line said `001`–`010` for a day after `011` landed, which is the
+worst way for it to be wrong: a session obeying *Unapplied migrations are drift* would have
+re-run `011` against tables that already exist. `009_postcards_and_blocks`
 was applied 2026-08-02 and verified live: 32 policies, all `to authenticated`, exactly one
 SELECT policy per table, `anon` holds zero grants, and `private.is_blocked` is absent from
 `public` so PostgREST does not publish it. `003_onboarding` was

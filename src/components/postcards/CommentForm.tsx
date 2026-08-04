@@ -61,6 +61,11 @@ export function CommentForm({ postcardId }: { postcardId: string }) {
         onChange={(event) => setBody(event.target.value)}
         placeholder="Say something about this photo."
         error={state.error ?? undefined}
+        // Locked for the round trip, not just the button. Text typed while the
+        // submit is in flight was never in the FormData that went, and the
+        // clear-on-success above would throw it away — so the honest thing is
+        // to refuse it rather than to lose it.
+        disabled={pending}
       />
 
       {/* Only warns near the limit — a counter on an empty field is noise, and

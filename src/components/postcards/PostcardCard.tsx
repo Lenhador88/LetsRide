@@ -83,7 +83,7 @@ export function PostcardCard({ postcard, linkToThread = true }: PostcardCardProp
           <CommentsLink
             postcardId={postcard.id}
             count={postcard.comments_count ?? 0}
-            href={linkToThread}
+            linkToThread={linkToThread}
           />
         </div>
         {postcard.caption && (

@@ -6,8 +6,12 @@ type CommentsLinkProps = {
   /**
    * False on the thread screen itself, where the same control would link to the
    * page it is already on. It renders as plain text there instead.
+   *
+   * Deliberately not called `href`: `Button` uses `href: string` as its
+   * anchor/button discriminant, so a boolean of that name here would read like
+   * the DOM attribute and mislead anyone writing one by analogy with the other.
    */
-  href?: boolean
+  linkToThread?: boolean
 }
 
 /**
@@ -20,7 +24,7 @@ type CommentsLinkProps = {
  * substituting a `lucide-react` lookalike. A text label is the honest fallback
  * and swapping the icon in later touches only this file.
  */
-export function CommentsLink({ postcardId, count, href = true }: CommentsLinkProps) {
+export function CommentsLink({ postcardId, count, linkToThread = true }: CommentsLinkProps) {
   const label = count > 1 ? 'Comments' : 'Comment'
   const description = count === 0 ? 'Add a comment' : `${count} ${count === 1 ? 'comment' : 'comments'}`
 
@@ -35,7 +39,7 @@ export function CommentsLink({ postcardId, count, href = true }: CommentsLinkPro
     </>
   )
 
-  if (!href) {
+  if (!linkToThread) {
     return (
       <span className={className} aria-label={description}>
         {body}

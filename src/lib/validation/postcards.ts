@@ -32,6 +32,19 @@ export const postcardClubIdSchema = z
   .pipe(z.uuid('Choose a valid club.').nullable())
 
 /**
+ * A postcard id as it arrives from a URL segment — shape only.
+ *
+ * Unlike the club id above, this is not guarding a trust boundary: a route
+ * checks it so that `/postcards/foo` becomes a 404 rather than a 500. Postgres
+ * rejects a non-uuid against a `uuid` column with `22P02`, PostgREST turns that
+ * into a 400, and `unwrap` throws on it — which lands on the error boundary and
+ * offers a "Try again" button for a URL that can never succeed. Checking the
+ * shape first is what makes "no such postcard" and "not a postcard id at all"
+ * look the same, which is also what keeps them from being told apart.
+ */
+export const postcardIdSchema = z.uuid()
+
+/**
  * The object path the client already uploaded to Storage before calling
  * createPostcard. Shape-checked against the exact same regex migration 010's
  * INSERT policy and src/lib/media/constants.ts's generator use, so a
