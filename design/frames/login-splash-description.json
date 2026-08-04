@@ -1,0 +1,48 @@
+{
+  "page": "Design",
+  "section": "Login / Splash",
+  "id": "1857:15449",
+  "name": "Description",
+  "type": "FRAME",
+  "box": {
+    "x": 1280,
+    "y": 700,
+    "w": 390,
+    "h": 844
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#3D996B"
+    }
+  ],
+  "styles": {
+    "fills": "Accent Brand/100",
+    "fill": "Accent Brand/100"
+  },
+  "children": [
+    {
+      "id": "1867:19444",
+      "name": "Logo2",
+      "type": "RECTANGLE",
+      "box": {
+        "x": 1229,
+        "y": 958,
+        "w": 493,
+        "h": 328
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "5f1364f751c76ea06049bff2de9ed7328c487b6a",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}

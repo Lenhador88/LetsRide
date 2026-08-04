@@ -1,0 +1,48 @@
+{
+  "page": "Archive",
+  "section": "Login",
+  "id": "416:10339",
+  "name": "Splash screen",
+  "type": "FRAME",
+  "box": {
+    "x": 1645,
+    "y": 1232,
+    "w": 390,
+    "h": 844
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#36B289"
+    }
+  ],
+  "styles": {
+    "fills": "Accent (OLD)/100",
+    "fill": "Accent (OLD)/100"
+  },
+  "children": [
+    {
+      "id": "416:12396",
+      "name": "Logo2",
+      "type": "RECTANGLE",
+      "box": {
+        "x": 1594,
+        "y": 1490,
+        "w": 493,
+        "h": 328
+      },
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageRef": "5f1364f751c76ea06049bff2de9ed7328c487b6a",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}

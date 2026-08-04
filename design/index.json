@@ -3,944 +3,1079 @@
   "frames": [
     {
       "name": "Annotation / Epic Cover",
+      "section": "Login / Splash",
       "page": "Design",
       "id": "1857:15393",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover.json"
+      "file": "frames/login-splash-annotation-epic-cover.json"
     },
     {
       "name": "Description",
+      "section": "Login / Splash",
       "page": "Design",
       "id": "1857:15449",
       "type": "FRAME",
-      "file": "frames/description.json"
+      "file": "frames/login-splash-description.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Login / Forgot password",
       "page": "Design",
       "id": "1857:15402",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-2.json"
+      "file": "frames/login-forgot-password-annotation-epic-cover.json"
     },
     {
       "name": "Forgot password",
+      "section": "Login / Forgot password",
       "page": "Design",
       "id": "1857:17166",
       "type": "FRAME",
-      "file": "frames/forgot-password.json"
+      "file": "frames/login-forgot-password-forgot-password.json"
     },
     {
       "name": "Create new password",
+      "section": "Login / Forgot password",
       "page": "Design",
       "id": "1867:19408",
       "type": "FRAME",
-      "file": "frames/create-new-password.json"
+      "file": "frames/login-forgot-password-create-new-password.json"
     },
     {
       "name": "Forgot password - Email focus",
+      "section": "Login / Forgot password",
       "page": "Design",
       "id": "1867:19386",
       "type": "FRAME",
-      "file": "frames/forgot-password-email-focus.json"
+      "file": "frames/login-forgot-password-forgot-password-email-focus.json"
     },
     {
       "name": "Create new password - Password focus",
+      "section": "Login / Forgot password",
       "page": "Design",
       "id": "1867:19419",
       "type": "FRAME",
-      "file": "frames/create-new-password-password-focus.json"
+      "file": "frames/login-forgot-password-create-new-password-password-focus.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Login / Login",
       "page": "Design",
       "id": "1857:15441",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-3.json"
+      "file": "frames/login-login-annotation-epic-cover.json"
     },
     {
       "name": "Login",
+      "section": "Login / Login",
       "page": "Design",
       "id": "1857:17279",
       "type": "FRAME",
-      "file": "frames/login.json"
+      "file": "frames/login-login-login.json"
     },
     {
       "name": "Login - Email focus",
+      "section": "Login / Login",
       "page": "Design",
       "id": "1857:17291",
       "type": "FRAME",
-      "file": "frames/login-email-focus.json"
+      "file": "frames/login-login-login-email-focus.json"
     },
     {
       "name": "Login - Password focus",
+      "section": "Login / Login",
       "page": "Design",
       "id": "1867:19255",
       "type": "FRAME",
-      "file": "frames/login-password-focus.json"
+      "file": "frames/login-login-login-password-focus.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Login / Sign up",
       "page": "Design",
       "id": "1857:15420",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-4.json"
+      "file": "frames/login-sign-up-annotation-epic-cover.json"
     },
     {
       "name": "Sign up",
+      "section": "Login / Sign up",
       "page": "Design",
       "id": "1857:17165",
       "type": "FRAME",
-      "file": "frames/sign-up.json"
+      "file": "frames/login-sign-up-sign-up.json"
     },
     {
       "name": "Sign up - Email focus",
+      "section": "Login / Sign up",
       "page": "Design",
       "id": "1857:17255",
       "type": "FRAME",
-      "file": "frames/sign-up-email-focus.json"
+      "file": "frames/login-sign-up-sign-up-email-focus.json"
     },
     {
       "name": "Sign up - Password focus",
+      "section": "Login / Sign up",
       "page": "Design",
       "id": "1857:18593",
       "type": "FRAME",
-      "file": "frames/sign-up-password-focus.json"
+      "file": "frames/login-sign-up-sign-up-password-focus.json"
     },
     {
       "name": "Sign up - Checkbox checked",
+      "section": "Login / Sign up",
       "page": "Design",
       "id": "2298:5039",
       "type": "FRAME",
-      "file": "frames/sign-up-checkbox-checked.json"
+      "file": "frames/login-sign-up-sign-up-checkbox-checked.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Login / Onboarding",
       "page": "Design",
       "id": "2067:11087",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-5.json"
+      "file": "frames/login-onboarding-annotation-epic-cover.json"
     },
     {
       "name": "Add your name",
+      "section": "Login / Onboarding",
       "page": "Design",
       "id": "2067:11088",
       "type": "FRAME",
-      "file": "frames/add-your-name.json"
+      "file": "frames/login-onboarding-add-your-name.json"
     },
     {
       "name": "Add your name - Name focus",
+      "section": "Login / Onboarding",
       "page": "Design",
       "id": "2077:5345",
       "type": "FRAME",
-      "file": "frames/add-your-name-name-focus.json"
+      "file": "frames/login-onboarding-add-your-name-name-focus.json"
     },
     {
       "name": "Add your location",
+      "section": "Login / Onboarding",
       "page": "Design",
       "id": "2074:5185",
       "type": "FRAME",
-      "file": "frames/add-your-location.json"
+      "file": "frames/login-onboarding-add-your-location.json"
     },
     {
       "name": "Add your location - City focus",
+      "section": "Login / Onboarding",
       "page": "Design",
       "id": "2077:5320",
       "type": "FRAME",
-      "file": "frames/add-your-location-city-focus.json"
+      "file": "frames/login-onboarding-add-your-location-city-focus.json"
     },
     {
       "name": "Add a profile picture",
+      "section": "Login / Onboarding",
       "page": "Design",
       "id": "2074:5233",
       "type": "FRAME",
-      "file": "frames/add-a-profile-picture.json"
+      "file": "frames/login-onboarding-add-a-profile-picture.json"
     },
     {
       "name": "Add a profile picture - Filled",
+      "section": "Login / Onboarding",
       "page": "Design",
       "id": "2077:5297",
       "type": "FRAME",
-      "file": "frames/add-a-profile-picture-filled.json"
+      "file": "frames/login-onboarding-add-a-profile-picture-filled.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Home / View all new postcards",
       "page": "Design",
       "id": "1883:10161",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-6.json"
+      "file": "frames/home-view-all-new-postcards-annotation-epic-cover.json"
     },
     {
       "name": "Home - Postcards - All new",
+      "section": "Home / View all new postcards",
       "page": "Design",
       "id": "1883:15456",
       "type": "FRAME",
-      "file": "frames/home-postcards-all-new.json"
+      "file": "frames/home-view-all-new-postcards-home-postcards-all-new.json"
     },
     {
       "name": "Home - Postcards - No new postcards",
+      "section": "Home / View all new postcards",
       "page": "Design",
       "id": "1914:6739",
       "type": "FRAME",
-      "file": "frames/home-postcards-no-new-postcards.json"
+      "file": "frames/home-view-all-new-postcards-home-postcards-no-new-postcards.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Home / Hide postcard for me",
       "page": "Design",
       "id": "2302:5205",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-7.json"
+      "file": "frames/home-hide-postcard-for-me-annotation-epic-cover.json"
     },
     {
       "name": "Home - Postcards - All new",
+      "section": "Home / Hide postcard for me",
       "page": "Design",
       "id": "2302:5206",
       "type": "FRAME",
-      "file": "frames/home-postcards-all-new-2.json"
+      "file": "frames/home-hide-postcard-for-me-home-postcards-all-new.json"
     },
     {
       "name": "Postcard options",
+      "section": "Home / Hide postcard for me",
       "page": "Design",
       "id": "2302:5395",
       "type": "FRAME",
-      "file": "frames/postcard-options.json"
+      "file": "frames/home-hide-postcard-for-me-postcard-options.json"
     },
     {
       "name": "Postcard hidden banner",
+      "section": "Home / Hide postcard for me",
       "page": "Design",
       "id": "2303:6009",
       "type": "FRAME",
-      "file": "frames/postcard-hidden-banner.json"
+      "file": "frames/home-hide-postcard-for-me-postcard-hidden-banner.json"
     },
     {
       "name": "Annotation / Note",
+      "section": "Home / Hide postcard for me",
       "page": "Design",
       "id": "2303:7970",
       "type": "INSTANCE",
-      "file": "frames/annotation-note.json"
+      "file": "frames/home-hide-postcard-for-me-annotation-note.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Home / Block account",
       "page": "Design",
       "id": "2303:5381",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-8.json"
+      "file": "frames/home-block-account-annotation-epic-cover.json"
     },
     {
       "name": "Home - Postcards - All new",
+      "section": "Home / Block account",
       "page": "Design",
       "id": "2303:5382",
       "type": "FRAME",
-      "file": "frames/home-postcards-all-new-3.json"
+      "file": "frames/home-block-account-home-postcards-all-new.json"
     },
     {
       "name": "Postcard options",
+      "section": "Home / Block account",
       "page": "Design",
       "id": "2303:5392",
       "type": "FRAME",
-      "file": "frames/postcard-options-2.json"
+      "file": "frames/home-block-account-postcard-options.json"
     },
     {
       "name": "Account blocked banner",
+      "section": "Home / Block account",
       "page": "Design",
       "id": "2303:6169",
       "type": "FRAME",
-      "file": "frames/account-blocked-banner.json"
+      "file": "frames/home-block-account-account-blocked-banner.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Home / Report post",
       "page": "Design",
       "id": "2303:5665",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-9.json"
+      "file": "frames/home-report-post-annotation-epic-cover.json"
     },
     {
       "name": "Home - Postcards - All new",
+      "section": "Home / Report post",
       "page": "Design",
       "id": "2303:5666",
       "type": "FRAME",
-      "file": "frames/home-postcards-all-new-4.json"
+      "file": "frames/home-report-post-home-postcards-all-new.json"
     },
     {
       "name": "Postcard options",
+      "section": "Home / Report post",
       "page": "Design",
       "id": "2303:5676",
       "type": "FRAME",
-      "file": "frames/postcard-options-3.json"
+      "file": "frames/home-report-post-postcard-options.json"
     },
     {
       "name": "Post reported banner",
+      "section": "Home / Report post",
       "page": "Design",
       "id": "2303:6300",
       "type": "FRAME",
-      "file": "frames/post-reported-banner.json"
+      "file": "frames/home-report-post-post-reported-banner.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Home / View postcard details",
       "page": "Design",
       "id": "1883:10165",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-10.json"
+      "file": "frames/home-view-postcard-details-annotation-epic-cover.json"
     },
     {
       "name": "Home - Postcards - Postcard details",
+      "section": "Home / View postcard details",
       "page": "Design",
       "id": "1883:22772",
       "type": "FRAME",
-      "file": "frames/home-postcards-postcard-details.json"
+      "file": "frames/home-view-postcard-details-home-postcards-postcard-details.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Home / View new postcards from club",
       "page": "Design",
       "id": "1883:10201",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-11.json"
+      "file": "frames/home-view-new-postcards-from-club-annotation-epic-cover.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Home / Comment on a postcard",
       "page": "Design",
       "id": "1883:10238",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-12.json"
+      "file": "frames/home-comment-on-a-postcard-annotation-epic-cover.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Home / Create postcard",
       "page": "Design",
       "id": "1883:10587",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-13.json"
+      "file": "frames/home-create-postcard-annotation-epic-cover.json"
     },
     {
       "name": "Home - Postcards - All new",
+      "section": "Home / Create postcard",
       "page": "Design",
       "id": "1918:16843",
       "type": "FRAME",
-      "file": "frames/home-postcards-all-new-5.json"
+      "file": "frames/home-create-postcard-home-postcards-all-new.json"
     },
     {
       "name": "Home - Postcards - All new",
+      "section": "Home / Create postcard",
       "page": "Design",
       "id": "1918:17056",
       "type": "FRAME",
-      "file": "frames/home-postcards-all-new-6.json"
+      "file": "frames/home-create-postcard-home-postcards-all-new-2.json"
     },
     {
       "name": "Create ride",
+      "section": "Home / Create postcard",
       "page": "Design",
       "id": "1918:16669",
       "type": "FRAME",
-      "file": "frames/create-ride.json"
+      "file": "frames/home-create-postcard-create-ride.json"
     },
     {
       "name": "Element / Icon / Image",
+      "section": "Home / Create postcard",
       "page": "Design",
       "id": "2241:10948",
       "type": "TEXT",
-      "file": "frames/element-icon-image.json"
+      "file": "frames/home-create-postcard-element-icon-image.json"
     },
     {
       "name": "Postcard",
+      "section": "Home",
       "page": "Design",
       "id": "1918:17113",
       "type": "FRAME",
-      "file": "frames/postcard.json"
+      "file": "frames/home-postcard.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides / View all rides",
       "page": "Design",
       "id": "1883:10594",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-14.json"
+      "file": "frames/rides-view-all-rides-annotation-epic-cover.json"
     },
     {
       "name": "Home - Rides - All",
+      "section": "Rides / View all rides",
       "page": "Design",
       "id": "1891:2020",
       "type": "FRAME",
-      "file": "frames/home-rides-all.json"
+      "file": "frames/rides-view-all-rides-home-rides-all.json"
     },
     {
       "name": "Home - Rides - No rides",
+      "section": "Rides / View all rides",
       "page": "Design",
       "id": "1914:6533",
       "type": "FRAME",
-      "file": "frames/home-rides-no-rides.json"
+      "file": "frames/rides-view-all-rides-home-rides-no-rides.json"
     },
     {
       "name": "Annotation / Note",
+      "section": "Rides / View all rides",
       "page": "Design",
       "id": "2475:14874",
       "type": "INSTANCE",
-      "file": "frames/annotation-note-2.json"
+      "file": "frames/rides-view-all-rides-annotation-note.json"
     },
     {
       "name": "Annotation / Note",
+      "section": "Rides / View all rides",
       "page": "Design",
       "id": "2475:14877",
       "type": "INSTANCE",
-      "file": "frames/annotation-note-3.json"
+      "file": "frames/rides-view-all-rides-annotation-note-2.json"
     },
     {
       "name": "Annotation / Note",
+      "section": "Rides / View all rides",
       "page": "Design",
       "id": "2475:14880",
       "type": "INSTANCE",
-      "file": "frames/annotation-note-4.json"
+      "file": "frames/rides-view-all-rides-annotation-note-3.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides / View rides from club",
       "page": "Design",
       "id": "1883:10601",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-15.json"
+      "file": "frames/rides-view-rides-from-club-annotation-epic-cover.json"
     },
     {
       "name": "Home - Rides - Rides from club",
+      "section": "Rides / View rides from club",
       "page": "Design",
       "id": "1908:1573",
       "type": "FRAME",
-      "file": "frames/home-rides-rides-from-club.json"
+      "file": "frames/rides-view-rides-from-club-home-rides-rides-from-club.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides / View ride",
       "page": "Design",
       "id": "1883:10608",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-16.json"
+      "file": "frames/rides-view-ride-annotation-epic-cover.json"
     },
     {
       "name": "Ride - Ride plan (Details)",
+      "section": "Rides / View ride",
       "page": "Design",
       "id": "2375:8771",
       "type": "FRAME",
-      "file": "frames/ride-ride-plan-details.json"
+      "file": "frames/rides-view-ride-ride-ride-plan-details.json"
     },
     {
       "name": "Ride - Ride plan - Sub pages",
+      "section": "Rides / View ride",
       "page": "Design",
       "id": "2375:9114",
       "type": "FRAME",
-      "file": "frames/ride-ride-plan-sub-pages.json"
+      "file": "frames/rides-view-ride-ride-ride-plan-sub-pages.json"
     },
     {
       "name": "Ride - Journal (Postcards/Timeline)",
+      "section": "Rides / View ride",
       "page": "Design",
       "id": "2226:4865",
       "type": "FRAME",
-      "file": "frames/ride-journal-postcards-timeline.json"
+      "file": "frames/rides-view-ride-ride-journal-postcards-timeline.json"
     },
     {
       "name": "Ride - Crew (Riders)",
+      "section": "Rides / View ride",
       "page": "Design",
       "id": "2375:9212",
       "type": "FRAME",
-      "file": "frames/ride-crew-riders.json"
+      "file": "frames/rides-view-ride-ride-crew-riders.json"
     },
     {
       "name": "Ride - Chat",
+      "section": "Rides / View ride",
       "page": "Design",
       "id": "2226:4999",
       "type": "FRAME",
-      "file": "frames/ride-chat.json"
+      "file": "frames/rides-view-ride-ride-chat.json"
     },
     {
       "name": "Ride - Chat - Options",
+      "section": "Rides / View ride",
       "page": "Design",
       "id": "2370:7346",
       "type": "FRAME",
-      "file": "frames/ride-chat-options.json"
+      "file": "frames/rides-view-ride-ride-chat-options.json"
     },
     {
       "name": "Ride - Chat - Text focus",
+      "section": "Rides / View ride",
       "page": "Design",
       "id": "2242:11086",
       "type": "FRAME",
-      "file": "frames/ride-chat-text-focus.json"
+      "file": "frames/rides-view-ride-ride-chat-text-focus.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides / View your rides",
       "page": "Design",
       "id": "1883:10615",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-17.json"
+      "file": "frames/rides-view-your-rides-annotation-epic-cover.json"
     },
     {
       "name": "Home - Rides - No upcoming rides",
+      "section": "Rides / View your rides",
       "page": "Design",
       "id": "1908:2966",
       "type": "FRAME",
-      "file": "frames/home-rides-no-upcoming-rides.json"
+      "file": "frames/rides-view-your-rides-home-rides-no-upcoming-rides.json"
     },
     {
       "name": "Home - Rides - Your rides",
+      "section": "Rides / View your rides",
       "page": "Design",
       "id": "1914:6299",
       "type": "FRAME",
-      "file": "frames/home-rides-your-rides.json"
+      "file": "frames/rides-view-your-rides-home-rides-your-rides.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides / Create ride",
       "page": "Design",
       "id": "1883:10624",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-18.json"
+      "file": "frames/rides-create-ride-annotation-epic-cover.json"
     },
     {
       "name": "Create ride",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15850",
       "type": "FRAME",
-      "file": "frames/create-ride-2.json"
+      "file": "frames/rides-create-ride.json"
     },
     {
       "name": "Add header image",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15876",
       "type": "FRAME",
-      "file": "frames/add-header-image.json"
+      "file": "frames/rides-add-header-image.json"
     },
     {
       "name": "Change date",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15910",
       "type": "FRAME",
-      "file": "frames/change-date.json"
+      "file": "frames/rides-change-date.json"
     },
     {
       "name": "Change time",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15937",
       "type": "FRAME",
-      "file": "frames/change-time.json"
+      "file": "frames/rides-change-time.json"
     },
     {
       "name": "Add starting location",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15964",
       "type": "FRAME",
-      "file": "frames/add-starting-location.json"
+      "file": "frames/rides-add-starting-location.json"
     },
     {
       "name": "Add starting location - Filled",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15967",
       "type": "FRAME",
-      "file": "frames/add-starting-location-filled.json"
+      "file": "frames/rides-add-starting-location-filled.json"
     },
     {
       "name": "Invite riders",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15977",
       "type": "FRAME",
-      "file": "frames/invite-riders.json"
+      "file": "frames/rides-invite-riders.json"
     },
     {
       "name": "Invite riders - Filled",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15986",
       "type": "FRAME",
-      "file": "frames/invite-riders-filled.json"
+      "file": "frames/rides-invite-riders-filled.json"
     },
     {
       "name": "Edit ride",
+      "section": "Rides",
       "page": "Design",
       "id": "1918:15995",
       "type": "FRAME",
-      "file": "frames/edit-ride.json"
+      "file": "frames/rides-edit-ride.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs / View your clubs",
       "page": "Design",
       "id": "1883:10526",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-19.json"
+      "file": "frames/clubs-view-your-clubs-annotation-epic-cover.json"
     },
     {
       "name": "Clubs - Your clubs",
+      "section": "Clubs / View your clubs",
       "page": "Design",
       "id": "1914:6862",
       "type": "FRAME",
-      "file": "frames/clubs-your-clubs.json"
+      "file": "frames/clubs-view-your-clubs-clubs-your-clubs.json"
     },
     {
       "name": "Clubs - Your clubs - No clubs",
+      "section": "Clubs / View your clubs",
       "page": "Design",
       "id": "1918:9439",
       "type": "FRAME",
-      "file": "frames/clubs-your-clubs-no-clubs.json"
+      "file": "frames/clubs-view-your-clubs-clubs-your-clubs-no-clubs.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs / Explore clubs",
       "page": "Design",
       "id": "1883:10528",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-20.json"
+      "file": "frames/clubs-explore-clubs-annotation-epic-cover.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs / Explore clubs",
       "page": "Design",
       "id": "1918:9932",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-21.json"
+      "file": "frames/clubs-explore-clubs-annotation-epic-cover-2.json"
     },
     {
       "name": "Clubs - Explore",
+      "section": "Clubs / Explore clubs",
       "page": "Design",
       "id": "1918:9610",
       "type": "FRAME",
-      "file": "frames/clubs-explore.json"
+      "file": "frames/clubs-explore-clubs-clubs-explore.json"
     },
     {
       "name": "Clubs - Explore - No clubs",
+      "section": "Clubs / Explore clubs",
       "page": "Design",
       "id": "1918:9625",
       "type": "FRAME",
-      "file": "frames/clubs-explore-no-clubs.json"
+      "file": "frames/clubs-explore-clubs-clubs-explore-no-clubs.json"
     },
     {
       "name": "Clubs - Explore",
+      "section": "Clubs / Explore clubs",
       "page": "Design",
       "id": "1918:10353",
       "type": "FRAME",
-      "file": "frames/clubs-explore-2.json"
+      "file": "frames/clubs-explore-clubs-clubs-explore-2.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs / Create club",
       "page": "Design",
       "id": "1883:10530",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-22.json"
+      "file": "frames/clubs-create-club-annotation-epic-cover.json"
     },
     {
       "name": "Create club",
+      "section": "Clubs / Create club",
       "page": "Design",
       "id": "1951:8583",
       "type": "FRAME",
-      "file": "frames/create-club.json"
+      "file": "frames/clubs-create-club-create-club.json"
     },
     {
       "name": "Edit club",
+      "section": "Clubs / Create club",
       "page": "Design",
       "id": "1951:8602",
       "type": "FRAME",
-      "file": "frames/edit-club.json"
+      "file": "frames/clubs-create-club-edit-club.json"
     },
     {
       "name": "Create club without account",
+      "section": "Clubs / Create club",
       "page": "Design",
       "id": "1951:8796",
       "type": "FRAME",
-      "file": "frames/create-club-without-account.json"
+      "file": "frames/clubs-create-club-create-club-without-account.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs / View private club",
       "page": "Design",
       "id": "1883:10532",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-23.json"
+      "file": "frames/clubs-view-private-club-annotation-epic-cover.json"
     },
     {
       "name": "Private club - Timeline",
+      "section": "Clubs / View private club",
       "page": "Design",
       "id": "2043:10604",
       "type": "FRAME",
-      "file": "frames/private-club-timeline.json"
+      "file": "frames/clubs-view-private-club-private-club-timeline.json"
     },
     {
       "name": "Private club - Rides",
+      "section": "Clubs / View private club",
       "page": "Design",
       "id": "2059:6390",
       "type": "FRAME",
-      "file": "frames/private-club-rides.json"
+      "file": "frames/clubs-view-private-club-private-club-rides.json"
     },
     {
       "name": "Private club - Members",
+      "section": "Clubs / View private club",
       "page": "Design",
       "id": "2059:6545",
       "type": "FRAME",
-      "file": "frames/private-club-members.json"
+      "file": "frames/clubs-view-private-club-private-club-members.json"
     },
     {
       "name": "Private club - About",
+      "section": "Clubs / View private club",
       "page": "Design",
       "id": "2059:6700",
       "type": "FRAME",
-      "file": "frames/private-club-about.json"
+      "file": "frames/clubs-view-private-club-private-club-about.json"
     },
     {
       "name": "Private club - Sub Pages",
+      "section": "Clubs / View private club",
       "page": "Design",
       "id": "2059:5931",
       "type": "FRAME",
-      "file": "frames/private-club-sub-pages.json"
+      "file": "frames/clubs-view-private-club-private-club-sub-pages.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "1987:13289",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-24.json"
+      "file": "frames/clubs-view-public-club-annotation-epic-cover.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "2020:5210",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-25.json"
+      "file": "frames/clubs-view-public-club-annotation-epic-cover-2.json"
     },
     {
       "name": "Not joined - Public club - Overview",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "1987:13326",
       "type": "FRAME",
-      "file": "frames/not-joined-public-club-overview.json"
+      "file": "frames/clubs-view-public-club-not-joined-public-club-overview.json"
     },
     {
       "name": "Joined - Public club - Overview",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "2020:4600",
       "type": "FRAME",
-      "file": "frames/joined-public-club-overview.json"
+      "file": "frames/clubs-view-public-club-joined-public-club-overview.json"
     },
     {
       "name": "Not joined - Public club - About",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "1987:13362",
       "type": "FRAME",
-      "file": "frames/not-joined-public-club-about.json"
+      "file": "frames/clubs-view-public-club-not-joined-public-club-about.json"
     },
     {
       "name": "Joined - Public club - About",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "2020:4636",
       "type": "FRAME",
-      "file": "frames/joined-public-club-about.json"
+      "file": "frames/clubs-view-public-club-joined-public-club-about.json"
     },
     {
       "name": "Not joined - Public club - Members",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "1987:13381",
       "type": "FRAME",
-      "file": "frames/not-joined-public-club-members.json"
+      "file": "frames/clubs-view-public-club-not-joined-public-club-members.json"
     },
     {
       "name": "Joined - Public club - Members",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "2020:4654",
       "type": "FRAME",
-      "file": "frames/joined-public-club-members.json"
+      "file": "frames/clubs-view-public-club-joined-public-club-members.json"
     },
     {
       "name": "Not joined - Public club - Rides",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "1987:13397",
       "type": "FRAME",
-      "file": "frames/not-joined-public-club-rides.json"
+      "file": "frames/clubs-view-public-club-not-joined-public-club-rides.json"
     },
     {
       "name": "Not joined - Public club - Options",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "2020:5020",
       "type": "FRAME",
-      "file": "frames/not-joined-public-club-options.json"
+      "file": "frames/clubs-view-public-club-not-joined-public-club-options.json"
     },
     {
       "name": "Joined - Public club - Rides",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "2020:4670",
       "type": "FRAME",
-      "file": "frames/joined-public-club-rides.json"
+      "file": "frames/clubs-view-public-club-joined-public-club-rides.json"
     },
     {
       "name": "Joined - Public club - Options",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "1987:13487",
       "type": "FRAME",
-      "file": "frames/joined-public-club-options.json"
+      "file": "frames/clubs-view-public-club-joined-public-club-options.json"
     },
     {
       "name": "Annotation / Note",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "1987:13608",
       "type": "INSTANCE",
-      "file": "frames/annotation-note-5.json"
+      "file": "frames/clubs-view-public-club-annotation-note.json"
     },
     {
       "name": "Annotation / Note",
+      "section": "Clubs / View public club",
       "page": "Design",
       "id": "2020:5013",
       "type": "INSTANCE",
-      "file": "frames/annotation-note-6.json"
+      "file": "frames/clubs-view-public-club-annotation-note-2.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Inbox / View notifications",
       "page": "Design",
       "id": "2322:8394",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-26.json"
+      "file": "frames/inbox-view-notifications-annotation-epic-cover.json"
     },
     {
       "name": "Inbox - Notifications",
+      "section": "Inbox / View notifications",
       "page": "Design",
       "id": "2322:8395",
       "type": "FRAME",
-      "file": "frames/inbox-notifications.json"
+      "file": "frames/inbox-view-notifications-inbox-notifications.json"
     },
     {
       "name": "image 44",
+      "section": "Inbox / View notifications",
       "page": "Design",
       "id": "2322:11312",
       "type": "RECTANGLE",
-      "file": "frames/image-44.json"
+      "file": "frames/inbox-view-notifications-image-44.json"
     },
     {
       "name": "image 45",
+      "section": "Inbox / View notifications",
       "page": "Design",
       "id": "2322:11320",
       "type": "RECTANGLE",
-      "file": "frames/image-45.json"
+      "file": "frames/inbox-view-notifications-image-45.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Inbox / View chats",
       "page": "Design",
       "id": "2375:9517",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-27.json"
+      "file": "frames/inbox-view-chats-annotation-epic-cover.json"
     },
     {
       "name": "Inbox - Chats",
+      "section": "Inbox / View chats",
       "page": "Design",
       "id": "2375:9518",
       "type": "FRAME",
-      "file": "frames/inbox-chats.json"
+      "file": "frames/inbox-view-chats-inbox-chats.json"
     },
     {
       "name": "Inbox - Chats - Chat",
+      "section": "Inbox / View chats",
       "page": "Design",
       "id": "2375:10033",
       "type": "FRAME",
-      "file": "frames/inbox-chats-chat.json"
+      "file": "frames/inbox-view-chats-inbox-chats-chat.json"
     },
     {
       "name": "Inbox - Chats - Chat - Options",
+      "section": "Inbox / View chats",
       "page": "Design",
       "id": "2375:10099",
       "type": "FRAME",
-      "file": "frames/inbox-chats-chat-options.json"
+      "file": "frames/inbox-view-chats-inbox-chats-chat-options.json"
     },
     {
       "name": "Inbox - Chats - Chat - Text focus",
+      "section": "Inbox / View chats",
       "page": "Design",
       "id": "2375:10167",
       "type": "FRAME",
-      "file": "frames/inbox-chats-chat-text-focus.json"
+      "file": "frames/inbox-view-chats-inbox-chats-chat-text-focus.json"
     },
     {
       "name": "Frame 77",
+      "section": "Inbox / View chats",
       "page": "Design",
       "id": "2375:9788",
       "type": "FRAME",
-      "file": "frames/frame-77.json"
+      "file": "frames/inbox-view-chats-frame-77.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile / View your profile",
       "page": "Design",
       "id": "1883:10555",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-28.json"
+      "file": "frames/profile-view-your-profile-annotation-epic-cover.json"
     },
     {
       "name": "Profile",
+      "section": "Profile / View your profile",
       "page": "Design",
       "id": "1883:12248",
       "type": "FRAME",
-      "file": "frames/profile.json"
+      "file": "frames/profile-view-your-profile-profile.json"
     },
     {
       "name": "Profile - Prescoll header",
+      "section": "Profile / View your profile",
       "page": "Design",
       "id": "2084:7495",
       "type": "FRAME",
-      "file": "frames/profile-prescoll-header.json"
+      "file": "frames/profile-view-your-profile-profile-prescoll-header.json"
     },
     {
       "name": "Profile - Timeline",
+      "section": "Profile / View your profile",
       "page": "Design",
       "id": "2083:5413",
       "type": "FRAME",
-      "file": "frames/profile-timeline.json"
+      "file": "frames/profile-view-your-profile-profile-timeline.json"
     },
     {
       "name": "Profile - Garage",
+      "section": "Profile / View your profile",
       "page": "Design",
       "id": "2084:6549",
       "type": "FRAME",
-      "file": "frames/profile-garage.json"
+      "file": "frames/profile-view-your-profile-profile-garage.json"
     },
     {
       "name": "Profile - Garage",
+      "section": "Profile / View your profile",
       "page": "Design",
       "id": "1883:14324",
       "type": "FRAME",
-      "file": "frames/profile-garage-2.json"
+      "file": "frames/profile-view-your-profile-profile-garage-2.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile / Delete account",
       "page": "Design",
       "id": "1883:10557",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-29.json"
+      "file": "frames/profile-delete-account-annotation-epic-cover.json"
     },
     {
       "name": "Profile - Timeline",
+      "section": "Profile / Delete account",
       "page": "Design",
       "id": "2303:7983",
       "type": "FRAME",
-      "file": "frames/profile-timeline-2.json"
+      "file": "frames/profile-delete-account-profile-timeline.json"
     },
     {
       "name": "Account options",
+      "section": "Profile / Delete account",
       "page": "Design",
       "id": "2303:8097",
       "type": "FRAME",
-      "file": "frames/account-options.json"
+      "file": "frames/profile-delete-account-account-options.json"
     },
     {
       "name": "Confirm account deletion",
+      "section": "Profile / Delete account",
       "page": "Design",
       "id": "2303:9370",
       "type": "FRAME",
-      "file": "frames/confirm-account-deletion.json"
+      "file": "frames/profile-delete-account-confirm-account-deletion.json"
     },
     {
       "name": "Annotation / Note",
+      "section": "Profile / Delete account",
       "page": "Design",
       "id": "2303:8213",
       "type": "INSTANCE",
-      "file": "frames/annotation-note-7.json"
+      "file": "frames/profile-delete-account-annotation-note.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile / ...",
       "page": "Design",
       "id": "2303:7975",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-30.json"
+      "file": "frames/profile-annotation-epic-cover.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile / View someone else's profile",
       "page": "Design",
       "id": "1883:10559",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-31.json"
+      "file": "frames/profile-view-someone-else-s-profile-annotation-epic-cover.json"
     },
     {
       "name": "Profile - Prescoll header",
+      "section": "Profile / View someone else's profile",
       "page": "Design",
       "id": "2084:9006",
       "type": "FRAME",
-      "file": "frames/profile-prescoll-header-2.json"
+      "file": "frames/profile-view-someone-else-s-profile-profile-prescoll-header.json"
     },
     {
       "name": "v2 / Component / List / Ride",
+      "section": null,
       "page": "Components",
       "id": "2059:5657",
       "type": "INSTANCE",
@@ -948,6 +1083,7 @@
     },
     {
       "name": "iPhone 1",
+      "section": null,
       "page": "Components",
       "id": "2288:10336",
       "type": "FRAME",
@@ -955,6 +1091,7 @@
     },
     {
       "name": "iPhone 2",
+      "section": null,
       "page": "Components",
       "id": "2288:10337",
       "type": "FRAME",
@@ -962,6 +1099,7 @@
     },
     {
       "name": "iPhone 3",
+      "section": null,
       "page": "Components",
       "id": "2288:10338",
       "type": "FRAME",
@@ -969,6 +1107,7 @@
     },
     {
       "name": "iPad 1",
+      "section": null,
       "page": "Components",
       "id": "2288:10339",
       "type": "FRAME",
@@ -976,6 +1115,7 @@
     },
     {
       "name": "iPad 2",
+      "section": null,
       "page": "Components",
       "id": "2288:10340",
       "type": "FRAME",
@@ -983,6 +1123,7 @@
     },
     {
       "name": "iPad 3",
+      "section": null,
       "page": "Components",
       "id": "2288:10341",
       "type": "FRAME",
@@ -990,6 +1131,7 @@
     },
     {
       "name": "Logo2",
+      "section": null,
       "page": "Archive",
       "id": "5:3",
       "type": "RECTANGLE",
@@ -997,6 +1139,7 @@
     },
     {
       "name": "Thumbnail",
+      "section": null,
       "page": "Archive",
       "id": "7:4",
       "type": "FRAME",
@@ -1004,580 +1147,663 @@
     },
     {
       "name": "v1 Clubs overview with joined clubs",
+      "section": "Clubs",
       "page": "Archive",
       "id": "50:923",
       "type": "FRAME",
-      "file": "frames/v1-clubs-overview-with-joined-clubs.json"
+      "file": "frames/clubs-v1-clubs-overview-with-joined-clubs.json"
     },
     {
       "name": "v2 Clubs overview without joined clubs",
+      "section": "Clubs",
       "page": "Archive",
       "id": "408:3952",
       "type": "FRAME",
-      "file": "frames/v2-clubs-overview-without-joined-clubs.json"
+      "file": "frames/clubs-v2-clubs-overview-without-joined-clubs.json"
     },
     {
       "name": "Create club",
+      "section": "Clubs",
       "page": "Archive",
       "id": "366:3580",
       "type": "FRAME",
-      "file": "frames/create-club-2.json"
+      "file": "frames/clubs-create-club.json"
     },
     {
       "name": "Edit club",
+      "section": "Clubs",
       "page": "Archive",
       "id": "367:5392",
       "type": "FRAME",
-      "file": "frames/edit-club-2.json"
+      "file": "frames/clubs-edit-club.json"
     },
     {
       "name": "Private club details as admin",
+      "section": "Clubs",
       "page": "Archive",
       "id": "416:8936",
       "type": "FRAME",
-      "file": "frames/private-club-details-as-admin.json"
+      "file": "frames/clubs-private-club-details-as-admin.json"
     },
     {
       "name": "Private club details as member",
+      "section": "Clubs",
       "page": "Archive",
       "id": "416:9128",
       "type": "FRAME",
-      "file": "frames/private-club-details-as-member.json"
+      "file": "frames/clubs-private-club-details-as-member.json"
     },
     {
       "name": "Not joined public club details",
+      "section": "Clubs",
       "page": "Archive",
       "id": "416:9320",
       "type": "FRAME",
-      "file": "frames/not-joined-public-club-details.json"
+      "file": "frames/clubs-not-joined-public-club-details.json"
     },
     {
       "name": "Joined public club details",
+      "section": "Clubs",
       "page": "Archive",
       "id": "416:9514",
       "type": "FRAME",
-      "file": "frames/joined-public-club-details.json"
+      "file": "frames/clubs-joined-public-club-details.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "50:924",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-33.json"
+      "file": "frames/clubs-annotation-epic-cover.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "366:3080",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-34.json"
+      "file": "frames/clubs-annotation-epic-cover-2.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "367:5408",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-35.json"
+      "file": "frames/clubs-annotation-epic-cover-3.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "366:3089",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-36.json"
+      "file": "frames/clubs-annotation-epic-cover-4.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "366:3097",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-37.json"
+      "file": "frames/clubs-annotation-epic-cover-5.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "366:3105",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-38.json"
+      "file": "frames/clubs-annotation-epic-cover-6.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "366:3113",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-39.json"
+      "file": "frames/clubs-annotation-epic-cover-7.json"
     },
     {
       "name": "Create club without account",
+      "section": "Clubs",
       "page": "Archive",
       "id": "371:4542",
       "type": "FRAME",
-      "file": "frames/create-club-without-account-2.json"
+      "file": "frames/clubs-create-club-without-account.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "371:4560",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-40.json"
+      "file": "frames/clubs-annotation-epic-cover-8.json"
     },
     {
       "name": "Join club without account",
+      "section": "Clubs",
       "page": "Archive",
       "id": "416:9709",
       "type": "FRAME",
-      "file": "frames/join-club-without-account.json"
+      "file": "frames/clubs-join-club-without-account.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Clubs",
       "page": "Archive",
       "id": "371:4776",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-41.json"
+      "file": "frames/clubs-annotation-epic-cover-9.json"
     },
     {
       "name": "Settings",
+      "section": "Settings",
       "page": "Archive",
       "id": "309:4642",
       "type": "FRAME",
-      "file": "frames/settings.json"
+      "file": "frames/settings-settings.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Settings",
       "page": "Archive",
       "id": "309:4634",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-42.json"
+      "file": "frames/settings-annotation-epic-cover.json"
     },
     {
       "name": "View my own profile",
+      "section": "Profile",
       "page": "Archive",
       "id": "292:6055",
       "type": "FRAME",
-      "file": "frames/view-my-own-profile.json"
+      "file": "frames/profile-view-my-own-profile.json"
     },
     {
       "name": "View my own profile empty",
+      "section": "Profile",
       "page": "Archive",
       "id": "371:3504",
       "type": "FRAME",
-      "file": "frames/view-my-own-profile-empty.json"
+      "file": "frames/profile-view-my-own-profile-empty.json"
     },
     {
       "name": "View profile of someone else",
+      "section": "Profile",
       "page": "Archive",
       "id": "259:7999",
       "type": "FRAME",
-      "file": "frames/view-profile-of-someone-else.json"
+      "file": "frames/profile-view-profile-of-someone-else.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile",
       "page": "Archive",
       "id": "50:708",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-43.json"
+      "file": "frames/profile-annotation-epic-cover-2.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile",
       "page": "Archive",
       "id": "408:5567",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-44.json"
+      "file": "frames/profile-annotation-epic-cover-3.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile",
       "page": "Archive",
       "id": "348:2110",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-45.json"
+      "file": "frames/profile-annotation-epic-cover-4.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile",
       "page": "Archive",
       "id": "408:5864",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-46.json"
+      "file": "frames/profile-annotation-epic-cover-5.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile",
       "page": "Archive",
       "id": "408:5872",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-47.json"
+      "file": "frames/profile-annotation-epic-cover-6.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile",
       "page": "Archive",
       "id": "408:5880",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-48.json"
+      "file": "frames/profile-annotation-epic-cover-7.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile",
       "page": "Archive",
       "id": "408:5888",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-49.json"
+      "file": "frames/profile-annotation-epic-cover-8.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Profile",
       "page": "Archive",
       "id": "241:5596",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-50.json"
+      "file": "frames/profile-annotation-epic-cover-9.json"
     },
     {
       "name": "Edit bio",
+      "section": "Profile",
       "page": "Archive",
       "id": "292:1699",
       "type": "FRAME",
-      "file": "frames/edit-bio.json"
+      "file": "frames/profile-edit-bio.json"
     },
     {
       "name": "Edit empty bio",
+      "section": "Profile",
       "page": "Archive",
       "id": "408:5753",
       "type": "FRAME",
-      "file": "frames/edit-empty-bio.json"
+      "file": "frames/profile-edit-empty-bio.json"
     },
     {
       "name": "Edit countries",
+      "section": "Profile",
       "page": "Archive",
       "id": "292:7059",
       "type": "FRAME",
-      "file": "frames/edit-countries.json"
+      "file": "frames/profile-edit-countries.json"
     },
     {
       "name": "Add gear",
+      "section": "Profile",
       "page": "Archive",
       "id": "292:9246",
       "type": "FRAME",
-      "file": "frames/add-gear.json"
+      "file": "frames/profile-add-gear.json"
     },
     {
       "name": "Edit gear",
+      "section": "Profile",
       "page": "Archive",
       "id": "348:2118",
       "type": "FRAME",
-      "file": "frames/edit-gear.json"
+      "file": "frames/profile-edit-gear.json"
     },
     {
       "name": "Add motorcycle",
+      "section": "Profile",
       "page": "Archive",
       "id": "309:626",
       "type": "FRAME",
-      "file": "frames/add-motorcycle.json"
+      "file": "frames/profile-add-motorcycle.json"
     },
     {
       "name": "Edit motorcycle",
+      "section": "Profile",
       "page": "Archive",
       "id": "348:2126",
       "type": "FRAME",
-      "file": "frames/edit-motorcycle.json"
+      "file": "frames/profile-edit-motorcycle.json"
     },
     {
       "name": "Edit profile photo",
+      "section": "Profile",
       "page": "Archive",
       "id": "292:1992",
       "type": "FRAME",
-      "file": "frames/edit-profile-photo.json"
+      "file": "frames/profile-edit-profile-photo.json"
     },
     {
       "name": "Edit background photo",
+      "section": "Profile",
       "page": "Archive",
       "id": "292:3053",
       "type": "FRAME",
-      "file": "frames/edit-background-photo.json"
+      "file": "frames/profile-edit-background-photo.json"
     },
     {
       "name": "Rides overview with joined rides",
+      "section": "Rides",
       "page": "Archive",
       "id": "339:2312",
       "type": "FRAME",
-      "file": "frames/rides-overview-with-joined-rides.json"
+      "file": "frames/rides-rides-overview-with-joined-rides.json"
     },
     {
       "name": "Rides overview without joined rides",
+      "section": "Rides",
       "page": "Archive",
       "id": "371:3028",
       "type": "FRAME",
-      "file": "frames/rides-overview-without-joined-rides.json"
+      "file": "frames/rides-rides-overview-without-joined-rides.json"
     },
     {
       "name": "Create ride without account",
+      "section": "Rides",
       "page": "Archive",
       "id": "371:3186",
       "type": "FRAME",
-      "file": "frames/create-ride-without-account.json"
+      "file": "frames/rides-create-ride-without-account.json"
     },
     {
       "name": "Join ride without account",
+      "section": "Rides",
       "page": "Archive",
       "id": "416:7460",
       "type": "FRAME",
-      "file": "frames/join-ride-without-account.json"
+      "file": "frames/rides-join-ride-without-account.json"
     },
     {
       "name": "Create ride",
+      "section": "Rides",
       "page": "Archive",
       "id": "50:585",
       "type": "FRAME",
-      "file": "frames/create-ride-3.json"
+      "file": "frames/rides-create-ride-2.json"
     },
     {
       "name": "Add header image",
+      "section": "Rides",
       "page": "Archive",
       "id": "146:120",
       "type": "FRAME",
-      "file": "frames/add-header-image-2.json"
+      "file": "frames/rides-add-header-image-2.json"
     },
     {
       "name": "Change date",
+      "section": "Rides",
       "page": "Archive",
       "id": "146:209",
       "type": "FRAME",
-      "file": "frames/change-date-2.json"
+      "file": "frames/rides-change-date-2.json"
     },
     {
       "name": "Change time",
+      "section": "Rides",
       "page": "Archive",
       "id": "146:298",
       "type": "FRAME",
-      "file": "frames/change-time-2.json"
+      "file": "frames/rides-change-time-2.json"
     },
     {
       "name": "Add starting location",
+      "section": "Rides",
       "page": "Archive",
       "id": "146:387",
       "type": "FRAME",
-      "file": "frames/add-starting-location-2.json"
+      "file": "frames/rides-add-starting-location-2.json"
     },
     {
       "name": "Add starting location - Filled",
+      "section": "Rides",
       "page": "Archive",
       "id": "184:1002",
       "type": "FRAME",
-      "file": "frames/add-starting-location-filled-2.json"
+      "file": "frames/rides-add-starting-location-filled-2.json"
     },
     {
       "name": "Invite riders",
+      "section": "Rides",
       "page": "Archive",
       "id": "146:476",
       "type": "FRAME",
-      "file": "frames/invite-riders-2.json"
+      "file": "frames/rides-invite-riders-2.json"
     },
     {
       "name": "Invite riders - Filled",
+      "section": "Rides",
       "page": "Archive",
       "id": "292:8845",
       "type": "FRAME",
-      "file": "frames/invite-riders-filled-2.json"
+      "file": "frames/rides-invite-riders-filled-2.json"
     },
     {
       "name": "Search rides",
+      "section": "Rides",
       "page": "Archive",
       "id": "50:996",
       "type": "FRAME",
-      "file": "frames/search-rides.json"
+      "file": "frames/rides-search-rides.json"
     },
     {
       "name": "Edit ride",
+      "section": "Rides",
       "page": "Archive",
       "id": "339:3191",
       "type": "FRAME",
-      "file": "frames/edit-ride-2.json"
+      "file": "frames/rides-edit-ride-2.json"
     },
     {
       "name": "Organized ride details",
+      "section": "Rides",
       "page": "Archive",
       "id": "416:6334",
       "type": "FRAME",
-      "file": "frames/organized-ride-details.json"
+      "file": "frames/rides-organized-ride-details.json"
     },
     {
       "name": "Not joined ride details",
+      "section": "Rides",
       "page": "Archive",
       "id": "416:6954",
       "type": "FRAME",
-      "file": "frames/not-joined-ride-details.json"
+      "file": "frames/rides-not-joined-ride-details.json"
     },
     {
       "name": "Joined ride details",
+      "section": "Rides",
       "page": "Archive",
       "id": "416:7311",
       "type": "FRAME",
-      "file": "frames/joined-ride-details.json"
+      "file": "frames/rides-joined-ride-details.json"
     },
     {
       "name": "Organized ride scrolled",
+      "section": "Rides",
       "page": "Archive",
       "id": "416:6805",
       "type": "FRAME",
-      "file": "frames/organized-ride-scrolled.json"
+      "file": "frames/rides-organized-ride-scrolled.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "50:569",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-51.json"
+      "file": "frames/rides-annotation-epic-cover.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "50:577",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-52.json"
+      "file": "frames/rides-annotation-epic-cover-2.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "371:3178",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-53.json"
+      "file": "frames/rides-annotation-epic-cover-3.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "50:997",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-54.json"
+      "file": "frames/rides-annotation-epic-cover-4.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "50:699",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-55.json"
+      "file": "frames/rides-annotation-epic-cover-5.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "50:1008",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-56.json"
+      "file": "frames/rides-annotation-epic-cover-6.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "339:4065",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-57.json"
+      "file": "frames/rides-annotation-epic-cover-7.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "339:4073",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-58.json"
+      "file": "frames/rides-annotation-epic-cover-8.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Rides",
       "page": "Archive",
       "id": "371:3337",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-59.json"
+      "file": "frames/rides-annotation-epic-cover-9.json"
     },
     {
       "name": "Splash screen",
+      "section": "Login",
       "page": "Archive",
       "id": "416:10339",
       "type": "FRAME",
-      "file": "frames/splash-screen.json"
+      "file": "frames/login-splash-screen.json"
     },
     {
       "name": "Become a rider",
+      "section": "Login",
       "page": "Archive",
       "id": "502:5052",
       "type": "FRAME",
-      "file": "frames/become-a-rider.json"
+      "file": "frames/login-become-a-rider.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Login",
       "page": "Archive",
       "id": "416:10737",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-60.json"
+      "file": "frames/login-annotation-epic-cover.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Login",
       "page": "Archive",
       "id": "416:12368",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-61.json"
+      "file": "frames/login-annotation-epic-cover-2.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "Login",
       "page": "Archive",
       "id": "416:12377",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-62.json"
+      "file": "frames/login-annotation-epic-cover-3.json"
     },
     {
       "name": "Become a rider",
+      "section": "Login",
       "page": "Archive",
       "id": "424:4289",
       "type": "FRAME",
-      "file": "frames/become-a-rider-2.json"
+      "file": "frames/login-become-a-rider-2.json"
     },
     {
       "name": "Log in",
+      "section": "Login",
       "page": "Archive",
       "id": "502:4309",
       "type": "FRAME",
-      "file": "frames/log-in.json"
+      "file": "frames/login-log-in.json"
     },
     {
       "name": "Forgot password",
+      "section": "Login",
       "page": "Archive",
       "id": "502:5844",
       "type": "FRAME",
-      "file": "frames/forgot-password-2.json"
+      "file": "frames/login-forgot-password.json"
     },
     {
       "name": "Create new password",
+      "section": "Login",
       "page": "Archive",
       "id": "503:6055",
       "type": "FRAME",
-      "file": "frames/create-new-password-2.json"
+      "file": "frames/login-create-new-password.json"
     },
     {
       "name": "Create account",
+      "section": "Login",
       "page": "Archive",
       "id": "502:5304",
       "type": "FRAME",
-      "file": "frames/create-account.json"
+      "file": "frames/login-create-account.json"
     },
     {
       "name": "Log in username focus",
+      "section": "Login",
       "page": "Archive",
       "id": "502:4694",
       "type": "FRAME",
-      "file": "frames/log-in-username-focus.json"
+      "file": "frames/login-log-in-username-focus.json"
     },
     {
       "name": "Create account username focus",
+      "section": "Login",
       "page": "Archive",
       "id": "502:5477",
       "type": "FRAME",
-      "file": "frames/create-account-username-focus.json"
+      "file": "frames/login-create-account-username-focus.json"
     },
     {
       "name": "Create account password focus",
+      "section": "Login",
       "page": "Archive",
       "id": "502:5663",
       "type": "FRAME",
-      "file": "frames/create-account-password-focus.json"
+      "file": "frames/login-create-account-password-focus.json"
     },
     {
       "name": "Log in password focus",
+      "section": "Login",
       "page": "Archive",
       "id": "502:4873",
       "type": "FRAME",
-      "file": "frames/log-in-password-focus.json"
+      "file": "frames/login-log-in-password-focus.json"
     },
     {
       "name": "logo1",
+      "section": null,
       "page": "Archive",
       "id": "416:12385",
       "type": "RECTANGLE",
@@ -1585,6 +1811,7 @@
     },
     {
       "name": "image 1",
+      "section": null,
       "page": "Archive",
       "id": "59:697",
       "type": "RECTANGLE",
@@ -1592,6 +1819,7 @@
     },
     {
       "name": "LogoColorsRound",
+      "section": null,
       "page": "Archive",
       "id": "425:4443",
       "type": "RECTANGLE",
@@ -1599,6 +1827,7 @@
     },
     {
       "name": "LogoColorsRoundSmall",
+      "section": null,
       "page": "Archive",
       "id": "425:4444",
       "type": "RECTANGLE",
@@ -1606,20 +1835,23 @@
     },
     {
       "name": "View profile of someone else",
+      "section": null,
       "page": "Archive",
       "id": "871:10424",
+      "type": "FRAME",
+      "file": "frames/view-profile-of-someone-else.json"
+    },
+    {
+      "name": "View profile of someone else",
+      "section": null,
+      "page": "Archive",
+      "id": "871:11457",
       "type": "FRAME",
       "file": "frames/view-profile-of-someone-else-2.json"
     },
     {
-      "name": "View profile of someone else",
-      "page": "Archive",
-      "id": "871:11457",
-      "type": "FRAME",
-      "file": "frames/view-profile-of-someone-else-3.json"
-    },
-    {
       "name": "v2 / Component / Button / Icon",
+      "section": null,
       "page": "Archive",
       "id": "1200:6074",
       "type": "INSTANCE",
@@ -1627,13 +1859,15 @@
     },
     {
       "name": "View profile of someone else",
+      "section": null,
       "page": "Archive",
       "id": "871:12543",
       "type": "FRAME",
-      "file": "frames/view-profile-of-someone-else-4.json"
+      "file": "frames/view-profile-of-someone-else-3.json"
     },
     {
       "name": "032F3B82-9595-4DBC-AA29-3B130FB7B7BF_4_5005_c",
+      "section": null,
       "page": "Archive",
       "id": "856:5533",
       "type": "RECTANGLE",
@@ -1641,6 +1875,7 @@
     },
     {
       "name": "B33A3488-E95E-4DED-9DB0-DA3DD61CC6A4_4_5005_c",
+      "section": null,
       "page": "Archive",
       "id": "856:5534",
       "type": "RECTANGLE",
@@ -1648,6 +1883,7 @@
     },
     {
       "name": "B1B30337-40C9-4696-93C3-7C995E27FC02_4_5005_c",
+      "section": null,
       "page": "Archive",
       "id": "856:5535",
       "type": "RECTANGLE",
@@ -1655,6 +1891,7 @@
     },
     {
       "name": "687B7D6C-AE6E-49FD-9948-8C41FA68C9B4_4_5005_c",
+      "section": null,
       "page": "Archive",
       "id": "856:5536",
       "type": "RECTANGLE",
@@ -1662,6 +1899,7 @@
     },
     {
       "name": "image 22",
+      "section": null,
       "page": "Archive",
       "id": "856:5531",
       "type": "RECTANGLE",
@@ -1669,6 +1907,7 @@
     },
     {
       "name": "BB07AF28-C061-4587-9CEB-49E08FD9265B_4_5005_c",
+      "section": null,
       "page": "Archive",
       "id": "882:5689",
       "type": "RECTANGLE",
@@ -1676,6 +1915,7 @@
     },
     {
       "name": "82B7ABA6-03C2-4F73-B49A-BC517B101B0D_4_5005_c",
+      "section": null,
       "page": "Archive",
       "id": "882:5690",
       "type": "RECTANGLE",
@@ -1683,6 +1923,7 @@
     },
     {
       "name": "Frame 60",
+      "section": null,
       "page": "Archive",
       "id": "908:5806",
       "type": "FRAME",
@@ -1690,6 +1931,7 @@
     },
     {
       "name": "IMG_4919 1",
+      "section": null,
       "page": "Archive",
       "id": "917:6064",
       "type": "RECTANGLE",
@@ -1697,6 +1939,7 @@
     },
     {
       "name": "F68E94FD-89FB-4EE1-A30F-BF649CF4D65B_1_105_c 1",
+      "section": null,
       "page": "Archive",
       "id": "1424:14581",
       "type": "RECTANGLE",
@@ -1704,321 +1947,367 @@
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "🟠 Ride details as host",
       "page": "Archive",
       "id": "1527:7059",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-63.json"
+      "file": "frames/ride-details-as-host-annotation-epic-cover.json"
     },
     {
       "name": "Host - Ride details - Overview",
+      "section": "🟠 Ride details as host",
       "page": "Archive",
       "id": "1527:8500",
       "type": "FRAME",
-      "file": "frames/host-ride-details-overview.json"
+      "file": "frames/ride-details-as-host-host-ride-details-overview.json"
     },
     {
       "name": "Host - Ride details - About",
+      "section": "🟠 Ride details as host",
       "page": "Archive",
       "id": "1527:8510",
       "type": "FRAME",
-      "file": "frames/host-ride-details-about.json"
+      "file": "frames/ride-details-as-host-host-ride-details-about.json"
     },
     {
       "name": "Host - Ride details - Riders",
+      "section": "🟠 Ride details as host",
       "page": "Archive",
       "id": "1527:8519",
       "type": "FRAME",
-      "file": "frames/host-ride-details-riders.json"
+      "file": "frames/ride-details-as-host-host-ride-details-riders.json"
     },
     {
       "name": "Host - Ride details - Photos",
+      "section": "🟠 Ride details as host",
       "page": "Archive",
       "id": "1527:8528",
       "type": "FRAME",
-      "file": "frames/host-ride-details-photos.json"
+      "file": "frames/ride-details-as-host-host-ride-details-photos.json"
     },
     {
       "name": "Host - Ride details - Overview",
+      "section": "🟠 Ride details as host / Prototype",
       "page": "Archive",
       "id": "1241:6078",
       "type": "FRAME",
-      "file": "frames/host-ride-details-overview-2.json"
+      "file": "frames/ride-details-as-host-prototype-host-ride-details-overview.json"
     },
     {
       "name": "Host - Ride details - About",
+      "section": "🟠 Ride details as host / Prototype",
       "page": "Archive",
       "id": "1241:6811",
       "type": "FRAME",
-      "file": "frames/host-ride-details-about-2.json"
+      "file": "frames/ride-details-as-host-prototype-host-ride-details-about.json"
     },
     {
       "name": "Host - Ride details - Riders",
+      "section": "🟠 Ride details as host / Prototype",
       "page": "Archive",
       "id": "1241:6383",
       "type": "FRAME",
-      "file": "frames/host-ride-details-riders-2.json"
+      "file": "frames/ride-details-as-host-prototype-host-ride-details-riders.json"
     },
     {
       "name": "Host - Ride details - Photos",
+      "section": "🟠 Ride details as host / Prototype",
       "page": "Archive",
       "id": "1241:6500",
       "type": "FRAME",
-      "file": "frames/host-ride-details-photos-2.json"
+      "file": "frames/ride-details-as-host-prototype-host-ride-details-photos.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "🟠 List of rides",
       "page": "Archive",
       "id": "1527:10446",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-64.json"
+      "file": "frames/list-of-rides-annotation-epic-cover.json"
     },
     {
       "name": "List of rides - Joined rides",
+      "section": "🟠 List of rides",
       "page": "Archive",
       "id": "1527:10447",
       "type": "FRAME",
-      "file": "frames/list-of-rides-joined-rides.json"
+      "file": "frames/list-of-rides-list-of-rides-joined-rides.json"
     },
     {
       "name": "Rides overview with joined rides",
+      "section": "🟠 List of rides",
       "page": "Archive",
       "id": "1527:11229",
       "type": "FRAME",
-      "file": "frames/rides-overview-with-joined-rides-2.json"
+      "file": "frames/list-of-rides-rides-overview-with-joined-rides.json"
     },
     {
       "name": "Rides overview without joined rides",
+      "section": "🟠 List of rides",
       "page": "Archive",
       "id": "1527:11246",
       "type": "FRAME",
-      "file": "frames/rides-overview-without-joined-rides-2.json"
+      "file": "frames/list-of-rides-rides-overview-without-joined-rides.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "🟠 Ride details as participant",
       "page": "Archive",
       "id": "1527:7120",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-65.json"
+      "file": "frames/ride-details-as-participant-annotation-epic-cover.json"
     },
     {
       "name": "Participant - Ride details - Overview",
+      "section": "🟠 Ride details as participant",
       "page": "Archive",
       "id": "1527:8077",
       "type": "FRAME",
-      "file": "frames/participant-ride-details-overview.json"
+      "file": "frames/ride-details-as-participant-participant-ride-details-overview.json"
     },
     {
       "name": "Participant - Ride details - About",
+      "section": "🟠 Ride details as participant",
       "page": "Archive",
       "id": "1527:8212",
       "type": "FRAME",
-      "file": "frames/participant-ride-details-about.json"
+      "file": "frames/ride-details-as-participant-participant-ride-details-about.json"
     },
     {
       "name": "Participant - Ride details - Riders",
+      "section": "🟠 Ride details as participant",
       "page": "Archive",
       "id": "1527:8222",
       "type": "FRAME",
-      "file": "frames/participant-ride-details-riders.json"
+      "file": "frames/ride-details-as-participant-participant-ride-details-riders.json"
     },
     {
       "name": "Participant - Ride details - Photos",
+      "section": "🟠 Ride details as participant",
       "page": "Archive",
       "id": "1527:8232",
       "type": "FRAME",
-      "file": "frames/participant-ride-details-photos.json"
+      "file": "frames/ride-details-as-participant-participant-ride-details-photos.json"
     },
     {
       "name": "Participant - Ride details - Overview",
+      "section": "🟠 Ride details as participant / Prototype",
       "page": "Archive",
       "id": "1527:7517",
       "type": "FRAME",
-      "file": "frames/participant-ride-details-overview-2.json"
+      "file": "frames/ride-details-as-participant-prototype-participant-ride-details-overview.json"
     },
     {
       "name": "Participant - Ride details - About",
+      "section": "🟠 Ride details as participant / Prototype",
       "page": "Archive",
       "id": "1527:7527",
       "type": "FRAME",
-      "file": "frames/participant-ride-details-about-2.json"
+      "file": "frames/ride-details-as-participant-prototype-participant-ride-details-about.json"
     },
     {
       "name": "Participant - Ride details - Riders",
+      "section": "🟠 Ride details as participant / Prototype",
       "page": "Archive",
       "id": "1527:7537",
       "type": "FRAME",
-      "file": "frames/participant-ride-details-riders-2.json"
+      "file": "frames/ride-details-as-participant-prototype-participant-ride-details-riders.json"
     },
     {
       "name": "Participant - Ride details - Photos",
+      "section": "🟠 Ride details as participant / Prototype",
       "page": "Archive",
       "id": "1527:7547",
       "type": "FRAME",
-      "file": "frames/participant-ride-details-photos-2.json"
+      "file": "frames/ride-details-as-participant-prototype-participant-ride-details-photos.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "🟡 Menu",
       "page": "Archive",
       "id": "1527:8889",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-66.json"
+      "file": "frames/menu-annotation-epic-cover.json"
     },
     {
       "name": "Menu closed",
+      "section": "🟡 Menu",
       "page": "Archive",
       "id": "1527:8890",
       "type": "FRAME",
-      "file": "frames/menu-closed.json"
+      "file": "frames/menu-menu-closed.json"
     },
     {
       "name": "Menu open",
+      "section": "🟡 Menu",
       "page": "Archive",
       "id": "1527:10233",
       "type": "FRAME",
-      "file": "frames/menu-open.json"
+      "file": "frames/menu-menu-open.json"
     },
     {
       "name": "v2 / Component / Navigation / List",
+      "section": "🟡 Menu / Prototype",
       "page": "Archive",
       "id": "1883:16275",
       "type": "FRAME",
-      "file": "frames/v2-component-navigation-list-2.json"
+      "file": "frames/menu-prototype-v2-component-navigation-list.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1580:8132",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-67.json"
+      "file": "frames/garage-annotation-epic-cover.json"
     },
     {
       "name": "Mailbox - Postcards",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1620:16267",
       "type": "FRAME",
-      "file": "frames/mailbox-postcards.json"
+      "file": "frames/garage-mailbox-postcards.json"
     },
     {
       "name": "Mailbox - Postcards v2",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1683:8630",
       "type": "FRAME",
-      "file": "frames/mailbox-postcards-v2.json"
+      "file": "frames/garage-mailbox-postcards-v2.json"
     },
     {
       "name": "Mailbox - Postcards v2",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1683:9606",
       "type": "FRAME",
-      "file": "frames/mailbox-postcards-v2-2.json"
+      "file": "frames/garage-mailbox-postcards-v2-2.json"
     },
     {
       "name": "Mailbox - Postcards - Postcard Details",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1663:10662",
       "type": "FRAME",
-      "file": "frames/mailbox-postcards-postcard-details.json"
+      "file": "frames/garage-mailbox-postcards-postcard-details.json"
     },
     {
       "name": "Mailbox - Postcards - Postcard Details Scrolled",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1663:10720",
       "type": "FRAME",
-      "file": "frames/mailbox-postcards-postcard-details-scrolled.json"
+      "file": "frames/garage-mailbox-postcards-postcard-details-scrolled.json"
     },
     {
       "name": "Profile - Postcards",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1624:16399",
       "type": "FRAME",
-      "file": "frames/profile-postcards.json"
+      "file": "frames/garage-profile-postcards.json"
     },
     {
       "name": "Profile - Garage",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1629:17999",
       "type": "FRAME",
-      "file": "frames/profile-garage-3.json"
+      "file": "frames/garage-profile-garage.json"
     },
     {
       "name": "Mailbox - Postcards",
+      "section": "🟠 Garage / Prototype",
       "page": "Archive",
       "id": "1663:9105",
       "type": "FRAME",
-      "file": "frames/mailbox-postcards-2.json"
+      "file": "frames/garage-prototype-mailbox-postcards.json"
     },
     {
       "name": "Profile - Postcards",
+      "section": "🟠 Garage / Prototype",
       "page": "Archive",
       "id": "1663:9122",
       "type": "FRAME",
-      "file": "frames/profile-postcards-2.json"
+      "file": "frames/garage-prototype-profile-postcards.json"
     },
     {
       "name": "Profile - Garage",
+      "section": "🟠 Garage / Prototype",
       "page": "Archive",
       "id": "1663:9160",
       "type": "FRAME",
-      "file": "frames/profile-garage-4.json"
+      "file": "frames/garage-prototype-profile-garage.json"
     },
     {
       "name": "Mailbox - Postcards - Postcard Details",
+      "section": "🟠 Garage / Prototype",
       "page": "Archive",
       "id": "1663:10539",
       "type": "FRAME",
-      "file": "frames/mailbox-postcards-postcard-details-2.json"
+      "file": "frames/garage-prototype-mailbox-postcards-postcard-details.json"
     },
     {
       "name": "View profile of someone else",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1580:11118",
       "type": "FRAME",
-      "file": "frames/view-profile-of-someone-else-5.json"
+      "file": "frames/garage-view-profile-of-someone-else.json"
     },
     {
       "name": "Host - Ride details - Overview",
+      "section": "🟠 Garage",
       "page": "Archive",
       "id": "1580:11989",
       "type": "FRAME",
-      "file": "frames/host-ride-details-overview-3.json"
+      "file": "frames/garage-host-ride-details-overview.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": "🟠 v4",
       "page": "Archive",
       "id": "1729:8652",
       "type": "INSTANCE",
-      "file": "frames/annotation-epic-cover-68.json"
+      "file": "frames/v4-annotation-epic-cover.json"
     },
     {
       "name": "Mailbox - All new",
+      "section": "🟠 v4",
       "page": "Archive",
       "id": "1729:8653",
+      "type": "FRAME",
+      "file": "frames/v4-mailbox-all-new.json"
+    },
+    {
+      "name": "Mailbox - Your events v1",
+      "section": "🟠 v4",
+      "page": "Archive",
+      "id": "1729:11922",
+      "type": "FRAME",
+      "file": "frames/v4-mailbox-your-events-v1.json"
+    },
+    {
+      "name": "Mailbox - Your events v2",
+      "section": "🟠 v4",
+      "page": "Archive",
+      "id": "1739:14138",
+      "type": "FRAME",
+      "file": "frames/v4-mailbox-your-events-v2.json"
+    },
+    {
+      "name": "Mailbox - All new",
+      "section": null,
+      "page": "Archive",
+      "id": "1758:10258",
       "type": "FRAME",
       "file": "frames/mailbox-all-new.json"
     },
     {
-      "name": "Mailbox - Your events v1",
-      "page": "Archive",
-      "id": "1729:11922",
-      "type": "FRAME",
-      "file": "frames/mailbox-your-events-v1.json"
-    },
-    {
-      "name": "Mailbox - Your events v2",
-      "page": "Archive",
-      "id": "1739:14138",
-      "type": "FRAME",
-      "file": "frames/mailbox-your-events-v2.json"
-    },
-    {
-      "name": "Mailbox - All new",
-      "page": "Archive",
-      "id": "1758:10258",
-      "type": "FRAME",
-      "file": "frames/mailbox-all-new-2.json"
-    },
-    {
       "name": "F6026BF3-D276-4F80-AE0F-D0EFDBE9A390_4_5005_c",
+      "section": null,
       "page": "Archive",
       "id": "1683:8699",
       "type": "RECTANGLE",
@@ -2026,6 +2315,7 @@
     },
     {
       "name": "Frame 70",
+      "section": null,
       "page": "Archive",
       "id": "1683:9600",
       "type": "FRAME",
@@ -2033,6 +2323,7 @@
     },
     {
       "name": "82B7ABA6-03C2-4F73-B49A-BC517B101B0D_4_5005_c",
+      "section": null,
       "page": "Archive",
       "id": "1683:8695",
       "type": "RECTANGLE",
@@ -2040,6 +2331,7 @@
     },
     {
       "name": "image 36",
+      "section": null,
       "page": "Archive",
       "id": "1629:19088",
       "type": "RECTANGLE",
@@ -2047,6 +2339,7 @@
     },
     {
       "name": "Inspiration",
+      "section": null,
       "page": "Archive",
       "id": "1663:9103",
       "type": "FRAME",
@@ -2054,6 +2347,7 @@
     },
     {
       "name": "image 37",
+      "section": null,
       "page": "Archive",
       "id": "1629:19095",
       "type": "RECTANGLE",
@@ -2061,6 +2355,7 @@
     },
     {
       "name": "IMG_6508 1",
+      "section": null,
       "page": "Archive",
       "id": "1580:12865",
       "type": "RECTANGLE",
@@ -2068,6 +2363,7 @@
     },
     {
       "name": "v2",
+      "section": null,
       "page": "Archive",
       "id": "1663:10366",
       "type": "TEXT",
@@ -2075,6 +2371,7 @@
     },
     {
       "name": "v3",
+      "section": null,
       "page": "Archive",
       "id": "1663:10367",
       "type": "TEXT",
@@ -2082,6 +2379,7 @@
     },
     {
       "name": "v4",
+      "section": null,
       "page": "Archive",
       "id": "1729:11598",
       "type": "TEXT",
@@ -2091,6 +2389,7 @@
   "components": [
     {
       "name": "v2 / Component / Timeline / Upcoming Rides",
+      "section": null,
       "page": "Components",
       "id": "2059:5798",
       "type": "COMPONENT",
@@ -2098,6 +2397,7 @@
     },
     {
       "name": "v2 / Component / Tab Bar",
+      "section": null,
       "page": "Components",
       "id": "1527:11928",
       "type": "COMPONENT_SET",
@@ -2106,6 +2406,7 @@
     },
     {
       "name": "v2 / Component / Tab",
+      "section": null,
       "page": "Components",
       "id": "1241:6632",
       "type": "COMPONENT_SET",
@@ -2114,6 +2415,7 @@
     },
     {
       "name": "v2 / Component / Section / Header",
+      "section": null,
       "page": "Components",
       "id": "1080:6519",
       "type": "COMPONENT",
@@ -2121,6 +2423,7 @@
     },
     {
       "name": "v2 / Component / Postcard",
+      "section": null,
       "page": "Components",
       "id": "2184:5568",
       "type": "COMPONENT_SET",
@@ -2129,6 +2432,7 @@
     },
     {
       "name": "v2 / Component / Navigation / List / Tile",
+      "section": null,
       "page": "Components",
       "id": "1512:10038",
       "type": "COMPONENT_SET",
@@ -2137,6 +2441,7 @@
     },
     {
       "name": "v2 / Component / Navigation / List / Item",
+      "section": null,
       "page": "Components",
       "id": "1512:9660",
       "type": "COMPONENT_SET",
@@ -2145,6 +2450,7 @@
     },
     {
       "name": "v2 / Component / Navigation / List",
+      "section": null,
       "page": "Components",
       "id": "1512:9718",
       "type": "COMPONENT",
@@ -2152,6 +2458,7 @@
     },
     {
       "name": "v2 / Component / Navigation / Bar / Tile",
+      "section": null,
       "page": "Components",
       "id": "1883:15581",
       "type": "COMPONENT_SET",
@@ -2160,6 +2467,7 @@
     },
     {
       "name": "v2 / Component / Navigation / Bar",
+      "section": null,
       "page": "Components",
       "id": "1030:5935",
       "type": "COMPONENT",
@@ -2167,6 +2475,7 @@
     },
     {
       "name": "v2 / Component / Location",
+      "section": null,
       "page": "Components",
       "id": "1883:15583",
       "type": "COMPONENT_SET",
@@ -2175,6 +2484,7 @@
     },
     {
       "name": "v2 / Component / List / User",
+      "section": null,
       "page": "Components",
       "id": "1951:10940",
       "type": "COMPONENT_SET",
@@ -2183,6 +2493,7 @@
     },
     {
       "name": "v2 / Component / List / Ride",
+      "section": null,
       "page": "Components",
       "id": "1908:3102",
       "type": "COMPONENT_SET",
@@ -2191,6 +2502,7 @@
     },
     {
       "name": "v2 / Component / List / Ride",
+      "section": null,
       "page": "Components",
       "id": "1527:12095",
       "type": "COMPONENT",
@@ -2198,6 +2510,7 @@
     },
     {
       "name": "v2 / Component / List / Club",
+      "section": null,
       "page": "Components",
       "id": "1918:7252",
       "type": "COMPONENT_SET",
@@ -2206,6 +2519,7 @@
     },
     {
       "name": "v2 / Component / Input / Text",
+      "section": null,
       "page": "Components",
       "id": "1857:17185",
       "type": "COMPONENT_SET",
@@ -2214,6 +2528,7 @@
     },
     {
       "name": "v2 / Component / Input / Image",
+      "section": null,
       "page": "Components",
       "id": "1918:17004",
       "type": "COMPONENT_SET",
@@ -2222,6 +2537,7 @@
     },
     {
       "name": "v2 / Component / Header",
+      "section": null,
       "page": "Components",
       "id": "1951:12460",
       "type": "COMPONENT_SET",
@@ -2230,6 +2546,7 @@
     },
     {
       "name": "v2 / Component / Filter Bar / Rides",
+      "section": null,
       "page": "Components",
       "id": "1914:4791",
       "type": "COMPONENT",
@@ -2237,6 +2554,7 @@
     },
     {
       "name": "v2 / Component / Filter Bar / Postcards",
+      "section": null,
       "page": "Components",
       "id": "1914:6241",
       "type": "COMPONENT",
@@ -2244,6 +2562,7 @@
     },
     {
       "name": "v2 / Component / Filter Bar / Item",
+      "section": null,
       "page": "Components",
       "id": "1914:4476",
       "type": "COMPONENT_SET",
@@ -2252,6 +2571,7 @@
     },
     {
       "name": "v2 / Component / Counter",
+      "section": null,
       "page": "Components",
       "id": "1918:8056",
       "type": "COMPONENT_SET",
@@ -2260,6 +2580,7 @@
     },
     {
       "name": "v2 / Component / Notification",
+      "section": null,
       "page": "Components",
       "id": "2370:7297",
       "type": "COMPONENT",
@@ -2267,6 +2588,7 @@
     },
     {
       "name": "v2 / Component / Context Menu / Template",
+      "section": null,
       "page": "Components",
       "id": "1967:10831",
       "type": "COMPONENT",
@@ -2274,6 +2596,7 @@
     },
     {
       "name": "v2 / Component / Context Menu / Item",
+      "section": null,
       "page": "Components",
       "id": "1967:10697",
       "type": "COMPONENT_SET",
@@ -2282,6 +2605,7 @@
     },
     {
       "name": "v2 / Component / Collection / Ride",
+      "section": null,
       "page": "Components",
       "id": "2059:5732",
       "type": "COMPONENT_SET",
@@ -2290,6 +2614,7 @@
     },
     {
       "name": "v2 / Component / Button Group",
+      "section": null,
       "page": "Components",
       "id": "1111:6793",
       "type": "COMPONENT_SET",
@@ -2298,6 +2623,7 @@
     },
     {
       "name": "v2 / Component / Button / Regular / Secondary",
+      "section": null,
       "page": "Components",
       "id": "1857:17647",
       "type": "COMPONENT_SET",
@@ -2306,6 +2632,7 @@
     },
     {
       "name": "v2 / Component / Button / Regular / Primary",
+      "section": null,
       "page": "Components",
       "id": "1857:17617",
       "type": "COMPONENT_SET",
@@ -2314,6 +2641,7 @@
     },
     {
       "name": "v2 / Component / Button / Regular / Warning",
+      "section": null,
       "page": "Components",
       "id": "2311:6430",
       "type": "COMPONENT_SET",
@@ -2322,6 +2650,7 @@
     },
     {
       "name": "v2 / Component / Button / Postcard Action",
+      "section": null,
       "page": "Components",
       "id": "2184:6020",
       "type": "COMPONENT_SET",
@@ -2330,6 +2659,7 @@
     },
     {
       "name": "v2 / Component / Button / Link / Secondary",
+      "section": null,
       "page": "Components",
       "id": "1883:10077",
       "type": "COMPONENT_SET",
@@ -2338,6 +2668,7 @@
     },
     {
       "name": "v2 / Component / Button / Link / Primary",
+      "section": null,
       "page": "Components",
       "id": "1857:18511",
       "type": "COMPONENT_SET",
@@ -2346,6 +2677,7 @@
     },
     {
       "name": "v2 / Component / Button / Icon",
+      "section": null,
       "page": "Components",
       "id": "1883:10123",
       "type": "COMPONENT_SET",
@@ -2354,6 +2686,7 @@
     },
     {
       "name": "v2 / Component / Avatar",
+      "section": null,
       "page": "Components",
       "id": "2023:8900",
       "type": "COMPONENT_SET",
@@ -2362,6 +2695,7 @@
     },
     {
       "name": "v2 / Component / App Background",
+      "section": null,
       "page": "Components",
       "id": "2209:5444",
       "type": "COMPONENT_SET",
@@ -2370,6 +2704,7 @@
     },
     {
       "name": "Element / Icon / Wrench",
+      "section": null,
       "page": "Components",
       "id": "1508:8475",
       "type": "COMPONENT",
@@ -2377,6 +2712,7 @@
     },
     {
       "name": "Element / Icon / Store",
+      "section": null,
       "page": "Components",
       "id": "1508:8476",
       "type": "COMPONENT",
@@ -2384,6 +2720,7 @@
     },
     {
       "name": "Element / Icon / Share",
+      "section": null,
       "page": "Components",
       "id": "1241:6355",
       "type": "COMPONENT",
@@ -2391,6 +2728,7 @@
     },
     {
       "name": "Element / Icon / Search",
+      "section": null,
       "page": "Components",
       "id": "318:4536",
       "type": "COMPONENT",
@@ -2398,6 +2736,7 @@
     },
     {
       "name": "Element / Icon / Profile",
+      "section": null,
       "page": "Components",
       "id": "1080:6123",
       "type": "COMPONENT",
@@ -2405,6 +2744,7 @@
     },
     {
       "name": "Element / Icon / Plus Circle",
+      "section": null,
       "page": "Components",
       "id": "1786:10097",
       "type": "COMPONENT",
@@ -2412,6 +2752,7 @@
     },
     {
       "name": "Element / Icon / Plus",
+      "section": null,
       "page": "Components",
       "id": "1786:10098",
       "type": "COMPONENT",
@@ -2419,6 +2760,7 @@
     },
     {
       "name": "Element / Icon / Paper Plane",
+      "section": null,
       "page": "Components",
       "id": "1606:15629",
       "type": "COMPONENT",
@@ -2426,6 +2768,7 @@
     },
     {
       "name": "Element / Icon / Options",
+      "section": null,
       "page": "Components",
       "id": "241:7017",
       "type": "COMPONENT",
@@ -2433,6 +2776,7 @@
     },
     {
       "name": "Element / Icon / Menu",
+      "section": null,
       "page": "Components",
       "id": "1030:6137",
       "type": "COMPONENT",
@@ -2440,6 +2784,7 @@
     },
     {
       "name": "Element / Icon / Mailbox",
+      "section": null,
       "page": "Components",
       "id": "1629:17900",
       "type": "COMPONENT",
@@ -2447,6 +2792,7 @@
     },
     {
       "name": "Element / Icon / Log Out",
+      "section": null,
       "page": "Components",
       "id": "1508:8602",
       "type": "COMPONENT",
@@ -2454,6 +2800,7 @@
     },
     {
       "name": "Element / Icon / Lock",
+      "section": null,
       "page": "Components",
       "id": "1763:18428",
       "type": "COMPONENT",
@@ -2461,6 +2808,7 @@
     },
     {
       "name": "Element / Icon / Location Outline",
+      "section": null,
       "page": "Components",
       "id": "318:4717",
       "type": "COMPONENT",
@@ -2468,6 +2816,7 @@
     },
     {
       "name": "Element / Icon / Location Filled",
+      "section": null,
       "page": "Components",
       "id": "1080:6666",
       "type": "COMPONENT",
@@ -2475,13 +2824,15 @@
     },
     {
       "name": "Element / Icon / Image",
+      "section": null,
       "page": "Components",
       "id": "321:3360",
       "type": "COMPONENT",
-      "file": "components/element-icon-image-2.json"
+      "file": "components/element-icon-image.json"
     },
     {
       "name": "Element / Icon / Home",
+      "section": null,
       "page": "Components",
       "id": "1030:6075",
       "type": "COMPONENT",
@@ -2489,6 +2840,7 @@
     },
     {
       "name": "Element / Icon / Heart Outline",
+      "section": null,
       "page": "Components",
       "id": "1606:15631",
       "type": "COMPONENT",
@@ -2496,6 +2848,7 @@
     },
     {
       "name": "Element / Icon / Heart Filled",
+      "section": null,
       "page": "Components",
       "id": "1739:13064",
       "type": "COMPONENT",
@@ -2503,6 +2856,7 @@
     },
     {
       "name": "Element / Icon / Globe",
+      "section": null,
       "page": "Components",
       "id": "1763:18431",
       "type": "COMPONENT",
@@ -2510,6 +2864,7 @@
     },
     {
       "name": "Element / Icon / Garage",
+      "section": null,
       "page": "Components",
       "id": "1580:10156",
       "type": "COMPONENT",
@@ -2517,6 +2872,7 @@
     },
     {
       "name": "Element / Icon / Edit",
+      "section": null,
       "page": "Components",
       "id": "1303:10651",
       "type": "COMPONENT",
@@ -2524,6 +2880,7 @@
     },
     {
       "name": "Element / Icon / Delete",
+      "section": null,
       "page": "Components",
       "id": "318:4702",
       "type": "COMPONENT",
@@ -2531,6 +2888,7 @@
     },
     {
       "name": "Element / Icon / Coordinates",
+      "section": null,
       "page": "Components",
       "id": "339:1732",
       "type": "COMPONENT",
@@ -2538,6 +2896,7 @@
     },
     {
       "name": "Element / Icon / Clubs",
+      "section": null,
       "page": "Components",
       "id": "1080:5959",
       "type": "COMPONENT",
@@ -2545,6 +2904,7 @@
     },
     {
       "name": "Element / Icon / Close",
+      "section": null,
       "page": "Components",
       "id": "371:4992",
       "type": "COMPONENT",
@@ -2552,6 +2912,7 @@
     },
     {
       "name": "Element / Icon / Clock",
+      "section": null,
       "page": "Components",
       "id": "2226:11258",
       "type": "COMPONENT",
@@ -2559,6 +2920,7 @@
     },
     {
       "name": "Element / Icon / Chevron Right",
+      "section": null,
       "page": "Components",
       "id": "273:3790",
       "type": "COMPONENT",
@@ -2566,6 +2928,7 @@
     },
     {
       "name": "Element / Icon / Chevron Down",
+      "section": null,
       "page": "Components",
       "id": "1951:11732",
       "type": "COMPONENT",
@@ -2573,6 +2936,7 @@
     },
     {
       "name": "Element / Icon / Chat Bubble",
+      "section": null,
       "page": "Components",
       "id": "1606:15630",
       "type": "COMPONENT",
@@ -2580,6 +2944,7 @@
     },
     {
       "name": "Element / Icon / Calendar",
+      "section": null,
       "page": "Components",
       "id": "1030:6130",
       "type": "COMPONENT",
@@ -2587,6 +2952,7 @@
     },
     {
       "name": "Element / Icon / Bike",
+      "section": null,
       "page": "Components",
       "id": "1508:8477",
       "type": "COMPONENT",
@@ -2594,6 +2960,7 @@
     },
     {
       "name": "Element / Icon / Avatar",
+      "section": null,
       "page": "Components",
       "id": "367:5156",
       "type": "COMPONENT",
@@ -2601,6 +2968,7 @@
     },
     {
       "name": "Element / Icon / Arrow Up",
+      "section": null,
       "page": "Components",
       "id": "1663:11539",
       "type": "COMPONENT",
@@ -2608,6 +2976,7 @@
     },
     {
       "name": "Element / Icon / Arrow Right",
+      "section": null,
       "page": "Components",
       "id": "416:4202",
       "type": "COMPONENT",
@@ -2615,6 +2984,7 @@
     },
     {
       "name": "Element / Icon / Arrow Left",
+      "section": null,
       "page": "Components",
       "id": "339:1724",
       "type": "COMPONENT",
@@ -2622,6 +2992,7 @@
     },
     {
       "name": "Element / Icon / Check",
+      "section": null,
       "page": "Components",
       "id": "2483:7559",
       "type": "COMPONENT",
@@ -2629,6 +3000,7 @@
     },
     {
       "name": "Element / Icon / Tilde",
+      "section": null,
       "page": "Components",
       "id": "2483:7560",
       "type": "COMPONENT",
@@ -2636,6 +3008,7 @@
     },
     {
       "name": "Element / Type Indicator",
+      "section": null,
       "page": "Components",
       "id": "318:1088",
       "type": "COMPONENT",
@@ -2643,6 +3016,7 @@
     },
     {
       "name": "Element / Flag",
+      "section": null,
       "page": "Components",
       "id": "318:5166",
       "type": "COMPONENT_SET",
@@ -2651,6 +3025,7 @@
     },
     {
       "name": "Content / Ride Details / Riders",
+      "section": null,
       "page": "Components",
       "id": "1303:8389",
       "type": "COMPONENT",
@@ -2658,6 +3033,7 @@
     },
     {
       "name": "Content / Ride Details / Photos",
+      "section": null,
       "page": "Components",
       "id": "1303:8165",
       "type": "COMPONENT",
@@ -2665,6 +3041,7 @@
     },
     {
       "name": "Content / Ride Details / Overview",
+      "section": null,
       "page": "Components",
       "id": "1303:8667",
       "type": "COMPONENT",
@@ -2672,6 +3049,7 @@
     },
     {
       "name": "Content / Ride Details / Join Ride Selector",
+      "section": null,
       "page": "Components",
       "id": "1303:9425",
       "type": "COMPONENT",
@@ -2679,6 +3057,7 @@
     },
     {
       "name": "Content / Ride Details / Header",
+      "section": null,
       "page": "Components",
       "id": "1303:9638",
       "type": "COMPONENT_SET",
@@ -2687,6 +3066,7 @@
     },
     {
       "name": "Content / Ride Details / About",
+      "section": null,
       "page": "Components",
       "id": "1303:8411",
       "type": "COMPONENT",
@@ -2694,6 +3074,7 @@
     },
     {
       "name": "Component / Section / Motorcycle",
+      "section": null,
       "page": "Components",
       "id": "318:1562",
       "type": "COMPONENT",
@@ -2701,6 +3082,7 @@
     },
     {
       "name": "Component / Section / Header",
+      "section": null,
       "page": "Components",
       "id": "318:1458",
       "type": "COMPONENT",
@@ -2708,6 +3090,7 @@
     },
     {
       "name": "Component / Section / Gear",
+      "section": null,
       "page": "Components",
       "id": "318:1675",
       "type": "COMPONENT",
@@ -2715,6 +3098,7 @@
     },
     {
       "name": "Component / Search Results / User",
+      "section": null,
       "page": "Components",
       "id": "318:5194",
       "type": "COMPONENT_SET",
@@ -2723,6 +3107,7 @@
     },
     {
       "name": "Component / Search Results / Location",
+      "section": null,
       "page": "Components",
       "id": "318:4731",
       "type": "COMPONENT",
@@ -2730,6 +3115,7 @@
     },
     {
       "name": "Component / Search Results / Country",
+      "section": null,
       "page": "Components",
       "id": "318:4732",
       "type": "COMPONENT",
@@ -2737,6 +3123,7 @@
     },
     {
       "name": "Component / Navigation / Bar / Tile",
+      "section": null,
       "page": "Components",
       "id": "241:7428",
       "type": "COMPONENT_SET",
@@ -2745,6 +3132,7 @@
     },
     {
       "name": "Component / Navigation / Bar",
+      "section": null,
       "page": "Components",
       "id": "241:7332",
       "type": "COMPONENT",
@@ -2752,6 +3140,7 @@
     },
     {
       "name": "Component / List / User",
+      "section": null,
       "page": "Components",
       "id": "339:1593",
       "type": "COMPONENT_SET",
@@ -2760,6 +3149,7 @@
     },
     {
       "name": "Component / List / Ride",
+      "section": null,
       "page": "Components",
       "id": "339:2737",
       "type": "COMPONENT",
@@ -2767,6 +3157,7 @@
     },
     {
       "name": "Component / List / Club",
+      "section": null,
       "page": "Components",
       "id": "367:5200",
       "type": "COMPONENT",
@@ -2774,6 +3165,7 @@
     },
     {
       "name": "Component / Input / User",
+      "section": null,
       "page": "Components",
       "id": "321:1787",
       "type": "COMPONENT_SET",
@@ -2782,6 +3174,7 @@
     },
     {
       "name": "Component / Input / Unit",
+      "section": null,
       "page": "Components",
       "id": "318:1197",
       "type": "COMPONENT_SET",
@@ -2790,6 +3183,7 @@
     },
     {
       "name": "Component / Input / Text Field",
+      "section": null,
       "page": "Components",
       "id": "318:1028",
       "type": "COMPONENT_SET",
@@ -2798,6 +3192,7 @@
     },
     {
       "name": "Component / Input / Text Area",
+      "section": null,
       "page": "Components",
       "id": "339:3368",
       "type": "COMPONENT_SET",
@@ -2806,6 +3201,7 @@
     },
     {
       "name": "Component / Input / Location",
+      "section": null,
       "page": "Components",
       "id": "348:2078",
       "type": "COMPONENT_SET",
@@ -2814,6 +3210,7 @@
     },
     {
       "name": "Component / Input / Image",
+      "section": null,
       "page": "Components",
       "id": "339:1858",
       "type": "COMPONENT_SET",
@@ -2822,6 +3219,7 @@
     },
     {
       "name": "Component / Input / Date + Time",
+      "section": null,
       "page": "Components",
       "id": "321:1283",
       "type": "COMPONENT_SET",
@@ -2830,6 +3228,7 @@
     },
     {
       "name": "Component / Foldout / Item",
+      "section": null,
       "page": "Components",
       "id": "270:1435",
       "type": "COMPONENT_SET",
@@ -2838,6 +3237,7 @@
     },
     {
       "name": "Component / Foldout / Background",
+      "section": null,
       "page": "Components",
       "id": "270:1436",
       "type": "COMPONENT",
@@ -2845,6 +3245,7 @@
     },
     {
       "name": "Component / Card / Ride",
+      "section": null,
       "page": "Components",
       "id": "408:3473",
       "type": "COMPONENT_SET",
@@ -2853,6 +3254,7 @@
     },
     {
       "name": "Component / Card / Club",
+      "section": null,
       "page": "Components",
       "id": "408:4109",
       "type": "COMPONENT_SET",
@@ -2861,6 +3263,7 @@
     },
     {
       "name": "Component / Toggle",
+      "section": null,
       "page": "Components",
       "id": "321:1647",
       "type": "COMPONENT_SET",
@@ -2869,6 +3272,7 @@
     },
     {
       "name": "Component / Time Selector",
+      "section": null,
       "page": "Components",
       "id": "321:1440",
       "type": "COMPONENT",
@@ -2876,6 +3280,7 @@
     },
     {
       "name": "Component / Search Card",
+      "section": null,
       "page": "Components",
       "id": "318:4527",
       "type": "COMPONENT_SET",
@@ -2884,6 +3289,7 @@
     },
     {
       "name": "Component / Search",
+      "section": null,
       "page": "Components",
       "id": "259:7641",
       "type": "COMPONENT",
@@ -2891,6 +3297,7 @@
     },
     {
       "name": "Component / Overlay",
+      "section": null,
       "page": "Components",
       "id": "270:1376",
       "type": "COMPONENT",
@@ -2898,6 +3305,7 @@
     },
     {
       "name": "Component / Location",
+      "section": null,
       "page": "Components",
       "id": "339:1751",
       "type": "COMPONENT_SET",
@@ -2906,6 +3314,7 @@
     },
     {
       "name": "Component / Header",
+      "section": null,
       "page": "Components",
       "id": "318:975",
       "type": "COMPONENT_SET",
@@ -2914,6 +3323,7 @@
     },
     {
       "name": "Component / Date Selector",
+      "section": null,
       "page": "Components",
       "id": "321:1567",
       "type": "COMPONENT",
@@ -2921,6 +3331,7 @@
     },
     {
       "name": "Component / Checkbox",
+      "section": null,
       "page": "Components",
       "id": "318:4705",
       "type": "COMPONENT_SET",
@@ -2929,6 +3340,7 @@
     },
     {
       "name": "Component / Button",
+      "section": null,
       "page": "Components",
       "id": "241:6954",
       "type": "COMPONENT_SET",
@@ -2937,6 +3349,7 @@
     },
     {
       "name": "Component / App Background",
+      "section": null,
       "page": "Components",
       "id": "1080:6528",
       "type": "COMPONENT",
@@ -2944,6 +3357,7 @@
     },
     {
       "name": "Annotation / Status / Todo",
+      "section": null,
       "page": "Components",
       "id": "50:848",
       "type": "COMPONENT",
@@ -2951,6 +3365,7 @@
     },
     {
       "name": "Annotation / Status / On hold",
+      "section": null,
       "page": "Components",
       "id": "50:844",
       "type": "COMPONENT",
@@ -2958,6 +3373,7 @@
     },
     {
       "name": "Annotation / Status / In review",
+      "section": null,
       "page": "Components",
       "id": "50:846",
       "type": "COMPONENT",
@@ -2965,6 +3381,7 @@
     },
     {
       "name": "Annotation / Status / In progress",
+      "section": null,
       "page": "Components",
       "id": "50:847",
       "type": "COMPONENT",
@@ -2972,6 +3389,7 @@
     },
     {
       "name": "Annotation / Status / Done",
+      "section": null,
       "page": "Components",
       "id": "50:845",
       "type": "COMPONENT",
@@ -2979,20 +3397,23 @@
     },
     {
       "name": "Annotation / Note",
+      "section": null,
       "page": "Components",
       "id": "1951:12880",
       "type": "COMPONENT",
-      "file": "components/annotation-note-8.json"
+      "file": "components/annotation-note.json"
     },
     {
       "name": "Annotation / Epic Cover",
+      "section": null,
       "page": "Components",
       "id": "50:565",
       "type": "COMPONENT",
-      "file": "components/annotation-epic-cover-32.json"
+      "file": "components/annotation-epic-cover.json"
     },
     {
       "name": "Organism / Panel / Create Account",
+      "section": null,
       "page": "Components",
       "id": "371:5289",
       "type": "COMPONENT",
@@ -3000,6 +3421,7 @@
     },
     {
       "name": "Organism / Foldout / Profile Options",
+      "section": null,
       "page": "Components",
       "id": "270:1490",
       "type": "COMPONENT",
@@ -3007,6 +3429,7 @@
     },
     {
       "name": "Component / Time Selector / Item",
+      "section": null,
       "page": "Components",
       "id": "321:1410",
       "type": "COMPONENT_SET",
@@ -3015,6 +3438,7 @@
     },
     {
       "name": "Component / iOS / Keyboard",
+      "section": null,
       "page": "Components",
       "id": "146:916",
       "type": "COMPONENT",
@@ -3022,6 +3446,7 @@
     },
     {
       "name": "Component / Image Grid / Horizontal",
+      "section": null,
       "page": "Components",
       "id": "339:1829",
       "type": "COMPONENT",
@@ -3029,6 +3454,7 @@
     },
     {
       "name": "Component / Date Selector / Item",
+      "section": null,
       "page": "Components",
       "id": "321:1472",
       "type": "COMPONENT_SET",
@@ -3037,6 +3463,7 @@
     },
     {
       "name": "Component / Button Group / Button",
+      "section": null,
       "page": "Components",
       "id": "1111:6855",
       "type": "COMPONENT_SET",
@@ -3045,6 +3472,7 @@
     },
     {
       "name": "Component",
+      "section": null,
       "page": "Components",
       "id": "321:1653",
       "type": "COMPONENT_SET",
@@ -3053,6 +3481,7 @@
     },
     {
       "name": "Element / Icon / Block Account",
+      "section": null,
       "page": "Components",
       "id": "2303:5333",
       "type": "COMPONENT",
@@ -3060,6 +3489,7 @@
     },
     {
       "name": "Element / Icon / Report",
+      "section": null,
       "page": "Components",
       "id": "2303:5330",
       "type": "COMPONENT",
@@ -3067,6 +3497,7 @@
     },
     {
       "name": "Element / Icon / Hide",
+      "section": null,
       "page": "Components",
       "id": "2303:5329",
       "type": "COMPONENT",
@@ -3074,6 +3505,7 @@
     },
     {
       "name": "Content / Context Menu / Postcard",
+      "section": null,
       "page": "Components",
       "id": "2303:5963",
       "type": "COMPONENT",
@@ -3081,6 +3513,7 @@
     },
     {
       "name": "Content / Context Menu / Chat",
+      "section": null,
       "page": "Components",
       "id": "2370:7462",
       "type": "COMPONENT",
@@ -3088,6 +3521,7 @@
     },
     {
       "name": "Content / Context Menu / Account",
+      "section": null,
       "page": "Components",
       "id": "2303:8261",
       "type": "COMPONENT",
@@ -3095,6 +3529,7 @@
     },
     {
       "name": "Element / Icon / Trash",
+      "section": null,
       "page": "Components",
       "id": "2303:9358",
       "type": "COMPONENT",
@@ -3102,6 +3537,7 @@
     },
     {
       "name": "Element / Icon / Preferences",
+      "section": null,
       "page": "Components",
       "id": "2311:711",
       "type": "COMPONENT",
@@ -3109,6 +3545,7 @@
     },
     {
       "name": "Element / Icon / Mute",
+      "section": null,
       "page": "Components",
       "id": "2370:8656",
       "type": "COMPONENT",
@@ -3116,6 +3553,7 @@
     },
     {
       "name": "Element / Icon / Pin",
+      "section": null,
       "page": "Components",
       "id": "2370:8655",
       "type": "COMPONENT",

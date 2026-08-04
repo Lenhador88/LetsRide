@@ -423,11 +423,15 @@ touch the network, so none of them can be rate limited:
 
 ```bash
 npm run figma -- ls [pattern]        # every frame and component
-npm run figma -- tree "Home - Postcards - All new"   # structure, sizes, tokens, rotation
+npm run figma -- tree "View all new postcards / Home - Postcards - All new"
 npm run figma -- text "v2 / Component / Postcard"    # every string, with its type token
 npm run figma -- tokens Grey         # token tables
 npm run figma -- icons               # the exported icon set
 ```
+
+**Screen names repeat across flows** — six frames are called `Home - Postcards - All new`,
+one per flow that shows the home screen. Qualify with the flow, as above; an ambiguous name
+prints every match with its flow and node id, so the next command is copy-pasteable.
 
 **`tree` and `text` hide layers Figma has toggled off** — a component instance carries every
 variant slot it does not use, so the Home header still *contains* the back button it hides.

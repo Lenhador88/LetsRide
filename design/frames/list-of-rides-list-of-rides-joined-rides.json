@@ -1,0 +1,3707 @@
+{
+  "page": "Archive",
+  "section": "🟠 List of rides",
+  "id": "1527:10447",
+  "name": "List of rides - Joined rides",
+  "type": "FRAME",
+  "box": {
+    "x": -12178,
+    "y": 19072,
+    "w": 390,
+    "h": 1360
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#1A1A1A"
+    }
+  ],
+  "styles": {
+    "fills": "Grey (OLD)/10",
+    "fill": "Grey (OLD)/10"
+  },
+  "children": [
+    {
+      "id": "1883:16538",
+      "name": "v2 / Component / App Background",
+      "type": "FRAME",
+      "box": {
+        "x": -12178,
+        "y": 19072,
+        "w": 390,
+        "h": 1360
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "fill": "Grey/5"
+      }
+    },
+    {
+      "id": "1527:10449",
+      "name": "Main Container",
+      "type": "FRAME",
+      "box": {
+        "x": -12178,
+        "y": 19168,
+        "w": 390,
+        "h": 1176
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1527:10450",
+          "name": "Items",
+          "type": "FRAME",
+          "box": {
+            "x": -12178,
+            "y": 19168,
+            "w": 390,
+            "h": 1176
+          },
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1527:11963",
+              "name": "Content",
+              "type": "FRAME",
+              "box": {
+                "x": -12178,
+                "y": 19168,
+                "w": 390,
+                "h": 988
+              },
+              "layoutMode": "VERTICAL",
+              "layoutWrap": "NO_WRAP",
+              "paddingBottom": 24,
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "clipsContent": false,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1527:11964",
+                  "name": "Your rides",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -12178,
+                    "y": 19168,
+                    "w": 390,
+                    "h": 282
+                  },
+                  "layoutMode": "VERTICAL",
+                  "layoutWrap": "NO_WRAP",
+                  "counterAxisAlignItems": "CENTER",
+                  "layoutSizingHorizontal": "HUG",
+                  "layoutSizingVertical": "HUG",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "clipsContent": false,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:19689",
+                      "name": "v2 / Component / Section / Header",
+                      "type": "FRAME",
+                      "box": {
+                        "x": -12178,
+                        "y": 19168,
+                        "w": 390,
+                        "h": 84
+                      },
+                      "layoutMode": "VERTICAL",
+                      "layoutWrap": "NO_WRAP",
+                      "paddingLeft": 24,
+                      "paddingRight": 24,
+                      "paddingBottom": 12,
+                      "counterAxisSizingMode": "FIXED",
+                      "layoutSizingHorizontal": "FIXED",
+                      "layoutSizingVertical": "HUG",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "clipsContent": false,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#F2ECE6"
+                        }
+                      ],
+                      "styles": {
+                        "fills": "Grey/5",
+                        "fill": "Grey/5"
+                      },
+                      "children": [
+                        {
+                          "id": "1883:19690",
+                          "name": "Spacer",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12154,
+                            "y": 19168,
+                            "w": 342,
+                            "h": 40
+                          },
+                          "layoutSizingHorizontal": "FILL",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "STRETCH",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE"
+                        },
+                        {
+                          "id": "1883:19691",
+                          "name": "Content",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12154,
+                            "y": 19208,
+                            "w": 342,
+                            "h": 32
+                          },
+                          "layoutSizingHorizontal": "FILL",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "STRETCH",
+                          "layoutGrow": 0,
+                          "clipsContent": false,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "children": [
+                            {
+                              "id": "1883:19692",
+                              "name": "Text",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12154,
+                                "y": 19210,
+                                "w": 296,
+                                "h": 30
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 4,
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:19693",
+                                  "name": "Title",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12154,
+                                    "y": 19210,
+                                    "w": 102,
+                                    "h": 30
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#1A1A1A"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/10",
+                                    "text": "Poppins/20/Semibold"
+                                  },
+                                  "characters": "Your rides",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 20,
+                                    "fontWeight": 600,
+                                    "lineHeightPx": 30,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:19694",
+                                  "name": "Meta",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12107,
+                                    "y": 19217,
+                                    "w": 36,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "visible": false,
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "Meta",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20332",
+                              "name": "Component / Button",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -11892,
+                                "y": 19208,
+                                "w": 80,
+                                "h": 32
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "paddingTop": 6,
+                              "paddingBottom": 6,
+                              "layoutSizingHorizontal": "HUG",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "cornerRadius": 4,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20333",
+                                  "name": "Label",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11892,
+                                    "y": 19214,
+                                    "w": 80,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#00A66F"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Accent (OLD)/110",
+                                    "text": "Poppins/14/Semibold"
+                                  },
+                                  "characters": "Create ride",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 600,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1527:12062",
+                      "name": "List",
+                      "type": "FRAME",
+                      "box": {
+                        "x": -12162,
+                        "y": 19252,
+                        "w": 358,
+                        "h": 198
+                      },
+                      "layoutMode": "VERTICAL",
+                      "layoutWrap": "NO_WRAP",
+                      "itemSpacing": 2,
+                      "counterAxisSizingMode": "FIXED",
+                      "layoutSizingHorizontal": "FIXED",
+                      "layoutSizingVertical": "HUG",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "clipsContent": false,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "children": [
+                        {
+                          "id": "1883:20189",
+                          "name": "v2 / Component / List / Ride",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12162,
+                            "y": 19252,
+                            "w": 358,
+                            "h": 98
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "cornerRadius": 8,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#F2F2F2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "id": "1883:20190",
+                              "name": "Location + Km",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19318,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "primaryAxisAlignItems": "MAX",
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20191",
+                                  "name": "City",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19318,
+                                    "w": 221,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FILL",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Regular"
+                                  },
+                                  "characters": "Leiderdorp",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20192",
+                                  "name": "100km",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11861,
+                                    "y": 19320,
+                                    "w": 41,
+                                    "h": 18
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/12/Regular"
+                                  },
+                                  "characters": "280km",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 12,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 18,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20193",
+                              "name": "Date + Time",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19294,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "counterAxisAlignItems": "CENTER",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20194",
+                                  "name": "SAT, 12 NOV",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19294,
+                                    "w": 81,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "SAT, 12 NOV",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20195",
+                                  "name": "Divider",
+                                  "type": "RECTANGLE",
+                                  "box": {
+                                    "x": -11993,
+                                    "y": 19303,
+                                    "w": 2,
+                                    "h": 2
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "cornerRadius": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "INSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20196",
+                                  "name": "10:00 - 15:00",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11983,
+                                    "y": 19294,
+                                    "w": 86,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "10:00 - 15:00",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20197",
+                              "name": "Title",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12082,
+                                "y": 19264,
+                                "w": 262,
+                                "h": 26
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#1A1A1A"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/10",
+                                "text": "Poppins/18/Semibold"
+                              },
+                              "characters": "Monthly Holland Ride",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 18,
+                                "fontWeight": 600,
+                                "lineHeightPx": 26,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            },
+                            {
+                              "id": "1883:20198",
+                              "name": "Image",
+                              "type": "RECTANGLE",
+                              "box": {
+                                "x": -12162,
+                                "y": 19252,
+                                "w": 64,
+                                "h": 98
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "eae313a48883a46e7a2a60ee806e73a8052191be",
+                                  "scaleMode": "FILL"
+                                },
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "8948923cc017c6d9ff7712659253327df5f7bdb1",
+                                  "scaleMode": "STRETCH"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1883:20199",
+                          "name": "v2 / Component / List / Ride",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12162,
+                            "y": 19352,
+                            "w": 358,
+                            "h": 98
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "cornerRadius": 8,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#F2F2F2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "id": "1883:20200",
+                              "name": "Location + Km",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19418,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "primaryAxisAlignItems": "MAX",
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20201",
+                                  "name": "City",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19418,
+                                    "w": 221,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FILL",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Regular"
+                                  },
+                                  "characters": "Hoofddorp",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20202",
+                                  "name": "100km",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11861,
+                                    "y": 19420,
+                                    "w": 41,
+                                    "h": 18
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/12/Regular"
+                                  },
+                                  "characters": "350km",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 12,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 18,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20203",
+                              "name": "Date + Time",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19394,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "counterAxisAlignItems": "CENTER",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20204",
+                                  "name": "SAT, 12 NOV",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19394,
+                                    "w": 83,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "SUN, 13 NOV",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20205",
+                                  "name": "Divider",
+                                  "type": "RECTANGLE",
+                                  "box": {
+                                    "x": -11991,
+                                    "y": 19403,
+                                    "w": 2,
+                                    "h": 2
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "cornerRadius": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "INSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20206",
+                                  "name": "10:00 - 15:00",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11981,
+                                    "y": 19394,
+                                    "w": 85,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "12:00 - 19:00",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20207",
+                              "name": "Title",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12082,
+                                "y": 19364,
+                                "w": 262,
+                                "h": 26
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#1A1A1A"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/10",
+                                "text": "Poppins/18/Semibold"
+                              },
+                              "characters": "Bikerfest Weekly",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 18,
+                                "fontWeight": 600,
+                                "lineHeightPx": 26,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            },
+                            {
+                              "id": "1883:20208",
+                              "name": "Image",
+                              "type": "RECTANGLE",
+                              "box": {
+                                "x": -12162,
+                                "y": 19352,
+                                "w": 64,
+                                "h": 98
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#000000"
+                                },
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "c33af4ba2ab5a82219055cfe7041c10177ddfb3f",
+                                  "scaleMode": "FIT"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "1527:11970",
+                  "name": "Explore",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -12178,
+                    "y": 19450,
+                    "w": 390,
+                    "h": 682
+                  },
+                  "layoutMode": "VERTICAL",
+                  "layoutWrap": "NO_WRAP",
+                  "counterAxisAlignItems": "CENTER",
+                  "layoutSizingHorizontal": "HUG",
+                  "layoutSizingVertical": "HUG",
+                  "layoutAlign": "INHERIT",
+                  "layoutGrow": 0,
+                  "clipsContent": false,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:19938",
+                      "name": "v2 / Component / Section / Header",
+                      "type": "FRAME",
+                      "box": {
+                        "x": -12178,
+                        "y": 19450,
+                        "w": 390,
+                        "h": 84
+                      },
+                      "layoutMode": "VERTICAL",
+                      "layoutWrap": "NO_WRAP",
+                      "paddingLeft": 24,
+                      "paddingRight": 24,
+                      "paddingBottom": 12,
+                      "counterAxisSizingMode": "FIXED",
+                      "layoutSizingHorizontal": "FIXED",
+                      "layoutSizingVertical": "HUG",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "clipsContent": false,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#F2ECE6"
+                        }
+                      ],
+                      "styles": {
+                        "fills": "Grey/5",
+                        "fill": "Grey/5"
+                      },
+                      "children": [
+                        {
+                          "id": "1883:19939",
+                          "name": "Spacer",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12154,
+                            "y": 19450,
+                            "w": 342,
+                            "h": 40
+                          },
+                          "layoutSizingHorizontal": "FILL",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "STRETCH",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE"
+                        },
+                        {
+                          "id": "1883:19940",
+                          "name": "Content",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12154,
+                            "y": 19490,
+                            "w": 342,
+                            "h": 32
+                          },
+                          "layoutSizingHorizontal": "FILL",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "STRETCH",
+                          "layoutGrow": 0,
+                          "clipsContent": false,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "children": [
+                            {
+                              "id": "1883:19941",
+                              "name": "Text",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12154,
+                                "y": 19492,
+                                "w": 296,
+                                "h": 30
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 4,
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:19942",
+                                  "name": "Title",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12154,
+                                    "y": 19492,
+                                    "w": 74,
+                                    "h": 30
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#1A1A1A"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/10",
+                                    "text": "Poppins/20/Semibold"
+                                  },
+                                  "characters": "Explore",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 20,
+                                    "fontWeight": 600,
+                                    "lineHeightPx": 30,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:19943",
+                                  "name": "Meta",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12107,
+                                    "y": 19499,
+                                    "w": 36,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "visible": false,
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "Meta",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20341",
+                              "name": "Component / Button",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -11850,
+                                "y": 19490,
+                                "w": 38,
+                                "h": 32
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "paddingTop": 6,
+                              "paddingBottom": 6,
+                              "layoutSizingHorizontal": "HUG",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "cornerRadius": 4,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "visible": false,
+                              "children": [
+                                {
+                                  "id": "1883:20342",
+                                  "name": "Label",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11850,
+                                    "y": 19496,
+                                    "w": 38,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#00A66F"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Accent (OLD)/110",
+                                    "text": "Poppins/14/Semibold"
+                                  },
+                                  "characters": "Label",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 600,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1527:11972",
+                      "name": "List",
+                      "type": "FRAME",
+                      "box": {
+                        "x": -12162,
+                        "y": 19534,
+                        "w": 358,
+                        "h": 598
+                      },
+                      "layoutMode": "VERTICAL",
+                      "layoutWrap": "NO_WRAP",
+                      "itemSpacing": 2,
+                      "counterAxisSizingMode": "FIXED",
+                      "layoutSizingHorizontal": "FIXED",
+                      "layoutSizingVertical": "HUG",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "clipsContent": false,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "children": [
+                        {
+                          "id": "1883:20117",
+                          "name": "v2 / Component / List / Ride",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12162,
+                            "y": 19534,
+                            "w": 358,
+                            "h": 98
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "cornerRadius": 8,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#F2F2F2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "id": "1883:20118",
+                              "name": "Location + Km",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19600,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "primaryAxisAlignItems": "MAX",
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20119",
+                                  "name": "City",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19600,
+                                    "w": 221,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FILL",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Regular"
+                                  },
+                                  "characters": "Leiderdorp",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20120",
+                                  "name": "100km",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11861,
+                                    "y": 19602,
+                                    "w": 41,
+                                    "h": 18
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/12/Regular"
+                                  },
+                                  "characters": "280km",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 12,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 18,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20121",
+                              "name": "Date + Time",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19576,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "counterAxisAlignItems": "CENTER",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20122",
+                                  "name": "SAT, 12 NOV",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19576,
+                                    "w": 81,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "SAT, 12 NOV",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20123",
+                                  "name": "Divider",
+                                  "type": "RECTANGLE",
+                                  "box": {
+                                    "x": -11993,
+                                    "y": 19585,
+                                    "w": 2,
+                                    "h": 2
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "cornerRadius": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "INSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20124",
+                                  "name": "10:00 - 15:00",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11983,
+                                    "y": 19576,
+                                    "w": 86,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "10:00 - 15:00",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20125",
+                              "name": "Title",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12082,
+                                "y": 19546,
+                                "w": 262,
+                                "h": 26
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#1A1A1A"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/10",
+                                "text": "Poppins/18/Semibold"
+                              },
+                              "characters": "Monthly Holland Ride",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 18,
+                                "fontWeight": 600,
+                                "lineHeightPx": 26,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            },
+                            {
+                              "id": "1883:20126",
+                              "name": "Image",
+                              "type": "RECTANGLE",
+                              "box": {
+                                "x": -12162,
+                                "y": 19534,
+                                "w": 64,
+                                "h": 98
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "eae313a48883a46e7a2a60ee806e73a8052191be",
+                                  "scaleMode": "FILL"
+                                },
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "8948923cc017c6d9ff7712659253327df5f7bdb1",
+                                  "scaleMode": "STRETCH"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1883:20137",
+                          "name": "v2 / Component / List / Ride",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12162,
+                            "y": 19634,
+                            "w": 358,
+                            "h": 98
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "cornerRadius": 8,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#F2F2F2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "id": "1883:20138",
+                              "name": "Location + Km",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19700,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "primaryAxisAlignItems": "MAX",
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20139",
+                                  "name": "City",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19700,
+                                    "w": 221,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FILL",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Regular"
+                                  },
+                                  "characters": "Hoofddorp",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20140",
+                                  "name": "100km",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11861,
+                                    "y": 19702,
+                                    "w": 41,
+                                    "h": 18
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/12/Regular"
+                                  },
+                                  "characters": "350km",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 12,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 18,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20141",
+                              "name": "Date + Time",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19676,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "counterAxisAlignItems": "CENTER",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20142",
+                                  "name": "SAT, 12 NOV",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19676,
+                                    "w": 83,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "SUN, 13 NOV",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20143",
+                                  "name": "Divider",
+                                  "type": "RECTANGLE",
+                                  "box": {
+                                    "x": -11991,
+                                    "y": 19685,
+                                    "w": 2,
+                                    "h": 2
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "cornerRadius": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "INSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20144",
+                                  "name": "10:00 - 15:00",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11981,
+                                    "y": 19676,
+                                    "w": 85,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "12:00 - 19:00",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20145",
+                              "name": "Title",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12082,
+                                "y": 19646,
+                                "w": 262,
+                                "h": 26
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#1A1A1A"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/10",
+                                "text": "Poppins/18/Semibold"
+                              },
+                              "characters": "Bikerfest Weekly",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 18,
+                                "fontWeight": 600,
+                                "lineHeightPx": 26,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            },
+                            {
+                              "id": "1883:20146",
+                              "name": "Image",
+                              "type": "RECTANGLE",
+                              "box": {
+                                "x": -12162,
+                                "y": 19634,
+                                "w": 64,
+                                "h": 98
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#000000"
+                                },
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "c33af4ba2ab5a82219055cfe7041c10177ddfb3f",
+                                  "scaleMode": "FIT"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1883:20147",
+                          "name": "v2 / Component / List / Ride",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12162,
+                            "y": 19734,
+                            "w": 358,
+                            "h": 98
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "cornerRadius": 8,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#F2F2F2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "id": "1883:20148",
+                              "name": "Location + Km",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19800,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "primaryAxisAlignItems": "MAX",
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20149",
+                                  "name": "City",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19800,
+                                    "w": 221,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FILL",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Regular"
+                                  },
+                                  "characters": "Gouda",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20150",
+                                  "name": "100km",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11861,
+                                    "y": 19802,
+                                    "w": 41,
+                                    "h": 18
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/12/Regular"
+                                  },
+                                  "characters": "200km",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 12,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 18,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20151",
+                              "name": "Date + Time",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19776,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "counterAxisAlignItems": "CENTER",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20152",
+                                  "name": "SAT, 12 NOV",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19776,
+                                    "w": 75,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "FRI, 18 NOV",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20153",
+                                  "name": "Divider",
+                                  "type": "RECTANGLE",
+                                  "box": {
+                                    "x": -11999,
+                                    "y": 19785,
+                                    "w": 2,
+                                    "h": 2
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "cornerRadius": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "INSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20154",
+                                  "name": "10:00 - 15:00",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11989,
+                                    "y": 19776,
+                                    "w": 86,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "14:00 - 19:00",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20155",
+                              "name": "Title",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12082,
+                                "y": 19746,
+                                "w": 262,
+                                "h": 26
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#1A1A1A"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/10",
+                                "text": "Poppins/18/Semibold"
+                              },
+                              "characters": "Singles Ride",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 18,
+                                "fontWeight": 600,
+                                "lineHeightPx": 26,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            },
+                            {
+                              "id": "1883:20156",
+                              "name": "Image",
+                              "type": "RECTANGLE",
+                              "box": {
+                                "x": -12162,
+                                "y": 19734,
+                                "w": 64,
+                                "h": 98
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "eae313a48883a46e7a2a60ee806e73a8052191be",
+                                  "scaleMode": "FILL"
+                                },
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "8313373fed367de2a281451511ee3ab53973186f",
+                                  "scaleMode": "STRETCH"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1883:20157",
+                          "name": "v2 / Component / List / Ride",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12162,
+                            "y": 19834,
+                            "w": 358,
+                            "h": 98
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "cornerRadius": 8,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#F2F2F2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "id": "1883:20158",
+                              "name": "Location + Km",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19900,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "primaryAxisAlignItems": "MAX",
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20159",
+                                  "name": "City",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19900,
+                                    "w": 221,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FILL",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Regular"
+                                  },
+                                  "characters": "Leiderdorp",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20160",
+                                  "name": "100km",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11861,
+                                    "y": 19902,
+                                    "w": 41,
+                                    "h": 18
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/12/Regular"
+                                  },
+                                  "characters": "280km",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 12,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 18,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20161",
+                              "name": "Date + Time",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19876,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "counterAxisAlignItems": "CENTER",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20162",
+                                  "name": "SAT, 12 NOV",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19876,
+                                    "w": 81,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "SAT, 12 NOV",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20163",
+                                  "name": "Divider",
+                                  "type": "RECTANGLE",
+                                  "box": {
+                                    "x": -11993,
+                                    "y": 19885,
+                                    "w": 2,
+                                    "h": 2
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "cornerRadius": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "INSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20164",
+                                  "name": "10:00 - 15:00",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11983,
+                                    "y": 19876,
+                                    "w": 86,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "10:00 - 15:00",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20165",
+                              "name": "Title",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12082,
+                                "y": 19846,
+                                "w": 262,
+                                "h": 26
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#1A1A1A"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/10",
+                                "text": "Poppins/18/Semibold"
+                              },
+                              "characters": "Monthly Holland Ride",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 18,
+                                "fontWeight": 600,
+                                "lineHeightPx": 26,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            },
+                            {
+                              "id": "1883:20166",
+                              "name": "Image",
+                              "type": "RECTANGLE",
+                              "box": {
+                                "x": -12162,
+                                "y": 19834,
+                                "w": 64,
+                                "h": 98
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "eae313a48883a46e7a2a60ee806e73a8052191be",
+                                  "scaleMode": "FILL"
+                                },
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "8948923cc017c6d9ff7712659253327df5f7bdb1",
+                                  "scaleMode": "STRETCH"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1883:20127",
+                          "name": "v2 / Component / List / Ride",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12162,
+                            "y": 19934,
+                            "w": 358,
+                            "h": 98
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "cornerRadius": 8,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#F2F2F2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "id": "1883:20128",
+                              "name": "Location + Km",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 20000,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "primaryAxisAlignItems": "MAX",
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20129",
+                                  "name": "City",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 20000,
+                                    "w": 221,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FILL",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Regular"
+                                  },
+                                  "characters": "Hoofddorp",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20130",
+                                  "name": "100km",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11861,
+                                    "y": 20002,
+                                    "w": 41,
+                                    "h": 18
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/12/Regular"
+                                  },
+                                  "characters": "350km",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 12,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 18,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20131",
+                              "name": "Date + Time",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 19976,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "counterAxisAlignItems": "CENTER",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20132",
+                                  "name": "SAT, 12 NOV",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 19976,
+                                    "w": 83,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "SUN, 13 NOV",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20133",
+                                  "name": "Divider",
+                                  "type": "RECTANGLE",
+                                  "box": {
+                                    "x": -11991,
+                                    "y": 19985,
+                                    "w": 2,
+                                    "h": 2
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "cornerRadius": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "INSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20134",
+                                  "name": "10:00 - 15:00",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11981,
+                                    "y": 19976,
+                                    "w": 85,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "12:00 - 19:00",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20135",
+                              "name": "Title",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12082,
+                                "y": 19946,
+                                "w": 262,
+                                "h": 26
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#1A1A1A"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/10",
+                                "text": "Poppins/18/Semibold"
+                              },
+                              "characters": "Bikerfest Weekly",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 18,
+                                "fontWeight": 600,
+                                "lineHeightPx": 26,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            },
+                            {
+                              "id": "1883:20136",
+                              "name": "Image",
+                              "type": "RECTANGLE",
+                              "box": {
+                                "x": -12162,
+                                "y": 19934,
+                                "w": 64,
+                                "h": 98
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#000000"
+                                },
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "c33af4ba2ab5a82219055cfe7041c10177ddfb3f",
+                                  "scaleMode": "FIT"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "id": "1883:20167",
+                          "name": "v2 / Component / List / Ride",
+                          "type": "FRAME",
+                          "box": {
+                            "x": -12162,
+                            "y": 20034,
+                            "w": 358,
+                            "h": 98
+                          },
+                          "layoutSizingHorizontal": "FIXED",
+                          "layoutSizingVertical": "FIXED",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "clipsContent": true,
+                          "cornerRadius": 8,
+                          "strokeWeight": 1,
+                          "strokeAlign": "INSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#F2F2F2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "id": "1883:20168",
+                              "name": "Location + Km",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 20100,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "primaryAxisAlignItems": "MAX",
+                              "counterAxisAlignItems": "BASELINE",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20169",
+                                  "name": "City",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 20100,
+                                    "w": 221,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "FILL",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Regular"
+                                  },
+                                  "characters": "Gouda",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20170",
+                                  "name": "100km",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11861,
+                                    "y": 20102,
+                                    "w": 41,
+                                    "h": 18
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/12/Regular"
+                                  },
+                                  "characters": "200km",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 12,
+                                    "fontWeight": 400,
+                                    "lineHeightPx": 18,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "RIGHT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20171",
+                              "name": "Date + Time",
+                              "type": "FRAME",
+                              "box": {
+                                "x": -12082,
+                                "y": 20076,
+                                "w": 262,
+                                "h": 20
+                              },
+                              "layoutMode": "HORIZONTAL",
+                              "layoutWrap": "NO_WRAP",
+                              "itemSpacing": 8,
+                              "counterAxisAlignItems": "CENTER",
+                              "primaryAxisSizingMode": "FIXED",
+                              "layoutSizingHorizontal": "FIXED",
+                              "layoutSizingVertical": "HUG",
+                              "clipsContent": false,
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "children": [
+                                {
+                                  "id": "1883:20172",
+                                  "name": "SAT, 12 NOV",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -12082,
+                                    "y": 20076,
+                                    "w": 75,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "FRI, 18 NOV",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20173",
+                                  "name": "Divider",
+                                  "type": "RECTANGLE",
+                                  "box": {
+                                    "x": -11999,
+                                    "y": 20085,
+                                    "w": 2,
+                                    "h": 2
+                                  },
+                                  "layoutSizingHorizontal": "FIXED",
+                                  "layoutSizingVertical": "FIXED",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "cornerRadius": 1,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "INSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30"
+                                  }
+                                },
+                                {
+                                  "id": "1883:20174",
+                                  "name": "10:00 - 15:00",
+                                  "type": "TEXT",
+                                  "box": {
+                                    "x": -11989,
+                                    "y": 20076,
+                                    "w": 86,
+                                    "h": 20
+                                  },
+                                  "layoutSizingHorizontal": "HUG",
+                                  "layoutSizingVertical": "HUG",
+                                  "layoutAlign": "INHERIT",
+                                  "layoutGrow": 0,
+                                  "strokeWeight": 1,
+                                  "strokeAlign": "OUTSIDE",
+                                  "fills": [
+                                    {
+                                      "type": "SOLID",
+                                      "color": "#4D4D4D"
+                                    }
+                                  ],
+                                  "styles": {
+                                    "fill": "Grey (OLD)/30",
+                                    "text": "Poppins/14/Medium"
+                                  },
+                                  "characters": "14:00 - 19:00",
+                                  "text": {
+                                    "fontFamily": "Poppins",
+                                    "fontSize": 14,
+                                    "fontWeight": 500,
+                                    "lineHeightPx": 20,
+                                    "letterSpacing": 0,
+                                    "textAlignHorizontal": "LEFT",
+                                    "textAlignVertical": "TOP"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "id": "1883:20175",
+                              "name": "Title",
+                              "type": "TEXT",
+                              "box": {
+                                "x": -12082,
+                                "y": 20046,
+                                "w": 262,
+                                "h": 26
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "OUTSIDE",
+                              "fills": [
+                                {
+                                  "type": "SOLID",
+                                  "color": "#1A1A1A"
+                                }
+                              ],
+                              "styles": {
+                                "fill": "Grey (OLD)/10",
+                                "text": "Poppins/18/Semibold"
+                              },
+                              "characters": "Singles Ride",
+                              "text": {
+                                "fontFamily": "Poppins",
+                                "fontSize": 18,
+                                "fontWeight": 600,
+                                "lineHeightPx": 26,
+                                "letterSpacing": 0,
+                                "textAlignHorizontal": "LEFT",
+                                "textAlignVertical": "TOP"
+                              }
+                            },
+                            {
+                              "id": "1883:20176",
+                              "name": "Image",
+                              "type": "RECTANGLE",
+                              "box": {
+                                "x": -12162,
+                                "y": 20034,
+                                "w": 64,
+                                "h": 98
+                              },
+                              "strokeWeight": 1,
+                              "strokeAlign": "INSIDE",
+                              "fills": [
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "eae313a48883a46e7a2a60ee806e73a8052191be",
+                                  "scaleMode": "FILL"
+                                },
+                                {
+                                  "type": "IMAGE",
+                                  "imageRef": "8313373fed367de2a281451511ee3ab53973186f",
+                                  "scaleMode": "STRETCH"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1883:16539",
+      "name": "v2 / Component / Navigation / Bar",
+      "type": "FRAME",
+      "box": {
+        "x": -12178,
+        "y": 20344,
+        "w": 390,
+        "h": 88
+      },
+      "clipsContent": false,
+      "strokeWeight": 2,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#E6E6E6"
+        }
+      ],
+      "styles": {
+        "fills": "White/100",
+        "strokes": "Grey (OLD)/90",
+        "fill": "White/100",
+        "stroke": "Grey (OLD)/90"
+      },
+      "children": [
+        {
+          "id": "1883:16540",
+          "name": "Buttons",
+          "type": "FRAME",
+          "box": {
+            "x": -12154,
+            "y": 20344,
+            "w": 342,
+            "h": 56
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "primaryAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1883:18442",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -12154,
+                "y": 20344,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:18939",
+                  "name": "Element / Icon / Garage",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -12132,
+                    "y": 20352,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:18940",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -12131,
+                        "y": 20354.16,
+                        "w": 22,
+                        "h": 20.84
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:18444",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -12139,
+                    "y": 20380,
+                    "w": 39,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/60",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Garage",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:18448",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -12085.6,
+                "y": 20344,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:19439",
+                  "name": "Element / Icon / Calendar",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -12063.6,
+                    "y": 20352,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:19440",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -12061.6,
+                        "y": 20353,
+                        "w": 20,
+                        "h": 22
+                      },
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#1A1A1A"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/10"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:18450",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -12065.6,
+                    "y": 20380,
+                    "w": 28,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Rides",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:18451",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -12017.2,
+                "y": 20344,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:18811",
+                  "name": "Element / Icon / Clubs",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11995.2,
+                    "y": 20352,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:18812",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11994.2,
+                        "y": 20354,
+                        "w": 22,
+                        "h": 20
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:18453",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -11998.2,
+                    "y": 20380,
+                    "w": 30,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/60",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Clubs",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:18445",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -11948.8,
+                "y": 20344,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:18809",
+                  "name": "Element / Icon / Profile",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11926.8,
+                    "y": 20352,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:18810",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11925.8,
+                        "y": 20353,
+                        "w": 22,
+                        "h": 22
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:18447",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -11930.8,
+                    "y": 20380,
+                    "w": 32,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/60",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Profile",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1883:18454",
+              "name": "v2 / Component / Navigation / Bar / Tile",
+              "type": "FRAME",
+              "box": {
+                "x": -11880.4,
+                "y": 20344,
+                "w": 68.4,
+                "h": 56
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 1,
+              "clipsContent": true,
+              "cornerRadius": 4,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "children": [
+                {
+                  "id": "1883:18813",
+                  "name": "Element / Icon / Menu",
+                  "type": "FRAME",
+                  "box": {
+                    "x": -11858.4,
+                    "y": 20352,
+                    "w": 24,
+                    "h": 24
+                  },
+                  "clipsContent": true,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1883:18814",
+                      "name": "Icon",
+                      "type": "VECTOR",
+                      "box": {
+                        "x": -11854.4,
+                        "y": 20358,
+                        "w": 16,
+                        "h": 12
+                      },
+                      "strokeWeight": 2,
+                      "strokeAlign": "CENTER",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": "#808080"
+                        }
+                      ],
+                      "styles": {
+                        "fill": "Grey (OLD)/50"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "1883:18456",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": -11860.4,
+                    "y": 20380,
+                    "w": 29,
+                    "h": 16
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#808080"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/60",
+                    "text": "Poppins/10/Semibold"
+                  },
+                  "characters": "Menu",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 10,
+                    "fontWeight": 600,
+                    "lineHeightPx": 16,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "CENTER",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1527:10455",
+      "name": "Content / Ride Details / Header",
+      "type": "FRAME",
+      "box": {
+        "x": -12178,
+        "y": 19072,
+        "w": 390,
+        "h": 96
+      },
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE"
+    },
+    {
+      "id": "1527:11824",
+      "name": "Component / Header",
+      "type": "FRAME",
+      "box": {
+        "x": -12178,
+        "y": 19072,
+        "w": 390,
+        "h": 96
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": "#E6E6E6"
+        }
+      ],
+      "styles": {
+        "fills": "White/100",
+        "strokes": "Grey (OLD)/90",
+        "fill": "White/100",
+        "stroke": "Grey (OLD)/90"
+      },
+      "children": [
+        {
+          "id": "1527:11827",
+          "name": "Rides",
+          "type": "TEXT",
+          "box": {
+            "x": -12005,
+            "y": 19128,
+            "w": 45,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey (OLD)/10",
+            "text": "Poppins/16/Semibold"
+          },
+          "characters": "Rides",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 600,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        }
+      ]
+    }
+  ]
+}

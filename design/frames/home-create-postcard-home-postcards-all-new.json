@@ -1,0 +1,965 @@
+{
+  "page": "Design",
+  "section": "Home / Create postcard",
+  "id": "1918:16843",
+  "name": "Home - Postcards - All new",
+  "type": "FRAME",
+  "box": {
+    "x": 6600,
+    "y": 6476,
+    "w": 390,
+    "h": 844
+  },
+  "clipsContent": true,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF"
+    }
+  ],
+  "children": [
+    {
+      "id": "1918:16844",
+      "name": "v2 / Component / App Background",
+      "type": "INSTANCE",
+      "box": {
+        "x": 6600,
+        "y": 6476,
+        "w": 390,
+        "h": 844
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "fill": "Grey/5"
+      },
+      "componentId": "1054:5879",
+      "component": "Type=Regular",
+      "componentSet": "v2 / Component / App Background",
+      "componentProperties": {
+        "Type": {
+          "value": "Regular",
+          "type": "VARIANT",
+          "boundVariables": {}
+        }
+      }
+    },
+    {
+      "id": "1918:16966",
+      "name": "v2 / Component / Header",
+      "type": "FRAME",
+      "box": {
+        "x": 6600,
+        "y": 6476,
+        "w": 390,
+        "h": 96
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#F2ECE6"
+        }
+      ],
+      "styles": {
+        "fills": "Grey/5",
+        "fill": "Grey/5"
+      },
+      "children": [
+        {
+          "id": "1918:16967",
+          "name": "Create postcard",
+          "type": "TEXT",
+          "box": {
+            "x": 6728,
+            "y": 6532,
+            "w": 134,
+            "h": 24
+          },
+          "strokeWeight": 1,
+          "strokeAlign": "OUTSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fill": "Grey/100",
+            "text": "Poppins/16/Semibold"
+          },
+          "characters": "Create postcard",
+          "text": {
+            "fontFamily": "Poppins",
+            "fontSize": 16,
+            "fontWeight": 600,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP"
+          }
+        },
+        {
+          "id": "1918:16971",
+          "name": "v2 / Component / Button / Link / Primary",
+          "type": "INSTANCE",
+          "box": {
+            "x": 6616,
+            "y": 6528,
+            "w": 51,
+            "h": 32
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 8,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "FIXED",
+          "clipsContent": false,
+          "cornerRadius": 4,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "componentId": "1857:18510",
+          "component": "Size=Small, State=Default",
+          "componentSet": "v2 / Component / Button / Link / Primary",
+          "componentProperties": {
+            "Label#1857:9": {
+              "type": "TEXT",
+              "value": "Cancel"
+            },
+            "Size": {
+              "value": "Small",
+              "type": "VARIANT",
+              "boundVariables": {}
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1918:16971;1857:18494",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 6616,
+                "y": 6534,
+                "w": 51,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#3D996B"
+                }
+              ],
+              "styles": {
+                "fill": "Accent Brand/100",
+                "text": "Poppins/14/Semibold"
+              },
+              "characters": "Cancel",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1918:16976",
+          "name": "v2 / Component / Button / Regular / Primary",
+          "type": "INSTANCE",
+          "box": {
+            "x": 6912,
+            "y": 6528,
+            "w": 62,
+            "h": 32
+          },
+          "layoutMode": "HORIZONTAL",
+          "layoutWrap": "NO_WRAP",
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "primaryAxisAlignItems": "CENTER",
+          "counterAxisAlignItems": "CENTER",
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "HUG",
+          "layoutSizingVertical": "FIXED",
+          "clipsContent": true,
+          "cornerRadius": 8,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": "#1A1A1A"
+            }
+          ],
+          "styles": {
+            "fills": "Grey/100",
+            "fill": "Grey/100"
+          },
+          "componentId": "1857:17641",
+          "component": "Size=Small, State=Default",
+          "componentSet": "v2 / Component / Button / Regular / Primary",
+          "componentProperties": {
+            "Label#1857:6": {
+              "type": "TEXT",
+              "value": "Post"
+            },
+            "Size": {
+              "value": "Small",
+              "type": "VARIANT",
+              "boundVariables": {}
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1918:16976;2494:7273",
+              "name": "Overlay",
+              "type": "RECTANGLE",
+              "box": {
+                "x": 6913,
+                "y": 6529,
+                "w": 60,
+                "h": 30
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "cornerRadius": 7,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "GRADIENT_LINEAR",
+                  "angle": 135,
+                  "handles": [
+                    {
+                      "x": 1.4432899320127035e-15,
+                      "y": 1.3322676295501878e-15
+                    },
+                    {
+                      "x": 0.9999999850988405,
+                      "y": 0.9999999850988404
+                    },
+                    {
+                      "x": -0.49999999254941807,
+                      "y": 1.5312500055588327
+                    }
+                  ],
+                  "stops": [
+                    {
+                      "position": 0,
+                      "color": "#FFFFFF1A"
+                    },
+                    {
+                      "position": 1,
+                      "color": "#FFFFFF00"
+                    }
+                  ]
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ]
+            },
+            {
+              "id": "I1918:16976;1857:17642",
+              "name": "Label",
+              "type": "TEXT",
+              "box": {
+                "x": 6928,
+                "y": 6534,
+                "w": 30,
+                "h": 20
+              },
+              "layoutSizingHorizontal": "HUG",
+              "layoutSizingVertical": "HUG",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "strokeWeight": 1,
+              "strokeAlign": "OUTSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "styles": {
+                "fill": "White/100",
+                "text": "Poppins/14/Medium"
+              },
+              "characters": "Post",
+              "text": {
+                "fontFamily": "Poppins",
+                "fontSize": 14,
+                "fontWeight": 500,
+                "lineHeightPx": 20,
+                "letterSpacing": 0,
+                "textAlignHorizontal": "LEFT",
+                "textAlignVertical": "TOP"
+              }
+            }
+          ]
+        },
+        {
+          "id": "1918:16968",
+          "name": "v2 / Component / Button / Icon",
+          "type": "INSTANCE",
+          "box": {
+            "x": 6608,
+            "y": 6524,
+            "w": 40,
+            "h": 40
+          },
+          "clipsContent": false,
+          "cornerRadius": 8,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "visible": false,
+          "componentId": "1111:6034",
+          "component": "State=Default",
+          "componentSet": "v2 / Component / Button / Icon",
+          "componentProperties": {
+            "has Notification#2370:0": {
+              "type": "BOOLEAN",
+              "value": false
+            },
+            "Icon#1883:26": {
+              "type": "INSTANCE_SWAP",
+              "value": "339:1724",
+              "preferredValues": []
+            },
+            "State": {
+              "value": "Default",
+              "type": "VARIANT",
+              "boundVariables": {}
+            }
+          },
+          "children": [
+            {
+              "id": "I1918:16968;1111:6035",
+              "name": "Element / Icon / Arrow Left",
+              "type": "INSTANCE",
+              "box": {
+                "x": 6616,
+                "y": 6532,
+                "w": 24,
+                "h": 24
+              },
+              "clipsContent": true,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "componentId": "339:1724",
+              "component": "Element / Icon / Arrow Left",
+              "children": [
+                {
+                  "id": "I1918:16968;1111:6035;2483:7561",
+                  "name": "Icon",
+                  "type": "VECTOR",
+                  "box": {
+                    "x": 6620,
+                    "y": 6536,
+                    "w": 16,
+                    "h": 16
+                  },
+                  "strokeWeight": 2,
+                  "strokeAlign": "CENTER",
+                  "rotation": 0,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "I1918:16968;2370:6900",
+              "name": "v2 / Component / Notification",
+              "type": "INSTANCE",
+              "box": {
+                "x": 6636,
+                "y": 6520,
+                "w": 16,
+                "h": 16
+              },
+              "clipsContent": true,
+              "cornerRadius": 100,
+              "strokeWeight": 3,
+              "strokeAlign": "INSIDE",
+              "visible": false,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#D92140"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#F2ECE6"
+                }
+              ],
+              "styles": {
+                "fills": "Warning/100",
+                "strokes": "Grey/5",
+                "fill": "Warning/100",
+                "stroke": "Grey/5"
+              },
+              "componentId": "2370:7297",
+              "component": "v2 / Component / Notification",
+              "componentProperties": {
+                "Notifications#1918:55": {
+                  "type": "TEXT",
+                  "value": "1"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1918:16849",
+      "name": "Main Container",
+      "type": "FRAME",
+      "box": {
+        "x": 6600,
+        "y": 6572,
+        "w": 390,
+        "h": 748
+      },
+      "clipsContent": true,
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
+      "children": [
+        {
+          "id": "1918:16982",
+          "name": "Form",
+          "type": "FRAME",
+          "box": {
+            "x": 6616,
+            "y": 6572,
+            "w": 358,
+            "h": 384
+          },
+          "layoutMode": "VERTICAL",
+          "layoutWrap": "NO_WRAP",
+          "itemSpacing": 8,
+          "counterAxisSizingMode": "FIXED",
+          "layoutSizingHorizontal": "FIXED",
+          "layoutSizingVertical": "HUG",
+          "clipsContent": false,
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "children": [
+            {
+              "id": "1918:17032",
+              "name": "v2 / Component / Input / Image",
+              "type": "FRAME",
+              "box": {
+                "x": 6616,
+                "y": 6572,
+                "w": 358,
+                "h": 224
+              },
+              "layoutSizingHorizontal": "FIXED",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "INHERIT",
+              "layoutGrow": 0,
+              "clipsContent": true,
+              "cornerRadius": 8,
+              "strokeWeight": 1,
+              "strokeAlign": "INSIDE",
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": "#FFFFFF"
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#000000"
+                }
+              ],
+              "styles": {
+                "fills": "White/100",
+                "strokes": "Grey/20%",
+                "fill": "White/100",
+                "stroke": "Grey/20%"
+              },
+              "children": [
+                {
+                  "id": "1918:17040",
+                  "name": "Frame 71",
+                  "type": "FRAME",
+                  "box": {
+                    "x": 6757.5,
+                    "y": 6652,
+                    "w": 75,
+                    "h": 64
+                  },
+                  "layoutMode": "VERTICAL",
+                  "layoutWrap": "NO_WRAP",
+                  "itemSpacing": 8,
+                  "primaryAxisAlignItems": "CENTER",
+                  "counterAxisAlignItems": "CENTER",
+                  "layoutSizingHorizontal": "HUG",
+                  "layoutSizingVertical": "HUG",
+                  "clipsContent": false,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "children": [
+                    {
+                      "id": "1918:17045",
+                      "name": "Element / Icon / Image",
+                      "type": "INSTANCE",
+                      "box": {
+                        "x": 6783,
+                        "y": 6652,
+                        "w": 24,
+                        "h": 24
+                      },
+                      "layoutSizingHorizontal": "FIXED",
+                      "layoutSizingVertical": "FIXED",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "clipsContent": true,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "componentId": "321:3360",
+                      "component": "Element / Icon / Image",
+                      "children": [
+                        {
+                          "id": "I1918:17045;2241:10925",
+                          "name": "Icon",
+                          "type": "VECTOR",
+                          "box": {
+                            "x": 6783,
+                            "y": 6655,
+                            "w": 24,
+                            "h": 18
+                          },
+                          "strokeWeight": 2,
+                          "strokeAlign": "CENTER",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#808080"
+                            }
+                          ],
+                          "styles": {
+                            "fill": "Grey/60"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "1918:17042",
+                      "name": "v2 / Component / Button / Link / Primary",
+                      "type": "INSTANCE",
+                      "box": {
+                        "x": 6757.5,
+                        "y": 6684,
+                        "w": 75,
+                        "h": 32
+                      },
+                      "layoutMode": "HORIZONTAL",
+                      "layoutWrap": "NO_WRAP",
+                      "itemSpacing": 8,
+                      "primaryAxisAlignItems": "CENTER",
+                      "counterAxisAlignItems": "CENTER",
+                      "counterAxisSizingMode": "FIXED",
+                      "layoutSizingHorizontal": "HUG",
+                      "layoutSizingVertical": "FIXED",
+                      "layoutAlign": "INHERIT",
+                      "layoutGrow": 0,
+                      "clipsContent": false,
+                      "cornerRadius": 4,
+                      "strokeWeight": 1,
+                      "strokeAlign": "INSIDE",
+                      "componentId": "1857:18510",
+                      "component": "Size=Small, State=Default",
+                      "componentSet": "v2 / Component / Button / Link / Primary",
+                      "componentProperties": {
+                        "Label#1857:9": {
+                          "type": "TEXT",
+                          "value": "Add photo"
+                        },
+                        "Size": {
+                          "value": "Small",
+                          "type": "VARIANT",
+                          "boundVariables": {}
+                        },
+                        "State": {
+                          "value": "Default",
+                          "type": "VARIANT",
+                          "boundVariables": {}
+                        }
+                      },
+                      "children": [
+                        {
+                          "id": "I1918:17042;1857:18494",
+                          "name": "Label",
+                          "type": "TEXT",
+                          "box": {
+                            "x": 6757.5,
+                            "y": 6690,
+                            "w": 75,
+                            "h": 20
+                          },
+                          "layoutSizingHorizontal": "HUG",
+                          "layoutSizingVertical": "HUG",
+                          "layoutAlign": "INHERIT",
+                          "layoutGrow": 0,
+                          "strokeWeight": 1,
+                          "strokeAlign": "OUTSIDE",
+                          "fills": [
+                            {
+                              "type": "SOLID",
+                              "color": "#3D996B"
+                            }
+                          ],
+                          "styles": {
+                            "fill": "Accent Brand/100",
+                            "text": "Poppins/14/Semibold"
+                          },
+                          "characters": "Add photo",
+                          "text": {
+                            "fontFamily": "Poppins",
+                            "fontSize": 14,
+                            "fontWeight": 600,
+                            "lineHeightPx": 20,
+                            "letterSpacing": 0,
+                            "textAlignHorizontal": "LEFT",
+                            "textAlignVertical": "TOP"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "1918:16998",
+              "name": "v2 / Component / Input / Text",
+              "type": "INSTANCE",
+              "box": {
+                "x": 6616,
+                "y": 6804,
+                "w": 358,
+                "h": 72
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "STRETCH",
+              "layoutGrow": 0,
+              "clipsContent": false,
+              "cornerRadius": 8,
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#000000"
+                }
+              ],
+              "styles": {
+                "strokes": "Grey/10%",
+                "stroke": "Grey/10%"
+              },
+              "componentId": "1857:17184",
+              "component": "State=Default",
+              "componentSet": "v2 / Component / Input / Text",
+              "componentProperties": {
+                "Value#1857:3": {
+                  "type": "TEXT",
+                  "value": ""
+                },
+                "Label#1857:0": {
+                  "type": "TEXT",
+                  "value": "Club"
+                },
+                "State": {
+                  "value": "Default",
+                  "type": "VARIANT",
+                  "boundVariables": {}
+                }
+              },
+              "children": [
+                {
+                  "id": "I1918:16998;2074:5327",
+                  "name": "Background Fill",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 6618,
+                    "y": 6806,
+                    "w": 354,
+                    "h": 68
+                  },
+                  "cornerRadius": 6,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "I1918:16998;1857:17182",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 6632,
+                    "y": 6816,
+                    "w": 326,
+                    "h": 20
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#666666"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/80",
+                    "text": "Poppins/14/Medium"
+                  },
+                  "characters": "Club",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 14,
+                    "fontWeight": 500,
+                    "lineHeightPx": 20,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                },
+                {
+                  "id": "I1918:16998;1857:17183",
+                  "name": "Value",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 6632,
+                    "y": 6840,
+                    "w": 326,
+                    "h": 24
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100",
+                    "text": "Poppins/16/Regular"
+                  },
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 16,
+                    "fontWeight": 400,
+                    "lineHeightPx": 24,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "1918:16999",
+              "name": "v2 / Component / Input / Text",
+              "type": "INSTANCE",
+              "box": {
+                "x": 6616,
+                "y": 6884,
+                "w": 358,
+                "h": 72
+              },
+              "layoutSizingHorizontal": "FILL",
+              "layoutSizingVertical": "FIXED",
+              "layoutAlign": "STRETCH",
+              "layoutGrow": 0,
+              "clipsContent": false,
+              "cornerRadius": 8,
+              "strokeWeight": 2,
+              "strokeAlign": "INSIDE",
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": "#000000"
+                }
+              ],
+              "styles": {
+                "strokes": "Grey/10%",
+                "stroke": "Grey/10%"
+              },
+              "componentId": "1857:17184",
+              "component": "State=Default",
+              "componentSet": "v2 / Component / Input / Text",
+              "componentProperties": {
+                "Value#1857:3": {
+                  "type": "TEXT",
+                  "value": ""
+                },
+                "Label#1857:0": {
+                  "type": "TEXT",
+                  "value": "What's on your mind?"
+                },
+                "State": {
+                  "value": "Default",
+                  "type": "VARIANT",
+                  "boundVariables": {}
+                }
+              },
+              "children": [
+                {
+                  "id": "I1918:16999;2074:5327",
+                  "name": "Background Fill",
+                  "type": "RECTANGLE",
+                  "box": {
+                    "x": 6618,
+                    "y": 6886,
+                    "w": 354,
+                    "h": 68
+                  },
+                  "cornerRadius": 6,
+                  "strokeWeight": 1,
+                  "strokeAlign": "INSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#FFFFFF"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "White/100"
+                  }
+                },
+                {
+                  "id": "I1918:16999;1857:17182",
+                  "name": "Label",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 6632,
+                    "y": 6896,
+                    "w": 326,
+                    "h": 20
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#666666"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/80",
+                    "text": "Poppins/14/Medium"
+                  },
+                  "characters": "What's on your mind?",
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 14,
+                    "fontWeight": 500,
+                    "lineHeightPx": 20,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                },
+                {
+                  "id": "I1918:16999;1857:17183",
+                  "name": "Value",
+                  "type": "TEXT",
+                  "box": {
+                    "x": 6632,
+                    "y": 6920,
+                    "w": 326,
+                    "h": 24
+                  },
+                  "strokeWeight": 1,
+                  "strokeAlign": "OUTSIDE",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": "#1A1A1A"
+                    }
+                  ],
+                  "styles": {
+                    "fill": "Grey/100",
+                    "text": "Poppins/16/Regular"
+                  },
+                  "text": {
+                    "fontFamily": "Poppins",
+                    "fontSize": 16,
+                    "fontWeight": 400,
+                    "lineHeightPx": 24,
+                    "letterSpacing": 0,
+                    "textAlignHorizontal": "LEFT",
+                    "textAlignVertical": "TOP"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
