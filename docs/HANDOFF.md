@@ -367,6 +367,15 @@ badge says.
   of a private club has no way to navigate to it. Direct links work.
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are
   tested, but nothing calls them — you can create a ride and never fix a typo or cancel it.
+  Comments are the exception as of `#26`: they can be deleted, though still not edited, which
+  `011` forbids by design.
+- **`deleteComment` does not revalidate on the `moderate_comment` path** — latent now, real
+  the day blocking gets a UI. It reads the postcard id before deleting, under the same RLS
+  that hides the row, so for the one case that path exists for (an author removing a blocked
+  harasser's comment from their own photo) the id comes back null and the thread never
+  refreshes. The delete itself works. Found by review on 2026-08-04 and deliberately not
+  patched: the fix is to have `moderate_comment` return the postcard id instead of a boolean,
+  which is a migration. Full note at the call site in `src/lib/actions/comments.ts`.
 - **Leaked password protection is disabled.** Supabase advisor flags it; a dashboard toggle
   that checks signups against HaveIBeenPwned.
 - **Free tier auto-pauses after ~7 days idle**, taking the deployment down with no alerting.

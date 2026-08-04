@@ -66,6 +66,19 @@ export async function addComment(_prev: ActionState, formData: FormData): Promis
  *
  * The postcard id is read first because it is needed to revalidate and is gone
  * once the row is.
+ *
+ * KNOWN GAP, latent today, real the day Trust & Safety ships: that read runs
+ * under the same RLS that hides the row on the `moderate_comment` path, so for
+ * the one case that path exists for — an author removing a blocked harasser's
+ * comment from their own photo — `existing` is null and the revalidate below
+ * never fires. The delete succeeds; the screen does not update until something
+ * else refreshes it.
+ *
+ * Unreachable from the UI as built: a comment the author cannot read is never
+ * rendered, so no delete control exists for it, and there is no block UI yet.
+ * It becomes reachable the moment blocking gets a screen. The fix is to have
+ * `moderate_comment` return the postcard id rather than a boolean — a migration,
+ * not an edit here, which is why this is recorded rather than patched.
  */
 export async function deleteComment(commentId: string): Promise<ActionState> {
   const supabase = await createClient()
