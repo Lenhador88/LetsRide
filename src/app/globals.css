@@ -44,6 +44,16 @@
   --color-like: #F23071;
   --color-danger-strong: #99001A;   /* Warning/110 — Warning, darker. Hover/pressed on danger. */
 
+  /* The "Maybe" RSVP pill on `v2 / Component / List / Ride`, and so far only
+     that. Read from the snapshot, not eyeballed — but unlike every colour above
+     it, it is an **unnamed fill**: the Figma file attaches no paint style to it,
+     so it has no token name to inherit and this one is ours. Worth asking the
+     designer whether it should join the palette as `Warning/…` or `Accent/…`;
+     until then it is named for the single thing it means.
+     Contrast is 3.0:1 for white text — below AA for body copy, and acceptable
+     here only because the pill is 12/Semibold. Do not reuse it for prose. */
+  --color-maybe: #E58F17;
+
   /* App Background gradient end stop — Figma `v2 / Component / App Background`,
      135deg linear-gradient(#F2ECE6 -> #CCB8A3). Per docs/specs/login-onboarding.md
      "Verified measurements": every screen but the splash uses this, not flat Grey/5. */

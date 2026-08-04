@@ -1,18 +1,15 @@
-import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Bike, Plus, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
-import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { getClubs } from '@/lib/data/clubs'
 
+// Still a v1 screen — `zinc-*`, `orange-500` and lucide icons — and it migrates
+// to v2 with its own epic. What changed here is the read: it queried Supabase
+// inline behind an `is_public` filter that hid private clubs from their own
+// members. See getClubs().
 export default async function ClubsPage() {
-  const supabase = await createClient()
-
-  const { data: clubs } = await supabase
-    .from('clubs')
-    .select(`*, owner:profiles!owner_id(${PUBLIC_PROFILE_COLUMNS}), members_count:club_members(count)`)
-    .eq('is_public', true)
-    .order('created_at', { ascending: false })
+  const clubs = await getClubs()
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6">
@@ -23,7 +20,7 @@ export default async function ClubsPage() {
         </Link>
       </div>
 
-      {clubs?.length === 0 && (
+      {clubs.length === 0 && (
         <div className="py-16 text-center">
           <Bike className="mx-auto mb-3 h-10 w-10 text-zinc-700" />
           <p className="text-zinc-400">No clubs yet. Start one!</p>
@@ -34,7 +31,7 @@ export default async function ClubsPage() {
       )}
 
       <div className="flex flex-col gap-3">
-        {clubs?.map((club) => (
+        {clubs.map((club) => (
           <Link key={club.id} href={`/clubs/${club.id}`}>
             <Card className="hover:border-zinc-600 transition-colors">
               <div className="flex items-center gap-3">
@@ -46,7 +43,7 @@ export default async function ClubsPage() {
                   )}
                   <p className="mt-1 text-xs text-zinc-500 flex items-center gap-1">
                     <Users className="h-3 w-3" />
-                    {club.members_count?.[0]?.count ?? 0} members
+                    {club.members_count ?? 0} members
                   </p>
                 </div>
               </div>

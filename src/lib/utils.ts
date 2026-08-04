@@ -26,6 +26,45 @@ export function formatPostcardDate(date: string) {
   })
 }
 
+/**
+ * The date on a ride list card — `SAT, 16 NOV`, uppercased as the design draws
+ * it (`v2 / Component / List / Ride`, Poppins/14/Medium).
+ *
+ * `en-GB` for the same reason `formatPostcardDate` uses it: day-first order and
+ * a 24-hour clock, which is what the design shows and what a European rider
+ * expects. It deliberately does not touch the `en-US` hardcoding in the three
+ * functions below — that is a known bug the three have to fix together.
+ *
+ * The year is omitted, exactly as drawn. That is fine for the upcoming rides
+ * this list shows and wrong the day it shows history; noted in
+ * docs/FIGMA-FIDELITY-TODO.md rather than pre-emptively "fixed" past the design.
+ */
+export function formatRideDate(date: string) {
+  // Assembled from parts rather than taken whole from `toLocaleDateString`,
+  // because en-GB's short date is "Sat 16 Nov" and the design draws a comma
+  // after the weekday. The parts still come from Intl, so the weekday and month
+  // names stay the locale's — only the punctuation is ours.
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).formatToParts(new Date(date))
+
+  const find = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+
+  return `${find('weekday')}, ${find('day')} ${find('month')}`.toUpperCase()
+}
+
+/**
+ * `10:00`. The design draws a range (`10:00 - 15:00`) but `rides` has no end
+ * time column, so a single departure time is all there is to render — recorded
+ * in docs/FIGMA-FIDELITY-TODO.md as blocked on schema, not on the design.
+ */
+export function formatRideTime(date: string) {
+  return new Date(date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
 export function formatDate(date: string) {
   return new Date(date).toLocaleDateString('en-US', {
     weekday: 'short',

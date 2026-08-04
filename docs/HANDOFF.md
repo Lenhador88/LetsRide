@@ -122,24 +122,26 @@ The next actions, in the order they are worth doing:
 7. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
-**The suggested next build is the rides list**, and it is a good one: `Rides / View all
-rides` is marked `Done`, the schema already exists (no migration needed at all), and it
-reuses almost everything this session built.
+~~**The suggested next build is the rides list.**~~ **Built 2026-08-04** — `/rides` is v2, from
+the measured design, with the three filters (`Your rides`, `All rides`, one tile per club).
+It needed **no migration**, as predicted. What it left behind:
 
-| Needs | Status |
-|---|---|
-| `Header`, `Navbar` (with its sticky action), `AppBackground` | Built |
-| `v2 / Component / Filter Bar / Rides` | The Postcards filter bar is the same component family — same 80×88 tiles, same selected ring |
-| `v2 / Component / List / Ride` (5 variants), `Collection / Ride` (2) | New, and the real work |
-| `getRides()` in `lib/data/` | Exists; `/rides` is still a v1 page |
-| Icons — Calendar, Clock, Location, Coordinates, Bike | All in `generated.tsx` |
+- **`getRides()` did not exist.** This file said it did. `src/lib/data/rides.ts` is new — the
+  v1 page queried Supabase inline, which is what made the next point invisible.
+- **The v1 page filtered `.eq('is_public', true)` in application code, and that was a bug.**
+  The `rides` SELECT policy already unions public with "organised by you" and "in a club you
+  belong to", so the filter *subtracted* from it: a member of a private club could not see
+  their own club's rides. Fixed by deleting the filter. Worth checking `/clubs` for the same
+  shape — it has a known "private clubs are unreachable" defect below that smells identical.
+- **The `List / Ride` image strip has no data behind it** — no image column, no coordinates.
+  It renders as the design's container plus the location pin. That and eight other gaps are
+  registered in `docs/FIGMA-FIDELITY-TODO.md` §Rides list; three of them are questions for
+  the designer, not tasks.
+- **`--color-maybe` (`#E58F17`) is the first colour in `globals.css` with no Figma style name
+  behind it.** The design attaches no paint style to the Maybe pill. Flagged for the designer.
 
-Frames: `View all rides / Home - Rides - All`, `View all rides / Home - Rides - No rides`,
-`View your rides / Home - Rides - Your rides`, `View rides from club / Home - Rides - Rides
-from club`. Read the *shape* off `v2 / Component / List / Ride` first — a list of five
-variants is where the states live, and that is what the Postcards pass got most value from.
-
-This also clears the v1 `text-white` legibility defect on `/rides` as a side effect.
+Still v1 and still carrying the `text-white` legibility defect: `/rides/[id]`, `/rides/new`,
+`/clubs/*`, `/profile`. The list page cleared its own.
 
 **The card's overflow menu is the next build, and it is now fully specified.** Still callable
 and still called by nothing: `hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`,
@@ -207,7 +209,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **230** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255/195 and then 263/222, then 263/229. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **246** tests (`npm run test:unit`). Both measured 2026-08-04; this line said 255/195, then 263/222, 263/229 and 263/230. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -215,16 +217,18 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | CI | Green, and **path-scoped as of 2026-08-04**: a `changes` job diffs the merge base and skips `Type Check, Lint & Build` for docs/design-only PRs and `RLS Policy Tests` for anything not touching `supabase/**`. Pushes to `main` always run both. Job names are unchanged, so the branch-protection rule below still applies. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
 
-**The v1 pages are now visibly broken, not merely inconsistent.** `rides`, `clubs` and
-`profile` still render `text-white` headings, which were legible on the v1 dark background and
-are invisible on the v2 cream gradient. Pre-existing and out of scope for the home-screen work,
-but it is a real defect a rider would see, not a styling preference. Fix it with their v2
-migration, or sooner if anyone demos those tabs.
+**The v1 pages are now visibly broken, not merely inconsistent.** `clubs`, `profile` and the
+two remaining `rides` sub-routes (`/rides/new`, `/rides/[id]`) still render `text-white`
+headings, which were legible on the v1 dark background and are invisible on the v2 cream
+gradient. A real defect a rider would see, not a styling preference. Fix it with their v2
+migration, or sooner if anyone demos those tabs. (`/rides` itself was fixed on 2026-08-04
+when the list was rebuilt.)
 
-The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`
-and now `app/(app)/postcards/*` are v2, along with the `(app)` shell — its layout and the
-Navbar migrated on contact when Home moved to `/postcards`. Rides, clubs, friends and
-profile are still v1 `zinc-*`/`orange-500` and migrate with their own epics.
+The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`,
+`app/(app)/postcards/*` and now `app/(app)/rides/page.tsx` are v2, along with the `(app)`
+shell — its layout and the Navbar migrated on contact when Home moved to `/postcards`. The
+rest of rides, plus clubs and profile, are still v1 `zinc-*`/`orange-500` and migrate with
+their own epics.
 
 **Migration ordering is not file order.** Two chains were written in parallel and each
 recreated the policies the other did. `004`–`007` reached the database before `002` did;
@@ -458,8 +462,14 @@ badge says.
 - ~~**Duplicate usernames break signup.**~~ **Fixed and deployed** — `handle_new_user` no
   longer guesses a username from the email local part, so two `dave@…` addresses no longer
   collide. Username moved into onboarding.
-- **Private clubs are unreachable from `/clubs`.** The page filters `is_public`, so a member
-  of a private club has no way to navigate to it. Direct links work.
+- ~~**Private clubs are unreachable from `/clubs`.**~~ **Fixed 2026-08-04.** The page filtered
+  `is_public` in application code, which *subtracted* from the clubs SELECT policy — that
+  policy already unions public with "owned by you" and "you are a member". The read moved to
+  `getClubs()` in `lib/data/clubs.ts` and the filter is gone. Found by fixing the identical
+  bug on the rides list, which is the argument for the `lib/data/` boundary in one line: the
+  two pages carried the same mistake because each wrote its own query. **Unverified against
+  the live database** — this container cannot reach `supabase.co`, so load `/clubs` as a
+  member of a private club to confirm it now appears.
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are
   tested, but nothing calls them — you can create a ride and never fix a typo or cancel it.
   Comments are the exception as of `#26`: they can be deleted, though still not edited, which

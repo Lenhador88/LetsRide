@@ -1,5 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { formatPostcardDate, formatRelativeTime, getInitials } from '@/lib/utils'
+import {
+  formatPostcardDate,
+  formatRelativeTime,
+  formatRideDate,
+  formatRideTime,
+  getInitials,
+} from '@/lib/utils'
+
+// TZ is pinned to UTC in vitest.config.ts — these assertions are about the
+// *shape* of the string, and the zone is what makes them reproducible.
+describe('formatRideDate', () => {
+  it('reads as the design draws it — uppercase, weekday first, no year', () => {
+    expect(formatRideDate('2024-11-16T10:00:00Z')).toBe('SAT, 16 NOV')
+    expect(formatRideDate('2024-11-17T13:30:00Z')).toBe('SUN, 17 NOV')
+  })
+
+  it('puts the day before the month, unlike formatDate', () => {
+    // en-GB, for a European rider app. The en-US ordering would read "NOV 16".
+    expect(formatRideDate('2026-01-02T09:00:00Z')).toBe('FRI, 2 JAN')
+  })
+})
+
+describe('formatRideTime', () => {
+  it('is a 24-hour clock, zero-padded', () => {
+    expect(formatRideTime('2024-11-16T10:00:00Z')).toBe('10:00')
+    expect(formatRideTime('2024-11-17T13:30:00Z')).toBe('13:30')
+    expect(formatRideTime('2024-11-17T09:05:00Z')).toBe('09:05')
+  })
+
+  it('does not roll midnight over to 24:00', () => {
+    expect(formatRideTime('2024-11-17T00:00:00Z')).toBe('00:00')
+  })
+})
 
 describe('formatRelativeTime', () => {
   const now = new Date('2026-08-03T12:00:00Z')

@@ -21,5 +21,11 @@ export default defineConfig({
     // Explicit imports from 'vitest' everywhere instead — keeps tsconfig.json
     // untouched rather than adding the "vitest/globals" ambient types.
     globals: false,
+    // The date formatters resolve against the *local* zone, so without this a
+    // "SAT, 16 NOV" assertion passes on a UTC runner and fails on a laptop in
+    // Amsterdam. Pinning it here makes the suite say the same thing everywhere;
+    // it does not pin the app, whose own timezone behaviour is a live question
+    // recorded in docs/FIGMA-FIDELITY-TODO.md.
+    env: { TZ: 'UTC' },
   },
 })
