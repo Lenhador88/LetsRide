@@ -31,6 +31,32 @@ Read `CLAUDE.md` first. It carries the stack, the v2 design tokens, the settled
 architectural decisions, the working principles, and the canonical Supabase project.
 This file is only the *current position* — the things that will be stale in a week.
 
+## Which design to build from — read before starting any screen
+
+**The file annotates every epic with a status, and it is the best planning signal in
+it.** 67 epic covers, 40 of them `Done`. Read it with:
+
+```bash
+npm run figma -- ls "Annotation / Epic Cover"     # then tree one for its status
+```
+
+**Two traps, both live:**
+
+- **The 🟠-prefixed sections are the OLD stylesheet, not a newer iteration.** `🟠 List of
+  rides`, `🟠 Ride details as host`, `🟠 Ride details as participant`, `🟠 Garage`, `🟠 v4`
+  are drawn in `Grey (OLD)/*` with un-prefixed `Component / *` instances. The `Rides / *`
+  sections beside them use `v2 / Component / *` and are marked `Done`. Their "In progress"
+  status makes them look *newer* than the Done v2 flows; they are not. Decision #4 stands —
+  build from the `v2 /` sections and ignore these.
+- **Status does not track what is built.** `Home / View all new postcards` is marked
+  `In progress` and has been built (2026-08-04); `Rides / View all rides` is marked `Done`
+  and has not. Treat `Done` as "the designer considers this settled", which is exactly what
+  you want before spending a day on it — not as a build log.
+
+Worth asking the product owner: whether the 🟠 sections are dead explorations that can be
+deleted from the file, and whether the `In progress` on the Postcards flows means more
+change is coming to the screen just built.
+
 ## Before you trust this file
 
 Everything below is a claim about state that moves without this file moving with it. Two
@@ -97,6 +123,25 @@ The next actions, in the order they are worth doing:
    becomes `014`.**
 7. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
+
+**The suggested next build is the rides list**, and it is a good one: `Rides / View all
+rides` is marked `Done`, the schema already exists (no migration, so it is not blocked
+behind `012`/`013`), and it reuses almost everything this session built.
+
+| Needs | Status |
+|---|---|
+| `Header`, `Navbar` (with its sticky action), `AppBackground` | Built |
+| `v2 / Component / Filter Bar / Rides` | The Postcards filter bar is the same component family — same 80×88 tiles, same selected ring |
+| `v2 / Component / List / Ride` (5 variants), `Collection / Ride` (2) | New, and the real work |
+| `getRides()` in `lib/data/` | Exists; `/rides` is still a v1 page |
+| Icons — Calendar, Clock, Location, Coordinates, Bike | All in `generated.tsx` |
+
+Frames: `View all rides / Home - Rides - All`, `View all rides / Home - Rides - No rides`,
+`View your rides / Home - Rides - Your rides`, `View rides from club / Home - Rides - Rides
+from club`. Read the *shape* off `v2 / Component / List / Ride` first — a list of five
+variants is where the states live, and that is what the Postcards pass got most value from.
+
+This also clears the v1 `text-white` legibility defect on `/rides` as a side effect.
 
 **The card's overflow menu is the next build, and it is now fully specified.** Still callable
 and still called by nothing: `hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`,
