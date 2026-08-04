@@ -83,6 +83,14 @@ export type RideListItem = {
    * Read once per list in the data layer rather than per card at render, so
    * every card in one response agrees about what "now" is — and so the card
    * stays a pure function of its props.
+   *
+   * **Always true for anything `/rides` returns**, because that route filters
+   * on the same cutoff this is computed from. It is not vestigial: `RideCard`
+   * renders the design's two past variants (`Went`) from it, and the screens
+   * that will reach them — ride detail, and whatever history ends up being —
+   * reuse the same card. An earlier comment here claimed a ride could "pass
+   * while the page is open"; it cannot, since this is stamped server-side at
+   * fetch time on a component that will not re-render.
    */
   is_upcoming: boolean
 }
@@ -96,9 +104,15 @@ export type RideFilterOption = {
 }
 
 /**
- * Everything the rides filter bar needs, counted over the same bounded window
- * the list itself reads — so a tile can never offer a filter that yields an
- * empty list. Same rule as PostcardFilters, and the same reason.
+ * Everything the rides filter bar needs.
+ *
+ * Counted over `RIDE_FILTER_SCAN_LIMIT` upcoming rides — deliberately a much
+ * wider window than the list's own page, so that a club whose soonest ride
+ * sorts past the first page still gets a tile. This comment used to claim the
+ * two windows were the same and that a tile therefore "can never offer a filter
+ * that yields an empty list". That was false in the direction that matters: it
+ * asserted a safety property the code did not have, which is worse than no
+ * comment. See RIDE_FILTER_SCAN_LIMIT for what is actually guaranteed.
  */
 export type RideFilters = {
   /** Upcoming rides this viewer organises or has RSVP'd to. */

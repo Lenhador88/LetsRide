@@ -24,6 +24,26 @@ export const RIDES_PAGE_SIZE = 30
 export const RIDE_AVATAR_LIMIT = 5
 
 /**
+ * How far the filter bar scans to build its tiles, and deliberately far larger
+ * than a page of the list.
+ *
+ * The first version of this counted tiles over `RIDES_PAGE_SIZE`, the same 30
+ * the *unfiltered* list reads — which is wrong the moment a filter is active,
+ * because `/rides?club=X` reads 30 rides *of that club*. A club whose soonest
+ * ride sorted 31st overall got no tile at all while its filtered list would
+ * have rendered rides, so the only route to it was a hand-typed URL. That is
+ * the same defect as "private clubs are unreachable from /clubs", arrived at
+ * from the opposite direction, and it is why the two windows are now named
+ * separately instead of sharing one constant.
+ *
+ * Beyond this bound the counts saturate rather than mislead — a tile can still
+ * go missing, just at 500 concurrent upcoming rides instead of 31. The exact
+ * fix is a `group by club_id` behind an RPC; it is a migration, so it waits
+ * until the numbers justify it.
+ */
+export const RIDE_FILTER_SCAN_LIMIT = 500
+
+/**
  * The crew is embedded whole and counted in JS rather than read as a separate
  * `ride_members(count)` aggregate, because the card needs both the number and
  * the first five profiles, and a bounded embed would truncate the two
@@ -97,19 +117,36 @@ export function toRideListItem(
   }
 }
 
-/** The ride ids this viewer has RSVP'd to. Empty for a signed-out request. */
-async function myRideIds(
+/**
+ * The **upcoming** ride ids this viewer has RSVP'd to.
+ *
+ * The `departure_at` bound is not cosmetic. These ids go into an `id.in.(...)`
+ * predicate, so an unbounded read puts every ride the rider has ever joined
+ * into the query string: at ~37 bytes a UUID, a few hundred joined rides
+ * crosses the usual 8 KB request-line limit and `/rides?filter=mine` starts
+ * returning 414 — the rider's most-used filter, failing hard, only for the
+ * riders who use the app most. `rides!inner` makes it a join so the cutoff can
+ * apply to the parent, and it is the *same* cutoff the outer query uses.
+ *
+ * Filtering on `user_id` is business logic, not a re-filter of RLS: the
+ * ride_members SELECT policy scopes *visibility* (rosters of rides you can
+ * see), so "which of these are mine" is a question it has no opinion on —
+ * the same distinction attachLikeState draws in lib/data/postcards.ts.
+ */
+async function myUpcomingRideIds(
   supabase: SupabaseServerClient,
-  viewerId: string | undefined
+  viewerId: string | undefined,
+  nowIso: string
 ): Promise<string[]> {
   if (!viewerId) return []
 
-  // Filtering on `user_id` is business logic, not a re-filter of RLS: the
-  // ride_members SELECT policy scopes *visibility* (rosters of rides you can
-  // see), so "which of these are mine" is a question it has no opinion on —
-  // the same distinction attachLikeState draws in lib/data/postcards.ts.
   const rows = unwrapList(
-    await supabase.from('ride_members').select('ride_id').eq('user_id', viewerId),
+    await supabase
+      .from('ride_members')
+      .select('ride_id, rides!inner(departure_at)')
+      .eq('user_id', viewerId)
+      .gte('rides.departure_at', nowIso)
+      .limit(RIDE_FILTER_SCAN_LIMIT),
     'your rides',
   )
   return rows.map((row) => row.ride_id)
@@ -149,7 +186,7 @@ export async function getRides(
     query = query.eq('club_id', filter.id)
   } else if (filter?.kind === 'mine') {
     if (!user) return []
-    const joined = await myRideIds(supabase, user.id)
+    const joined = await myUpcomingRideIds(supabase, user.id, new Date(now).toISOString())
     // `id.in.()` with an empty list is a syntax error, so a rider who has
     // joined nothing asks only about the rides they organise.
     query = joined.length
@@ -164,35 +201,39 @@ export async function getRides(
 type FilterRow = {
   id: string
   organizer_id: string
-  organizer: { avatar_url: string | null } | null
   club: { id: string; name: string; avatar_url: string | null } | null
 }
 
 /**
  * The tiles above the list: your rides, all rides, then one per club.
  *
- * Counted over the same bounded window of upcoming rides the list reads, and
- * through the same table, so one policy decides both what a tile offers and
- * what the list then shows. Asking `clubs` directly would be a second
- * visibility predicate to keep in step — and it would offer club tiles with no
- * rides behind them, which the design's empty frame explicitly does not draw.
+ * Read through `rides` rather than `clubs`, so one policy decides both what a
+ * tile offers and what the list then shows. Asking `clubs` directly would be a
+ * second visibility predicate to keep in step — and it would offer club tiles
+ * with no rides behind them, which the design's empty frame explicitly does not
+ * draw.
+ *
+ * Scanned over RIDE_FILTER_SCAN_LIMIT, **not** the list's page size — see the
+ * constant for why the two must not be the same number.
  */
-export async function getRideFilters(limit = RIDES_PAGE_SIZE): Promise<RideFilters> {
+export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<RideFilters> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  const nowIso = new Date().toISOString()
 
   const [rows, joined] = await Promise.all([
     (async () =>
       unwrapList(
         await supabase
           .from('rides')
-          .select('id, organizer_id, organizer:profiles!organizer_id(avatar_url), club:clubs(id, name, avatar_url)')
-          .gte('departure_at', new Date().toISOString())
+          .select('id, organizer_id, club:clubs(id, name, avatar_url)')
+          .gte('departure_at', nowIso)
           .order('departure_at', { ascending: true })
           .limit(limit),
         'your ride filters',
       ) as unknown as FilterRow[])(),
-    myRideIds(supabase, user?.id),
+    myUpcomingRideIds(supabase, user?.id, nowIso),
   ])
 
   const joinedIds = new Set(joined)
@@ -220,14 +261,38 @@ export async function getRideFilters(limit = RIDES_PAGE_SIZE): Promise<RideFilte
   return {
     mine,
     total: rows.length,
-    // The design fills this 2×2 with ride photos. `rides` has no image column,
-    // so it is the organizers' faces instead — real data in the right shape,
-    // rather than four grey squares that would read as "empty". See
-    // docs/FIGMA-FIDELITY-TODO.md.
-    collage: rows
-      .map((row) => row.organizer?.avatar_url)
-      .filter((url): url is string => !!url)
-      .slice(0, 4),
+    collage: await collageAvatars(supabase, rows),
     clubs: [...clubs.values()],
   }
+}
+
+/**
+ * The "All rides" tile's 2×2.
+ *
+ * The design fills it with ride photos; `rides` has no image column, so it is
+ * the organizers' faces instead — real data in the right shape, rather than
+ * four grey squares that would read as "empty". See docs/FIGMA-FIDELITY-TODO.md.
+ *
+ * Its own query rather than an embed on the scan above, because the scan now
+ * covers up to 500 rows and this needs four faces: embedding `profiles` on
+ * every scanned ride to read four avatars is 496 joins of pure waste.
+ */
+async function collageAvatars(
+  supabase: SupabaseServerClient,
+  rows: FilterRow[]
+): Promise<string[]> {
+  const organizerIds = [...new Set(rows.map((row) => row.organizer_id))].slice(0, 4)
+  if (organizerIds.length === 0) return []
+
+  const profiles = unwrapList(
+    await supabase.from('profiles').select('id, avatar_url').in('id', organizerIds),
+    'the ride filter avatars',
+  )
+
+  // Kept in ride order — soonest first — rather than the order Postgres
+  // returned the profiles in.
+  const byId = new Map(profiles.map((profile) => [profile.id, profile.avatar_url]))
+  return organizerIds
+    .map((id) => byId.get(id))
+    .filter((url): url is string => !!url)
 }

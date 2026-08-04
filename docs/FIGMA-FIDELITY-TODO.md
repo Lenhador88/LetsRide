@@ -164,11 +164,15 @@ being called done.
 Every geometry value on this screen was **read** from `v2 / Component / List / Ride` (the
 5-variant set, `1908:3102`) and `v2 / Component / Filter Bar / Rides` (`1914:4791`), and the
 four frames `Home - Rides - All / No rides / Your rides / No upcoming rides / Rides from club`.
-Nothing about the layout is inferred. What is listed here is the design asking for **data the
-schema has not got**, plus three deliberate deviations.
+Every *geometry* value is read. What is listed here is the design asking for **data the schema
+has not got**, plus the deliberate deviations — and one **semantic** inference, the club chip,
+which this section originally hid under a blanket "nothing about the layout is inferred". A
+heading that claims nothing was guessed is exactly where a guess goes unnoticed.
 
 - [x] ~~**Card composition**~~ — **measured.** 358×156 (128 without the club chip), White/100,
-      radius 8, padding 4/4/4/16, gap 16. Image strip 80 wide at radius 4. Content column
+      radius 8, padding left 4 / top 4 / **right 16** / bottom 4, gap 16 (`npm run figma --
+      show 1908:3102`; written out because the "4/4/4/16" shorthand this line used to carry
+      put the 16 on the wrong edge). Image strip 80 wide at radius 4. Content column
       8-padded top and bottom, gap 4. Club chip `Grey/5` at radius 4, padding 8/3,
       Poppins/12/Semibold `Grey/80`. Avatars 28px overlapping by 4, organizer first inside a
       36px `Accent Brand/100` ring. Divider between date and time is a 3×3 dot.
@@ -196,8 +200,39 @@ schema has not got**, plus three deliberate deviations.
       set with?
 - [ ] **The `Maybe` pill is `#E58F17`, and it is an unnamed fill.** Every other colour in
       `globals.css` inherits a Figma paint style name; this one has none, so `--color-maybe` is
-      ours. It is 3.0:1 against white — fine for a 12/Semibold pill, not for prose. Worth
-      asking whether it should join the palette properly.
+      ours. Worth asking whether it should join the palette properly.
+- [ ] **Both RSVP pills fail WCAG AA, and this is a design question, not a bug to patch.**
+      Measured, not estimated — an earlier revision of this file claimed 3.0:1 for the amber
+      and excused it as "acceptable because the pill is 12/Semibold". Both halves were wrong:
+      the real number is 2.54:1, and **12px semibold is not WCAG large text** (that is 24px, or
+      18.66px bold), so the threshold is 4.5:1 rather than 3:1.
+
+      | Pill | Fill | Label | Ratio | 4.5:1? |
+      |---|---|---|---|---|
+      | Maybe | `#E58F17` | White/100 | **2.54:1** | ✗ |
+      | Going / Went | `Accent Brand/100` `#3D996B` | White/100 | **3.52:1** | ✗ |
+      | Maybe, dark label | `#E58F17` | Grey/100 | 6.86:1 | ✓ |
+
+      **The green one is the bigger finding**: `Accent Brand/100` with white text is used well
+      beyond this screen, so it is a pre-existing palette issue that the rides list merely
+      surfaced — not something this epic introduced. Two remedies, both the designer's call:
+      swap the labels to `Grey/100` (keeps every fill exactly as drawn, and is why the third
+      row is in the table), or darken the fills — white needs about `#A8630F` for the amber.
+      Left as drawn in the meantime; a silent unilateral change to a design token is the thing
+      decision #4 exists to prevent.
+- [ ] **The chip above the title is rendered as the club name — a semantic inference.** The
+      Figma layer is called `Organizer`, with component properties `Organizer#1908:9` and
+      `has Organizer#2475:5`. The club reading is well supported: `Home - Rides - Rides from
+      club` (`1908:1573`) drops the chip and the card shortens to 128, which only makes sense
+      if the chip names the club the filter already names. But it is still an inference, and
+      it has a live consequence — a ride with `club_id IS NULL`, the common case today,
+      renders with no chip at all. Confirm with the designer whether the chip is the club or
+      the organizing rider.
+- [ ] **The counter is hidden at zero; the design draws `"0"`.** `Home - Rides - No rides`
+      (`1914:6533`) gives the selected "All rides" tile a `0` badge. The shared `FilterTile`
+      renders a badge only above zero, which is the behaviour the shipped postcards bar
+      already had — kept consistent across the two bars rather than split. Registered because
+      it is a deviation, not because it is obviously wrong.
 - [ ] **Club tiles are derived from the rides in the window, not from membership.** That is
       what `Home - Rides - No rides` draws — no club tiles at all when there are no rides — but
       it means a club you belong to that has scheduled nothing has no tile. Consistent with

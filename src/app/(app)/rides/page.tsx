@@ -2,6 +2,7 @@ import { Header } from '@/components/layout/Header'
 import { RideCard } from '@/components/rides/RideCard'
 import { RideFilterBar } from '@/components/rides/RideFilterBar'
 import { getRideFilters, getRides } from '@/lib/data/rides'
+import { parseRideFilter } from '@/lib/validation/rides'
 import type { RideFilter } from '@/types'
 
 /**
@@ -25,12 +26,9 @@ export default async function RidesPage({
 }: {
   searchParams: Promise<{ filter?: string; club?: string }>
 }) {
-  const { filter: filterParam, club } = await searchParams
-
-  // "Mine" and a club at once is not a state the design has, and intersecting
-  // them would quietly return nothing. First one wins — as on /postcards.
-  const filter: RideFilter | undefined =
-    filterParam === 'mine' ? { kind: 'mine' } : club ? { kind: 'club', id: club } : undefined
+  // Parsed, not read: a malformed `?club=` would otherwise reach
+  // `.eq('club_id', …)` and 400 the whole tab. See lib/validation/rides.ts.
+  const filter = parseRideFilter(await searchParams)
 
   // The filter bar always describes every upcoming ride, never the filtered
   // slice — otherwise picking a club would erase every other tile and strand
@@ -41,9 +39,9 @@ export default async function RidesPage({
     <>
       <Header title="Rides" />
       {/* The shell reserves the 88px nav bar; this screen's bar is the 152px
-          variant, so it owes the sticky action's own height: 16 pad + 40 button
-          + 8 = 64px. */}
-      <div className="flex flex-col pb-16">
+          variant, so it owes the sticky action's own height. The number lives
+          in globals.css beside the other two, not here. */}
+      <div className="pb-navbar-action-extra flex flex-col">
         <RideFilterBar filters={filters} active={filter} />
 
         {rides.length === 0 ? (
