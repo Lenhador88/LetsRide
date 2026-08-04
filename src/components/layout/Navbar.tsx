@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
  * tinted or underlined — is inferred, because the Figma nav frame could not be
  * opened. See docs/FIGMA-FIDELITY-TODO.md.
  *
- * The icons are still `lucide-react` and still v1. All five need replacing with
+ * The icons are still `lucide-react` and still v1. All four need replacing with
  * the `Element / Icon / *` set once it can be exported; that is one task, not
  * five, and is already registered. `Home` replaces `LayoutDashboard` here only
  * because the latter now names a screen that no longer exists.

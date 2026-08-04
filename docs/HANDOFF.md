@@ -281,15 +281,17 @@ backed by 52 component sets, 213 variants, 88 components and 44 icons. The gap i
 not cosmetic:
 
 - **The design has no Friends tab.** The five tabs are Home, Rides, Clubs, Inbox, Profile.
-  `/friends` is not restyled, it is **deleted**, and `friendships` is a v1 leftover.
-  **Signed off by the product owner on 2026-08-02**, along with deleting `/dashboard`.
-  Not yet carried out — see *Do this first* for why the order matters.
+  `/friends` is not restyled, it is **deleted**. Signed off 2026-08-02 and **carried out**:
+  the code half is gone, and the table drop is `013`, written and awaiting apply. See the
+  half-done note in *Do this first*.
 - **The design's home is Postcards**, a photo feed. The app's home is `/dashboard`. The
   central screen of the product is not built.
 - **Inbox and Garage have no routes and no tables.** The schema is `profiles`, `rides`,
-  `ride_members`, `clubs`, `club_members`, `friendships`, plus `postcards`, `postcard_likes`
-  and `blocks` from `009` — so postcards and blocking now have tables, while messages and
-  garage still have nothing. Most of what is left is `data` → `feature`, not CSS.
+  `ride_members`, `clubs`, `club_members`, plus `postcards`, `postcard_likes` and `blocks`
+  from `009` and `postcard_comments`, `postcard_hides` and `postcard_reports` from `011` —
+  so postcards, blocking and moderation now have tables, while messages and
+  garage still have nothing. (`friendships` is still there too, until `013` applies; nothing
+  reads it.) Most of what is left is `data` → `feature`, not CSS.
   (This bullet claimed "nothing behind postcards … or blocks" for a while after `009` landed
   and contradicted §Do this first twenty lines above it. Re-read both before trusting either.)
 

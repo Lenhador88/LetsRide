@@ -189,6 +189,7 @@ Three further rules:
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. |
 | `club_members` | `(club_id, user_id)` composite PK. `role`: `owner` \| `admin` \| `member`. |
+| `friendships` | **Dropped by `013` — which is not applied yet, so it still exists in production** with nothing in `src/` reading it. A v1 leftover; the design has no friendship concept. Do not build on it. |
 | `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`. **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
 | `postcard_likes` | `(postcard_id, user_id)` composite PK. No denormalised count — the correct count is per-viewer, so it is counted under RLS. |
 | `blocks` | `(blocker_id, blocked_id)` composite PK. The row is **directional**, the effect **symmetric**. Never query it from a policy — go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row. |
@@ -383,8 +384,9 @@ Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart Filled
 Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu, Mute, Options,
 Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search, Share.
 Export them as SVG via `/v1/images/:key?ids=…&format=svg`. `lucide-react` is still imported
-in 12 files and is being replaced — don't substitute lookalikes.
-(`git grep -l lucide-react -- 'src/*' | wc -l` — this said 15 until it was measured.)
+in 11 files and is being replaced — don't substitute lookalikes.
+(`git grep -l lucide-react -- 'src/*' | wc -l` — this said 15, then 12, before each measurement.
+The command is the answer; the number beside it is the liability.)
 
 **The library scale**, for planning: 52 component sets covering 213 variants, plus 88
 standalone components, 2,447 nodes on the Components page.
@@ -484,7 +486,8 @@ means one of three things and only the first two are open:
   service-role key. Costs a network hop, keeps RLS intact. Justified only by something Node
   or Go can do that Postgres and Edge Functions cannot.
 - **A service-role backend that owns the database.** This voids decision #2. Every visibility
-  rule currently living in 40 policies and 255 test assertions gets reimplemented in
+  rule currently living in the RLS policy set and the assertions that cover it gets
+  reimplemented in
   application code — where, per `openspec/config.yaml`, an unstated rule fails silently
   instead of loudly. Nothing on the roadmap justifies it. Reopening it takes an explicit
   decision, not drift.
@@ -546,8 +549,9 @@ first zero and then one.)
 ## Product Scope (from Figma)
 
 The built app covers a fraction of the design. Five nav tabs — **Home, Rides, Clubs,
-Inbox, Profile**. There is no "Friends" tab, and as of `013` there is no `friendships`
-table either — the social graph is clubs plus blocking.
+Inbox, Profile**. There is no "Friends" tab, and `013` drops the `friendships` table —
+but `013` is not applied yet, so the table is still there in production with nothing reading
+it. The social graph is clubs plus blocking.
 
 | Domain | Status in code |
 |---|---|

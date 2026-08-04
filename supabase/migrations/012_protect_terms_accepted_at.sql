@@ -36,10 +36,20 @@
 --
 --   a) Once set, the stamp is pinned. Clearing it or moving it is silently
 --      reverted, the same one-way door 003 gave onboarding_completed_at.
---   b) On the first write, the value is *replaced* with server time. The client
---      does not merely lose the ability to edit the stamp later — it never gets
---      to choose it in the first place, so a back-dated initial write is
---      impossible rather than merely reverted.
+--   b) On the first write, the value is *replaced* with server time, so a
+--      back-dated first write is impossible rather than merely reverted.
+--
+-- KNOWN LIMIT, and it belongs next to (b) rather than in a footnote: this is a
+-- BEFORE **UPDATE** trigger, and 002's "Users can insert their own profile"
+-- policy still exists. Nothing fires on the INSERT path. That is unreachable
+-- today only because `handle_new_user` guarantees the row already exists, so a
+-- rider's own INSERT dies on 23505 — not because anything checks. The day an
+-- account-deletion flow removes a `profiles` row without its `auth.users` row
+-- (Trust & Safety has "delete account" on the roadmap), that rider can insert a
+-- fresh row with any consent timestamp they like. Adding a BEFORE INSERT arm is
+-- small, but it needs a TG_OP guard (`old` does not exist on INSERT) and an
+-- assertion that cannot currently be written against a path 23505 blocks, so it
+-- is left as a deliberate follow-up rather than shipped untested.
 --
 -- (b) is the part worth noticing. Pinning alone would let the very first write
 -- claim any timestamp it liked, which is the same hole in a different place.

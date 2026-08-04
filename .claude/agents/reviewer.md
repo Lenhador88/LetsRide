@@ -26,7 +26,7 @@ Ask, specifically:
 - Does any new query rely on client-side filtering for something RLS should enforce? A `.filter()` in JavaScript is not a security boundary.
 - Does a new table have RLS enabled *and* policies that cover select, insert, update, and delete? Enabled-with-no-policy silently denies; enabled-with-a-permissive-policy silently leaks.
 - Does a new join pull columns the viewer shouldn't see? `select('*, profiles(*)')` on a friend request exposes the whole profile row.
-- Does a friendship check cover both `requester_id` and `addressee_id`? Checking one direction is the classic bug in this schema.
+- Does a visibility policy go through `private.is_blocked()` rather than querying `blocks` directly? A direct query silently returns nothing for the blocked party, which reads as "not blocked".
 - Could a policy recurse — a `clubs` policy querying `club_members` whose policy queries `clubs`?
 - **Does any policy grant to the `anon` role?** There is no anonymous access in this app. A policy without an `auth.uid()` predicate, or one using `true` as its `using` clause, is a leak to the public internet.
 - **Does blocking hold here?** For any query returning users or their content — feeds, search, chat, member lists, ride crews — confirm a blocked user cannot appear. Blocks are symmetric even though the row is directional, so a check in one direction only is a bug. This is the most commonly missed policy in this codebase.

@@ -7,9 +7,13 @@
 --   select count(*) from public.friendships;
 --
 -- The expectation is 0 — at the time of writing the project held one rider,
--- one club and one ride, all created through the deployed app, and no UI has
--- ever successfully written a friendship. If that count is not 0, STOP and get
--- a decision: this drop is irreversible and there is no export step below.
+-- one club and one ride, all created through the deployed app. Whether a
+-- friendship was ever written is [INFERRED, not checked]: the deleted
+-- SearchRiders.tsx did have a working "Add" button and the INSERT policy
+-- permitted it, and the session that wrote this could not reach the project to
+-- count. That is exactly why the check above is a STOP and not a formality.
+-- If the count is not 0, get a decision: this drop is irreversible and there is
+-- no export step below.
 -- ###########################################################################
 --
 -- ---------------------------------------------------------------------------
@@ -60,5 +64,13 @@ drop table if exists public.friendships;
 --    where schemaname = 'public' and tablename = 'friendships';   -- expect 0
 --
 -- And confirm nothing else broke: the security advisors should report no new
--- findings, and `select count(*) from pg_policies where schemaname = 'public'`
--- should fall by exactly the two friendships policies.
+-- findings.
+--
+-- Do NOT check this by watching the total policy count fall by a remembered
+-- number. An earlier draft of this footer said "by exactly the two friendships
+-- policies" and was wrong — the table carries FOUR (SELECT and INSERT, rewritten
+-- by 009, plus UPDATE and DELETE from 002 that nothing touched again). The
+-- total goes 40 -> 36. Being told to expect 38 during an irreversible,
+-- data-destroying step is precisely how an operator talks themselves into
+-- believing the drop took something it should not have. The scoped count above
+-- is the claim that actually matters and it needs no maintaining.

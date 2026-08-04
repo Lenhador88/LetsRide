@@ -33,7 +33,7 @@ Reference the existing policies before writing new ones. Key shapes:
 - Ownership: `auth.uid() = owner_id` (or `organizer_id`, `user_id`)
 - Public visibility: `is_public = true or <membership check>`
 - Membership: `exists (select 1 from club_members where club_id = X.id and user_id = auth.uid())`
-- Friendship is bidirectional and stored one-way — a policy checking friendship must check BOTH `requester_id` and `addressee_id`.
+- Blocking is directional in the row and symmetric in effect — never check `blocks` directly, go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row.
 
 **Watch for the recursion trap:** a policy on `clubs` that queries `club_members`, where `club_members`' own policy queries `clubs`, will infinite-loop. Break it with a `security definer` function when needed.
 

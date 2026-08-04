@@ -290,8 +290,9 @@ rollback to savepoint first_consent;
 
 -- PostgREST's upsert is INSERT ... ON CONFLICT DO UPDATE, the same second route
 -- to the column that 003's completion gate had to cover.
-update profiles set terms_accepted_at = timestamptz '2020-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-00000000000a';
+-- Identity first: `rollback to savepoint` above restores the row, not
+-- `test.uid`, so anything here would otherwise still run as 000e and be
+-- refused by RLS against 000a's row — an UPDATE 0 that reads like setup.
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
 insert into profiles (id, terms_accepted_at)
   values ('00000000-0000-0000-0000-00000000000a', timestamptz '2020-01-01 00:00:00+00')
