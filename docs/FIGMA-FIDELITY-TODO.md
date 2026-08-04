@@ -338,6 +338,17 @@ Deviations that are ours, not the design's:
 - [ ] **`ListUser` renders both avatars at 40px** where the design draws the host at 40 and
       everyone else at 36. A 4px difference on one row of a roster reads as a rendering bug
       rather than as emphasis, so the rows share a left edge instead.
+- [x] ~~**`text-xl` and `text-2xl` rendered Tailwind's stock line heights.**~~ **Fixed
+      2026-08-04**, and it was never a ride-detail problem: neither size was in the `@theme`
+      scale, so `text-xl` rendered 20/28 and `text-2xl` 24/32 against a design asking for
+      20/30 and 24/36 — on every screen using them, since before this epic. `Poppins/20/*` is
+      used 167 times in the file and `Poppins/24/Semibold` 49, so both are now tokens. Found
+      by `reviewer` catching a comment that claimed "24/36, measured" over a `text-2xl` that
+      was not.
+- [ ] **The crew list is bounded at 200 and does not paginate.** `RIDE_CREW_LIMIT` exists
+      because nothing caps `ride_members` — see `max_riders` above — not because 200 is a
+      real crew. Beyond it the roster truncates silently. The design has no pagination for
+      this list, so the honest fix needs a design before it needs code.
 
 ### Create postcard
 

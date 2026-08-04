@@ -181,6 +181,33 @@ into a code comment and were wrong by a full point each — once in the directio
 have let a failure ship as a pass. The lesson is narrow and mechanical: **compute the ratio,
 then write the sentence.** Never the other way round.
 
+**`reviewer` ran before the merge this time, and found seven things — none of them a data
+leak.** That is the second epic running where the RLS reasoning held under audit and the real
+defects were elsewhere, which is worth knowing when deciding where to spend review attention.
+The shape of them:
+
+- **Two were numbers that disagreed with each other.** "N riders going" counted `maybe` RSVPs,
+  so the detail page and the crew page contradicted each other one tap apart. The fix was to
+  delete the count, not correct it — it also required an unbounded roster read.
+- **Two were claims in comments, again.** A doc naming `.pt-header-sub`, a class that does not
+  exist under that name; and `24/36 measured` written over a `text-2xl` that renders 24/32.
+  The second was the more valuable catch: `text-xl` and `text-2xl` were **missing from the
+  `@theme` scale entirely**, so every screen using them had been silently rendering Tailwind's
+  stock 20/28 and 24/32 against a design asking for 20/30 and 24/36. A ride-detail review
+  found an app-wide defect.
+- **One was dead code that contradicted its own docs** — `HeaderAction`, exported with zero
+  callers, stubbing the control the file said was deliberately not stubbed.
+- **Two were accessibility.** `role={error ? 'status' : undefined}` never announces, because
+  the live region has to exist *before* its content changes. And `ContextMenu` listed an
+  inline-arrow `onClose` in its effect deps, so the effect re-ran every render and re-fired
+  `focus()`.
+
+**Three findings I had already self-fixed before the review landed**, which is the argument
+for reading your own diff rather than waiting: the organizer being offered an RSVP the crew
+page would contradict, unconditional padding for a conditional bar, and invented `ContextMenu`
+surface. **The `reviewer` agent is worth its cost anyway** — it found the type-scale bug, which
+I would not have.
+
 **The `reviewer` agent was run over the merged diff and found four real bugs, all since
 fixed.** Worth recording *what kind* they were, because the pattern repeats: none was a data
 leak — the RLS reasoning held when checked against the live policies — and three of the four
