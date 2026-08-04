@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { unwrap } from '@/lib/data/unwrap'
 import type { Profile } from '@/types'
 
 export async function getCurrentProfile(): Promise<Profile | null> {
@@ -6,8 +7,10 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
-  return data
+  return unwrap(
+    await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+    'your profile',
+  )
 }
 
 /**
@@ -21,10 +24,9 @@ export async function getCurrentProfile(): Promise<Profile | null> {
  */
 export async function isUsernameTaken(username: string): Promise<boolean> {
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('username', username)
-    .maybeSingle()
+  const data = unwrap(
+    await supabase.from('profiles').select('id').eq('username', username).maybeSingle(),
+    'that username',
+  )
   return data !== null
 }

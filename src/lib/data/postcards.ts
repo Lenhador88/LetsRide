@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { signImagePaths } from '@/lib/data/media'
+import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import type { Postcard, FeedPage } from '@/types'
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
@@ -52,12 +53,15 @@ async function attachLikeState(
   const likedIds = new Set<string>()
 
   if (viewerId && rows.length > 0) {
-    const { data: ownLikes } = await supabase
-      .from('postcard_likes')
-      .select('postcard_id')
-      .eq('user_id', viewerId)
-      .in('postcard_id', rows.map((row) => row.id))
-    ownLikes?.forEach((like) => likedIds.add(like.postcard_id))
+    const ownLikes = unwrapList(
+      await supabase
+        .from('postcard_likes')
+        .select('postcard_id')
+        .eq('user_id', viewerId)
+        .in('postcard_id', rows.map((row) => row.id)),
+      'your likes',
+    )
+    ownLikes.forEach((like) => likedIds.add(like.postcard_id))
   }
 
   // Signed on the way out rather than at the call site: the `media` bucket is
@@ -97,8 +101,8 @@ export async function getFeed({ before, limit = FEED_PAGE_SIZE }: FeedPage = {})
     .limit(limit)
   if (before) query = query.lt('created_at', before)
 
-  const { data } = await query
-  return attachLikeState(supabase, (data ?? []) as PostcardRow[], user?.id)
+  const rows = unwrapList(await query, 'the postcard feed')
+  return attachLikeState(supabase, rows as PostcardRow[], user?.id)
 }
 
 /** The same feed, scoped to one club. RLS still decides whether the viewer
@@ -118,19 +122,21 @@ export async function getClubFeed(
     .limit(limit)
   if (before) query = query.lt('created_at', before)
 
-  const { data } = await query
-  return attachLikeState(supabase, (data ?? []) as PostcardRow[], user?.id)
+  const rows = unwrapList(await query, "this club's postcards")
+  return attachLikeState(supabase, rows as PostcardRow[], user?.id)
 }
 
 export async function getPostcard(id: string): Promise<Postcard | null> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { data } = await supabase
-    .from('postcards')
-    .select(POSTCARD_SELECT)
-    .eq('id', id)
-    .single()
+  // maybeSingle, not single: `single()` treats "no row" as an error, which
+  // would now throw for a postcard the viewer simply may not see. Not found and
+  // could-not-ask stay distinct.
+  const data = unwrap(
+    await supabase.from('postcards').select(POSTCARD_SELECT).eq('id', id).maybeSingle(),
+    'that postcard',
+  )
 
   if (!data) return null
 
