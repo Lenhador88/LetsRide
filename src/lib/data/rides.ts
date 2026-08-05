@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
+import { resolveAvatarUrls } from '@/lib/data/media'
 import type {
   PublicProfile,
   RideAttendance,
@@ -214,6 +215,16 @@ export async function getRides(
   }
 
   const rows = unwrapList(await query, 'the rides list') as unknown as RideRow[]
+
+  // Before mapping, not after: `toRideListItem` copies profile objects into
+  // `riders`, and resolving afterwards would sign the originals while the card
+  // rendered the copies. Same object identity either way here — the copies are
+  // references — but relying on that is a trap the next edit springs.
+  await resolveAvatarUrls(
+    rows.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
+    supabase
+  )
+
   return rows.map((row) => toRideListItem(row, user?.id, now))
 }
 
@@ -278,6 +289,8 @@ export async function getRide(id: string): Promise<RideDetail | null> {
   const ownRow = unwrap(ownResult, 'your RSVP') as { status: 'going' | 'maybe' } | null
   const isOrganizer = !!user && user.id === row.organizer_id
 
+  await resolveAvatarUrls([row.organizer], supabase)
+
   return {
     id: row.id,
     title: row.title,
@@ -329,6 +342,8 @@ export async function getRideCrew(rideId: string): Promise<RideCrew> {
     status: 'going' | 'maybe'
     profile: PublicProfile | null
   }[]
+
+  await resolveAvatarUrls(rows.map((row) => row.profile), supabase)
 
   const going = rows.filter((row) => row.status === 'going')
   const maybe = rows.filter((row) => row.status === 'maybe')
@@ -456,9 +471,15 @@ async function collageAvatars(
   if (organizerIds.length === 0) return []
 
   const profiles = unwrapList(
-    await supabase.from('profiles').select('id, avatar_url').in('id', organizerIds),
+    await supabase.from('profiles').select('id, avatar_url, avatar_path').in('id', organizerIds),
     'the ride filter avatars',
-  )
+  ) as { id: string; avatar_url: string | null; avatar_path: string | null }[]
+
+  // Signed like every other avatar. Missed on the first pass, and the miss was
+  // invisible rather than loud: `avatar_url` is NULL on every row in the live
+  // database, so the tile rendered zero faces and looked like a design that
+  // simply has no collage — not like a bug.
+  await resolveAvatarUrls(profiles, supabase)
 
   // Kept in ride order — soonest first — rather than the order Postgres
   // returned the profiles in.

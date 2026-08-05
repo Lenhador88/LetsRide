@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapList } from '@/lib/data/unwrap'
+import { resolveAvatarUrls } from '@/lib/data/media'
 import type { PostcardComment } from '@/types'
 
 /**
@@ -32,5 +33,7 @@ export async function getPostcardComments(postcardId: string): Promise<PostcardC
     'the comments on this postcard',
   )
 
-  return rows as PostcardComment[]
+  const comments = rows as PostcardComment[]
+  await resolveAvatarUrls(comments.map((comment) => comment.author), supabase)
+  return comments
 }

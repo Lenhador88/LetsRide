@@ -410,10 +410,28 @@ styling task:
 - [ ] **Badges** (`7/42`, a horizontal scroller of 200×144 tiles with 72px medallions). No
       table, and the *interesting* half is not the table — it is what earns a badge, which is
       a rules engine nothing in this app has.
-- [ ] **Countries** (`22/195`, rows of 32×24 flags). Needs a per-rider country set, and a
-      source for it: manual selection is a different product from "derived from rides you
-      have logged", and the design does not say which. The flags themselves are 40+ SVGs the
-      icon pipeline does not carry.
+- [x] ~~**Countries** (`22/195`, rows of 32×24 flags).~~ **Built 2026-08-05 (`014`).** The
+      open question — manual or derived from rides — was **answered by the product owner:
+      manual.** Worth recording that the derived reading was not merely unbuilt but
+      currently unbuildable: `rides` has no country, no coordinates, only a free-text
+      `meeting_point`.
+
+      Two deviations, both ours:
+
+      **Flags are emoji, not SVG assets.** `NL` → `🇳🇱` is two regional-indicator code
+      points computed from the code, so ~40 flag assets and a sprite pipeline become one
+      arithmetic function. The cost is real and stated rather than buried: **Windows renders
+      the two letters instead of a flag.** For a mobile-first app whose riders are on iOS and
+      Android that costs nothing on the screens that matter, and swapping in real assets
+      later touches `lib/countries.ts` and nothing else.
+
+      **The picker is invented.** The design shows the *result* and no way to change it —
+      every profile frame in the file is a view. A search field over the ISO list is ours.
+
+      **The denominator is not 195.** The design's `22/195` counts UN member states; the
+      picker offers the full ISO 3166-1 set (~250, including territories). The number shown
+      is the list's own length, because a denominator smaller than what can be selected would
+      let a rider reach `200/195`.
 - [ ] **Motorcycles** (256×276 cards with years, mileage, and their own like/comment/share
       counts). This is the Garage epic. `bike_model` is **one text column**, not an
       implementation of it — the page renders it as the single fact it is rather than dressing
@@ -426,15 +444,24 @@ about the app ("this does not exist yet"), and the first one is worse.
 
 Blocked on schema, same shape as the ride detail's banner:
 
-- [ ] **The 390×200 cover image has no column.** `Component / Input / Image` sits above the
-      avatar. *Chose:* omit entirely, exactly as the ride detail omitted its banner and for
-      the same reason — it carries no affordance, so an empty fifth of the screen above the
-      fold is worse than a shorter page. Needs a column *and* Storage work; do it with the
-      ride banner and the postcard strip in one pass.
-- [ ] **Avatar upload is not built.** The column exists and is rendered; nothing writes it.
-      `Login / Onboarding / Add a profile picture` (`2074:5233`) draws the flow. This is
-      `media` agent work — compression, EXIF stripping, a Storage policy — and deliberately
-      not half-built inside a text form.
+- [x] ~~**The 390×200 cover image has no column.**~~ **Built 2026-08-05 (`014`).**
+      `profiles.cover_image_path`, a Storage path under `covers/<uid>/`. It is drawn now
+      because it has *both* halves the ride banner still lacks — a column and an affordance:
+      the empty state is a tappable "Add a cover photo", not dead space. The ride banner
+      stays omitted for exactly that reason.
+- [x] ~~**Avatar upload is not built.**~~ **Built 2026-08-05 (`014`).**
+      `profiles.avatar_path` under `avatars/<uid>/`, compressed to 512px in the browser
+      (which strips EXIF) and uploaded straight to Storage. `avatar_url` survives as a
+      fallback — see 014's header for why it was not dropped.
+
+      The signing fan-out is the part worth knowing about: **nine components render an
+      avatar and all nine read `avatar_url`**, so `resolveAvatarUrls` writes the signed URL
+      *into that field* rather than adding a second one. **Nine call sites**, counted with
+      `git grep -c "await resolveAvatarUrls(" -- src/` rather than by hand — the first draft
+      of this line said "five", and the two it overlooked (`collageAvatars` on the rides
+      filter bar, and the v1 club page) were precisely the two that had been left unsigned.
+      Miss one and avatars fall back to initials on that screen alone, which reads as a
+      design choice rather than a bug.
 - [ ] **Renaming is not built.** `username` is deliberately absent from `profileEditSchema`.
       It is unique, reserved-word checked, and is every rider's identity across postcards,
       crews and member lists, so changing it is a flow with a conflict path rather than a

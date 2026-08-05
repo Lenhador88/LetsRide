@@ -118,7 +118,7 @@ src/
 │   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
 │   ├── clubs/              # JoinClubButton
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
-│   └── profile/            # EditProfileForm, ProfileMenu
+│   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts       # Browser client — use in 'use client' components
@@ -128,6 +128,7 @@ src/
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # recovery.ts — cookie name shared by callback + action
+│   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRelativeTime(), getInitials()
 ├── proxy.ts                # Auth middleware (Next.js 16 uses proxy.ts, not middleware.ts)
 └── types/
@@ -207,7 +208,7 @@ Three further rules:
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `full_name`, `bio`, `bike_model`, `avatar_url`. |
+| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **legacy** — nothing has ever written it; `014` kept it as a fallback rather than dropping it unverified. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. |
 | `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. |
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. |
@@ -218,6 +219,7 @@ Three further rules:
 | `blocks` | `(blocker_id, blocked_id)` composite PK. The row is **directional**, the effect **symmetric**. Never query it from a policy — go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row. |
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
 | `postcard_hides` | `(postcard_id, user_id)` composite PK. **Per-viewer and one-directional**, unlike `blocks` — a row only ever removes a postcard from its own `user_id`'s feed. It is an input to the `postcards` SELECT policy, so `club_id` is no longer the sole determinant of what a viewer sees. |
+| `profile_countries` | `(user_id, country_code)` composite PK, added by `014`. Countries a rider says they have ridden in, **entered manually** — the derived reading is unbuildable, `rides` has no country or coordinates. `country_code` is ISO 3166-1 alpha-2 with a CHECK; there is no `countries` reference table, because the picker's list is the client's and nothing joins against it. SELECT inherits the profiles predicate via `EXISTS`, so blocking works without the word appearing in the policy. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
@@ -229,7 +231,21 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`013` are all applied — there is no drift.** `list_migrations` on
+**Applied state: `001`–`014` are all applied — there is no drift.** `014` was applied
+2026-08-05 and every number its footer predicts was confirmed live: 9 storage.objects
+policies (3 each for `postcards/`, `avatars/`, `covers/`), 0 of them targeting anything but
+`authenticated`, 0 UPDATE policies on `storage.objects` or `profile_countries`, 0 `anon`
+grants and 0 `authenticated` UPDATE grant on `profile_countries`, both new `profiles`
+columns present with 4 path constraints, and RLS enabled. Verify with `list_migrations`
+against `ls supabase/migrations/` rather than trusting this paragraph — it is the exact line
+that has been wrong before.
+
+**Security advisors after `014`: two, neither introduced by it and neither an accident.**
+`moderate_comment` is `security definer` and granted to `authenticated` **by design** —
+`011` §1b argues the case at length: the actor cannot read the row they must act on, the
+function deletes exactly one comment on a postcard the caller authored, and its narrowness
+is the defence. The other is the leaked-password toggle, still the one genuinely outstanding
+item and still a dashboard click. `list_migrations` on
 2026-08-04 returns thirteen rows ending in `drop_friendships` (`20260804162819`). `012`
 (consent stamp guard) and `013` (drop `friendships`) were applied that day after sitting
 written-but-unapplied; `013`'s pre-flight returned **0 rows**, so nothing was destroyed, and

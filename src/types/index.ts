@@ -4,6 +4,9 @@ export type Profile = {
   // the instant the auth user exists, before a name has been chosen.
   username: string | null
   avatar_url: string | null
+  /** Storage object path — see 014. Rendered via a signed URL, never directly. */
+  avatar_path: string | null
+  cover_image_path: string | null
   bio: string | null
   bike_model: string | null
   location: string | null
@@ -19,7 +22,10 @@ export type Profile = {
  * — `terms_accepted_at` on a club member, say — is a compile error rather than
  * `undefined` at runtime.
  */
-export type PublicProfile = Pick<Profile, 'id' | 'username' | 'avatar_url' | 'bike_model'>
+export type PublicProfile = Pick<
+  Profile,
+  'id' | 'username' | 'avatar_url' | 'avatar_path' | 'bike_model'
+>
 
 export type Ride = {
   id: string
