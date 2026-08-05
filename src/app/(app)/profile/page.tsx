@@ -11,8 +11,9 @@ import { getFeed } from '@/lib/data/postcards'
 
 /**
  * `Profile / View your profile / Profile` (`1883:12248`) — the rider's own
- * profile, rebuilt from the snapshot. Replaces the v1 screen (`zinc-*`,
- * `orange-*`, `lucide-react`, a client component writing to Supabase).
+ * profile, rebuilt from the snapshot. Replaces the v1 screen — the old zinc
+ * and orange palette, the v1 icon library, and a client component writing to
+ * Supabase directly.
  *
  * Composition is measured: 128×128 avatar over a `White/100` ring, location at
  * Poppins/14/Medium, the name at Poppins/24/Semibold (`text-2xl`), and the bio
@@ -78,13 +79,18 @@ export default async function ProfilePage() {
 
         {profile.bio && <ExpandableText className="px-6">{profile.bio}</ExpandableText>}
 
-        {/* `bike_model` is the whole of the Garage the schema can back — the
-            design's Motorcycles section is a list of bikes with years, mileage
-            and their own like/comment counts. Rendered as the one fact it is
-            rather than dressed up as that section. */}
+        {/* Headed "Motorcycles", which is the design's own word for this
+            section — NOT "Rides", which is this app's noun for a planned trip
+            and the label on a bottom tab one tap away. A motorcycle under a
+            heading called Rides is a genuine misread, not a synonym.
+
+            `bike_model` is the whole of the Garage the schema can back: the
+            design's Motorcycles section lists bikes with years, mileage and
+            their own like/comment counts. Rendered as the one fact it is rather
+            than dressed up as that section. */}
         {profile.bike_model && (
           <div className="flex flex-col gap-1 px-6">
-            <h3 className="text-sm font-semibold text-foreground">Rides</h3>
+            <h3 className="text-sm font-semibold text-foreground">Motorcycles</h3>
             <p className="text-sm text-muted">{profile.bike_model}</p>
           </div>
         )}
@@ -92,7 +98,12 @@ export default async function ProfilePage() {
         <EditProfileForm profile={profile} />
 
         <section className="flex flex-col gap-2">
-          <SectionHeader title="Postcards" meta={String(postcards.length)} />
+          {/* No `meta` count. `postcards.length` is the length of a page
+              bounded at FEED_PAGE_SIZE, so a rider with 45 postcards would read
+              "30" as a total. The design draws no count on this list at all, so
+              the honest options were an accurate total (a second aggregate
+              query) or nothing — and nothing is what was drawn. */}
+          <SectionHeader title="Postcards" />
           {postcards.length === 0 ? (
             <p className="px-6 text-sm text-muted">
               Nothing posted yet. Your postcards will show up here.

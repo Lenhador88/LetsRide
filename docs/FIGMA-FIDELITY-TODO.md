@@ -459,10 +459,12 @@ Deviations that are ours, not the design's:
       validation already exist), but it is a guess, and a designed settings screen may well
       move it.
 - [ ] **The nav bar in this frame shows three tabs**, not five: Home, Clubs, Profile. Rides
-      and Inbox are absent. The built `Navbar` has five, matching every other frame and the
-      product scope, so this frame is treated as the outlier rather than the spec. Worth
-      confirming with the designer, because if it is deliberate it is a navigation change and
-      not a profile one.
+      and Inbox are absent. Counted across frames rather than assumed —
+      `Home - Postcards - All new` draws **5** tiles, this frame **3**, and
+      `Rides - All rides` **0** (it has no bar at all). A value that takes three different
+      shapes in three frames is not a spec, so the built five-tab `Navbar` stands and this is
+      treated as the outlier. Worth confirming with the designer: if the three are deliberate
+      it is a navigation change, not a profile one.
 - [ ] **The timeline is unpaginated.** It reuses `getFeed`'s rider filter, so it is bounded at
       `FEED_PAGE_SIZE` (30) — a rider with more postcards than that silently sees their 30
       newest. The design draws no pagination for this list, so the honest fix needs a design
@@ -578,11 +580,16 @@ write and delete a comment, and the UI adds no rule of its own.
       `src/components/icons/generated.tsx` from them, rewriting every literal fill to
       `currentColor` — which also erases the stray legacy `#808080` a few were drawn with.
       Regenerate rather than hand-edit.
-- [ ] **Retire the remaining `lucide-react` imports.** The v2 screens are clean; the v1 pages
-      (`rides/*`, `clubs/*`, `profile`) and `SignOutButton` still import it, and they migrate
-      with their own epics. The dependency comes out when the last import does —
-      `grep -rl lucide-react src/ | grep -v generated` is the current count, not a number typed
-      here.
+- [ ] **Retire the remaining `lucide-react` imports.** The v2 screens are clean. `profile` and
+      `SignOutButton` came off the list on 2026-08-05 — the profile screen is v2 and the button
+      is deleted — leaving `clubs/*`, `rides/new`, `Navbar` and `LikeButton`, which migrate with
+      their own epics. The dependency comes out when the last import does.
+
+      **Count it with `grep -rl "from 'lucide-react'" src/ | grep -v generated`.** The looser
+      `grep -rl lucide-react` this item used to specify counts *prose* too: a file whose only
+      match is a comment saying it no longer uses the library reads as an importer, so the
+      number could never reach 0 while any such comment existed. It over-counted by one the day
+      the profile page landed, which is how it was noticed.
 
 ## Rule for anyone building against this
 

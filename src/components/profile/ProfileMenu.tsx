@@ -43,7 +43,12 @@ export function ProfileMenu() {
 
       <ContextMenu open={open} onClose={() => setOpen(false)} label="Account options">
         <ContextMenuItem
-          onClick={() => startTransition(() => void signOut())}
+          // The callback is async and awaited. `startTransition(() => void
+          // signOut())` — a sync callback discarding the promise — ends the
+          // transition on the same tick, so `pending` flips back before the
+          // action has done anything and the label flashes. React only holds
+          // `isPending` for the life of a promise it is actually given.
+          onClick={() => startTransition(async () => { await signOut() })}
           disabled={pending}
         >
           <span className="flex items-center gap-2">

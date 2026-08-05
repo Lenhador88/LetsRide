@@ -51,13 +51,19 @@ export const BIKE_MODEL_MAX_LENGTH = 60
  * indistinguishable from one who never wrote one only by inspection, and every
  * render site already branches on null.
  *
- * Unlike `usernameSchema` and `locationSchema`, these two have **no CHECK
- * constraint behind them** — `001` declares both columns as bare `text`. The
- * length limits are therefore an application rule, enforced on the server
- * because the action parses `FormData`, but not by the database. That is a real
- * difference in strength and it is stated rather than implied: a direct
- * PostgREST call with a 10 MB bio would be accepted. Worth a constraint if this
- * ever matters; logged rather than silently assumed.
+ * **No CHECK constraint stands behind either** — `001` declares both columns as
+ * bare `text`. The length limits are an application rule: enforced on the server
+ * because the action parses `FormData`, but not by the database, so a direct
+ * PostgREST call with a 10 MB bio would be accepted. Worth a constraint if it
+ * ever matters; stated rather than silently assumed.
+ *
+ * Only `usernameSchema` is genuinely doubled in the database — `003` gives it a
+ * format CHECK and a reserved-name CHECK. **`locationSchema` is not**, which an
+ * earlier revision of this comment claimed by grouping the two together. The
+ * only database rule touching `location` is `003`'s completion trigger, and it
+ * guards the *stamp* — refusing `onboarding_completed_at` while `location` is
+ * NULL — which says nothing about length or content, and stops applying at all
+ * once onboarding is complete.
  */
 const optionalText = (max: number, message: string) =>
   z
