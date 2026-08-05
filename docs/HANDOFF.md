@@ -409,6 +409,31 @@ requirement (12px semibold is not "large text"). The green one is used well beyo
 screen, so it is a palette-wide issue the rides list merely surfaced. Both left exactly as
 drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md` §Rides list.
 
+**`reviewer` ran after the Clubs epic merged and found a data-exposure bug I introduced.**
+Read this before deciding when to run it next time.
+
+`016` made `rides.club_id` settable for the first time — the column has existed since `001`
+and no screen ever wrote it. The `rides` INSERT policy was bare `auth.uid() = organizer_id`,
+because with nothing setting `club_id` it had never been wrong. So any signed-in rider could
+post a ride into **any club**, using an id lifted from `/clubs/explore` or remembered from a
+club they had left; with `is_public = false` the rides SELECT policy then showed it to that
+club's members and nobody else. `postcards` has carried the matching predicate since `009`.
+`017` gives `rides` the same one, on INSERT **and** UPDATE — guarding INSERT alone just moves
+the hole, since you can insert clubless and then update.
+
+Three things worth keeping:
+
+- **The gap was created by making a column reachable, not by writing a bad policy.** Nothing
+  about the `rides` policies changed; what changed is that a form started setting a field.
+  Worth asking, whenever a screen writes a column for the first time: what does the SELECT
+  policy do with it?
+- **It cost a follow-up PR because review ran after the merge**, which is the exact failure
+  CLAUDE.md's squad order exists to prevent and which this repo had already recorded once.
+  The rule is now written down properly under §The Agent Squad.
+- **The review also found five documentation contradictions**, including `CLAUDE.md`
+  disagreeing with itself about whether `lucide-react` was installed. Docs are reliably the
+  largest category — four epics running.
+
 **All of `/clubs/*` is v2 as of 2026-08-05, across `015` and `016`.** The list, Explore,
 Create club, and the club detail's four sub-pages. What is worth carrying forward from the
 second half:
@@ -417,9 +442,11 @@ second half:
   joined public club` carries the note *"Public clubs are Post-MVP. Until then we only have
   private clubs"* and is On hold; `View private club` is Done. But `clubs.is_public` defaults
   to **true** in `001`, and `/clubs/explore` — an epic marked **Done** — exists to browse
-  exactly the clubs the note says do not exist yet. The create form now defaults to private;
-  the column default is untouched. **This is a question for the product owner, not a
-  decision I should have made alone.**
+  exactly the clubs the note says do not exist yet. **The product owner settled it: public
+  clubs are in scope, so that design note is out of date rather than binding.** The create form
+  defaults to **public**, matching `001`'s column default. (This bullet said "defaults to
+  private" for one commit after the code said otherwise — caught by `reviewer`'s
+  documentation-claims audit, and the reason a default belongs in one place.)
 - **There is no v2 design for Create club or Edit club.** That epic reads **To do** and the
   frames are OLD-stylesheet throughout — zero `v2 / Component / *` instances. The composition
   that shipped is the v2 primitives applied to the fields that already existed, and it is
@@ -454,13 +481,20 @@ design. What it left behind, and what is worth knowing before the next clubs scr
   T is read", and the deck is newest-first, so a rider who swipes three of twelve has read a
   *prefix* no timestamp can represent. The rule that makes it honest is that the watermark
   advances only when a surface is finished — which is what the deck already does.
-- **`rides` had no indexes at all**, not one, since `001`. The badge's rides half would have
-  been a sequential scan on every Clubs load. Worth checking the other tables the same way.
-- **Club cover and avatar images are drawn and not built, deliberately.** Adding
-  `avatar_path` / `cover_image_path` with no upload screen renders the same empty container
-  *and* plants the dead column `014` had to remove from `profiles`. They size with
-  Create/Edit club, where the upload lives and where the storage policy needs an ownership
-  lookup rather than `014`'s folder-equals-uid shape.
+- **`rides` had no index a `club_id` lookup could use** since `001` — only the implicit
+  `rides_pkey`. The badge's rides half would have been a sequential scan on every Clubs load.
+  Worth checking the other tables the same way:
+  `select tablename, indexname from pg_indexes where schemaname = 'public' order by 1;`
+
+  This bullet said "no indexes at all, not one" until `reviewer` checked it. **Fourth wrong
+  superlative this session** — after "the last v1 write", "the last client component", and the
+  handoff's own `--proxy-server` claim. The pattern is specific enough to name: the *conclusion*
+  was right every time and the *absolute* was wrong. Superlatives are claims about state, and
+  this file's own rule already covers them — write the command instead.
+- ~~**Club cover and avatar images are drawn and not built.**~~ **Built by `016`, with the
+  Create club upload that fills them** — landing together for exactly the reason this bullet
+  gave. Paths are keyed on the uploader, not the club, because the object must exist before
+  the club row does.
 - **Two Explore designs exist and the newer-looking one is on hold** — `Explore clubs` (row
   list) is Done, `Explore clubs v2` (2-up grid) is On hold. Position in the file is not
   status; the epic cover is.
@@ -545,8 +579,8 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 
 | | |
 |---|---|
-| Migrations | **`001`–`016` all applied and verified live** (`015` and `016` on 2026-08-05, before their PR merged). No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
-| Tests | RLS suite **317** assertions (`npm test`) + Vitest **321** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Migrations | **`001`–`017` all applied and verified live.** `017` closes a hole `016`'s create-ride form opened — see below; it went in *after* its PR merged, which is the cost of reviewing late. No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
+| Tests | RLS suite **323** assertions (`npm test`) + Vitest **323** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -576,17 +610,13 @@ the job look done. White on a dark fill is right in `Button`, `Checkbox`, `Filte
 grep -rn "text-white" src/app/\(app\)/clubs src/app/\(app\)/rides/new | wc -l
 ```
 
-It read 22 while `/profile` was v1, 17 once it was not, 13 once `/clubs` itself was v2, and
-reads **4** now that all of `clubs/*` is — **every one of them is in `/rides/new`**, which is
-the last v1 page in the app. `lucide-react` is down to that same single file
-(`grep -rl "from 'lucide-react'" src/ | grep -v generated`). `profile` and `clubs` are still in
-the paths above only so the command keeps working; neither can contribute now.
+It read 22 while `/profile` was v1, 17 once it was not, 13 once `/clubs` itself was v2, 4 once
+all of `clubs/*` was, and reads **0** now that `/rides/new` is too. The command is kept because
+it is the check, not because the number is interesting.
 
-The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`,
-`app/(app)/postcards/*`, `app/(app)/profile` and now all of `app/(app)/rides/` except `new/`
-are v2, along with the `(app)` shell — its layout and the Navbar migrated on contact when Home
-moved to `/postcards`. Clubs and `/rides/new` are still v1 `zinc-*`/`orange-500` and migrate
-with their own epics.
+The app is no longer inconsistent: **every route is v2** as of 2026-08-05. This paragraph
+tracked the migration screen by screen and was stale within a day of each edit — which is why
+it is now one sentence plus the command in the block above rather than a list of directories.
 
 **Migration ordering is not file order.** Two chains were written in parallel and each
 recreated the policies the other did. `004`–`007` reached the database before `002` did;

@@ -88,7 +88,14 @@ export async function createRide(
     .insert({ ride_id: ride.id, user_id: user.id, status: 'going' })
 
   if (crewError) {
-    await supabase.from('rides').delete().eq('id', ride.id)
+    // Same as createClub: an unchecked rollback lets the failure message
+    // contradict the state it leaves behind.
+    const { error: rollbackError } = await supabase.from('rides').delete().eq('id', ride.id)
+    if (rollbackError) {
+      return {
+        error: 'That ride was only partly created. Check your rides before trying again.',
+      }
+    }
     return { error: 'That ride could not be created.' }
   }
 

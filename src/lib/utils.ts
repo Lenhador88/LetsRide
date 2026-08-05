@@ -76,6 +76,20 @@ function zoneOffsetMs(instant: Date): number {
  * year the first guess lands on the wrong side of the transition and the second
  * pass corrects it. On every other day the two agree.
  *
+ * **The two hours a year that have no single right answer**, stated because a
+ * reader will otherwise assume they were not considered:
+ *
+ * - *Ambiguous*, the autumn hour that happens twice (`2026-10-25T02:30` in
+ *   Amsterdam). This picks the **second** occurrence, CET at +1 — so the value
+ *   round-trips through `formatRideTime` and a rider sees back what they typed.
+ * - *Nonexistent*, the spring hour that is skipped (`2026-03-29T02:30`). There
+ *   is no instant to return, so it lands on 03:30 — the conventional choice, and
+ *   the only input in the year that does not round-trip.
+ *
+ * Both are pinned by tests. A ride departing in either hour is not a scenario
+ * worth more machinery than this; a zone column on `rides` is the real answer
+ * and it changes this function anyway.
+ *
  * The correct long-term model is a zone column on `rides` — a ride meets
  * somewhere, and that somewhere has a clock. This keeps writes consistent with
  * the three `formatRide*` readers until that exists.
