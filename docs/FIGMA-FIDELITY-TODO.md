@@ -541,20 +541,54 @@ write and delete a comment, and the UI adds no rule of its own.
       popular photo renders every comment. Worth a cursor when a real thread gets long; the
       page size is not inventable without the design.
 
-### Report a postcard — the reason list is a guess
+### Postcard overflow menu — built 2026-08-05, and one standing TODO resolved
 
-- [ ] **The six report reasons are inferred, not read.** `spam`, `harassment`, `hate`,
-      `nudity`, `violence`, `other` — the common denominator of other platforms' report
-      sheets, not a transcription of the design's Report frame. They are a CHECK constraint
-      in `011`, a Zod enum in `src/lib/validation/comments.ts`, and a union in `src/types`,
-      kept in step by hand and by one unit test that diffs the enum against the migration.
-      Verify with `npm run figma -- text "Report"` once the snapshot is captured. **Adding a
-      value is a cheap drop-and-recreate of one constraint; removing one is not**, which is
-      why the list was kept short rather than generous.
-- [ ] Whether reporting and hiding are one affordance or two in the design. They are two
-      rights and two tables in `011` on purpose — a rider may want either — but if the design
-      shows a single "Report and hide" control, that is a `lib/actions` composition, not a
-      schema change.
+Source: `Content / Context Menu / Postcard` (`2303:5676`) and the three confirmation frames
+`Postcard hidden banner` (`2303:6009`), `Account blocked banner` (`2303:6169`),
+`Post reported banner` (`2303:6300`).
+
+Measured, not inferred: sheet 390×240 flush to the bottom, `rr[16,16,0,0]`, padding
+16/24/32/24; three items 342×56 radius 4, each with a **visible** 24px icon (`Hide`,
+`Block Account`, `Report`) and a Poppins/16/Medium `Grey/100` label — **no destructive
+tone on any row**, including Block. Banner 358×64 at 16px inset, radius 8, `White/100`,
+16px padding, 12px gap, 32px `Accent Brand/100` circle with a white check, label
+Poppins/16/Semibold.
+
+- [x] ~~**The six report reasons are inferred, not read.**~~ **Resolved 2026-08-05, and not
+      the way this entry expected.** The instruction was "verify with `npm run figma -- text`
+      once the snapshot is captured". It is captured, and **there is nothing to verify
+      against**: `Home / Report post` is marked **Done** and contains four frames — feed,
+      options sheet, confirmation banner — with **no reason step anywhere**. The design
+      reports in one tap. So the six reasons were never a transcription that drifted; they
+      answer a question the design does not ask. The enum, the CHECK constraint in `011` and
+      the union in `src/types` all stay (removing a value is the expensive direction), and
+      the unit test that diffs enum against migration still earns its place.
+- [ ] **Every report therefore lands as `other`, and the reason column carries no signal.**
+      `REPORT_REASON_WHEN_UNDRAWN` in `src/lib/validation/comments.ts` is the one caller's
+      value, chosen because it is the only member that asserts nothing the rider did not say
+      — `spam` or `harassment` would put words into a moderation record. **This is a question
+      for the designer, not a task:** should reporting collect a reason? If yes it needs a
+      frame; if no, `011`'s `reason` column is decoration and should be dropped rather than
+      left looking meaningful. Note `postcard_reports` is already write-only in practice —
+      no admin role exists to triage it — so this compounds an existing gap rather than
+      creating one.
+- [ ] **The Delete row is not in the design.** The sheet is drawn for *someone else's*
+      postcard, where Hide/Block/Report all make sense; on your own they do not, and the
+      design has no own-postcard sheet at all. Added on the product owner's explicit call
+      (2026-08-05). It uses the component set's real `Type=Warning` variant so the tone is
+      the design's, but **the two-tap confirm is ours** — `deletePostcard` is irreversible
+      and takes the Storage object with it, and the design offers no confirmation pattern to
+      copy. Worth a frame.
+- [ ] **The banner has no dismiss control and no drawn duration.** All three frames show it
+      in one state with nothing to close it. It auto-dismisses after **4 seconds**, which is
+      ours. A dismiss affordance or a documented duration would settle it.
+- [ ] **The banner's error tone is ours.** The design draws only the success form (green
+      circle, check). A failed hide/block/report reuses the same geometry with `Warning/100`
+      and a cross, because reporting a refusal under a green tick is worse than an undrawn
+      state. No error frame exists for this flow.
+- [ ] Whether reporting and hiding are one affordance or two in the design. **Two, confirmed**
+      — the sheet lists them as separate rows, matching the two rights and two tables `011`
+      created. Kept here only because the answer is now evidence rather than assumption.
 
 ### Navigation
 
