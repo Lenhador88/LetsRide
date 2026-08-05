@@ -143,7 +143,11 @@ server owns.
 
 ## Do this first
 
-**`001`–`014` are applied. There is no drift.** `014` went in on 2026-08-05, *before* its
+**`001`–`017` are applied. There is no drift.** Confirmed 2026-08-05 with `list_migrations`
+against the hosted project: 17 rows ending `rides_club_audience`. This line read `001`–`014`
+for a day while §State three hundred lines below said `001`–`017`, and §State was the one that
+was right — the opposite of what that cell predicts. Trust neither; run the command.
+`014` went in on 2026-08-05, *before* its
 PR merged rather than after — the ordering mattered, because `/profile` selects all three of
 the things it adds and would have 500'd for every rider in the window between. Every number
 its footer predicts was confirmed live; see CLAUDE.md §Supabase Rules for the list.
@@ -159,7 +163,13 @@ The next actions, in the order they are worth doing:
 2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project
    serves nothing and there is no alert, so the deployed app goes down silently. This needs a
    card, not a commit, and it will bite at the worst possible moment.
-3. **Drop `profiles.avatar_url` in `015`.** Measured against the live project on
+3. **Drop `profiles.avatar_url`** — ~~in `015`~~. **`015`, `016` and `017` are all taken and
+   applied**, so following this line as written would have added a second `015_` on top of an
+   applied one and broken the append-only rule *because a document said to*. The work is now
+   planned as `020` in `openspec/changes/migrate-to-client-rendered-shell/`, and review found
+   it cannot land in that change's Phase 1 as drafted — fifteen live query sites still name
+   the column, so dropping it before the code is repaired takes down every authenticated
+   screen. Measured against the live project on
    2026-08-05: **0 of 3 rows carry a value.** The column has never been written by this
    repo, `014` replaced it with `avatar_path`, and the evidence the drop needs now exists.
    It is a coordinated change — the column is in `PUBLIC_PROFILE_COLUMNS`, in the `Profile`
@@ -733,7 +743,13 @@ input that fails the charset rule), and two dots instead of three.
 
 ### Open, needing a decision
 
-- ~~**`terms_accepted_at` is not protected.**~~ **Written as `012`, not yet applied.** The
+- ~~**`terms_accepted_at` is not protected.**~~ ~~**Written as `012`, not yet applied.**~~
+  **`012` was applied 2026-08-04** (`20260804162810`); this line sat unedited for a day after.
+  A separate gap review found later: `012` guards the stamp against *modification* but nothing
+  ever *requires* it — the T&C rule lives only in `authSchema`'s `z.literal(true)` and in
+  `signUp`. When the client owns signup, a rider can complete onboarding with
+  `terms_accepted_at` NULL and consent evidence never exists. That is an EU-project problem and
+  it is now a finding against the client-render proposal. The
   guard pins the stamp once set and replaces the client's value with server time on the first
   write, so it cannot be cleared, back-dated, or chosen. Five assertions cover it. The
   *second* half of this item still stands: if email confirmation is ever switched on

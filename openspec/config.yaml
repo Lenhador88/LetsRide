@@ -22,7 +22,10 @@ rules:
     - "For anything touching clubs, rides, memberships or profiles, name the
       visibility rule for each role that can reach it: owner, member,
       non-member, signed-out visitor."
-  spec:
+  # The artifact id is `specs`, plural. It read `spec` from adoption until
+  # 2026-08-05, and the CLI silently discarded the rule below on every run —
+  # printing `Unknown artifact ID in rules: "spec"` where nobody was reading.
+  specs:
     - Write access-control requirements as testable statements about a role and
       a resource, so each one maps onto an assertion in supabase/tests.
   tasks:

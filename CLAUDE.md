@@ -52,11 +52,52 @@ pages with Server Actions on 2026-08-05. This line once called `JoinClubButton` 
 while both of those already existed, so count rather than trust it —
 `grep -rn "supabase.from(" src/app/ src/components/` returns nothing. Never add more.
 
+**The render model is moving to the client, and the two boundaries above are what make that
+affordable.** The app is being migrated to a client-rendered shell so it can be bundled into a
+native iOS/Android build: store presence is a product requirement, and background location
+tracking is on the roadmap — which the web platform cannot do at all, on any browser, because
+JS is suspended the moment the app backgrounds.
+
+What changes is the **render side**: server components become client components,
+`revalidatePath` becomes client-side cache invalidation, cookie sessions become device secure
+storage, and `proxy.ts` becomes a client route guard rather than a security boundary. What
+does **not** change: `src/lib/data/`, `src/lib/actions/`, or a single RLS policy. The client
+talks to Supabase directly under the same policies, with the same publishable key that already
+ships in the bundle today — so the security posture is unchanged. **This is decision #8 read
+literally, not a departure from it.** The backend stays Supabase; a handful of Edge Functions
+arrive later for the jobs needing a secret, a schedule or elevated rights (push delivery, ride
+reminders, account deletion).
+
+Re-derive the scope rather than trusting a number here — it grows with every epic:
+
+```bash
+git grep -l "" -- 'src/app/**/page.tsx' | wc -l                     # pages
+git grep -L "^'use client'" -- 'src/app/**/page.tsx' | wc -l        # ... still server-rendered
+git grep -L "^'use client'" -- 'src/components/**/*.tsx' | wc -l    # server components
+```
+
+**Note the `^` anchor and keep it.** The unanchored version reports 16 server pages against a
+real 18: `clubs/new/page.tsx` and `rides/new/page.tsx` both carry doc comments saying they used
+to be `'use client'`, so a bare match counts a file's own description of its migration as the
+thing it migrated away from. This is the third time that trap has been hit here — after the
+`lucide-react` importer count and the v1-token count — and the first version of *this very
+block* had it. A directive is only a directive on line one.
+
+**Two rules apply from now, before the migration starts:**
+
+1. **No new integrity rule may live only in a Zod schema.** Once the client owns the mutation
+   path, anything not expressed as a CHECK, trigger or policy is advisory. `003` and `012`
+   cover onboarding; `bio`, `bike_model` and `location` are the known gap and want a migration.
+2. **Do not build a client-first screen ahead of the migration.** Today's `lib/data/` functions
+   construct the server client, so a client component cannot call them. Making the data layer
+   isomorphic is the migration's first step, not a feature ticket's.
+
 **Validation: Zod, one schema per concern, shared by both sides.** Lives in
 `src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
 client needs the same rules for live feedback. Two hand-written copies of the username rule
 will drift, and the one that drifts silently is the server's. This is the only new runtime
-dependency this section introduces.
+dependency this section introduces. Per rule 1 above, Zod owns the **message**, never the
+**guarantee** — the database owns that.
 
 **Forms are hand-rolled** — controlled inputs plus `useActionState`. No React Hook Form or
 Formik; the forms in this app are one to three fields.
@@ -247,7 +288,11 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`016` are all applied — there is no drift.** `016` (club media) was
+**Applied state: `001`–`017` are all applied — there is no drift.** Confirmed 2026-08-05 with
+`list_migrations` against the hosted project: 17 rows, ending `rides_club_audience`, matching
+`ls supabase/migrations/`. `017` closed a club-audience hole `016` opened; it shipped with the
+clubs epic and this line said `016` for the rest of that day, which is the exact staleness the
+paragraph below warns about. `016` (club media) was
 applied 2026-08-05 and verified live: 6 new `storage.objects` policies (3 each for
 `club-avatars/` and `club-covers/`), 15 in total across five upload surfaces, 0 targeting
 anything but `authenticated`, 0 UPDATE policies, 4 path CHECKs on `clubs`, and both columns
@@ -539,7 +584,7 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 
 | Agent | Use for |
 |---|---|
-| `spec` | Turns a Figma flow into a buildable spec; lists undefined cases as questions |
+| `openspec` | Drives the OpenSpec workflow; enumerates every state and, above all, every **negative case** |
 | `design-system` | v2 tokens, component library, icon set — **blocks most other work** |
 | `data` | Migrations, RLS policies, block lists, indexes, schema debugging |
 | `feature` | Complete vertical slice — route, page, components, types, wiring |
@@ -552,10 +597,34 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 **Standard order for a feature:**
 
 ```
-spec → data → design-system → feature → test → reviewer → PR
+openspec → reviewer → data → design-system → feature → test → reviewer → PR
 ```
 
-Skip `spec` when the flow is already specced, `data` when there's no schema change, and `design-system` when every component already exists. Swap in `realtime` or `media` for `feature` when the work is chat/notifications or images. Always run `reviewer` on someone else's output, never on its own work — the value is in the fresh eyes.
+**`reviewer` runs twice, and the first pass is the cheaper one.** A proposal is the only
+artifact in this pipeline with *no* automated gate: `openspec/` sits in the CI denylist
+(`ci.yml`), so a proposal-only PR runs zero jobs, and the RLS suite can only assert what
+someone thought to write down. `openspec/config.yaml` names the stake exactly — a visibility
+decision left unstated "does not fail loudly, it silently becomes whatever the migration author
+assumed." By the time that reaches the second `reviewer` pass it has become a migration, a
+policy and an assertion that all agree with each other. Same lesson as *run `reviewer` before
+merging, not after*, one stage earlier.
+
+Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
+Requiring a proposal for everything is how process gets ignored, and skipping `openspec` skips
+its review pass with it. Skip `data` when there's no schema change, and `design-system` when
+every component already exists. Swap in `realtime` or `media` for `feature` when the work is
+chat/notifications or images. Always run `reviewer` on someone else's output, never on its own
+work — the value is in the fresh eyes.
+
+**`openspec` replaced `spec` on 2026-08-05.** Two specification systems meant neither was used:
+OpenSpec was adopted and never run, while `spec` produced one document
+(`docs/specs/login-onboarding.md`, kept as history, not a template). The old brief also told
+agents to call the Figma API, which §What Not To Do forbids.
+
+**A `native` agent is planned but deliberately absent** — Capacitor config, plugins, permission
+strings, deep links, signing and store upload have no owner today. It lands with the native
+shell, not before, so the squad does not carry a brief nothing can follow. `rider-ux` gets its
+full rewrite at the same time; its PWA-first priorities were superseded by the native decision.
 
 ### When to delegate — the agent decides
 
