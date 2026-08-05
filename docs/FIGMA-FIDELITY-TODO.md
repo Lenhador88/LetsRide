@@ -590,14 +590,23 @@ Poppins/16/Semibold.
 - [ ] Whether reporting and hiding are one affordance or two in the design. **Two, confirmed**
       — the sheet lists them as separate rows, matching the two rights and two tables `011`
       created. Kept here only because the answer is now evidence rather than assumption.
-- [ ] **Blocking a rider can skip unseen cards in the deck.** `PostcardDeck` windows with
-      `postcards.slice(index)` and `index` survives the RSC refresh, but a block removes
-      *every* card by that author — including ones before the current index — so the window
-      jumps forward by that many and the skipped cards are never shown. Found by review
-      2026-08-05 and **deliberately not fixed here**: the correct fix is to track the current
-      postcard by **id** rather than by index, which is a rework of the deck's state and does
-      not belong in the change that surfaced it. Low impact today (one real rider in the
-      data), real the moment a feed has two authors. Complexity 4/10, recommendation 6/10.
+- [x] ~~**Blocking a rider can skip unseen cards in the deck.**~~ **Fixed 2026-08-05**, in the
+      session after the one that surfaced it. `PostcardDeck` windowed with
+      `postcards.slice(index)`, which is only correct while the list is append-only — a block
+      removes *every* card by that author, including ones before the current index, so the
+      window jumped forward by that many and the skipped cards were never shown. Hiding and
+      deleting had the same shape one card at a time.
+
+      The fix was not index arithmetic but a change of model: the deck now holds **the set of
+      ids the rider has swiped past** and filters, so a card removed server-side stops
+      appearing and nothing shifts. That makes the whole class unrepresentable rather than
+      patched. `remainingPostcards` in `src/components/postcards/deck.ts`, seven assertions in
+      its `__tests__`.
+
+      Worth keeping the ordering straight: the defect was **latent and unreachable** until the
+      overflow menu shipped block/hide/delete — nothing in the UI could shrink the list from
+      the middle before that. It was fixed in the next session precisely because that change
+      is what activated it.
 - [ ] **`unhidePostcard` and `unblockRider` still have no caller**, so hiding and blocking are
       **one-way from the UI**. There is no "hidden postcards" or "blocked accounts" screen in
       the design to undo them from, so this needs a frame before it needs code — but a rider
