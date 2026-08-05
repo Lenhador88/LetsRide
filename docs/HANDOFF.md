@@ -131,6 +131,25 @@ This also has a happy consequence for sequencing, recorded under *What is left* 
 a client component can already read the session, the screens can be converted before the
 session moves.
 
+### Security advisors after `021` and `026` — eight findings, all deliberate
+
+Checked 2026-08-06, immediately after applying both. Nothing here is a regression, and the
+count is higher than `021`'s own footer predicted because the advisor reports **one finding per
+function**, not one for the batch.
+
+- **Five `security definer` functions callable by `authenticated`** — `my_onboarding_state`,
+  `accept_terms`, `complete_onboarding`, `has_password_reset_grant`,
+  `consume_password_reset_grant`. All intentional and argued in their migration headers. Each is
+  narrower than `moderate_comment`, which the advisors have accepted since `011`: three take no
+  arguments at all, and none can reach a row that is not the caller's.
+- **`moderate_comment`** — pre-existing, by design, `011` §1b.
+- **`rls_enabled_no_policy` (INFO) on `password_reset_grants`** — RLS on, zero policies, zero
+  grants, deliberately. That combination is what makes the table unreachable by anything except
+  the two `security definer` functions; a policy would *widen* it. Expect this finding
+  permanently.
+- **Leaked-password protection disabled** — still the one genuinely outstanding item, still a
+  dashboard toggle. **Owner action.**
+
 ### The recovery cookie is gone, and D3's Edge Function was unbuildable
 
 `026` replaces the httpOnly `lr-recovery` cookie. D3 specified an Edge Function that exchanges
