@@ -2162,6 +2162,416 @@ select assert_eq(
     where conrelid = 'public.clubs'::regclass and contype = 'c' and conname like '%path%'),
   4, 'both club image columns carry a shape check and an owner-folder check');
 
+-- ===========================================================================
+-- 018: text bounds on rider-authored columns
+-- ===========================================================================
+
+\echo ''
+\echo '# Every length rule that lived only in Zod now lives here too (migration 018)'
+
+-- These are not RLS assertions and they belong here anyway: the point of 018 is
+-- that the rule holds for a caller PostgREST would happily serve, which is the
+-- same population every other assertion in this file is about. Each bound gets a
+-- rejection AND an acceptance at the boundary, because a constraint that refuses
+-- everything passes a rejection test perfectly.
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+-- profiles: bio 500, bike_model 60, location 1..100.
+select assert_rejected($$
+  update profiles set bio = repeat('x', 501)
+   where id = '00000000-0000-0000-0000-00000000000a'$$,
+  '23514', 'a bio over 500 characters is refused');
+
+select assert_rejected($$
+  update profiles set bike_model = repeat('x', 61)
+   where id = '00000000-0000-0000-0000-00000000000a'$$,
+  '23514', 'a bike model over 60 characters is refused');
+
+select assert_rejected($$
+  update profiles set location = repeat('x', 101)
+   where id = '00000000-0000-0000-0000-00000000000a'$$,
+  '23514', 'a location over 100 characters is refused');
+
+-- The floor is on the TRIMMED value, so whitespace is not a location.
+select assert_rejected($$
+  update profiles set location = '   '
+   where id = '00000000-0000-0000-0000-00000000000a'$$,
+  '23514', 'a location of nothing but spaces is refused');
+
+-- Acceptance at the boundary, written for real and read back: an UPDATE filtered
+-- to zero rows does not error, so assert_allowed cannot tell "permitted" from
+-- "forbidden entirely" — and it refuses UPDATE outright for that reason.
+savepoint bounds_profiles;
+update profiles
+   set bio = repeat('x', 500), bike_model = repeat('y', 60), location = repeat('z', 100)
+ where id = '00000000-0000-0000-0000-00000000000a';
+select assert_eq(
+  (select (length(bio) = 500 and length(bike_model) = 60 and length(location) = 100)
+     from profiles where id = '00000000-0000-0000-0000-00000000000a')::text,
+  'true', 'the exact boundary value is accepted on all three profile columns');
+rollback to savepoint bounds_profiles;
+
+-- NULL is not the empty string and is not a violation. `location` NULL is the
+-- state every rider is in between signup and onboarding step 2, so a constraint
+-- that forbade it would make the wizard unreachable.
+savepoint bounds_profiles_null;
+update profiles set bio = null, bike_model = null, location = null
+ where id = '00000000-0000-0000-0000-00000000000a';
+select assert_eq(
+  (select (bio is null and bike_model is null and location is null)
+     from profiles where id = '00000000-0000-0000-0000-00000000000a')::text,
+  'true', 'NULL is accepted on every optional profile column');
+rollback to savepoint bounds_profiles_null;
+
+-- clubs: name 1..60, description 500.
+select assert_rejected($$
+  insert into clubs (name, is_public, owner_id)
+  values (repeat('x', 61), true, '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a club name over 60 characters is refused');
+
+select assert_rejected($$
+  insert into clubs (name, is_public, owner_id)
+  values ('   ', true, '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a club name of nothing but spaces is refused');
+
+-- The asymmetry postcard_comments_body_length established: the ceiling is on the
+-- RAW value, so padding cannot smuggle a longer name past a trimmed check. 60
+-- trimmed, 62 raw — accepted by a naive `length(btrim(name)) <= 60`.
+select assert_rejected($$
+  insert into clubs (name, is_public, owner_id)
+  values (repeat('x', 60) || '  ', true, '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'padding cannot smuggle a name past the raw ceiling');
+
+select assert_rejected($$
+  insert into clubs (name, description, is_public, owner_id)
+  values ('Bounded MC', repeat('x', 501), true, '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a club description over 500 characters is refused');
+
+select assert_allowed($$
+  insert into clubs (name, description, is_public, owner_id)
+  values (repeat('x', 60), repeat('y', 500), true, '00000000-0000-0000-0000-00000000000a')$$,
+  'a club at exactly 60 and 500 characters is accepted');
+
+select assert_allowed($$
+  insert into clubs (name, description, is_public, owner_id)
+  values ('Nulls MC', null, true, '00000000-0000-0000-0000-00000000000a')$$,
+  'a club with no description is accepted');
+
+-- rides: title 1..80, description 500, meeting_point 1..120,
+-- route_description 1000, max_riders 1..999. club_id stays NULL throughout so
+-- these test 018 and not 017's membership predicate or 022's audience rule.
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values (repeat('x', 81), 'The Pier', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a ride title over 80 characters is refused');
+
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values ('  ', 'The Pier', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a whitespace-only ride title is refused');
+
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values ('Dusk Run', repeat('x', 121), now() + interval '1 day', true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a meeting point over 120 characters is refused');
+
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values ('Dusk Run', '  ', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a whitespace-only meeting point is refused');
+
+select assert_rejected($$
+  insert into rides (title, description, meeting_point, departure_at, is_public, organizer_id)
+  values ('Dusk Run', repeat('x', 501), 'The Pier', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a ride description over 500 characters is refused');
+
+select assert_rejected($$
+  insert into rides (title, route_description, meeting_point, departure_at, is_public, organizer_id)
+  values ('Dusk Run', repeat('x', 1001), 'The Pier', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a route description over 1000 characters is refused');
+
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, max_riders, is_public, organizer_id)
+  values ('Dusk Run', 'The Pier', now() + interval '1 day', 0, true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a ride with room for zero riders is refused');
+
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, max_riders, is_public, organizer_id)
+  values ('Dusk Run', 'The Pier', now() + interval '1 day', 1000, true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a ride with room for 1000 riders is refused');
+
+select assert_allowed($$
+  insert into rides (title, description, route_description, meeting_point,
+                     departure_at, max_riders, is_public, organizer_id)
+  values (repeat('t', 80), repeat('d', 500), repeat('r', 1000), repeat('m', 120),
+          now() + interval '1 day', 999, true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  'a ride at every boundary value at once is accepted');
+
+select assert_allowed($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values ('Minimal Run', 'X', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-00000000000a')$$,
+  'a ride with NULL description, route and max_riders is accepted');
+
+-- ===========================================================================
+-- 019: club_members.role is not self-assignable
+-- ===========================================================================
+
+\echo ''
+\echo '# A rider joins as a member, and the owner arrives as owner (migration 019)'
+
+-- The defect this closes was live: the INSERT policy constrained who the row was
+-- for and said nothing about `role`, so any rider could join any public club as
+-- `admin` — a value /clubs/[id]/members renders with a label and an owner ring.
+
+-- A public club owned by the OUTSIDER (000c), so the owner arm and the joiner
+-- arm are exercised by two different riders on a club neither of them shares
+-- with the block fixtures. Nothing earlier in this file counts its roster.
+reset role;
+insert into clubs (id, name, is_public, owner_id)
+  values ('00000000-0000-0000-0000-0000000000c6', 'Role Test Club', true,
+          '00000000-0000-0000-0000-00000000000c');
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_allowed($$
+  insert into club_members (club_id, user_id, role)
+  values ('00000000-0000-0000-0000-0000000000c6', '00000000-0000-0000-0000-00000000000c', 'owner')$$,
+  'the club''s own owner_id may insert their owner row');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_denied($$
+  insert into club_members (club_id, user_id, role)
+  values ('00000000-0000-0000-0000-0000000000c6', '00000000-0000-0000-0000-00000000000a', 'admin')$$,
+  'a rider joining a public club cannot arrive as admin');
+
+select assert_denied($$
+  insert into club_members (club_id, user_id, role)
+  values ('00000000-0000-0000-0000-0000000000c6', '00000000-0000-0000-0000-00000000000a', 'owner')$$,
+  'a rider joining a public club cannot arrive as owner');
+
+-- Guards against over-tightening: the ordinary join must still work, both by
+-- omitting the column (the default, which is what joinClub does) and by naming
+-- it. A WITH CHECK sees the row after defaults are applied, so these are two
+-- genuinely different statements.
+select assert_allowed($$
+  insert into club_members (club_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000c6', '00000000-0000-0000-0000-00000000000a')$$,
+  'an ordinary join still succeeds on the role default');
+
+select assert_allowed($$
+  insert into club_members (club_id, user_id, role)
+  values ('00000000-0000-0000-0000-0000000000c6', '00000000-0000-0000-0000-00000000000a', 'member')$$,
+  'an ordinary join still succeeds naming role explicitly');
+
+-- design.md Q10: promotion stays impossible until the invitations feature
+-- designs it, and the absence of an UPDATE policy is the recorded answer rather
+-- than an oversight. Pinned here so that adding one means deleting a test that
+-- says why it was not there.
+--
+-- Read back rather than asserted allowed/denied: `authenticated` DOES hold the
+-- table-level UPDATE grant, so RLS filters the statement to zero rows instead of
+-- raising. It succeeds and changes nothing, and those two look identical from
+-- assert_allowed — which is why that helper refuses UPDATE outright.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+savepoint no_promotion;
+update club_members set role = 'admin'
+ where club_id = '00000000-0000-0000-0000-0000000000c2'
+   and user_id = '00000000-0000-0000-0000-00000000000a';
+select assert_eq(
+  (select role from club_members
+    where club_id = '00000000-0000-0000-0000-0000000000c2'
+      and user_id = '00000000-0000-0000-0000-00000000000a'),
+  'owner', 'a club owner cannot promote anyone, including themselves');
+rollback to savepoint no_promotion;
+
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'club_members' and cmd = 'UPDATE'),
+  0, 'club_members carries no UPDATE policy, which is Q10''s answer');
+
+-- Scoped to the grantee. `postgres` and `service_role` hold everything by
+-- Supabase default, so a table-wide count of UPDATE grants reads 2 against a
+-- correct database — the mistake 015's footer made and documented.
+select assert_eq(
+  has_table_privilege('authenticated', 'public.club_members', 'update'),
+  true, 'the grant is present, so it is genuinely RLS refusing the promotion');
+
+-- ===========================================================================
+-- 020: a country code must be a country
+-- ===========================================================================
+
+\echo ''
+\echo '# ZZ is well-formed and is not a country (migration 020)'
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+select assert_rejected($$
+  insert into profile_countries (user_id, country_code)
+  values ('00000000-0000-0000-0000-00000000000a', 'ZZ')$$,
+  '23514', 'an unassigned code ZZ is refused');
+
+select assert_rejected($$
+  insert into profile_countries (user_id, country_code)
+  values ('00000000-0000-0000-0000-00000000000a', 'XX')$$,
+  '23514', 'an unassigned code XX is refused');
+
+-- 014's shape check still does its own job: case is a separate rule from
+-- membership, and `nl` violates the first without reaching the second.
+select assert_rejected($$
+  insert into profile_countries (user_id, country_code)
+  values ('00000000-0000-0000-0000-00000000000a', 'nl')$$,
+  '23514', 'a lowercase code is still refused');
+
+select assert_allowed($$
+  insert into profile_countries (user_id, country_code)
+  values ('00000000-0000-0000-0000-00000000000a', 'NL')$$,
+  'an assigned code is accepted (guards against refusing everything)');
+
+-- ===========================================================================
+-- 022: a private club's ride is not a public ride
+-- ===========================================================================
+
+\echo ''
+\echo '# A ride cannot claim a wider audience than its club (migration 022)'
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+-- c1 is private and 000a belongs to it, so 017's membership predicate passes and
+-- the only thing left to refuse the write is 022's trigger.
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('Leaky Run', 'The Bridge', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000a')$$,
+  '23514', 'a ride in a private club cannot be created public');
+
+select assert_allowed($$
+  insert into rides (title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('Quiet Run', 'The Bridge', now() + interval '1 day', false,
+          '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000a')$$,
+  'the same ride kept private is accepted');
+
+-- UPDATE too, or the rule would only move: insert private, then widen.
+select assert_rejected($$
+  update rides set is_public = true
+   where id = '00000000-0000-0000-0000-0000000000d1'$$,
+  '23514', 'a private club''s ride cannot be widened to public afterwards');
+
+\echo ''
+\echo '# A club turning private takes its rides with it (migration 022)'
+
+-- c2 is public and 000a owns it. A ride posted there is legitimately public
+-- until the moment the club is not.
+savepoint club_goes_private;
+
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('00000000-0000-0000-0000-0000000000d7', 'Open Club Run', 'The Square',
+          now() + interval '5 days', true,
+          '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000a');
+select assert_eq(
+  (select is_public from rides where id = '00000000-0000-0000-0000-0000000000d7'),
+  true, 'a public club''s ride may be public');
+
+-- The discriminating case, and the reason it needs three statements rather than
+-- one: a ride in c2 organised by someone who is NOT the club owner. The `rides`
+-- UPDATE policy is `auth.uid() = organizer_id`, so an invoker-rights version of
+-- propagate_club_privacy_to_rides silently skips this row while still fixing d7
+-- above — reporting `UPDATE 1` and looking finished. No seed rider is a
+-- non-owner member of c2, so 000b joins it here (which exercises 019's role
+-- default in passing).
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+insert into club_members (club_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000b');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('00000000-0000-0000-0000-0000000000d8', 'Members Run', 'The Bridge',
+          now() + interval '6 days', true,
+          '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000b');
+
+-- Back to the owner: turning the club private is theirs to do, and the whole
+-- point is that it must reach a ride they do not organise.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+update clubs set is_public = false where id = '00000000-0000-0000-0000-0000000000c2';
+select assert_eq(
+  (select is_public from rides where id = '00000000-0000-0000-0000-0000000000d7'),
+  false, 'making the club private brings its public rides down with it');
+select assert_eq(
+  (select is_public from rides where id = '00000000-0000-0000-0000-0000000000d8'),
+  false, '... including a ride organised by someone other than the club owner');
+
+rollback to savepoint club_goes_private;
+
+\echo ''
+\echo '# Ride visibility, stated once per role (migration 022)'
+
+-- A ride that violates the rule, seeded past the trigger on purpose. 022's
+-- trigger binds every role — there is no `current_user` escape, unlike 012's
+-- guard — so this is the only way to produce the row, and producing it is the
+-- point: §4 of that migration exists for rows §2 did not see.
+reset role;
+alter table public.rides disable trigger enforce_ride_club_audience;
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('00000000-0000-0000-0000-0000000000d5', 'Smuggled Run', 'The Bridge',
+          now() + interval '6 days', true,
+          '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000a');
+alter table public.rides enable trigger enforce_ride_club_audience;
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-00000000000a', 'going');
+set role authenticated;
+
+-- Organizer: regardless of is_public, club_id or club visibility.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000000000d5'),
+  1, 'the organizer reads their own ride in a private club');
+
+-- Club member.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000000000d5'),
+  1, 'a member of the private club reads its ride');
+
+-- Non-member, private club's ride. Before 022 this returned 1, on the strength
+-- of a flag the club contradicts.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000000000d5'),
+  0, 'a non-member cannot read a private club''s ride even when it is flagged public');
+
+-- And its crew with it. ride_members never names a club — its policy delegates
+-- to rides by EXISTS — so this is testing that the delegation holds rather than
+-- that a second copy of the predicate was written correctly.
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-0000000000d5'),
+  0, 'nor the crew of that ride, through ride_members');
+
+-- Non-member, public ride with no club. Decision #1: "public" means "any
+-- signed-in rider". Guards against over-tightening — this is the arm 022
+-- narrowed, so it is the one that could have been lost.
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000000000d2'),
+  1, 'a signed-in non-member still reads a public ride with no club');
+
+-- Blocked rider. d4 is public and clubless and organised by the blocked rider,
+-- so this proves the rewritten policy kept 009's predicate rather than that the
+-- ride was unreachable for some other reason.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000000000d4'),
+  0, 'the block predicate survived 022 rewriting the select policy');
+
+-- Signed-out visitor.
+reset role;
+set role anon;
+select assert_denied('select count(*) from rides',
+  'anon still cannot read rides after 022 recreated the select policy');
+reset role;
+
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 

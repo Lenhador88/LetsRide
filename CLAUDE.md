@@ -288,11 +288,23 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`017` are all applied — there is no drift.** Confirmed 2026-08-05 with
-`list_migrations` against the hosted project: 17 rows, ending `rides_club_audience`, matching
-`ls supabase/migrations/`. `017` closed a club-audience hole `016` opened; it shipped with the
-clubs epic and this line said `016` for the rest of that day, which is the exact staleness the
-paragraph below warns about. `016` (club media) was
+**Applied state: `001`–`020` and `022`. `021` and `023` are written and deliberately NOT
+applied — and that is the one case where the "unapplied migrations are drift" rule must not be
+followed blindly.** Confirmed 2026-08-05 with `list_migrations`: **21 rows** ending
+`private_club_rides`, against **23 files** in `supabase/migrations/`. The two extras are exactly
+`021` and `023`.
+
+**Do not apply either without reading its header.** `021_profile_column_privileges` revokes
+column grants that `proxy.ts` reads on *every authenticated request* — applying it alone logs
+out every rider and makes onboarding impossible to complete. `023_participation_gate` refuses
+writes from riders whose consent stamp is NULL, which is all four of them. They are also
+mutually incompatible: `023` gates on stamps `021` removes the only path to setting. Both are
+listed in `SKIP_MIGRATIONS` in `supabase/tests/run.sh` so the suite models the database that
+actually runs, and each has its own pending suite (`PENDING=021`, `PENDING=023`).
+
+This line has been wrong in both directions — it said `016` for a day after `017` landed, then
+`017` for an hour after four more did. Run `list_migrations` against `ls supabase/migrations/`
+rather than reading it. `016` (club media) was
 applied 2026-08-05 and verified live: 6 new `storage.objects` policies (3 each for
 `club-avatars/` and `club-covers/`), 15 in total across five upload surfaces, 0 targeting
 anything but `authenticated`, 0 UPDATE policies, 4 path CHECKs on `clubs`, and both columns

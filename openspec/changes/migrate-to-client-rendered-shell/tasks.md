@@ -5,30 +5,45 @@ phase's definition, not a description of it — one Supabase project, `main` aut
 removal landing without its code repair is a production outage. The `avatar_url` drop lived here
 in an earlier revision and has moved to group 3.
 
-- [ ] 1.1 Pre-flight every constraint below against the live project: count violating rows for
+**State, 2026-08-05 — and two tasks below fail that definition, which is why they did not
+ship.** `018`, `019`, `020` and `022` are written, asserted and **applied**; their boxes are
+ticked. `021` (task 1.8) and `023` (tasks 1.12–1.14) are **written and deliberately unapplied**,
+with their assertions in `rls_test_pending_021.sql` and `rls_test_pending_023.sql` and both
+listed in `SKIP_MIGRATIONS`. Their boxes stay open because the work is not landed.
+
+- **`021` is not additive.** It revokes grants `proxy.ts`, `setLocation`, `signUp` and
+  `getMyProfile` all depend on, so it breaks four live paths and belongs in the group that owns
+  that code — the same reason the `avatar_url` drop left. The heading's rule caught it; the task
+  predates the rule.
+- **`023` needs an application change first** — the consent prompt in group 2 — because all four
+  riders have a NULL consent stamp and the gate would lock every one of them out.
+- **They are also mutually incompatible**: `023` gates on stamps `021` removes the only client
+  path to setting. There is deliberately no test mode that applies both.
+
+- [x] 1.1 Pre-flight every constraint below against the live project: count violating rows for
   each column before writing its migration, the way `013` did. Record each count in the
   migration header. A non-zero count means `NOT VALID` plus a separate validate, not a
   loosened rule. Two are already measured — see 1.10 and 1.12.
-- [ ] 1.2 `018_text_bounds.sql` — CHECK constraints matching the Zod schemas exactly for
+- [x] 1.2 `018_text_bounds.sql` — CHECK constraints matching the Zod schemas exactly for
   `profiles.bio` (≤500), `profiles.bike_model` (≤60), `profiles.location` (1–100),
   `clubs.name` (1–60), `clubs.description` (≤500), `rides.title` (1–80),
   `rides.description` (≤500), `rides.meeting_point` (1–120), `rides.route_description`
   (≤1000), `rides.max_riders` (1–999). Trimmed floor, raw ceiling, matching
   `postcard_comments_body_length`. NULL stays permitted on every optional column.
-- [ ] 1.3 Add `supabase/tests/rls_test.sql` assertions for 1.2: one rejection per bound, plus
+- [x] 1.3 Add `supabase/tests/rls_test.sql` assertions for 1.2: one rejection per bound, plus
   one acceptance at the boundary value, plus NULL accepted on each optional column.
-- [ ] 1.4 `019_club_member_role.sql` — a rider may only insert a `club_members` row with
+- [x] 1.4 `019_club_member_role.sql` — a rider may only insert a `club_members` row with
   `role = 'member'`, unless they are the club's `owner_id`, in which case `'owner'` is
   permitted. A `WITH CHECK` addition to the existing INSERT policy, so the rule sits beside the
   one it qualifies.
-- [ ] 1.5 Assertions for 1.4: non-member inserting `role='admin'` into a public club is
+- [x] 1.5 Assertions for 1.4: non-member inserting `role='admin'` into a public club is
   refused; same with `role='owner'`; the club owner's own `'owner'` row succeeds; an ordinary
   join still succeeds with the default; **and** an UPDATE of `role` by the club owner is
   refused, pinning the recorded absence of an UPDATE policy.
-- [ ] 1.6 `020_profile_countries_known_code.sql` — country code must be an assigned ISO 3166-1
+- [x] 1.6 `020_profile_countries_known_code.sql` — country code must be an assigned ISO 3166-1
   alpha-2 value, not merely two uppercase letters. No `countries` reference table: `014`
   declined one deliberately and nothing joins against it.
-- [ ] 1.7 Assertions for 1.6: `ZZ` and `XX` refused, `NL` accepted, lowercase still refused.
+- [x] 1.7 Assertions for 1.6: `ZZ` and `XX` refused, `NL` accepted, lowercase still refused.
 - [ ] 1.8 `021_profile_column_privileges.sql` — `revoke select, insert, update
   (terms_accepted_at, onboarding_completed_at) on public.profiles from authenticated`, plus a
   `security definer` accessor returning the caller's own two stamps for the route guard and the
@@ -39,12 +54,12 @@ in an earlier revision and has moved to group 3.
   own through the accessor; a blocked rider still gets zero rows; `has_column_privilege` for
   `authenticated` is false on both columns, scoped to that grantee rather than counted
   table-wide — the mistake `015`'s footer made and documented.
-- [ ] 1.10 `022_private_club_rides.sql` — a ride whose `club_id` names a private club may not
+- [x] 1.10 `022_private_club_rides.sql` — a ride whose `club_id` names a private club may not
   have `is_public = true`, on INSERT and UPDATE, and a club turning private takes its rides with
   it. **Pre-flight measured 2026-08-05: 3 rides, 0 club rides, 0 private clubs, 0 violating
   rows** — it adds cleanly today, and `/rides/new` began offering `club_id` on 2026-08-05, so
   the free window is short. Re-run the count at apply time.
-- [ ] 1.11 Assertions for 1.10, one per role, matching the spec's enumeration: organizer,
+- [x] 1.11 Assertions for 1.10, one per role, matching the spec's enumeration: organizer,
   club member, non-member on a clubless public ride, non-member on a private club's ride
   (zero rows, and its crew unreachable through `ride_members`), blocked rider, signed-out
   visitor.
@@ -75,7 +90,9 @@ in an earlier revision and has moved to group 3.
   the rider's own onboarding `profiles` updates still succeed while NULL, so nobody is stranded
   mid-wizard; completion refused while `terms_accepted_at` is NULL; a fresh `profiles` INSERT
   cannot choose its own consent timestamp.
-- [ ] 1.16 Apply `018`–`023` to the hosted project, then check the Supabase security advisors
+- [x] 1.16 ~~Apply `018`–`023`~~ **Apply `018`, `019`, `020` and `022` only** — see the state
+  note under this heading; applying `021` or `023` today is an outage, not a step. Done
+  2026-08-05. Then check the Supabase security advisors
   and confirm the only findings are the two known ones (`moderate_comment` by design, the
   leaked-password toggle) plus, if it appears, the new own-row accessor — which is narrower than
   `moderate_comment` and expected. `npm test` green before any of this is called done.

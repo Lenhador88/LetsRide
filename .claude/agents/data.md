@@ -17,6 +17,14 @@ You own the Postgres schema and Row Level Security for LetsRide. Everything the 
 
 - **Never edit an applied migration.** Always add a new file: `002_`, `003_`, etc.
 - Write the file to `supabase/migrations/` AND apply it with `apply_migration`. Both — the file is the source of truth in git, the MCP call makes it real.
+- **`apply_migration` takes SQL as an argument, not a file path, so the two can silently
+  diverge.** Pass the file's exact contents; never retype, condense or "tidy" it into the call.
+  This has already happened: `022` was applied with `security definer` on a trigger function and
+  committed without it, so production was correct and the repo built a `security invoker`
+  version that silently skipped every ride the club owner did not organise. One clause, and it
+  was the security-relevant one. After applying, diff what landed against what you committed —
+  `select prosecdef, proconfig from pg_proc` for functions, and the policy/CHECK/trigger counts
+  for the rest.
 - Every new table gets `alter table X enable row level security;` in the same migration. No exceptions.
 - Prefer additive changes. If you must drop or rename, say so loudly in your report — it's a coordinated deploy.
 
