@@ -165,6 +165,7 @@ create trigger enforce_ride_club_audience
 create or replace function public.propagate_club_privacy_to_rides()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin

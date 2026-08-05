@@ -109,10 +109,13 @@ comment on column public.club_members.role is
 --   select count(*) from pg_policies
 --    where tablename = 'club_members' and roles::text[] <> array['authenticated'];
 --
--- Expected: 0 rows — nobody holds UPDATE on the table, scoped to the grantee
--- rather than counted table-wide. `postgres` and `service_role` hold everything
--- by Supabase default, so a bare count reads 2 against a correct database —
--- exactly the mistake 015's footer made and documented.
+-- Expected: t — and that is not a mistake. `authenticated` DOES hold the
+-- table-level UPDATE grant, so a promotion attempt is filtered to zero rows by
+-- the absence of an UPDATE policy rather than refused by a missing privilege.
+-- Both are asserted in rls_test.sql. An earlier draft of this footer predicted
+-- "0 rows", which is wrong twice over: has_table_privilege is scalar and always
+-- returns exactly one row, and the value is true. An operator running it as
+-- written would have concluded the migration had not applied.
 --   select has_table_privilege('authenticated', 'public.club_members', 'update');
 --
 -- Expected: t — the new policy carries the role rule.

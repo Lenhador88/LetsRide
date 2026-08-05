@@ -81,6 +81,19 @@ export async function createRide(
     .select('id')
     .single()
 
+  // 022 refuses a public ride in a private club. Reachable from the default
+  // path — the audience checkbox ships ticked and the club picker cannot tell a
+  // private club from a public one — so the generic message below would leave
+  // the rider with no route to the fix.
+  //
+  // Matched on the message rather than on `23514` alone, because 018's text
+  // bounds raise the same SQLSTATE and a title-too-long must not be reported as
+  // an audience problem. The string is the one `enforce_ride_club_audience`
+  // raises in 022; a named CHECK would read "violates check constraint ..."
+  // instead, which is how the two stay distinguishable.
+  if (error?.code === '23514' && error.message.includes('private club cannot be public')) {
+    return { error: 'A ride in a private club cannot be public. Untick “Make this ride public”, or pick a public club.' }
+  }
   if (error || !ride) return { error: 'That ride could not be created.' }
 
   const { error: crewError } = await supabase

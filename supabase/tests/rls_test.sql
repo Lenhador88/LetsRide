@@ -2483,10 +2483,31 @@ select assert_eq(
   (select is_public from rides where id = '00000000-0000-0000-0000-0000000000d7'),
   true, 'a public club''s ride may be public');
 
+-- The discriminating case, and the reason it needs three statements rather than
+-- one: a ride in c2 organised by someone who is NOT the club owner. The `rides`
+-- UPDATE policy is `auth.uid() = organizer_id`, so an invoker-rights version of
+-- propagate_club_privacy_to_rides silently skips this row while still fixing d7
+-- above — reporting `UPDATE 1` and looking finished. No seed rider is a
+-- non-owner member of c2, so 000b joins it here (which exercises 019's role
+-- default in passing).
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+insert into club_members (club_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000b');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('00000000-0000-0000-0000-0000000000d8', 'Members Run', 'The Bridge',
+          now() + interval '6 days', true,
+          '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000b');
+
+-- Back to the owner: turning the club private is theirs to do, and the whole
+-- point is that it must reach a ride they do not organise.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
 update clubs set is_public = false where id = '00000000-0000-0000-0000-0000000000c2';
 select assert_eq(
   (select is_public from rides where id = '00000000-0000-0000-0000-0000000000d7'),
   false, 'making the club private brings its public rides down with it');
+select assert_eq(
+  (select is_public from rides where id = '00000000-0000-0000-0000-0000000000d8'),
+  false, '... including a ride organised by someone other than the club owner');
 
 rollback to savepoint club_goes_private;
 
