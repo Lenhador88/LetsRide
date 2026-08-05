@@ -231,13 +231,21 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`013` are applied. `014` is WRITTEN AND NOT APPLIED — that is drift,
-and it is deliberate rather than forgotten.** `014` adds `profiles.avatar_path`,
-`profiles.cover_image_path` and `profile_countries`; the profile screen selects all three, so
-**the deployed app will 500 on `/profile` until it is applied.** Apply it before or with the
-merge, never after. Verify with `list_migrations` rather than trusting this paragraph.
+**Applied state: `001`–`014` are all applied — there is no drift.** `014` was applied
+2026-08-05 and every number its footer predicts was confirmed live: 9 storage.objects
+policies (3 each for `postcards/`, `avatars/`, `covers/`), 0 of them targeting anything but
+`authenticated`, 0 UPDATE policies on `storage.objects` or `profile_countries`, 0 `anon`
+grants and 0 `authenticated` UPDATE grant on `profile_countries`, both new `profiles`
+columns present with 4 path constraints, and RLS enabled. Verify with `list_migrations`
+against `ls supabase/migrations/` rather than trusting this paragraph — it is the exact line
+that has been wrong before.
 
-**Applied state (historic): `001`–`013`.** `list_migrations` on
+**Security advisors after `014`: two, neither introduced by it and neither an accident.**
+`moderate_comment` is `security definer` and granted to `authenticated` **by design** —
+`011` §1b argues the case at length: the actor cannot read the row they must act on, the
+function deletes exactly one comment on a postcard the caller authored, and its narrowness
+is the defence. The other is the leaked-password toggle, still the one genuinely outstanding
+item and still a dashboard click. `list_migrations` on
 2026-08-04 returns thirteen rows ending in `drop_friendships` (`20260804162819`). `012`
 (consent stamp guard) and `013` (drop `friendships`) were applied that day after sitting
 written-but-unapplied; `013`'s pre-flight returned **0 rows**, so nothing was destroyed, and

@@ -88,13 +88,10 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 ## Do this first
 
-**`014` IS WRITTEN AND NOT APPLIED. That is drift, and it is the first thing to fix.**
-`001`–`013` are applied; `list_migrations` on 2026-08-05 returned thirteen rows ending in
-`drop_friendships`. `014` adds `profiles.avatar_path`, `profiles.cover_image_path` and
-`profile_countries`, and **`/profile` selects all three** — so the deployed app returns a 500
-on that route until it is applied. Apply it before or with the merge of #39, never after.
-It was left unapplied deliberately rather than forgotten: applying DDL to production is not a
-step to take without the owner saying so.
+**`001`–`014` are applied. There is no drift.** `014` went in on 2026-08-05, *before* its
+PR merged rather than after — the ordering mattered, because `/profile` selects all three of
+the things it adds and would have 500'd for every rider in the window between. Every number
+its footer predicts was confirmed live; see CLAUDE.md §Supabase Rules for the list.
 
 The next actions, in the order they are worth doing:
 
@@ -415,7 +412,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 
 | | |
 |---|---|
-| Migrations | **`001`–`013` applied and verified live. `014` is WRITTEN AND NOT APPLIED — see §Do this first.** Merging it without applying 500s `/profile`, because `getProfileCountries` queries a table that would not exist. This cell said "no drift" while the section above said the opposite; a scanning agent reads the table. Ordering note below. |
+| Migrations | **`001`–`014` all applied and verified live** (`014` on 2026-08-05, before its PR merged). No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
 | Tests | RLS suite **289** assertions (`npm test`) + Vitest **297** tests (`npm run test:unit`). Both measured 2026-08-05 against `014`: Vitest 297, and the RLS suite 289 on a local Postgres 16 (CI uses 17). The RLS number was carried forward unverified for several sessions before this one, because nothing had touched `supabase/**`. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269 and 263/279. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
