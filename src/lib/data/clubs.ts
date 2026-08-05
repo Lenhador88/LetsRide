@@ -1,10 +1,9 @@
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import type { Club, ClubDetail, ClubListItem, ClubRosterMember, PublicProfile } from '@/types'
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 type ClubOption = Pick<Club, 'id' | 'name'>
 
 /** How many faces the design's overlapping avatar row shows before it becomes `+N`. */
@@ -86,7 +85,7 @@ export function toClubListItem(row: ClubListRow, unread?: number): ClubListItem 
 }
 
 /** The club ids this rider belongs to. Both sub-pages need it, from opposite sides. */
-async function myClubIds(supabase: SupabaseServerClient, userId: string): Promise<string[]> {
+async function myClubIds(supabase: DataClient, userId: string): Promise<string[]> {
   const rows = unwrapList(
     await supabase
       .from('club_members')
@@ -108,7 +107,7 @@ async function myClubIds(supabase: SupabaseServerClient, userId: string): Promis
  * one. A failure costs the badges and never the list, which is why the error
  * lands as an empty map rather than an exception.
  */
-async function unreadByClub(supabase: SupabaseServerClient): Promise<Map<string, number>> {
+async function unreadByClub(supabase: DataClient): Promise<Map<string, number>> {
   const { data, error } = await supabase.rpc('club_unread_counts')
   if (error || !data) return new Map()
 
@@ -124,7 +123,7 @@ async function unreadByClub(supabase: SupabaseServerClient): Promise<Map<string,
  * `avatar_url`, so a screen that forgets to call it falls back to initials and
  * looks like a design choice rather than a bug.
  */
-async function signRiderAvatars(items: ClubListItem[], supabase: SupabaseServerClient) {
+async function signRiderAvatars(items: ClubListItem[], supabase: DataClient) {
   await resolveAvatarUrls(
     items.flatMap((item) => item.riders),
     supabase
@@ -134,17 +133,18 @@ async function signRiderAvatars(items: ClubListItem[], supabase: SupabaseServerC
 /**
  * Signs both club images for a whole page in one request.
  *
- * Unlike `resolveAvatarUrls` this writes into *new* fields rather than back over
- * the path, because `clubs.avatar_url` still exists as a legacy column and
- * overloading it would make "signed URL" and "the dead column" the same field —
- * which is exactly the ambiguity 014 had to unpick on profiles. Two names, one
- * meaning each.
+ * Not `resolveAvatarUrls`, even though the avatar half is now the same
+ * operation: this signs the cover in the same request, and splitting it would
+ * turn one round trip into two on every Clubs load. The rule the two share is
+ * that `avatar_url` and `cover_image_url` hold signed URLs and nothing else —
+ * `024` dropped the legacy `clubs.avatar_url` column, so the ambiguity 014 had
+ * to unpick on profiles can no longer arise here either.
  *
  * A path that will not sign lands as null and the card falls back to initials.
  * That is the correct outcome for a private club's cover seen by someone the
  * policy excludes, and signing is not the check — 016's SELECT policy is.
  */
-async function signClubImages(items: ClubListItem[], supabase: SupabaseServerClient) {
+async function signClubImages(items: ClubListItem[], supabase: DataClient) {
   const paths = items.flatMap((item) =>
     [item.avatar_path, item.cover_image_path].filter((path): path is string => !!path)
   )
@@ -172,7 +172,7 @@ function byName(a: ClubListItem, b: ClubListItem) {
  * by unioning two definitions of "yours".
  */
 export async function getYourClubs(): Promise<ClubListItem[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
@@ -220,7 +220,7 @@ export async function getYourClubs(): Promise<ClubListItem[]> {
  * went missing past the page boundary.
  */
 export async function getExploreClubs(): Promise<ClubListItem[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
@@ -287,7 +287,7 @@ export async function getExploreClubs(): Promise<ClubListItem[]> {
  * someone who cannot see it, which is the whole point of decision #1.
  */
 export async function getClub(id: string): Promise<ClubDetail | null> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
   const { data } = await supabase
@@ -368,7 +368,7 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
 export const CLUB_ROSTER_LIMIT = 200
 
 export async function getClubMembers(clubId: string): Promise<ClubRosterMember[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
 
   const rows = unwrapList(
     await supabase
@@ -400,7 +400,7 @@ export async function getClubMembers(clubId: string): Promise<ClubRosterMember[]
  * postcards INSERT policy decides that. This only shapes the menu.
  */
 export async function getMyClubs(): Promise<ClubOption[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 

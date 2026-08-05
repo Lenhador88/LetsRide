@@ -592,8 +592,9 @@ Blocked on schema, same shape as the ride detail's banner:
       stays omitted for exactly that reason.
 - [x] ~~**Avatar upload is not built.**~~ **Built 2026-08-05 (`014`).**
       `profiles.avatar_path` under `avatars/<uid>/`, compressed to 512px in the browser
-      (which strips EXIF) and uploaded straight to Storage. `avatar_url` survives as a
-      fallback — see 014's header for why it was not dropped.
+      (which strips EXIF) and uploaded straight to Storage. `avatar_url` was kept as a
+      fallback by `014`; `024` drops it, and `resolveAvatarUrls` no longer falls back —
+      the field now only ever holds the signed URL that function writes.
 
       The signing fan-out is the part worth knowing about: **nine components render an
       avatar and all nine read `avatar_url`**, so `resolveAvatarUrls` writes the signed URL

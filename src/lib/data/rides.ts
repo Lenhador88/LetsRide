@@ -1,9 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
-import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
+import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { rideIdSchema } from '@/lib/validation/rides'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import type {
+  EmbeddedClub,
   PublicProfile,
   RideAttendance,
   RideCrew,
@@ -15,7 +16,6 @@ import type {
   RideListItem,
 } from '@/types'
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 /**
  * Provisional, and bounded on purpose. The design does not say whether the list
@@ -79,7 +79,7 @@ export const RIDE_CREW_LIMIT = 200
 const RIDE_SELECT = `
   id, title, meeting_point, departure_at, organizer_id,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
-  club:clubs(id, name, avatar_url),
+  club:clubs(id, name),
   riders:ride_members(user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
 `
 
@@ -90,7 +90,7 @@ export type RideRow = {
   departure_at: string
   organizer_id: string
   organizer: PublicProfile | null
-  club: { id: string; name: string; avatar_url: string | null } | null
+  club: Pick<EmbeddedClub, 'id' | 'name'> | null
   riders: { user_id: string; status: 'going' | 'maybe'; profile: PublicProfile | null }[] | null
 }
 
@@ -155,7 +155,7 @@ export function toRideListItem(
  * the same distinction attachLikeState draws in lib/data/postcards.ts.
  */
 async function myUpcomingRideIds(
-  supabase: SupabaseServerClient,
+  supabase: DataClient,
   viewerId: string | undefined,
   nowIso: string
 ): Promise<string[]> {
@@ -188,7 +188,7 @@ export async function getRides(
   filter?: RideFilter,
   limit = RIDES_PAGE_SIZE
 ): Promise<RideListItem[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
   // One clock reading for the whole response: the cutoff the query applies and
@@ -221,6 +221,11 @@ export async function getRides(
   // `riders`, and resolving afterwards would sign the originals while the card
   // rendered the copies. Same object identity either way here — the copies are
   // references — but relying on that is a trap the next edit springs.
+  // The club is deliberately absent here. `RideCard` draws it as a text chip,
+  // not an avatar, so selecting and signing a club image for every row in the
+  // list would be a round trip for something nothing renders — the same reason
+  // the postcard deck embeds `id, name`. The three surfaces that *do* draw a
+  // club image are the ride detail chip and the two filter bars.
   await resolveAvatarUrls(
     rows.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
     supabase
@@ -260,7 +265,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
   // ride gets, which is both honest and leaks nothing new.
   if (!rideIdSchema.safeParse(id).success) return null
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
   const [rideResult, ownResult] = await Promise.all([
@@ -270,7 +275,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
         id, title, description, route_description, meeting_point, departure_at,
         max_riders, club_id, organizer_id,
         organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
-        club:clubs(id, name, avatar_url)
+        club:clubs(${CLUB_EMBED_COLUMNS})
       `)
       .eq('id', id)
       .maybeSingle(),
@@ -296,7 +301,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
   const ownRow = unwrap(ownResult, 'your RSVP') as { status: 'going' | 'maybe' } | null
   const isOrganizer = !!user && user.id === row.organizer_id
 
-  await resolveAvatarUrls([row.organizer], supabase)
+  await resolveAvatarUrls([row.organizer, row.club], supabase)
 
   return {
     id: row.id,
@@ -334,7 +339,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
  * Bounded — see `RIDE_CREW_LIMIT`.
  */
 export async function getRideCrew(rideId: string): Promise<RideCrew> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
 
   const rows = unwrapList(
     await supabase
@@ -394,7 +399,7 @@ export function withOrganizer(
 type FilterRow = {
   id: string
   organizer_id: string
-  club: { id: string; name: string; avatar_url: string | null } | null
+  club: EmbeddedClub | null
 }
 
 /**
@@ -410,7 +415,7 @@ type FilterRow = {
  * constant for why the two must not be the same number.
  */
 export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<RideFilters> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
   const nowIso = new Date().toISOString()
@@ -420,7 +425,7 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
       unwrapList(
         await supabase
           .from('rides')
-          .select('id, organizer_id, club:clubs(id, name, avatar_url)')
+          .select(`id, organizer_id, club:clubs(${CLUB_EMBED_COLUMNS})`)
           .gte('departure_at', nowIso)
           .order('departure_at', { ascending: true })
           .limit(limit),
@@ -428,6 +433,11 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
       ) as unknown as FilterRow[])(),
     myUpcomingRideIds(supabase, user?.id, nowIso),
   ])
+
+  // The club tiles draw the club's avatar, so they need the same signing pass
+  // the cards get. Before the loop, because the loop copies `avatar_url` into
+  // each tile and a pass afterwards would sign rows nothing reads again.
+  await resolveAvatarUrls(rows.map((row) => row.club), supabase)
 
   const joinedIds = new Set(joined)
   const clubs = new Map<string, RideFilterOption>()
@@ -471,21 +481,22 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
  * every scanned ride to read four avatars is 496 joins of pure waste.
  */
 async function collageAvatars(
-  supabase: SupabaseServerClient,
+  supabase: DataClient,
   rows: FilterRow[]
 ): Promise<string[]> {
   const organizerIds = [...new Set(rows.map((row) => row.organizer_id))].slice(0, 4)
   if (organizerIds.length === 0) return []
 
   const profiles = unwrapList(
-    await supabase.from('profiles').select('id, avatar_url, avatar_path').in('id', organizerIds),
+    await supabase.from('profiles').select('id, avatar_path').in('id', organizerIds),
     'the ride filter avatars',
-  ) as { id: string; avatar_url: string | null; avatar_path: string | null }[]
+  ) as { id: string; avatar_path: string | null; avatar_url?: string | null }[]
 
   // Signed like every other avatar. Missed on the first pass, and the miss was
-  // invisible rather than loud: `avatar_url` is NULL on every row in the live
-  // database, so the tile rendered zero faces and looked like a design that
-  // simply has no collage — not like a bug.
+  // invisible rather than loud: back when `avatar_url` was a column it was NULL
+  // on every row, so the tile rendered zero faces and looked like a design that
+  // simply has no collage — not like a bug. It is a synthesised field now, so
+  // skipping this pass leaves it undefined on every profile instead.
   await resolveAvatarUrls(profiles, supabase)
 
   // Kept in ride order — soonest first — rather than the order Postgres

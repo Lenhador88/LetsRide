@@ -2576,6 +2576,157 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 
+-- ===========================================================================
+-- 024: the legacy avatar_url columns are gone
+-- ===========================================================================
+-- Two claims here, and the second is the one with teeth. That the columns are
+-- absent is arithmetic. That nothing *else* got looser is the risk a `drop
+-- column` actually carries — 024 runs under RESTRICT precisely so a missed
+-- dependency aborts the apply, and these assertions are what proves the CHECKs
+-- 014 and 016 hung off these two tables are still hanging there afterwards.
+--
+-- Why the removed column specifically mattered: `avatar_url` was unconstrained
+-- `text` on a row its subject may PATCH (`auth.uid() = id`, `auth.uid() =
+-- owner_id`), and the read layer put it straight into `<img src>` for every
+-- other rider. It was the one image reference in this schema that could point
+-- outside the writer's own Storage folder — at a host they control, collecting
+-- the IP of anyone who rendered a member list, including riders who had blocked
+-- them. What is asserted below is that no such column survives on either table
+-- and that every remaining one is still pinned to its writer.
+
+\echo ''
+\echo '024: the legacy avatar_url columns are gone'
+
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles'
+      and column_name = 'avatar_url'),
+  0, 'profiles.avatar_url is gone (migration 024)');
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'clubs'
+      and column_name = 'avatar_url'),
+  0, 'clubs.avatar_url is gone (migration 024)');
+
+-- Deliberately broader than the two above, and deliberately a count a future
+-- change is *supposed* to break: any new `*url*` column on either table is a
+-- candidate for exactly the same defect and should have to argue for itself
+-- here rather than arrive silently. A Storage path column is named `*_path`
+-- and does not match, so this costs the next image surface nothing.
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name in ('profiles','clubs')
+      and column_name like '%url%'),
+  0, 'no rider-writable URL column survives on profiles or clubs');
+
+-- Named rather than counted. `select count(*) ... where conname like '%path%'`
+-- would read 4 today and read 4 again if 024 had taken an ownership check and
+-- some later migration had added an unrelated one — and it would need bumping
+-- the day a third image surface lands, which is how an assertion stops being
+-- read. These name the four that must survive.
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.profiles'::regclass
+      and conname in ('profiles_avatar_path_is_a_storage_path',
+                      'profiles_avatar_path_is_own_folder',
+                      'profiles_cover_image_path_is_a_storage_path',
+                      'profiles_cover_image_path_is_own_folder')),
+  4, '014''s four profile path CHECKs survived the drop');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.clubs'::regclass
+      and conname in ('clubs_avatar_path_shape',
+                      'clubs_avatar_path_owned',
+                      'clubs_cover_image_path_shape',
+                      'clubs_cover_image_path_owned')),
+  4, '016''s four club path CHECKs survived the drop');
+
+\echo ''
+\echo '# A rider still cannot write an image reference outside their own folder (024)'
+
+-- The negative and the positive are the same statement with one uuid changed,
+-- which is the point: what separates them is ownership and nothing else. Run
+-- the negative first — a positive alone would pass against a CHECK that had
+-- been dropped, and a negative alone would pass against one that forbade
+-- everything.
+select assert_rejected($$
+  update profiles
+     set avatar_path = 'avatars/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-0000000000a4.jpg'
+   where id = '00000000-0000-0000-0000-00000000000c'$$,
+  '23514', 'a rider cannot point their avatar at an object in another rider''s folder');
+select assert_rejected($$
+  update profiles
+     set cover_image_path = 'covers/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-0000000000a5.jpg'
+   where id = '00000000-0000-0000-0000-00000000000c'$$,
+  '23514', '... nor their cover');
+
+-- assert_allowed refuses an UPDATE by design — RLS filters one it forbids to
+-- zero rows rather than raising, so it would pass against a policy permitting
+-- nothing. Run it and count the row instead.
+savepoint own_folder_ok;
+update profiles
+   set avatar_path      = 'avatars/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000a4.jpg',
+       cover_image_path = 'covers/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000a5.jpg'
+ where id = '00000000-0000-0000-0000-00000000000c';
+select assert_eq(
+  (select count(*)::int from profiles
+    where id = '00000000-0000-0000-0000-00000000000c'
+      and avatar_path = 'avatars/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000a4.jpg'
+      and cover_image_path = 'covers/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000a5.jpg'),
+  1, 'the same two paths inside the rider''s own folder are accepted');
+rollback to savepoint own_folder_ok;
+
+-- Clubs carry the same rule keyed on `owner_id` instead of `id`, and it needs
+-- its own pair: 016's CHECK is the only thing standing between a club owner and
+-- attaching a stranger's private object to a club they control, since the
+-- Storage read policy would then serve that object to the whole club.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_rejected($$
+  update clubs
+     set avatar_path = 'club-avatars/00000000-0000-0000-0000-00000000000b/00000000-0000-0000-0000-0000000000a6.jpg'
+   where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', 'a club owner cannot point their club avatar at another rider''s object');
+select assert_rejected($$
+  update clubs
+     set cover_image_path = 'club-covers/00000000-0000-0000-0000-00000000000b/00000000-0000-0000-0000-0000000000a7.jpg'
+   where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', '... nor the club cover');
+
+savepoint club_own_folder_ok;
+update clubs
+   set avatar_path      = 'club-avatars/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-0000000000a6.jpg',
+       cover_image_path = 'club-covers/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-0000000000a7.jpg'
+ where id = '00000000-0000-0000-0000-0000000000c2';
+select assert_eq(
+  (select count(*)::int from clubs
+    where id = '00000000-0000-0000-0000-0000000000c2'
+      and avatar_path = 'club-avatars/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-0000000000a6.jpg'
+      and cover_image_path = 'club-covers/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-0000000000a7.jpg'),
+  1, 'the same two paths inside the club owner''s own folder are accepted');
+rollback to savepoint club_own_folder_ok;
+
+-- And the same rule one layer down, in Storage itself, because the table CHECK
+-- and the storage.objects policy are two independent locks on one door and 024
+-- must not have quietly removed either. 014's suite covers the `avatars/`
+-- folder negative and a `covers/` *mimetype* negative; the `covers/` folder
+-- negative is new here.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+    values ('media',
+            'covers/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-0000000000a8.jpg',
+            '00000000-0000-0000-0000-00000000000c',
+            '{"mimetype":"image/jpeg","size":10}')$$,
+  'a rider cannot upload a cover into another rider''s folder');
+select assert_allowed($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+    values ('media',
+            'covers/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000a8.jpg',
+            '00000000-0000-0000-0000-00000000000c',
+            '{"mimetype":"image/jpeg","size":10}')$$,
+  'the same cover upload into their own folder is accepted');
+
+
 -- The anon key ships in the client bundle, so anything anon can reach is
 -- public to the internet. This was a live exposure: every profile row was
 -- readable until 007 went out.
