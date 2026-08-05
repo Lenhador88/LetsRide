@@ -617,14 +617,14 @@ Two rules that follow:
   verified to compile and not verified to work" is a lower-fidelity artifact and needs an
   explicit ask. Only the second kind is escalated, or the signal drowns.
 
-**Rate every suggestion on three axes, each on its own line, always in this order.** Whenever
-you propose optional work — a refactor, a test, a hardening, a follow-up — close it with this
-block. Not a sentence with numbers buried in it; the point is that the reader can skim past
-three lines and still decide.
+**Rate every suggestion on four lines, always in this order.** Whenever you propose optional
+work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
+with numbers buried in it; the point is that the reader can skim four lines and still decide.
 
 > **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
 > **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
 > **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
+> **This session** N — wants its own branch, and the open PR should land first
 
 What each one means:
 
@@ -634,13 +634,26 @@ What each one means:
   up" is the whole content, and the bare number would have hidden it.
 - **Recommendation** — how strongly you actually advise doing it, independent of how much fun
   it is to build.
+- **This session** — **Y or N, never a number**, plus the half-line of why. It answers "should
+  *this* session pick it up next", which is a question about the session rather than about the
+  work: what context is already loaded, whether a branch is open, whether it is blocked on an
+  answer, and whether it is even the agent's to do. An owner-only item is **N** — "not mine" —
+  which is the single most useful thing this line does, because those are exactly the items
+  that otherwise sit in a list of build tasks looking actionable.
 
-**None of the three are correlated, and that is the entire reason there are three.** A 1/10
+**None of the four are correlated, and that is the entire reason there are four.** A 1/10
 complexity item can be a 9/10 recommendation. A clever 6/10 build can be a 2/10
-recommendation. And urgency moves independently of both — the deck-skip bug fixed on
-2026-08-05 sat at 6/10 recommendation with near-zero urgency for weeks, then became urgent
-the moment the overflow menu shipped the block button that could reach it. Nothing about its
-complexity or its value changed; only *when* did.
+recommendation. Urgency moves independently of both — the deck-skip bug fixed on 2026-08-05
+sat at 6/10 recommendation with near-zero urgency for weeks, then became urgent the moment the
+overflow menu shipped the block button that could reach it. Nothing about its complexity or
+its value changed; only *when* did.
+
+**This session is the one that moves fastest, and it is the one a stale answer misleads on.**
+9/10 recommendation and **N** is a perfectly ordinary pairing — the leaked-password toggle is
+a dashboard click nobody in a session can make. So is its inverse: a 3/10 recommendation
+worth **Y** because the files are already open and it costs two minutes, where the same item
+next week costs an hour of reloading context. Answer it from where the session actually is,
+not from how good the idea is.
 
 Rate your own ideas honestly, including low — an unrated suggestion reads as advocacy, and
 the reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so
