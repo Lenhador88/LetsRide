@@ -543,7 +543,8 @@ write and delete a comment, and the UI adds no rule of its own.
 
 ### Postcard overflow menu — built 2026-08-05, and one standing TODO resolved
 
-Source: `Content / Context Menu / Postcard` (`2303:5676`) and the three confirmation frames
+Source: the component `Content / Context Menu / Postcard` (`2303:5963`) — **not** `2303:5676`,
+which is the *frame* `Postcard options` that instances it — and the three confirmation frames
 `Postcard hidden banner` (`2303:6009`), `Account blocked banner` (`2303:6169`),
 `Post reported banner` (`2303:6300`).
 
@@ -589,6 +590,18 @@ Poppins/16/Semibold.
 - [ ] Whether reporting and hiding are one affordance or two in the design. **Two, confirmed**
       — the sheet lists them as separate rows, matching the two rights and two tables `011`
       created. Kept here only because the answer is now evidence rather than assumption.
+- [ ] **Blocking a rider can skip unseen cards in the deck.** `PostcardDeck` windows with
+      `postcards.slice(index)` and `index` survives the RSC refresh, but a block removes
+      *every* card by that author — including ones before the current index — so the window
+      jumps forward by that many and the skipped cards are never shown. Found by review
+      2026-08-05 and **deliberately not fixed here**: the correct fix is to track the current
+      postcard by **id** rather than by index, which is a rework of the deck's state and does
+      not belong in the change that surfaced it. Low impact today (one real rider in the
+      data), real the moment a feed has two authors. Complexity 4/10, recommendation 6/10.
+- [ ] **`unhidePostcard` and `unblockRider` still have no caller**, so hiding and blocking are
+      **one-way from the UI**. There is no "hidden postcards" or "blocked accounts" screen in
+      the design to undo them from, so this needs a frame before it needs code — but a rider
+      who blocks someone by mistake currently cannot reverse it in the app.
 
 ### Navigation
 

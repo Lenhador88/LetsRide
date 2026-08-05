@@ -315,9 +315,8 @@ screen, so it is a palette-wide issue the rides list merely surfaced. Both left 
 drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md` §Rides list.
 
 ~~**The card's overflow menu is the next build.**~~ **Built 2026-08-05.** Trust & safety was
-RLS-complete and UI-absent — a rider could not block or report anyone. Five of the six
-actions now have a caller: `hidePostcard`, `reportPostcard`, `blockRider`, `deletePostcard`
-from the card's menu. **`unhidePostcard` and `unblockRider` are still called by nothing**, and
+RLS-complete and UI-absent — a rider could not block or report anyone. **Four** of the six actions now have a caller — `hidePostcard`,
+`reportPostcard`, `blockRider`, `deletePostcard`, all from the card's menu. **`unhidePostcard` and `unblockRider` are still called by nothing**, and
 that is the real remaining gap: hiding and blocking are one-way from the UI. There is no
 "hidden postcards" or "blocked accounts" screen in the design either, so undoing either
 requires a frame before it requires code.

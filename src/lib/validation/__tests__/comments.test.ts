@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { REPORT_REASON_WHEN_UNDRAWN } from '@/lib/validation/comments'
 import {
   COMMENT_BODY_MAX_LENGTH,
+  REPORT_REASON_WHEN_UNDRAWN,
+  REPORT_REASONS,
   commentBodySchema,
   reportNoteSchema,
   reportPostcardSchema,
@@ -116,11 +117,7 @@ describe('the reason list and the migration', () => {
 })
 
 describe('REPORT_REASON_WHEN_UNDRAWN', () => {
-  it('is a member of the enum the CHECK constraint enforces', async () => {
-    const { REPORT_REASONS, REPORT_REASON_WHEN_UNDRAWN, reportReasonSchema } = await import(
-      '@/lib/validation/comments'
-    )
-
+  it('is a member of the enum the CHECK constraint enforces', () => {
     // The point of the constant is that the one caller cannot send a value the
     // database will reject — the overflow menu has no reason picker to fall
     // back to, so a bad default would fail at the insert with no UI to correct.

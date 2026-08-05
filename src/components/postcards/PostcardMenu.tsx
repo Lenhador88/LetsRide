@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   BlockAccountIcon,
   DeleteIcon,
@@ -8,7 +9,7 @@ import {
   OptionsIcon,
   ReportIcon,
 } from '@/components/icons/generated'
-import { Banner } from '@/components/ui/Banner'
+import { useBanner } from '@/components/ui/Banner'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { blockRider } from '@/lib/actions/blocks'
 import { hidePostcard, reportPostcard } from '@/lib/actions/moderation'
@@ -17,7 +18,7 @@ import { REPORT_REASON_WHEN_UNDRAWN } from '@/lib/validation/comments'
 
 /**
  * The postcard overflow menu — `Content / Context Menu / Postcard`
- * (`2303:5676`), reached from the card and confirmed by the three banner frames.
+ * (`2303:5963`), reached from the card and confirmed by the three banner frames.
  *
  * Every action behind it was written for `011` and `009` and had **no caller at
  * all** until this component; that is the gap it closes. RLS owns every
@@ -54,17 +55,40 @@ export function PostcardMenu({
 }) {
   const [open, setOpen] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const [banner, setBanner] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const showBanner = useBanner()
+  const router = useRouter()
+  const pathname = usePathname()
 
-  function run(action: () => Promise<{ error: string | null }>, confirmation: string) {
+  /**
+   * Hiding, blocking and deleting all make this postcard unreadable to this
+   * viewer, so the thread route it may be showing on is about to 404: the
+   * actions revalidate, `getPostcard` returns null, and the page calls
+   * `notFound()` with no `not-found.tsx` anywhere to catch it. On the feed the
+   * card simply disappears, which is correct; on the thread the rider has to be
+   * taken somewhere. `createPostcard` sets the precedent by redirecting.
+   */
+  const onThisPostcardsThread = pathname === `/postcards/${postcardId}`
+
+  function run(
+    action: () => Promise<{ error: string | null }>,
+    confirmation: string,
+    { leavesTheThread = true }: { leavesTheThread?: boolean } = {}
+  ) {
+    // Closed before the request rather than after it. Waiting left the sheet
+    // open with every row disabled and no pending affordance, which reads as a
+    // tap that did not register.
+    setOpen(false)
+    setConfirmingDelete(false)
+
     startTransition(async () => {
       const result = await action()
-      setOpen(false)
-      setConfirmingDelete(false)
-      if (result.error) setError(result.error)
-      else setBanner(confirmation)
+      if (result.error) {
+        showBanner(result.error, 'error')
+        return
+      }
+      showBanner(confirmation)
+      if (leavesTheThread && onThisPostcardsThread) router.replace('/postcards')
     })
   }
 
@@ -72,7 +96,12 @@ export function PostcardMenu({
     const formData = new FormData()
     formData.append('postcardId', postcardId)
     formData.append('reason', REPORT_REASON_WHEN_UNDRAWN)
-    run(() => reportPostcard({ error: null }, formData), 'Post reported')
+    // Reporting leaves the postcard visible — `011` records the report and
+    // changes nothing about what the reporter can see — so this is the one row
+    // that must not navigate away.
+    run(() => reportPostcard({ error: null }, formData), 'Post reported', {
+      leavesTheThread: false,
+    })
   }
 
   return (
@@ -136,12 +165,6 @@ export function PostcardMenu({
         )}
       </ContextMenu>
 
-      {banner && <Banner message={banner} onDismiss={() => setBanner(null)} />}
-      {/* A failure reuses the banner rather than adding a second component, but
-          not its tone — the design draws no error state for this flow, and a
-          refusal reported under a green tick would be worse than an undrawn
-          one. Silently doing nothing is the only definitely-wrong outcome. */}
-      {error && <Banner message={error} tone="error" onDismiss={() => setError(null)} />}
     </>
   )
 }

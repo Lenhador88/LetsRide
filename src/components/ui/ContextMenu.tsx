@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
@@ -9,11 +10,18 @@ import { cn } from '@/lib/utils'
  * measured from `Ride - Ride plan - Sub pages` (`2375:9114`): 390 wide, flush
  * to the bottom edge, 16px radius on the top corners only, padding 16/24/32/24.
  *
- * Built here rather than in `rides/` because it is a library component with a
- * second caller already specified: the postcard overflow menu (`Postcard
- * options`, `2302:5395`) is the same sheet with `Hide postcard for me`, `Block
- * account` and `Report post` in it, and `Type=Warning` exists for exactly that
- * screen's destructive row.
+ * Its second caller is the postcard overflow menu — `Content / Context Menu /
+ * Postcard` (`2303:5963`) — which is what the icon slot and `Type=Warning`
+ * variant on `ContextMenuItem` exist for.
+ *
+ * **Rendered through a portal to `document.body`, and that is required rather
+ * than tidy.** `PostcardDeck` gives each card a `transform`, and any transform
+ * other than `none` makes that element the containing block for every
+ * `position: fixed` descendant. Rendered in place, the scrim covered the 342px
+ * card instead of the screen, the sheet became 342 wide anchored to the card's
+ * bottom edge, and the z-indices resolved inside the card's stacking context —
+ * so the sheet painted *under* the nav bar. The portal also fixes the
+ * pre-existing case where this sheet shared `z-50` with a later-in-DOM Navbar.
  */
 export function ContextMenu({
   open,
@@ -92,9 +100,13 @@ export function ContextMenu({
     }
   }, [open])
 
-  if (!open) return null
+  // No `mounted` guard is needed for the portal: `open` starts false and can
+  // only become true from a client event, so `document` always exists by the
+  // time this renders anything. The typeof check is belt-and-braces for a
+  // future caller that opens on mount.
+  if (!open || typeof document === 'undefined') return null
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 z-[60] bg-scrim"
@@ -118,7 +130,8 @@ export function ContextMenu({
       >
         <div className="mx-auto flex max-w-lg flex-col">{children}</div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
 
