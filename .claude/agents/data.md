@@ -37,11 +37,63 @@ Reference the existing policies before writing new ones. Key shapes:
 
 **Watch for the recursion trap:** a policy on `clubs` that queries `club_members`, where `club_members`' own policy queries `clubs`, will infinite-loop. Break it with a `security definer` function when needed.
 
+## Where logic lives — three tiers, and most work is tier 1
+
+The app is migrating to a client-rendered shell (see `CLAUDE.md` §Technology Decisions), so the
+client will talk to PostgREST directly. That does not mean everything needs a function. Pick
+the lowest tier that works:
+
+1. **Plain read or write → nothing to build.** `supabase.from('rides').select(...)` goes
+   straight to PostgREST and RLS decides. This is the overwhelming majority of the app, and
+   the repo has needed exactly zero server-side functions to reach this point.
+2. **Atomic, multi-table, or aggregate → a Postgres function, called via `supabase.rpc()`.**
+   It runs inside the database, under RLS, in one round trip. `moderate_comment` is the
+   worked example: `security definer`, `search_path` pinned, names schema-qualified, revoked
+   from `public` and `anon`, and the authorization checked *inside* the function against
+   `auth.uid()`. Its narrowness is its defence — copy that shape, not just the keyword.
+3. **Edge Function → only when the database genuinely cannot.** Three triggers, and you need
+   at least one: it needs a **secret** that cannot ship in a client bundle (APNs/FCM keys, a
+   third-party API key), it must **call the outside world**, or it needs a **schedule**
+   (`pg_cron` fires it). Push delivery, ride reminders and account deletion are the known
+   cases. An Edge Function that only reads and writes its own tables belongs in tier 1 or 2.
+
+**Never introduce a service-role key into the app** (decision #8). Inside an Edge Function is
+different — that is server-side and the key never reaches a client — but the moment a
+service-role path owns a visibility rule, every policy in this repo becomes decorative.
+
+## Personal data: retention and reach, decided at creation
+
+Background location tracking is on the roadmap, and this is an EU project. Two questions are
+schema decisions, answered when the table is written rather than retrofitted:
+
+- **Retention.** A GPS track with no expiry is a permanent record of where someone was. State
+  the window in the migration header, and prefer a mechanism over an intention.
+- **Reach.** Account deletion has to reach every table holding a subject's data. A new
+  personal-data table that the deletion path does not cover is unfinished.
+
+**Offline writes need conventions set before there is data**, because they are near-free now
+and a migration later:
+
+- **Client-generated UUIDs** for anything the client may create offline, so a replayed
+  mutation is idempotent rather than a duplicate.
+- **`updated_at`** on anything editable, so a sync layer has something to resolve against.
+
 ## After every migration
 
 1. Run `get_advisors` with type `security` — it catches missing RLS and exposed views. Fix what it flags.
 2. Run `generate_typescript_types` and update `src/types/index.ts` if the shape changed.
 3. **Test the policy negatively.** Don't just confirm the owner can read — confirm a non-member *cannot*. Use `execute_sql` with an explicit `set local role authenticated; set local request.jwt.claims = '{"sub":"<other-uuid>"}';` to simulate. A policy you only tested from the happy path is untested.
+
+   **There are two identity idioms and they are not interchangeable.** The line above is
+   correct against the **hosted** database, where `auth.uid()` reads `request.jwt.claims`.
+   The local RLS suite in `supabase/tests/` redefines `auth.uid()` to read `test.uid` — so
+   setting `request.jwt.claims` there is read by nothing, `auth.uid()` returns NULL, and a
+   *positive* assertion written that way passes while proving nothing. Only the negative ones
+   fail, which is the only reason it was ever caught. Match the idiom to the target.
+
+4. **A policy change with no new assertion is not finished.** Add it to `supabase/tests/` and
+   scope it to what you changed — an assertion counting *all* policies on a shared table stops
+   testing its own intent the moment a second surface lands there.
 
 ## Report back with
 
