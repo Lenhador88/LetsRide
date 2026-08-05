@@ -388,6 +388,89 @@ Deviations that are ours, not the design's:
       real crew. Beyond it the roster truncates silently. The design has no pagination for
       this list, so the honest fix needs a design before it needs code.
 
+### Profile — built from the measurements 2026-08-05
+
+`/profile`, from `Profile / View your profile / Profile` (`1883:12248`), with its options
+sheet read from `Profile / Delete account / Account options` (`2303:8097`). Replaces the v1
+screen entirely — `zinc-*`, `orange-*`, `lucide-react`, and a client component that wrote to
+`profiles` with no validation.
+
+Measured, not estimated: avatar 128×128 holding a 120px image (so a 4px ring, and it is
+`White/100` here where every other avatar in the library carries 2px `Grey/20%`), location at
+Poppins/14/Medium, the name at Poppins/24/Semibold, and the bio clamped to 60px against a
+20px line height — three lines, the same clamp the ride blurb uses, which is why that control
+is now `ui/ExpandableText` rather than two copies.
+
+**The name is the username.** Decision #7. The design's "Pedro Abreu" is a `full_name` that
+`003` dropped, so it renders as `@username` everywhere a person is named.
+
+**Four whole sections are drawn and not built.** Each needs its own table, and none is a
+styling task:
+
+- [ ] **Badges** (`7/42`, a horizontal scroller of 200×144 tiles with 72px medallions). No
+      table, and the *interesting* half is not the table — it is what earns a badge, which is
+      a rules engine nothing in this app has.
+- [ ] **Countries** (`22/195`, rows of 32×24 flags). Needs a per-rider country set, and a
+      source for it: manual selection is a different product from "derived from rides you
+      have logged", and the design does not say which. The flags themselves are 40+ SVGs the
+      icon pipeline does not carry.
+- [ ] **Motorcycles** (256×276 cards with years, mileage, and their own like/comment/share
+      counts). This is the Garage epic. `bike_model` is **one text column**, not an
+      implementation of it — the page renders it as the single fact it is rather than dressing
+      it as this section.
+- [ ] **Gear** (390×360). Same shape as Motorcycles and blocked the same way.
+
+*Chose:* omit all four rather than render empty section headers reading `0/42`. An empty
+header states a fact about the rider ("you have earned nothing") where the truth is a fact
+about the app ("this does not exist yet"), and the first one is worse.
+
+Blocked on schema, same shape as the ride detail's banner:
+
+- [ ] **The 390×200 cover image has no column.** `Component / Input / Image` sits above the
+      avatar. *Chose:* omit entirely, exactly as the ride detail omitted its banner and for
+      the same reason — it carries no affordance, so an empty fifth of the screen above the
+      fold is worse than a shorter page. Needs a column *and* Storage work; do it with the
+      ride banner and the postcard strip in one pass.
+- [ ] **Avatar upload is not built.** The column exists and is rendered; nothing writes it.
+      `Login / Onboarding / Add a profile picture` (`2074:5233`) draws the flow. This is
+      `media` agent work — compression, EXIF stripping, a Storage policy — and deliberately
+      not half-built inside a text form.
+- [ ] **Renaming is not built.** `username` is deliberately absent from `profileEditSchema`.
+      It is unique, reserved-word checked, and is every rider's identity across postcards,
+      crews and member lists, so changing it is a flow with a conflict path rather than a
+      field on a form. Onboarding owns it today.
+- [ ] **`bio` and `bike_model` have no CHECK constraints.** `001` declares both as bare
+      `text`. The 500/60 limits live in `profileEditSchema` and are enforced by the action
+      that parses `FormData` — but a direct PostgREST call with a 10 MB bio would be accepted,
+      because RLS grants the write and no constraint bounds it. Unlike `username`, whose rules
+      are enforced twice. Worth a migration if it ever matters; stated rather than implied.
+- [ ] **Delete account is drawn and not built.** `Account options` has exactly two rows —
+      `Sign out` and `Delete account` — and `Confirm account deletion` (`2303:9370`) draws the
+      confirmation. Omitted rather than offered as a dead row. It needs the auth admin API or
+      an RPC, plus a decision about what happens to the rider's postcards, rides and club
+      memberships, which is a trust & safety epic rather than a menu item.
+
+Deviations that are ours, not the design's:
+
+- [ ] **The design has no edit screen at all.** `View your profile` draws the profile;
+      `Login / Onboarding` draws the fields being filled in for the *first* time; nothing
+      draws changing them afterwards. So the edit form's placement — under the profile, on the
+      same route — is invented. It is the smallest guess available (the fields and their
+      validation already exist), but it is a guess, and a designed settings screen may well
+      move it.
+- [ ] **The nav bar in this frame shows three tabs**, not five: Home, Clubs, Profile. Rides
+      and Inbox are absent. Counted across frames rather than assumed —
+      `Home - Postcards - All new` draws **5** tiles, this frame **3**, and
+      `Rides - All rides` **0** (it has no bar at all). A value that takes three different
+      shapes in three frames is not a spec, so the built five-tab `Navbar` stands and this is
+      treated as the outlier. Worth confirming with the designer: if the three are deliberate
+      it is a navigation change, not a profile one.
+- [ ] **The timeline is unpaginated.** It reuses `getFeed`'s rider filter, so it is bounded at
+      `FEED_PAGE_SIZE` (30) — a rider with more postcards than that silently sees their 30
+      newest. The design draws no pagination for this list, so the honest fix needs a design
+      before it needs code. Same trade as the crew roster's 200.
+
+
 ### Create postcard
 
 - [ ] **Flow order** — *chose:* preview → choose-photo button → caption → audience → submit,
@@ -497,11 +580,16 @@ write and delete a comment, and the UI adds no rule of its own.
       `src/components/icons/generated.tsx` from them, rewriting every literal fill to
       `currentColor` — which also erases the stray legacy `#808080` a few were drawn with.
       Regenerate rather than hand-edit.
-- [ ] **Retire the remaining `lucide-react` imports.** The v2 screens are clean; the v1 pages
-      (`rides/*`, `clubs/*`, `profile`) and `SignOutButton` still import it, and they migrate
-      with their own epics. The dependency comes out when the last import does —
-      `grep -rl lucide-react src/ | grep -v generated` is the current count, not a number typed
-      here.
+- [ ] **Retire the remaining `lucide-react` imports.** The v2 screens are clean. `profile` and
+      `SignOutButton` came off the list on 2026-08-05 — the profile screen is v2 and the button
+      is deleted — leaving `clubs/*`, `rides/new`, `Navbar` and `LikeButton`, which migrate with
+      their own epics. The dependency comes out when the last import does.
+
+      **Count it with `grep -rl "from 'lucide-react'" src/ | grep -v generated`.** The looser
+      `grep -rl lucide-react` this item used to specify counts *prose* too: a file whose only
+      match is a comment saying it no longer uses the library reads as an importer, so the
+      number could never reach 0 while any such comment existed. It over-counted by one the day
+      the profile page landed, which is how it was noticed.
 
 ## Rule for anyone building against this
 

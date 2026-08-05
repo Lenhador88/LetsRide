@@ -111,14 +111,14 @@ src/
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
 ├── components/
-│   ├── ui/                 # AppBackground, Avatar, Button, ButtonGroup, Card, Checkbox, ContextMenu, FilterTile, Input, ListUser, Pagination, SectionHeader, Textarea
+│   ├── ui/                 # AppBackground, Avatar, Button, ButtonGroup, Card, Checkbox, ContextMenu, ExpandableText, FilterTile, Input, ListUser, Pagination, SectionHeader, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
-│   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideDescription, RideMap
+│   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
 │   ├── clubs/              # JoinClubButton
 │   ├── postcards/          # PostcardDeck, PostcardCard, PostcardFilterBar, PostcardAction, LikeButton, CommentsLink, ShareButton, CommentList, CommentItem, CommentForm, CreatePostcardForm
-│   └── profile/            # EditProfileForm, SignOutButton
+│   └── profile/            # EditProfileForm, ProfileMenu
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts       # Browser client — use in 'use client' components

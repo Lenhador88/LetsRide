@@ -3,8 +3,8 @@ import Link from 'next/link'
 import { CalendarIcon, LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
-import { RideDescription } from '@/components/rides/RideDescription'
 import { RideHeader } from '@/components/rides/RideHeader'
+import { ExpandableText } from '@/components/ui/ExpandableText'
 import { RideMap } from '@/components/rides/RideMap'
 import { getRide } from '@/lib/data/rides'
 import { cn, formatRideDateLong, formatRideTime } from '@/lib/utils'
@@ -71,7 +71,7 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
 
         <h2 className="px-6 text-2xl font-semibold text-foreground">{ride.title}</h2>
 
-        {ride.description && <RideDescription description={ride.description} />}
+        {ride.description && <ExpandableText className="px-6">{ride.description}</ExpandableText>}
 
         <div className="flex flex-col">
           <DetailRow

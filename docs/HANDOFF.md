@@ -140,9 +140,9 @@ It needed **no migration**, as predicted. What it left behind:
 - **`--color-maybe` (`#E58F17`) is the first colour in `globals.css` with no Figma style name
   behind it.** The design attaches no paint style to the Maybe pill. Flagged for the designer.
 
-Still v1 and still carrying the `text-white` legibility defect: `/rides/new`, `/clubs/*`,
-`/profile`. `/rides` cleared its own, and `/rides/[id]` cleared its own on 2026-08-04 — see
-the ride detail entry below.
+Still v1 and still carrying the `text-white` legibility defect: `/rides/new` and `/clubs/*`.
+`/rides` cleared its own, `/rides/[id]` cleared its own on 2026-08-04, and `/profile` cleared
+its own on 2026-08-05 — see the entries below.
 
 ~~**The next build is the ride detail page.**~~ **Built 2026-08-04** — `/rides/[id]` (Ride
 plan) and `/rides/[id]/crew`, from the measured design. **No migration**, as predicted. What
@@ -267,6 +267,45 @@ the `@supports` guard, so a browser without `color-mix()` still gets the fill. I
 this file's running tally of confidently-stated wrong claims, and the first caught before the
 commit rather than by review.
 
+**`/profile` is v2 as of 2026-08-05 (#38), and it is the last page-level v1 screen outside
+`clubs/*` and `/rides/new`.** What it settled, and what it deliberately did not:
+
+- **Four whole sections are drawn and omitted** — Badges (`7/42`), Countries (`22/195`),
+  Motorcycles and Gear. Each needs its own table, and Badges needs more than a table: a rules
+  engine deciding what earns one. They are omitted rather than rendered as empty headers
+  reading `0/42`, which would state a fact about the rider where the truth is a fact about
+  the app. `bike_model` is **one text column** standing in for the Garage, not an
+  implementation of it.
+- **The design has no edit screen at all.** `View your profile` draws the profile;
+  `Login / Onboarding` draws the fields being filled in the *first* time; nothing draws
+  changing them later. The edit form's placement is therefore invented, and flagged as such.
+- **`getCurrentProfile()` and `getFeed`'s rider filter both already existed.** The timeline
+  needed no new data function. That is the **third** time this repo has nearly rebuilt
+  something it had — after `getRides()` and `formatRideDate`. The habit worth forming is
+  `ls src/lib/data/` before writing a read, not after.
+- **`profileEditSchema` omits `username` and `avatar_url` on purpose.** Renaming is a flow
+  with a uniqueness conflict path, not a form field; avatar upload is `media` agent work.
+- **`bio` and `bike_model` have no CHECK constraint** — `001` declares both bare `text`, so
+  their length limits live only in the Zod schema the action parses. `location` has none
+  either, which a comment in this diff got wrong before review caught it: the only database
+  rule touching `location` is `003`'s trigger refusing the *completion stamp* while it is
+  NULL, which bounds neither length nor content.
+
+**The `reviewer` agent found nine things and none was a data leak — the third epic running.**
+Worth knowing where the defects actually were, because the pattern is now three for three:
+two were live-region and pending-state bugs in new client components, one was a heading that
+read "Rides" over a motorcycle (the app's own noun for a *trip*, one tap from a tab of that
+name), one was a count capped at `FEED_PAGE_SIZE` presented as a total, and **four were stale
+claims in `CLAUDE.md`, this file and `FIGMA-FIDELITY-TODO.md`**. Documentation is now
+reliably the largest category, which is an argument for editing it in the same commit rather
+than after.
+
+**A count command can be wrong in the direction that never resolves.** The lucide retirement
+item specified `grep -rl lucide-react src/ | grep -v generated`, which matches *prose* — so
+the profile page's own comment saying it no longer uses the library counted as an importer.
+The command could never have reached 0 while any such comment existed. It now greps for the
+import statement. Same class as the `NOTICE: ok` count that read 69 against a real 37.
+
 **Both RSVP pills fail WCAG AA and it is now a live question for the designer** —
 `#E58F17` with white is 2.54:1 and `Accent Brand/100` with white is 3.52:1, against a 4.5:1
 requirement (12px semibold is not "large text"). The green one is used well beyond this
@@ -339,7 +378,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **269** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251 and 263/261. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **279** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261 and 263/269. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -347,8 +386,8 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | CI | Green, and **path-scoped as of 2026-08-04**: a `changes` job diffs the merge base and skips `Type Check, Lint & Build` for docs/design-only PRs and `RLS Policy Tests` for anything not touching `supabase/**`. Pushes to `main` always run both. Job names are unchanged, so the branch-protection rule below still applies. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
 
-**The v1 pages are now visibly broken, not merely inconsistent.** `clubs`, `profile` and
-`/rides/new` still render `text-white` headings, which were legible on the v1 dark background
+**The v1 pages are now visibly broken, not merely inconsistent.** `clubs` and `/rides/new`
+still render `text-white` headings, which were legible on the v1 dark background
 and are invisible on the v2 cream gradient. A real defect a rider would see, not a styling
 preference. Fix it with their v2 migration, or sooner if anyone demos those tabs. (`/rides`
 was fixed when the list was rebuilt, `/rides/[id]` when the detail page was.)
@@ -359,15 +398,18 @@ the job look done. White on a dark fill is right in `Button`, `Checkbox`, `Filte
 `RideCard` and the two postcard components. Count the real ones with:
 
 ```bash
-grep -rn "text-white" src/app/\(app\)/clubs src/app/\(app\)/profile \
-  src/app/\(app\)/rides/new src/components/profile | wc -l
+grep -rn "text-white" src/app/\(app\)/clubs src/app/\(app\)/rides/new | wc -l
 ```
 
+It read 22 while `/profile` was v1 and reads **17** now that it is not. `profile` is out of
+the paths above because it no longer has any — leaving it in would have kept counting a
+directory that cannot contribute.
+
 The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`,
-`app/(app)/postcards/*` and now all of `app/(app)/rides/` except `new/` are v2, along with the
-`(app)` shell — its layout and the Navbar migrated on contact when Home moved to `/postcards`.
-Clubs, profile and `/rides/new` are still v1 `zinc-*`/`orange-500` and migrate with their own
-epics.
+`app/(app)/postcards/*`, `app/(app)/profile` and now all of `app/(app)/rides/` except `new/`
+are v2, along with the `(app)` shell — its layout and the Navbar migrated on contact when Home
+moved to `/postcards`. Clubs and `/rides/new` are still v1 `zinc-*`/`orange-500` and migrate
+with their own epics.
 
 **Migration ordering is not file order.** Two chains were written in parallel and each
 recreated the policies the other did. `004`–`007` reached the database before `002` did;
@@ -622,8 +664,9 @@ badge says.
   which is a migration. Full note at the call site in `src/lib/actions/comments.ts`.
 - **Leaked password protection is disabled.** Supabase advisor flags it; a dashboard toggle
   that checks signups against HaveIBeenPwned.
-- **The v1 pages have white headings on a cream background** — `rides`, `clubs`, `profile`.
-  Invisible, not merely off-brand. Three `text-white` occurrences; goes with their migration.
+- **The v1 pages have white headings on a cream background** — `clubs/*` and `/rides/new`.
+  Invisible, not merely off-brand. Goes with their migration; count with the command in
+  §State rather than trusting a number here.
 - **The swipe deck only moves forward.** A swipe in either direction advances, per the product
   owner's description, so there is no way back to a card you have passed except "Start over".
   If a carousel was meant instead, it is one change in `PostcardDeck.tsx`.
