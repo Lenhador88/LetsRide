@@ -149,12 +149,11 @@ export function CreateClubForm() {
 
         <Textarea name="description" label="Description" rows={4} maxLength={CLUB_DESCRIPTION_MAX} />
 
-        {/* Unchecked is private, matching clubSchema's default and the
-            designer's "until then we only have private clubs". The column
-            default is still true, so this is the form's opinion, not a schema
-            change. */}
+        {/* Public by default, matching 001's column default and the product
+            owner's call. The design's "until then we only have private clubs"
+            note is out of date — see clubSchema. */}
         <div className="flex flex-col gap-1">
-          <Checkbox name="is_public" label="Make this club public" />
+          <Checkbox name="is_public" label="Make this club public" defaultChecked />
           <p className="pl-8 text-xs font-medium text-muted">
             Anyone signed in can find a public club and join it. A private club is only visible to
             its members.

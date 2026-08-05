@@ -159,6 +159,36 @@ being called done.
 - [ ] **Badge semantics** — see the unread-count gap above. The tile currently badges how many
       postcards in the feed window come from that rider or club.
 
+### Create ride — built 2026-08-05
+
+`/rides/new` is the last v1 page, retired. Its epic reads **To do** and the frame
+(`1918:15850`) is OLD-stylesheet throughout — 58 `Grey (OLD)/*` references — so the
+composition is the v2 primitives applied to the columns `001` has, not a measured layout.
+Expect to move things when the designer draws it.
+
+- [ ] **Five drawn fields have no column**, and none is built: an **end time** (the frame draws
+      a second date and time; `rides` has only `departure_at`), **distance in km**, **"Includes
+      offroad"**, **"Public seats"** as a number separate from `max_riders`, and a **cover
+      photo**. The last is the same missing column that leaves the rides list's 80-wide image
+      strip empty.
+
+- [ ] **Rider invitations with an Admin role** are drawn here as well as on Create club. Same
+      unbuilt feature, same reason: `club_members.role` has had `admin` since `001` and nothing
+      writes it, and `ride_members` has no invite concept at all.
+
+- [x] ~~**A ride could not be attached to a club**~~ — **fixed.** `rides.club_id` has existed
+      since `001` and no screen ever set it, so a club's Rides sub-page could only ever be
+      empty. The form now offers the rider's own clubs via `getMyClubs()`, which already
+      existed for the postcard composer.
+
+- [ ] **The club select is a bare `<select>`.** There is no v2 select in the component library
+      and the design does not draw one, so it borrows the `Input` treatment rather than
+      inventing a component. Replace it when a real one is designed.
+
+- [x] ~~**`max_riders` is unenforced**~~ — still true, and still not this form's job. The
+      schema has carried the column since `001` with no policy, trigger or check behind it.
+      The form bounds what can be *typed*, which is not the same thing.
+
 ### Club detail and Create club — built 2026-08-05
 
 `/clubs/[id]` is four sub-pages behind the header's dropdown — Timeline, Rides, Members,

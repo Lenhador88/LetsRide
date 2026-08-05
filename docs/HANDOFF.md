@@ -546,7 +546,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`016` all applied and verified live** (`015` and `016` on 2026-08-05, before their PR merged). No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
-| Tests | RLS suite **317** assertions (`npm test`) + Vitest **316** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **317** assertions (`npm test`) + Vitest **321** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -554,11 +554,18 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | CI | Green, and **path-scoped as of 2026-08-04**: a `changes` job diffs the merge base and skips `Type Check, Lint & Build` for docs/design-only PRs and `RLS Policy Tests` for anything not touching `supabase/**`. Pushes to `main` always run both. Job names are unchanged, so the branch-protection rule below still applies. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
 
-**One v1 page is left and it is visibly broken, not merely inconsistent.** `/rides/new`
-still renders `text-white` headings, which were legible on the v1 dark background
-and are invisible on the v2 cream gradient. A real defect a rider would see, not a styling
-preference. Fix it with their v2 migration, or sooner if anyone demos those tabs. (`/rides`
-was fixed when the list was rebuilt, `/rides/[id]` when the detail page was.)
+**v1 is gone.** `/rides/new` was the last page carrying it and was rebuilt on 2026-08-05.
+The tree now has **zero** `text-white` in `src/app/`, **zero** `lucide-react` importers, and
+**zero** client-side `supabase.from()` writes; the dependency is uninstalled, taking runtime
+dependencies from nine to eight. Re-derive rather than trust:
+
+```bash
+grep -rn "text-white" src/app/ | wc -l
+grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l
+grep -rn "supabase.from(" src/app/ src/components/
+```
+
+The only `zinc-*` strings left in the tree are two comments describing the migration.
 
 **22 of those `text-white` occurrences are the defect; the other 7 are correct.** This line
 used to say "three", which was wrong by an order of magnitude and in the direction that makes

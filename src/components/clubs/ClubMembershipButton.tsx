@@ -22,8 +22,9 @@ import { Button } from '@/components/ui/Button'
  * them rather than trusting this line —
  * `grep -rn "supabase.from(" src/app/ src/components/`.
  *
- * The detail page is still v1 (`zinc-*`, invisible `text-white` headings) and
- * migrates with its own change. Only the write moved.
+ * It renders on the About sub-page rather than in a header menu, because the
+ * design puts club actions behind an `Options` control whose contents it never
+ * draws — see `ClubDetailHeader`.
  */
 export function ClubMembershipButton({ clubId, isMember }: { clubId: string; isMember: boolean }) {
   const [pending, startTransition] = useTransition()

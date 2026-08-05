@@ -14,7 +14,7 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 | Framework | Next.js 16 (App Router, TypeScript strict) |
 | Styling | Tailwind CSS v4 (CSS-first config, no `tailwind.config.*`) |
 | Database / Auth | Supabase (Postgres + RLS + `@supabase/ssr`) |
-| Icons | The Figma set, generated to `src/components/icons/generated.tsx` (see Design System). `lucide-react` survives only in the v1 pages |
+| Icons | The Figma set, generated to `src/components/icons/generated.tsx` (see Design System). `lucide-react` is **gone** — uninstalled 2026-08-05 with the last v1 page |
 | Deployment | Vercel (auto-deploy from `main`) |
 | CI | GitHub Actions — type check + lint + unit tests + build, and the RLS suite. Path-scoped; see Branching & CI |
 
@@ -24,8 +24,8 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 otherwise get answered differently in every epic. Drafted 2026-08-02; edit freely, but edit
 here rather than deciding again inside a PR.
 
-**Dependencies are added deliberately.** Nine runtime dependencies today, and that is a
-feature. Before adding one, ask whether a thirty-line helper does the job. No UI component
+**Dependencies are added deliberately.** Eight runtime dependencies today, and that is a
+feature — `lucide-react` came out with the last v1 page rather than lingering unused. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
 
 **Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
@@ -47,11 +47,10 @@ weight:
 The legacy pattern — a client component calling `supabase.from()` then `router.refresh()` —
 is v1. `JoinRideButton` was deleted with the ride detail rebuild and `JoinClubButton` became a
 Server Action with the club list — which is what "migrate on contact" looks like in practice.
-**What is left is the two v1 create pages:** `/clubs/new` and `/rides/new` are both
-`'use client'` and write directly. This line called `JoinClubButton` "the last one" while both
-of those already existed, so count rather than trust it —
-`grep -rn "supabase.from(" src/app/ src/components/`. Same treatment as v1 styling is
-handled, and never add more.
+**Nothing is left.** `/clubs/new` and `/rides/new` were the last two, and both became server
+pages with Server Actions on 2026-08-05. This line once called `JoinClubButton` "the last one"
+while both of those already existed, so count rather than trust it —
+`grep -rn "supabase.from(" src/app/ src/components/` returns nothing. Never add more.
 
 **Validation: Zod, one schema per concern, shared by both sides.** Lives in
 `src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
@@ -95,6 +94,15 @@ viewer's own zone is not the answer — it renders different strings on server a
 i.e. a hydration mismatch. `formatRelativeTime` needs no zone (it measures elapsed instants)
 and keeps `en-US` because it produces English prose, not a date format.
 
+**`wallClockToUtc` is the write-side half of the same rule.** A `datetime-local` input sends a
+zone-less string, and `new Date(that)` resolves in whatever zone the runtime is in — the
+browser's in a client component, UTC on Vercel in a server one. The v1 create-ride form did
+exactly that, so the same typed time meant different instants for different organizers and
+none of them matched what `formatRideTime` drew back. It resolves the string as wall-clock in
+`APP_TIME_ZONE`, in two passes so the two DST days a year are right, and its tests assert
+offsets rather than strings — `TZ=UTC` in `vitest.config.ts` would let a naive
+implementation pass.
+
 **Deliberately undecided** — raise these rather than inventing an answer: error tracking,
 analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
 
@@ -119,7 +127,7 @@ src/
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
-│   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
+│   ├── rides/              # CreateRideForm, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
 │   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
@@ -553,7 +561,7 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **3. Maps are a static thumbnail plus a Google Maps deeplink.** No mapping SDK, no turn-by-turn, no route rendering.
 
-**4. v2 is the only design.** v1 (`zinc-*`, `orange-500`, Geist, `lucide-react`) is superseded. Migrate on contact; never add more.
+**4. v2 is the only design.** v1 (`zinc-*`, `orange-500`, Geist, `lucide-react`) is superseded, and as of 2026-08-05 it is **fully retired**: zero `text-white` in `src/app/`, zero `lucide-react` importers, zero client-side `supabase.from()` writes, and the dependency uninstalled. What remains of those strings in the tree is comments describing the migration. Never add more.
 
 **5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — `proxy.ts` redirects them back into the wizard. The schema carries the incomplete state so an abandoned signup resumes where it left off.
 

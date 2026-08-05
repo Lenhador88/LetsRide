@@ -33,15 +33,19 @@ export const clubSchema = z.object({
     .transform((value) => value || null)
     .nullable(),
   /**
-   * Private by default, which inverts `001`'s column default and is deliberate.
-   * The `View not joined public club` epic carries the note "Public clubs are
-   * Post-MVP. Until then we only have private clubs." A form that defaults to
-   * public would make every club created before that epic ships the thing the
-   * designer says does not exist yet. Flagged for the product owner rather than
-   * treated as settled — the column default is untouched, so this is the form's
-   * opinion and one line to change.
+   * No default here: the checkbox always sends a boolean, so a Zod default
+   * would be dead code that reads like the decision. **Public is the default**,
+   * set by `defaultChecked` on the form and by `001`'s column default, and
+   * confirmed by the product owner.
+   *
+   * The design's `View not joined public club` epic carries a note — "Public
+   * clubs are Post-MVP. Until then we only have private clubs" — and both
+   * public-club epics are On hold. That note is **out of date rather than
+   * binding**: public clubs are in scope, which is also what `/clubs/explore`
+   * being marked Done already implied. Recorded because a future session
+   * reading that frame will have the same question.
    */
-  is_public: z.boolean().default(false),
+  is_public: z.boolean(),
   /**
    * Paths, never URLs, and shape-checked here so a malformed one fails as a
    * field error rather than as `016`'s raw 23514. Both regexes come from
