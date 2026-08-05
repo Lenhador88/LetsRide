@@ -9,12 +9,14 @@ against `main` on 2026-08-05 rather than quoted from documentation.
 |---|---|---|
 | Pages | 23, of which **18 render on the server** | first-line match on `'use client'`, not `git grep -L` |
 | Components | 53, of which **26 are server components** | same |
-| Read functions | 19 in `src/lib/data/` | `git grep -c 'export async function' -- 'src/lib/data/*.ts'` |
-| Action functions | 33 in `src/lib/actions/` | same for `actions` |
+| Read functions | 19 in `src/lib/data/` | `git grep -h '^export async function' -- 'src/lib/data/*.ts' \| wc -l` |
+| Action functions | **31** in `src/lib/actions/` | same for `actions` — unanchored reports 33, and the two extras are prose at `src/lib/actions/postcards.ts:14,16` |
 | `revalidatePath` call sites | 41, across 8 files | `git grep -c revalidatePath -- 'src/lib/actions/*.ts'` |
 | `redirect()` call sites in actions | 12, across 5 files | `git grep -c 'redirect(' -- 'src/lib/actions/*.ts'` |
 | Route special files | one `error.tsx`, **zero** `loading.tsx` | `git ls-files 'src/app/**/loading.tsx'` |
 | Server-only imports | 3 real `next/headers` importers | first-line/import match, not a bare grep |
+| `PUBLIC_PROFILE_COLUMNS` sites | 14 query interpolations across 5 `lib/data/` files | `git grep -c PUBLIC_PROFILE_COLUMNS -- src/` |
+| Tables with an INSERT policy | 13 | `pg_policy` where `polcmd = 'a'` |
 | Migrations | `001`–`017`, all applied, no drift | `list_migrations` vs `ls supabase/migrations/` |
 
 Three constraints shape everything below.
@@ -53,11 +55,20 @@ Three constraints shape everything below.
 
 ## Decisions
 
-### D1 — Make the data layer isomorphic by injecting the client, not by duplicating it
+### D1 — The accessor is environment-aware, and the server path survives until Phase 4
 
 Each of the 19 read functions calls `createClient()` from `lib/supabase/server`. The change is
-to resolve the Supabase client from a module-level accessor that returns the browser client,
-leaving every signature untouched.
+to resolve the Supabase client from a module-level accessor, leaving every signature untouched.
+
+**The accessor returns the server client when there is no `document`, and the browser client
+when there is.** An earlier revision said "returns the browser client" full stop, and that does
+not survive contact: `createBrowserClient` reads `document.cookie`, there is no `document`
+during a server render, and 18 server pages plus 26 server components still call the data layer
+throughout Phase 2. With `anon` holding zero grants, every read on every screen would fail.
+"Isomorphic" and "browser client" are not the same claim, and the difference is whether the app
+runs.
+
+The server branch is deleted in Phase 6 with `lib/supabase/server.ts`, not in Phase 2.
 
 *Alternatives.* A `data/server/` and `data/client/` pair doubles 19 functions and guarantees
 drift. Passing the client as a first argument changes 19 signatures and every call site, which
@@ -91,9 +102,12 @@ The httpOnly `lr-recovery` cookie cannot survive. Of the three replacements cons
 ### D4 — Constraints go in `018`+, one migration per concern, each with assertions
 
 Append-only from `018`. Split by concern so a single failure does not block the rest: text
-bounds; `club_members.role`; `profiles.avatar_url`; `profile_countries` membership; the
-onboarding participation gate. Every one pairs with assertions in `supabase/tests/rls_test.sql`
-before it is called done, per `openspec/config.yaml`.
+bounds; `club_members.role`; `profile_countries` membership; private-club ride visibility; the
+onboarding participation gate; the column-privilege revoke. Every one pairs with assertions in
+`supabase/tests/rls_test.sql` before it is called done, per `openspec/config.yaml`.
+
+**`profiles.avatar_url` is no longer in this list** — see D5. It removes something 14 query
+sites read, so it belongs with the code that reads it.
 
 **The onboarding gate is the one with a real design choice in it.** A `WITH CHECK` addition on
 six INSERT policies is six policy edits to keep in step; a `BEFORE INSERT` trigger calling a
@@ -107,26 +121,69 @@ decision #5 becomes advisory. That is precisely the "unstated negative becomes w
 author assumed" failure `openspec/config.yaml` exists to prevent, and here it would not even be
 unstated — it would be knowingly dropped.
 
-### D5 — `profiles.avatar_url` is dropped rather than constrained
+**Which tables the gate names, and which it does not.** Thirteen tables carry an INSERT policy;
+the gate names eight. Content and moderation records are gated: `postcards`, `clubs`, `rides`,
+`club_members`, `ride_members`, `postcard_comments`, `postcard_likes` and — decided explicitly
+rather than left silent — `postcard_reports`. A report names another rider in a record nobody can
+triage, and with email confirmation off (decision #6) an account can be created with an address
+nobody controls, so an un-onboarded rider filing reports is the cheapest abuse path in the
+schema. The five omissions are per-viewer and produce nothing another rider sees: `blocks`,
+`postcard_hides`, `feed_reads`, `profile_countries`, and `profiles` itself, which is the row the
+wizard writes.
 
-`014` kept it because nobody could prove it was NULL everywhere. That is now provable with one
-query against the live project, and if it is empty the column should go: constraining a column
-nothing writes is a maintenance burden defending a feature that does not exist. If it is not
-empty, the values are migrated into `avatar_path` where they can be, and the column is dropped
-after. Either way `resolveAvatarUrls` loses its fallback branch and the data layer keeps its
-one promise — *`avatar_url` is a URL you can put in `src`* — as a purely derived value.
+**The same migration closes `012`'s recorded BEFORE INSERT gap.** `012` §KNOWN LIMIT notes its
+consent guard is a BEFORE **UPDATE** trigger, unreachable today only because `handle_new_user`
+guarantees the row exists so a rider's own INSERT dies on `23505` — and names account deletion
+as the event that makes it reachable. This change builds BEFORE INSERT machinery across eight
+tables and names account deletion as a Phase 2 dependency, so declining to add the `TG_OP`-guarded
+arm here would mean leaving a known hole open while standing next to it with the tools out. The
+assertion `012` could not write becomes writable the moment the trigger exists.
 
-### D6 — Column exposure is closed with a view, not a column-level REVOKE
+### D5 — `profiles.avatar_url` is dropped rather than constrained, and the drop ships with its code repair
+
+`014` kept it because nobody could prove it was NULL everywhere. That is now proven — 0 non-NULL
+rows across `profiles` and `clubs` — so the column goes: constraining a column nothing writes is
+a maintenance burden defending a feature that does not exist. `resolveAvatarUrls` loses its
+fallback branch and the data layer keeps its one promise — *`avatar_url` is a URL you can put in
+`src`* — as a purely derived value.
+
+**The drop is not a standalone migration and has moved out of Phase 1.** `PUBLIC_PROFILE_COLUMNS`
+names the column and is interpolated into 14 query sites across five `lib/data/` files. Applying
+the drop alone makes PostgREST return `42703`, `unwrap` throws by design, and every authenticated
+screen lands on the error boundary — on a single Supabase project that every environment points
+at, with Vercel auto-deploying from `main`. It ships as one unit with the `PUBLIC_PROFILE_COLUMNS`
+edit in Phase 2, which is the only phase where the migration and the code that reads it move
+together.
+
+This is the general rule for this change and not a special case: **a migration that removes
+something the application reads is not an independent migration.** Phase 1 keeps its
+"no application change" property precisely because everything left in it is additive.
+
+### D6 — Column exposure is closed by REVOKE plus a `security definer` accessor, not by a view
 
 `terms_accepted_at` and `onboarding_completed_at` must be readable on the caller's own row and
-on nobody else's. Column privileges cannot express "own row only", so a `REVOKE` breaks the
-guard's own read. A `security invoker` view exposing `PUBLIC_PROFILE_COLUMNS` for other riders,
-with own-row reads going to `profiles` directly, expresses it exactly and keeps the RLS
-predicate as the single source of row visibility.
+on nobody else's.
 
-*Alternative.* Leave it as an application-layer projection, as today. Rejected on the grounds
-that the whole point of this change is that application-layer projections stop being
-guarantees.
+**A view alongside the table was the earlier answer and it is wrong.** `public.profiles` stays
+published by PostgREST and `authenticated` keeps column-level SELECT on both columns —
+confirmed against `information_schema.column_privileges`, where `authenticated` currently holds
+SELECT, INSERT *and* UPDATE on each. A view beside the table restricts nothing; anyone can query
+the table. It is the application-layer projection this design says it is replacing, moved into
+SQL and no stronger for it.
+
+So: `revoke select (terms_accepted_at, onboarding_completed_at) on public.profiles from
+authenticated`, and give the two legitimate own-row readers — the route guard and the onboarding
+resume step — a `security definer` accessor returning the caller's own stamps and nothing else.
+The objection that killed this option was that a REVOKE is not row-aware; the accessor is what
+supplies the row-awareness the grant cannot express. INSERT and UPDATE on the two columns go the
+same way, since `012`'s trigger already overrides whatever the client sends.
+
+*Alternative.* Move both stamps to a side table with a `user_id = auth.uid()` policy. Cleaner in
+the abstract and a data migration on live columns in practice, with `012`'s trigger and `003`'s
+guard both to rewrite. Available if the accessor proves awkward; not worth it first.
+
+The accessor is narrower than `moderate_comment`, which the security advisors already accept: it
+reads two columns of the caller's own row and takes no arguments.
 
 ### D7 — Loading states are one treatment applied to four screen shapes
 
@@ -151,7 +208,13 @@ must already be guaranteed in Postgres.
   The failure mode is silent staleness, which no test currently catches.
 - **The integrity migrations can reject data that already exists.** → Every constraint gets a
   pre-flight count of violating rows before it is written, the way `013` did. A `NOT VALID`
-  constraint validated separately is available if any count is non-zero.
+  constraint validated separately is available if any count is non-zero. Two pre-flights are
+  already run: private-club rides is 0 violating rows of 3, and the consent gate is **4 of 4
+  riders in violation**, which is Q11 rather than a `NOT VALID`.
+- **A migration that removes something the app reads will take production down.** → Phase 1 is
+  defined as additive-only, and the one removal (`avatar_url`) ships with its code repair in
+  phase 2. There is one Supabase project, every environment points at it, and `main`
+  auto-deploys — so "apply the migration, fix the code next" is not a sequence that exists here.
 - **The onboarding gate could strand a rider mid-wizard.** → It restricts writes only; reads are
   untouched, and the two onboarding writes are updates to the rider's own `profiles` row, which
   the gate does not cover. **There is one live un-onboarded rider** (1 of 4 profiles,
@@ -166,21 +229,43 @@ must already be guaranteed in Postgres.
 
 ## Migration Plan
 
-Six phases, each independently landable and each leaving the app working.
+Six phases. **Only phase 1 is independently landable; phases 2–4 are one continuous unit** and
+an earlier revision claiming otherwise was wrong in two places at once, both of which would have
+taken production down on a single Supabase project that Vercel auto-deploys from `main`.
 
-1. **Integrity migrations (`018`+) with RLS assertions.** No application change. Lands first
-   because it is the only part that is valuable even if the render migration were cancelled.
-2. **Make `src/lib/data/` isomorphic.** Signatures unchanged; CLAUDE.md names this as the
-   migration's first step and forbids client-first screens before it.
-3. **Session and auth.** Storage adapter, the recovery grant Edge Function, sign-out clearing
-   local state, `/auth/*` screens.
-4. **Screens, one route group at a time.** Postcards, rides, clubs, profile. Each converts its
-   pages and components, adds its states, and moves its actions' invalidation together, so no
-   screen is half-migrated across a merge.
+What was wrong, recorded because the sequencing is the risky part of this change and a corrected
+plan with no memory of the correction invites the same mistake:
+
+- Phase 2 handed the data layer a browser client while 18 server pages and 26 server components
+  still called it. No `document` during SSR, `anon` holds zero grants, every read fails. D1 now
+  specifies an environment-aware accessor, which is what makes phase 2 landable at all.
+- Phase 3 moved the session to device storage while `proxy.ts` still read `request.cookies` —
+  every request redirects to login and signing in bounces straight back.
+
+So:
+
+1. **Integrity migrations (`018`+) with RLS assertions.** No application change, and everything
+   in it is additive — nothing removes a column, table or grant the app currently reads. Lands
+   first because it is the only part that is valuable even if the render migration were
+   cancelled. This property is the phase's definition, not a description of it.
+2. **Make `src/lib/data/` isomorphic** with the environment-aware accessor, and land the
+   `avatar_url` drop together with its `PUBLIC_PROFILE_COLUMNS` repair (D5). Server rendering
+   still works throughout. CLAUDE.md names this as the migration's first step and forbids
+   client-first screens before it.
+3. **Session and auth**, behind a flag that keeps cookie sessions live until the guard moves.
+   Storage adapter, the recovery grant Edge Function, sign-out clearing local state, `/auth/*`
+   screens.
+4. **Screens, one route group at a time** — postcards, rides, clubs, profile — each converting
+   its pages, components, states and invalidation together. **The route guard moves with the
+   first group**, because the cookie/device-storage split cannot straddle a merge.
 5. **Retire `proxy.ts` as a boundary.** Only after every rule it holds has a database
    counterpart — which is phase 1's job, and is why this is late.
-6. **Delete the server render path.** `lib/supabase/server.ts`, the callback Route Handler,
-   `@supabase/ssr`.
+6. **Delete the server render path.** `lib/supabase/server.ts`, the accessor's server branch,
+   the callback Route Handler, `@supabase/ssr`.
+
+**Every phase boundary is a deploy to production.** The test for whether a phase is done is not
+"does it compile" but "would `main` still serve every screen if this were the last thing
+merged".
 
 **Rollback.** Phases 2–6 are ordinary reverts. Phase 1 is not: migrations are append-only, so a
 constraint that proves too strict is relaxed by a further migration, never by editing `018`.
@@ -202,3 +287,5 @@ owner only; **Designer** = the design owner; **Eng** = decidable in the work.
 | Q8 | Is a plain-browser build still a supported product, or only a development surface? | Development and testing surface only, with the weaker token storage stated. | No | PO |
 | Q9 | Account deletion — needed for store submission, on the backlog. | Not in this change. Raise it as its own proposal before Phase 2 starts, because the store will not accept the build without it. | No, here | PO |
 | Q10 | Does `club_members.role` ever get an UPDATE path, or does promotion stay impossible? | Stays impossible until the invitations feature designs it. Record the absence rather than adding a policy nothing calls. | No | PO |
+| Q11 | **No rider on this database has a consent record.** 4 of 4 profiles have `terms_accepted_at` NULL and 3 of them are fully onboarded, so the consent gate would lock out every existing rider on the day it lands. What happens to them? | Ship the gate for new signups only, and route existing riders through a one-screen re-consent step on next launch before the gate becomes blocking for them. **Do not backfill a timestamp** — a fabricated consent record is worse than a missing one, and `012` already argues that evidence a party can write is not evidence. | **Yes** — blocks task 1.11 only | PO, and arguably legal |
+| Q12 | Why is `terms_accepted_at` NULL for riders who signed up through an action that writes it? Either the write is failing silently or these rows predate it. | Investigate before building the re-consent step — if the write is broken, the gate would have caught it and the fix is smaller than the flow. | No | Eng |

@@ -44,7 +44,11 @@ audit below, not by the render model.
 - **`proxy.ts` becomes a client route guard** — a UX affordance, not a security boundary.
 - **New database constraints** for every integrity rule that currently lives only in a Zod
   schema a Server Action parses. Once the client owns the mutation path, a Zod-only rule is
-  advisory.
+  advisory. The audit that produced them also found three defects that are **live today**, not
+  created by this migration, because the publishable key already ships in the bundle and
+  PostgREST accepts any rider's JWT: role self-assignment on `club_members`, unbounded text on
+  ten columns, and a private club's ride being publicly visible. The migration is where they
+  get fixed; it is not where they start.
 
 **Explicitly not in this change:** the Capacitor shell itself (config, plugins, permission
 strings, deep links, signing, store upload) is Phase 2 with its own proposal and its own
@@ -79,7 +83,7 @@ capability here is new even where the behaviour it describes is old.
 **Code.** `src/app/**` (all 23 pages), `src/components/**` (53 files, 26 of them server
 components today), `src/lib/supabase/{client,server}.ts`, `src/proxy.ts`,
 `src/app/auth/callback/route.ts`, `src/lib/auth/recovery.ts`, and the internals — not the
-signatures — of 19 functions in `src/lib/data/` and 33 in `src/lib/actions/`.
+signatures — of 19 functions in `src/lib/data/` and **31** in `src/lib/actions/`.
 
 **Database.** New migrations, append-only from `018`. `001`–`017` are applied and the repo and
 the hosted schema agree (`list_migrations` against `ls supabase/migrations/`, run
@@ -92,10 +96,16 @@ the hosted schema agree (`list_migrations` against `ls supabase/migrations/`, ru
 `openspec/config.yaml`. The RLS suite is the only test layer this change strengthens rather
 than disturbs — it runs against Postgres and knows nothing about the render model.
 
-**A measurement trap, recorded because it already bit this proposal.** The scope command in
+**A measurement trap, recorded because it bit this proposal twice.** The scope command in
 common use —
 `git grep -L "'use client'" -- 'src/app/**/page.tsx'` — reports **16** server pages. The true
 figure is **18**: `clubs/new/page.tsx` and `rides/new/page.tsx` are server pages whose *doc
 comments* contain the string `'use client'`, so `grep -L` excludes them. Match the first line,
 not the file. The same trap makes `git grep -ln next/headers` report four importers where
 there are three (`src/lib/data/columns.ts` only mentions it in a comment).
+
+It then bit this document: an earlier revision said **33** action functions, which is the
+unanchored count. Anchored, it is **31** — `src/lib/actions/postcards.ts:14,16` are prose
+inside a doc comment explaining that a `'use server'` module may only export async functions.
+Every count in `design.md`'s table is now `^`-anchored. The lesson is not "be careful"; it is
+that the anchored form is the only form worth writing down.
