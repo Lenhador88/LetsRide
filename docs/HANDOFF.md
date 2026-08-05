@@ -166,13 +166,19 @@ The next actions, in the order they are worth doing:
    screenshotted; `/postcards/new` and `/postcards/[id]` still carry their inferred
    composition, and the design has frames for both (`Create postcard`, `Home - Postcards -
    Postcard details`). This is now a diff, not a re-derivation.
-7. **Decide the unread model** — the one product question the home screen is waiting on. The
-   design badges each filter tile and calls the deck "all new", but nothing tracks what a
-   rider has seen. Either a `postcard_views` table (exact, a row per card seen, marks on
-   swipe) or a single `profiles.postcards_seen_at` stamp (cheap, but leaving the screen marks
-   everything seen). Until then the badge counts postcards in the feed window, which is the
-   same number while nothing is marked seen. **No longer blocked** — `012`/`013` are applied,
-   so this is simply the next migration, `014`.
+7. ~~**Decide the unread model.**~~ **Decided and built as `015`, 2026-08-05.** Neither option
+   this line offered survived: `profiles.postcards_seen_at` cannot express a badge *per club*,
+   which the club list draws, and `postcard_views` is the only shape whose storage grows as
+   riders × content, with an anti-join per badge and a pruning job this project has no cron
+   for. `feed_reads` is a **per-audience watermark** instead — one row per (rider, audience
+   joined), bounded by membership rather than by content. The product owner's call on what it
+   counts was **any activity**: postcards plus rides.
+
+   What is left of this item is the **postcard side**. `015` created the app-wide row shape
+   (`club_id is null`) and nothing writes it yet, so the filter tiles still count postcards in
+   the feed window. That is now a screen's worth of work, not a schema decision — and the
+   `nulls not distinct` constraint the app-wide row depends on is already in place and
+   asserted.
 8. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
@@ -392,6 +398,40 @@ requirement (12px semibold is not "large text"). The green one is used well beyo
 screen, so it is a palette-wide issue the rides list merely surfaced. Both left exactly as
 drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md` §Rides list.
 
+**The club list is v2 as of 2026-08-05, and `015` came with it.** `/clubs` is two sub-pages
+behind the header dropdown — `Your clubs` and `/clubs/explore` — built from the measured
+design. What it left behind, and what is worth knowing before the next clubs screen:
+
+- **The migration was the interesting half, and the shape argument is in `015`'s header.** A
+  watermark stores the *decision*; a views table stores the *evidence*. The second grows as
+  riders × content and turns every badge into an anti-join; the first is bounded by
+  membership and reads through an index `009` already created. It is both the cheaper option
+  and the one that survives ten thousand riders, which is unusual enough to be worth the
+  paragraph it gets there.
+- **The cost is stated rather than discovered:** a watermark expresses "everything older than
+  T is read", and the deck is newest-first, so a rider who swipes three of twelve has read a
+  *prefix* no timestamp can represent. The rule that makes it honest is that the watermark
+  advances only when a surface is finished — which is what the deck already does.
+- **`rides` had no indexes at all**, not one, since `001`. The badge's rides half would have
+  been a sequential scan on every Clubs load. Worth checking the other tables the same way.
+- **Club cover and avatar images are drawn and not built, deliberately.** Adding
+  `avatar_path` / `cover_image_path` with no upload screen renders the same empty container
+  *and* plants the dead column `014` had to remove from `profiles`. They size with
+  Create/Edit club, where the upload lives and where the storage policy needs an ownership
+  lookup rather than `014`'s folder-equals-uid shape.
+- **Two Explore designs exist and the newer-looking one is on hold** — `Explore clubs` (row
+  list) is Done, `Explore clubs v2` (2-up grid) is On hold. Position in the file is not
+  status; the epic cover is.
+- **Running it found two defects CI cannot see**, both the "renders, compiles, cannot be
+  seen" class: the cover placeholder's icon sat *under* the overlapping avatar, and the
+  initials avatar was translucent enough to show the container through it. Neither is a type
+  error, a lint error or a failing test. That is now three sessions running where opening the
+  page was the only thing that caught them.
+- **A comment of mine claimed this retired the last client-side write. It did not** —
+  `/clubs/new` and `/rides/new` are both `'use client'` and still write directly. Caught
+  before commit by running the grep instead of trusting the sentence, which is the same
+  lesson this file already records twice.
+
 ~~**The card's overflow menu is the next build.**~~ **Built 2026-08-05.** Trust & safety was
 RLS-complete and UI-absent — a rider could not block or report anyone. **Four** of the six actions now have a caller — `hidePostcard`,
 `reportPostcard`, `blockRider`, `deletePostcard`, all from the card's menu. **`unhidePostcard` and `unblockRider` are still called by nothing**, and
@@ -463,8 +503,8 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 
 | | |
 |---|---|
-| Migrations | **`001`–`014` all applied and verified live** (`014` on 2026-08-05, before its PR merged). No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
-| Tests | RLS suite **289** assertions (`npm test`) + Vitest **308** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Migrations | **`001`–`015` all applied and verified live** (`015` on 2026-08-05, before its PR merged). No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
+| Tests | RLS suite **306** assertions (`npm test`) + Vitest **315** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -487,8 +527,9 @@ the job look done. White on a dark fill is right in `Button`, `Checkbox`, `Filte
 grep -rn "text-white" src/app/\(app\)/clubs src/app/\(app\)/rides/new | wc -l
 ```
 
-It read 22 while `/profile` was v1 and reads **17** now that it is not. `profile` is out of
-the paths above because it no longer has any — leaving it in would have kept counting a
+It read 22 while `/profile` was v1, 17 once it was not, and reads **13** now that `/clubs`
+itself is v2 — the remainder is `/clubs/[id]`, `/clubs/new` and `/rides/new`. `profile` is out
+of the paths above because it no longer has any; leaving it in would have kept counting a
 directory that cannot contribute.
 
 The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`,
@@ -729,6 +770,10 @@ badge says.
 - ~~**Duplicate usernames break signup.**~~ **Fixed and deployed** — `handle_new_user` no
   longer guesses a username from the email local part, so two `dave@…` addresses no longer
   collide. Username moved into onboarding.
+- **The club list is v2 but the two screens behind it are not.** `/clubs/[id]` and
+  `/clubs/new` still render `zinc-*` and invisible `text-white` headings, and `/clubs/new`
+  collects no club image — which is the reason the list's cover and avatar have nothing to
+  draw. They are the natural next change, and they carry the club-media migration with them.
 - ~~**Private clubs are unreachable from `/clubs`.**~~ **Fixed 2026-08-04.** The page filtered
   `is_public` in application code, which *subtracted* from the clubs SELECT policy — that
   policy already unions public with "owned by you" and "you are a member". The read moved to

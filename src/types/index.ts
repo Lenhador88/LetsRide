@@ -200,6 +200,37 @@ export type Club = {
   is_member?: boolean
 }
 
+/**
+ * A row on `Clubs - Your clubs` / `Clubs - Explore` — `v2 / Component / List /
+ * Club`, whose three variants are the product of `is Private Club` and
+ * `is Joined`. Neither is a stored field: privacy is `is_public` inverted, and
+ * joined is which of the two sub-pages the row is on.
+ *
+ * There is deliberately no cover or avatar image here. The design leads the
+ * card with both, `clubs` has never carried either (seven columns since 001,
+ * and `avatar_url` has never been written by anything), and adding the columns
+ * without the upload screen that fills them would render exactly the same
+ * empty container while planting the dead column 014 had to clean up on
+ * `profiles`. It sizes with Create/Edit club. See docs/FIGMA-FIDELITY-TODO.md.
+ */
+export type ClubListItem = {
+  id: string
+  name: string
+  is_public: boolean
+  /** Faces for the design's overlapping row, capped at `CLUB_AVATAR_LIMIT`. */
+  riders: PublicProfile[]
+  /** Everyone in the club, including the faces the row does not draw. */
+  members_count: number
+  /**
+   * New postcards plus new rides since this rider's watermark (015).
+   *
+   * Only ever set on a club the rider has joined, because the design draws the
+   * counter on `is Joined=True` and nowhere else — an Explore row shows the
+   * `Join club` link in the same slot.
+   */
+  unread?: number
+}
+
 export type ClubMember = {
   club_id: string
   user_id: string

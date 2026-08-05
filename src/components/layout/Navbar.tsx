@@ -49,6 +49,11 @@ const UNBUILT = new Set<string>(['/inbox'])
 const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
   '/postcards': { label: 'Create postcard', href: '/postcards/new' },
   '/rides': { label: 'Create ride', href: '/rides/new' },
+  // Both Clubs sub-pages carry it — `Clubs - Your clubs` and `Clubs - Explore`
+  // draw the same 358×40 primary above the tabs, including on their empty
+  // states, which is why neither page renders a second Create button of its own.
+  '/clubs': { label: 'Create club', href: '/clubs/new' },
+  '/clubs/explore': { label: 'Create club', href: '/clubs/new' },
 }
 
 export function Navbar() {

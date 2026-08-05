@@ -45,9 +45,13 @@ weight:
 3. `useActionState` gives pending and error states without hand-rolled `useState` triples.
 
 The legacy pattern — a client component calling `supabase.from()` then `router.refresh()` —
-is v1. `JoinClubButton` is the last one using it — `JoinRideButton` was deleted with the ride
-detail rebuild, which is what "migrate on contact" looks like in practice. Same treatment as
-v1 styling is handled, and never add more.
+is v1. `JoinRideButton` was deleted with the ride detail rebuild and `JoinClubButton` became a
+Server Action with the club list — which is what "migrate on contact" looks like in practice.
+**What is left is the two v1 create pages:** `/clubs/new` and `/rides/new` are both
+`'use client'` and write directly. This line called `JoinClubButton` "the last one" while both
+of those already existed, so count rather than trust it —
+`grep -rn "supabase.from(" src/app/ src/components/`. Same treatment as v1 styling is
+handled, and never add more.
 
 **Validation: Zod, one schema per concern, shared by both sides.** Lives in
 `src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
@@ -103,7 +107,7 @@ src/
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew
-│   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
+│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id]
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
@@ -116,7 +120,7 @@ src/
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
 │   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
-│   ├── clubs/              # JoinClubButton
+│   ├── clubs/              # ClubCard, ClubMembershipButton, ClubPageMenu, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
 ├── lib/
@@ -220,6 +224,7 @@ Three further rules:
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
 | `postcard_hides` | `(postcard_id, user_id)` composite PK. **Per-viewer and one-directional**, unlike `blocks` — a row only ever removes a postcard from its own `user_id`'s feed. It is an input to the `postcards` SELECT policy, so `club_id` is no longer the sole determinant of what a viewer sees. |
 | `profile_countries` | `(user_id, country_code)` composite PK, added by `014`. Countries a rider says they have ridden in, **entered manually** — the derived reading is unbuildable, `rides` has no country or coordinates. `country_code` is ISO 3166-1 alpha-2 with a CHECK; there is no `countries` reference table, because the picker's list is the client's and nothing joins against it. SELECT inherits the profiles predicate via `EXISTS`, so blocking works without the word appearing in the policy. |
+| `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
@@ -231,7 +236,17 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`014` are all applied — there is no drift.** `014` was applied
+**Applied state: `001`–`015` are all applied — there is no drift.** `015` (`feed_reads`) was
+applied 2026-08-05 and verified live: 3 policies, all `to authenticated`, 0 `anon` grants,
+`authenticated` holding no DELETE, `indnullsnotdistinct` true, `prosecdef` false on
+`club_unread_counts`, RLS on, and the new `rides (club_id, created_at desc)` index present.
+`rides` had carried **no indexes at all** since `001`, which the badge's rides half would have
+turned into a sequential scan on every Clubs load. The advisors report nothing new — the two
+outstanding are still `moderate_comment` (deliberate) and the leaked-password toggle. One
+footer query in `015` was wrong on the first pass and is worth copying the fix rather than the
+mistake: it counted DELETE grants table-wide and read 2 against a correct database, because
+`postgres` and `service_role` hold everything by Supabase default. Scope a grant assertion to
+its grantee, or use `has_table_privilege`. `014` was applied
 2026-08-05 and every number its footer predicts was confirmed live: 9 storage.objects
 policies (3 each for `postcards/`, `avatars/`, `covers/`), 0 of them targeting anything but
 `authenticated`, 0 UPDATE policies on `storage.objects` or `profile_countries`, 0 `anon`
@@ -677,7 +692,7 @@ blocking.
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. Delete account is not built |
 | **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan and Crew are built; Journal needs `postcards.ride_id` and Chat needs the Inbox epic.** `/rides/new` is still v1. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
-| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built |
+| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built. **`/clubs` is v2 as of 2026-08-05**, built from the measured design: two sub-pages behind the header's dropdown — `Your clubs` and `/clubs/explore` — with `List / Club` rows carrying the type chip, the rider collage and the unread counter, and `Create club` in the Navbar's sticky slot. **Club cover and avatar images are the one thing drawn and not built**: `clubs` has carried the same seven columns since `001` and `avatar_url` has never been written by anything, so the columns land with Create/Edit club, which is where the upload lives. Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. `/clubs/[id]` and `/clubs/new` are still v1 |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
 chat, search, and ride crews simultaneously. It belongs in RLS policies, and every review

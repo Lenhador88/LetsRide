@@ -1857,6 +1857,126 @@ select assert_eq(
   0, 'every storage.objects policy targets authenticated only');
 
 
+-- ===========================================================================
+-- 015: the unread watermark
+-- ===========================================================================
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+\echo ''
+\echo '# A watermark belongs to one rider and one audience they can read (migration 015)'
+
+select assert_allowed($$
+  insert into feed_reads (user_id, club_id)
+  values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000c1')$$,
+  'a rider can mark a club they belong to as seen');
+
+-- c5 is the club 000a is deliberately not a member of. The WITH CHECK arm is
+-- what closes the FK existence oracle described in 015 §2.
+select assert_denied($$
+  insert into feed_reads (user_id, club_id)
+  values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000c5')$$,
+  'a rider cannot mark a club they do not belong to');
+
+select assert_denied($$
+  insert into feed_reads (user_id, club_id)
+  values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000c1')$$,
+  'a rider cannot write another rider''s watermark');
+
+select assert_allowed($$
+  insert into feed_reads (user_id, club_id) values ('00000000-0000-0000-0000-00000000000a', null)$$,
+  'a rider can mark the app-wide feed as seen');
+
+-- The assertion that catches a missing `nulls not distinct`. Under a plain
+-- UNIQUE these two inserts both succeed, the rider accumulates a second
+-- app-wide row every visit, and the upsert never finds a conflict to update —
+-- a bug that would look like "the badge never clears" rather than like a
+-- constraint problem.
+insert into feed_reads (user_id, club_id) values ('00000000-0000-0000-0000-00000000000a', null);
+select assert_rejected($$
+  insert into feed_reads (user_id, club_id) values ('00000000-0000-0000-0000-00000000000a', null)$$,
+  '23505', 'a second app-wide watermark collides — NULL audiences are not distinct');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from feed_reads), 0,
+  'a rider sees none of another rider''s watermarks');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_denied($$
+  update feed_reads set user_id = '00000000-0000-0000-0000-00000000000b' where club_id is null$$,
+  'a rider cannot hand their watermark to someone else');
+
+\echo ''
+\echo '# The badge counts activity since the watermark, under RLS (migration 015)'
+
+-- Deterministic rather than seed-dependent: this postcard is created inside the
+-- suite's transaction, so `now()` — which is the transaction start time — sits
+-- strictly before it. An ancient watermark must count it; a watermark of now()
+-- must not.
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000000000ef', '00000000-0000-0000-0000-00000000000a',
+   '00000000-0000-0000-0000-0000000000c1',
+   'postcards/00000000-0000-0000-0000-00000000000a/ffffffff-0000-4000-8000-0000000015a1.jpg',
+   'After the watermark');
+
+insert into feed_reads (user_id, club_id, last_seen_at)
+values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000c1',
+        now() - interval '10 years');
+
+select assert_eq(
+  (select unread from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c1') > 0,
+  true, 'activity after the watermark counts as unread');
+
+update feed_reads set last_seen_at = now()
+ where user_id = '00000000-0000-0000-0000-00000000000a'
+   and club_id = '00000000-0000-0000-0000-0000000000c1';
+
+select assert_eq(
+  (select unread from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c1'),
+  0, 'advancing the watermark clears the badge');
+
+-- A club with no postcards and no rides badges zero rather than going missing:
+-- the row comes from club_members, so every joined club is always represented.
+select assert_eq(
+  (select unread from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c2'),
+  0, 'a joined club with no activity returns a row reading zero');
+
+select assert_eq(
+  (select count(*)::int from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c5'),
+  0, 'a club the rider has not joined gets no badge at all');
+
+-- 000c authored a postcard in c1 and is not a member of it ("Posted before I
+-- left"), which is exactly the case where a membership-driven badge and a
+-- content-driven one would disagree.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq(
+  (select count(*)::int from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c1'),
+  0, 'authoring into a club you have left does not badge it');
+
+\echo ''
+\echo '# The watermark table is locked down by construction (migration 015)'
+
+select assert_eq(has_table_privilege('authenticated', 'public.feed_reads', 'delete'),
+  false, 'authenticated holds no DELETE grant on feed_reads — a watermark cannot be reset');
+select assert_eq(has_table_privilege('authenticated', 'public.feed_reads', 'update'),
+  true, 'authenticated can advance a watermark — the upsert needs it');
+
+-- SECURITY INVOKER is what makes it safe to publish at /rest/v1/rpc/. If this
+-- ever flips to DEFINER the function stops obeying the blocks and hides that
+-- the postcards policy applies, and starts counting rows the caller cannot read.
+select assert_eq((select prosecdef from pg_proc where proname = 'club_unread_counts'),
+  false, 'club_unread_counts runs as the caller, so RLS decides what it counts');
+
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where tablename = 'rides' and indexname = 'rides_club_id_created_at_idx'),
+  1, 'the rides half of the badge is indexed rather than a sequential scan');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+
 -- The anon key ships in the client bundle, so anything anon can reach is
 -- public to the internet. This was a live exposure: every profile row was
 -- readable until 007 went out.
@@ -1882,6 +2002,7 @@ select assert_denied('select count(*) from postcard_comments', 'anon cannot read
 select assert_denied('select count(*) from postcard_hides', 'anon cannot read hides');
 select assert_denied('select count(*) from postcard_reports', 'anon cannot read reports');
 select assert_denied('select count(*) from profile_countries', 'anon cannot read countries');
+select assert_denied('select count(*) from feed_reads', 'anon cannot read watermarks');
 reset role;
 
 rollback;

@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { Card } from '@/components/ui/Card'
 import { formatRideDate, formatRideTime } from '@/lib/utils'
-import { JoinClubButton } from '@/components/clubs/JoinClubButton'
+import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
+import { MarkClubSeen } from '@/components/clubs/MarkClubSeen'
 import type { ClubMember, Ride } from '@/types'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { resolveAvatarUrls } from '@/lib/data/media'
@@ -71,8 +72,15 @@ export default async function ClubPage({ params }: { params: Promise<{ id: strin
         </Card>
       )}
 
+      {/* Opening the club is what "seen" means, so the watermark advances here
+          rather than on the list — see MarkClubSeen. Rendering it only for
+          members matches 015's WITH CHECK, which refuses a watermark for a club
+          the rider has not joined; a non-member would post a write destined to
+          be denied. */}
+      {myMembership && <MarkClubSeen clubId={club.id} />}
+
       {!isOwner && user && (
-        <JoinClubButton clubId={club.id} isMember={!!myMembership} />
+        <ClubMembershipButton clubId={club.id} isMember={!!myMembership} />
       )}
 
       {rides && rides.length > 0 && (

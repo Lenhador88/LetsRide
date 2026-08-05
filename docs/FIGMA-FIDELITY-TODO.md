@@ -159,6 +159,65 @@ being called done.
 - [ ] **Badge semantics** — see the unread-count gap above. The tile currently badges how many
       postcards in the feed window come from that rider or club.
 
+### Clubs list — built from the measurements 2026-08-05
+
+Every geometry value was **read** from `v2 / Component / List / Club` (the 3-variant set,
+`1918:7252`) and the four frames `Clubs - Your clubs`, `- No clubs`, `Clubs - Explore`,
+`- No clubs`. What follows is what the design asks for and the schema has not got, plus the
+deliberate deviations and one settled ambiguity.
+
+- [x] ~~**Which Explore design is canonical**~~ — **settled, and it is not the newer-looking
+      one.** The flow holds two frames named `Clubs - Explore`: a `List / Club` row list
+      (`1918:9610`) and a two-column grid of 175×190 tiles (`1918:10353`), the grid sitting
+      further right, which reads as "later". Their epic covers decide it — `Explore clubs`
+      is **Done**, `Explore clubs v2` is **On hold** — and the grid composes a local unnamed
+      frame while the row list instances the published component. Built the row list. Same
+      trap as the 🟠 sections: position and apparent freshness are not status.
+
+- [ ] **The club cover image and the club avatar have no data behind them.** The card leads
+      with an 80×104 image container (radius 4) and a 72×72 avatar (radius 12) overlapping
+      it, and `clubs` has carried the same seven columns since `001` — `avatar_url` among
+      them, written by nothing in this repo, since `/clubs/new` inserts four fields and
+      stops. Renders as the design's container plus the club's initials.
+
+      **Deliberately not fixed by adding the columns.** `clubs.avatar_path` /
+      `cover_image_path` with no upload screen draws exactly the same empty container while
+      planting the dead column `014` had to clean up on `profiles`. The upload belongs to
+      Create/Edit club, the storage policy needs an ownership lookup rather than `014`'s
+      folder-equals-uid shape, and the two size together.
+
+- [ ] **The empty state cannot tell "no public clubs" from "you joined them all".** The
+      design draws one string, `There are no public clubs, yet!`, and Explore excludes clubs
+      the rider is in — so a rider who has joined every public club sees copy that says the
+      opposite of the truth. Unreachable at two clubs, wrong at twelve. **A question for the
+      designer**: a second empty string, or drop the exclusion and show joined clubs greyed.
+
+- [x] ~~**What the red counter counts**~~ — **answered by the product owner: any activity.**
+      New postcards plus new rides in that club since the rider's watermark (`015`).
+      Comments are excluded — a comment has no audience of its own, and the club sub-pages
+      the badge points at are Timeline and Rides.
+
+- [x] ~~**Card composition**~~ — **measured.** 358×112, White/100, radius 8, padding left 4 /
+      top 4 / **right 16** / bottom 4. Media block 96×104: image container 80 wide at x4,
+      avatar 72 at x28 — they overlap by 56, which is the design, not a mistake. Content
+      column from x108: name at y12 (Poppins/16/Semibold), type row at y36
+      (24px `Lock 2` / `Globe 2` + Poppins/14/Medium Grey/80), riders at y70 (28px avatars
+      overlapping by 4, then a 4 gap to `+N` at Poppins/12/Semibold). Trailing slot at x318.
+
+- [x] ~~**The cover placeholder carried an icon**~~ — **removed after looking at the rendered
+      page.** A `Clubs` glyph centred in the 80-wide container sits under the avatar, which
+      starts at x24, so it rendered and could not be seen. `List / Ride` keeps its location
+      pin only because nothing covers it. Second defect of this class this repo has found by
+      opening the page rather than reading the diff.
+
+- [x] ~~**The initials avatar was translucent**~~ — **fixed.** `Avatar`'s fallback is
+      `bg-foreground/10`, which is fine over a card and shows the container straight through
+      over this one. The design fills that frame `White/100`.
+
+- [ ] **Ordering is invented.** Both sub-pages sort alphabetically. The design shows a list
+      and specifies no order. Most-recent-activity would be better on Your clubs and is not
+      cheap to read; flagged rather than guessed at.
+
 ### Rides list — built from the measurements 2026-08-04
 
 Every geometry value on this screen was **read** from `v2 / Component / List / Ride` (the
