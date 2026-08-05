@@ -25,11 +25,21 @@
 -- src/lib/actions src/lib/media` returns nothing. It is almost certainly NULL
 -- for every row.
 --
--- "Almost certainly" is why it survives. Dropping a column is a coordinated
--- deploy (003 did it for full_name and said so in capitals), and this migration
--- was written from a container that cannot reach the hosted database, so the
--- all-NULL claim could not be checked. Dropping it on an assumption is the one
--- irreversible move available here.
+-- "Almost certainly" was why it survived the first draft of this migration,
+-- which was written before the hosted database was reachable from this session.
+--
+-- **It has since been checked, and the answer is 0.** On 2026-08-05, against
+-- the live project: 3 profile rows, `avatar_url` non-null on **none** of them
+-- (2 of the 3 have completed onboarding). So the column carries no data and
+-- dropping it loses nothing.
+--
+-- It is still not dropped HERE, and that is a scope decision rather than a
+-- doubt. Removing it is a coordinated change — the column is in
+-- PUBLIC_PROFILE_COLUMNS, in the `Profile` and `PublicProfile` types, and is
+-- the fallback `resolveAvatarUrls` writes into — so it belongs in its own
+-- migration alongside those edits, not bolted onto the one introducing the
+-- replacement. `015` is where it goes, and the number above is the evidence
+-- it needs.
 --
 -- The new column is `avatar_path`, named for what it holds — a Storage object
 -- path, as `postcards.image_path` is — because calling a path a URL is how the
@@ -37,10 +47,6 @@
 -- a broken image. The read layer prefers a signed `avatar_path` and falls back
 -- to `avatar_url`, so an externally-hosted avatar (an OAuth provider's, if one
 -- is ever wired up) still renders.
---
--- FOLLOW-UP, once someone can run it against production:
---   select count(*) from profiles where avatar_url is not null;
---   -- 0 → drop the column in a later migration and delete the fallback.
 
 -- ---------------------------------------------------------------------------
 -- 1. The two columns
@@ -149,22 +155,44 @@ create policy "Riders read avatars their profile visibility allows"
   using (
     bucket_id = 'media'
     and (storage.foldername(name))[1] = 'avatars'
-    and exists (
-      select 1 from public.profiles p
-      where p.avatar_path = storage.objects.name
-        and (storage.foldername(storage.objects.name))[2] = p.id::text
+    and (
+      -- Your own folder, unconditionally. This branch is NOT a convenience:
+      -- without it, replacing an avatar leaks the old object FOREVER and by
+      -- construction. The `exists` below defines readability as "some profiles
+      -- row points at me", so the instant the row is repointed the previous
+      -- object stops being selectable — and Postgres ANDs SELECT quals into a
+      -- DELETE whose WHERE names table columns, so the cleanup delete matches
+      -- zero rows and reports no error. Verified: the same delete returns
+      -- DELETE 1 before the repoint and DELETE 0 after.
+      --
+      -- Extending #24's orphan sweeper could not have fixed it either. An
+      -- orphan is by definition unreferenced, so under the `exists` alone it is
+      -- unreadable and therefore undeletable by anyone, including its owner.
+      --
+      -- It leaks nothing: the folder is keyed by uid, so this grants a rider
+      -- sight of objects they uploaded themselves and nothing else.
+      (storage.foldername(name))[2] = auth.uid()::text
+      or exists (
+        select 1 from public.profiles p
+        where p.avatar_path = storage.objects.name
+          and (storage.foldername(storage.objects.name))[2] = p.id::text
+      )
     )
   );
 
+-- Same own-folder branch, same reason — see the avatar policy above.
 create policy "Riders read covers their profile visibility allows"
   on storage.objects for select to authenticated
   using (
     bucket_id = 'media'
     and (storage.foldername(name))[1] = 'covers'
-    and exists (
-      select 1 from public.profiles p
-      where p.cover_image_path = storage.objects.name
-        and (storage.foldername(storage.objects.name))[2] = p.id::text
+    and (
+      (storage.foldername(name))[2] = auth.uid()::text
+      or exists (
+        select 1 from public.profiles p
+        where p.cover_image_path = storage.objects.name
+          and (storage.foldername(storage.objects.name))[2] = p.id::text
+      )
     )
   );
 
@@ -269,7 +297,13 @@ grant select, insert, delete on public.profile_countries to authenticated;
 --   -- expect 0.
 --
 -- NEGATIVE — a rider cannot claim another rider's avatar path. Expect 23514
--- (check_violation) from the table constraint, BEFORE any policy runs:
+-- (check_violation) from the table constraint. Note the example below updates
+-- the CALLER'S OWN row, so the UPDATE policy passes and the constraint is what
+-- refuses it. Postgres evaluates the RLS WITH CHECK **first**, so a write that
+-- violates both a policy and a constraint reports the policy violation, not
+-- 23514 — an earlier draft of this footer claimed the reverse. The constraint
+-- is still the stronger guarantee (a policy can be loosened by an `or`, a
+-- constraint cannot); it is simply not the first thing to fire.
 --
 --   update profiles set avatar_path = 'avatars/<someone-else>/<uuid>.jpg' where id = '<self>';
 --

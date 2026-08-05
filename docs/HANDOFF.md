@@ -107,24 +107,31 @@ The next actions, in the order they are worth doing:
 2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project
    serves nothing and there is no alert, so the deployed app goes down silently. This needs a
    card, not a commit, and it will bite at the worst possible moment.
-3. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
+3. **Drop `profiles.avatar_url` in `015`.** Measured against the live project on
+   2026-08-05: **0 of 3 rows carry a value.** The column has never been written by this
+   repo, `014` replaced it with `avatar_path`, and the evidence the drop needs now exists.
+   It is a coordinated change — the column is in `PUBLIC_PROFILE_COLUMNS`, in the `Profile`
+   and `PublicProfile` types, and is the fallback `resolveAvatarUrls` writes into — so it
+   wants its own migration plus those edits, which is exactly why it was not bolted onto
+   `014`.
+4. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
    `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21. #24
    shipped the tool; whether it has since been *run* could not be checked from this container,
    which cannot reach `supabase.co`. The dry run is free and settles it.
-4. ~~**Pull the Figma snapshot.**~~ **Done 2026-08-04** — see the top of this file. The
+5. ~~**Pull the Figma snapshot.**~~ **Done 2026-08-04** — see the top of this file. The
    sequence below is kept as the refresh procedure, which is now a *monthly* job.
-5. **Verify the remaining Postcards screens against the design.** Home is done and
+6. **Verify the remaining Postcards screens against the design.** Home is done and
    screenshotted; `/postcards/new` and `/postcards/[id]` still carry their inferred
    composition, and the design has frames for both (`Create postcard`, `Home - Postcards -
    Postcard details`). This is now a diff, not a re-derivation.
-6. **Decide the unread model** — the one product question the home screen is waiting on. The
+7. **Decide the unread model** — the one product question the home screen is waiting on. The
    design badges each filter tile and calls the deck "all new", but nothing tracks what a
    rider has seen. Either a `postcard_views` table (exact, a row per card seen, marks on
    swipe) or a single `profiles.postcards_seen_at` stamp (cheap, but leaving the screen marks
    everything seen). Until then the badge counts postcards in the feed window, which is the
    same number while nothing is marked seen. **No longer blocked** — `012`/`013` are applied,
    so this is simply the next migration, `014`.
-7. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
+8. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
 ~~**The suggested next build is the rides list.**~~ **Built 2026-08-04** — `/rides` is v2, from
@@ -278,8 +285,10 @@ Three of the five gaps #38 registered. What is worth carrying forward:
 - **The avatar signing fan-out is the part that breaks quietly.** Nine components render an
   avatar and every one reads `avatar_url`, so `resolveAvatarUrls` writes the signed URL *into
   that field* rather than adding a second one — one promise at the render layer, one place
-  that knows about paths. **Five read paths call it**: the feed, the postcard filter bar,
-  comments, the three ride reads, and your own profile. Miss one and avatars fall back to
+  that knows about paths. **Nine call sites** — count with
+  `git grep -c "await resolveAvatarUrls(" -- src/` rather than reading a number here, which
+  is the rule this line broke: it said "five" while enumerating seven, and the two it missed
+  (`collageAvatars` and the v1 club page) were exactly the two that were not signing. Miss one and avatars fall back to
   initials on that screen only, which looks like a design choice rather than a bug.
 - **Flags are emoji, not assets.** `NL` → 🇳🇱 is arithmetic on the country code, so ~40 SVGs
   and a sprite pipeline became one function. It does not render on Windows, which is stated
@@ -406,8 +415,8 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 
 | | |
 |---|---|
-| Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
-| Tests | RLS suite **282** assertions (`npm test`) + Vitest **297** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269 and 263/279. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Migrations | **`001`–`013` applied and verified live. `014` is WRITTEN AND NOT APPLIED — see §Do this first.** Merging it without applying 500s `/profile`, because `getProfileCountries` queries a table that would not exist. This cell said "no drift" while the section above said the opposite; a scanning agent reads the table. Ordering note below. |
+| Tests | RLS suite **289** assertions (`npm test`) + Vitest **297** tests (`npm run test:unit`). Both measured 2026-08-05 against `014`: Vitest 297, and the RLS suite 289 on a local Postgres 16 (CI uses 17). The RLS number was carried forward unverified for several sessions before this one, because nothing had touched `supabase/**`. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269 and 263/279. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |

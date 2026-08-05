@@ -8,6 +8,7 @@ import { formatRideDate, formatRideTime } from '@/lib/utils'
 import { JoinClubButton } from '@/components/clubs/JoinClubButton'
 import type { ClubMember, Ride } from '@/types'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { resolveAvatarUrls } from '@/lib/data/media'
 
 export default async function ClubPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -25,6 +26,20 @@ export default async function ClubPage({ params }: { params: Promise<{ id: strin
       .order('departure_at', { ascending: true })
       .limit(5),
   ])
+
+  // This page queries Supabase directly — it is v1 and predates lib/data/. That
+  // is why the avatar signing has to be repeated by hand here instead of being
+  // inherited: the seven call sites in lib/data/ cover every read that goes
+  // through the data layer, and this one does not. It is the strongest argument
+  // in the repo for finishing the clubs migration.
+  await resolveAvatarUrls(
+    [
+      (club as { owner?: { avatar_url?: string | null; avatar_path?: string | null } } | null)?.owner,
+      ...((members ?? []) as { profile?: { avatar_url?: string | null; avatar_path?: string | null } }[])
+        .map((member) => member.profile),
+    ],
+    supabase
+  )
 
   if (!club) notFound()
 

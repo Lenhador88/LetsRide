@@ -471,9 +471,15 @@ async function collageAvatars(
   if (organizerIds.length === 0) return []
 
   const profiles = unwrapList(
-    await supabase.from('profiles').select('id, avatar_url').in('id', organizerIds),
+    await supabase.from('profiles').select('id, avatar_url, avatar_path').in('id', organizerIds),
     'the ride filter avatars',
-  )
+  ) as { id: string; avatar_url: string | null; avatar_path: string | null }[]
+
+  // Signed like every other avatar. Missed on the first pass, and the miss was
+  // invisible rather than loud: `avatar_url` is NULL on every row in the live
+  // database, so the tile rendered zero faces and looked like a design that
+  // simply has no collage — not like a bug.
+  await resolveAvatarUrls(profiles, supabase)
 
   // Kept in ride order — soonest first — rather than the order Postgres
   // returned the profiles in.

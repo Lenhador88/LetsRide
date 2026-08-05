@@ -41,7 +41,15 @@ export function ProfileImageUpload({
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
-  const [pending, startTransition] = useTransition()
+  const [uploading, setUploading] = useState(false)
+  const [writing, startTransition] = useTransition()
+
+  // BOTH phases, not just the second. `useTransition` wraps only the server
+  // action; the compress-and-upload before it is the part that actually takes
+  // seconds on a slow connection, and leaving the control live through it means
+  // a rider taps twice, two uploads land, and the loser is orphaned. The
+  // docstring above promised feedback for the wait — this is the wait.
+  const busy = uploading || writing
 
   async function onPick(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -51,6 +59,7 @@ export function ProfileImageUpload({
     if (!file) return
 
     setError(null)
+    setUploading(true)
     try {
       const { path } =
         kind === 'avatar' ? await uploadAvatarImage(file) : await uploadCoverImage(file)
@@ -64,6 +73,10 @@ export function ProfileImageUpload({
       // rejection, or a network failure from uploadObject. Anything else is a
       // bug rather than a condition, and says so rather than leaking a stack.
       setError(cause instanceof Error ? cause.message : 'That image could not be uploaded.')
+    } finally {
+      // `finally`, so a thrown upload re-enables the control rather than
+      // leaving it dead until a reload.
+      setUploading(false)
     }
   }
 
@@ -74,7 +87,7 @@ export function ProfileImageUpload({
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        disabled={pending}
+        disabled={busy}
         aria-label={label}
         className={cn(
           'absolute inset-0 flex items-center justify-center rounded-[inherit] transition-colors',
@@ -82,7 +95,7 @@ export function ProfileImageUpload({
           // Never hover-only: a touch device has no hover, and this is a
           // mobile-first app. The control is always the whole surface; only its
           // scrim is conditional.
-          pending && 'bg-scrim/40 text-surface'
+          busy && 'bg-scrim/40 text-surface'
         )}
       >
         <ImageIcon className="h-6 w-6" aria-hidden="true" />

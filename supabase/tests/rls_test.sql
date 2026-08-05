@@ -1684,10 +1684,57 @@ select assert_eq(
 
 -- Writing countries.
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+-- `on conflict do nothing`, which is the statement `addCountry` actually
+-- sends (supabase-js `upsert` with `ignoreDuplicates: true`). The first
+-- version of this assertion issued a PLAIN insert and passed, while the action
+-- — then using the default merge form — failed 42501 on every call. A suite
+-- that exercises a different statement than production is not covering
+-- production, which is the same class of gap as `assert_allowed` being unable
+-- to prove an UPDATE.
 select assert_allowed(
   $$insert into profile_countries (user_id, country_code)
-      values ('00000000-0000-0000-0000-00000000000c', 'FR')$$,
-  'a rider adds a country to their own profile');
+      values ('00000000-0000-0000-0000-00000000000c', 'FR')
+      on conflict (user_id, country_code) do nothing$$,
+  'a rider adds a country to their own profile (the on-conflict form the action sends)');
+
+-- The regression guard. `on conflict do update` is what supabase-js emits
+-- WITHOUT `ignoreDuplicates`, and Postgres checks UPDATE privilege when it
+-- plans the statement rather than when a row actually conflicts — so this is
+-- refused even though no duplicate exists. 014 grants no UPDATE on this table
+-- by design; if someone adds one, or drops `ignoreDuplicates`, this fails.
+select assert_denied(
+  $$insert into profile_countries (user_id, country_code)
+      values ('00000000-0000-0000-0000-00000000000c', 'BE')
+      on conflict (user_id, country_code) do update set country_code = excluded.country_code$$,
+  'the merge form is refused — there is no UPDATE grant, and none is wanted');
+
+-- The invariant stated directly, mirroring the storage.objects UPDATE assertion
+-- above. The `assert_denied` guard proves the behaviour; these two prove the
+-- *reason*, so someone who hits that 42501 in future and reaches for
+-- `grant update` fails here rather than quietly widening the table.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'profile_countries' and cmd = 'UPDATE'),
+  0, 'profile_countries has no UPDATE policy — a country is added or removed, never edited');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where grantee = 'authenticated' and table_name = 'profile_countries'
+      and privilege_type = 'UPDATE'),
+  0, 'authenticated holds no UPDATE grant on profile_countries');
+
+-- Adding a country twice is a double-tap, not an error.
+savepoint c_twice;
+insert into profile_countries (user_id, country_code)
+  values ('00000000-0000-0000-0000-00000000000c', 'IT')
+  on conflict (user_id, country_code) do nothing;
+insert into profile_countries (user_id, country_code)
+  values ('00000000-0000-0000-0000-00000000000c', 'IT')
+  on conflict (user_id, country_code) do nothing;
+select assert_eq(
+  (select count(*)::int from profile_countries
+    where user_id = '00000000-0000-0000-0000-00000000000c' and country_code = 'IT'),
+  1, 'adding the same country twice leaves one row');
+rollback to savepoint c_twice;
 select assert_denied(
   $$insert into profile_countries (user_id, country_code)
       values ('00000000-0000-0000-0000-00000000000a', 'ES')$$,
@@ -1727,6 +1774,58 @@ select assert_rejected(
        set cover_image_path = 'covers/00000000-0000-0000-0000-00000000000c/not-a-uuid.jpg'
      where id = '00000000-0000-0000-0000-00000000000c'$$,
   '23514', 'a malformed cover path is rejected on shape');
+
+-- The own-folder branch on the SELECT policies, and why it exists.
+--
+-- Readability is otherwise "some profiles row points at me", so the moment an
+-- avatar is replaced the previous object stops being selectable — and Postgres
+-- ANDs SELECT quals into a DELETE whose WHERE names table columns, so the
+-- cleanup delete in `setProfileImage` matched zero rows, reported no error, and
+-- leaked one billable object per replacement, permanently. Extending the orphan
+-- sweeper could not have fixed it: an orphan is unreferenced by definition, so
+-- under the `exists` alone it was unreadable and undeletable by anyone.
+savepoint orphan;
+set local role postgres;
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'avatars/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000e1.jpg',
+   '00000000-0000-0000-0000-00000000000c', '{"mimetype":"image/jpeg","size":10}');
+set local role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+select assert_eq(
+  (select count(*)::int from storage.objects
+    where name = 'avatars/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000e1.jpg'),
+  1, 'a rider can see an object in their own folder that no profile row references');
+
+delete from storage.objects
+  where name = 'avatars/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000e1.jpg';
+select assert_eq(
+  (select count(*)::int from storage.objects
+    where name = 'avatars/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000e1.jpg'),
+  0, 'and can delete it — which is what makes replacing an avatar not leak the old one');
+
+-- The branch is scoped to the folder, not to the bucket: someone else's
+-- unreferenced object stays invisible.
+--
+-- Filtered to `avatars/` deliberately. The first version of this assertion
+-- matched on `foldername[2]` alone and failed — because that segment is the
+-- uploader's uid in EVERY folder, so it also counted the rider's `postcards/`
+-- object, which 010's policy makes legitimately visible. The test was wrong,
+-- not the policy; recorded because the failure looked exactly like a leak.
+set local role postgres;
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'avatars/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000e2.jpg',
+   '00000000-0000-0000-0000-00000000000c', '{"mimetype":"image/jpeg","size":10}');
+set local role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq(
+  (select count(*)::int from storage.objects
+    where (storage.foldername(name))[1] = 'avatars'
+      and (storage.foldername(name))[2] = '00000000-0000-0000-0000-00000000000c'),
+  0, 'the own-folder branch does not expose another rider''s unreferenced avatar');
+rollback to savepoint orphan;
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 -- Uploading into someone else's folder.
 select assert_denied(

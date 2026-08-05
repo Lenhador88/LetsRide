@@ -126,6 +126,22 @@ export async function updateCover(path: string): Promise<ActionState> {
  * The insert tolerates a duplicate rather than erroring: two taps on the same
  * flag is a double-tap, not a conflict, and the primary key is what makes the
  * second one a no-op.
+ *
+ * **`ignoreDuplicates: true` is load-bearing, not a preference.** Without it
+ * supabase-js sends `Prefer: resolution=merge-duplicates`, which PostgREST
+ * compiles to `ON CONFLICT DO UPDATE` — and Postgres checks UPDATE privilege
+ * when it *plans* that statement, not when a conflict actually occurs. 014
+ * deliberately grants no UPDATE on this table (a country is added or removed,
+ * never edited), so the merge form fails `42501` on **every** insert, including
+ * the first. The feature could not store a single row.
+ *
+ * `ignoreDuplicates: true` sends `resolution=ignore-duplicates` →
+ * `ON CONFLICT DO NOTHING`, which needs only the INSERT grant 014 gives.
+ *
+ * This shipped green because the RLS assertion covering it issued a plain
+ * `insert`, not the statement the action sends. A test that exercises a
+ * different statement than production is not covering production — the suite
+ * now issues the same `on conflict` form.
  */
 export async function addCountry(code: string): Promise<ActionState> {
   const parsed = countryCodeSchema.safeParse(code)
@@ -137,7 +153,10 @@ export async function addCountry(code: string): Promise<ActionState> {
 
   const { error } = await supabase
     .from('profile_countries')
-    .upsert({ user_id: user.id, country_code: parsed.data }, { onConflict: 'user_id,country_code' })
+    .upsert(
+      { user_id: user.id, country_code: parsed.data },
+      { onConflict: 'user_id,country_code', ignoreDuplicates: true }
+    )
 
   if (error) return { error: 'Could not save that. Try again.' }
 

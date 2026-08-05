@@ -69,3 +69,23 @@ mcp__Supabase__get_advisors(project_id, type: "security")
 
 Treat a green suite as evidence about policy *logic*, not about the deployed
 environment.
+
+## Writing assertions — the statement has to match what PostgREST emits
+
+Every assertion in this suite is **hand-written SQL standing in for a statement the app
+sends through PostgREST.** When an action's write is a plain insert, update or delete, the
+two are the same and nothing can go wrong. When it is anything else, they diverge, and a
+green suite can sit on top of a feature that has never worked.
+
+That is not hypothetical. `addCountry` used supabase-js `upsert`, which without
+`ignoreDuplicates` sends `Prefer: resolution=merge-duplicates` and becomes
+`ON CONFLICT DO UPDATE`. Postgres checks UPDATE privilege when it **plans** that statement,
+not when a row actually conflicts — and `014` grants no UPDATE on `profile_countries` by
+design. So every insert failed `42501`, including the first. The assertion covering it
+issued a plain `insert`, passed, and proved nothing about the code path in production.
+
+So: **write the emitted form.** `upsert` → `on conflict ... do nothing` or `do update`,
+whichever the client actually sends. And where the shape encodes a decision — as
+"no UPDATE grant, so the client must pass `ignoreDuplicates`" does — add the negative
+assertion that fails if someone repairs it in the wrong direction, by granting the
+privilege instead of changing the call.

@@ -456,9 +456,12 @@ Blocked on schema, same shape as the ride detail's banner:
 
       The signing fan-out is the part worth knowing about: **nine components render an
       avatar and all nine read `avatar_url`**, so `resolveAvatarUrls` writes the signed URL
-      *into that field* rather than adding a second one. Five read paths call it — the feed,
-      the filter bar, comments, the three ride reads, and your own profile. Miss one and
-      avatars silently fall back to initials on that screen only.
+      *into that field* rather than adding a second one. **Nine call sites**, counted with
+      `git grep -c "await resolveAvatarUrls(" -- src/` rather than by hand — the first draft
+      of this line said "five", and the two it overlooked (`collageAvatars` on the rides
+      filter bar, and the v1 club page) were precisely the two that had been left unsigned.
+      Miss one and avatars fall back to initials on that screen alone, which reads as a
+      design choice rather than a bug.
 - [ ] **Renaming is not built.** `username` is deliberately absent from `profileEditSchema`.
       It is unique, reserved-word checked, and is every rider's identity across postcards,
       crews and member lists, so changing it is a flow with a conflict path rather than a
