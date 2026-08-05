@@ -1,56 +1,43 @@
-import Link from 'next/link'
-import { Bike, Plus, Users } from 'lucide-react'
-import { Card } from '@/components/ui/Card'
-import { Avatar } from '@/components/ui/Avatar'
-import { getClubs } from '@/lib/data/clubs'
+import { Header } from '@/components/layout/Header'
+import { ClubCard } from '@/components/clubs/ClubCard'
+import { ClubPageMenu } from '@/components/clubs/ClubPageMenu'
+import { getYourClubs } from '@/lib/data/clubs'
 
-// Still a v1 screen — `zinc-*`, `orange-500` and lucide icons — and it migrates
-// to v2 with its own epic. What changed here is the read: it queried Supabase
-// inline behind an `is_public` filter that hid private clubs from their own
-// members. See getClubs().
+/**
+ * `Clubs - Your clubs` (`1914:6862`) — every club this rider has joined.
+ *
+ * The Clubs tab is two sub-pages behind the header's dropdown, the same
+ * mechanism the ride detail uses, and `/clubs/explore` is the other one. The
+ * `Create club` primary sits in the Navbar's sticky action slot, which is where
+ * the design puts it: inside the bar, above the tabs.
+ *
+ * `.pt-header-sub-extra` on top of the shell's `.pt-header`, because the
+ * sub-page row makes the header 120 tall rather than 96. It is a 24px top-up
+ * rather than a replacement — omitting it leaves 24px of content underneath.
+ */
 export default async function ClubsPage() {
-  const clubs = await getClubs()
+  const clubs = await getYourClubs()
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-white">Clubs</h1>
-        <Link href="/clubs/new" className="inline-flex items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-600 transition-colors">
-          <Plus className="h-4 w-4" /> New Club
-        </Link>
-      </div>
+    <>
+      <Header title="Clubs" subRow={<ClubPageMenu current="yours" />} />
 
-      {clubs.length === 0 && (
-        <div className="py-16 text-center">
-          <Bike className="mx-auto mb-3 h-10 w-10 text-zinc-700" />
-          <p className="text-zinc-400">No clubs yet. Start one!</p>
-          <Link href="/clubs/new" className="mt-4 inline-flex items-center rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 transition-colors">
-            Create a Club
-          </Link>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-3">
-        {clubs.map((club) => (
-          <Link key={club.id} href={`/clubs/${club.id}`}>
-            <Card className="hover:border-zinc-600 transition-colors">
-              <div className="flex items-center gap-3">
-                <Avatar src={club.avatar_url} name={club.name} size="lg" />
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white">{club.name}</p>
-                  {club.description && (
-                    <p className="mt-0.5 text-sm text-zinc-400 line-clamp-1">{club.description}</p>
-                  )}
-                  <p className="mt-1 text-xs text-zinc-500 flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    {club.members_count ?? 0} members
-                  </p>
-                </div>
-              </div>
-            </Card>
-          </Link>
-        ))}
+      <div className="pt-header-sub-extra px-4">
+        {clubs.length === 0 ? (
+          // The design's empty state is one line of Grey/80 at Poppins/14/Medium
+          // and nothing else — no illustration, and no second Create button,
+          // since the sticky action is already on screen.
+          <p className="py-8 text-center text-sm font-medium text-muted">You have no clubs, yet!</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {clubs.map((club) => (
+              <li key={club.id}>
+                <ClubCard club={club} joined />
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-    </div>
+    </>
   )
 }

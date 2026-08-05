@@ -148,6 +148,51 @@ export async function getFeed(
  * one policy decides what appears here and what appears in the deck. Asking
  * `clubs` directly would be a second visibility predicate to keep in step.
  */
+/**
+ * How far the "All new" count scans before it saturates. The tile draws a
+ * `Counter`, which shows `99+` past two digits — so counting past this is work
+ * nobody reads, and it is the same bound `015`'s `club_unread_counts` applies
+ * per club for the same reason.
+ */
+export const UNSEEN_SCAN_LIMIT = 100
+
+/**
+ * Postcards this rider has not seen, against their app-wide watermark (015).
+ *
+ * This replaces `rows.length` — the number of postcards on page one of the
+ * feed, presented as a total. That was the same defect review caught on
+ * `/profile`, and here it was structural: the tile said 30 forever once there
+ * were thirty postcards, whatever the rider had already looked at.
+ *
+ * **No watermark means everything is unseen**, which is right rather than a
+ * fallback: a rider who has never finished the deck genuinely has not seen it.
+ * The club counter defaults to `joined_at` instead, because joining a five-year
+ * old club should not badge it with five years of history; there is no
+ * equivalent moment for the app-wide feed.
+ *
+ * The count runs under RLS, so blocks and hides are excluded by the same
+ * policies the deck obeys — the reason this is a query rather than a
+ * denormalised counter.
+ */
+async function countUnseenPostcards(supabase: SupabaseServerClient): Promise<number> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return 0
+
+  const { data: watermark } = await supabase
+    .from('feed_reads')
+    .select('last_seen_at')
+    .eq('user_id', user.id)
+    .is('club_id', null)
+    .maybeSingle()
+
+  let query = supabase.from('postcards').select('id').limit(UNSEEN_SCAN_LIMIT)
+  if (watermark?.last_seen_at) query = query.gt('created_at', watermark.last_seen_at)
+
+  const { data, error } = await query
+  if (error || !data) return 0
+  return data.length
+}
+
 export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<PostcardFilters> {
   const supabase = await createClient()
 
@@ -202,7 +247,7 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
   const signed = await signImagePaths(collagePaths, supabase)
 
   return {
-    total: rows.length,
+    total: await countUnseenPostcards(supabase),
     collage: collagePaths.map((path) => signed.get(path)).filter((url): url is string => !!url),
     riders: [...riders.values()],
     clubs: [...clubs.values()],

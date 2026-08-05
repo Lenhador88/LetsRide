@@ -31,6 +31,66 @@ export function cn(...inputs: ClassValue[]) {
  */
 export const APP_TIME_ZONE = 'Europe/Amsterdam'
 
+/** What `APP_TIME_ZONE` was offset from UTC at a given instant, in milliseconds. */
+function zoneOffsetMs(instant: Date): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instant)
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value)
+
+  // `hour` comes back as 24 at midnight under hour12:false, which Date.UTC
+  // rolls into the next day — correct here only because the modulo keeps it 0.
+  const asIfUtc = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour') % 24,
+    get('minute'),
+    get('second')
+  )
+
+  return asIfUtc - instant.getTime()
+}
+
+/**
+ * Turns a zone-less `datetime-local` value into the UTC instant it names **in
+ * `APP_TIME_ZONE`**.
+ *
+ * This is the write-side half of the bug #37 fixed on the read side. `new
+ * Date('2026-08-16T10:00')` resolves in whatever zone the runtime is in — the
+ * browser's for a client component, UTC on Vercel for a server one — so the
+ * same string typed by two organizers meant two different instants, and neither
+ * matched what `formatRideDate` would draw it back as.
+ *
+ * Two passes, and the second is not redundant. The offset depends on the
+ * instant, and the instant is what we are solving for; on the two DST days a
+ * year the first guess lands on the wrong side of the transition and the second
+ * pass corrects it. On every other day the two agree.
+ *
+ * The correct long-term model is a zone column on `rides` — a ride meets
+ * somewhere, and that somewhere has a clock. This keeps writes consistent with
+ * the three `formatRide*` readers until that exists.
+ */
+export function wallClockToUtc(local: string): string {
+  // `Z` makes the parse deterministic instead of runtime-dependent; the result
+  // is then corrected by the zone's real offset rather than trusted.
+  const naive = new Date(`${local.length === 16 ? `${local}:00` : local}Z`)
+  if (Number.isNaN(naive.getTime())) return new Date(local).toISOString()
+
+  const firstPass = naive.getTime() - zoneOffsetMs(naive)
+  const corrected = naive.getTime() - zoneOffsetMs(new Date(firstPass))
+  return new Date(corrected).toISOString()
+}
+
 /**
  * A Google Maps **directions** link to a free-text destination.
  *

@@ -159,6 +159,146 @@ being called done.
 - [ ] **Badge semantics** — see the unread-count gap above. The tile currently badges how many
       postcards in the feed window come from that rider or club.
 
+### Create ride — built 2026-08-05
+
+`/rides/new` is the last v1 page, retired. Its epic reads **To do** and the frame
+(`1918:15850`) is OLD-stylesheet throughout — 58 `Grey (OLD)/*` references — so the
+composition is the v2 primitives applied to the columns `001` has, not a measured layout.
+Expect to move things when the designer draws it.
+
+- [ ] **Five drawn fields have no column**, and none is built: an **end time** (the frame draws
+      a second date and time; `rides` has only `departure_at`), **distance in km**, **"Includes
+      offroad"**, **"Public seats"** as a number separate from `max_riders`, and a **cover
+      photo**. The last is the same missing column that leaves the rides list's 80-wide image
+      strip empty.
+
+- [ ] **Rider invitations with an Admin role** are drawn here as well as on Create club. Same
+      unbuilt feature, same reason: `club_members.role` has had `admin` since `001` and nothing
+      writes it, and `ride_members` has no invite concept at all.
+
+- [x] ~~**A ride could not be attached to a club**~~ — **fixed.** `rides.club_id` has existed
+      since `001` and no screen ever set it, so a club's Rides sub-page could only ever be
+      empty. The form now offers the rider's own clubs via `getMyClubs()`, which already
+      existed for the postcard composer.
+
+- [ ] **The club select is a bare `<select>`.** There is no v2 select in the component library
+      and the design does not draw one, so it borrows the `Input` treatment rather than
+      inventing a component. Replace it when a real one is designed.
+
+- [x] ~~**`max_riders` is unenforced**~~ — still true, and still not this form's job. The
+      schema has carried the column since `001` with no policy, trigger or check behind it.
+      The form bounds what can be *typed*, which is not the same thing.
+
+### Club detail and Create club — built 2026-08-05
+
+`/clubs/[id]` is four sub-pages behind the header's dropdown — Timeline, Rides, Members,
+About — built from the **private club** frames, which are the ones marked Done.
+
+- [x] ~~**Which club design to build**~~ — **settled by the epic covers, and it is a product
+      statement, not a styling one.** `View private club` is **Done**. Both public-club epics
+      are **On hold**, and `View not joined public club` carries the note: *"Public clubs are
+      Post-MVP. Until then we only have private clubs."*
+
+      **This contradicts the schema and is a live question for the product owner.**
+      `clubs.is_public` defaults to **true** in `001`, so every club created so far is public,
+      and `/clubs/explore` — an epic marked Done — exists to browse exactly the clubs the note
+      says are Post-MVP. The create form now defaults to **private** to match the note; the
+      column default is untouched, so this is one line to reverse either way.
+
+- [ ] **The Timeline's activity feed is not built.** The design interleaves postcards with
+      event rows — "Ron Wilson joined the club.", with a time-since — and there is no table
+      behind any of them. Joins, leaves and ride creation would need an `events` table written
+      by triggers, or a union of derived queries with no shared ordering key. Omitted rather
+      than approximated: a plausible-looking audit log that is missing half its events is
+      worse than none.
+
+- [ ] **Upcoming rides render as list cards, not the drawn chip.** The design uses
+      `Collection / Ride` — a 200×56 horizontal-scroll chip with a date block. `List / Ride`
+      is already measured and shows the same three facts, so it is reused. A second card
+      component for one strip is the trade; registered so it is a choice rather than a
+      mistake.
+
+- [ ] **The header's `Options` control is omitted, not stubbed.** Same reasoning as
+      `RideHeader`: the flow never draws the sheet's contents, and club overflow is presumably
+      edit / delete / leave. Leave lives on the About page instead, as one labelled control.
+      **Edit club has no v2 design either** — its frame is OLD-stylesheet and shares the
+      `Create club` epic, which is To do.
+
+- [ ] **No remove-member control**, though the v1 Create club frame draws one. `001` grants a
+      rider DELETE on their own `club_members` row only, so the button would always fail. It
+      needs a policy and an admin model, not a button.
+
+- [ ] **`club_members.role = 'admin'` has never been written by anything.** The Members page
+      labels it if it ever appears, and nothing can produce it. The v1 frame draws an Admin
+      role and an invite flow with a `(Pending)` state; neither is built.
+
+- [x] ~~**Create club composition**~~ — **ours, and flagged as such.** The `Create club` frame
+      is drawn entirely in the OLD stylesheet (37 `Grey (OLD)/*` references, zero
+      `v2 / Component / *` instances) and its epic reads **To do**. What shipped is the v2
+      primitives applied to the fields that already exist — not a measured layout. When the
+      designer draws it, expect to move things.
+
+- [ ] **`clubs.name` and `description` have no CHECK constraint.** `001` declares both as bare
+      `text`; the 60/500 limits live only in `lib/validation/clubs.ts`, which is why no client
+      may write the table directly. Same gap `bio`, `bike_model` and `location` carry.
+
+### Clubs list — built from the measurements 2026-08-05
+
+Every geometry value was **read** from `v2 / Component / List / Club` (the 3-variant set,
+`1918:7252`) and the four frames `Clubs - Your clubs`, `- No clubs`, `Clubs - Explore`,
+`- No clubs`. What follows is what the design asks for and the schema has not got, plus the
+deliberate deviations and one settled ambiguity.
+
+- [x] ~~**Which Explore design is canonical**~~ — **settled, and it is not the newer-looking
+      one.** The flow holds two frames named `Clubs - Explore`: a `List / Club` row list
+      (`1918:9610`) and a two-column grid of 175×190 tiles (`1918:10353`), the grid sitting
+      further right, which reads as "later". Their epic covers decide it — `Explore clubs`
+      is **Done**, `Explore clubs v2` is **On hold** — and the grid composes a local unnamed
+      frame while the row list instances the published component. Built the row list. Same
+      trap as the 🟠 sections: position and apparent freshness are not status.
+
+- [x] ~~**The club cover image and the club avatar have no data behind them**~~ — **built by
+      `016`, together with the Create club upload that fills them.** They landed as one change
+      for the reason this entry originally gave: columns without an upload screen draw the
+      identical empty container while planting the dead column `014` had to clean up.
+
+      One thing worth carrying: the paths are keyed on the **uploader**, not the club —
+      `club-avatars/<owner uid>/<uuid>.jpg`. A club-scoped folder reads better and cannot be
+      written, because the object has to land before the club row exists. A CHECK ties the
+      path back to `owner_id`, which is what a folder name alone could not.
+
+- [ ] **The empty state cannot tell "no public clubs" from "you joined them all".** The
+      design draws one string, `There are no public clubs, yet!`, and Explore excludes clubs
+      the rider is in — so a rider who has joined every public club sees copy that says the
+      opposite of the truth. Unreachable at two clubs, wrong at twelve. **A question for the
+      designer**: a second empty string, or drop the exclusion and show joined clubs greyed.
+
+- [x] ~~**What the red counter counts**~~ — **answered by the product owner: any activity.**
+      New postcards plus new rides in that club since the rider's watermark (`015`).
+      Comments are excluded — a comment has no audience of its own, and the club sub-pages
+      the badge points at are Timeline and Rides.
+
+- [x] ~~**Card composition**~~ — **measured.** 358×112, White/100, radius 8, padding left 4 /
+      top 4 / **right 16** / bottom 4. Media block 96×104: image container 80 wide at x4,
+      avatar 72 at x28 — they overlap by 56, which is the design, not a mistake. Content
+      column from x108: name at y12 (Poppins/16/Semibold), type row at y36
+      (24px `Lock 2` / `Globe 2` + Poppins/14/Medium Grey/80), riders at y70 (28px avatars
+      overlapping by 4, then a 4 gap to `+N` at Poppins/12/Semibold). Trailing slot at x318.
+
+- [x] ~~**The cover placeholder carried an icon**~~ — **removed after looking at the rendered
+      page.** A `Clubs` glyph centred in the 80-wide container sits under the avatar, which
+      starts at x24, so it rendered and could not be seen. `List / Ride` keeps its location
+      pin only because nothing covers it. Second defect of this class this repo has found by
+      opening the page rather than reading the diff.
+
+- [x] ~~**The initials avatar was translucent**~~ — **fixed.** `Avatar`'s fallback is
+      `bg-foreground/10`, which is fine over a card and shows the container straight through
+      over this one. The design fills that frame `White/100`.
+
+- [ ] **Ordering is invented.** Both sub-pages sort alphabetically. The design shows a list
+      and specifies no order. Most-recent-activity would be better on Your clubs and is not
+      cheap to read; flagged rather than guessed at.
+
 ### Rides list — built from the measurements 2026-08-04
 
 Every geometry value on this screen was **read** from `v2 / Component / List / Ride` (the

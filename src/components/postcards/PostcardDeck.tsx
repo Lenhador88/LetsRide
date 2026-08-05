@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { remainingPostcards } from '@/components/postcards/deck'
 import type { Postcard } from '@/types'
+import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
 
 /**
  * The home screen's card stack — `Postcard Stack` in
@@ -119,13 +120,19 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
             : "That's every new postcard."}
         </p>
         {postcards.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setDismissed(new Set())}
-            className="text-sm font-semibold text-foreground underline underline-offset-4"
-          >
-            Start over
-          </button>
+          <>
+            {/* Reaching the end is what "seen" means for the app-wide feed —
+                see MarkFeedSeen, and 015 for why a watermark may only advance
+                on a finished surface. */}
+            <MarkFeedSeen />
+            <button
+              type="button"
+              onClick={() => setDismissed(new Set())}
+              className="text-sm font-semibold text-foreground underline underline-offset-4"
+            >
+              Start over
+            </button>
+          </>
         )}
       </div>
     )

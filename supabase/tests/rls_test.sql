@@ -1845,16 +1845,255 @@ select assert_denied(
 
 reset role;
 
--- 3 folders x 3 policies (insert, select, delete). No UPDATE on any of them, so
--- no upsert path exists for any upload surface.
+-- Three policies per upload surface (insert, select, delete), no UPDATE on any
+-- of them, so no upsert path exists for any of them.
+--
+-- This was a whole-table count of 9 and had to be edited when 014 added two
+-- surfaces, then again when 016 added two more. An assertion that needs bumping
+-- on every unrelated change stops being read and starts being silenced — and
+-- bumping the number is precisely the repair 014's own footnote warns against,
+-- because a total stops testing "no leftover policy to OR against" for any one
+-- folder the moment a second folder exists.
+--
+-- What it always meant is: every policy belongs to a surface, and no surface has
+-- a fourth. That is what these say. A new surface fails the first assertion
+-- loudly and its migration adds its own count — which is the outcome you want,
+-- rather than a silent pass.
 select assert_eq(
   (select count(*)::int from pg_policies
-    where schemaname = 'storage' and tablename = 'objects'),
-  9, 'storage.objects carries exactly 9 policies — 3 each for postcards, avatars, covers');
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname !~* '(postcard|avatar|cover)'),
+  0, 'every storage.objects policy names the upload surface it belongs to');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname ~* '(avatar|cover)' and policyname !~* 'club'),
+  6, 'the profile surfaces carry three policies each — avatars/ and covers/');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'storage' and tablename = 'objects' and not (roles = '{authenticated}')),
   0, 'every storage.objects policy targets authenticated only');
+
+
+-- ===========================================================================
+-- 015: the unread watermark
+-- ===========================================================================
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+\echo ''
+\echo '# A watermark belongs to one rider and one audience they can read (migration 015)'
+
+select assert_allowed($$
+  insert into feed_reads (user_id, club_id)
+  values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000c1')$$,
+  'a rider can mark a club they belong to as seen');
+
+-- c5 is the club 000a is deliberately not a member of. The WITH CHECK arm is
+-- what closes the FK existence oracle described in 015 §2.
+select assert_denied($$
+  insert into feed_reads (user_id, club_id)
+  values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000c5')$$,
+  'a rider cannot mark a club they do not belong to');
+
+select assert_denied($$
+  insert into feed_reads (user_id, club_id)
+  values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000c1')$$,
+  'a rider cannot write another rider''s watermark');
+
+select assert_allowed($$
+  insert into feed_reads (user_id, club_id) values ('00000000-0000-0000-0000-00000000000a', null)$$,
+  'a rider can mark the app-wide feed as seen');
+
+-- The assertion that catches a missing `nulls not distinct`. Under a plain
+-- UNIQUE these two inserts both succeed, the rider accumulates a second
+-- app-wide row every visit, and the upsert never finds a conflict to update —
+-- a bug that would look like "the badge never clears" rather than like a
+-- constraint problem.
+insert into feed_reads (user_id, club_id) values ('00000000-0000-0000-0000-00000000000a', null);
+select assert_rejected($$
+  insert into feed_reads (user_id, club_id) values ('00000000-0000-0000-0000-00000000000a', null)$$,
+  '23505', 'a second app-wide watermark collides — NULL audiences are not distinct');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from feed_reads), 0,
+  'a rider sees none of another rider''s watermarks');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_denied($$
+  update feed_reads set user_id = '00000000-0000-0000-0000-00000000000b' where club_id is null$$,
+  'a rider cannot hand their watermark to someone else');
+
+\echo ''
+\echo '# The badge counts activity since the watermark, under RLS (migration 015)'
+
+-- Deterministic rather than seed-dependent: this postcard is created inside the
+-- suite's transaction, so `now()` — which is the transaction start time — sits
+-- strictly before it. An ancient watermark must count it; a watermark of now()
+-- must not.
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000000000ef', '00000000-0000-0000-0000-00000000000a',
+   '00000000-0000-0000-0000-0000000000c1',
+   'postcards/00000000-0000-0000-0000-00000000000a/ffffffff-0000-4000-8000-0000000015a1.jpg',
+   'After the watermark');
+
+insert into feed_reads (user_id, club_id, last_seen_at)
+values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000c1',
+        now() - interval '10 years');
+
+select assert_eq(
+  (select unread from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c1') > 0,
+  true, 'activity after the watermark counts as unread');
+
+update feed_reads set last_seen_at = now()
+ where user_id = '00000000-0000-0000-0000-00000000000a'
+   and club_id = '00000000-0000-0000-0000-0000000000c1';
+
+select assert_eq(
+  (select unread from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c1'),
+  0, 'advancing the watermark clears the badge');
+
+-- A club with no postcards and no rides badges zero rather than going missing:
+-- the row comes from club_members, so every joined club is always represented.
+select assert_eq(
+  (select unread from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c2'),
+  0, 'a joined club with no activity returns a row reading zero');
+
+select assert_eq(
+  (select count(*)::int from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c5'),
+  0, 'a club the rider has not joined gets no badge at all');
+
+-- 000c authored a postcard in c1 and is not a member of it ("Posted before I
+-- left"), which is exactly the case where a membership-driven badge and a
+-- content-driven one would disagree.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq(
+  (select count(*)::int from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c1'),
+  0, 'authoring into a club you have left does not badge it');
+
+\echo ''
+\echo '# The watermark table is locked down by construction (migration 015)'
+
+select assert_eq(has_table_privilege('authenticated', 'public.feed_reads', 'delete'),
+  false, 'authenticated holds no DELETE grant on feed_reads — a watermark cannot be reset');
+select assert_eq(has_table_privilege('authenticated', 'public.feed_reads', 'update'),
+  true, 'authenticated can advance a watermark — the upsert needs it');
+
+-- SECURITY INVOKER is what makes it safe to publish at /rest/v1/rpc/. If this
+-- ever flips to DEFINER the function stops obeying the blocks and hides that
+-- the postcards policy applies, and starts counting rows the caller cannot read.
+select assert_eq((select prosecdef from pg_proc where proname = 'club_unread_counts'),
+  false, 'club_unread_counts runs as the caller, so RLS decides what it counts');
+
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where tablename = 'rides' and indexname = 'rides_club_id_created_at_idx'),
+  1, 'the rides half of the badge is indexed rather than a sequential scan');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+
+-- ===========================================================================
+-- 016: club avatars and covers
+-- ===========================================================================
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+\echo ''
+\echo '# A club image must live in its owner''s folder (migration 016)'
+
+select assert_rejected($$
+  update clubs set avatar_path = 'club-avatars/not-a-uuid/x.jpg'
+   where id = '00000000-0000-0000-0000-0000000000c1'$$,
+  '23514', 'a malformed club avatar path is refused by the shape check');
+
+-- 000a owns c1, so the UPDATE policy lets the statement through; the CHECK is
+-- what stops it. Pointing a club you own at an object in someone else's folder
+-- is the move that would make their private image readable to your club.
+select assert_rejected($$
+  update clubs set avatar_path = 'club-avatars/00000000-0000-0000-0000-00000000000b/aaaaaaaa-0000-4000-8000-00000000c1a1.jpg'
+   where id = '00000000-0000-0000-0000-0000000000c1'$$,
+  '23514', 'a club image in another rider''s folder is refused');
+
+select assert_allowed($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'club-avatars/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000c1a1.jpg',
+          '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1024}')$$,
+  'a rider uploads a club avatar into their own folder');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'club-avatars/00000000-0000-0000-0000-00000000000a/bbbbbbbb-0000-4000-8000-00000000c1a2.jpg',
+          '00000000-0000-0000-0000-00000000000b', '{"mimetype":"image/jpeg","size":1024}')$$,
+  'a rider cannot upload into another rider''s club-avatars folder');
+
+\echo ''
+\echo '# A club image is readable exactly when its club is (migration 016)'
+
+reset role;
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'club-covers/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000c1b1.jpg',
+   '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":2048}');
+update clubs set cover_image_path = 'club-covers/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000c1b1.jpg'
+ where id = '00000000-0000-0000-0000-0000000000c1';
+set role authenticated;
+
+-- c1 is private. The storage SELECT policy never names "public or owner or
+-- member" — it delegates to the clubs policy through the EXISTS, so this is
+-- testing that the delegation actually holds rather than that a second copy of
+-- the predicate was written correctly.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'club-covers/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000c1b1.jpg'),
+  1, 'a member of the private club can read its cover');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'club-covers/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000c1b1.jpg'),
+  0, 'an outsider cannot read the private club''s cover');
+
+-- Guards against over-tightening, and against the uploader arm being the only
+-- thing that ever matches: the owner reads it through their own folder.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'club-covers/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000c1b1.jpg'),
+  1, 'the owner reads their own club cover');
+
+-- An object nobody's club points at stays private to its uploader, which is
+-- what stops a detached upload from being world-readable inside the bucket.
+reset role;
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'club-covers/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000dead1.jpg',
+   '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":2048}');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'club-covers/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000dead1.jpg'),
+  0, 'an unattached club cover is invisible to everyone but its uploader');
+
+\echo ''
+\echo '# The club media surface is locked down by construction (migration 016)'
+
+-- Counted by policy NAME, not as a whole-table total. 010's total-count
+-- assertion broke the day 014 added a second surface, and bumping the number
+-- would have stopped testing "no leftover policy to OR against" for any one
+-- folder. This is the third surface; the lesson holds.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and policyname ilike '%club %'),
+  6, 'club-avatars/ and club-covers/ carry three policies each and no more');
+
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.clubs'::regclass and contype = 'c' and conname like '%path%'),
+  4, 'both club image columns carry a shape check and an owner-folder check');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 
 -- The anon key ships in the client bundle, so anything anon can reach is
@@ -1882,6 +2121,7 @@ select assert_denied('select count(*) from postcard_comments', 'anon cannot read
 select assert_denied('select count(*) from postcard_hides', 'anon cannot read hides');
 select assert_denied('select count(*) from postcard_reports', 'anon cannot read reports');
 select assert_denied('select count(*) from profile_countries', 'anon cannot read countries');
+select assert_denied('select count(*) from feed_reads', 'anon cannot read watermarks');
 reset role;
 
 rollback;

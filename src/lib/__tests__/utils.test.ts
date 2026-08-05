@@ -5,6 +5,7 @@ import {
   formatRideDate,
   formatRideDateLong,
   formatRideTime,
+  wallClockToUtc,
   getInitials,
   googleMapsDirectionsUrl,
 } from '@/lib/utils'
@@ -196,5 +197,45 @@ describe('formatPostcardDate', () => {
   it('carries no weekday — the stamp has room for three parts', () => {
     // It sits in the corner of a photo, which is what bounds it.
     expect(formatPostcardDate('2025-01-01T10:00:00Z')).toBe('1 Jan 2025')
+  })
+})
+
+/**
+ * The write-side counterpart to the `formatRide*` timezone tests below.
+ *
+ * These matter for the same reason those do, and the same trap applies:
+ * `vitest.config.ts` pins `TZ=UTC`, so a naive `new Date(local)` would look
+ * correct in this suite and be two hours wrong on a rider's phone. Every
+ * assertion here asserts an *offset*, which UTC parsing cannot fake.
+ */
+describe('wallClockToUtc', () => {
+  it('reads a summer wall clock as CEST (UTC+2)', () => {
+    expect(wallClockToUtc('2026-08-16T10:00')).toBe('2026-08-16T08:00:00.000Z')
+  })
+
+  it('reads a winter wall clock as CET (UTC+1)', () => {
+    expect(wallClockToUtc('2026-11-16T10:00')).toBe('2026-11-16T09:00:00.000Z')
+  })
+
+  /**
+   * The reason for the second pass. A first guess taken at the naive instant
+   * lands on the wrong side of the transition here, and correcting the offset
+   * once against that guess is what fixes it.
+   */
+  it('is correct on both sides of the DST transition', () => {
+    // 2026-03-29 02:00 CET -> 03:00 CEST.
+    expect(wallClockToUtc('2026-03-29T01:00')).toBe('2026-03-29T00:00:00.000Z')
+    expect(wallClockToUtc('2026-03-29T04:00')).toBe('2026-03-29T02:00:00.000Z')
+    // 2026-10-25 03:00 CEST -> 02:00 CET.
+    expect(wallClockToUtc('2026-10-25T04:00')).toBe('2026-10-25T03:00:00.000Z')
+  })
+
+  it('round-trips through the reader it exists to agree with', () => {
+    expect(formatRideTime(wallClockToUtc('2026-08-16T20:00'))).toBe('20:00')
+    expect(formatRideTime(wallClockToUtc('2026-01-05T07:45'))).toBe('07:45')
+  })
+
+  it('accepts a value that already carries seconds', () => {
+    expect(wallClockToUtc('2026-08-16T10:00:30')).toBe('2026-08-16T08:00:30.000Z')
   })
 })

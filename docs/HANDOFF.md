@@ -123,10 +123,21 @@ cost a wrong diagnosis first:
 because the app is **not live**; delete it before launch:
 `delete from auth.users where email = 'qa-verify@letsride.test';`
 
-**One trap in the harness, not the app:** Chromium here has no proxy configured, so
-`<img>` fetches of Supabase signed URLs never complete and every photo renders blank. That
-is not a bug — the same signed URL returns **HTTP 200 and 722 KB** via `curl`. Do not report
-it as one. Launch Chromium with `--proxy-server=$HTTPS_PROXY` if images need to render.
+**One trap in the harness, not the app: Chromium in this container cannot reach
+`supabase.co` at all, and `--proxy-server=$HTTPS_PROXY` does not fix it.** An earlier version
+of this paragraph said it did; it does not. Measured 2026-08-05 while building the club image
+upload:
+
+- `<img>` fetches of signed URLs fail `net::ERR_ABORTED`, so every photo renders blank.
+- **`XMLHttpRequest` to Storage hangs and never settles** — neither `onload` nor `onerror`
+  fires — so any upload started from a browser here sits on "Uploading…" forever. That looks
+  exactly like an application bug and is not one.
+
+The same requests succeed from the shell: an upload returns **200**, a signed URL returns
+**200 with bytes**. So **verify browser-initiated uploads with `curl` against the live
+project**, and treat a hung upload in Playwright as the harness. What *can* be checked in the
+browser is that the page renders the right signed URL into the DOM, which is the half the
+server owns.
 
 ---
 
@@ -166,13 +177,19 @@ The next actions, in the order they are worth doing:
    screenshotted; `/postcards/new` and `/postcards/[id]` still carry their inferred
    composition, and the design has frames for both (`Create postcard`, `Home - Postcards -
    Postcard details`). This is now a diff, not a re-derivation.
-7. **Decide the unread model** — the one product question the home screen is waiting on. The
-   design badges each filter tile and calls the deck "all new", but nothing tracks what a
-   rider has seen. Either a `postcard_views` table (exact, a row per card seen, marks on
-   swipe) or a single `profiles.postcards_seen_at` stamp (cheap, but leaving the screen marks
-   everything seen). Until then the badge counts postcards in the feed window, which is the
-   same number while nothing is marked seen. **No longer blocked** — `012`/`013` are applied,
-   so this is simply the next migration, `014`.
+7. ~~**Decide the unread model.**~~ **Decided and built as `015`, 2026-08-05.** Neither option
+   this line offered survived: `profiles.postcards_seen_at` cannot express a badge *per club*,
+   which the club list draws, and `postcard_views` is the only shape whose storage grows as
+   riders × content, with an anti-join per badge and a pruning job this project has no cron
+   for. `feed_reads` is a **per-audience watermark** instead — one row per (rider, audience
+   joined), bounded by membership rather than by content. The product owner's call on what it
+   counts was **any activity**: postcards plus rides.
+
+   What is left of this item is the **postcard side**. `015` created the app-wide row shape
+   (`club_id is null`) and nothing writes it yet, so the filter tiles still count postcards in
+   the feed window. That is now a screen's worth of work, not a schema decision — and the
+   `nulls not distinct` constraint the app-wide row depends on is already in place and
+   asserted.
 8. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
    security advisor that is not deliberate.
 
@@ -392,6 +409,71 @@ requirement (12px semibold is not "large text"). The green one is used well beyo
 screen, so it is a palette-wide issue the rides list merely surfaced. Both left exactly as
 drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md` §Rides list.
 
+**All of `/clubs/*` is v2 as of 2026-08-05, across `015` and `016`.** The list, Explore,
+Create club, and the club detail's four sub-pages. What is worth carrying forward from the
+second half:
+
+- **The design says public clubs are Post-MVP, and the schema says otherwise.** `View not
+  joined public club` carries the note *"Public clubs are Post-MVP. Until then we only have
+  private clubs"* and is On hold; `View private club` is Done. But `clubs.is_public` defaults
+  to **true** in `001`, and `/clubs/explore` — an epic marked **Done** — exists to browse
+  exactly the clubs the note says do not exist yet. The create form now defaults to private;
+  the column default is untouched. **This is a question for the product owner, not a
+  decision I should have made alone.**
+- **There is no v2 design for Create club or Edit club.** That epic reads **To do** and the
+  frames are OLD-stylesheet throughout — zero `v2 / Component / *` instances. The composition
+  that shipped is the v2 primitives applied to the fields that already existed, and it is
+  flagged as ours in the component, the page and the fidelity log. Expect to move things when
+  the designer draws it.
+- **The v1 Create club frame draws two whole features, not fields:** member invitations with
+  a `(Pending)` state, and an Admin role distinct from owner. `club_members.role` has had an
+  `admin` value since `001` and nothing has ever written it. Both omitted.
+- **Club image paths are keyed on the uploader, not the club.** `club-avatars/<owner uid>/…`,
+  because at create time the club row does not exist yet, so a policy keyed on club id would
+  refuse the upload that has to happen first. A CHECK ties the path back to `owner_id`, which
+  is what the folder name alone could not.
+- **`getRides` already took a club filter.** The club Timeline and Rides sub-pages needed no
+  new read. That is the **fourth** time this repo has nearly rebuilt something it had, after
+  `getRides()` itself, `formatRideDate` and `getCurrentProfile()`. `ls src/lib/data/` before
+  writing a read.
+- **The upload could not be exercised from this container**, and that is a harness limit
+  rather than a defect — see the note under §Running the app. The server half *was* verified
+  against the live project with `curl`.
+
+**The club list is v2 as of 2026-08-05, and `015` came with it.** `/clubs` is two sub-pages
+behind the header dropdown — `Your clubs` and `/clubs/explore` — built from the measured
+design. What it left behind, and what is worth knowing before the next clubs screen:
+
+- **The migration was the interesting half, and the shape argument is in `015`'s header.** A
+  watermark stores the *decision*; a views table stores the *evidence*. The second grows as
+  riders × content and turns every badge into an anti-join; the first is bounded by
+  membership and reads through an index `009` already created. It is both the cheaper option
+  and the one that survives ten thousand riders, which is unusual enough to be worth the
+  paragraph it gets there.
+- **The cost is stated rather than discovered:** a watermark expresses "everything older than
+  T is read", and the deck is newest-first, so a rider who swipes three of twelve has read a
+  *prefix* no timestamp can represent. The rule that makes it honest is that the watermark
+  advances only when a surface is finished — which is what the deck already does.
+- **`rides` had no indexes at all**, not one, since `001`. The badge's rides half would have
+  been a sequential scan on every Clubs load. Worth checking the other tables the same way.
+- **Club cover and avatar images are drawn and not built, deliberately.** Adding
+  `avatar_path` / `cover_image_path` with no upload screen renders the same empty container
+  *and* plants the dead column `014` had to remove from `profiles`. They size with
+  Create/Edit club, where the upload lives and where the storage policy needs an ownership
+  lookup rather than `014`'s folder-equals-uid shape.
+- **Two Explore designs exist and the newer-looking one is on hold** — `Explore clubs` (row
+  list) is Done, `Explore clubs v2` (2-up grid) is On hold. Position in the file is not
+  status; the epic cover is.
+- **Running it found two defects CI cannot see**, both the "renders, compiles, cannot be
+  seen" class: the cover placeholder's icon sat *under* the overlapping avatar, and the
+  initials avatar was translucent enough to show the container through it. Neither is a type
+  error, a lint error or a failing test. That is now three sessions running where opening the
+  page was the only thing that caught them.
+- **A comment of mine claimed this retired the last client-side write. It did not** —
+  `/clubs/new` and `/rides/new` are both `'use client'` and still write directly. Caught
+  before commit by running the grep instead of trusting the sentence, which is the same
+  lesson this file already records twice.
+
 ~~**The card's overflow menu is the next build.**~~ **Built 2026-08-05.** Trust & safety was
 RLS-complete and UI-absent — a rider could not block or report anyone. **Four** of the six actions now have a caller — `hidePostcard`,
 `reportPostcard`, `blockRider`, `deletePostcard`, all from the card's menu. **`unhidePostcard` and `unblockRider` are still called by nothing**, and
@@ -463,8 +545,8 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 
 | | |
 |---|---|
-| Migrations | **`001`–`014` all applied and verified live** (`014` on 2026-08-05, before its PR merged). No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
-| Tests | RLS suite **289** assertions (`npm test`) + Vitest **308** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Migrations | **`001`–`016` all applied and verified live** (`015` and `016` on 2026-08-05, before their PR merged). No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
+| Tests | RLS suite **317** assertions (`npm test`) + Vitest **321** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -472,11 +554,18 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | CI | Green, and **path-scoped as of 2026-08-04**: a `changes` job diffs the merge base and skips `Type Check, Lint & Build` for docs/design-only PRs and `RLS Policy Tests` for anything not touching `supabase/**`. Pushes to `main` always run both. Job names are unchanged, so the branch-protection rule below still applies. |
 | Data | 1 rider, 1 club, 1 ride — all real, created through the deployed app. |
 
-**The v1 pages are now visibly broken, not merely inconsistent.** `clubs` and `/rides/new`
-still render `text-white` headings, which were legible on the v1 dark background
-and are invisible on the v2 cream gradient. A real defect a rider would see, not a styling
-preference. Fix it with their v2 migration, or sooner if anyone demos those tabs. (`/rides`
-was fixed when the list was rebuilt, `/rides/[id]` when the detail page was.)
+**v1 is gone.** `/rides/new` was the last page carrying it and was rebuilt on 2026-08-05.
+The tree now has **zero** `text-white` in `src/app/`, **zero** `lucide-react` importers, and
+**zero** client-side `supabase.from()` writes; the dependency is uninstalled, taking runtime
+dependencies from nine to eight. Re-derive rather than trust:
+
+```bash
+grep -rn "text-white" src/app/ | wc -l
+grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l
+grep -rn "supabase.from(" src/app/ src/components/
+```
+
+The only `zinc-*` strings left in the tree are two comments describing the migration.
 
 **22 of those `text-white` occurrences are the defect; the other 7 are correct.** This line
 used to say "three", which was wrong by an order of magnitude and in the direction that makes
@@ -487,9 +576,11 @@ the job look done. White on a dark fill is right in `Button`, `Checkbox`, `Filte
 grep -rn "text-white" src/app/\(app\)/clubs src/app/\(app\)/rides/new | wc -l
 ```
 
-It read 22 while `/profile` was v1 and reads **17** now that it is not. `profile` is out of
-the paths above because it no longer has any — leaving it in would have kept counting a
-directory that cannot contribute.
+It read 22 while `/profile` was v1, 17 once it was not, 13 once `/clubs` itself was v2, and
+reads **4** now that all of `clubs/*` is — **every one of them is in `/rides/new`**, which is
+the last v1 page in the app. `lucide-react` is down to that same single file
+(`grep -rl "from 'lucide-react'" src/ | grep -v generated`). `profile` and `clubs` are still in
+the paths above only so the command keeps working; neither can contribute now.
 
 The app looks inconsistent on purpose: `/`, `app/auth/*`, `app/onboarding/*`, `app/legal/*`,
 `app/(app)/postcards/*`, `app/(app)/profile` and now all of `app/(app)/rides/` except `new/`

@@ -14,7 +14,7 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 | Framework | Next.js 16 (App Router, TypeScript strict) |
 | Styling | Tailwind CSS v4 (CSS-first config, no `tailwind.config.*`) |
 | Database / Auth | Supabase (Postgres + RLS + `@supabase/ssr`) |
-| Icons | The Figma set, generated to `src/components/icons/generated.tsx` (see Design System). `lucide-react` survives only in the v1 pages |
+| Icons | The Figma set, generated to `src/components/icons/generated.tsx` (see Design System). `lucide-react` is **gone** — uninstalled 2026-08-05 with the last v1 page |
 | Deployment | Vercel (auto-deploy from `main`) |
 | CI | GitHub Actions — type check + lint + unit tests + build, and the RLS suite. Path-scoped; see Branching & CI |
 
@@ -24,8 +24,8 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 otherwise get answered differently in every epic. Drafted 2026-08-02; edit freely, but edit
 here rather than deciding again inside a PR.
 
-**Dependencies are added deliberately.** Nine runtime dependencies today, and that is a
-feature. Before adding one, ask whether a thirty-line helper does the job. No UI component
+**Dependencies are added deliberately.** Eight runtime dependencies today, and that is a
+feature — `lucide-react` came out with the last v1 page rather than lingering unused. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
 
 **Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
@@ -45,9 +45,12 @@ weight:
 3. `useActionState` gives pending and error states without hand-rolled `useState` triples.
 
 The legacy pattern — a client component calling `supabase.from()` then `router.refresh()` —
-is v1. `JoinClubButton` is the last one using it — `JoinRideButton` was deleted with the ride
-detail rebuild, which is what "migrate on contact" looks like in practice. Same treatment as
-v1 styling is handled, and never add more.
+is v1. `JoinRideButton` was deleted with the ride detail rebuild and `JoinClubButton` became a
+Server Action with the club list — which is what "migrate on contact" looks like in practice.
+**Nothing is left.** `/clubs/new` and `/rides/new` were the last two, and both became server
+pages with Server Actions on 2026-08-05. This line once called `JoinClubButton` "the last one"
+while both of those already existed, so count rather than trust it —
+`grep -rn "supabase.from(" src/app/ src/components/` returns nothing. Never add more.
 
 **Validation: Zod, one schema per concern, shared by both sides.** Lives in
 `src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
@@ -91,6 +94,15 @@ viewer's own zone is not the answer — it renders different strings on server a
 i.e. a hydration mismatch. `formatRelativeTime` needs no zone (it measures elapsed instants)
 and keeps `en-US` because it produces English prose, not a date format.
 
+**`wallClockToUtc` is the write-side half of the same rule.** A `datetime-local` input sends a
+zone-less string, and `new Date(that)` resolves in whatever zone the runtime is in — the
+browser's in a client component, UTC on Vercel in a server one. The v1 create-ride form did
+exactly that, so the same typed time meant different instants for different organizers and
+none of them matched what `formatRideTime` drew back. It resolves the string as wall-clock in
+`APP_TIME_ZONE`, in two passes so the two DST days a year are right, and its tests assert
+offsets rather than strings — `TZ=UTC` in `vitest.config.ts` would let a naive
+implementation pass.
+
 **Deliberately undecided** — raise these rather than inventing an answer: error tracking,
 analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
 
@@ -103,7 +115,7 @@ src/
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew
-│   │   ├── clubs/          # /clubs, /clubs/new, /clubs/[id]
+│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id] (Timeline) + /rides, /members, /about
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
@@ -115,8 +127,8 @@ src/
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
-│   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
-│   ├── clubs/              # JoinClubButton
+│   ├── rides/              # CreateRideForm, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
+│   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
 ├── lib/
@@ -220,6 +232,8 @@ Three further rules:
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
 | `postcard_hides` | `(postcard_id, user_id)` composite PK. **Per-viewer and one-directional**, unlike `blocks` — a row only ever removes a postcard from its own `user_id`'s feed. It is an input to the `postcards` SELECT policy, so `club_id` is no longer the sole determinant of what a viewer sees. |
 | `profile_countries` | `(user_id, country_code)` composite PK, added by `014`. Countries a rider says they have ridden in, **entered manually** — the derived reading is unbuildable, `rides` has no country or coordinates. `country_code` is ISO 3166-1 alpha-2 with a CHECK; there is no `countries` reference table, because the picker's list is the client's and nothing joins against it. SELECT inherits the profiles predicate via `EXISTS`, so blocking works without the word appearing in the policy. |
+| `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` remains the legacy column nothing writes. |
+| `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
@@ -231,7 +245,24 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`014` are all applied — there is no drift.** `014` was applied
+**Applied state: `001`–`016` are all applied — there is no drift.** `016` (club media) was
+applied 2026-08-05 and verified live: 6 new `storage.objects` policies (3 each for
+`club-avatars/` and `club-covers/`), 15 in total across five upload surfaces, 0 targeting
+anything but `authenticated`, 0 UPDATE policies, 4 path CHECKs on `clubs`, and both columns
+present. The policies were also exercised against the live project with `curl`: an upload into
+your own folder returns 200, into another rider's 400, and a malformed path 400.
+
+**Applied state before that: `001`–`015`.** `015` (`feed_reads`) was
+applied 2026-08-05 and verified live: 3 policies, all `to authenticated`, 0 `anon` grants,
+`authenticated` holding no DELETE, `indnullsnotdistinct` true, `prosecdef` false on
+`club_unread_counts`, RLS on, and the new `rides (club_id, created_at desc)` index present.
+`rides` had carried **no indexes at all** since `001`, which the badge's rides half would have
+turned into a sequential scan on every Clubs load. The advisors report nothing new — the two
+outstanding are still `moderate_comment` (deliberate) and the leaked-password toggle. One
+footer query in `015` was wrong on the first pass and is worth copying the fix rather than the
+mistake: it counted DELETE grants table-wide and read 2 against a correct database, because
+`postgres` and `service_role` hold everything by Supabase default. Scope a grant assertion to
+its grantee, or use `has_table_privilege`. `014` was applied
 2026-08-05 and every number its footer predicts was confirmed live: 9 storage.objects
 policies (3 each for `postcards/`, `avatars/`, `covers/`), 0 of them targeting anything but
 `authenticated`, 0 UPDATE policies on `storage.objects` or `profile_countries`, 0 `anon`
@@ -530,7 +561,7 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **3. Maps are a static thumbnail plus a Google Maps deeplink.** No mapping SDK, no turn-by-turn, no route rendering.
 
-**4. v2 is the only design.** v1 (`zinc-*`, `orange-500`, Geist, `lucide-react`) is superseded. Migrate on contact; never add more.
+**4. v2 is the only design.** v1 (`zinc-*`, `orange-500`, Geist, `lucide-react`) is superseded, and as of 2026-08-05 it is **fully retired**: zero `text-white` in `src/app/`, zero `lucide-react` importers, zero client-side `supabase.from()` writes, and the dependency uninstalled. What remains of those strings in the tree is comments describing the migration. Never add more.
 
 **5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — `proxy.ts` redirects them back into the wizard. The schema carries the incomplete state so an abandoned signup resumes where it left off.
 
@@ -602,14 +633,14 @@ Two rules that follow:
   verified to compile and not verified to work" is a lower-fidelity artifact and needs an
   explicit ask. Only the second kind is escalated, or the signal drowns.
 
-**Rate every suggestion on three axes, each on its own line, always in this order.** Whenever
-you propose optional work — a refactor, a test, a hardening, a follow-up — close it with this
-block. Not a sentence with numbers buried in it; the point is that the reader can skim past
-three lines and still decide.
+**Rate every suggestion on four lines, always in this order.** Whenever you propose optional
+work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
+with numbers buried in it; the point is that the reader can skim four lines and still decide.
 
 > **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
 > **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
 > **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
+> **This session** N — wants its own branch, and the open PR should land first
 
 What each one means:
 
@@ -619,13 +650,26 @@ What each one means:
   up" is the whole content, and the bare number would have hidden it.
 - **Recommendation** — how strongly you actually advise doing it, independent of how much fun
   it is to build.
+- **This session** — **Y or N, never a number**, plus the half-line of why. It answers "should
+  *this* session pick it up next", which is a question about the session rather than about the
+  work: what context is already loaded, whether a branch is open, whether it is blocked on an
+  answer, and whether it is even the agent's to do. An owner-only item is **N** — "not mine" —
+  which is the single most useful thing this line does, because those are exactly the items
+  that otherwise sit in a list of build tasks looking actionable.
 
-**None of the three are correlated, and that is the entire reason there are three.** A 1/10
+**None of the four are correlated, and that is the entire reason there are four.** A 1/10
 complexity item can be a 9/10 recommendation. A clever 6/10 build can be a 2/10
-recommendation. And urgency moves independently of both — the deck-skip bug fixed on
-2026-08-05 sat at 6/10 recommendation with near-zero urgency for weeks, then became urgent
-the moment the overflow menu shipped the block button that could reach it. Nothing about its
-complexity or its value changed; only *when* did.
+recommendation. Urgency moves independently of both — the deck-skip bug fixed on 2026-08-05
+sat at 6/10 recommendation with near-zero urgency for weeks, then became urgent the moment the
+overflow menu shipped the block button that could reach it. Nothing about its complexity or
+its value changed; only *when* did.
+
+**This session is the one that moves fastest, and it is the one a stale answer misleads on.**
+9/10 recommendation and **N** is a perfectly ordinary pairing — the leaked-password toggle is
+a dashboard click nobody in a session can make. So is its inverse: a 3/10 recommendation
+worth **Y** because the files are already open and it costs two minutes, where the same item
+next week costs an hour of reloading context. Answer it from where the session actually is,
+not from how good the idea is.
 
 Rate your own ideas honestly, including low — an unrated suggestion reads as advocacy, and
 the reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so
@@ -677,7 +721,7 @@ blocking.
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. Delete account is not built |
 | **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan and Crew are built; Journal needs `postcards.ride_id` and Chat needs the Inbox epic.** `/rides/new` is still v1. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
-| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built |
+| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built. **`/clubs` is v2 as of 2026-08-05**, built from the measured design: two sub-pages behind the header's dropdown — `Your clubs` and `/clubs/explore` — with `List / Club` rows carrying the type chip, the rider collage and the unread counter, and `Create club` in the Navbar's sticky slot. **Club cover and avatar images are the one thing drawn and not built**: `clubs` has carried the same seven columns since `001` and `avatar_url` has never been written by anything, so the columns land with Create/Edit club, which is where the upload lives. Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. `/clubs/[id]` and `/clubs/new` are still v1 |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
 chat, search, and ride crews simultaneously. It belongs in RLS policies, and every review
