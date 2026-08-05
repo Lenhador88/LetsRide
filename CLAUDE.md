@@ -586,14 +586,24 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 **Standard order for a feature:**
 
 ```
-openspec → data → design-system → feature → test → reviewer → PR
+openspec → reviewer → data → design-system → feature → test → reviewer → PR
 ```
 
+**`reviewer` runs twice, and the first pass is the cheaper one.** A proposal is the only
+artifact in this pipeline with *no* automated gate: `openspec/` sits in the CI denylist
+(`ci.yml`), so a proposal-only PR runs zero jobs, and the RLS suite can only assert what
+someone thought to write down. `openspec/config.yaml` names the stake exactly — a visibility
+decision left unstated "does not fail loudly, it silently becomes whatever the migration author
+assumed." By the time that reaches the second `reviewer` pass it has become a migration, a
+policy and an assertion that all agree with each other. Same lesson as *run `reviewer` before
+merging, not after*, one stage earlier.
+
 Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
-Requiring a proposal for everything is how process gets ignored. Skip `data` when there's no
-schema change, and `design-system` when every component already exists. Swap in `realtime` or
-`media` for `feature` when the work is chat/notifications or images. Always run `reviewer` on
-someone else's output, never on its own work — the value is in the fresh eyes.
+Requiring a proposal for everything is how process gets ignored, and skipping `openspec` skips
+its review pass with it. Skip `data` when there's no schema change, and `design-system` when
+every component already exists. Swap in `realtime` or `media` for `feature` when the work is
+chat/notifications or images. Always run `reviewer` on someone else's output, never on its own
+work — the value is in the fresh eyes.
 
 **`openspec` replaced `spec` on 2026-08-05.** Two specification systems meant neither was used:
 OpenSpec was adopted and never run, while `spec` produced one document

@@ -17,6 +17,15 @@ git diff main...HEAD
 
 Review the diff, but read enough surrounding code to judge it in context. A diff that looks fine in isolation can still break a caller three files away.
 
+**If the diff is an OpenSpec proposal rather than code**, you are the first of two passes — see
+`CLAUDE.md` §The Agent Squad. There is deliberately no checklist for this yet: OpenSpec has not
+yet produced a proposal, and inventing failure modes before observing one is how a checklist
+nobody follows gets written. Until it exists, review the proposal against `openspec/config.yaml`
+directly — its `rules.proposal` entries are the bar, and the **negative cases** are the point.
+For anything touching clubs, rides, memberships or profiles, confirm the proposal names the
+visibility rule for *each* role that can reach it: owner, admin, member, non-member, blocked
+user. A role the proposal does not mention is the finding.
+
 ## Mandatory: the data-exposure pass
 
 Run this on every review, even when the diff has no SQL in it. This app's core risk is leaking the social graph — private club membership, pending friend requests, non-public rides, who rides with whom.
