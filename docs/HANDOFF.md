@@ -96,13 +96,37 @@ A blocked host fails as `curl: (56) CONNECT tunnel failed` — **not** as a time
 body, so a check that "returns nothing" is telling you something. The distinction matters:
 a silent `curl` loop looks identical to a passing one only if you throw the exit code away.
 
-**Reaching Supabase is not the same as verifying a screen.** There is still no `.env.local`
-and no `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the environment, and `proxy.ts` gates every route
-outside `/auth/*` behind a session — so running the app end to end also needs the anon key
-(fetchable via the Supabase MCP `get_publishable_keys`) and a rider password. The test rider's
-is deliberately not in this repo. Until those exist, "verified to compile" is still the
-honest phrase, and per CLAUDE.md §Working Principles it is a **request for the owner**, not a
-footnote.
+## Running the app against the real database — done 2026-08-05, and it found two bugs
+
+**A session can drive the whole app from this container.** It had never been done; the first
+attempt found two defects that every green CI run had missed. The recipe, because each step
+cost a wrong diagnosis first:
+
+1. **`.env.local`** — write `NEXT_PUBLIC_SUPABASE_URL` plus the anon key from the Supabase MCP
+   `get_publishable_keys`. It is gitignored (`git check-ignore -v .env.local` to be sure).
+2. **`NODE_USE_ENV_PROXY=1 npm run dev`** — **the one that matters.** Node's `fetch` ignores
+   `HTTPS_PROXY`, so every server-side Supabase call fails with a proxy page (`Host not
+   in…`) while `curl` succeeds. The app surfaces that as "That email and password do not
+   match an account", which reads like a credentials problem and is not one. Node 22 supports
+   the flag; `--use-env-proxy` works too.
+3. **A rider.** Supabase's email validator **rejects `.test` *and* `example.com`** at
+   `/auth/v1/signup`, so signup cannot be exercised without a domain you own — which is also
+   why `duskrider` could only ever have been created by SQL. Insert into `auth.users` with
+   `crypt(...)`, and **set `confirmation_token`, `recovery_token`, `email_change` and the
+   other token columns to `''`, never NULL** — GoTrue scans them into non-nullable strings
+   and a NULL turns every login into "do not match".
+4. **Playwright**: `npm install --no-save playwright-core` (leaves `package.json` and the
+   lockfile alone), `executablePath: /opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
+
+**`qa-verify@letsride.test` / `QaVerify-2026-Aa1!`** is the account this created —
+`efc542b8-8286-48eb-8b16-26b652e43d5a`, onboarded as `verify24321868`. Acceptable only
+because the app is **not live**; delete it before launch:
+`delete from auth.users where email = 'qa-verify@letsride.test';`
+
+**One trap in the harness, not the app:** Chromium here has no proxy configured, so
+`<img>` fetches of Supabase signed URLs never complete and every photo renders blank. That
+is not a bug — the same signed URL returns **HTTP 200 and 722 KB** via `curl`. Do not report
+it as one. Launch Chromium with `--proxy-server=$HTTPS_PROXY` if images need to render.
 
 ---
 
@@ -440,7 +464,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`014` all applied and verified live** (`014` on 2026-08-05, before its PR merged). No drift. This cell once read "no drift" while §Do this first said the opposite three hundred lines above — if the two ever disagree again, the section is the one being edited and this cell is the one being missed. Ordering note below. |
-| Tests | RLS suite **289** assertions (`npm test`) + Vitest **306** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **289** assertions (`npm test`) + Vitest **308** tests (`npm run test:unit`). Both measured 2026-08-05 **after merging `main`**, which is the only number worth writing down: two sessions landed work the same morning (the postcards overflow menu, and `014`) and each measured its own branch, so both were right and neither was the total. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
