@@ -17,6 +17,18 @@ type HeaderProps = {
    * fixed header.
    */
   subRow?: React.ReactNode
+  /**
+   * The right-hand 40×40 control in the title row — the design's overflow menu
+   * at x342.
+   *
+   * This slot was deliberately absent until now. The reasoning was that an
+   * action row with nothing behind it is a worse artifact than an absent one,
+   * and it held while the only candidates were Chat (no route) and the ride's
+   * Options sheet (no specified contents). The profile is the first screen with
+   * something real to put here: `Profile / Delete account / Account options`
+   * spells the sheet out, and one of its two rows — Sign out — is built.
+   */
+  action?: React.ReactNode
   className?: string
 }
 
@@ -45,7 +57,7 @@ type HeaderProps = {
  * The avatar-and-name title of `Type=User` / `Type=Club` is still not built —
  * the profile and club screens are the ones that need it.
  */
-export function Header({ title, backHref, subRow, className }: HeaderProps) {
+export function Header({ title, backHref, subRow, action, className }: HeaderProps) {
   return (
     <header
       className={cn(
@@ -69,6 +81,9 @@ export function Header({ title, backHref, subRow, className }: HeaderProps) {
             space left beside the back button. Asymmetric padding would shift it
             off-centre, which the design does not do. */}
         <h1 className="truncate px-12 text-base font-semibold text-foreground">{title}</h1>
+        {/* Absolute for the same reason the back button is: the title centres on
+            the header, so neither control may take part in its flex row. */}
+        {action && <div className="absolute right-0">{action}</div>}
       </div>
       {subRow && <div className="flex h-5 items-center justify-center">{subRow}</div>}
     </header>

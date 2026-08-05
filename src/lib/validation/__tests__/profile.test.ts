@@ -3,7 +3,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
+  BIKE_MODEL_MAX_LENGTH,
+  BIO_MAX_LENGTH,
+  bikeModelSchema,
+  bioSchema,
   checkUsername,
+  profileEditSchema,
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
   usernameSchema,
@@ -165,5 +170,71 @@ describe('checkUsername', () => {
     const result = checkUsername('ab')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toBeTruthy()
+  })
+})
+
+/**
+ * Bio and bike are the fields the profile edit form owns. Unlike `username` and
+ * `location` they have **no CHECK constraint behind them** — `001` declares both
+ * columns as bare `text` — so these assertions are the only thing pinning the
+ * rule, and they are the whole enforcement outside the action that parses them.
+ */
+describe('bioSchema / bikeModelSchema', () => {
+  it('turns an empty field into null, so clearing a bio is not storing ""', () => {
+    expect(bioSchema.parse('')).toBeNull()
+    expect(bikeModelSchema.parse('')).toBeNull()
+  })
+
+  it('treats whitespace-only as cleared too', () => {
+    // The trap the ride's `meeting_point` fell into: `required` accepts "   ",
+    // and an untrimmed insert stores it.
+    expect(bioSchema.parse('   ')).toBeNull()
+    expect(bikeModelSchema.parse('\n\t ')).toBeNull()
+  })
+
+  it('trims the value it does keep', () => {
+    expect(bioSchema.parse('  Rides at dawn.  ')).toBe('Rides at dawn.')
+  })
+
+  it('accepts the maximum length and rejects one past it', () => {
+    expect(bioSchema.parse('x'.repeat(BIO_MAX_LENGTH))).toHaveLength(BIO_MAX_LENGTH)
+    expect(bioSchema.safeParse('x'.repeat(BIO_MAX_LENGTH + 1)).success).toBe(false)
+
+    expect(bikeModelSchema.parse('x'.repeat(BIKE_MODEL_MAX_LENGTH))).toHaveLength(
+      BIKE_MODEL_MAX_LENGTH
+    )
+    expect(bikeModelSchema.safeParse('x'.repeat(BIKE_MODEL_MAX_LENGTH + 1)).success).toBe(false)
+  })
+
+  it('measures length after trimming, so trailing spaces cannot fail a valid bio', () => {
+    expect(bioSchema.safeParse(`${'x'.repeat(BIO_MAX_LENGTH)}   `).success).toBe(true)
+  })
+})
+
+describe('profileEditSchema', () => {
+  const valid = { location: 'Amsterdam', bio: 'Rides at dawn.', bike_model: 'Kawasaki Z900' }
+
+  it('accepts the three fields the form submits', () => {
+    expect(profileEditSchema.parse(valid)).toEqual(valid)
+  })
+
+  it('still requires a location — it is the one field onboarding made mandatory', () => {
+    expect(profileEditSchema.safeParse({ ...valid, location: '' }).success).toBe(false)
+  })
+
+  it('allows bio and bike to be cleared independently of location', () => {
+    expect(profileEditSchema.parse({ location: 'Utrecht', bio: '', bike_model: '' })).toEqual({
+      location: 'Utrecht',
+      bio: null,
+      bike_model: null,
+    })
+  })
+
+  it('does not accept a username, so the form cannot smuggle one past the action', () => {
+    // Renaming is a flow with a uniqueness conflict path, not a form field.
+    // `.parse` strips unknown keys rather than throwing, which is exactly the
+    // property worth pinning: the extra key reaches the database as nothing.
+    const parsed = profileEditSchema.parse({ ...valid, username: 'someone_else' })
+    expect(parsed).not.toHaveProperty('username')
   })
 })
