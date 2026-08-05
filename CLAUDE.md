@@ -111,14 +111,14 @@ src/
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
 ├── components/
-│   ├── ui/                 # AppBackground, Avatar, Button, ButtonGroup, Card, Checkbox, ContextMenu, ExpandableText, FilterTile, Input, ListUser, Pagination, SectionHeader, Textarea
+│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ExpandableText, FilterTile, Input, ListUser, Pagination, SectionHeader, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
 │   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
 │   ├── clubs/              # JoinClubButton
-│   ├── postcards/          # PostcardDeck, PostcardCard, PostcardFilterBar, PostcardAction, LikeButton, CommentsLink, ShareButton, CommentList, CommentItem, CommentForm, CreatePostcardForm
-│   └── profile/            # EditProfileForm, ProfileMenu, ProfileCountries, ProfileImageUpload
+│   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
+│   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts       # Browser client — use in 'use client' components
@@ -619,10 +619,10 @@ blocking.
 
 | Domain | Status in code |
 |---|---|
-| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **Built and verified against the design** as of 2026-08-04: the swipeable card deck and filter bar at `/postcards`, the composer at `/postcards/new`, one card plus its thread at `/postcards/[id]`. The home screen is a **card stack you swipe**, not a scrolling feed. **Share is a link share** (Web Share API, clipboard fallback) — the reading that needs no schema; a repost is still an open product question. Three design elements are blocked on schema, not design: unread badges, photo location, and the hide/block/report menu. See `docs/FIGMA-FIDELITY-TODO.md` |
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **Built and verified against the design** as of 2026-08-04: the swipeable card deck and filter bar at `/postcards`, the composer at `/postcards/new`, one card plus its thread at `/postcards/[id]`. The home screen is a **card stack you swipe**, not a scrolling feed. **Share is a link share** (Web Share API, clipboard fallback) — the reading that needs no schema; a repost is still an open product question. Two design elements are blocked on schema, not design: unread badges and photo location. The hide/block/report menu was listed here as a third and that was wrong twice over — it needed no schema (`009` and `011` built every table) and it shipped 2026-08-05. See `docs/FIGMA-FIDELITY-TODO.md` |
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
-| **Trust & safety** — block account, report post, hide postcard, delete account | Not built |
+| **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. Delete account is not built |
 | **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan and Crew are built; Journal needs `postcards.ride_id` and Chat needs the Inbox epic.** `/rides/new` is still v1. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
 | **Clubs** — public/private, Overview/Rides/Members/Posts tabs | Partially built |
 

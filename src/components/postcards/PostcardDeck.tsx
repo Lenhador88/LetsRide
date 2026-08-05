@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
+import { remainingPostcards } from '@/components/postcards/deck'
 import type { Postcard } from '@/types'
 
 /**
@@ -28,7 +29,10 @@ const BEHIND = [
 type DragState = { pointerId: number; startX: number; startY: number } | null
 
 export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
-  const [index, setIndex] = useState(0)
+  // The ids the rider has swiped past — see `remainingPostcards` for why this is
+  // a set of ids rather than a position. The feed is bounded by FEED_PAGE_SIZE,
+  // so this cannot grow beyond a page.
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set())
   const [dx, setDx] = useState(0)
   // Set while the swiped card animates off, so the next render does not snap it
   // back to centre before the transition finishes.
@@ -39,18 +43,30 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
   const [dragging, setDragging] = useState(false)
   const drag = useRef<DragState>(null)
 
-  const advance = useCallback(
-    (direction: 1 | -1) => {
-      setLeaving(direction)
-      setDx(direction * 600)
-      window.setTimeout(() => {
-        setIndex((i) => i + 1)
-        setDx(0)
-        setLeaving(null)
-      }, 220)
-    },
-    []
-  )
+  /**
+   * `frontId` is captured at the call rather than read when the timeout fires.
+   * A revalidation landing mid-animation can change which card is at the front,
+   * and dismissing whichever card happens to be there 220ms later would skip an
+   * unseen one — the same defect this component is being fixed for, reintroduced
+   * through the back door.
+   */
+  const advance = useCallback((direction: 1 | -1, frontId: string) => {
+    setLeaving(direction)
+    setDx(direction * 600)
+    window.setTimeout(() => {
+      // Adding an id that is already present is a no-op, so a double-tap on the
+      // keyboard control cannot dismiss two cards.
+      setDismissed((previous) => new Set(previous).add(frontId))
+      setDx(0)
+      setLeaving(null)
+    }, 220)
+  }, [])
+
+  // Computed before the handlers because they need the front card's id, and
+  // recomputed every render so a revalidation that removes cards is reflected
+  // immediately rather than at the next swipe.
+  const remaining = remainingPostcards(postcards, dismissed)
+  const front = remaining[0]
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (leaving !== null) return
@@ -72,13 +88,11 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
 
     setDragging(false)
     const travelled = event.clientX - state.startX
-    if (Math.abs(travelled) >= SWIPE_THRESHOLD) advance(travelled > 0 ? 1 : -1)
+    if (Math.abs(travelled) >= SWIPE_THRESHOLD && front) advance(travelled > 0 ? 1 : -1, front.id)
     else setDx(0)
   }
 
-  const remaining = postcards.slice(index)
-
-  if (remaining.length === 0) {
+  if (!front) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
         <p className="text-sm font-medium text-muted">
@@ -89,7 +103,7 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
         {postcards.length > 0 && (
           <button
             type="button"
-            onClick={() => setIndex(0)}
+            onClick={() => setDismissed(new Set())}
             className="text-sm font-semibold text-foreground underline underline-offset-4"
           >
             Start over
@@ -144,7 +158,7 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
           gesture, which is unreachable without a pointer. */}
       <button
         type="button"
-        onClick={() => advance(1)}
+        onClick={() => advance(1, front.id)}
         className="sr-only focus:not-sr-only focus:absolute focus:bottom-0 focus:rounded-lg focus:bg-foreground focus:px-4 focus:py-2 focus:text-sm focus:text-white"
       >
         Next postcard
