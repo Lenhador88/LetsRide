@@ -377,3 +377,12 @@ it is not in the environment config. Only `figma:pull` and `figma:icons` need it
 
 **Vercel's MCP fetch tool authenticates as the account owner**, so a 200 from it is not
 evidence that a URL is publicly reachable.
+
+**MCP connector names are not stable, and permission rules are matched on them.** This session
+watched the Supabase server arrive as `Supabase` and later reconnect as
+`mcp__d217aba8-…__execute_sql`; Vercel and Figma did the same. Every
+`mcp__Supabase__*` rule in `.claude/settings.json` silently stopped matching at that moment, so
+long-approved tools started prompting again. The UUID-scoped mirror lives in
+`.claude/settings.local.json`, which is gitignored **because those ids are per-machine** — never
+commit them, and expect to re-add them if the ids rotate again. The symptom is a permission
+prompt for something the project already allows; the fix is not to widen the project rules.

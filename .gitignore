@@ -58,3 +58,6 @@ yarn-error.log*
 .idea
 .vscode/*
 !.vscode/extensions.json
+
+# Per-machine Claude Code overrides — holds this machine's MCP connector ids
+.claude/settings.local.json
