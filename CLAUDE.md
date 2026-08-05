@@ -602,15 +602,34 @@ Two rules that follow:
   verified to compile and not verified to work" is a lower-fidelity artifact and needs an
   explicit ask. Only the second kind is escalated, or the signal drowns.
 
-**Rate every suggestion: complexity 0-10, recommendation 0-10.** Whenever you propose
-optional work — a refactor, a test, a hardening, a follow-up — give both numbers and one line
-of reasoning. Complexity is effort plus risk plus the maintenance it adds. Recommendation is
-how strongly you actually advise doing it, independent of how interesting it is to build.
+**Rate every suggestion on three axes, each on its own line, always in this order.** Whenever
+you propose optional work — a refactor, a test, a hardening, a follow-up — close it with this
+block. Not a sentence with numbers buried in it; the point is that the reader can skim past
+three lines and still decide.
 
-The two are not correlated, and saying so is the point: a 1/10 complexity item can be a 9/10
-recommendation, and a clever 6/10 build can be a 2/10 recommendation. Rate your own ideas
-honestly, including low — an unrated suggestion reads as advocacy, and the reader cannot
-cheaply decline it. If you would not spend your own afternoon on it, say so in the number.
+> **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
+> **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
+> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
+
+What each one means:
+
+- **Complexity** — effort plus risk plus the maintenance it adds. Not "is it interesting".
+- **Urgency** — *when*, not *whether*. **Name the trigger where one exists**, because most
+  urgency here is conditional rather than scheduled: "low now, high the day real riders sign
+  up" is the whole content, and the bare number would have hidden it.
+- **Recommendation** — how strongly you actually advise doing it, independent of how much fun
+  it is to build.
+
+**None of the three are correlated, and that is the entire reason there are three.** A 1/10
+complexity item can be a 9/10 recommendation. A clever 6/10 build can be a 2/10
+recommendation. And urgency moves independently of both — the deck-skip bug fixed on
+2026-08-05 sat at 6/10 recommendation with near-zero urgency for weeks, then became urgent
+the moment the overflow menu shipped the block button that could reach it. Nothing about its
+complexity or its value changed; only *when* did.
+
+Rate your own ideas honestly, including low — an unrated suggestion reads as advocacy, and
+the reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so
+in the number.
 
 **Committed and pushed is not shipped.** Work only counts when it is on `main`. A branch that
 is green, pushed and reviewed still changes nothing until it merges — and the gap between
