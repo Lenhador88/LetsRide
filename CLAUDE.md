@@ -71,10 +71,17 @@ reminders, account deletion).
 Re-derive the scope rather than trusting a number here — it grows with every epic:
 
 ```bash
-git grep -l "" -- 'src/app/**/page.tsx' | wc -l                    # pages
-git grep -L "'use client'" -- 'src/app/**/page.tsx' | wc -l        # ... still server-rendered
-git grep -L "'use client'" -- 'src/components/**/*.tsx' | wc -l    # server components
+git grep -l "" -- 'src/app/**/page.tsx' | wc -l                     # pages
+git grep -L "^'use client'" -- 'src/app/**/page.tsx' | wc -l        # ... still server-rendered
+git grep -L "^'use client'" -- 'src/components/**/*.tsx' | wc -l    # server components
 ```
+
+**Note the `^` anchor and keep it.** The unanchored version reports 16 server pages against a
+real 18: `clubs/new/page.tsx` and `rides/new/page.tsx` both carry doc comments saying they used
+to be `'use client'`, so a bare match counts a file's own description of its migration as the
+thing it migrated away from. This is the third time that trap has been hit here — after the
+`lucide-react` importer count and the v1-token count — and the first version of *this very
+block* had it. A directive is only a directive on line one.
 
 **Two rules apply from now, before the migration starts:**
 
@@ -281,7 +288,11 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`016` are all applied — there is no drift.** `016` (club media) was
+**Applied state: `001`–`017` are all applied — there is no drift.** Confirmed 2026-08-05 with
+`list_migrations` against the hosted project: 17 rows, ending `rides_club_audience`, matching
+`ls supabase/migrations/`. `017` closed a club-audience hole `016` opened; it shipped with the
+clubs epic and this line said `016` for the rest of that day, which is the exact staleness the
+paragraph below warns about. `016` (club media) was
 applied 2026-08-05 and verified live: 6 new `storage.objects` policies (3 each for
 `club-avatars/` and `club-covers/`), 15 in total across five upload surfaces, 0 targeting
 anything but `authenticated`, 0 UPDATE policies, 4 path CHECKs on `clubs`, and both columns
