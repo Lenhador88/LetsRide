@@ -5,20 +5,43 @@ phase's definition, not a description of it — one Supabase project, `main` aut
 removal landing without its code repair is a production outage. The `avatar_url` drop lived here
 in an earlier revision and has moved to group 3.
 
-**State, 2026-08-05 — and two tasks below fail that definition, which is why they did not
-ship.** `018`, `019`, `020` and `022` are written, asserted and **applied**; their boxes are
-ticked. `021` (task 1.8) and `023` (tasks 1.12–1.14) are **written and deliberately unapplied**,
-with their assertions in `rls_test_pending_021.sql` and `rls_test_pending_023.sql` and both
-listed in `SKIP_MIGRATIONS`. Their boxes stay open because the work is not landed.
+**State, 2026-08-06 — group 1 is finished, and `021` turned out to be two migrations.**
+`018`, `019`, `020`, `022` and now `021` are applied. `023` and `025` are written, asserted and
+deliberately unapplied until this change's code deploys.
 
-- **`021` is not additive.** It revokes grants `proxy.ts`, `setLocation`, `signUp` and
-  `getMyProfile` all depend on, so it breaks four live paths and belongs in the group that owns
-  that code — the same reason the `avatar_url` drop left. The heading's rule caught it; the task
-  predates the rule.
-- **`023` needs an application change first** — the consent prompt in group 2 — because all four
-  riders have a NULL consent stamp and the gate would lock every one of them out.
-- **They are also mutually incompatible**: `023` gates on stamps `021` removes the only client
-  path to setting. There is deliberately no test mode that applies both.
+**`021` contained a deployment deadlock, and splitting it is what resolved the "mutually
+incompatible" problem below.** The file held both the accessor functions and the revoke that
+makes them necessary, and those must be applied at *different times relative to the code
+deploy*:
+
+- New code + old database → `proxy.ts` calls `my_onboarding_state()`, which does not exist →
+  `42883` → the guard's fail-closed branch bounces **every signed-in rider** to login.
+  Reproduced with `npm run walk`, not argued.
+- Old code + new database → the revoke lands and all four paths in §DEFECT 2 break.
+
+So no ordering of one file works. Split:
+
+- **`021_onboarding_state_accessors.sql`** — purely additive, three `security definer`
+  functions. **Applied 2026-08-05**, safe against `main` as it stood.
+- **`025_profile_column_privileges.sql`** — the revoke and the column allowlist. Unapplied.
+
+Filename order equals apply order in both directions, deliberately: `run.sh` applies by
+filename, and a file whose local order differs from its hosted order is a trap this repo has
+already sprung once (`021`'s own header documented the `024` case while committing the same
+mistake).
+
+**The two mutually-incompatible migrations are now compatible, and the fix is the accessor's
+write half.** `023` gated on stamps `021` removed the only client path to setting; the answer is
+that the database writes them. `accept_terms()` and `complete_onboarding(location)` are that
+path, and `PENDING=023+025 npm test` is the mode that proves the pair applies together.
+
+**One trap worth carrying forward, measured on Postgres 16 rather than recalled.** Inside a
+`security definer` function `current_user` is the *owner*, so `003`'s and `012`'s trigger guards
+— both of which begin `if current_user <> 'authenticated' then return new` — short-circuit and
+do not run. Every invariant those triggers carry had to be restated in the function bodies.
+CHECK constraints, by contrast, do still fire.
+
+- **`023` still needs the consent prompt deployed first**, which task 2.3 now delivers.
 
 - [x] 1.1 Pre-flight every constraint below against the live project: count violating rows for
   each column before writing its migration, the way `013` did. Record each count in the
@@ -44,12 +67,23 @@ listed in `SKIP_MIGRATIONS`. Their boxes stay open because the work is not lande
   alpha-2 value, not merely two uppercase letters. No `countries` reference table: `014`
   declined one deliberately and nothing joins against it.
 - [x] 1.7 Assertions for 1.6: `ZZ` and `XX` refused, `NL` accepted, lowercase still refused.
-- [ ] 1.8 `021_profile_column_privileges.sql` — `revoke select, insert, update
+- [x] 1.8 **Split into two files — see the deadlock note under this heading.**
+  `021_onboarding_state_accessors.sql` holds `my_onboarding_state()`,
+  `accept_terms()` and `complete_onboarding(location)`; **applied 2026-08-05** and verified
+  live. `025_profile_column_privileges.sql` holds the revoke and the allowlist; written,
+  asserted, **unapplied** until this change deploys. The accessor gained a third output,
+  `has_username`, so the route guard keeps one round trip — it reads a column `authenticated`
+  may still select, so it widens nothing. Original wording kept below for the diff:
+  ~~`021_profile_column_privileges.sql` — `revoke select, insert, update~~
   (terms_accepted_at, onboarding_completed_at) on public.profiles from authenticated`, plus a
   `security definer` accessor returning the caller's own two stamps for the route guard and the
   onboarding resume step (design D6). A view alongside the table does **not** satisfy this:
   `public.profiles` stays published by PostgREST and the grant is what decides.
-- [ ] 1.9 Assertions for 1.8: rider B cannot read rider A's `terms_accepted_at` or
+- [x] 1.9 Assertions split along the same line as the migrations: the functions' behaviour is
+  mainline in `rls_test.sql` (they are applied), the `has_column_privilege(...) = false`
+  assertions are in `rls_test_pending_025.sql`, and `rls_test_pending_023_025.sql` proves the
+  pair applies together. Suite 383 → 460. Original wording:
+  ~~Assertions for 1.8: rider B cannot read rider A's `terms_accepted_at` or~~
   `onboarding_completed_at` by any path including a direct column select; rider A reads their
   own through the accessor; a blocked rider still gets zero rows; `has_column_privilege` for
   `authenticated` is false on both columns, scoped to that grantee rather than counted
@@ -63,7 +97,8 @@ listed in `SKIP_MIGRATIONS`. Their boxes stay open because the work is not lande
   club member, non-member on a clubless public ride, non-member on a private club's ride
   (zero rows, and its crew unreachable through `ride_members`), blocked rider, signed-out
   visitor.
-- [ ] 1.12 **UNBLOCKED — Q11 answered 2026-08-05** — `023_participation_gate.sql`. A rider whose
+- [x] 1.12 **WRITTEN AND ASSERTED, UNAPPLIED — applies after this change deploys.**
+  **UNBLOCKED — Q11 answered 2026-08-05** — `023_participation_gate.sql`. A rider whose
   `onboarding_completed_at` is NULL, or whose `terms_accepted_at` is NULL, may not insert into
   `postcards`, `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`,
   `postcard_likes` or `postcard_reports`. One `BEFORE INSERT` trigger per table calling a single
@@ -77,15 +112,15 @@ listed in `SKIP_MIGRATIONS`. Their boxes stay open because the work is not lande
   owner, who re-accepts. **A minimal consent prompt for a rider whose stamp is NULL must exist
   before this gate becomes blocking** — it has exactly one user, so build it as one screen, not a
   flow. No migration may write a consent timestamp on a rider's behalf.
-- [ ] 1.13 Also in `023`: extend `003`'s completion guard so `onboarding_completed_at` cannot be
+- [x] 1.13 Also in `023`: extend `003`'s completion guard so `onboarding_completed_at` cannot be
   stamped while `terms_accepted_at` is NULL, in the same `check_violation` shape it already uses
   for `username` and `location`.
-- [ ] 1.14 Also in `023`: close `012`'s recorded BEFORE INSERT gap with a `TG_OP`-guarded arm on
+- [x] 1.14 Also in `023`: close `012`'s recorded BEFORE INSERT gap with a `TG_OP`-guarded arm on
   `enforce_onboarding_completion`, so a `profiles` row inserted without its `auth.users`
   counterpart cannot carry a chosen consent timestamp. `012` §KNOWN LIMIT left this as a
   follow-up because the assertion could not be written against a path `23505` blocks; the
   trigger this group builds is what makes it writable.
-- [ ] 1.15 Assertions for 1.12–1.14: each of the eight inserts refused while either stamp is
+- [x] 1.15 Assertions for 1.12–1.14: each of the eight inserts refused while either stamp is
   NULL and accepted once both are set; each of the five omitted tables still accepts an insert;
   the rider's own onboarding `profiles` updates still succeed while NULL, so nobody is stranded
   mid-wizard; completion refused while `terms_accepted_at` is NULL; a fresh `profiles` INSERT
@@ -112,7 +147,12 @@ listed in `SKIP_MIGRATIONS`. Their boxes stay open because the work is not lande
   It needs an email domain the owner controls — `.test` is rejected by Supabase's validator,
   which is why both fixtures were SQL-inserted in the first place. Owner to exercise before the
   client owns signup in Phase 4.
-- [ ] 2.3 Build whatever 2.1 decides, before 1.12 lands.
+- [x] 2.3 Built: `/onboarding/terms`, one screen, no pagination and no skip, writing through
+  `accept_terms()` so it survives `025`. `proxy.ts` gates consent **ahead of** the wizard,
+  because 1.13 refuses to stamp completion while consent is NULL — a rider sent to step 2
+  first would dead-end on a screen that can never succeed. Exercised against the live
+  database with a real sign-in: prompt reached, submit disabled until ticked, accepted, and
+  the prompt then unreachable.
 
 ## 3. Make the data layer isomorphic (Phase 2)
 
@@ -220,15 +260,32 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
   `request.cookies` and a half-moved session redirects every request to login.
 - [ ] 4.2 Assert no session, access token or refresh token is reachable from `localStorage`,
   `sessionStorage` or a cookie.
-- [ ] 4.3 Edge Function for the recovery grant (design D3): exchanges the recovery code,
+- [x] 4.3 **D3's mechanism is unbuildable and the replacement is better — see
+  `026_password_reset_grant.sql` §1.** `@supabase/ssr` 0.12.4 hardcodes PKCE, so
+  `resetPasswordForEmail` keeps the `code_verifier` in the *client's* own storage and
+  `exchangeCodeForSession` requires it back; no Edge Function can hold it. What D3 wanted
+  was a proof the client cannot forge, and one already exists: the project mints ES256
+  tokens and GoTrue records `amr: [{method: "recovery"}]`. PostgREST verifies the
+  signature and puts the payload in `auth.jwt()`, so the check is SQL — no secret, no
+  service-role key, no function to deploy. **Applied 2026-08-05.** Original wording:
+  ~~Edge Function for the recovery grant (design D3): exchanges the recovery code,~~
   returns a short-lived single-use grant. Fifteen-minute expiry, matching today's cookie.
-- [ ] 4.4 Repoint `updatePassword` at the grant and delete `RECOVERY_COOKIE`. Assert an
+- [x] 4.4 Done — `updatePassword` consumes the grant *before* the update, so it is spent
+  whatever happens next and two racing submits cannot both win. `RECOVERY_COOKIE` is gone.
+  **Recorded limit, not a gap left silent:** this gates the app's front door exactly as the
+  cookie did, not GoTrue's `PUT /auth/v1/user`, which any session holder can call with the
+  publishable key. Closing that is the `UpdatePasswordRequireCurrentPassword` project
+  setting — an **owner action**, named in `026`'s header. Original wording:
+  ~~Repoint `updatePassword` at the grant and delete `RECOVERY_COOKIE`. Assert an~~
   ordinary signed-in session cannot change the password, and that a spent grant is refused.
 - [ ] 4.5 Sign-out destroys the query cache, cached images, signed URLs and secure storage —
   and still lands the rider signed out when the revocation call fails offline.
 - [ ] 4.6 Test the shared-device case explicitly: rider A signs out, rider B signs in, B sees
   nothing of A, including with the device offline.
-- [ ] 4.7 Migrate `/auth/login`, `/auth/signup`, `/auth/forgot-password`,
+- [x] 4.7 `/auth/reset-password` is now a client page — it was the group's only server page,
+  and only because it read the httpOnly cookie, so 4.3 and this were one piece of work as
+  predicted. The other five were already client pages. Original wording:
+  ~~Migrate `/auth/login`, `/auth/signup`, `/auth/forgot-password`,~~
   `/auth/reset-password` and both onboarding steps. Five are already client pages;
   `/auth/reset-password` is the one server page here and imports `next/headers`.
 
@@ -237,9 +294,13 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
 - [ ] 5.1 Convert `proxy.ts` to a client route guard **with the first route group**, not later:
   the cookie/device-storage split cannot straddle a merge. Keep the denylist shape, and read the
   onboarding stamp through 1.8's accessor rather than `user_metadata`.
-- [ ] 5.2 Build the four shared loading treatments — deck, list, detail, form (design D7) —
+- [x] 5.2 Built and unit-tested, but **not yet wired to any screen** — the conversion is a
+  later change. `Skeleton.tsx` plus deck/list/detail/form shapes. Original:
+  ~~Build the four shared loading treatments~~ — deck, list, detail, form (design D7) —
   from existing v2 tokens. One treatment per shape, not per screen.
-- [ ] 5.3 Build the shared error and offline treatments, with a retry that re-runs only the
+- [x] 5.3 Built and unit-tested, **not yet wired**. `ErrorState`, `OfflineState`,
+  `useOnlineStatus`. Original:
+  ~~Build the shared error and offline treatments~~, with a retry that re-runs only the
   failed read, and an automatic retry when connectivity returns.
 - [ ] 5.4 Postcards: `/postcards`, `/postcards/new`, `/postcards/[id]`. Pages, components,
   states, and `actions/postcards.ts`'s 10 `revalidatePath` calls plus `actions/comments.ts`'s 3,
@@ -252,7 +313,12 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
   `actions/moderation.ts`'s 3.
 - [ ] 5.8 Replace the 12 `redirect()` call sites with client navigation, keeping success
   distinguishable from the unsubmitted state — both are `{ error: null }` without it.
-- [ ] 5.9 Confirm the invalidation total: every one of the 41 original `revalidatePath` claims
+- [ ] 5.9 Confirm the invalidation total: every one of the **33** original `revalidatePath`
+  claims
+  **(not 41 — that is `git grep -c`, which counts the 8 `import` lines too. The anchored form
+  is `git grep -o "revalidatePath(" -- 'src/lib/actions/*.ts' | wc -l`. Same counting trap
+  CLAUDE.md documents three times over, reproduced by this plan and by `design.md` and
+  `docs/HANDOFF.md`.)** — every one of them
   is either represented by a cache key or recorded as deliberately dropped, with its reason.
 - [ ] 5.10 Blocking a rider removes their content from every cached view the blocker holds, not
   only from the next fetch, and does not skip the open card in the deck. The club itself stays
@@ -280,5 +346,7 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
 - [ ] 7.4 Update `CLAUDE.md`'s render-model section and its dependency list, and prune
   `docs/HANDOFF.md` as part of landing. **Not** the applied-migration range or the three handoff
   contradictions — both were corrected while this proposal was being written.
-- [ ] 7.5 Raise account deletion as its own proposal before Phase 2 of the native work starts —
+- [x] 7.5 Raised as `openspec/changes/add-account-deletion/` — proposal, design, tasks and
+  four delta specs. Original:
+  ~~Raise account deletion~~ as its own proposal before Phase 2 of the native work starts —
   it is a store-submission requirement, it is not in this change, and 1.14 assumes it will exist.

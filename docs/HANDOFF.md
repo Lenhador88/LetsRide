@@ -44,50 +44,114 @@ renumbered them, which is how "group 2" ended up meaning two different things in
 
 | Group | Phase | | Status |
 |---|---|---|---|
-| 1 | 1 | Integrity migrations `018`–`023` | **Applied half done** — see below |
-| 2 | 1b | Consent prompt (one screen, one user) | Q11/Q12 answered; the prompt is unbuilt and it unblocks `023` |
-| 3 | 2 | Make `lib/data/` isomorphic | **Done 2026-08-05** — see below |
-| 4 | 3 | Session → device secure storage, auth, recovery | **← next build** |
-| 5 | 4 | Screens, one route group at a time | Not started; the bulk |
+| 1 | 1 | Integrity migrations `018`–`026` | **Done.** `018`–`022`, `021`, `026` applied; `023` + `025` apply after this deploys |
+| 2 | 1b | Consent prompt (one screen, one user) | **Done 2026-08-06** — `/onboarding/terms`, exercised against the live database |
+| 3 | 2 | Make `lib/data/` isomorphic | **Done 2026-08-05** |
+| 4 | 3 | Session → device secure storage, auth, recovery | **Done except 4.1/4.2/4.5/4.6** — see below |
+| 5 | 4 | Screens, one route group at a time | **← next build.** Infrastructure is built and tested; no screen is converted |
 | 6 | 5–6 | Retire the server render path | Not started |
-| 7 | — | Verification and handoff | Not started |
+| 7 | — | Verification and handoff | 7.2/7.3/7.5 done; 7.1 green; the rest belongs to groups 5–6 |
 
-**Only group 1 is independently landable.** Groups 2–4 are one continuous unit — an earlier
-draft claimed each phase left the app working and two did not, which review caught.
+**Groups 5 and 6 are one continuous unit and neither is started.** Everything else has landed.
+
+### What is left, precisely
+
+Group 4's remainder is **only the session move**, and it is deliberately last: 4.1 (storage
+adapter wired), 4.2 (no tokens in web storage), 4.5 (sign-out destroys local state) and 4.6
+(shared device). The seam exists — `src/lib/supabase/session-store.ts`, with the native
+secure-store contract, the labelled `localStorage` fallback and `clearSessionStore()` — but
+**nothing constructs a client with it yet**, on purpose.
+
+**The plan's sequencing for groups 4–5 was wrong and the corrected order is safer.** `tasks.md`
+4.1 puts the session move first, behind a flag, because it assumed group 4 might merge before
+group 5. It does not have to. The session cookie `@supabase/ssr` sets is **not** httpOnly —
+measured, see below — so a client component reading through `lib/data/` works *today* under the
+cookie session. So:
+
+1. **Convert the screens first**, keeping cookie sessions and `proxy.ts` exactly as they are.
+   Every intermediate state is a working, walkable app, and `npm run walk` proves it.
+2. **Then move the session and the guard together**, in one change, and delete `@supabase/ssr`.
+
+That removes the flag entirely and the "cookie/device-storage split cannot straddle a merge"
+hazard with it, because there is never a moment when half the session has moved.
 
 **Group 1 is worth having whether or not the render migration ever happens.** It is the only
 one like that: three of its migrations close defects that are live today, because the
 publishable key ships in the client bundle and PostgREST accepts any rider's JWT. A Server
 Action omitting a column has never been a rule.
 
-### Where group 1 got to
+### Where group 1 got to — finished, and `021` was two migrations
 
-Applied 2026-08-05, each pre-flighted against the hosted project at apply time:
+Applied 2026-08-05, each pre-flighted at apply time: `018_text_bounds`,
+`019_club_member_role`, `020_profile_countries_known_code`, `022_private_club_rides`,
+`021_onboarding_state_accessors` and `026_password_reset_grant`.
 
-- `018_text_bounds` — ten CHECKs matching the Zod schemas
-- `019_club_member_role` — a rider may only insert `role='member'` unless they own the club.
-  **Before this, any rider could join any public club as `owner` or `admin`.**
-- `020_profile_countries_known_code` — 249 assigned ISO codes, extracted from
-  `src/lib/countries.ts` by script. `ZZ` was previously valid.
-- `022_private_club_rides` — a private club's ride cannot be public. **Before this, a private
-  club's ride crew was readable by every signed-in rider.**
+**`021` held a deployment deadlock and was split.** It contained both the accessor functions and
+the revoke that makes them necessary, and those must apply at different times relative to the
+code deploy — new code on an old database calls a function that does not exist and the guard
+bounces every signed-in rider; old code on a new database loses four live paths. Neither
+ordering of one file works. Now:
 
-**Written and deliberately NOT applied — do not apply them casually:**
+- **`021_onboarding_state_accessors.sql`** — additive only: `my_onboarding_state()`,
+  `accept_terms()`, `complete_onboarding(location)`. **Applied.**
+- **`025_profile_column_privileges.sql`** — the revoke and the column allowlist. **Unapplied**;
+  applies after this change deploys.
 
-- **`021_profile_column_privileges`** has no additive form. `proxy.ts` reads
-  `onboarding_completed_at` on *every authenticated request*, `setLocation` writes the
-  completion stamp alongside `location`, `signUp` writes the consent stamp and checks the
-  result, and `getMyProfile` uses `.select('*')`. Applying it alone is a total outage for every
-  signed-in rider. It ships with those four repairs, in the group that owns them.
-- **`023_participation_gate`** refuses writes from riders whose stamps are unset. All four
-  riders have `terms_accepted_at` NULL, so applying it locks everyone out including the owner.
-  The consent prompt (group 1b) comes first. **No migration may write a consent timestamp on a
-  rider's behalf.**
-- **The two are mutually incompatible as drafted** — `023` gates on stamps `021` removes the
-  only client path to setting. Hence two pending suites and no mode that applies both.
+That split is also what made `023` and `025` compatible, which they were not before: `023` gated
+on stamps `021` removed the only client path to setting, and the answer is that the database
+writes them now. `PENDING=023+025 npm test` proves the pair.
 
-Both are in `SKIP_MIGRATIONS` in `supabase/tests/run.sh`, so the suite models the database that
-actually runs. That is a deliberate, recorded exception to *unapplied migrations are drift*.
+**The Postgres trap that shaped all three functions.** Inside a `security definer` function
+`current_user` is the *owner*, so `003`'s and `012`'s trigger guards — which both begin
+`if current_user <> 'authenticated' then return new` — short-circuit and never run. Every
+invariant those triggers carry is restated in the function bodies. CHECK constraints do still
+fire. Measured on Postgres 16, with the NOTICE output in `021`'s header.
+
+**Still unapplied, deliberately: `023` and `025`.** Both are in `SKIP_MIGRATIONS`. Apply order
+after this merges and Vercel reports READY: **`023`, then `025`.** `list_migrations` reads 24
+rows today against 26 files; it reads 26 when both are in.
+
+### One correction to the risk register, measured
+
+`design.md` §Risks opens with "**The refresh token becomes JS-readable**", presented as a
+reduction the migration causes and accepts. **It is already JS-readable, today, on `main`.**
+`@supabase/ssr` sets `sb-<ref>-auth-token` with `httpOnly=false` — it has to, because the
+browser client reads the session back out of `document.cookie`. Measured with a real sign-in:
+the cookie is present in `document.cookie` and is the only cookie the app sets besides the
+recovery marker.
+
+So the migration does not change refresh-token exposure at all. What it changes is the *store*
+— cookie to device storage, which in a native shell is strictly better. The genuine reduction
+in this change is elsewhere and smaller: `lr-recovery` **was** httpOnly, and `026` replaces it
+with a Supabase-signed claim plus a spent-grants table. The mitigations §Risks lists (no
+third-party scripts in the authenticated tree, refresh-token rotation) are still right; the
+sentence that motivates them was not.
+
+This also has a happy consequence for sequencing, recorded under *What is left* above: because
+a client component can already read the session, the screens can be converted before the
+session moves.
+
+### The recovery cookie is gone, and D3's Edge Function was unbuildable
+
+`026` replaces the httpOnly `lr-recovery` cookie. D3 specified an Edge Function that exchanges
+the recovery code — **it cannot be built.** `@supabase/ssr` 0.12.4 hardcodes PKCE, so
+`resetPasswordForEmail` stores the `code_verifier` in the *client's* own storage and
+`exchangeCodeForSession` requires it back; no server can hold it.
+
+What D3 wanted was a proof the client cannot forge, and one already exists: the project mints
+**ES256** tokens and GoTrue records `amr: [{method: "recovery"}]` for a recovery session.
+PostgREST verifies that signature before opening a transaction and puts the payload in
+`auth.jwt()`, so the check is plain SQL — no secret, no service-role key, nothing to deploy but
+a migration. Decision #8's second bullet stays shut.
+
+**What it does not close, and who closes it.** This gates the app's front door, exactly as the
+cookie did — not GoTrue's `PUT /auth/v1/user`, which any live-session holder can call with the
+publishable key that ships in the bundle. The platform gate that *would* close it is
+`UpdatePasswordRequireCurrentPassword`, whose implementation already checks
+`session.IsRecovery()`. **Owner action** — it is a project setting, not something a migration can
+reach. Measured against the live project: `PUT /auth/v1/user` with the fixture's existing
+password returns `422 same_password`, and that check sits *after* both platform gates, so
+reaching it proves both are currently off.
 
 ### One Postgres gotcha worth carrying forward
 
@@ -163,68 +227,79 @@ grant list named `avatar_url`. `run.sh` applies by filename, so locally `021` ru
 `42703` and takes the migration down. Removed — required under every reading of `021`'s open
 shape question. Proven both ways against a scratch database in the real hosted order.
 
-### Starting group 4 — the surface, measured 2026-08-05
+### Starting group 5 — the surface, re-measured 2026-08-06
 
-Each line is a command, not a number to trust. Groups 3–5 are one continuous unit, so nothing
-between here and the end of group 5 leaves the app in a shippable state on its own.
+Each line is a command, not a number to trust.
 
 | What | Value | Re-derive |
 |---|---|---|
-| Real `next/headers` importers | **3** | `git grep -lc "^import .*from 'next/headers'" -- 'src/**/*.ts' 'src/**/*.tsx'` |
-| `RECOVERY_COOKIE` call sites | 4 files | `git grep -n RECOVERY_COOKIE -- src/` |
-| `revalidatePath` claims | 41 / 8 files | `git grep -c revalidatePath -- 'src/lib/actions/*.ts'` |
-| `redirect()` in actions | 12 / 5 files | `git grep -c 'redirect(' -- 'src/lib/actions/*.ts'` |
-| Pages / of which server | 23 / **18** | first-line match, see below |
-| Components / of which server | 53 / **26** | same |
+| Pages / of which server | 24 / **17** | first-line match, see below |
+| Components / of which server | 56 / **27** | same |
+| `revalidatePath` call sites | **33**, 8 files | `git grep -o "revalidatePath(" -- 'src/lib/actions/*.ts' \| wc -l` |
+| `redirect()` in actions | 14 / 5 files | `git grep -o 'redirect(' -- 'src/lib/actions/*.ts' \| wc -l` |
+| Real `next/headers` importers | **2** | `git grep -l -e "^import .*from 'next/headers'" -- 'src/**/*.ts' 'src/**/*.tsx'` |
 
-**A bare `git grep next/headers` reports 7, not 3.** Four of those are prose — this change added
-three of them, in `resolve.ts`, `resolve.browser.ts` and `columns.ts`, all describing the rule
-rather than importing the module. Same trap as the `lucide-react` count and the v1-token count
-before it. Anchor the pattern:
+**That was 3 and is now 2**: `/auth/reset-password` read the recovery cookie and no longer
+exists as a server page. The remaining two are `lib/actions/auth.ts` and
+`lib/supabase/server.ts` itself. Note the `-e` — without it `git grep` reads the pattern's
+`.*from` as a revision and dies, which reads like the file being absent.
 
 ```bash
 for f in $(git ls-files 'src/app/**/page.tsx'); do head -1 "$f" | grep -q "'use client'" || echo "$f"; done | wc -l
 ```
 
-**Of the six auth and onboarding screens, five are already client pages.** The one that is not is
-`/auth/reset-password`, and it is a server page precisely because it reads the httpOnly recovery
-cookie — so task 4.7 and the D3 Edge Function are the same piece of work, not two. It is also one
-of the three real `next/headers` importers; the other two are `lib/actions/auth.ts` (same cookie)
-and `lib/supabase/server.ts` itself.
+**`revalidatePath` is 33, not the 41 in `design.md`, `tasks.md` and the earlier version of this
+file.** All three cite `git grep -c`, which counts *lines containing the word* — and 8 of those
+are the `import { revalidatePath } from 'next/cache'` line at the top of each of the 8 files.
+33 + 8 = 41. This is the same counting trap CLAUDE.md documents three times over (the
+`lucide-react` importer count, the v1-token count, the `next/headers` count), reproduced by the
+very plan that warns about it. The cache-key contract in `src/lib/query/keys.ts` maps all 33.
 
-**Do not move the session before the guard moves (4.1).** `proxy.ts` reads `request.cookies`; a
-half-moved session redirects every request to login. The storage adapter stays behind a flag
-until 5.1 converts the guard, in the same change as the first route group.
+**Most of the 27 "server components" need no work.** They carry no `'use client'` directive but
+are pure presentational — they join the client graph automatically the moment a client page
+imports them. The real work is the 17 pages.
 
----
+**What already exists for group 5, built and unit-tested but wired to nothing:**
+
+- `src/lib/query/` — `useQuery`, `invalidate`, `setQueryData`, `clearQueryCache`, plus
+  `keys.ts`, which is the contract mapping all 33 invalidation claims to cache keys.
+- `src/components/ui/Skeleton.tsx` and the four D7 shapes; `ErrorState`, `OfflineState`,
+  `useOnlineStatus`.
+
+**Two gotchas the conversion will meet on the first page.** `searchParams` becomes
+`useSearchParams()`, which Next requires inside a `<Suspense>` boundary; `params` becomes
+`useParams()`. And `lib/data/` must be read **in an effect, never during render** —
+`resolve.browser.ts` throws a named error if you get that wrong, which is deliberate.
 
 ## Do this first
 
-1. **`tasks.md` group 4 (Phase 3) — session, auth and the recovery grant.** Group 3 landed
-   2026-08-05; groups 3–5 are one continuous unit, so this is the next piece of it. Read
-   group 4's tasks and design D2/D3 before starting — the storage adapter must stay behind a
-   flag until the guard moves in 5.1, because `proxy.ts` reads `request.cookies` and a
-   half-moved session redirects every request to login.
-2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
-   nothing, with no alert, so the deployed app goes down silently. **Owner action** — needs Pro
-   before anything resembling launch.
-3. **Exercise signup end to end.** Nobody has ever completed the current signup flow on this
-   database — the owner's account predates the consent write, both `.test` fixtures were
-   SQL-inserted because Supabase rejects that TLD, and the one real attempt matches `signUp`'s
-   own documented failure path. **The one path every rider takes is unproven.** Needs an email
-   domain the owner controls, which is why it has never been done. **Owner action.**
-4. **Decide `021`'s shape** — ship it whole with its four code repairs, or narrow it to SELECT
-   and still repoint two readers. **Owner decision**, blocks nothing today.
-5. **Enable leaked-password protection** — one dashboard toggle, the only outstanding security
-   advisor that is not deliberate. **Owner action.**
-6. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
+1. **Apply `023`, then `025`** — in that order, and only once this change has merged and Vercel
+   reports READY. Both are written, asserted and in `SKIP_MIGRATIONS`. **Applying `025` before
+   the deploy is an instant outage**; applying it before `023` is fine but pointless. Nothing
+   goes red if this is forgotten: CI is green either way, and this line is the only signal.
+   `list_migrations` reads **24 rows against 26 files** today; it reads 26 when both are in.
+   Then `get_advisors` (security) — expect the two known findings plus the `security definer`
+   functions `021` and `026` added, which are correct rather than regressions.
+2. **Group 5: convert the screens.** Read *Starting group 5* above for the corrected sequencing
+   — screens first under cookie sessions, then the session and guard together. The
+   infrastructure is built; no screen uses it yet.
+3. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. **Owner action.**
+   It is what actually closes the recovery hole `026` can only gate at the app's front door —
+   see *The recovery cookie is gone* above. Measured as currently off.
+4. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
+   nothing, with no alert. **Owner action** — needs Pro before anything resembling launch.
+5. **Exercise signup end to end.** Still never done on this database: the owner's account
+   predates the consent write, both `.test` fixtures were SQL-inserted because Supabase rejects
+   that TLD, and the one real attempt matches `signUp`'s own documented failure path. Needs an
+   email domain the owner controls. **Owner action.** Note `npm run walk` now covers everything
+   *after* signup, so this is the one remaining unproven path.
+6. **Enable leaked-password protection** — one dashboard toggle, still the only outstanding
+   security advisor that is not deliberate. **Owner action.**
+7. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
    `-- --delete`. Two objects, 1.15 MB, left by a bug fixed in #21. Whether the tool has ever
    been *run* is unknown; the dry run is free and settles it.
-7. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
-   `/postcards/[id]` still carry inferred composition; the design has frames for both. A diff
-   now, not a re-derivation.
-
----
+8. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
+   `/postcards/[id]` still carry inferred composition; the design has frames for both.
 
 ## Running things in this container
 
@@ -233,12 +308,13 @@ until 5.1 converts the guard, in the same change as the first route group.
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*, the cluster is down: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*, the role has no password: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Pending-migration suites | `PGPASSWORD=postgres PENDING=021 npm test`, same for `023` |
+| Pending-migration suites | `PGPASSWORD=postgres PENDING=023 npm test`, same for `025`, and **`PENDING=023+025`** for the pair — the mode that proves the two once-incompatible migrations apply together |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **383** on 2026-08-05 |
 | Unit tests | `npm run test:unit` — **397** on 2026-08-05 |
 | Dev server | **`NODE_USE_ENV_PROXY=1 npm run dev`** — Node's `fetch` ignores `HTTPS_PROXY`, so every server-side Supabase call fails with a proxy page while `curl` succeeds. The app surfaces that as "That email and password do not match an account", which reads like a credentials problem and is not one |
 | `.env.local` | Write `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
-| Playwright | `npm install --no-save playwright-core`, `executablePath: /opt/pw-browsers/chromium-1194/chrome-linux/chrome`. Never `playwright install` |
+| **Walking the app** | **`WALK_EMAIL=... WALK_PASSWORD=... npm run walk`**, with the dev server already up. Signs in as a real rider and reports every screen that redirected, hit the error boundary or came back empty. This is what task 7.2 asks for, and it is the only gate that renders anything — `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load |
+| Playwright | `npm install --no-save playwright-core` (already a devDependency of nothing — install it before `npm run walk`), `executablePath: /opt/pw-browsers/chromium-1194/chrome-linux/chrome`. Never `playwright install` |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`, installed 2026-08-05. The bare `openspec` npm name is a 0.0.0 stub |
 
 **Network, measured — a blocked host fails as `curl: (56) CONNECT tunnel failed`, not as a
@@ -292,10 +368,13 @@ application bug.** The same requests return 200 from the shell. Launch Chromium 
 | Email | Username | State |
 |---|---|---|
 | `duskrider@letsride.test` | `duskrider` | Onboarded. **SQL-inserted**, never signed in |
-| `qa-verify@letsride.test` | `verify24321868` | Onboarded. **SQL-inserted** |
+| `qa-verify@letsride.test` | `verify24321868` | Onboarded, **and consented 2026-08-06** — the first row on this database with a real `terms_accepted_at`, written by the consent prompt through `accept_terms()` rather than by SQL. **SQL-inserted** originally |
 
 **Passwords are not in this repo and must never be.** `duskrider`'s lives with the product
-owner; `qa-verify`'s is in the git history of this file and should be treated as burned.
+owner; `qa-verify`'s is in the git history of this file and should be treated as burned — which
+also makes it the credential `npm run walk` uses, since a burned password on a fixture marked
+for deletion is the right thing to hand a smoke test. Pass it in the environment, never on a
+command line that gets logged.
 
 Both are acceptable only because the app is **not live**. **Delete both before launch:**
 
