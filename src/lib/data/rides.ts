@@ -79,7 +79,7 @@ export const RIDE_CREW_LIMIT = 200
 const RIDE_SELECT = `
   id, title, meeting_point, departure_at, organizer_id,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
-  club:clubs(${CLUB_EMBED_COLUMNS}),
+  club:clubs(id, name),
   riders:ride_members(user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
 `
 
@@ -90,7 +90,7 @@ export type RideRow = {
   departure_at: string
   organizer_id: string
   organizer: PublicProfile | null
-  club: EmbeddedClub | null
+  club: Pick<EmbeddedClub, 'id' | 'name'> | null
   riders: { user_id: string; status: 'going' | 'maybe'; profile: PublicProfile | null }[] | null
 }
 
@@ -221,14 +221,13 @@ export async function getRides(
   // `riders`, and resolving afterwards would sign the originals while the card
   // rendered the copies. Same object identity either way here — the copies are
   // references — but relying on that is a trap the next edit springs.
-  // Clubs ride along in the same request: `resolveAvatarUrls` is structural, and
-  // a club's chip needs its avatar signed for exactly the reason a rider's does.
+  // The club is deliberately absent here. `RideCard` draws it as a text chip,
+  // not an avatar, so selecting and signing a club image for every row in the
+  // list would be a round trip for something nothing renders — the same reason
+  // the postcard deck embeds `id, name`. The three surfaces that *do* draw a
+  // club image are the ride detail chip and the two filter bars.
   await resolveAvatarUrls(
-    rows.flatMap((row) => [
-      row.organizer,
-      row.club,
-      ...(row.riders ?? []).map((member) => member.profile),
-    ]),
+    rows.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
     supabase
   )
 

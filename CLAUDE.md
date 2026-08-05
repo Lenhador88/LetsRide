@@ -103,6 +103,9 @@ block* had it. A directive is only a directive on line one.
    in `package.json`, with halves `resolve.rsc.ts` and `resolve.browser.ts`. Server components,
    Server Actions and Route Handlers get the first; both client layers get the second.
 
+   `proxy.ts` gets the server half too, measured — worth knowing, because it reads `profiles`
+   on every authenticated request and is the most likely future caller of this layer.
+
    **Read in an effect or an event handler, never during render.** A `'use client'` component is
    still server-rendered until Phase 6, and in that pass the browser client has no
    `document.cookie` to find a session in — so a read issued from a component body is anonymous,
@@ -191,6 +194,9 @@ src/
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
+│   │   ├── resolve.ts      # THE data layer's doorway — resolves per graph. Read its header
+│   │   ├── resolve.rsc.ts  # its react-server half   } picked by the #supabase/data-client
+│   │   ├── resolve.browser.ts # its default half     } condition in package.json
 │   │   ├── client.ts       # Browser client — use in 'use client' components
 │   │   └── server.ts       # Server client — use in server components / route handlers
 │   ├── data/               # Read functions — the only place that queries Supabase
@@ -269,10 +275,16 @@ Three further rules:
 
 ## Supabase Rules
 
-**Always use the right client:**
+**Always use the right client. There are now three doorways, and the first one is
+the one most code wants:**
+- **Anything in `src/lib/data/`** → `import { resolveSupabase } from '@/lib/supabase/resolve'`.
+  It resolves the right client per graph via the `react-server` export condition, which is what
+  makes the layer callable from a client component. **Reaching past it into
+  `@/lib/supabase/server` here re-breaks that**, and `src/lib/data/__tests__/isomorphic.test.ts`
+  fails loudly if you do.
 - Server components, Route Handlers, Server Actions → `import { createClient } from '@/lib/supabase/server'`
 - Client components (`'use client'`) → `import { createClient } from '@/lib/supabase/client'`
-- Never cross these. Never import the server client in a client component.
+- Never cross the last two. Never import the server client in a client component.
 
 **RLS is ON for all tables.** Every query runs under the authenticated user's session. You do not need to filter by `user_id` manually — RLS policies enforce ownership. But do add RLS policies in migrations for any new table.
 
@@ -280,7 +292,7 @@ Three further rules:
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone** — `024` dropped it from `profiles` and from `clubs` after verifying 0 non-NULL rows on both. `014` had kept it as a fallback rather than dropping it unverified; that verification is now done. The name survives as a *field on what `lib/data/` returns*, holding the signed URL, never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. |
+| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **dropped by `024` — which is written and NOT YET APPLIED**, so the live database still has the column today. Check with `list_migrations` before acting on this row. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. `src/` already stopped selecting it, and the name survives there as a *field on what `lib/data/` returns*, holding the signed URL. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. |
 | `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. |
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. |
@@ -292,7 +304,7 @@ Three further rules:
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
 | `postcard_hides` | `(postcard_id, user_id)` composite PK. **Per-viewer and one-directional**, unlike `blocks` — a row only ever removes a postcard from its own `user_id`'s feed. It is an input to the `postcards` SELECT policy, so `club_id` is no longer the sole determinant of what a viewer sees. |
 | `profile_countries` | `(user_id, country_code)` composite PK, added by `014`. Countries a rider says they have ridden in, **entered manually** — the derived reading is unbuildable, `rides` has no country or coordinates. `country_code` is ISO 3166-1 alpha-2 with a CHECK; there is no `countries` reference table, because the picker's list is the client's and nothing joins against it. SELECT inherits the profiles predicate via `EXISTS`, so blocking works without the word appearing in the policy. |
-| `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; `024` dropped it. Until then five query sites embedded `clubs(id, name, avatar_url)` and drew initials on every ride and postcard surface, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
+| `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; **`024` drops it and is not yet applied**. Five query sites embedded `clubs(id, name, avatar_url)`; the three that draw an image could only ever draw initials, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
 

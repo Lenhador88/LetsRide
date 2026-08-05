@@ -30,16 +30,25 @@
 export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
 
 /**
- * The club columns an embed needs to draw a club's chip or tile.
+ * The club columns an embed needs to draw a club's **image**.
  *
  * Same rule as `PUBLIC_PROFILE_COLUMNS`, and it exists because `024` turned a
  * silent wrong answer into a loud one. Five query sites embedded `clubs(id,
- * name, avatar_url)` and passed the result straight to an `<Avatar>`: the rides
- * list, the ride-detail chip, the ride filter tiles, the postcard deck and the
- * postcard filter tiles. `clubs.avatar_url` was NULL on every row and always had
- * been, so all five silently drew initials — a club avatar uploaded through
- * `/clubs/new` (016) showed up on the Clubs screens, which sign `avatar_path`,
- * and nowhere else.
+ * name, avatar_url)`, and `clubs.avatar_url` was NULL on every row and always
+ * had been, so any of them that drew an image drew initials instead — while
+ * `/clubs/new` had been uploading to `avatar_path` since `016`, which the Clubs
+ * screens sign and no other screen did.
+ *
+ * **Three of those five draw an image; two draw text.** Use this constant only
+ * for the three — the ride-detail chip, the ride filter tiles and the postcard
+ * filter tiles. `RideCard` and `PostcardCard` render the club as a text chip, so
+ * `getRides` and the postcard deck embed `id, name` and neither selects nor
+ * signs an image nothing renders. Getting that wrong costs a signing round trip
+ * per page and ships a signed URL in the payload for no reader.
+ *
+ * It was latent rather than live: as of 2026-08-05 no club and no rider has any
+ * `avatar_path` either, so nothing has yet rendered differently. The defect is
+ * that the code read a column that could never hold a value.
  *
  * Selecting the path is only half of it: the caller must then sign it, which is
  * why every use of this constant is followed by a `resolveAvatarUrls` pass over

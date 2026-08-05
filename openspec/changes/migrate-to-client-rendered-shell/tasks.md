@@ -144,11 +144,18 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
 - [x] 3.3 Add a unit test asserting the data layer works under both branches, alongside the
   existing `use-server-exports` test — the same class of failure that shipped `/postcards/new`
   dead, and the exact failure an earlier revision of this plan would have shipped.
-  **`src/lib/data/__tests__/isomorphic.test.ts`, 16 assertions.** It walks the local module
+  **`src/lib/data/__tests__/isomorphic.test.ts`, 17 assertions.** It walks the local module
   graph from every `lib/data/` module and fails if any of them reaches `next/headers`; asserts
   the conditional mapping's shape and that nothing bypasses it; and imports both halves to
   prove each is the one it claims. Negative-controlled — re-introducing the server import into
   `lib/data/profile.ts` fails exactly that module's case.
+
+  **It also pins the one mistake no static gate can catch.** Moving the split from a build-time
+  error to a runtime condition made a client component reading *during render* legal to compile,
+  where it used to fail `next build`. `resolve.browser.ts` now throws a named error when there is
+  no `document`, which puts the loudness back: static prerendering runs the SSR pass, so a page
+  that reads during render fails the build with the message rather than failing closed at RLS in
+  production. Verified by building exactly that page.
 - [x] 3.4 **One unit, one PR:** `024_drop_legacy_avatar_url.sql` dropping `profiles.avatar_url`
   and `clubs.avatar_url`, *together with* the `PUBLIC_PROFILE_COLUMNS` edit at
   `src/lib/data/columns.ts` and the `resolveAvatarUrls` fallback removal. Re-run the census
@@ -156,26 +163,34 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
   changed. **Census re-run at write time: `profiles` 4 rows / 0 non-NULL, `clubs` 2 rows / 0
   non-NULL.**
 
-  **This task's repair list was six query sites short, and the missing six were a live bug.**
+  **This task's repair list was six query sites short, and the missing six were a latent bug.**
   It named `PUBLIC_PROFILE_COLUMNS` and `resolveAvatarUrls`. Three club embeds in `rides.ts`,
   two in `postcards.ts` and one hand-spelled profile select in `rides.ts` named `avatar_url`
-  directly, reachable through neither. Five of those six fed an `<Avatar>` — the rides list, the
-  ride-detail chip, the ride filter tiles, the postcard filter tiles — and `clubs.avatar_url`
-  was NULL on every row and always had been, so **all of them silently drew initials**. A club
-  avatar uploaded through `/clubs/new` (016) appeared on the Clubs screens, which sign
-  `avatar_path`, and nowhere else. Fixed by `CLUB_EMBED_COLUMNS` plus a `resolveAvatarUrls` pass
-  at each site; the deck's embed went back to `id, name` because it draws only the name.
+  directly, reachable through neither.
+
+  **Three of those five club sites draw an image; two draw text.** `RideCard` and `PostcardCard`
+  render the club as a text chip, so `getRides` and the postcard deck embed `id, name` and sign
+  nothing — a first pass had the rides list selecting and signing an image nothing renders, which
+  review caught. The three that do draw one — the ride-detail chip, the ride filter tiles, the
+  postcard filter tiles — take `CLUB_EMBED_COLUMNS` plus a `resolveAvatarUrls` pass.
+  `clubs.avatar_url` was NULL on every row and always had been, so those three could only ever
+  draw initials, while `/clubs/new` (016) had been uploading to `avatar_path` and only the Clubs
+  screens signed it. **Latent rather than live**: 0 clubs and 0 riders have any `avatar_path`
+  either, so nothing has yet rendered differently — the defect was reading a column that could
+  never hold a value.
 - [x] 3.5 Assertions for 3.4: the columns are absent from `information_schema.columns`, and a
   rider still cannot write any image reference outside their own Storage folder. **13 new
   assertions, suite 370 → 383.** Mutation-tested: three name-preserving mutations of the
   constraints and policies each fail exactly one new assertion and nothing pre-existing.
 - [x] 3.6 Extend the Vitest suite to cover `src/lib/data/` for the first time — currently
-  uncovered, and this group changes every function in it. **`media.test.ts` (13) and
-  `columns.test.ts` (12).** `media.ts` first because every screen depends on it and none fail
+  uncovered, and this group changes every function in it. **`media.test.ts` (11) and
+  `columns.test.ts` (46).** `media.ts` first because every screen depends on it and none fail
   loudly when it is wrong — a missed signing pass renders initials, which is a state the design
   draws deliberately elsewhere, so the bug reads as a design choice. `columns.test.ts` scans
-  every select in the layer for a dropped column, which is the guard that would have caught all
-  six sites in 3.4; both are negative-controlled.
+  every select in `lib/data/`, `lib/actions/` **and `proxy.ts`** for a dropped column — the guard
+  that would have caught all six sites in 3.4. Both are negative-controlled, and the select
+  matcher skips comments between `(` and the literal, because review defeated an earlier version
+  with `.select(\n  // comment\n  'id, avatar_url')` — this repo's house style, not an exotic case.
 
 ### Two things this group found that the plan did not predict
 

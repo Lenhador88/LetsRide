@@ -117,16 +117,31 @@ npm run build && grep -rho "src/lib/supabase/resolve\.[a-z]*\.ts" .next/server |
 grep -rc "next/headers" .next/static | grep -v ":0"   # prints nothing
 ```
 
-**One rule no test can enforce: read in an effect or an event handler, never during render.** A
-`'use client'` component is still server-rendered until Phase 6, and there the browser client
-has no session to find, so a read from a component body fails closed at RLS.
+**One rule, and it is enforced after all.** *Read in an effect or an event handler, never during
+render.* A `'use client'` component is still server-rendered until Phase 6, and there the browser
+client has no session to find. Moving the split from a build error to a build-time *condition*
+made that mistake legal to compile, so `resolve.browser.ts` throws a named error when there is no
+`document` — static prerendering runs the SSR pass, so the page fails the build with the message
+instead of failing closed at RLS in production. Verified by building exactly that page.
 
-**`024` dropped `profiles.avatar_url` and `clubs.avatar_url`, and the plan's repair list was six
+**`024` drops `profiles.avatar_url` and `clubs.avatar_url`, and the plan's repair list was six
 query sites short.** Three club embeds in `rides.ts`, two in `postcards.ts`, one hand-spelled
-profile select — none reachable through `PUBLIC_PROFILE_COLUMNS`. Five fed an `<Avatar>`, and
-`clubs.avatar_url` was NULL on every row, so **the rides list, the ride-detail chip and both
-filter bars silently drew initials** while `/clubs/new` had been uploading club avatars since
-`016`. Fixed with `CLUB_EMBED_COLUMNS` and a signing pass at each site.
+profile select — none reachable through `PUBLIC_PROFILE_COLUMNS`. `clubs.avatar_url` was NULL on
+every row and always had been, so **the three surfaces that draw a club image could only ever
+draw initials**: the ride-detail chip, the ride filter tiles and the postcard filter tiles.
+`/clubs/new` has been uploading to `avatar_path` since `016` and only the Clubs screens signed it.
+Fixed with `CLUB_EMBED_COLUMNS` and a signing pass at those three.
+
+Two corrections a review made to that paragraph, kept because both were easy to get wrong.
+**`RideCard` and `PostcardCard` draw the club as a text chip, not an avatar** — so the rides list
+and the postcard deck embed `id, name` and sign nothing; a first pass had the list selecting and
+signing an image nothing renders. And it was **latent, not live**: 0 clubs and 0 riders have any
+`avatar_path` either, so nothing has yet rendered differently. The defect was reading a column
+that could never hold a value.
+
+```sql
+select count(*) filter (where avatar_path is not null) from public.clubs;   -- 0 on 2026-08-05
+```
 
 **`024` is written and NOT applied — deliberately, and unlike `021`/`023` it is not in
 `SKIP_MIGRATIONS`.** Dropping a column `main` still selects is an instant outage. The code
@@ -156,22 +171,30 @@ shape question. Proven both ways against a scratch database in the real hosted o
    group 4's tasks and design D2/D3 before starting — the storage adapter must stay behind a
    flag until the guard moves in 5.1, because `proxy.ts` reads `request.cookies` and a
    half-moved session redirects every request to login.
-2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
+2. **Apply `024` — but only after the code is merged and deployed.** It is written, asserted
+   and unapplied. **Nothing goes red if this is forgotten**: the code works with or without the
+   column, CI is green and the RLS suite is green, because `024` is deliberately not in
+   `SKIP_MIGRATIONS`. The only signal that it is outstanding is this line.
+   `mcp__Supabase__list_migrations` shows 21 rows against 24 files; `024` is applied when that
+   reads 22. Then `get_advisors` (security) — expect exactly the two known findings, since it
+   creates no function and no view. **Applying it before the deploy is an instant outage on
+   `main`.**
+3. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
    nothing, with no alert, so the deployed app goes down silently. **Owner action** — needs Pro
    before anything resembling launch.
-3. **Exercise signup end to end.** Nobody has ever completed the current signup flow on this
+4. **Exercise signup end to end.** Nobody has ever completed the current signup flow on this
    database — the owner's account predates the consent write, both `.test` fixtures were
    SQL-inserted because Supabase rejects that TLD, and the one real attempt matches `signUp`'s
    own documented failure path. **The one path every rider takes is unproven.** Needs an email
    domain the owner controls, which is why it has never been done. **Owner action.**
-4. **Decide `021`'s shape** — ship it whole with its four code repairs, or narrow it to SELECT
+5. **Decide `021`'s shape** — ship it whole with its four code repairs, or narrow it to SELECT
    and still repoint two readers. **Owner decision**, blocks nothing today.
-5. **Enable leaked-password protection** — one dashboard toggle, the only outstanding security
+6. **Enable leaked-password protection** — one dashboard toggle, the only outstanding security
    advisor that is not deliberate. **Owner action.**
-6. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
+7. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
    `-- --delete`. Two objects, 1.15 MB, left by a bug fixed in #21. Whether the tool has ever
    been *run* is unknown; the dry run is free and settles it.
-7. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
+8. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
    `/postcards/[id]` still carry inferred composition; the design has frames for both. A diff
    now, not a re-derivation.
 
@@ -186,7 +209,7 @@ shape question. Proven both ways against a scratch database in the real hosted o
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*, the cluster is down: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*, the role has no password: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Pending-migration suites | `PGPASSWORD=postgres PENDING=021 npm test`, same for `023` |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **383** on 2026-08-05 |
-| Unit tests | `npm run test:unit` — **362** on 2026-08-05 |
+| Unit tests | `npm run test:unit` — **397** on 2026-08-05 |
 | Dev server | **`NODE_USE_ENV_PROXY=1 npm run dev`** — Node's `fetch` ignores `HTTPS_PROXY`, so every server-side Supabase call fails with a proxy page while `curl` succeeds. The app surfaces that as "That email and password do not match an account", which reads like a credentials problem and is not one |
 | `.env.local` | Write `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | Playwright | `npm install --no-save playwright-core`, `executablePath: /opt/pw-browsers/chromium-1194/chrome-linux/chrome`. Never `playwright install` |

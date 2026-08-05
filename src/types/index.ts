@@ -22,11 +22,17 @@ export type Profile = {
 }
 
 /**
- * Another rider as they appear to you: exactly the columns
- * PUBLIC_PROFILE_COLUMNS selects. Every embedded profile on the types below is
- * this rather than `Profile`, so that reading a field the query does not fetch
- * — `terms_accepted_at` on a club member, say — is a compile error rather than
- * `undefined` at runtime.
+ * Another rider as they appear to you. Every embedded profile on the types below
+ * is this rather than `Profile`, so that reading a field the query does not
+ * fetch — `terms_accepted_at` on a club member, say — is a compile error rather
+ * than `undefined` at runtime.
+ *
+ * **One field is deliberately not a column, and the guarantee above does not
+ * cover it.** `avatar_url` is written by `resolveAvatarUrls` from `avatar_path`;
+ * `024` dropped the column. A row with no `avatar_path` is never assigned, so it
+ * is `undefined` at runtime while typed `string | null`. That is invisible in
+ * practice — `<Avatar src={undefined}>` and `src={null}` both draw initials —
+ * and it is stated here rather than left as a lie in the sentence above.
  */
 export type PublicProfile = Pick<
   Profile,
@@ -82,8 +88,13 @@ export type RideListItem = {
   title: string
   meeting_point: string
   departure_at: string
-  /** The chip above the title. Null for a ride that belongs to no club. */
-  club: EmbeddedClub | null
+  /**
+   * The chip above the title. Null for a ride that belongs to no club.
+   *
+   * Name only, no image: `RideCard` draws this as a text chip. The ride *detail*
+   * screen draws an avatar and takes the full `EmbeddedClub`.
+   */
+  club: Pick<EmbeddedClub, 'id' | 'name'> | null
   /** Drawn first in the avatar row, with the brand ring. */
   organizer: PublicProfile | null
   /** Organizer first, then the crew — capped at RIDE_AVATAR_LIMIT. */

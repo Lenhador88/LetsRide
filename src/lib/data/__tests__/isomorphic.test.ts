@@ -184,12 +184,29 @@ describe('both halves resolve a usable client', () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= 'test-publishable-key'
   })
 
-  it('the browser half returns a real Supabase client', async () => {
+  it('the browser half returns a real Supabase client when there is a DOM', async () => {
     const { resolveSupabase } = await import('@/lib/supabase/resolve.browser')
-    const client = await resolveSupabase()
-    expect(typeof client.from).toBe('function')
-    expect(typeof client.storage.from).toBe('function')
-    expect(typeof client.auth.getUser).toBe('function')
+    // The suite runs in `node`, so the DOM has to be faked. Only `document`'s
+    // existence is read — `createBrowserClient` reaches for `document.cookie`
+    // lazily, at session time, not at construction.
+    const globals = globalThis as { document?: unknown }
+    globals.document = { cookie: '' }
+    try {
+      const client = await resolveSupabase()
+      expect(typeof client.from).toBe('function')
+      expect(typeof client.storage.from).toBe('function')
+      expect(typeof client.auth.getUser).toBe('function')
+    } finally {
+      delete globals.document
+    }
+  })
+
+  it('the browser half refuses to build a client with no DOM, and says why', async () => {
+    // The tripwire for the one mistake the export condition cannot catch: a read
+    // issued during the SSR pass of a client component. It would otherwise
+    // succeed into a session-less client and fail closed at RLS, far from here.
+    const { resolveSupabase } = await import('@/lib/supabase/resolve.browser')
+    await expect(resolveSupabase()).rejects.toThrow(/effect or an event handler/)
   })
 
   it('the react-server half is an async factory that demands a request scope', async () => {
