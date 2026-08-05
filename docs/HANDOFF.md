@@ -386,7 +386,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **281** tests (`npm run test:unit`). Vitest measured 2026-08-05 after the postcard overflow menu landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269 and 263/279. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **288** tests (`npm run test:unit`). Vitest measured 2026-08-05 after the deck-window fix landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269, 263/279 and 263/281. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |
@@ -675,6 +675,13 @@ badge says.
 - **The v1 pages have white headings on a cream background** — `clubs/*` and `/rides/new`.
   Invisible, not merely off-brand. Goes with their migration; count with the command in
   §State rather than trusting a number here.
+- ~~**Blocking could skip unseen cards in the deck.**~~ **Fixed 2026-08-05.** `PostcardDeck`
+  held a numeric `index` and sliced, which is only correct on an append-only list; a block
+  removes cards from the middle. It now holds the **set of ids already swiped past**, so a
+  removal cannot shift anything. Worth copying the shape, not just the fix: the bug was
+  unreachable until the overflow menu shipped block/hide/delete, and was fixed in the next
+  session because that change is what activated it. Write-up in
+  `docs/FIGMA-FIDELITY-TODO.md` §Postcard overflow menu.
 - **The swipe deck only moves forward.** A swipe in either direction advances, per the product
   owner's description, so there is no way back to a card you have passed except "Start over".
   If a carousel was meant instead, it is one change in `PostcardDeck.tsx`.
