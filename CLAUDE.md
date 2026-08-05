@@ -631,6 +631,18 @@ Rate your own ideas honestly, including low — an unrated suggestion reads as a
 the reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so
 in the number.
 
+**Letter them — A), B), C) — whenever you offer more than one.** A rated list is only half
+useful if the reader has to quote a sentence back to pick from it; a letter makes the reply
+"do A and C" instead. Number the *choices*, not the paragraphs, and keep one letter per thing
+that can be independently said yes to.
+
+Two things that make the list actually decidable:
+
+- **Say who does each one.** Some items are the owner's alone — a dashboard toggle, a
+  designer question, loading a page against the real database — and mixing them into a list
+  of build tasks hides the ones nobody but them can do.
+- **A single suggestion needs no letter.** `A)` on its own is ceremony.
+
 **Committed and pushed is not shipped.** Work only counts when it is on `main`. A branch that
 is green, pushed and reviewed still changes nothing until it merges — and the gap between
 "I opened the PR" and "it landed" is where things get dropped, because every other signal
