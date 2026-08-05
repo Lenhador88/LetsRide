@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   COMMENT_BODY_MAX_LENGTH,
+  REPORT_REASON_WHEN_UNDRAWN,
+  REPORT_REASONS,
   commentBodySchema,
   reportNoteSchema,
   reportPostcardSchema,
@@ -111,5 +113,23 @@ describe('the reason list and the migration', () => {
     const fromSql = [...match![1].matchAll(/'([a-z]+)'/g)].map((m) => m[1]).sort()
     const { REPORT_REASONS } = await import('@/lib/validation/comments')
     expect(fromSql).toEqual([...REPORT_REASONS].sort())
+  })
+})
+
+describe('REPORT_REASON_WHEN_UNDRAWN', () => {
+  it('is a member of the enum the CHECK constraint enforces', () => {
+    // The point of the constant is that the one caller cannot send a value the
+    // database will reject — the overflow menu has no reason picker to fall
+    // back to, so a bad default would fail at the insert with no UI to correct.
+    expect(REPORT_REASONS).toContain(REPORT_REASON_WHEN_UNDRAWN)
+    expect(reportReasonSchema.safeParse(REPORT_REASON_WHEN_UNDRAWN).success).toBe(true)
+  })
+
+  it('is `other`, and changing it is a product decision rather than a rename', () => {
+    // Asserted by value on purpose. Any other member would put a claim the
+    // rider never made — "spam", "harassment" — into a moderation record.
+    // If the design ever grows a reason step, this constant should be deleted,
+    // not repointed.
+    expect(REPORT_REASON_WHEN_UNDRAWN).toBe('other')
   })
 })

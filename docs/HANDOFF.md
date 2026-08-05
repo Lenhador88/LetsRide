@@ -21,9 +21,11 @@ What the pull changed, beyond retiring most of `docs/FIGMA-FIDELITY-TODO.md`:
 **Nothing is in flight — start new work from `main`.** Migrations `012` and `013` were applied
 on 2026-08-04, so **the repo and the hosted schema agree for the first time since `011`**.
 
-**What is still unverified is the parts the design cannot settle.** Three home-screen elements
-are blocked on schema rather than on Figma — unread badges, photo location, and the
-hide/block/report menu — and they are tabulated in `docs/FIGMA-FIDELITY-TODO.md`. The other
+**What is still unverified is the parts the design cannot settle.** Two home-screen elements
+are blocked on schema rather than on Figma — **unread badges** and **photo location** — and
+they are tabulated in `docs/FIGMA-FIDELITY-TODO.md`. This line used to name a third, the
+hide/block/report menu; that was wrong on both counts. It was never blocked on schema —
+`009` and `011` created every table it needed — and it was **built on 2026-08-05**. The other
 screens (create, thread) still carry their inferred composition; the snapshot can now settle
 them cheaply.
 
@@ -312,21 +314,27 @@ requirement (12px semibold is not "large text"). The green one is used well beyo
 screen, so it is a palette-wide issue the rides list merely surfaced. Both left exactly as
 drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md` §Rides list.
 
-**The card's overflow menu is the next build, and it is now fully specified.** Still callable
-and still called by nothing: `hidePostcard`, `unhidePostcard`, `reportPostcard`, `blockRider`,
-`unblockRider`, `deletePostcard`. That is one surface — an overflow menu on a card — rather
-than six, and the design draws all of it:
+~~**The card's overflow menu is the next build.**~~ **Built 2026-08-05.** Trust & safety was
+RLS-complete and UI-absent — a rider could not block or report anyone. **Four** of the six actions now have a caller — `hidePostcard`,
+`reportPostcard`, `blockRider`, `deletePostcard`, all from the card's menu. **`unhidePostcard` and `unblockRider` are still called by nothing**, and
+that is the real remaining gap: hiding and blocking are one-way from the UI. There is no
+"hidden postcards" or "blocked accounts" screen in the design either, so undoing either
+requires a frame before it requires code.
 
-| Frame | What it shows |
-|---|---|
-| `Postcard options` (`2302:5395`) | The sheet: `Hide postcard for me`, `Block account`, `Report post`, Poppins/16/Medium |
-| `Postcard hidden banner` (`2303:6009`) | The confirmation after hiding |
-| `Account blocked banner` (`2303:6169`), `Post reported banner` (`2303:6300`) | The other two confirmations |
+What it settled, and it is worth knowing before designing anything else moderation-shaped:
 
-Build it from those frames, not by extending the old guesses — and use the real icons
-(`Hide`, `Block Account`, `Report` are all in `src/components/icons/generated.tsx`). The
-"no lookalike substitutes" workaround that made the like and comment controls text-labelled
-is retired; those controls now carry their real icons.
+- **The design collects no report reason.** `Home / Report post` is marked Done and has four
+  frames with no reason step. The standing TODO said "verify the six reasons once the
+  snapshot is captured"; the answer is there was never anything to verify against. Every
+  report now lands as `other`, so `011`'s `reason` column carries no signal. **A question for
+  the designer**, written up in `docs/FIGMA-FIDELITY-TODO.md` §Postcard overflow menu.
+- **No row in the sheet is destructive-toned**, including `Block account`. The `Type=Warning`
+  variant exists in the component set and the design does not use it here.
+- **Delete is not drawn at all** — the sheet is for someone else's postcard. It was added on
+  the product owner's explicit call, with a two-tap confirm that is ours because the design
+  has no confirmation pattern anywhere to copy.
+
+`ui/Banner.tsx` is new and reusable — the confirmation toast the three banner frames draw.
 
 **None of the comments UI has been run against the real database.** This container cannot
 reach `supabase.co`, so type check, lint, `next build` and 230 unit tests are the whole of its
@@ -378,7 +386,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **279** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261 and 263/269. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **263** assertions (`npm test`) + Vitest **281** tests (`npm run test:unit`). Vitest measured 2026-08-05 after the postcard overflow menu landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269 and 263/279. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |

@@ -26,6 +26,24 @@ export const commentBodySchema = z
  */
 export const REPORT_REASONS = ['spam', 'harassment', 'hate', 'nudity', 'violence', 'other'] as const
 
+/**
+ * What the postcard overflow menu sends, because **the design collects no
+ * reason.** `Home / Report post` is marked Done and has four frames — feed,
+ * options sheet, confirmation banner — with no reason step between them, so
+ * reporting is one tap. The schema still demands a value: `reason` is a CHECK
+ * constraint in `011` and the enum above.
+ *
+ * `other` is the only member that asserts nothing the rider did not say.
+ * Picking `spam` or `harassment` on their behalf would put words in a
+ * moderation record.
+ *
+ * **The consequence is that the column carries no signal** while this is the
+ * only caller — every report arrives identical. That is a design gap, not a
+ * schema one, and the fix is a reason step in Figma rather than a guess here.
+ * Logged in docs/FIGMA-FIDELITY-TODO.md §Postcard overflow menu.
+ */
+export const REPORT_REASON_WHEN_UNDRAWN = 'other' satisfies (typeof REPORT_REASONS)[number]
+
 export const reportReasonSchema = z.enum(REPORT_REASONS, {
   message: 'Choose a reason.',
 })
