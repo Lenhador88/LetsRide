@@ -580,6 +580,28 @@ When the second kind is genuinely unavoidable, say so explicitly, mark exactly w
 inferred, and leave a note for the pass that will verify it. Never let an inferred value
 pass silently as a known one — a guess that isn't labelled becomes a fact nobody rechecks.
 
+**A blocked capability is a request for the product owner, not a footnote.** Most of what
+blocks this repo — a network policy, a missing credential, an API quota, a password held by a
+human — cannot be restored from inside a session. **Say so the moment you hit it, in your own
+voice, as a thing you need them to do.** Then carry on with everything the block does not
+touch; do not sit idle waiting for an answer.
+
+The failure mode this exists to prevent is not silence, it is *volume without a request*. On
+2026-08-05 a session wrote "this container cannot reach `supabase.co`" five times across a
+PR body, a handoff and three replies, never once wrote "please grant it", and only tested the
+claim when the owner finally asked what it meant. Access was granted within a minute of being
+asked for. Three PRs had merged unverified by then.
+
+Two rules that follow:
+
+- **Test the block before reporting it.** That claim was inherited from these docs and
+  repeated for a whole session without a single `curl`. An unverified blocker is just another
+  unlabelled guess, and this file's own principle already forbids those.
+- **Distinguish the two kinds when you report it.** "I used the Supabase MCP tools instead of
+  `curl`" needs no interruption — same artifact. "I could not load the page, so this is
+  verified to compile and not verified to work" is a lower-fidelity artifact and needs an
+  explicit ask. Only the second kind is escalated, or the signal drowns.
+
 **Rate every suggestion: complexity 0-10, recommendation 0-10.** Whenever you propose
 optional work — a refactor, a test, a hardening, a follow-up — give both numbers and one line
 of reasoning. Complexity is effort plus risk plus the maintenance it adds. Recommendation is

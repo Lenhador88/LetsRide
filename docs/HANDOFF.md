@@ -81,10 +81,28 @@ When you finish a change, delete the paragraph it made obsolete. Proof of someth
 verified belongs in the migration's own §Verification footer, not here; a settled decision
 belongs in `CLAUDE.md`. What stays here is what is still true and still undone.
 
-**Database and deployment state cannot be checked from the shell.** `api.github.com` is
-refused by the proxy ("GitHub access is not enabled for this session") and `supabase.co` is
-blocked, so any `curl`-based check here fails silently and tells you nothing. Use the GitHub,
-Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical to a passing one.
+**What the shell can and cannot reach — measured 2026-08-05, not inherited.** The previous
+version of this paragraph said `supabase.co` was blocked; the product owner granted it on
+request, and it is now open. Re-measure rather than trust this table — each line is one
+`curl -o /dev/null -w "%{http_code}"`:
+
+| Host | From the shell | Meaning |
+|---|---|---|
+| `*.supabase.co` | **401** | **Reachable.** 401 is the correct answer to an unauthenticated REST call, not a block |
+| `*.vercel.app` | `CONNECT tunnel failed, 403` | Still blocked at the proxy. Use the Vercel MCP tools |
+| `api.github.com` | 200 on `/`, **403** on `/repos/...` | Effectively refused. Use the GitHub MCP tools |
+
+A blocked host fails as `curl: (56) CONNECT tunnel failed` — **not** as a timeout or an empty
+body, so a check that "returns nothing" is telling you something. The distinction matters:
+a silent `curl` loop looks identical to a passing one only if you throw the exit code away.
+
+**Reaching Supabase is not the same as verifying a screen.** There is still no `.env.local`
+and no `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the environment, and `proxy.ts` gates every route
+outside `/auth/*` behind a session — so running the app end to end also needs the anon key
+(fetchable via the Supabase MCP `get_publishable_keys`) and a rider password. The test rider's
+is deliberately not in this repo. Until those exist, "verified to compile" is still the
+honest phrase, and per CLAUDE.md §Working Principles it is a **request for the owner**, not a
+footnote.
 
 ---
 
@@ -116,7 +134,8 @@ The next actions, in the order they are worth doing:
 4. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
    `-- --delete`. Two objects, 1.15 MB, left by the `/postcards/new` bug fixed in #21. #24
    shipped the tool; whether it has since been *run* could not be checked from this container,
-   which cannot reach `supabase.co`. The dry run is free and settles it.
+   which could not reach `supabase.co` at the time. **It can now** — the dry run is free
+   and settles it.
 5. ~~**Pull the Figma snapshot.**~~ **Done 2026-08-04** — see the top of this file. The
    sequence below is kept as the refresh procedure, which is now a *monthly* job.
 6. **Verify the remaining Postcards screens against the design.** Home is done and
@@ -372,7 +391,7 @@ What it settled, and it is worth knowing before designing anything else moderati
 `ui/Banner.tsx` is new and reusable — the confirmation toast the three banner frames draw.
 
 **None of the comments UI has been run against the real database.** This container cannot
-reach `supabase.co`, so type check, lint, `next build` and 230 unit tests are the whole of its
+reach `supabase.co` *at the time*, so type check, lint, `next build` and 230 unit tests were the whole of its
 verification — and the `/postcards/new` incident below is the standing proof that those four
 say the code compiles, not that the screen works. Load `/postcards/[id]` on the deployment and
 post one comment before calling it done.
@@ -692,7 +711,8 @@ badge says.
   `getClubs()` in `lib/data/clubs.ts` and the filter is gone. Found by fixing the identical
   bug on the rides list, which is the argument for the `lib/data/` boundary in one line: the
   two pages carried the same mistake because each wrote its own query. **Unverified against
-  the live database** — this container cannot reach `supabase.co`, so load `/clubs` as a
+  the live database** — unverified because the container could not reach `supabase.co` then;
+  it can now, so load `/clubs` as a
   member of a private club to confirm it now appears.
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are
   tested, but nothing calls them — you can create a ride and never fix a typo or cancel it.
@@ -761,7 +781,7 @@ Two caveats that matter more than they look:
   cannot sign up, recover a password, or confirm anything. Revisit it with that decision, not
   after.
 - **It was created by SQL insert into `auth.users`, not through the signup flow**, because
-  this container cannot reach `supabase.co` — so it proves nothing about signup itself. The
+  the container could not reach `supabase.co` at the time — so it proves nothing about signup itself. The
   row shape was mirrored from the one real account and the bcrypt hash was verified with
   `crypt()`, so password login works; everything upstream of the session is untested.
 
@@ -814,7 +834,9 @@ should be resolved in the login epic rather than carried further.
 (padding, radius, focus treatment). Tokens are correct; geometry is inferred and flagged in
 the commit. The Figma pass should verify them.
 
-**The agent proxy blocks outbound HTTPS to `supabase.co` and `vercel.app`.** Verify database
+**The agent proxy blocks outbound HTTPS to `vercel.app`. `supabase.co` was unblocked on
+2026-08-05 at the owner's grant — see the measured table under *Before you trust this file*.**
+Verify database
 state through the Supabase MCP tools and the deployment through the Vercel MCP tools rather
 than `curl`. Note that Vercel's fetch tool authenticates as the account owner, so a 200 from
 it is not evidence that a URL is publicly reachable.
