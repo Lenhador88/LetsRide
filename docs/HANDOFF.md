@@ -162,6 +162,39 @@ grant list named `avatar_url`. `run.sh` applies by filename, so locally `021` ru
 `42703` and takes the migration down. Removed — required under every reading of `021`'s open
 shape question. Proven both ways against a scratch database in the real hosted order.
 
+### Starting group 4 — the surface, measured 2026-08-05
+
+Each line is a command, not a number to trust. Groups 3–5 are one continuous unit, so nothing
+between here and the end of group 5 leaves the app in a shippable state on its own.
+
+| What | Value | Re-derive |
+|---|---|---|
+| Real `next/headers` importers | **3** | `git grep -lc "^import .*from 'next/headers'" -- 'src/**/*.ts' 'src/**/*.tsx'` |
+| `RECOVERY_COOKIE` call sites | 4 files | `git grep -n RECOVERY_COOKIE -- src/` |
+| `revalidatePath` claims | 41 / 8 files | `git grep -c revalidatePath -- 'src/lib/actions/*.ts'` |
+| `redirect()` in actions | 12 / 5 files | `git grep -c 'redirect(' -- 'src/lib/actions/*.ts'` |
+| Pages / of which server | 23 / **18** | first-line match, see below |
+| Components / of which server | 53 / **26** | same |
+
+**A bare `git grep next/headers` reports 7, not 3.** Four of those are prose — this change added
+three of them, in `resolve.ts`, `resolve.browser.ts` and `columns.ts`, all describing the rule
+rather than importing the module. Same trap as the `lucide-react` count and the v1-token count
+before it. Anchor the pattern:
+
+```bash
+for f in $(git ls-files 'src/app/**/page.tsx'); do head -1 "$f" | grep -q "'use client'" || echo "$f"; done | wc -l
+```
+
+**Of the six auth and onboarding screens, five are already client pages.** The one that is not is
+`/auth/reset-password`, and it is a server page precisely because it reads the httpOnly recovery
+cookie — so task 4.7 and the D3 Edge Function are the same piece of work, not two. It is also one
+of the three real `next/headers` importers; the other two are `lib/actions/auth.ts` (same cookie)
+and `lib/supabase/server.ts` itself.
+
+**Do not move the session before the guard moves (4.1).** `proxy.ts` reads `request.cookies`; a
+half-moved session redirects every request to login. The storage adapter stays behind a flag
+until 5.1 converts the guard, in the same change as the first route group.
+
 ---
 
 ## Do this first
