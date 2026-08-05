@@ -22,14 +22,40 @@ keep in sync.
 CI runs the same script against `postgres:17`, matching the Supabase project's
 major version.
 
+### The two undeployed migrations
+
+**The suite models the database that actually runs**, so `run.sh` skips `021`
+and `023` by default: both are written, both are deliberately not applied to the
+hosted project, and a suite asserting a schema production does not have is worse
+than no suite. Their assertions run on demand:
+
+```bash
+PENDING=021 npm test   # applies 021, skips 023, runs rls_test_pending_021.sql
+PENDING=023 npm test   # applies 023, skips 021, runs rls_test_pending_023.sql
+```
+
+Each runs *instead of* `rls_test.sql`, and there is no mode that applies both.
+Two reasons, both of which are findings rather than inconveniences:
+
+- `021` revokes the column SELECT that ~20 of `rls_test.sql`'s own `003`/`012`
+  assertions read directly, so that file cannot pass with `021` applied.
+- **`021` and `023` cannot both hold as drafted.** `023` refuses every write from
+  a rider whose two stamps are unset; `021` removes the only path by which a
+  client ever sets either. Together, no rider can ever qualify.
+
+Both suites fail without their migration — checked, not assumed — so neither is
+a placeholder.
+
 ## Files
 
 | File | Purpose |
 |---|---|
 | `harness.sql` | Stand-in for Supabase: `auth.users`, `auth.uid()`, the `anon`/`authenticated`/`auth_admin` roles, their default grants, and the assertion helpers |
 | `seed.sql` | Fixtures: three onboarded riders, two riders mid-onboarding, a private club with a member, a public club, a club-only ride, a public ride |
-| `rls_test.sql` | The assertions |
-| `run.sh` | Applies everything in order and runs the suite |
+| `rls_test.sql` | The assertions, against the deployed schema |
+| `rls_test_pending_021.sql` | Assertions for `021`, which is written and not deployed |
+| `rls_test_pending_023.sql` | Assertions for `023`, likewise. Adds three riders of its own so no expected value in `rls_test.sql` moves |
+| `run.sh` | Applies everything in order and runs one of the three suites |
 
 ## Writing assertions
 
