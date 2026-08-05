@@ -1,10 +1,10 @@
 'use server'
 
-import { cookies, headers } from 'next/headers'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { RECOVERY_COOKIE } from '@/lib/auth/recovery'
+import { RECOVERY_EXPIRED_MESSAGE, consumePasswordResetGrant } from '@/lib/auth/recovery'
 import type { ActionState } from '@/lib/actions/state'
 import {
   loginSchema,
@@ -116,28 +116,28 @@ export async function updatePassword(
   const parsed = newPasswordFormSchema.safeParse({ password: formData.get('password') })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
+  const supabase = await createClient()
+
   // A recovery link yields an ordinary session, so "is signed in" is not
   // evidence of anything here. proxy.ts deliberately stopped bouncing signed-in
   // riders away from this page (Q1), which means without this check anyone
-  // holding a session cookie could set a new password without knowing the old
-  // one. The cookie is set only by /auth/callback after a successful code
-  // exchange.
-  const cookieStore = await cookies()
-  if (!cookieStore.get(RECOVERY_COOKIE)) {
-    return { error: 'That reset link has expired. Request a new one.' }
+  // holding a session — a shared device, a borrowed laptop — could set a new
+  // password without knowing the old one.
+  //
+  // The proof is Supabase's own `amr` claim, checked in Postgres by `026`; this
+  // used to be an httpOnly cookie /auth/callback set, which the client-rendered
+  // shell has nowhere to keep. See lib/auth/recovery.ts.
+  //
+  // Consumed BEFORE the update, so the grant is spent whatever happens next.
+  // One link, one reset, including when two submits race.
+  if (!(await consumePasswordResetGrant(supabase))) {
+    return { error: RECOVERY_EXPIRED_MESSAGE }
   }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'That reset link has expired. Request a new one.' }
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
   // Supabase's own copy leaks implementation detail and, for some failures,
   // account state. The schema above already enforces what the rider controls.
   if (error) return { error: 'Could not update your password. Request a new link.' }
-
-  // One link, one reset.
-  cookieStore.delete(RECOVERY_COOKIE)
 
   // Q14: the recovery session is already active, so there is nothing to log
   // into — go straight in.

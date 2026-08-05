@@ -86,7 +86,12 @@ export async function acceptTerms(
   const { data: accepted, error } = await supabase.rpc('accept_terms')
   if (error || !accepted) return { error: 'Could not record that. Try again.' }
 
-  redirect('/onboarding/username')
+  // proxy.ts decides the real destination, the same way signIn leaves it to.
+  // Most riders who reach this screen are already fully onboarded — the prompt
+  // exists for accounts whose consent predates the write, not for new ones — so
+  // naming a wizard step here would send a finished rider to step 1 and rely on
+  // the guard to undo it.
+  redirect('/postcards')
 }
 
 export async function setLocation(_prev: ActionState, formData: FormData): Promise<ActionState> {

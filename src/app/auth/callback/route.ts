@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { RECOVERY_COOKIE, RECOVERY_PATH } from '@/lib/auth/recovery'
+import { RECOVERY_PATH } from '@/lib/auth/recovery'
 
 /**
  * Exchanges a Supabase auth code for a session cookie. Password recovery is
@@ -9,6 +9,20 @@ import { RECOVERY_COOKIE, RECOVERY_PATH } from '@/lib/auth/recovery'
  *
  * A Route Handler rather than a page because the exchange writes cookies, which
  * a Server Component cannot do.
+ *
+ * **It no longer sets a recovery marker, and it must not start again.** It used
+ * to set an httpOnly `lr-recovery` cookie here, which `updatePassword` required
+ * and then deleted. Migration `026` moved that to the `amr` claim GoTrue
+ * already puts in the access token — see `lib/auth/recovery.ts`. A second
+ * marker set here would be one the client-rendered shell cannot produce, so the
+ * two paths would disagree about who may reset.
+ *
+ * **This exchange is the part that cannot move to an Edge Function.** The flow
+ * is PKCE — `@supabase/ssr` hardcodes it — so the code verifier lives in the
+ * storage of whichever client called `resetPasswordForEmail`, which today is
+ * this app's server client and its cookie jar. When the shell lands, this whole
+ * handler is replaced by a client route doing the same exchange in the browser,
+ * where the verifier will then be. Nothing about the grant changes with it.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
@@ -28,25 +42,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/auth/forgot-password?error=invalid_link`)
   }
 
-  const response = NextResponse.redirect(`${origin}${next}`)
-
-  // A recovery link produces an ordinary session, indistinguishable from one
-  // created by signing in. proxy.ts no longer bounces signed-in riders away
-  // from /auth/reset-password (Q1), so without a marker anyone holding a
-  // session cookie — a shared device, a borrowed laptop — could set a new
-  // password without knowing the old one. updatePassword requires this cookie
-  // and clears it, so the ability to reset is spent by the reset.
-  if (next === RECOVERY_PATH) {
-    response.cookies.set(RECOVERY_COOKIE, '1', {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
-      maxAge: 60 * 15,
-    })
-  }
-
-  return response
+  return NextResponse.redirect(`${origin}${next}`)
 }
 
 /**

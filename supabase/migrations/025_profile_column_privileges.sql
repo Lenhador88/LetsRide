@@ -1,0 +1,282 @@
+-- 025: the two profile stamps become own-row-only, by grant.
+--
+-- =========================================================================
+-- ** NOT APPLIED. DESTRUCTIVE. APPLY ONLY AFTER THE CODE REPAIR DEPLOYS. **
+--
+-- Listed in SKIP_MIGRATIONS in supabase/tests/run.sh, so the RLS suite models
+-- the database that actually runs. Its assertions live in
+-- supabase/tests/rls_test_pending_025.sql:
+--
+--   PENDING=025     npm test   # applies 025, skips 023
+--   PENDING=023+025 npm test   # applies both — the pair that must compose
+--
+-- This file removes a grant the running application both READS and WRITES. On
+-- its own, against the code on `main` today, it is a total outage for every
+-- signed-in rider — see DEFECT 2 below, which enumerates the four paths.
+-- =========================================================================
+--
+-- =========================================================================
+-- ** THIS FILE IS THE SECOND HALF OF WHAT USED TO BE 021. **
+--
+-- `021_profile_column_privileges.sql` contained two things that have to be
+-- applied at different times relative to the code deploy:
+--
+--   additive    the three own-row functions — now 021_onboarding_state_accessors
+--   destructive the revoke and the column allowlist — this file
+--
+-- Together in one file they deadlock, and neither ordering escapes it:
+--
+--   New code + old database -> `proxy.ts` calls `my_onboarding_state()`, which
+--     does not exist -> 42883 -> the guard's fail-closed branch bounces EVERY
+--     signed-in rider to /auth/login?error=profile_unavailable.
+--
+--   Old code + new database -> this file lands and DEFECT 2's four paths break.
+--
+-- Split, each half has a moment it is safe. The order, and **filename order
+-- equals apply order deliberately**, because `run.sh` applies by filename and a
+-- file whose local order differs from its hosted order is a bug this repo has
+-- already hit once — see the `avatar_url` note in §1:
+--
+--   1. apply 021 (the functions) — safe today, against `main` as it stands;
+--   2. merge and deploy the code repair;
+--   3. apply 023, then this file.
+--
+-- **Nothing in this file changed when it moved.** The revoke, the three grant
+-- lists and the reasoning below are what 021 carried. Only the number and the
+-- surrounding frame are new.
+-- =========================================================================
+--
+-- ---------------------------------------------------------------------------
+-- What it is for
+-- ---------------------------------------------------------------------------
+-- RLS is row-level, not column-level. The `profiles` SELECT policy admits every
+-- non-blocked rider who has a username, and therefore admits *every column* of
+-- that row — including `terms_accepted_at` and `onboarding_completed_at`, a
+-- rider's consent record and account lifecycle. `PUBLIC_PROFILE_COLUMNS` narrows
+-- the projection in application code, which is a convention PostgREST does not
+-- enforce: `select=*` on any member list returns the lot.
+--
+-- Measured on the hosted project 2026-08-05: `authenticated` holds SELECT,
+-- INSERT and UPDATE on both columns, and table-wide SELECT, INSERT, UPDATE and
+-- DELETE on `public.profiles`.
+--
+-- D6 rejects a view beside the table, and is right to: `public.profiles` stays
+-- published by PostgREST and the grant is what decides.
+--
+-- ---------------------------------------------------------------------------
+-- DEFECT 1 — the statement task 1.8 specifies does not do what it says
+-- ---------------------------------------------------------------------------
+-- Task 1.8 gives the statement verbatim:
+--
+--   revoke select, insert, update (terms_accepted_at, onboarding_completed_at)
+--     on public.profiles from authenticated;
+--
+-- Postgres parses a column list as attaching to the *immediately preceding*
+-- privilege only. So that statement means: revoke SELECT **table-wide**, revoke
+-- INSERT **table-wide**, and revoke UPDATE on those two columns. And the last of
+-- those three is a no-op, because — PostgreSQL GRANT docs — "granting the
+-- privilege at the table level and then revoking it for one column will not do
+-- what one might wish: the table-level grant is unaffected by a column-level
+-- operation." `authenticated` holds table-level UPDATE here, so the column-level
+-- revoke is discarded with a warning.
+--
+-- Reproduced on Postgres 16 rather than recalled, with the grants Supabase
+-- actually gives `authenticated`:
+--
+--   create table t (id int, stamp timestamptz, other text);
+--   grant select, insert, update on t to r;
+--   revoke select, insert, update (stamp) on t from r;
+--
+--     has_table_privilege (r, t, select)       -> f   -- the WHOLE table
+--     has_table_privilege (r, t, insert)       -> f   -- the WHOLE table
+--     has_column_privilege(r, t, other, select)-> f   -- an unrelated column
+--     has_column_privilege(r, t, stamp, update)-> t   -- the target: UNCHANGED
+--
+-- So the drafted line would take SELECT away from every column of `profiles` —
+-- usernames, avatars, bios — leaving the app unable to render a single byline,
+-- and would leave the exposure it was written to close exactly where it was. It
+-- would look applied and be worse than nothing.
+--
+-- The only shape that restricts a column is to revoke the table-level privilege
+-- and re-grant an explicit column allowlist, which is what §1 below does. Note
+-- the standing cost of that shape, because it is permanent: **every column added
+-- to `profiles` from now on is invisible to `authenticated` until it is added to
+-- these grants.** A migration that adds a column and forgets is a column that
+-- silently does not exist for the app.
+--
+-- ---------------------------------------------------------------------------
+-- DEFECT 2 — four live paths break the moment this applies, three of them hard
+-- ---------------------------------------------------------------------------
+-- Verified against the code on `main`, not inferred:
+--
+--   a) THE ROUTE GUARD. src/proxy.ts:79-84 reads
+--      `.select('username, location, onboarding_completed_at')` on **every
+--      authenticated request**. Without SELECT on that column PostgREST answers
+--      403, `error` is set, and proxy.ts:90-101 — a branch written to fail
+--      closed on exactly this kind of mismatch — redirects to
+--      `/auth/login?error=profile_unavailable`. Every signed-in rider is
+--      bounced out of every screen. This is a total outage, on the one Supabase
+--      project every environment points at, with Vercel auto-deploying `main`.
+--
+--   b) ONBOARDING CAN NEVER COMPLETE. src/lib/actions/onboarding.ts:71-78
+--      (`setLocation`) writes `{ location, onboarding_completed_at }` in one
+--      UPDATE. Without UPDATE on that column the whole statement is refused,
+--      the action returns "Could not save that. Try again.", and — because
+--      proxy.ts gates every route on the stamp — the rider is stuck in the
+--      wizard permanently. Decision #5 turns from "not skippable" into "not
+--      completable".
+--
+--   c) CONSENT IS NEVER RECORDED. src/lib/actions/auth.ts:70-83 (`signUp`)
+--      writes `{ terms_accepted_at }` and *checks the result*, returning "Your
+--      account was created but we could not record your consent." when the
+--      update returns no row. Every new signup ends on that error. Worth being
+--      precise about the mechanism, because the obvious repair does not work:
+--      012's trigger replaces the *value* the client sends with server time, it
+--      does not *supply* one when the client sends nothing. Column privileges
+--      are checked against the columns named in SET, before any BEFORE trigger
+--      runs. So "let 012's trigger own the stamp" is not a one-line fix — with
+--      the UPDATE grant gone there is no statement left that names the column,
+--      and consent stops being recorded at all rather than being recorded
+--      server-side.
+--
+--   d) THE PROFILE SCREEN. src/lib/data/profile.ts:12 (`getMyProfile`) reads
+--      `.select('*')` on the caller's own row. `select *` requires SELECT on
+--      every column, so it becomes 42501, `unwrap` throws by design, and the
+--      profile screen lands on the error boundary. The same shape appears ~20
+--      times in supabase/tests/rls_test.sql, where 003's and 012's assertions
+--      read the two stamps directly as the caller — so this migration also
+--      turns the existing RLS suite red, which is the cheapest available proof
+--      that (d) is real.
+--
+-- (c) was found by the reviewer. (a), (b) and (d) were found while verifying it.
+--
+-- ---------------------------------------------------------------------------
+-- The verdict, and how it was resolved
+-- ---------------------------------------------------------------------------
+-- The requirement is right and the original phasing was wrong. Read the spec
+-- closely and its normative content is about **reading**: "Consent and lifecycle
+-- timestamps SHALL NOT be readable by other riders", and its testable scenario
+-- is that `authenticated` must not retain column-level **SELECT**. D6 adds
+-- "INSERT and UPDATE go the same way, since 012's trigger already overrides
+-- whatever the client sends" — and that sentence is the whole error. The trigger
+-- overrides a value; it does not originate one. Take the UPDATE grant away and
+-- there is no statement left that names the column at all, so consent stops
+-- being recorded rather than being recorded server-side.
+--
+-- The resolution, settled 2026-08-05 and delegated by the product owner, is the
+-- option the earlier header called (A): ship it whole, in the group that owns
+-- the code, and **give the stamps their own writers** so the database writes
+-- what the client no longer may. Those writers are 021:
+--
+--   my_onboarding_state()          read  — the caller's own position
+--   accept_terms()                 write — the caller's own consent
+--   complete_onboarding(text)      write — the caller's own final wizard step
+--
+-- That also dissolved a standing incompatibility with 023, which refuses every
+-- write from a rider whose two stamps are NULL: this file removes the client's
+-- path to setting them, and 021 gives the database one. `PENDING=023+025` walks
+-- the whole path and is the proof.
+--
+-- The rejected alternative, recorded so it is not reopened by accident: narrow
+-- this to SELECT only and leave the write grants, on the grounds that 012's
+-- trigger and 003's guard already neuter them. It does not help. DEFECT 2 (a)
+-- and (d) are *reads*, so even the narrow version needs `proxy.ts` and
+-- `getMyProfile` repointed first. **There is no version of this that is
+-- additive**, which is exactly why it is a separate file from 021.
+-- ---------------------------------------------------------------------------
+-- §1. An explicit column allowlist, because a column-level revoke is a no-op
+-- ---------------------------------------------------------------------------
+--
+-- DELETE is untouched: `profiles` rows are deleted by the cascade from
+-- auth.users, and account deletion is a Phase 2 dependency with its own design.
+--
+-- `avatar_url` is **absent from every list below, and this file must not name
+-- it.** It used to be granted SELECT but not UPDATE — one deliberate extra over
+-- task 1.8, flagged rather than slipped in — because the spec requires that no
+-- column a rider can write is ever used as an image source in another rider's
+-- client, and a writable `avatar_url` in PUBLIC_PROFILE_COLUMNS let a rider point
+-- every member list at a host they control and harvest IP addresses, including
+-- from riders who blocked them. This paragraph said "Group 3 drops it entirely;
+-- until then this is the cheap half", and group 3 did: `024` dropped the column
+-- from `profiles` and from `clubs`, and the data layer now synthesises the field
+-- from a signed `avatar_path`. The whole hazard is gone, not merely halved.
+--
+-- Naming it here is now an APPLY-TIME ABORT rather than a stale comment.
+-- `grant select (avatar_url)` raises `42703` against a database that has had
+-- `024`, which the hosted project now has.
+--
+-- **The renumbering fixed the blind spot this paragraph used to describe.** As
+-- `021` it read: "the local suite cannot catch it — `run.sh` applies by filename,
+-- so `021` runs *before* `024` there and finds the column present either way,
+-- while against the hosted project it applies *after* and aborts." That was the
+-- exact trap, and it is why filename order was made to equal apply order when
+-- this file was split out. At 025 the file runs after 024 in **both** places, so
+-- the local suite would now fail on a reintroduced `avatar_url` rather than
+-- passing and leaving the outage for the hosted apply. Two orderings agreeing is
+-- worth more here than any assertion.
+
+revoke select, insert, update on public.profiles from authenticated;
+
+grant select (
+  id, username, bio, bike_model, created_at, location,
+  avatar_path, cover_image_path
+) on public.profiles to authenticated;
+
+-- `id` is insertable because "Users can insert their own profile" checks
+-- `auth.uid() = id`, and a policy cannot check a column the role may not write.
+grant insert (
+  id, username, bio, bike_model, location, avatar_path, cover_image_path
+) on public.profiles to authenticated;
+
+grant update (
+  username, bio, bike_model, location, avatar_path, cover_image_path
+) on public.profiles to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- §Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+-- Scope every one of these to the grantee. `postgres` and `service_role` hold
+-- everything by Supabase default, so a table-wide count reads wrong against a
+-- correct database — the mistake 015's footer made and documented.
+--
+-- Expected: f, f — the requirement's own testable scenario.
+--   select has_column_privilege('authenticated','public.profiles','terms_accepted_at','select'),
+--          has_column_privilege('authenticated','public.profiles','onboarding_completed_at','select');
+--
+-- Expected: f, f — the write half.
+--   select has_column_privilege('authenticated','public.profiles','terms_accepted_at','update'),
+--          has_column_privilege('authenticated','public.profiles','onboarding_completed_at','update');
+--
+-- Expected: t, t, t — guards against over-tightening. If these are false the app
+-- cannot render a byline.
+--   select has_column_privilege('authenticated','public.profiles','username','select'),
+--          has_column_privilege('authenticated','public.profiles','avatar_path','select'),
+--          has_column_privilege('authenticated','public.profiles','username','update');
+--
+-- Expected: f — nothing is readable table-wide any more. This is the assertion
+-- that the file used the right SHAPE: a column-level revoke against a table-level
+-- grant is discarded with a warning (DEFECT 1), so a version that only revoked
+-- the columns would satisfy every check above by accident of the policy while
+-- leaving the exposure exactly where it was.
+--   select has_table_privilege('authenticated','public.profiles','select');
+--
+-- Expected: t, t, t — 021's writers must already be present, or this file has
+-- just made both stamps unwritable by anyone and the wizard is a dead end. Check
+-- this BEFORE applying, not after.
+--   select has_function_privilege('authenticated','public.my_onboarding_state()','execute'),
+--          has_function_privilege('authenticated','public.accept_terms()','execute'),
+--          has_function_privilege('authenticated','public.complete_onboarding(text)','execute');
+--
+-- Expected: 0 — the four DEFECT 2 paths are repaired in the deployed code. This
+-- one cannot be answered from SQL; it is a `git grep` against what is live on
+-- `main`, and it is the real precondition for applying this file.
+--   git grep -n "onboarding_completed_at\|terms_accepted_at" -- src/ | grep -v __tests__
+--
+-- STANDING COST, repeated here because it outlives this migration: **every
+-- column added to `profiles` from now on is invisible to `authenticated` until
+-- it is added to §1's grant lists.** A later migration that adds a column and
+-- forgets is a column that silently does not exist for the app — not an error,
+-- just absent. That is the permanent price of the allowlist shape, and the
+-- allowlist shape is the only one that restricts a column at all (DEFECT 1).

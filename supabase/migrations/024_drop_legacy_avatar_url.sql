@@ -132,26 +132,32 @@
 -- reason the census above is a gate rather than a formality.
 --
 -- ---------------------------------------------------------------------------
--- §Ordering hazard — read this before applying `021`
+-- §Ordering hazard — RESOLVED 2026-08-05, kept because the lesson generalises
 -- ---------------------------------------------------------------------------
--- `021_profile_column_privileges.sql` is written, unapplied, and its §1 SELECT
--- grant list names `avatar_url`:
+-- This section used to warn that `021_profile_column_privileges.sql` was
+-- written, unapplied, and named `avatar_url` in its SELECT grant list:
 --
 --   grant select (id, username, avatar_url, bio, ...) on public.profiles to authenticated;
 --
--- Sorted by filename, `021` applies BEFORE this file — which is what
--- `supabase/tests/run.sh` does, so `PENDING=021 npm test` is green and proves
--- nothing about the real ordering. Against the hosted project `021` would be
--- applied AFTER this one, where `grant select (avatar_url)` raises `42703` and
--- aborts the whole migration.
+-- The hazard was an ordering disagreement, and it is the reason this note is
+-- worth keeping even now that it is fixed. Sorted by filename, `021` applied
+-- BEFORE this file — which is what `supabase/tests/run.sh` does — so the local
+-- suite was green and proved nothing about the real ordering. Against the hosted
+-- project `021` would have applied AFTER this one, where `grant select
+-- (avatar_url)` raises `42703` and aborts the whole migration. **A local suite
+-- cannot catch a hazard that only exists in the hosted apply order.**
 --
--- **Whoever lands `021` must first delete `avatar_url` from that one list.**
--- It is not edited here: `021`'s shape is an open product-owner decision
--- (docs/HANDOFF.md, "Do this first" item 4), and pre-empting it inside an
--- unrelated migration is how a decision gets made by accident. Its assertion in
--- `rls_test_pending_021.sql` — that `authenticated` holds no UPDATE on the
--- column — is restated as absence in this change, because
--- `has_column_privilege` raises on a dropped column rather than returning false.
+-- Two things closed it:
+--
+--   * `avatar_url` was removed from that grant list.
+--   * `021` was split, and the half holding the grants was renumbered to
+--     `025_profile_column_privileges.sql`. At `025` the file sorts after this one
+--     **in both places**, so the local order and the hosted order now agree and
+--     the blind spot is gone rather than merely stepped around.
+--
+-- The assertion that `authenticated` holds no UPDATE on the column is restated
+-- as absence in this change, because `has_column_privilege` raises on a dropped
+-- column rather than returning false.
 
 -- ---------------------------------------------------------------------------
 -- §The drop

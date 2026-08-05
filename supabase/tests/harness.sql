@@ -24,6 +24,30 @@ as $$
   select nullif(current_setting('test.uid', true), '')::uuid;
 $$;
 
+-- Copied from Supabase's own definition rather than reinvented, for the reason
+-- storage.foldername below is: a helper that behaves differently here than in
+-- production turns a green assertion into a lie. PostgREST verifies the JWT
+-- signature and puts the whole decoded payload in `request.jwt.claims`, which
+-- is where this reads it and where auth.uid() gets `sub` in production.
+--
+-- **Note that this is NOT the `test.uid` idiom above, and the difference is
+-- deliberate.** auth.uid() is shimmed because Supabase derives it from a claim
+-- no local test can sign; auth.jwt() *is* the claims blob, so the faithful
+-- stand-in is the real function. A test needing both identity and claims has to
+-- set both settings — set_config('test.uid', ...) AND
+-- set_config('request.jwt.claims', ...) — and a test that sets only the second
+-- gets a NULL auth.uid(), which is exactly the trap CLAUDE.md names.
+create or replace function auth.jwt()
+returns jsonb
+language sql
+stable
+as $$
+  select coalesce(
+    nullif(current_setting('request.jwt.claim', true), ''),
+    nullif(current_setting('request.jwt.claims', true), '')
+  )::jsonb;
+$$;
+
 -- Roles are cluster-wide, so they may already exist from a previous run.
 do $$
 begin

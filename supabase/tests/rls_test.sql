@@ -2726,6 +2726,553 @@ select assert_allowed($$
             '{"mimetype":"image/jpeg","size":10}')$$,
   'the same cover upload into their own folder is accepted');
 
+-- ===========================================================================
+-- 021: the own-row accessor and the two own-row writers
+-- ===========================================================================
+--
+-- 021 is APPLIED, so its assertions belong here rather than in a pending suite.
+-- It creates three functions and nothing else — `my_onboarding_state()`,
+-- `accept_terms()` and `complete_onboarding(text)` — and it is deliberately
+-- additive: every grant this file's other 380-odd assertions rely on is
+-- untouched by it.
+--
+-- **What is NOT here is the revoke.** That is `025`, still pending, with its own
+-- suite. The split follows the migrations exactly: anything asserting these
+-- functions' BEHAVIOUR is mainline, anything asserting
+-- `has_column_privilege(...) = false` is pending on 025. The two must not drift
+-- into each other — an assertion about the revoke that ran here would fail
+-- against the database that actually runs.
+--
+-- ---------------------------------------------------------------------------
+-- The trap these functions exist inside, measured rather than recalled
+-- ---------------------------------------------------------------------------
+-- Inside a `security definer` function `current_user` is the function's OWNER,
+-- not the caller. 003's completion guard and 012's consent guard both open with
+-- `if current_user <> 'authenticated' then return new`, so for a write issued
+-- from one of these functions the trigger **fires and enforces nothing**. Every
+-- rule therefore has to live in the function body, and every assertion below
+-- would pass just as happily against a function that wrongly assumed it
+-- inherited them — which is why they are driven through the RPCs.
+--
+-- This section adds four fixtures of its own and rolls them back, so not one
+-- expected value anywhere above it moves. That is why it sits at the end.
+
+savepoint accessors_021;
+
+-- 0013 and 0014 exist to ISOLATE the two rules complete_onboarding() enforces.
+-- Both refusals raise 23514, so a fixture failing both would let an assertion
+-- nominally about the username rule pass because the consent rule fired.
+-- 0013 has a username and no consent; 0014 has consent and no username.
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000000011', 'noconsent@example.com'),
+  ('00000000-0000-0000-0000-000000000012', 'qualified@example.com'),
+  ('00000000-0000-0000-0000-000000000013', 'midwizard@example.com'),
+  ('00000000-0000-0000-0000-000000000014', 'consentonly@example.com');
+reset role;
+
+update profiles set username = 'noconsent', location = 'Braga',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000000011';
+update profiles set username = 'qualified', location = 'Aveiro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000000012';
+update profiles set username = 'midwizard', location = 'Evora'
+  where id = '00000000-0000-0000-0000-000000000013';
+update profiles set terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000000014';
+
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  'the 021 assertions run as authenticated, or they prove nothing');
+
+\echo ''
+\echo '# my_onboarding_state() answers for the caller and nobody else (021)'
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq((select count(*)::int from public.my_onboarding_state()),
+  1, 'the accessor returns exactly one row — the caller''s own');
+select assert_eq((select terms_accepted_at from public.my_onboarding_state()),
+  timestamptz '2026-01-01 00:00:00+00', 'the accessor returns the caller''s consent stamp');
+select assert_eq((select onboarding_completed_at from public.my_onboarding_state()),
+  timestamptz '2026-01-01 00:00:00+00', 'the accessor returns the caller''s onboarding stamp');
+
+-- The third output, which is what lets proxy.ts answer its whole question in one
+-- round trip instead of a table select plus an RPC on every request.
+select assert_eq((select has_username from public.my_onboarding_state()),
+  true, 'the accessor reports that the caller has chosen a username');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
+select assert_eq((select has_username from public.my_onboarding_state()),
+  false, '... and reports false for the rider who has not');
+
+-- It takes no arguments, so there is no row to choose but your own. Asserted by
+-- switching identity and seeing the answer change rather than by reading the body.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000011', false);
+select assert_eq((select terms_accepted_at from public.my_onboarding_state()),
+  null::timestamptz, 'the accessor follows the caller, and cannot be pointed elsewhere');
+
+select set_config('test.uid', '', false);
+select assert_eq((select count(*)::int from public.my_onboarding_state()),
+  0, 'the accessor returns zero rows for a caller with no session');
+
+-- A blocked rider still reads their own row: the block is about other people.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-00000000001a'),
+  0, 'a blocked rider gets zero rows for the blocking rider''s profile');
+select assert_eq((select count(*)::int from public.my_onboarding_state()),
+  1, 'and still reads their own stamps through the accessor');
+
+-- The earlier revision's two-output accessor must not survive beside it.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'my_profile_stamps'),
+  0, 'the superseded my_profile_stamps() accessor is gone, not merely unused');
+
+\echo ''
+\echo '# accept_terms() is server-timed, own-row and idempotent (021)'
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000000013', false);
+savepoint consent_rpc;
+select set_config('test.first_consent', public.accept_terms()::text, false);
+
+select assert_eq((select terms_accepted_at is not null from public.my_onboarding_state()),
+  true, 'accept_terms() stamps the caller''s consent');
+
+-- Server-timed rather than caller-chosen. The function takes no argument, so a
+-- back-dated stamp is unrepresentable rather than merely refused — this asserts
+-- the consequence of that, which is that the value landed in the present.
+select assert_eq(current_setting('test.first_consent')::timestamptz
+                   > timestamptz '2026-06-01 00:00:00+00',
+  true, 'the stamp it wrote is server time, not a value the caller chose');
+
+-- Idempotent. **This assertion is the weak half of the pair and is kept only
+-- because it reads the return value rather than the column** — it cannot detect
+-- a re-stamp on its own, because `now()` is `transaction_timestamp()` and this
+-- whole suite is one transaction, so a stamp written twice is written with the
+-- identical value both times. The next assertion is the load-bearing one.
+select assert_eq(public.accept_terms(),
+  current_setting('test.first_consent')::timestamptz,
+  'a second accept_terms() returns the first call''s stamp rather than moving it');
+rollback to savepoint consent_rpc;
+
+-- **This is the one that actually pins idempotency.** 0012 consented on
+-- 2026-01-01, before this transaction existed, so only a genuine "already set,
+-- leave it alone" can hand that value back — a function that re-stamps returns
+-- the transaction timestamp and fails here. Confirmed by mutation: removing
+-- accept_terms()'s `and p.terms_accepted_at is null` guard is caught by this
+-- line and by nothing else.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000012', false);
+select assert_eq(public.accept_terms(), timestamptz '2026-01-01 00:00:00+00',
+  'accept_terms() does not overwrite an existing stamp');
+
+-- 0011 and 0013 both have NULL consent. Calling as 0011 must stamp 0011 and
+-- leave 0013 exactly as it was. RLS does not apply inside a security definer
+-- function owned by the table's owner — measured — so the WHERE clause pinned to
+-- auth.uid() is the whole of this function's access control.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000011', false);
+savepoint consent_follows_caller;
+select public.accept_terms();
+select assert_eq((select terms_accepted_at is not null from public.my_onboarding_state()),
+  true, 'accept_terms() stamped the caller''s own row');
+select set_config('test.uid', '00000000-0000-0000-0000-000000000013', false);
+select assert_eq((select terms_accepted_at from public.my_onboarding_state()),
+  null::timestamptz, '... and left the other NULL-consent rider untouched');
+rollback to savepoint consent_follows_caller;
+
+-- No session. 42501 rather than 23514 on purpose: this is an authorization
+-- failure, not an integrity rule, and keeping the two SQLSTATEs apart is what
+-- stops an assertion passing because the wrong rule fired.
+select set_config('test.uid', '', false);
+select assert_denied($$select public.accept_terms()$$,
+  'accept_terms() refuses a caller with no session');
+
+\echo ''
+\echo '# complete_onboarding() carries its own rules, because the trigger does not (021)'
+
+-- Consent first: 0013 has username and location, so 003's rule is satisfied and
+-- only the consent rule can fire. This is 023 §1.13's rule, enforced here because
+-- a security definer write bypasses the trigger that also carries it.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000013', false);
+select assert_rejected($$select public.complete_onboarding('Evora')$$,
+  '23514', 'complete_onboarding() refuses while terms_accepted_at is NULL');
+
+-- Username: 0014 has consent and no username, so only 003's rule can fire.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000014', false);
+select assert_rejected($$select public.complete_onboarding('Coimbra')$$,
+  '23514', 'complete_onboarding() refuses while username is NULL');
+
+-- The location argument. NULL is the arm 018's CHECK cannot cover, because
+-- profiles_location_length deliberately permits NULL — every rider is NULL there
+-- between signup and step 2.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000012', false);
+select assert_rejected($$select public.complete_onboarding(null)$$,
+  '23514', 'complete_onboarding() refuses a NULL location');
+select assert_rejected($$select public.complete_onboarding('   ')$$,
+  '23514', 'complete_onboarding() refuses a location of nothing but spaces');
+
+-- 018's CHECK still applies inside a security definer function — measured, not
+-- assumed, and asserted here so the migration does not have to restate a ceiling
+-- the table already enforces.
+select assert_rejected($$select public.complete_onboarding(repeat('x', 101))$$,
+  '23514', '018''s location ceiling still fires inside a security definer function');
+
+\echo ''
+\echo '# ... and it completes the wizard atomically and one-way (021)'
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000000013', false);
+savepoint wizard_rpc;
+select public.accept_terms();
+select assert_eq(public.complete_onboarding('Amsterdam') is not null,
+  true, 'complete_onboarding() returns the stamp it set');
+
+-- Both columns in one statement, so there is no window in which a rider is
+-- stamped complete with no location. Read back rather than inferred.
+select assert_eq(
+  (select onboarding_completed_at is not null from public.my_onboarding_state()),
+  true, 'the completion stamp landed');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Amsterdam', '... and the location landed in the same statement');
+
+rollback to savepoint wizard_rpc;
+
+-- One-way (003 §6b), restated by the function because the trigger that normally
+-- pins it did not run.
+--
+-- **Anchored on the fixture's literal stamp rather than on a value this
+-- transaction wrote, and that distinction IS the assertion.** `now()` is
+-- `transaction_timestamp()` — frozen for the whole suite, since the suite is one
+-- transaction — so the obvious version of this test, completing a fresh rider
+-- twice and comparing the two return values, compares two identical frozen
+-- timestamps and passes against a function that re-stamps on every call.
+-- Measured, not theorised: dropping the `coalesce` from complete_onboarding was
+-- the one mutation out of fourteen that survived the suite, until this was
+-- rewritten to compare against 0012's 2026-01-01 fixture. 0012 was onboarded
+-- long before this transaction began, so only a genuine pin can return it.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000012', false);
+savepoint completion_is_one_way;
+select assert_eq(public.complete_onboarding('Utrecht'),
+  timestamptz '2026-01-01 00:00:00+00',
+  'complete_onboarding() on an already-onboarded rider returns the ORIGINAL stamp');
+select assert_eq(
+  (select onboarding_completed_at from public.my_onboarding_state()),
+  timestamptz '2026-01-01 00:00:00+00',
+  '... and the stored stamp did not move either');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Utrecht', '... while still applying the location it was given');
+rollback to savepoint completion_is_one_way;
+
+select set_config('test.uid', '', false);
+select assert_denied($$select public.complete_onboarding('Amsterdam')$$,
+  'complete_onboarding() refuses a caller with no session');
+
+\echo ''
+\echo '# The three functions are wired the way they have to be (021)'
+
+reset role;
+
+select assert_eq(has_function_privilege('anon', 'public.my_onboarding_state()', 'execute'),
+  false, 'anon cannot call the accessor');
+select assert_eq(has_function_privilege('authenticated', 'public.my_onboarding_state()', 'execute'),
+  true, 'authenticated can — the route guard needs it');
+select assert_eq(has_function_privilege('anon', 'public.accept_terms()', 'execute'),
+  false, 'anon cannot call accept_terms()');
+select assert_eq(has_function_privilege('authenticated', 'public.accept_terms()', 'execute'),
+  true, 'authenticated can — it is the only path to the consent stamp once 025 lands');
+select assert_eq(has_function_privilege('anon', 'public.complete_onboarding(text)', 'execute'),
+  false, 'anon cannot call complete_onboarding()');
+select assert_eq(has_function_privilege('authenticated', 'public.complete_onboarding(text)', 'execute'),
+  true, 'authenticated can — it is the only path to the completion stamp once 025 lands');
+
+-- All three must be `security definer`, or 025 takes the stamps away with nothing
+-- left able to write them. Asserted from the catalog rather than trusted from the
+-- file, because apply_migration takes SQL as an argument and 022 once shipped
+-- with this exact clause missing. `proconfig` stores the pin as the literal
+-- `search_path=""`, quotes included — matching on `search_path=` finds nothing
+-- and reads as a passing test.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace
+      and proname in ('my_onboarding_state', 'accept_terms', 'complete_onboarding')
+      and prosecdef and proconfig @> array['search_path=""']),
+  3, 'all three 021 functions are security definer with a pinned search_path');
+
+-- 021 is additive: it must not have moved a single grant. If any of these is
+-- false, something from 025 has leaked into it.
+select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'select'),
+  true, '021 left the table-wide SELECT alone — the revoke is 025''s job');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'onboarding_completed_at', 'update'),
+  true, '... and the completion stamp is still client-writable until 025');
+
+rollback to savepoint accessors_021;
+
+set role authenticated;
+select set_config('test.uid', '', false);
+reset role;
+
+\echo ''
+\echo '# The recovery grant is Supabase-signed, single-use and 15 minutes wide (migration 026)'
+
+-- 026 replaces the httpOnly `lr-recovery` cookie. Everything below is one of
+-- the two properties the cookie held:
+--
+--   1. only a session established by a recovery link may change the password
+--      without knowing the old one   — the `amr` assertions
+--   2. the ability to reset is spent by the reset — the single-use assertions
+--
+-- **These set `request.jwt.claims`, which is the HOSTED idiom, and they also
+-- have to set `test.uid`, which is the LOCAL one.** harness.sql shims
+-- auth.uid() onto `test.uid` but defines auth.jwt() exactly as Supabase does,
+-- so a test setting only the claims gets a NULL auth.uid() and a positive
+-- assertion that passes while proving nothing. Both, every time.
+--
+-- What this file cannot prove: that PostgREST really puts `amr` in
+-- request.jwt.claims on the hosted project, and that a real recovery link mints
+-- `method: "recovery"`. Those are in 026's §Verification footer.
+
+savepoint grant_026;
+
+reset role;
+
+select assert_eq(
+  (select count(*)::int from pg_policies where tablename = 'password_reset_grants'),
+  0, 'the grant table carries no policies — the two functions are the only door');
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'public.password_reset_grants'::regclass),
+  true, '... and RLS is on, so no policies denies rather than allows');
+
+-- Scoped to the grantee. The unscoped form always finds grants, because
+-- postgres owns the table and service_role holds everything by Supabase
+-- default — 015's footer read 2 against a correct database for exactly this.
+select assert_eq(has_table_privilege('authenticated', 'public.password_reset_grants', 'select'),
+  false, 'authenticated cannot read the grant table');
+select assert_eq(has_table_privilege('authenticated', 'public.password_reset_grants', 'insert'),
+  false, 'authenticated cannot forge a spend record');
+select assert_eq(has_table_privilege('authenticated', 'public.password_reset_grants', 'update'),
+  false, 'authenticated cannot move a spend record');
+select assert_eq(has_table_privilege('authenticated', 'public.password_reset_grants', 'delete'),
+  false, 'authenticated cannot un-spend a grant');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_name = 'password_reset_grants' and grantee = 'anon'),
+  0, 'anon holds nothing on the grant table');
+
+select assert_eq(has_function_privilege('anon', 'public.has_password_reset_grant()', 'execute'),
+  false, 'anon cannot ask whether it holds a grant');
+select assert_eq(has_function_privilege('anon', 'public.consume_password_reset_grant()', 'execute'),
+  false, 'anon cannot spend one');
+select assert_eq(has_function_privilege('authenticated', 'public.has_password_reset_grant()', 'execute'),
+  true, 'authenticated can — the reset screen calls it');
+select assert_eq(has_function_privilege('authenticated', 'public.consume_password_reset_grant()', 'execute'),
+  true, 'authenticated can — updatePassword calls it');
+select assert_eq(has_function_privilege('authenticated', 'private.password_reset_session()', 'execute'),
+  false, 'authenticated cannot reach the rule directly, only through the two entry points');
+
+-- Asserted from the catalog rather than trusted from the file: apply_migration
+-- takes SQL as an argument, and 022 once shipped with `security definer`
+-- missing. proconfig stores the pin as the literal search_path="" — matching on
+-- `search_path=` finds nothing and reads as a pass.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace
+      and proname in ('has_password_reset_grant', 'consume_password_reset_grant')
+      and prosecdef and proconfig @> array['search_path=""']),
+  2, 'both entry points are security definer with a pinned search_path');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and proname = 'password_reset_session'
+      and not prosecdef and proconfig @> array['search_path=""']),
+  1, '... and the rule itself is INVOKER — it reads only the caller''s own claims');
+
+set role authenticated;
+
+-- No session at all.
+select set_config('test.uid', '', false);
+select set_config('request.jwt.claims', '', false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'a caller with no claims holds no grant');
+select assert_eq(public.consume_password_reset_grant(), false,
+  '... and cannot spend one');
+
+-- An ORDINARY SIGNED-IN SESSION. This is the whole threat: a recovery link
+-- yields a session indistinguishable from this one, and proxy.ts deliberately
+-- does not bounce it off /auth/reset-password.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(json_build_object(
+    'method', 'password', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'a password session holds no grant, however fresh');
+select assert_eq(public.consume_password_reset_grant(), false,
+  '... and spending one is refused');
+reset role;
+select assert_eq((select count(*)::int from public.password_reset_grants), 0,
+  '... and the refusal wrote no row');
+set role authenticated;
+
+-- GoTrue also calls `otp` and `magiclink` recovery methods (Session.IsRecovery).
+-- 026 §3 is deliberately narrower than the platform: nothing in this app mints
+-- either, and if the recovery mail ever moves to a token_hash link — which
+-- records `otp` — this must fail closed and loudly rather than widen quietly.
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(json_build_object(
+    'method', 'otp', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'an otp session holds no grant — narrower than GoTrue, on purpose (026 §3)');
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(json_build_object(
+    'method', 'magiclink', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'a magiclink session holds no grant either');
+
+-- Malformed claims are a refusal, not a 500.
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', 'not-a-uuid',
+  'amr', json_build_array(json_build_object(
+    'method', 'recovery', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'a malformed session_id is refused rather than raised');
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'amr', json_build_array(json_build_object(
+    'method', 'recovery', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'a recovery claim with no session_id is refused — there is nothing to spend');
+
+-- `amr` may legally be an array of plain strings when a custom access token
+-- hook is installed. None is; the shape fails closed if one ever is.
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array('recovery')
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'the RFC-8176 string form of amr fails closed');
+
+-- Fifteen minutes, matching the cookie's maxAge. The timestamp is the instant
+-- the recovery session was minted and cannot be slid forward by refreshing a
+-- token, so this window is a real one.
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(json_build_object(
+    'method', 'recovery', 'timestamp', extract(epoch from now() - interval '16 minutes')::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'a recovery grant 16 minutes old has expired');
+select assert_eq(public.consume_password_reset_grant(), false,
+  '... and cannot be spent');
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(json_build_object(
+    'method', 'recovery', 'timestamp', extract(epoch from now() - interval '14 minutes')::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), true,
+  '... but at 14 minutes it still holds');
+
+-- The positive case, and then the property that makes it a grant rather than a
+-- flag: spending it is what ends it.
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(json_build_object(
+    'method', 'recovery', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), true,
+  'a fresh recovery session holds a grant');
+select assert_eq(public.consume_password_reset_grant(), true,
+  '... spends it exactly once');
+select assert_eq(public.consume_password_reset_grant(), false,
+  '... and a second attempt on the same session is refused');
+select assert_eq(public.has_password_reset_grant(), false,
+  '... and the screen is told so too');
+
+reset role;
+select assert_eq(
+  (select user_id from public.password_reset_grants
+    where session_id = '00000000-0000-0000-0000-0000000000f1'),
+  '00000000-0000-0000-0000-00000000000a'::uuid,
+  'the spend record names the rider who spent it');
+
+-- Keyed on the session, not the rider: one link, one reset, and a rider's own
+-- second recovery link is a different session and works normally.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000b',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(json_build_object(
+    'method', 'recovery', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.consume_password_reset_grant(), false,
+  'a spent session stays spent whoever presents it');
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000b',
+  'session_id', '00000000-0000-0000-0000-0000000000f2',
+  'amr', json_build_array(json_build_object(
+    'method', 'recovery', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.consume_password_reset_grant(), true,
+  '... while another rider''s own link is unaffected by it');
+
+-- Reach: a new personal-data table the account-deletion path does not cover is
+-- unfinished. This one is covered by the FK, so it needs no code.
+reset role;
+savepoint grant_026_cascade;
+delete from auth.users where id = '00000000-0000-0000-0000-00000000000b';
+select assert_eq(
+  (select count(*)::int from public.password_reset_grants
+    where user_id = '00000000-0000-0000-0000-00000000000b'),
+  0, 'deleting the rider deletes their spend records — deletion reach, by FK');
+rollback to savepoint grant_026_cascade;
+
+-- Retention: 24 hours, swept on the only path that writes. The sweep is global
+-- rather than per-caller, so this row belongs to a third rider.
+insert into public.password_reset_grants (session_id, user_id, claimed_at)
+values ('00000000-0000-0000-0000-0000000000f9',
+        '00000000-0000-0000-0000-00000000000c',
+        now() - interval '25 hours');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f3',
+  'amr', json_build_array(json_build_object(
+    'method', 'recovery', 'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.consume_password_reset_grant(), true,
+  'a later reset succeeds ...');
+reset role;
+select assert_eq(
+  (select count(*)::int from public.password_reset_grants
+    where session_id = '00000000-0000-0000-0000-0000000000f9'),
+  0, '... and sweeps a spend record older than the 24-hour window');
+select assert_eq(
+  (select count(*)::int from public.password_reset_grants
+    where session_id = '00000000-0000-0000-0000-0000000000f3'),
+  1, '... without sweeping the one it just wrote');
+
+rollback to savepoint grant_026;
+
+set role authenticated;
+select set_config('test.uid', '', false);
+select set_config('request.jwt.claims', '', false);
+reset role;
 
 -- The anon key ships in the client bundle, so anything anon can reach is
 -- public to the internet. This was a live exposure: every profile row was
