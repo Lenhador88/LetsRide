@@ -70,6 +70,24 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (leaving !== null) return
+
+    /**
+     * A gesture starting on a control is that control's, not the deck's.
+     *
+     * `setPointerCapture` below retargets every subsequent pointer event to the
+     * card, so the browser never delivers a `click` to whatever was pressed —
+     * which made **every button on the front card dead**: the overflow menu,
+     * like, comment and share. Verified against the real app on 2026-08-05: a
+     * pointer click left `aria-expanded` false with no dialog in the DOM, while
+     * dispatching `.click()` from JS opened the sheet correctly. The React
+     * handlers were never the problem.
+     *
+     * Bailing out here rather than calling `releasePointerCapture` later,
+     * because capture has to not happen at all — releasing it mid-gesture does
+     * not resurrect the click the browser already withheld.
+     */
+    if ((event.target as HTMLElement).closest('button, a')) return
+
     drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
     setDragging(true)
     event.currentTarget.setPointerCapture(event.pointerId)

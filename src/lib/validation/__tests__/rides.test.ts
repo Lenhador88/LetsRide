@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseRideFilter } from '@/lib/validation/rides'
+import { parseRideFilter, rideIdSchema } from '@/lib/validation/rides'
 
 const UUID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301'
 
@@ -29,5 +29,22 @@ describe('parseRideFilter', () => {
 
   it('still returns the club when only the filter value is junk', () => {
     expect(parseRideFilter({ filter: 'bogus', club: UUID })).toEqual({ kind: 'club', id: UUID })
+  })
+})
+
+describe('rideIdSchema', () => {
+  it('accepts a uuid', () => {
+    expect(rideIdSchema.safeParse('dd7c6d53-3a12-481c-96f6-efd5249693b4').success).toBe(true)
+  })
+
+  it('rejects the segments that actually reached it in production', () => {
+    // `/rides/new` is the Create-ride button's own href, and it matches the
+    // `/rides/[id]` route for any segment that is not a real sub-route. Before
+    // this schema, `/rides/new/crew` answered 500 — Postgres 22P02 through
+    // PostgREST as a 400, thrown by unwrap. Found by loading the app, not by
+    // review.
+    for (const bad of ['new', 'not-a-uuid', '', '123', 'undefined', 'null']) {
+      expect(rideIdSchema.safeParse(bad).success).toBe(false)
+    }
   })
 })

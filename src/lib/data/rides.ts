@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
+import { rideIdSchema } from '@/lib/validation/rides'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import type {
   PublicProfile,
@@ -253,6 +254,12 @@ export async function getRides(
  * lookup on `(ride_id, user_id)` rather than a scan.
  */
 export async function getRide(id: string): Promise<RideDetail | null> {
+  // A non-UUID segment reaches `.eq('id', …)` as `22P02`, which PostgREST turns
+  // into a 400 and `unwrap` throws — so `/rides/new/crew` answered 500 instead
+  // of 404. Returning null routes it through the same `notFound()` a hidden
+  // ride gets, which is both honest and leaks nothing new.
+  if (!rideIdSchema.safeParse(id).success) return null
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 

@@ -37,3 +37,20 @@ export function parseRideFilter(params: {
   if (club) return { kind: 'club', id: club }
   return undefined
 }
+
+/**
+ * A ride id out of the URL, which is untrusted like any other segment.
+ *
+ * `/rides/[id]` and `/rides/[id]/crew` put this straight into `.eq('id', …)`.
+ * Postgres rejects a non-UUID with `22P02`, PostgREST returns 400, and `unwrap`
+ * throws — so `/rides/new/crew` answered **500** rather than 404. Found by
+ * loading the app against the real database on 2026-08-05, not by review: the
+ * link that produced it was the "Create ride" button's own `/rides/new`, which
+ * matches `/rides/[id]` for any segment that is not a real route.
+ *
+ * Same reasoning as `rideSearchParamsSchema` above and `riderIdSchema` in
+ * `blocks.ts`. A malformed id means "no such ride", and 404 is the honest
+ * answer — which is also the answer a ride you may not see already gets, so
+ * this leaks nothing new.
+ */
+export const rideIdSchema = z.uuid()
