@@ -38,15 +38,19 @@ reviewed once and revised. **Read `tasks.md` before doing anything on this.**
 
 Seven task groups, six phases:
 
-| Group | | Status |
-|---|---|---|
-| 1 | Integrity migrations `018`–`023` | **Applied half done** — see below |
-| 1b | Consent prompt (one screen, one user) | Not started; unblocks `023` |
-| 2 | Make `lib/data/` isomorphic | **← next build** |
-| 3 | Session → device secure storage, auth, recovery | Not started |
-| 4 | Screens, one route group at a time | Not started; the bulk |
-| 5–6 | Retire the server render path | Not started |
-| 7 | Verification and handoff | Not started |
+**Use `tasks.md`'s group numbers, which is what this table does.** They do not line up with the
+phase numbers in the same headings — group 3 is Phase 2 — and an earlier version of this table
+renumbered them, which is how "group 2" ended up meaning two different things in one paragraph.
+
+| Group | Phase | | Status |
+|---|---|---|---|
+| 1 | 1 | Integrity migrations `018`–`023` | **Applied half done** — see below |
+| 2 | 1b | Consent prompt (one screen, one user) | Q11/Q12 answered; the prompt is unbuilt and it unblocks `023` |
+| 3 | 2 | Make `lib/data/` isomorphic | **← next build** |
+| 4 | 3 | Session → device secure storage, auth, recovery | Not started |
+| 5 | 4 | Screens, one route group at a time | Not started; the bulk |
+| 6 | 5–6 | Retire the server render path | Not started |
+| 7 | — | Verification and handoff | Not started |
 
 **Only group 1 is independently landable.** Groups 2–4 are one continuous unit — an earlier
 draft claimed each phase left the app working and two did not, which review caught.
@@ -98,10 +102,11 @@ UPDATE `t`. The working shape is revoke-table-level-then-grant-a-column-allowlis
 
 ## Do this first
 
-1. **Group 2 — make `lib/data/` isomorphic.** The migration's actual first step. An
-   environment-aware Supabase accessor so the same 19 read functions work from a client
-   component; the server branch survives until group 4 finishes. `tasks.md` group 3 has the
-   detail.
+1. **`tasks.md` group 3 (Phase 2) — make `lib/data/` isomorphic.** The migration's actual first
+   step. An environment-aware Supabase accessor so the same 19 read functions work from a client
+   component; the server branch survives until group 5 finishes. Review already rejected the
+   "returns the browser client" reading — during SSR there is no `document`, so it resolves to
+   an anonymous client and every read fails closed at RLS. Groups 3–5 are one continuous unit.
 2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
    nothing, with no alert, so the deployed app goes down silently. **Owner action** — needs Pro
    before anything resembling launch.
