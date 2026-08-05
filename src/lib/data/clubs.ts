@@ -224,23 +224,56 @@ export async function getExploreClubs(): Promise<ClubListItem[]> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  const ids = await myClubIds(supabase, user.id)
+  const rows = unwrapList(
+    await supabase
+      .from('clubs')
+      .select(CLUB_LIST_SELECT)
+      .eq('is_public', true)
+      .order('created_at', { ascending: false })
+      .limit(CLUBS_PAGE_SIZE)
+      .limit(CLUB_AVATAR_LIMIT, { referencedTable: 'riders' }),
+    'clubs to explore',
+  ) as unknown as ClubListRow[]
 
-  let query = supabase
-    .from('clubs')
-    .select(CLUB_LIST_SELECT)
-    .eq('is_public', true)
-    .order('created_at', { ascending: false })
-    .limit(CLUBS_PAGE_SIZE)
-    .limit(CLUB_AVATAR_LIMIT, { referencedTable: 'riders' })
+  /**
+   * The exclusion is checked **against this page**, not against a list of the
+   * rider's memberships, and that ordering is the fix for a real defect.
+   *
+   * The first version excluded server-side with `.not('id','in',(…myClubIds))`,
+   * reasoning that a JS filter after the fact makes `CLUBS_PAGE_SIZE` mean less
+   * than it says. True, but `myClubIds` is capped at `CLUB_MEMBERSHIP_LIMIT`
+   * with no `order by` — so past 100 memberships the exclusion list was an
+   * arbitrary 100 and the rest of the rider's own clubs reappeared on Explore
+   * with a `Join club` button that upserts, succeeds, changes nothing and does
+   * not remove the row. **Wrong rows, not fewer rows** — the one degradation a
+   * cap must never produce.
+   *
+   * Asking "which of these fifty am I in" is bounded by the page instead of by
+   * membership, so it cannot go wrong at any number of clubs. The page may come
+   * back shorter than `CLUBS_PAGE_SIZE`; short is the honest failure.
+   */
+  const ids = rows.map((row) => row.id)
+  const joined = new Set<string>()
 
-  if (ids.length > 0) query = query.not('id', 'in', `(${ids.join(',')})`)
+  if (ids.length > 0) {
+    const memberships = unwrapList(
+      await supabase
+        .from('club_members')
+        .select('club_id')
+        .eq('user_id', user.id)
+        .in('club_id', ids),
+      'your membership of these clubs',
+    ) as unknown as { club_id: string }[]
 
-  const rows = unwrapList(await query, 'clubs to explore') as unknown as ClubListRow[]
+    for (const membership of memberships) joined.add(membership.club_id)
+  }
 
   // No unread. The design puts `Join club` in the slot the counter occupies,
   // and 015 refuses a watermark for a club you have not joined anyway.
-  const items = rows.map((row) => toClubListItem(row)).sort(byName)
+  const items = rows
+    .filter((row) => !joined.has(row.id))
+    .map((row) => toClubListItem(row))
+    .sort(byName)
   await Promise.all([signRiderAvatars(items, supabase), signClubImages(items, supabase)])
   return items
 }

@@ -19,13 +19,17 @@ import type { ClubListItem } from '@/types'
  * y12, the type row at y36 and the riders at y70; avatars are 28 overlapping by
  * 4, then a 4 gap to the `+N`.
  *
- * **The 80-wide image and the 72 avatar have no data behind them.** `clubs` has
- * carried the same seven columns since 001 and `avatar_url` has never been
- * written by anything in this repo — `/clubs/new` inserts four fields and stops.
- * They render as the design's containers with the club's initials, which is the
- * honest subset. Adding `avatar_path` / `cover_image_path` without the upload
- * screen that fills them would draw exactly this and leave two dead columns
- * behind; it sizes with Create/Edit club. Logged in docs/FIGMA-FIDELITY-TODO.md.
+ * **The image and the avatar are real** as of `016`, which added
+ * `clubs.avatar_path` and `cover_image_path` alongside the Create club upload
+ * that fills them — deliberately in one change, because columns without an
+ * upload screen would have drawn this same empty container while planting the
+ * dead column `014` had to remove from `profiles`.
+ *
+ * Both fall back to the design's container plus the club's initials when the
+ * path is null or will not sign, and **null is a correct outcome, not only an
+ * empty one**: `016`'s storage SELECT policy refuses a private club's cover to a
+ * viewer who cannot see the club. Do not "fix" the fallback by dropping the
+ * null check.
  *
  * **The whole row navigates, but `Join club` is a control inside it**, which is
  * why the link is a stretched overlay rather than a wrapper. `<a>` may not

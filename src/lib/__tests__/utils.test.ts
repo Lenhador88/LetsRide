@@ -238,4 +238,25 @@ describe('wallClockToUtc', () => {
   it('accepts a value that already carries seconds', () => {
     expect(wallClockToUtc('2026-08-16T10:00:30')).toBe('2026-08-16T08:00:30.000Z')
   })
+
+  /**
+   * The two hours a year with no single right answer. Pinned rather than left
+   * to chance — `reviewer` flagged the autumn one as defensible but undocumented,
+   * and an undocumented tie-break is one somebody later "fixes" in the other
+   * direction without knowing a choice was made.
+   */
+  it('resolves the ambiguous autumn hour to its second occurrence, so it round-trips', () => {
+    // 02:30 happens twice on 2026-10-25. Picking CET (+1) means formatRideTime
+    // draws back exactly what the organizer typed.
+    expect(wallClockToUtc('2026-10-25T02:30')).toBe('2026-10-25T01:30:00.000Z')
+    expect(formatRideTime(wallClockToUtc('2026-10-25T02:30'))).toBe('02:30')
+  })
+
+  it('lands the nonexistent spring hour on the following hour', () => {
+    // 02:30 does not exist on 2026-03-29 — the clock jumps 02:00 to 03:00. There
+    // is no instant to return, so this is the conventional choice and the only
+    // input in the year that does not round-trip.
+    expect(wallClockToUtc('2026-03-29T02:30')).toBe('2026-03-29T01:30:00.000Z')
+    expect(formatRideTime(wallClockToUtc('2026-03-29T02:30'))).toBe('03:30')
+  })
 })

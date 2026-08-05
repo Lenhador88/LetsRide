@@ -118,9 +118,16 @@ create policy "Riders advance only their own watermarks"
 -- ---------------------------------------------------------------------------
 --
 -- `postcards_club_id_idx (club_id, created_at desc)` already exists from 009 and
--- is exactly the shape §4 probes. `rides` had **no indexes at all** — not one,
--- since 001 — so the rides half of every badge would have been a sequential
--- scan of the whole table on every Clubs tab load.
+-- is exactly the shape §4 probes. `rides` had **no index reachable by a
+-- `club_id` lookup** — only `rides_pkey`, the implicit one on the primary key —
+-- so the rides half of every badge would have been a sequential scan of the
+-- whole table on every Clubs tab load.
+--
+-- (This comment said "no indexes at all, not one" until review checked it
+-- against `pg_indexes`. The conclusion was right and the superlative was not,
+-- which is the failure mode CLAUDE.md's "a claim about state needs the command
+-- that checks it" exists to catch. The command is
+-- `select indexname from pg_indexes where tablename = 'rides';`)
 
 create index rides_club_id_created_at_idx on public.rides (club_id, created_at desc)
   where club_id is not null;

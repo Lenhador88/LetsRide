@@ -71,7 +71,18 @@ export async function createClub(
     .insert({ club_id: club.id, user_id: user.id, role: 'owner' })
 
   if (membershipError) {
-    await supabase.from('clubs').delete().eq('id', club.id)
+    // The rollback can fail too, and discarding its error is how "could not be
+    // created" becomes a lie: the club survives, invisible on Your clubs (which
+    // reads membership) and visible on Explore to everyone. The rider retries
+    // and owns two. Surfacing it is not a fix — the fix is one statement in a
+    // security definer function — but it stops the message contradicting the
+    // state.
+    const { error: rollbackError } = await supabase.from('clubs').delete().eq('id', club.id)
+    if (rollbackError) {
+      return {
+        error: 'That club was only partly created. Check your clubs before trying again.',
+      }
+    }
     return { error: 'That club could not be created.' }
   }
 

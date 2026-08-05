@@ -1996,6 +1996,76 @@ select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 
 -- ===========================================================================
+-- 017: a ride belongs only to a club you are in
+-- ===========================================================================
+
+set role authenticated;
+
+\echo ''
+\echo '# A ride cannot be posted into a club you do not belong to (migration 017)'
+
+-- 000c is not a member of c1 (private) or c5 (public, owned by 000b). Club ids
+-- are not secret — every public club's id is in the DOM of /clubs/explore — so
+-- knowing the id is the attacker's starting position, not their obstacle.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+select assert_denied($$
+  insert into rides (title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('Crashing the private club', 'The Bridge', now() + interval '1 day',
+          false, '00000000-0000-0000-0000-0000000000c1',
+          '00000000-0000-0000-0000-00000000000c')$$,
+  'an outsider cannot post a ride into a private club');
+
+select assert_denied($$
+  insert into rides (title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('Crashing a public club', 'The Pier', now() + interval '1 day',
+          false, '00000000-0000-0000-0000-0000000000c5',
+          '00000000-0000-0000-0000-00000000000c')$$,
+  'a non-member cannot post a ride into a public club either');
+
+-- Guards against over-tightening in both directions: no club is still fine, and
+-- a member of the club is still fine.
+select assert_allowed($$
+  insert into rides (title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('No club at all', 'The Cafe', now() + interval '1 day',
+          true, null, '00000000-0000-0000-0000-00000000000c')$$,
+  'a ride with no club is unaffected');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_allowed($$
+  insert into rides (title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('A ride for my own club', 'The Bridge', now() + interval '1 day',
+          false, '00000000-0000-0000-0000-0000000000c1',
+          '00000000-0000-0000-0000-00000000000b')$$,
+  'a member can post a ride into their own club');
+
+\echo ''
+\echo '# Nor moved into one afterwards (migration 017)'
+
+-- The hole guarding INSERT alone would leave: insert clubless, then update. The
+-- ride is 000c's own, so the organizer arm of the policy is satisfied and only
+-- the membership predicate can refuse it.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+values ('00000000-0000-0000-0000-0000000000df', 'Trojan ride', 'The Wall',
+        now() + interval '1 day', false, null, '00000000-0000-0000-0000-00000000000c');
+
+select assert_denied($$
+  update rides set club_id = '00000000-0000-0000-0000-0000000000c1'
+   where id = '00000000-0000-0000-0000-0000000000df'$$,
+  'a clubless ride cannot be moved into a club the organizer is not in');
+
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where tablename = 'rides' and with_check like '%is_club_member%'),
+  2, 'both INSERT and UPDATE carry the membership predicate, not just INSERT');
+
+reset role;
+delete from rides where id = '00000000-0000-0000-0000-0000000000df';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+-- ===========================================================================
 -- 016: club avatars and covers
 -- ===========================================================================
 

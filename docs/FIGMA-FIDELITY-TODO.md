@@ -199,11 +199,12 @@ About — built from the **private club** frames, which are the ones marked Done
       are **On hold**, and `View not joined public club` carries the note: *"Public clubs are
       Post-MVP. Until then we only have private clubs."*
 
-      **This contradicts the schema and is a live question for the product owner.**
-      `clubs.is_public` defaults to **true** in `001`, so every club created so far is public,
-      and `/clubs/explore` — an epic marked Done — exists to browse exactly the clubs the note
-      says are Post-MVP. The create form now defaults to **private** to match the note; the
-      column default is untouched, so this is one line to reverse either way.
+      **Answered by the product owner: public clubs are in scope**, so that note is out of
+      date rather than binding — which `/clubs/explore` being marked Done already implied. The
+      create form defaults to **public**, matching `001`'s column default. This entry said
+      "defaults to private" for one commit after the code said otherwise; the default now lives
+      in exactly two places, `defaultChecked` and the column, and `clubSchema` carries no
+      third.
 
 - [ ] **The Timeline's activity feed is not built.** The design interleaves postcards with
       event rows — "Ron Wilson joined the club.", with a time-since — and there is no table
