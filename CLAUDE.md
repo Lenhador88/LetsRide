@@ -766,6 +766,12 @@ Two rules that follow:
   verified to compile and not verified to work" is a lower-fidelity artifact and needs an
   explicit ask. Only the second kind is escalated, or the signal drowns.
 
+**Notify when the work is done and the owner may not be watching.** Standing request from the
+product owner, 2026-08-05: send a push notification when a session's work is finished, in the
+form `Done ; ) <name of the session>` — the name being what the session was *about*, so a
+notification read on a phone hours later identifies itself without opening anything. One at the
+end, not per milestone; a notification they did not need is annoying in a way that accumulates.
+
 **Rate every suggestion on four lines, always in this order.** Whenever you propose optional
 work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
 with numbers buried in it; the point is that the reader can skim four lines and still decide.
