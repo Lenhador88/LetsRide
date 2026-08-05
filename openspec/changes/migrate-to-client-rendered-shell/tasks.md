@@ -48,14 +48,20 @@ in an earlier revision and has moved to group 3.
   club member, non-member on a clubless public ride, non-member on a private club's ride
   (zero rows, and its crew unreachable through `ride_members`), blocked rider, signed-out
   visitor.
-- [ ] 1.12 **BLOCKED on Q11** — `023_participation_gate.sql`. A rider whose
+- [ ] 1.12 **UNBLOCKED — Q11 answered 2026-08-05** — `023_participation_gate.sql`. A rider whose
   `onboarding_completed_at` is NULL, or whose `terms_accepted_at` is NULL, may not insert into
   `postcards`, `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`,
   `postcard_likes` or `postcard_reports`. One `BEFORE INSERT` trigger per table calling a single
   `security definer` helper. The five deliberate omissions — `blocks`, `postcard_hides`,
   `feed_reads`, `profile_countries`, `profiles` — are named in the migration header with their
-  reason, not left as silence. **Do not write this until Q11 is answered: 4 of 4 riders have
-  NULL consent and 3 are fully onboarded, so as drafted it locks out every existing rider.**
+  reason, not left as silence.
+
+  **Q11's answer, and the constraint it puts on this task: no backfill.** All 4 riders have NULL
+  consent, but the population does not need a rollout — 2 are `.test` fixtures already marked for
+  deletion before launch, 1 is an abandoned signup that never onboarded, and 1 is the product
+  owner, who re-accepts. **A minimal consent prompt for a rider whose stamp is NULL must exist
+  before this gate becomes blocking** — it has exactly one user, so build it as one screen, not a
+  flow. No migration may write a consent timestamp on a rider's behalf.
 - [ ] 1.13 Also in `023`: extend `003`'s completion guard so `onboarding_completed_at` cannot be
   stamped while `terms_accepted_at` is NULL, in the same `check_violation` shape it already uses
   for `username` and `location`.
@@ -76,13 +82,19 @@ in an earlier revision and has moved to group 3.
 
 ## 2. Consent rollout (Phase 1b — a product decision, not a build task)
 
-- [ ] 2.1 **Q11 — product owner.** Decide what happens to riders with no consent record. The
-  recommended default is: gate new signups, and route existing riders through a one-screen
-  re-consent step before the gate becomes blocking for them. **No backfill** — a fabricated
-  consent record is worse than a missing one.
-- [ ] 2.2 **Q12 — engineering.** Establish why `terms_accepted_at` is NULL for riders who signed
-  up through an action that writes it. Either the write fails silently or those rows predate it,
-  and the answer changes how big 2.3 is.
+- [x] 2.1 ~~**Q11 — product owner.**~~ **Answered 2026-08-05. No backfill; the gate ships.** The
+  population needs no rollout: of 4 accounts, 2 are `.test` fixtures already marked for deletion
+  before launch, 1 is an abandoned signup that never onboarded, and 1 is the product owner, who
+  re-accepts. A fabricated consent record is worse than a missing one.
+- [x] 2.2 ~~**Q12 — engineering.**~~ **Answered 2026-08-05: provenance, not a broken write.** The
+  owner predates `003_onboarding` by two days; `duskrider` and `qa-verify` were SQL-inserted and
+  never went through `signUp`; the fourth row matches `signUp`'s own documented consent-failure
+  path exactly (no consent, no username, no onboarding, no sign-in). See `design.md` §Q12.
+  **The finding this surfaced is larger than the question:** no rider has ever completed the
+  current signup flow on this database, so the one path every rider takes is unproven end to end.
+  It needs an email domain the owner controls — `.test` is rejected by Supabase's validator,
+  which is why both fixtures were SQL-inserted in the first place. Owner to exercise before the
+  client owns signup in Phase 4.
 - [ ] 2.3 Build whatever 2.1 decides, before 1.12 lands.
 
 ## 3. Make the data layer isomorphic (Phase 2)
