@@ -22,7 +22,7 @@ keep in sync.
 CI runs the same script against `postgres:17`, matching the Supabase project's
 major version.
 
-### The three undeployed migrations, and the one that is not skipped
+### The two undeployed migrations
 
 **The suite models the database that actually runs**, so `run.sh` skips `021`
 and `023` by default: both are written, both are deliberately not applied to the
@@ -46,27 +46,13 @@ Two reasons, both of which are findings rather than inconveniences:
 Both suites fail without their migration — checked, not assumed — so neither is
 a placeholder.
 
-**`024` is the third undeployed migration, and it is deliberately NOT skipped —
-so for one column the sentence above is currently false.** `rls_test.sql`
-asserts `profiles.avatar_url` and `clubs.avatar_url` are absent while the hosted
-project still has both. That is the intended state rather than drift: unlike
-`021`/`023` there is no unresolved decision behind `024`, only an ordering one.
-Its code repair is backward-compatible — every changed select was probed against
-the live schema and is valid before the drop — so the sequence is **merge and
-deploy the code, then apply `024`**. The reverse is an instant outage on `main`.
-
-The cost of that choice is worth naming: **nothing goes red if `024` is never
-applied.** The code works either way, CI is green, and this suite is green. The
-only signal is item 2 of *Do this first* in `docs/HANDOFF.md`. Delete these two
-paragraphs in the change that applies it.
-
 ## Files
 
 | File | Purpose |
 |---|---|
 | `harness.sql` | Stand-in for Supabase: `auth.users`, `auth.uid()`, the `anon`/`authenticated`/`auth_admin` roles, their default grants, and the assertion helpers |
 | `seed.sql` | Fixtures: three onboarded riders, two riders mid-onboarding, a private club with a member, a public club, a club-only ride, a public ride |
-| `rls_test.sql` | The assertions, against the deployed schema **plus `024`** — see the note above |
+| `rls_test.sql` | The assertions, against the deployed schema |
 | `rls_test_pending_021.sql` | Assertions for `021`, which is written and not deployed |
 | `rls_test_pending_023.sql` | Assertions for `023`, likewise. Adds three riders of its own so no expected value in `rls_test.sql` moves |
 | `run.sh` | Applies everything in order and runs one of the three suites |

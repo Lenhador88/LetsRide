@@ -202,12 +202,15 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
   column that does not exist cannot be granted either way. Proven both directions against a
   scratch database in the real hosted order: the old list aborts with `42703`, the new one
   applies cleanly.
-- **The code change is backward-compatible, so `024` need not land in the same instant.** Every
+- **The code change is backward-compatible, so `024` did not land in the same instant.** Every
   changed select was probed against the live schema *before* `024` — PostgREST returns `42703`
   for a column that does not exist and `42501` for one the role cannot read, so the two are
-  distinguishable without a session, and all seven came back `42501`. The safe order is
-  therefore **merge and deploy the code first, then apply `024`** — same PR, but with no window
-  in which either half is alone. Applying `024` first is an immediate outage on `main`.
+  distinguishable without a session, and all seven came back `42501`. The order was therefore
+  **merge and deploy the code, then apply `024`** — same PR, with no window in which either half
+  is alone. Applying `024` first would have been an immediate outage on `main`. Done
+  2026-08-05: PR #52 merged, deployment `READY` at `b60618a`, then the drop; `list_migrations`
+  now returns 22 rows ending `drop_legacy_avatar_url` against 24 files, the two missing being
+  `021` and `023`.
 
 ## 4. Session, auth and the recovery grant (Phase 3)
 

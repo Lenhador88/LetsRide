@@ -143,15 +143,16 @@ that could never hold a value.
 select count(*) filter (where avatar_path is not null) from public.clubs;   -- 0 on 2026-08-05
 ```
 
-**`024` is written and NOT applied — deliberately, and unlike `021`/`023` it is not in
-`SKIP_MIGRATIONS`.** Dropping a column `main` still selects is an instant outage. The code
-repair is backward-compatible in both directions — every changed select was probed against the
-live schema and came back `42501` (no grant) rather than `42703` (no column) — so:
+**`024` shipped in the order its header demands** — PR #52 merged, Vercel `READY` at `b60618a`,
+*then* the drop, 2026-08-05. The reverse is an instant outage, because the code before that
+commit still selected the column. Verified after: old selects `42703`, every shipped select
+`42501`, advisors unchanged.
 
-**Apply order: merge and deploy the code, then apply `024`.** Never the reverse.
+**Keep the probe — it needs no session and it is the cheapest schema oracle here.** PostgREST
+answers `42703` for a column that does not exist and `42501` for one the role cannot read, so
+anonymous `curl` distinguishes the two:
 
 ```bash
-# The probe, re-runnable without a session. 42501 = the columns all exist.
 curl -s "$URL/rest/v1/rides?select=id,club:clubs(id,name,avatar_path)&limit=1" \
   -H "apikey: $KEY" -H "Authorization: Bearer $KEY"
 ```
@@ -204,30 +205,22 @@ until 5.1 converts the guard, in the same change as the first route group.
    group 4's tasks and design D2/D3 before starting — the storage adapter must stay behind a
    flag until the guard moves in 5.1, because `proxy.ts` reads `request.cookies` and a
    half-moved session redirects every request to login.
-2. **Apply `024` — but only after the code is merged and deployed.** It is written, asserted
-   and unapplied. **Nothing goes red if this is forgotten**: the code works with or without the
-   column, CI is green and the RLS suite is green, because `024` is deliberately not in
-   `SKIP_MIGRATIONS`. The only signal that it is outstanding is this line.
-   `mcp__Supabase__list_migrations` shows 21 rows against 24 files; `024` is applied when that
-   reads 22. Then `get_advisors` (security) — expect exactly the two known findings, since it
-   creates no function and no view. **Applying it before the deploy is an instant outage on
-   `main`.**
-3. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
+2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
    nothing, with no alert, so the deployed app goes down silently. **Owner action** — needs Pro
    before anything resembling launch.
-4. **Exercise signup end to end.** Nobody has ever completed the current signup flow on this
+3. **Exercise signup end to end.** Nobody has ever completed the current signup flow on this
    database — the owner's account predates the consent write, both `.test` fixtures were
    SQL-inserted because Supabase rejects that TLD, and the one real attempt matches `signUp`'s
    own documented failure path. **The one path every rider takes is unproven.** Needs an email
    domain the owner controls, which is why it has never been done. **Owner action.**
-5. **Decide `021`'s shape** — ship it whole with its four code repairs, or narrow it to SELECT
+4. **Decide `021`'s shape** — ship it whole with its four code repairs, or narrow it to SELECT
    and still repoint two readers. **Owner decision**, blocks nothing today.
-6. **Enable leaked-password protection** — one dashboard toggle, the only outstanding security
+5. **Enable leaked-password protection** — one dashboard toggle, the only outstanding security
    advisor that is not deliberate. **Owner action.**
-7. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
+6. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
    `-- --delete`. Two objects, 1.15 MB, left by a bug fixed in #21. Whether the tool has ever
    been *run* is unknown; the dry run is free and settles it.
-8. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
+7. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
    `/postcards/[id]` still carry inferred composition; the design has frames for both. A diff
    now, not a re-derivation.
 

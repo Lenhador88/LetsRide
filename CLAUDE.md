@@ -292,7 +292,7 @@ the one most code wants:**
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **dropped by `024` — which is written and NOT YET APPLIED**, so the live database still has the column today. Check with `list_migrations` before acting on this row. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. `src/` already stopped selecting it, and the name survives there as a *field on what `lib/data/` returns*, holding the signed URL. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. |
+| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone — `024`, applied 2026-08-05** after the code repair deployed. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. The name survives in `src/` as a *field on what `lib/data/` returns*, holding the signed URL — never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. |
 | `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. |
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. |
@@ -304,7 +304,7 @@ the one most code wants:**
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
 | `postcard_hides` | `(postcard_id, user_id)` composite PK. **Per-viewer and one-directional**, unlike `blocks` — a row only ever removes a postcard from its own `user_id`'s feed. It is an input to the `postcards` SELECT policy, so `club_id` is no longer the sole determinant of what a viewer sees. |
 | `profile_countries` | `(user_id, country_code)` composite PK, added by `014`. Countries a rider says they have ridden in, **entered manually** — the derived reading is unbuildable, `rides` has no country or coordinates. `country_code` is ISO 3166-1 alpha-2 with a CHECK; there is no `countries` reference table, because the picker's list is the client's and nothing joins against it. SELECT inherits the profiles predicate via `EXISTS`, so blocking works without the word appearing in the policy. |
-| `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; **`024` drops it and is not yet applied**. Five query sites embedded `clubs(id, name, avatar_url)`; the three that draw an image could only ever draw initials, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
+| `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; **`024` dropped it, applied 2026-08-05**. Five query sites embedded `clubs(id, name, avatar_url)`; the three that draw an image could only ever draw initials, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
 
@@ -317,17 +317,19 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`020` and `022`. `021`, `023` and `024` are written and not applied —
-and `021`/`023` are the one case where the "unapplied migrations are drift" rule must not be
-followed blindly.** Confirmed 2026-08-05 with `list_migrations`: **21 rows** ending
-`private_club_rides`, against **24 files** in `supabase/migrations/`.
+**Applied state: `001`–`020`, `022` and `024`. `021` and `023` are written and deliberately
+NOT applied — the one case where the "unapplied migrations are drift" rule must not be followed
+blindly.** Confirmed 2026-08-05 with `list_migrations`: **22 rows** ending
+`drop_legacy_avatar_url`, against **24 files** in `supabase/migrations/`. The two missing are
+exactly `021` and `023`.
 
-`024_drop_legacy_avatar_url` is a different case from the other two: it has no unresolved
-decision behind it and is **not** in `SKIP_MIGRATIONS`, so the suite exercises it. It is
-unapplied only because dropping a column `main` still selects is an instant outage. Its code
-repair is backward-compatible — every changed select was probed against the live schema and is
-valid *before* the drop — so the order is **deploy the code, then apply `024`**, never the
-reverse.
+`024` was applied 2026-08-05, in the order its header demands: PR #52 merged, Vercel deployment
+`READY` at `b60618a`, *then* the drop. Doing it the other way is an instant outage, because the
+code before that commit still selected the column. Verified live — both columns absent, 0
+policies and 0 procs naming them, both `avatar_path` columns present with their 8 path CHECKs,
+neither `avatar_path` comment still referring to the dropped column, and advisors reporting only
+the two known findings. Also probed through PostgREST: the old selects now return `42703` and
+every select `main` ships returns `42501`.
 
 **Do not apply `021` or `023` without reading its header.** `021_profile_column_privileges` revokes
 column grants that `proxy.ts` reads on *every authenticated request* — applying it alone logs
@@ -947,6 +949,25 @@ chain to a scratch database and asserts what each role can reach.
     reports blocks the merge forever.
 - Whatever runs must pass before merging.
 - Never push directly to `main`.
+
+**One PR per session, opened at the wrap-up — and merged in the same session.** Standing
+instruction from the product owner, 2026-08-05: do not ask permission to open one. Both halves
+matter and the second is the one that gets dropped.
+
+- **Open it at the end, not per milestone.** A session is usually one coherent unit of work, and
+  a PR per commit fragments the reasoning across reviews that each see a third of it. Commit and
+  push freely as you go; the PR is the wrap-up.
+- **Then drive it to merged.** *Committed and pushed is not shipped* — see Working Principles —
+  and a wrap-up PR left open is that failure mode with extra steps, because every other signal
+  (clean tree, green CI, pushed branch) already looks finished. If it genuinely cannot merge,
+  say so plainly as the **last thing in the session**, with the reason.
+- **A follow-up PR is fine when a fact only becomes true after the merge.** Applying a migration
+  that must land after its code deploys is the standard case: the "applied" line cannot be
+  written truthfully in the PR that deploys the code. Docs-only follow-ups are cheap — `docs/`,
+  `openspec/`, `.claude/` and root `*.md` are in the CI denylist, so they run zero jobs.
+- **Restarting a merged branch:** the designated branch name is reused, so once its PR merges,
+  `git fetch origin main && git checkout -B <branch> origin/main` before the next change. Never
+  stack new commits on merged history.
 
 ## What Not To Do
 
