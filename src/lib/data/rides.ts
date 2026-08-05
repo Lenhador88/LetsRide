@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
+import { resolveAvatarUrls } from '@/lib/data/media'
 import type {
   PublicProfile,
   RideAttendance,
@@ -214,6 +215,16 @@ export async function getRides(
   }
 
   const rows = unwrapList(await query, 'the rides list') as unknown as RideRow[]
+
+  // Before mapping, not after: `toRideListItem` copies profile objects into
+  // `riders`, and resolving afterwards would sign the originals while the card
+  // rendered the copies. Same object identity either way here — the copies are
+  // references — but relying on that is a trap the next edit springs.
+  await resolveAvatarUrls(
+    rows.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
+    supabase
+  )
+
   return rows.map((row) => toRideListItem(row, user?.id, now))
 }
 
@@ -278,6 +289,8 @@ export async function getRide(id: string): Promise<RideDetail | null> {
   const ownRow = unwrap(ownResult, 'your RSVP') as { status: 'going' | 'maybe' } | null
   const isOrganizer = !!user && user.id === row.organizer_id
 
+  await resolveAvatarUrls([row.organizer], supabase)
+
   return {
     id: row.id,
     title: row.title,
@@ -329,6 +342,8 @@ export async function getRideCrew(rideId: string): Promise<RideCrew> {
     status: 'going' | 'maybe'
     profile: PublicProfile | null
   }[]
+
+  await resolveAvatarUrls(rows.map((row) => row.profile), supabase)
 
   const going = rows.filter((row) => row.status === 'going')
   const maybe = rows.filter((row) => row.status === 'maybe')

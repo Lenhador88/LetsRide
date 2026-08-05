@@ -922,9 +922,20 @@ select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'storage' and tablename = 'objects' and cmd = 'UPDATE'),
   0, 'no UPDATE policy on storage.objects — uploads never upsert (see uploadObject)');
+-- Scoped to the `postcards/` policies by name rather than counting the whole
+-- table, which is what this asserted until 014 added `avatars/` and `covers/`
+-- and turned 3 into 9.
+--
+-- Bumping the number would have been the wrong repair. The intent is "no
+-- leftover policy to OR against the others" — a property of ONE folder's rule
+-- set — and a whole-table count stops testing that the moment a second surface
+-- lands: a spurious fourth postcards policy would then be hidden by a
+-- coincidental total. The per-folder count keeps the original meaning, and 014
+-- asserts its own three-per-folder totals separately.
 select assert_eq(
-  (select count(*)::int from pg_policies where schemaname = 'storage' and tablename = 'objects'),
-  3, 'exactly insert, select and delete — no leftover policy to OR against the others');
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and policyname ilike '%postcard%'),
+  3, 'exactly insert, select and delete for postcards/ — no leftover policy to OR against the others');
 
 set role authenticated;
 
@@ -1609,6 +1620,144 @@ select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 \echo ''
 \echo '# No anonymous access anywhere (migrations 002, 007)'
 
+-- ===========================================================================
+-- 014: profile avatars, covers and countries
+-- ===========================================================================
+-- Three rules, and the interesting one is that NONE of them mentions blocking.
+-- The countries policy and both Storage read policies inherit the profiles
+-- SELECT predicate through an EXISTS, so what these assert is that the
+-- inheritance actually works — a restated copy would pass a test written
+-- against itself.
+
+\echo ''
+\echo '014: profile media and countries'
+
+set role authenticated;
+
+-- An unrelated rider sees the blocker's countries and media.
+--
+-- Identity is `test.uid`, which is what harness.sql's auth.uid() reads. The
+-- first version of this block used `request.jwt.claims`, copied from 014's own
+-- verification footer — that is the idiom for the REAL Supabase database, where
+-- auth.uid() parses the JWT. Here it set a GUC nothing reads, auth.uid()
+-- returned NULL, and the profiles policy's `username is not null` arm then made
+-- every profile visible. The assertions failed loudly, which is the only reason
+-- this is a comment rather than a silent hole: a NULL uid makes *more* visible,
+-- so a positive assertion written the same way would have passed while proving
+-- nothing.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq(
+  (select count(*)::int from profile_countries
+    where user_id = '00000000-0000-0000-0000-00000000001a'),
+  2, 'an unrelated rider sees another rider''s countries');
+select assert_eq(
+  (select count(*)::int from storage.objects
+    where name = 'avatars/00000000-0000-0000-0000-00000000001a/00000000-0000-0000-0000-0000000000f1.jpg'),
+  1, 'an unrelated rider can read another rider''s avatar object');
+select assert_eq(
+  (select count(*)::int from storage.objects
+    where name = 'covers/00000000-0000-0000-0000-00000000001a/00000000-0000-0000-0000-0000000000f2.jpg'),
+  1, 'an unrelated rider can read another rider''s cover object');
+
+-- The blocked rider sees none of it. This is the whole point of inheriting the
+-- profiles predicate rather than restating it.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq(
+  (select count(*)::int from profile_countries
+    where user_id = '00000000-0000-0000-0000-00000000001a'),
+  0, 'a blocked rider cannot read the blocker''s countries');
+select assert_eq(
+  (select count(*)::int from storage.objects
+    where name = 'avatars/00000000-0000-0000-0000-00000000001a/00000000-0000-0000-0000-0000000000f1.jpg'),
+  0, 'a blocked rider cannot read the blocker''s avatar object');
+select assert_eq(
+  (select count(*)::int from storage.objects
+    where name = 'covers/00000000-0000-0000-0000-00000000001a/00000000-0000-0000-0000-0000000000f2.jpg'),
+  0, 'a blocked rider cannot read the blocker''s cover object');
+
+-- Symmetry: the block row is directional, the effect is not.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq(
+  (select count(*)::int from profile_countries
+    where user_id = '00000000-0000-0000-0000-00000000001b'),
+  0, 'the blocker cannot read the blocked rider''s countries either');
+
+-- Writing countries.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_allowed(
+  $$insert into profile_countries (user_id, country_code)
+      values ('00000000-0000-0000-0000-00000000000c', 'FR')$$,
+  'a rider adds a country to their own profile');
+select assert_denied(
+  $$insert into profile_countries (user_id, country_code)
+      values ('00000000-0000-0000-0000-00000000000a', 'ES')$$,
+  'a rider cannot add a country to someone else''s profile');
+
+-- The code shape is a constraint, not a policy — 23514, not 42501.
+select assert_rejected(
+  $$insert into profile_countries (user_id, country_code)
+      values ('00000000-0000-0000-0000-00000000000c', 'fr')$$,
+  '23514', 'a lowercase country code is rejected');
+select assert_rejected(
+  $$insert into profile_countries (user_id, country_code)
+      values ('00000000-0000-0000-0000-00000000000c', 'FRA')$$,
+  '23514', 'a three-letter country code is rejected');
+
+-- Removing is permitted, and assert_allowed cannot prove a DELETE — see the
+-- comment on that helper. Run it and count the row.
+savepoint c_del;
+delete from profile_countries
+  where user_id = '00000000-0000-0000-0000-00000000001a' and country_code = 'NL';
+select assert_eq(
+  (select count(*)::int from profile_countries
+    where user_id = '00000000-0000-0000-0000-00000000001a' and country_code = 'NL'),
+  1, 'a rider cannot delete someone else''s country (the row survives)');
+rollback to savepoint c_del;
+
+-- Path ownership is a CHECK on profiles, so it fires before any policy and
+-- reports 23514 rather than an RLS refusal. That distinction is the reason
+-- 014 made it a constraint instead of only a Storage policy clause.
+select assert_rejected(
+  $$update profiles
+       set avatar_path = 'avatars/00000000-0000-0000-0000-00000000001a/00000000-0000-0000-0000-0000000000f9.jpg'
+     where id = '00000000-0000-0000-0000-00000000000c'$$,
+  '23514', 'a rider cannot claim an avatar path in another rider''s folder');
+select assert_rejected(
+  $$update profiles
+       set cover_image_path = 'covers/00000000-0000-0000-0000-00000000000c/not-a-uuid.jpg'
+     where id = '00000000-0000-0000-0000-00000000000c'$$,
+  '23514', 'a malformed cover path is rejected on shape');
+
+-- Uploading into someone else's folder.
+select assert_denied(
+  $$insert into storage.objects (bucket_id, name, owner, metadata)
+      values ('media',
+              'avatars/00000000-0000-0000-0000-00000000001a/00000000-0000-0000-0000-0000000000fa.jpg',
+              '00000000-0000-0000-0000-00000000000c',
+              '{"mimetype":"image/jpeg","size":10}')$$,
+  'a rider cannot upload an avatar into another rider''s folder');
+select assert_denied(
+  $$insert into storage.objects (bucket_id, name, owner, metadata)
+      values ('media',
+              'covers/00000000-0000-0000-0000-00000000000c/00000000-0000-0000-0000-0000000000fb.png',
+              '00000000-0000-0000-0000-00000000000c',
+              '{"mimetype":"image/png","size":10}')$$,
+  'a non-jpeg cover upload is refused');
+
+reset role;
+
+-- 3 folders x 3 policies (insert, select, delete). No UPDATE on any of them, so
+-- no upsert path exists for any upload surface.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'),
+  9, 'storage.objects carries exactly 9 policies — 3 each for postcards, avatars, covers');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and not (roles = '{authenticated}')),
+  0, 'every storage.objects policy targets authenticated only');
+
+
 -- The anon key ships in the client bundle, so anything anon can reach is
 -- public to the internet. This was a live exposure: every profile row was
 -- readable until 007 went out.
@@ -1633,6 +1782,7 @@ select assert_denied('select count(*) from ride_members', 'anon cannot read ride
 select assert_denied('select count(*) from postcard_comments', 'anon cannot read comments');
 select assert_denied('select count(*) from postcard_hides', 'anon cannot read hides');
 select assert_denied('select count(*) from postcard_reports', 'anon cannot read reports');
+select assert_denied('select count(*) from profile_countries', 'anon cannot read countries');
 reset role;
 
 rollback;

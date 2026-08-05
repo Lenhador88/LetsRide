@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { COUNTRY_CODES } from '@/lib/countries'
 
 /**
  * These rules are enforced twice: here, and as CHECK constraints in
@@ -109,3 +110,25 @@ export function checkUsername(value: string): { ok: true; username: string } | {
     ? { ok: true, username: result.data }
     : { ok: false, error: result.error.issues[0].message }
 }
+
+/**
+ * One ISO 3166-1 alpha-2 code, matching 014's CHECK constraint character for
+ * character. Uppercased rather than rejected on case for the same reason
+ * `usernameSchema` lowercases: the database is strict, so normalising here is
+ * consistent with it and a caller that sends `nl` gets their country rather
+ * than an error.
+ *
+ * Membership of the list is checked too. The constraint only knows the shape,
+ * so without this `ZZ` would be stored happily and then render as a blank flag
+ * and its own code forever.
+ */
+export const countryCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .pipe(
+    z
+      .string()
+      .regex(/^[A-Z]{2}$/, 'Use a two-letter country code.')
+      .refine((value) => COUNTRY_CODES.includes(value), 'That is not a country we know.')
+  )

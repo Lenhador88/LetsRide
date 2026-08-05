@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
-import { signImagePaths } from '@/lib/data/media'
+import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import type { Postcard, FeedPage, PostcardFilterOption, PostcardFilters } from '@/types'
 
@@ -79,6 +79,13 @@ async function attachLikeState(
   // the whole page.
   const imageUrls = await signImagePaths(rows.map((row) => row.image_path), supabase)
 
+  // The byline avatar, signed alongside the photos. A separate pass rather than
+  // one merged batch because the two are different Storage folders with
+  // different SELECT policies — a postcard you may see does not imply its
+  // author's avatar is readable (they may have blocked you since), and 014's
+  // policy is what decides.
+  await resolveAvatarUrls(rows.map((row) => row.author), supabase)
+
   return rows.map((row) => ({
     ...row,
     // Both counts arrive as the one-row aggregate array Supabase's `(count)`
@@ -139,12 +146,17 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
     await supabase
       .from('postcards')
       .select(
-        `image_path, author:profiles!author_id(id, username, avatar_url), club:clubs(id, name, avatar_url)`
+        `image_path, author:profiles!author_id(id, username, avatar_url, avatar_path), club:clubs(id, name, avatar_url)`
       )
       .order('created_at', { ascending: false })
       .limit(limit),
     'your postcard filters',
   ) as unknown as FilterRow[]
+
+  // The filter bar draws a rider's face on their tile, so it needs the same
+  // signing pass the deck gets. Missed on the first pass, which would have left
+  // every tile showing initials the moment avatars started being uploaded.
+  await resolveAvatarUrls(rows.map((row) => row.author), supabase)
 
   const riders = new Map<string, PostcardFilterOption>()
   const clubs = new Map<string, PostcardFilterOption>()

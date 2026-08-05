@@ -5,9 +5,12 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { Header } from '@/components/layout/Header'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { EditProfileForm } from '@/components/profile/EditProfileForm'
+import { ProfileCountries } from '@/components/profile/ProfileCountries'
+import { ProfileImageUpload } from '@/components/profile/ProfileImageUpload'
 import { ProfileMenu } from '@/components/profile/ProfileMenu'
-import { getCurrentProfile } from '@/lib/data/profile'
+import { getCurrentProfile, getProfileCountries } from '@/lib/data/profile'
 import { getFeed } from '@/lib/data/postcards'
+import { signImagePaths } from '@/lib/data/media'
 
 /**
  * `Profile / View your profile / Profile` (`1883:12248`) — the rider's own
@@ -21,19 +24,15 @@ import { getFeed } from '@/lib/data/postcards'
  * decision #7, and the reason the design's "Pedro Abreu" is not a `full_name`
  * this schema still has.
  *
- * **Four of the design's sections are not built, and none of them is a styling
- * task.** Badges (`7/42`), Countries (`22/195`), Motorcycles and Gear each need
- * their own table — the last is the Garage epic, which `bike_model` is a single
- * text column standing in for, not an implementation of. The 390×200 cover image
- * has no column either. All five are registered in
+ * **The cover, the avatar and Countries landed with `014` on 2026-08-05.** Two
+ * of the design's sections are still not built and neither is a styling task:
+ * Badges (`7/42`) needs a rules engine deciding what earns one, and Motorcycles
+ * and Gear are the Garage epic — `bike_model` is a single text column standing
+ * in for it, not an implementation. Both are registered in
  * docs/FIGMA-FIDELITY-TODO.md §Profile.
  *
- * The cover is **omitted rather than drawn as an empty 200px slab**, which is
- * the same call the ride detail made for its banner and for the same reason: it
- * carries no affordance, so an empty fifth of the screen above the fold is worse
- * than a shorter page. The four sections are omitted rather than shown as empty
- * headers with `0/42` beside them, which would read as a rider who has earned
- * nothing rather than a feature that does not exist.
+ * They are omitted rather than shown as empty headers reading `0/42`, which
+ * would state a fact about the rider where the truth is a fact about the app.
  *
  * What *is* below the profile is the design's own lower half: the rider's
  * postcard timeline (`Profile - Timeline`, `2083:5413`). That needed no new
@@ -49,8 +48,17 @@ export default async function ProfilePage() {
   // them back through auth is the only recovery the app has.
   if (!profile) redirect('/auth/login')
 
-  const postcards = await getFeed({}, { kind: 'rider', id: profile.id })
+  const [postcards, countries, coverUrls] = await Promise.all([
+    getFeed({}, { kind: 'rider', id: profile.id }),
+    getProfileCountries(profile.id),
+    // The cover is signed here rather than in `getCurrentProfile`, because it is
+    // the only screen that draws one — see the note on `cover_image_path`'s
+    // absence from PUBLIC_PROFILE_COLUMNS. The avatar is already resolved.
+    signImagePaths(profile.cover_image_path ? [profile.cover_image_path] : []),
+  ])
+
   const name = profile.username ?? 'Rider'
+  const coverUrl = profile.cover_image_path ? coverUrls.get(profile.cover_image_path) : null
 
   return (
     <>
@@ -61,16 +69,36 @@ export default async function ProfilePage() {
           variant, so it owes no top-up either. Re-deriving that padding per page
           is what globals.css warns about. */}
       <div className="flex flex-col gap-4 pb-4">
-        <div className="flex flex-col items-center gap-2 px-6 pt-4">
+        {/* The 390x200 cover. Drawn now that there is a column behind it AND an
+            affordance on it — the ride detail's banner is still omitted because
+            it has neither. An empty state is a real state here rather than dead
+            space: tapping it is how a rider adds one. */}
+        <ProfileImageUpload kind="cover" label="Change cover photo" className="h-50">
+          {coverUrl ? (
+            /* Plain <img>, like Avatar: next/image needs a configured loader
+               for signed Supabase URLs, and that is its own decision rather
+               than one to make inside a profile screen. Carries the same lint
+               warning Avatar has carried since it shipped. */
+            <img src={coverUrl} alt="" className="h-50 w-full object-cover" />
+          ) : (
+            <div className="flex h-50 w-full items-center justify-center bg-track text-sm text-muted">
+              Add a cover photo
+            </div>
+          )}
+        </ProfileImageUpload>
+
+        <div className="flex flex-col items-center gap-2 px-6">
           {/* The design's ring is White/100 and 4px — every other Avatar size
               carries the library's 2px Grey/20%, so this overrides rather than
               adding a one-screen constant to the component. */}
-          <Avatar
-            src={profile.avatar_url}
-            name={name}
-            size="2xl"
-            className="border-4 border-surface"
-          />
+          <ProfileImageUpload kind="avatar" label="Change profile photo" className="rounded-full">
+            <Avatar
+              src={profile.avatar_url}
+              name={name}
+              size="2xl"
+              className="border-4 border-surface"
+            />
+          </ProfileImageUpload>
           {profile.location && (
             <p className="text-sm font-medium text-muted">{profile.location}</p>
           )}
@@ -94,6 +122,8 @@ export default async function ProfilePage() {
             <p className="text-sm text-muted">{profile.bike_model}</p>
           </div>
         )}
+
+        <ProfileCountries codes={countries} />
 
         <EditProfileForm profile={profile} />
 

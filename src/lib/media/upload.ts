@@ -6,7 +6,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client'
-import { MEDIA_BUCKET, buildPostcardImagePath } from './constants'
+import { MEDIA_BUCKET, buildAvatarPath, buildCoverPath, buildPostcardImagePath } from './constants'
 import { compressImage } from './compress'
 import { validateImageFile } from './validate'
 
@@ -108,4 +108,51 @@ export async function uploadPostcardImage(
 
   await uploadObject(path, blob, options)
   return { path }
+}
+
+/**
+ * Avatar and cover uploads. Same three steps as `uploadPostcardImage` —
+ * validate, compress (which strips EXIF as a side effect, see compress.ts),
+ * upload to a path inside this rider's own folder — with one difference that is
+ * the whole reason they are separate functions: **the compression targets.**
+ *
+ * A postcard is the subject of its screen and keeps the default max edge. An
+ * avatar renders at 128px at its largest (the profile hero) and 24px at its
+ * smallest, so 512 covers every use at 2x and anything larger is bytes a rider
+ * on mobile data pays for and never sees. A cover is drawn 390x200, so 1080
+ * covers it at better than 2x.
+ *
+ * Neither writes the path to `profiles` — that is `updateAvatar` /
+ * `updateCover`, a Server Action, because the column is the app's record of
+ * which object is current and a client must not own it. The two-step shape is
+ * also what makes the failure mode survivable: an upload that succeeds and a
+ * row update that fails leaves an orphaned object, never a profile pointing at
+ * an object that is not there.
+ */
+async function uploadOwnImage(
+  file: File,
+  buildPath: (userId: string) => string,
+  maxEdge: number,
+  options: UploadObjectOptions
+): Promise<{ path: string }> {
+  const validation = validateImageFile(file)
+  if (!validation.ok) throw new Error(validation.error)
+
+  const supabase = createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sign in to upload.')
+
+  const { blob } = await compressImage(file, { maxEdge })
+  const path = buildPath(session.user.id)
+
+  await uploadObject(path, blob, options)
+  return { path }
+}
+
+export function uploadAvatarImage(file: File, options: UploadObjectOptions = {}) {
+  return uploadOwnImage(file, buildAvatarPath, 512, options)
+}
+
+export function uploadCoverImage(file: File, options: UploadObjectOptions = {}) {
+  return uploadOwnImage(file, buildCoverPath, 1080, options)
 }

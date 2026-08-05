@@ -88,8 +88,13 @@ Supabase and Vercel MCP tools instead — a silent `curl` loop looks identical t
 
 ## Do this first
 
-**`001`–`013` are applied. There is no drift** — the repo and the hosted schema agree for the
-first time since `011` landed.
+**`014` IS WRITTEN AND NOT APPLIED. That is drift, and it is the first thing to fix.**
+`001`–`013` are applied; `list_migrations` on 2026-08-05 returned thirteen rows ending in
+`drop_friendships`. `014` adds `profiles.avatar_path`, `profiles.cover_image_path` and
+`profile_countries`, and **`/profile` selects all three** — so the deployed app returns a 500
+on that route until it is applied. Apply it before or with the merge of #39, never after.
+It was left unapplied deliberately rather than forgotten: applying DDL to production is not a
+step to take without the owner saying so.
 
 The next actions, in the order they are worth doing:
 
@@ -267,6 +272,30 @@ the `@supports` guard, so a browser without `color-mix()` still gets the fill. I
 this file's running tally of confidently-stated wrong claims, and the first caught before the
 commit rather than by review.
 
+**The cover image, avatar upload and Countries landed on 2026-08-05 (#39, migration `014`).**
+Three of the five gaps #38 registered. What is worth carrying forward:
+
+- **The avatar signing fan-out is the part that breaks quietly.** Nine components render an
+  avatar and every one reads `avatar_url`, so `resolveAvatarUrls` writes the signed URL *into
+  that field* rather than adding a second one — one promise at the render layer, one place
+  that knows about paths. **Five read paths call it**: the feed, the postcard filter bar,
+  comments, the three ride reads, and your own profile. Miss one and avatars fall back to
+  initials on that screen only, which looks like a design choice rather than a bug.
+- **Flags are emoji, not assets.** `NL` → 🇳🇱 is arithmetic on the country code, so ~40 SVGs
+  and a sprite pipeline became one function. It does not render on Windows, which is stated
+  in `lib/countries.ts` and in the fidelity log rather than discovered later.
+- **The RLS suite caught a real thing.** An assertion from `010` required
+  `storage.objects` to carry exactly 3 policies; `014` adds 6 more. Bumping the number to 9
+  would have been the wrong repair — the assertion's intent is "no leftover policy to OR
+  against the others" for ONE folder, and a whole-table count stops testing that the moment
+  a second surface lands. It is now scoped by policy name.
+- **The test harness does not use the production identity idiom.** My first assertions set
+  `request.jwt.claims`, copied from `014`'s own verification footer. `harness.sql`'s
+  `auth.uid()` reads `test.uid`. The GUC I set was read by nothing, `auth.uid()` returned
+  NULL, and the profiles policy's `username is not null` arm then made every row visible —
+  so a *positive* assertion written that way would have passed while proving nothing. Only
+  the negative ones failed, which is what surfaced it.
+
 **`/profile` is v2 as of 2026-08-05 (#38), and it is the last page-level v1 screen outside
 `clubs/*` and `/rides/new`.** What it settled, and what it deliberately did not:
 
@@ -378,7 +407,7 @@ right. It was chosen because `011`'s `revalidatePath('/postcards/${id}')` and th
 | | |
 |---|---|
 | Migrations | **`001`–`013` all applied and verified live** (`012`/`013` on 2026-08-04). No drift. Ordering note below. |
-| Tests | RLS suite **263** assertions (`npm test`) + Vitest **279** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261 and 263/269. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
+| Tests | RLS suite **282** assertions (`npm test`) + Vitest **297** tests (`npm run test:unit`). Vitest measured 2026-08-04 after the ride detail landed; the RLS number is carried forward unverified this session, because that change touched nothing under `supabase/**` and the suite was not run. This line said 255/195, then 263/222, 263/229, 263/230, 263/246, 263/251, 263/261, 263/269 and 263/279. Both gate every PR that can affect them — see CLAUDE.md §Branching & CI, which is now path-scoped. Count with `npm test 2>&1 \| grep -c "NOTICE:  ok"` — it read 69 for as long as anyone can tell, and the real number on `main` was 37. |
 | Workflow | OpenSpec adopted: `/opsx:propose` → `apply` → `archive`. Rules in `openspec/config.yaml`. |
 | Design | **The snapshot is populated** (`design/`, 2026-08-04) — read it, never the API. v2 tokens, Poppins, light theme, the login primitives, Header, Navbar and the 53 icons all landed. `--text-display` is correct — the style it maps to does exist; see the correction below. |
 | Spec | `docs/specs/login-onboarding.md` — 25 questions, all with defaults. The data-layer build took the defaults for Q1–Q9, Q11, Q13, Q14, Q23. |

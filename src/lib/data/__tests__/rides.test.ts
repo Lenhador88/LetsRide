@@ -11,6 +11,7 @@ const ORGANIZER: PublicProfile = {
   id: 'organizer-1',
   username: 'duskrider',
   avatar_url: null,
+  avatar_path: null,
   bike_model: 'CB500X',
 }
 
@@ -18,6 +19,7 @@ const rider = (n: number): PublicProfile => ({
   id: `rider-${n}`,
   username: `rider${n}`,
   avatar_url: null,
+  avatar_path: null,
   bike_model: null,
 })
 
