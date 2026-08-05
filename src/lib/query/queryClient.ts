@@ -2,7 +2,7 @@
  * A hand-rolled query cache for client components — the client-side half of
  * cache invalidation for the render migration
  * (`openspec/changes/migrate-to-client-rendered-shell`, tasks 5.2/5.3/5.9/5.11).
- * The 41 `revalidatePath` calls in `src/lib/actions/` become calls to
+ * The 33 `revalidatePath` calls in `src/lib/actions/` become calls to
  * `invalidate`/`setQueryData` here once a screen moves client-side; this file
  * is the cache those calls act on.
  *

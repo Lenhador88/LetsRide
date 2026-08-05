@@ -47,12 +47,13 @@ That transitive step is the single most dangerous thing in this proposal.
 - **`auth.users` is what gets deleted; `public.profiles` is never deleted on its own.** The
   cascade does the rest. Deleting the profile row alone is the exact hole `012` names, and this
   proposal forbids it in a sentence rather than leaving it to the implementer.
-- **New migrations** (append-only from the next free number — **`026`** as of 2026-08-05;
+- **New migrations** (append-only from the next free number — **`028`** as of 2026-08-05, not the `026` this line first said; `026` and `027` landed in the session that wrote this proposal, which is exactly why the task below says re-derive it —
   re-derive with `ls supabase/migrations/` rather than trusting that, because the numbering moved
   underneath this document while it was being written: `021_profile_column_privileges` was split
   into an applied `021_onboarding_state_accessors` plus a pending
-  `025_profile_column_privileges`, and `CLAUDE.md` and `docs/HANDOFF.md` both still describe the
-  old shape):
+  `025_profile_column_privileges`. `CLAUDE.md` and `docs/HANDOFF.md` described the old shape
+  while this was being written and were corrected in the same session, so read them rather than
+  this parenthesis):
   - **Club ownership survives its owner.** A club is transferred rather than cascaded, so other
     riders' postcards are not collateral. This needs a `security definer` transfer function and
     a relaxation of `016`'s `clubs_avatar_path_owned` / `clubs_cover_image_path_owned` CHECKs,
@@ -107,7 +108,7 @@ rather than pretending the behaviour is new.**
 
 ## Impact
 
-**Database.** New migrations from `026`. One relaxed CHECK pair (`016`), one new
+**Database.** New migrations from `028`. One relaxed CHECK pair (`016`), one new
 `security definer` transfer function, four indexes, one column. **No SELECT policy changes** —
 that is a deliberate property, and it is what keeps this change from touching the visibility
 layer at all.

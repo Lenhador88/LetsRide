@@ -11,7 +11,8 @@
   either way.
 - [ ] 0.3 **Q7 — designer.** The `Done` frame draws no re-authentication field. The default adds
   one (design D6). Ask before building it differently, not after.
-- [ ] 0.4 Re-derive the migration number rather than trusting this file. It was **026** at write
+- [ ] 0.4 Re-derive the migration number rather than trusting this file. It said **026** at write
+  time and was **028** by the end of the same session — which is the point. It was **028** at write
   time, and the numbering moved underneath this proposal once already: `021` was split into an
   applied `021_onboarding_state_accessors` and a pending `025_profile_column_privileges`.
   `ls supabase/migrations/` against `list_migrations`.

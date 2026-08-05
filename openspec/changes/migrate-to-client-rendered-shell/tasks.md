@@ -5,7 +5,7 @@ phase's definition, not a description of it — one Supabase project, `main` aut
 removal landing without its code repair is a production outage. The `avatar_url` drop lived here
 in an earlier revision and has moved to group 3.
 
-**State, 2026-08-06 — group 1 is finished, and `021` turned out to be two migrations.**
+**State, 2026-08-05 — group 1 is finished, and `021` turned out to be two migrations.**
 `018`, `019`, `020`, `022` and now `021` are applied. `023` and `025` are written, asserted and
 deliberately unapplied until this change's code deploys.
 

@@ -19,7 +19,7 @@ quoted from documentation.
 | Storage | **one** bucket `media`, five folder prefixes | `scripts/storage/sweep-orphans.mjs:49` |
 | Edge Functions today | **zero**; no `supabase/functions/` directory | `ls supabase/` |
 | Admin/moderator role | none, recorded as a KNOWN GAP | `011_postcard_interactions.sql` |
-| Next free migration number | **026** at write time | `ls supabase/migrations/` |
+| Next free migration number | **028** — `026` and `027` landed in the same session this was written in | `ls supabase/migrations/` |
 
 **Two documentation claims this change had to correct before it could start.**
 

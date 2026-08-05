@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import type { OnboardingState } from '@/types'
 
 /**
  * A denylist of public paths, not an allowlist of protected ones. Decision #1
@@ -87,18 +88,23 @@ export async function proxy(request: NextRequest) {
   // The old select also named `location`, which nothing here ever read.
   const { data: state, error } = await supabase
     .rpc('my_onboarding_state')
-    .maybeSingle<{
-      terms_accepted_at: string | null
-      onboarding_completed_at: string | null
-      has_username: boolean
-    }>()
+    .maybeSingle<OnboardingState>()
 
-  // A failed read and a genuinely un-onboarded rider are different states, and
-  // treating them the same is how a deploy mismatch turns into a redirect loop:
-  // if 003 has not been applied, this select fails with 42703 and every
-  // authenticated route would bounce to an onboarding step that cannot exist yet.
-  // Fail closed and visibly rather than into the wizard.
-  if (error) {
+  // A read that did not answer and a genuinely un-onboarded rider are different
+  // states, and treating them the same is how a deploy mismatch turns into a
+  // redirect loop: a missing function answers PGRST202 and every authenticated
+  // route would otherwise bounce into a wizard that cannot help. Fail closed and
+  // visibly rather than into it.
+  //
+  // `!state` belongs in this branch and not the next one. The accessor returns
+  // ZERO ROWS for a caller with no `profiles` row, and PostgREST reports that as
+  // `data: null, error: null` — so read as "not onboarded" it would send the
+  // rider to the consent prompt, where `accept_terms()` has no row to update,
+  // returns NULL, and fails every submit. A trap with no exit. Unreachable today
+  // because `handle_new_user` guarantees the row, but `023` and the
+  // account-deletion proposal both name deleting a `profiles` row without its
+  // `auth.users` row as the thing that makes it reachable.
+  if (error || !state) {
     // The auth entry paths must fall through rather than redirect. They are
     // public but still reach this read (a signed-in rider is normally bounced
     // off them), so sending /auth/login to /auth/login is an infinite loop —
@@ -117,12 +123,12 @@ export async function proxy(request: NextRequest) {
   // exists — so in practice it is reached only by the accounts that predate that
   // write. Q11 chose a prompt over a backfill: a fabricated consent record is
   // worse than a missing one.
-  if (!state?.terms_accepted_at) {
+  if (!state.terms_accepted_at) {
     if (pathname === '/onboarding/terms') return supabaseResponse
     return redirect('/onboarding/terms')
   }
 
-  if (!state?.onboarding_completed_at) {
+  if (!state.onboarding_completed_at) {
     // Resume position is derived from which fields are still empty; completion
     // itself is stored, so editing your profile later never re-gates you.
     if (isOnboarding) {
@@ -134,15 +140,15 @@ export async function proxy(request: NextRequest) {
       // step 2 has a Back link, and editing a username you already chose is
       // fine. /onboarding/terms is past for this rider, and falls through to
       // the redirect below rather than rendering a screen that would no-op.
-      if (pathname === '/onboarding/location' && !state?.has_username) {
+      if (pathname === '/onboarding/location' && !state.has_username) {
         return redirect('/onboarding/username')
       }
       if (pathname === '/onboarding/terms') {
-        return redirect(state?.has_username ? '/onboarding/location' : '/onboarding/username')
+        return redirect(state.has_username ? '/onboarding/location' : '/onboarding/username')
       }
       return supabaseResponse
     }
-    return redirect(state?.has_username ? '/onboarding/location' : '/onboarding/username')
+    return redirect(state.has_username ? '/onboarding/location' : '/onboarding/username')
   }
 
   if (isOnboarding || isAuthEntry) {

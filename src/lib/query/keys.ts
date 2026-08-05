@@ -106,6 +106,6 @@ export const queryKeys = {
  * holds**, not merely the next fetch, and a prefix invalidation cannot express
  * that because the blocked rider appears under `postcards`, `rides`, `clubs`
  * *and* `profile`. Sign-out additionally has to destroy rather than refresh —
- * see `clearQueryCache` in cache.ts.
+ * see `clearQueryCache` in queryClient.ts.
  */
 export const EVERYTHING: QueryKey = []

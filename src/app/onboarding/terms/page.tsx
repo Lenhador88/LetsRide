@@ -6,6 +6,7 @@ import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
+import { signOut } from '@/lib/actions/auth'
 import { acceptTerms } from '@/lib/actions/onboarding'
 import { emptyActionState } from '@/lib/actions/state'
 
@@ -22,7 +23,8 @@ import { emptyActionState } from '@/lib/actions/state'
  *
  * There is no decline affordance and no skip, matching decision #5. Declining is
  * signing out, which the copy says plainly rather than dressing up as a choice
- * the app would then have to model.
+ * the app would then have to model — and it posts `signOut` rather than linking
+ * to `/auth/login`, which the guard bounces straight back here.
  *
  * The design has no frame for this screen — it did not exist when the login epic
  * was drawn. It reuses `AuthScreen` and the signup screen's own consent block
@@ -44,13 +46,20 @@ export default function OnboardingTermsPage() {
             <Button type="submit" size="lg" loading={pending} disabled={!accepted}>
               Accept and continue
             </Button>
-            <p className="text-center text-xs text-muted">
-              Not ready?{' '}
-              <Link href="/auth/login" className="underline">
-                Sign out
-              </Link>
-              .
-            </p>
+            {/* `formAction` rather than a link, because a link here was a dead
+                end: /auth/login is an auth entry path, so the guard does not
+                short-circuit it, and a rider with no consent stamp was bounced
+                straight back to this screen — still signed in, with no other way
+                out, since /onboarding has no Navbar. This screen exists only for
+                riders in exactly that state, so the affordance failed for every
+                rider who could see it. */}
+            <button
+              type="submit"
+              formAction={signOut}
+              className="text-center text-sm font-medium text-foreground underline underline-offset-2 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Not ready? Sign out
+            </button>
           </div>
         }
       >

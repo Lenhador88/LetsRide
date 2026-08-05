@@ -45,7 +45,7 @@ renumbered them, which is how "group 2" ended up meaning two different things in
 | Group | Phase | | Status |
 |---|---|---|---|
 | 1 | 1 | Integrity migrations `018`–`026` | **Done.** `018`–`022`, `021`, `026` applied; `023` + `025` apply after this deploys |
-| 2 | 1b | Consent prompt (one screen, one user) | **Done 2026-08-06** — `/onboarding/terms`, exercised against the live database |
+| 2 | 1b | Consent prompt (one screen, one user) | **Done 2026-08-05** — `/onboarding/terms`, exercised against the live database |
 | 3 | 2 | Make `lib/data/` isomorphic | **Done 2026-08-05** |
 | 4 | 3 | Session → device secure storage, auth, recovery | **Done except 4.1/4.2/4.5/4.6** — see below |
 | 5 | 4 | Screens, one route group at a time | **← next build.** Infrastructure is built and tested; no screen is converted |
@@ -108,8 +108,8 @@ invariant those triggers carry is restated in the function bodies. CHECK constra
 fire. Measured on Postgres 16, with the NOTICE output in `021`'s header.
 
 **Still unapplied, deliberately: `023` and `025`.** Both are in `SKIP_MIGRATIONS`. Apply order
-after this merges and Vercel reports READY: **`023`, then `025`.** `list_migrations` reads 24
-rows today against 26 files; it reads 26 when both are in.
+after this merges and Vercel reports READY: **`023`, then `025`.** `list_migrations` reads 25
+rows against 27 files once `027` is in; it reads 27 when `023` and `025` follow.
 
 ### One correction to the risk register, measured
 
@@ -133,7 +133,7 @@ session moves.
 
 ### Security advisors after `021` and `026` — eight findings, all deliberate
 
-Checked 2026-08-06, immediately after applying both. Nothing here is a regression, and the
+Checked 2026-08-05, immediately after applying both. Nothing here is a regression, and the
 count is higher than `021`'s own footer predicted because the advisor reports **one finding per
 function**, not one for the batch.
 
@@ -154,14 +154,26 @@ function**, not one for the batch.
 
 `026` replaces the httpOnly `lr-recovery` cookie. D3 specified an Edge Function that exchanges
 the recovery code — **it cannot be built.** `@supabase/ssr` 0.12.4 hardcodes PKCE, so
-`resetPasswordForEmail` stores the `code_verifier` in the *client's* own storage and
-`exchangeCodeForSession` requires it back; no server can hold it.
+`resetPasswordForEmail` stores the `code_verifier` in the storage of the client that asked for
+the link, and `exchangeCodeForSession` requires it back. **A separate Edge Function cannot hold
+it** — this app's own server client can and does, in the cookie jar, which is exactly why
+`/auth/callback` works today. The precise claim is about a *second* server, not about servers.
 
 What D3 wanted was a proof the client cannot forge, and one already exists: the project mints
 **ES256** tokens and GoTrue records `amr: [{method: "recovery"}]` for a recovery session.
 PostgREST verifies that signature before opening a transaction and puts the payload in
 `auth.jwt()`, so the check is plain SQL — no secret, no service-role key, nothing to deploy but
 a migration. Decision #8's second bullet stays shut.
+
+**`027` closes a defect review found in `026` after it was applied.** The function documents
+"never raises" and both callers are built on it — a raise turns a malformed token into a 500 on
+the reset screen instead of a refusal. `026` guarded exactly one cast, and two paths escaped:
+an `amr` timestamp of `1e300` raised `22008` out of `to_timestamp`, and non-JSON claims raised
+`22P02` out of `auth.jwt()` itself, which runs in a declaration default *before* any handler is
+in scope. Neither is reachable through a Supabase-signed token, so it was robustness rather than
+a live hole — but the asymmetry was the defect. `027` wraps the whole body, range-guards the
+epoch, and narrows a duplicated `recovery` entry from `max()` to `min()`. The suite asserts both
+raising inputs; without `027` it fails with the real `22008`.
 
 **What it does not close, and who closes it.** This gates the app's front door, exactly as the
 cookie did — not GoTrue's `PUT /auth/v1/user`, which any live-session holder can call with the
@@ -246,7 +258,7 @@ grant list named `avatar_url`. `run.sh` applies by filename, so locally `021` ru
 `42703` and takes the migration down. Removed — required under every reading of `021`'s open
 shape question. Proven both ways against a scratch database in the real hosted order.
 
-### Starting group 5 — the surface, re-measured 2026-08-06
+### Starting group 5 — the surface, re-measured 2026-08-05
 
 Each line is a command, not a number to trust.
 
@@ -328,8 +340,8 @@ imports them. The real work is the 17 pages.
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*, the cluster is down: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*, the role has no password: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Pending-migration suites | `PGPASSWORD=postgres PENDING=023 npm test`, same for `025`, and **`PENDING=023+025`** for the pair — the mode that proves the two once-incompatible migrations apply together |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **383** on 2026-08-05 |
-| Unit tests | `npm run test:unit` — **397** on 2026-08-05 |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **464** on 2026-08-05 |
+| Unit tests | `npm run test:unit` — **453** on 2026-08-05 |
 | Dev server | **`NODE_USE_ENV_PROXY=1 npm run dev`** — Node's `fetch` ignores `HTTPS_PROXY`, so every server-side Supabase call fails with a proxy page while `curl` succeeds. The app surfaces that as "That email and password do not match an account", which reads like a credentials problem and is not one |
 | `.env.local` | Write `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | **Walking the app** | **`WALK_EMAIL=... WALK_PASSWORD=... npm run walk`**, with the dev server already up. Signs in as a real rider and reports every screen that redirected, hit the error boundary or came back empty. This is what task 7.2 asks for, and it is the only gate that renders anything — `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load |
@@ -387,7 +399,7 @@ application bug.** The same requests return 200 from the shell. Launch Chromium 
 | Email | Username | State |
 |---|---|---|
 | `duskrider@letsride.test` | `duskrider` | Onboarded. **SQL-inserted**, never signed in |
-| `qa-verify@letsride.test` | `verify24321868` | Onboarded, **and consented 2026-08-06** — the first row on this database with a real `terms_accepted_at`, written by the consent prompt through `accept_terms()` rather than by SQL. **SQL-inserted** originally |
+| `qa-verify@letsride.test` | `verify24321868` | Onboarded, **and consented 2026-08-05** — the first row on this database with a real `terms_accepted_at`, written by the consent prompt through `accept_terms()` rather than by SQL. **SQL-inserted** originally |
 
 **Passwords are not in this repo and must never be.** `duskrider`'s lives with the product
 owner; `qa-verify`'s is in the git history of this file and should be treated as burned — which

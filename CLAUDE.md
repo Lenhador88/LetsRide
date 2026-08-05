@@ -328,7 +328,7 @@ part of the Supabase URL — and because not knowing it cost real time.
 
 **Applied state: `001`–`022`, `024` and `026`. `023` and `025` are written and deliberately
 NOT applied — the one case where the "unapplied migrations are drift" rule must not be followed
-blindly.** Confirmed 2026-08-06 with `list_migrations`: **24 rows** ending
+blindly.** Confirmed 2026-08-05 with `list_migrations`: **24 rows** ending
 `password_reset_grant`, against **26 files**. The two missing are exactly `023` and `025`.
 
 **`021` was split on 2026-08-05 because it contained a deployment deadlock**, and the split is
@@ -343,7 +343,7 @@ order is a trap this repo has already sprung.
 **Do not apply `025` before the code that stops selecting those columns has deployed** — it is
 an instant outage, for the four reasons its own §DEFECT 2 enumerates. `023_participation_gate`
 refuses writes from riders whose consent stamp is NULL, so it needs the consent prompt deployed
-first; that shipped 2026-08-06 as `/onboarding/terms`. Both are in `SKIP_MIGRATIONS` in
+first; that shipped 2026-08-05 as `/onboarding/terms`. Both are in `SKIP_MIGRATIONS` in
 `supabase/tests/run.sh`, with pending suites `PENDING=023`, `PENDING=025` and — because the two
 were once mutually incompatible and no longer are — **`PENDING=023+025`**.
 

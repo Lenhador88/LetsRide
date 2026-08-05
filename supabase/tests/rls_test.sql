@@ -3163,6 +3163,42 @@ select set_config('request.jwt.claims', json_build_object(
 select assert_eq(public.has_password_reset_grant(), false,
   'the RFC-8176 string form of amr fails closed');
 
+-- 027. The function's contract is "never raises", and both callers are built on
+-- it: a raise turns a malformed token into a 500 on the reset screen instead of
+-- a refusal. 026 guarded exactly one cast, and these two escaped it. Neither is
+-- reachable through a Supabase-signed token — GoTrue writes int64 timestamps and
+-- PostgREST writes the claims JSON itself — so what these pin is the contract,
+-- not a live hole. They fail with 22008 and 22P02 respectively against 026.
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(json_build_object('method', 'recovery', 'timestamp', 1e300))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'a timestamp outside the timestamptz range refuses rather than raising 22008');
+
+select set_config('request.jwt.claims', 'not json at all', false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'claims that are not JSON refuse rather than raising 22P02 out of auth.jwt()');
+select assert_eq(public.consume_password_reset_grant(), false,
+  '... on the spending path too, which is the one that writes');
+
+-- 027 also narrows a duplicated `recovery` entry from max() to min(). GoTrue
+-- upserts one mfa_amr_claims row per method per session, so two is unreachable;
+-- where both readings are unreachable the conservative one is free, and 026 §3
+-- already takes that position on the method list.
+select set_config('request.jwt.claims', json_build_object(
+  'sub', '00000000-0000-0000-0000-00000000000a',
+  'session_id', '00000000-0000-0000-0000-0000000000f1',
+  'amr', json_build_array(
+    json_build_object('method', 'recovery',
+      'timestamp', extract(epoch from now() - interval '16 minutes')::bigint),
+    json_build_object('method', 'recovery',
+      'timestamp', extract(epoch from now())::bigint))
+)::text, false);
+select assert_eq(public.has_password_reset_grant(), false,
+  'a stale recovery entry beside a fresh one takes the stale reading (027: min, not max)');
+
 -- Fifteen minutes, matching the cookie's maxAge. The timestamp is the instant
 -- the recovery session was minted and cannot be slid forward by refreshing a
 -- token, so this window is a real one.

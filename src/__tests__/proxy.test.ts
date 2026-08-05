@@ -188,6 +188,18 @@ describe('proxy — the state read fails (the migration-not-applied case)', () =
     expect(res.location).toContain('profile_unavailable')
   })
 
+  it('treats zero rows as unavailable, not as an un-onboarded rider', async () => {
+    // The accessor returns no rows for a caller with no profiles row, and
+    // PostgREST reports that as data: null, error: null. Read as "not
+    // onboarded" it sends the rider to the consent prompt, where accept_terms()
+    // has no row to update and every submit fails — a trap with no exit.
+    stateResult = { data: null, error: null }
+    expect((await go('/postcards')).location).toContain('profile_unavailable')
+    expect((await go('/postcards')).location).not.toContain('/onboarding')
+    // And the loop-breaker still applies to it.
+    expect((await go('/auth/login')).location).toBeNull()
+  })
+
   it('fails closed rather than into the consent prompt', async () => {
     // A failed read leaves `terms_accepted_at` undefined, which is falsy — so
     // without the error branch running first, a deploy mismatch would send
