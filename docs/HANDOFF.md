@@ -46,8 +46,8 @@ renumbered them, which is how "group 2" ended up meaning two different things in
 |---|---|---|---|
 | 1 | 1 | Integrity migrations `018`–`023` | **Applied half done** — see below |
 | 2 | 1b | Consent prompt (one screen, one user) | Q11/Q12 answered; the prompt is unbuilt and it unblocks `023` |
-| 3 | 2 | Make `lib/data/` isomorphic | **← next build** |
-| 4 | 3 | Session → device secure storage, auth, recovery | Not started |
+| 3 | 2 | Make `lib/data/` isomorphic | **Done 2026-08-05** — see below |
+| 4 | 3 | Session → device secure storage, auth, recovery | **← next build** |
 | 5 | 4 | Screens, one route group at a time | Not started; the bulk |
 | 6 | 5–6 | Retire the server render path | Not started |
 | 7 | — | Verification and handoff | Not started |
@@ -98,15 +98,64 @@ against a table-level grant. It strips more than intended and leaves the target 
 Reproduced on this Postgres: table-wide SELECT `f`, unrelated column SELECT `f`, target column
 UPDATE `t`. The working shape is revoke-table-level-then-grant-a-column-allowlist.
 
+### Where group 3 got to — done, with two corrections worth carrying
+
+`lib/data/` is isomorphic. All 19 read functions resolve their client through
+`src/lib/supabase/resolve.ts`; no signature moved.
+
+**The plan's mechanism does not build, and the replacement is better.** D1 specified a runtime
+test — server client when there is no `document`. `lib/supabase/server.ts` imports
+`next/headers`, Next refuses to bundle that into a client graph, and a `typeof document` guard
+around `await import()` does not help because the bundler resolves the specifier statically
+either way. Measured, not assumed: a `'use client'` page importing one read function fails
+`next build` with traces through both `[Client Component Browser]` and `[Client Component SSR]`.
+The split is now the **`react-server` export condition** (`#supabase/data-client` in
+`package.json`, halves `resolve.rsc.ts` / `resolve.browser.ts`). Confirmed by chunk inspection:
+
+```bash
+npm run build && grep -rho "src/lib/supabase/resolve\.[a-z]*\.ts" .next/server | sort | uniq -c
+grep -rc "next/headers" .next/static | grep -v ":0"   # prints nothing
+```
+
+**One rule no test can enforce: read in an effect or an event handler, never during render.** A
+`'use client'` component is still server-rendered until Phase 6, and there the browser client
+has no session to find, so a read from a component body fails closed at RLS.
+
+**`024` dropped `profiles.avatar_url` and `clubs.avatar_url`, and the plan's repair list was six
+query sites short.** Three club embeds in `rides.ts`, two in `postcards.ts`, one hand-spelled
+profile select — none reachable through `PUBLIC_PROFILE_COLUMNS`. Five fed an `<Avatar>`, and
+`clubs.avatar_url` was NULL on every row, so **the rides list, the ride-detail chip and both
+filter bars silently drew initials** while `/clubs/new` had been uploading club avatars since
+`016`. Fixed with `CLUB_EMBED_COLUMNS` and a signing pass at each site.
+
+**`024` is written and NOT applied — deliberately, and unlike `021`/`023` it is not in
+`SKIP_MIGRATIONS`.** Dropping a column `main` still selects is an instant outage. The code
+repair is backward-compatible in both directions — every changed select was probed against the
+live schema and came back `42501` (no grant) rather than `42703` (no column) — so:
+
+**Apply order: merge and deploy the code, then apply `024`.** Never the reverse.
+
+```bash
+# The probe, re-runnable without a session. 42501 = the columns all exist.
+curl -s "$URL/rest/v1/rides?select=id,club:clubs(id,name,avatar_path)&limit=1" \
+  -H "apikey: $KEY" -H "Authorization: Bearer $KEY"
+```
+
+**`021` would have aborted mid-deploy, and no local suite could have caught it.** Its §1 SELECT
+grant list named `avatar_url`. `run.sh` applies by filename, so locally `021` runs *before*
+`024` and finds the column; on the hosted project it runs *after*, where the grant raises
+`42703` and takes the migration down. Removed — required under every reading of `021`'s open
+shape question. Proven both ways against a scratch database in the real hosted order.
+
 ---
 
 ## Do this first
 
-1. **`tasks.md` group 3 (Phase 2) — make `lib/data/` isomorphic.** The migration's actual first
-   step. An environment-aware Supabase accessor so the same 19 read functions work from a client
-   component; the server branch survives until group 5 finishes. Review already rejected the
-   "returns the browser client" reading — during SSR there is no `document`, so it resolves to
-   an anonymous client and every read fails closed at RLS. Groups 3–5 are one continuous unit.
+1. **`tasks.md` group 4 (Phase 3) — session, auth and the recovery grant.** Group 3 landed
+   2026-08-05; groups 3–5 are one continuous unit, so this is the next piece of it. Read
+   group 4's tasks and design D2/D3 before starting — the storage adapter must stay behind a
+   flag until the guard moves in 5.1, because `proxy.ts` reads `request.cookies` and a
+   half-moved session redirects every request to login.
 2. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
    nothing, with no alert, so the deployed app goes down silently. **Owner action** — needs Pro
    before anything resembling launch.
@@ -134,10 +183,10 @@ UPDATE `t`. The working shape is revoke-table-level-then-grant-a-column-allowlis
 
 | What | How |
 |---|---|
-| RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential |
+| RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*, the cluster is down: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*, the role has no password: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Pending-migration suites | `PGPASSWORD=postgres PENDING=021 npm test`, same for `023` |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` |
-| Unit tests | `npm run test:unit` |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **383** on 2026-08-05 |
+| Unit tests | `npm run test:unit` — **362** on 2026-08-05 |
 | Dev server | **`NODE_USE_ENV_PROXY=1 npm run dev`** — Node's `fetch` ignores `HTTPS_PROXY`, so every server-side Supabase call fails with a proxy page while `curl` succeeds. The app surfaces that as "That email and password do not match an account", which reads like a credentials problem and is not one |
 | `.env.local` | Write `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | Playwright | `npm install --no-save playwright-core`, `executablePath: /opt/pw-browsers/chromium-1194/chrome-linux/chrome`. Never `playwright install` |

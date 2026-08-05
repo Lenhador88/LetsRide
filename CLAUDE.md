@@ -88,9 +88,26 @@ block* had it. A directive is only a directive on line one.
 1. **No new integrity rule may live only in a Zod schema.** Once the client owns the mutation
    path, anything not expressed as a CHECK, trigger or policy is advisory. `003` and `012`
    cover onboarding; `bio`, `bike_model` and `location` are the known gap and want a migration.
-2. **Do not build a client-first screen ahead of the migration.** Today's `lib/data/` functions
-   construct the server client, so a client component cannot call them. Making the data layer
-   isomorphic is the migration's first step, not a feature ticket's.
+2. ~~**Do not build a client-first screen ahead of the migration.**~~ **Lifted 2026-08-05 —
+   `lib/data/` is isomorphic.** All 19 read functions resolve their Supabase client through
+   `src/lib/supabase/resolve.ts`, so a client component can call them today, unchanged. Two
+   things to know before you do.
+
+   **The split is a build-time one, not a runtime one.** `lib/supabase/server.ts` imports
+   `next/headers`, which Next refuses to bundle into a client graph — and a `typeof document`
+   guard around a dynamic `import()` does **not** rescue it, because the bundler resolves the
+   specifier statically regardless of whether the branch can be taken. Measured on Next 16.2.9:
+   a `'use client'` page importing one read function fails the build with traces through both
+   `[Client Component Browser]` and `[Client Component SSR]`. So the discriminator is the
+   **`react-server` export condition**, declared as the `#supabase/data-client` subpath import
+   in `package.json`, with halves `resolve.rsc.ts` and `resolve.browser.ts`. Server components,
+   Server Actions and Route Handlers get the first; both client layers get the second.
+
+   **Read in an effect or an event handler, never during render.** A `'use client'` component is
+   still server-rendered until Phase 6, and in that pass the browser client has no
+   `document.cookie` to find a session in — so a read issued from a component body is anonymous,
+   and `anon` holds zero grants, so it fails closed at RLS. `src/lib/data/__tests__/isomorphic.test.ts`
+   guards the module graph; nothing can guard this one, which is why it is written down.
 
 **Validation: Zod, one schema per concern, shared by both sides.** Lives in
 `src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
@@ -263,7 +280,7 @@ Three further rules:
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **legacy** — nothing has ever written it; `014` kept it as a fallback rather than dropping it unverified. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. |
+| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone** — `024` dropped it from `profiles` and from `clubs` after verifying 0 non-NULL rows on both. `014` had kept it as a fallback rather than dropping it unverified; that verification is now done. The name survives as a *field on what `lib/data/` returns*, holding the signed URL, never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. |
 | `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. |
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. |
@@ -275,7 +292,7 @@ Three further rules:
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
 | `postcard_hides` | `(postcard_id, user_id)` composite PK. **Per-viewer and one-directional**, unlike `blocks` — a row only ever removes a postcard from its own `user_id`'s feed. It is an input to the `postcards` SELECT policy, so `club_id` is no longer the sole determinant of what a viewer sees. |
 | `profile_countries` | `(user_id, country_code)` composite PK, added by `014`. Countries a rider says they have ridden in, **entered manually** — the derived reading is unbuildable, `rides` has no country or coordinates. `country_code` is ISO 3166-1 alpha-2 with a CHECK; there is no `countries` reference table, because the picker's list is the client's and nothing joins against it. SELECT inherits the profiles predicate via `EXISTS`, so blocking works without the word appearing in the policy. |
-| `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` remains the legacy column nothing writes. |
+| `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; `024` dropped it. Until then five query sites embedded `clubs(id, name, avatar_url)` and drew initials on every ride and postcard surface, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
 
@@ -288,13 +305,19 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`020` and `022`. `021` and `023` are written and deliberately NOT
-applied — and that is the one case where the "unapplied migrations are drift" rule must not be
+**Applied state: `001`–`020` and `022`. `021`, `023` and `024` are written and not applied —
+and `021`/`023` are the one case where the "unapplied migrations are drift" rule must not be
 followed blindly.** Confirmed 2026-08-05 with `list_migrations`: **21 rows** ending
-`private_club_rides`, against **23 files** in `supabase/migrations/`. The two extras are exactly
-`021` and `023`.
+`private_club_rides`, against **24 files** in `supabase/migrations/`.
 
-**Do not apply either without reading its header.** `021_profile_column_privileges` revokes
+`024_drop_legacy_avatar_url` is a different case from the other two: it has no unresolved
+decision behind it and is **not** in `SKIP_MIGRATIONS`, so the suite exercises it. It is
+unapplied only because dropping a column `main` still selects is an instant outage. Its code
+repair is backward-compatible — every changed select was probed against the live schema and is
+valid *before* the drop — so the order is **deploy the code, then apply `024`**, never the
+reverse.
+
+**Do not apply `021` or `023` without reading its header.** `021_profile_column_privileges` revokes
 column grants that `proxy.ts` reads on *every authenticated request* — applying it alone logs
 out every rider and makes onboarding impossible to complete. `023_participation_gate` refuses
 writes from riders whose consent stamp is NULL, which is all four of them. They are also

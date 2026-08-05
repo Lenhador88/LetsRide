@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls } from '@/lib/data/media'
@@ -22,7 +22,7 @@ import type { PostcardComment } from '@/types'
  * been read for.
  */
 export async function getPostcardComments(postcardId: string): Promise<PostcardComment[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
 
   const rows = unwrapList(
     await supabase

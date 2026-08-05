@@ -157,19 +157,30 @@
 -- DELETE is untouched: `profiles` rows are deleted by the cascade from
 -- auth.users, and account deletion is a Phase 2 dependency with its own design.
 --
--- `avatar_url` is granted SELECT but **not** UPDATE, which is one deliberate
--- extra over task 1.8 and is flagged rather than slipped in. The spec requires
--- that no column a rider can write is ever used as an image source in another
--- rider's client; `resolveAvatarUrls` uses this column as a fallback and it is
--- in PUBLIC_PROFILE_COLUMNS, so today a rider can point every member list at a
--- host they control and harvest IP addresses — including from riders who blocked
--- them. Nothing has ever written the column, so removing the write costs
--- nothing. Group 3 drops it entirely; until then this is the cheap half.
+-- `avatar_url` is **absent from every list below, and this file must not name
+-- it.** It used to be granted SELECT but not UPDATE — one deliberate extra over
+-- task 1.8, flagged rather than slipped in — because the spec requires that no
+-- column a rider can write is ever used as an image source in another rider's
+-- client, and a writable `avatar_url` in PUBLIC_PROFILE_COLUMNS let a rider point
+-- every member list at a host they control and harvest IP addresses, including
+-- from riders who blocked them. This paragraph said "Group 3 drops it entirely;
+-- until then this is the cheap half", and group 3 did: `024` dropped the column
+-- from `profiles` and from `clubs`, and the data layer now synthesises the field
+-- from a signed `avatar_path`. The whole hazard is gone, not merely halved.
+--
+-- Naming it here is now an APPLY-TIME ABORT rather than a stale comment.
+-- `grant select (avatar_url)` raises `42703` against a database that has had
+-- `024`, and the hosted project will, since `024` lands with its code repair
+-- while this file is still held back. Note the local suite cannot catch it:
+-- `run.sh` applies by filename, so `021` runs *before* `024` there and finds the
+-- column present either way. Removing it costs nothing under any reading of this
+-- migration's open shape question — a column that does not exist cannot be
+-- granted, whether this ships whole or narrowed to SELECT.
 
 revoke select, insert, update on public.profiles from authenticated;
 
 grant select (
-  id, username, avatar_url, bio, bike_model, created_at, location,
+  id, username, bio, bike_model, created_at, location,
   avatar_path, cover_image_path
 ) on public.profiles to authenticated;
 

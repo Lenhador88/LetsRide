@@ -1,0 +1,230 @@
+-- 024: drop the legacy `avatar_url` columns from `profiles` and `clubs`.
+--
+-- WRITTEN AND DELIBERATELY NOT APPLIED AT THE TIME OF WRITING. This is not the
+-- `021`/`023` situation — there is no unresolved decision here and it is not in
+-- SKIP_MIGRATIONS. It ships in one PR with the code repair described under
+-- §This does not ship alone, and is applied at merge. Applying it ahead of that
+-- merge is a total outage for every authenticated screen, for the reason spelled
+-- out there.
+--
+-- ---------------------------------------------------------------------------
+-- §Why
+-- ---------------------------------------------------------------------------
+-- Both columns have existed since `001` and **nothing in this repo has ever
+-- written either of them**. `014` added `profiles.avatar_path`, `016` added
+-- `clubs.avatar_path`, and both headers said the same thing: the removal is a
+-- coordinated change across the read layer and belongs in its own migration
+-- beside those edits rather than bolted onto the one adding the replacement.
+-- This is that migration. (`014` guessed the number would be `015`; it was
+-- guessing at a queue that has since grown by nine.)
+--
+-- **It is a live exposure, not merely clutter, and that is what moved it from
+-- "tidy up eventually" to a task with a number.** Both columns are unconstrained
+-- `text`, and the UPDATE policies are `auth.uid() = id` on `profiles` and
+-- `auth.uid() = owner_id` on `clubs` — so a rider may PATCH any string they like
+-- into their own row, and `resolveAvatarUrls` hands it to `<img src>` in every
+-- other rider's member lists, postcard bylines, crew lists and club cards. A URL
+-- on a host the author controls is then an IP-address and User-Agent harvest,
+-- fired by viewers who never chose to contact that host.
+--
+-- It reaches past blocking, which is the part worth stating plainly. `009`'s
+-- predicate hides a blocked rider's *rows*; it cannot hide a row the viewer is
+-- entitled to see and which merely happens to carry an attacker-chosen URL —
+-- a club avatar, say, on a club they both belong to.
+--
+-- `021` §1 argues the same case and takes the cheap half (revoke UPDATE on the
+-- column). This takes the whole thing, and once it is applied that half of `021`
+-- has nothing left to protect. See §Ordering hazard.
+--
+-- The replacement columns are not open to the same trick, by construction rather
+-- than by luck: `avatar_path` and `cover_image_path` hold a Storage object path
+-- pinned to the writer's own folder by a CHECK on the row's own `id` /
+-- `owner_id` (`014` §1, `016` §1), served from a private bucket through a signed
+-- URL. There is nowhere to point one that the writer does not already own.
+--
+-- ---------------------------------------------------------------------------
+-- §Pre-flight — run again at apply time, and stop if it has moved
+-- ---------------------------------------------------------------------------
+-- Measured 2026-08-05 against the canonical project `letsride`
+-- (`zwprydcyryvudhurbnye`), with:
+--
+--   select 'profiles' as tbl, count(*) as rows_total,
+--          count(avatar_url) as non_null_avatar_url from public.profiles
+--   union all
+--   select 'clubs', count(*), count(avatar_url) from public.clubs;
+--
+--   profiles   4 rows   0 non-NULL avatar_url
+--   clubs      2 rows   0 non-NULL avatar_url
+--
+-- So the drop destroys nothing. `014`'s header recorded 3 profile rows / 0
+-- non-NULL on 2026-08-05; the row count has moved since and the answer has not.
+--
+-- **A non-zero count is a stop, not a prompt to improvise.** There is no
+-- migrate-the-values branch in this file on purpose: an `avatar_url` with a
+-- value is by definition a URL on a host we do not control, so it cannot be
+-- copied into `avatar_path`, which must name an object inside our own bucket.
+-- Someone would have to decide whether to fetch it, and that is a product
+-- decision, not a migration's.
+--
+-- ---------------------------------------------------------------------------
+-- §What depends on these columns — audited, and the answer is nothing
+-- ---------------------------------------------------------------------------
+-- `drop column` defaults to RESTRICT, so a missed dependency aborts rather than
+-- silently taking something with it. **There is deliberately no `cascade` in
+-- this file.** The audit below is only true as of the moment it was run, and
+-- RESTRICT is what makes that acceptable — if something has grown a dependency
+-- since, the apply fails loudly instead of dropping a policy or a view.
+--
+-- Run 2026-08-05 against the hosted project. Every one of these returned zero
+-- rows for both columns:
+--
+--   -- every catalog edge pointing at either column
+--   with cols as (
+--     select c.oid as relid, c.relname, a.attnum
+--     from pg_class c
+--     join pg_attribute a on a.attrelid = c.oid
+--     join pg_namespace n on n.oid = c.relnamespace
+--     where n.nspname = 'public' and c.relname in ('profiles','clubs')
+--       and a.attname = 'avatar_url'
+--   )
+--   select cols.relname, pg_describe_object(d.classid, d.objid, d.objsubid)
+--   from cols join pg_depend d
+--     on d.refobjid = cols.relid and d.refobjsubid = cols.attnum;   -- 0 rows
+--
+-- and, separately: no policy names it in `qual` or `with_check`, no index, no
+-- constraint, no view (`information_schema.view_column_usage`), no column
+-- default, and no publication column list. The only catalog entries mentioning
+-- it at all are the per-column rows `information_schema.column_privileges`
+-- synthesises from the table-level grants held by `postgres`, `authenticated`
+-- and `service_role` — those are not column grants, and Postgres removes them
+-- with the column.
+--
+-- **One dependency Postgres would not have told us about, checked by hand.**
+-- A PL/pgSQL function body is not a `pg_depend` edge: `handle_new_user` wrote
+-- `avatar_url` in `001` and again in `002`, so a drop against either of those
+-- definitions would have succeeded quietly and then raised on every single
+-- signup. `003` §5 rewrote the body to a bare `insert into public.profiles (id)`
+-- and it has not named the column since. Confirmed by scanning `pg_proc.prosrc`
+-- across every non-system schema — 0 matches.
+--
+-- ---------------------------------------------------------------------------
+-- §This does not ship alone
+-- ---------------------------------------------------------------------------
+-- `avatar_url` is interpolated into 14 query sites across five `lib/data/`
+-- files, mostly through `PUBLIC_PROFILE_COLUMNS`. Applied on its own, every one
+-- of those selects returns `42703`, `unwrap` throws by design, and every
+-- authenticated screen lands on the error boundary — against the production
+-- database, because `main` auto-deploys and there is one project.
+--
+-- So this file lands in the same PR as the `PUBLIC_PROFILE_COLUMNS` edit
+-- (`src/lib/data/columns.ts`), the `resolveAvatarUrls` fallback removal
+-- (`src/lib/data/media.ts`) and the type changes in `src/types/index.ts`, and is
+-- applied at merge. That is task 3.4 of the client-shell change, which moved the
+-- drop out of the additive-only Phase 1 group for exactly this reason.
+--
+-- ---------------------------------------------------------------------------
+-- §Reversibility
+-- ---------------------------------------------------------------------------
+-- `alter table public.profiles add column avatar_url text;` restores the shape,
+-- and at 0 non-NULL rows it also restores everything the column held. That is
+-- the difference between this and `013`, which was irreversible in principle and
+-- survivable only because its pre-flight also came back zero — and it is the
+-- reason the census above is a gate rather than a formality.
+--
+-- ---------------------------------------------------------------------------
+-- §Ordering hazard — read this before applying `021`
+-- ---------------------------------------------------------------------------
+-- `021_profile_column_privileges.sql` is written, unapplied, and its §1 SELECT
+-- grant list names `avatar_url`:
+--
+--   grant select (id, username, avatar_url, bio, ...) on public.profiles to authenticated;
+--
+-- Sorted by filename, `021` applies BEFORE this file — which is what
+-- `supabase/tests/run.sh` does, so `PENDING=021 npm test` is green and proves
+-- nothing about the real ordering. Against the hosted project `021` would be
+-- applied AFTER this one, where `grant select (avatar_url)` raises `42703` and
+-- aborts the whole migration.
+--
+-- **Whoever lands `021` must first delete `avatar_url` from that one list.**
+-- It is not edited here: `021`'s shape is an open product-owner decision
+-- (docs/HANDOFF.md, "Do this first" item 4), and pre-empting it inside an
+-- unrelated migration is how a decision gets made by accident. Its assertion in
+-- `rls_test_pending_021.sql` — that `authenticated` holds no UPDATE on the
+-- column — is restated as absence in this change, because
+-- `has_column_privilege` raises on a dropped column rather than returning false.
+
+-- ---------------------------------------------------------------------------
+-- §The drop
+-- ---------------------------------------------------------------------------
+-- No `if exists`: a second apply should be loud. Supabase's migration table
+-- makes that unreachable in production, but `run.sh` builds from the directory
+-- and a silently-tolerant drop is one fewer signal if the chain is ever
+-- reordered.
+alter table public.profiles drop column avatar_url;
+alter table public.clubs    drop column avatar_url;
+
+-- Both `avatar_path` comments end "Preferred over the legacy avatar_url", which
+-- now names a column that does not exist. Rewritten rather than left to rot: a
+-- column comment is the one piece of documentation that ships inside the
+-- database, where the next reader meets it without this repo.
+comment on column public.profiles.avatar_path is
+  'Supabase Storage object path, e.g. avatars/<uid>/<uuid>.jpg. Never a URL — render through a signed URL (resolveAvatarUrls). Pinned to the owner''s own folder by profiles_avatar_path_is_own_folder.';
+comment on column public.clubs.avatar_path is
+  'Supabase Storage object path, e.g. club-avatars/<owner uid>/<uuid>.jpg. Never a URL — render through a signed URL. Pinned to the club owner''s folder by clubs_avatar_path_owned.';
+
+-- ---------------------------------------------------------------------------
+-- §Verification — run these against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+-- Expected: 0 rows — the point of the migration
+--   select table_name, column_name from information_schema.columns
+--    where table_schema = 'public' and table_name in ('profiles','clubs')
+--      and column_name = 'avatar_url';
+--
+-- Expected: 0 — nothing anywhere still names it. Both halves matter: the first
+-- would have caught a policy predicate, the second a function body, and only
+-- the first is something `drop column` would have refused on its own.
+--   select count(*) from pg_policies
+--    where coalesce(qual,'') like '%avatar_url%'
+--       or coalesce(with_check,'') like '%avatar_url%';
+--   select count(*) from pg_proc p
+--     join pg_namespace n on n.oid = p.pronamespace
+--    where p.prosrc like '%avatar_url%'
+--      and n.nspname not in ('pg_catalog','information_schema');
+--
+-- Expected: 4 and 4 — the path CHECKs from 014 and 016 are untouched. This is
+-- the "RESTRICT did its job and nothing rode along" check, and it is scoped to
+-- each table rather than counted across both, so a new surface on one of them
+-- fails with the table's name attached.
+--   select count(*) from pg_constraint
+--    where conrelid = 'public.profiles'::regclass and conname like '%path%';
+--   select count(*) from pg_constraint
+--    where conrelid = 'public.clubs'::regclass and conname like '%path%';
+--
+-- Expected: 15 and 0 — the five upload surfaces are unchanged and none of them
+-- grew an UPDATE policy while this was landing.
+--   select count(*) from pg_policies where schemaname='storage' and tablename='objects';
+--   select count(*) from pg_policies
+--    where schemaname='storage' and tablename='objects' and cmd = 'UPDATE';
+--
+-- Expected: 42 and 0 — the public policy set does not move (this migration adds
+-- and drops none) and anon still holds nothing.
+--   select count(*) from pg_policies where schemaname = 'public';
+--   select count(*) from information_schema.role_table_grants
+--    where grantee = 'anon' and table_schema = 'public';
+--
+-- Expected: 2 rows, neither comment mentioning avatar_url
+--   select c.relname, a.attname, col_description(c.oid, a.attnum)
+--     from pg_class c
+--     join pg_attribute a on a.attrelid = c.oid
+--     join pg_namespace n on n.oid = c.relnamespace
+--    where n.nspname = 'public' and c.relname in ('profiles','clubs')
+--      and a.attname = 'avatar_path';
+--
+-- Do NOT verify this one by watching a total column count fall by two. `013`'s
+-- footer records why: a remembered total is the number an operator talks
+-- themselves past mid-drop. The scoped queries above need no maintaining.
+--
+-- Then check the Supabase security advisors. Expect exactly the two known
+-- findings — `moderate_comment` (deliberate, 011 §1b) and the leaked-password
+-- toggle — and nothing new; this migration creates no function and no view.

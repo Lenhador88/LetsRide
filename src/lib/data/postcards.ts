@@ -1,18 +1,24 @@
-import { createClient } from '@/lib/supabase/server'
-import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
+import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
-import type { Postcard, FeedPage, PostcardFilterOption, PostcardFilters } from '@/types'
+import type {
+  EmbeddedClub,
+  FeedPage,
+  Postcard,
+  PostcardFilterOption,
+  PostcardFilters,
+  PublicProfile,
+} from '@/types'
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 /** Which slice of the feed the home screen is showing. */
 export type FeedFilter = { kind: 'rider' | 'club'; id: string }
 
 type FilterRow = {
   image_path: string
-  author: { id: string; username: string | null; avatar_url: string | null } | null
-  club: { id: string; name: string; avatar_url: string | null } | null
+  author: PublicProfile | null
+  club: EmbeddedClub | null
 }
 
 // The raw shape PostgREST returns before the like state is folded in:
@@ -35,7 +41,7 @@ export const FEED_PAGE_SIZE = 30
 const POSTCARD_SELECT = `
   *,
   author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}),
-  club:clubs(id, name, avatar_url),
+  club:clubs(id, name),
   likes_count:postcard_likes(count),
   comments_count:postcard_comments(count)
 `
@@ -55,7 +61,7 @@ const POSTCARD_SELECT = `
  * business logic the policy has no opinion on.
  */
 async function attachLikeState(
-  supabase: SupabaseServerClient,
+  supabase: DataClient,
   rows: PostcardRow[],
   viewerId: string | undefined
 ): Promise<Postcard[]> {
@@ -119,7 +125,7 @@ export async function getFeed(
   { before, limit = FEED_PAGE_SIZE }: FeedPage = {},
   filter?: FeedFilter
 ): Promise<Postcard[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
   let query = supabase
@@ -174,7 +180,7 @@ export const UNSEEN_SCAN_LIMIT = 100
  * policies the deck obeys — the reason this is a query rather than a
  * denormalised counter.
  */
-async function countUnseenPostcards(supabase: SupabaseServerClient): Promise<number> {
+async function countUnseenPostcards(supabase: DataClient): Promise<number> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return 0
 
@@ -194,13 +200,13 @@ async function countUnseenPostcards(supabase: SupabaseServerClient): Promise<num
 }
 
 export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<PostcardFilters> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
 
   const rows = unwrapList(
     await supabase
       .from('postcards')
       .select(
-        `image_path, author:profiles!author_id(id, username, avatar_url, avatar_path), club:clubs(id, name, avatar_url)`
+        `image_path, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), club:clubs(${CLUB_EMBED_COLUMNS})`
       )
       .order('created_at', { ascending: false })
       .limit(limit),
@@ -210,7 +216,15 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
   // The filter bar draws a rider's face on their tile, so it needs the same
   // signing pass the deck gets. Missed on the first pass, which would have left
   // every tile showing initials the moment avatars started being uploaded.
-  await resolveAvatarUrls(rows.map((row) => row.author), supabase)
+  //
+  // Club tiles were missed for longer and for a different reason: they read
+  // `clubs.avatar_url`, which parsed, typed and rendered — and was NULL on every
+  // row, so the tile showed initials and looked settled. `024` dropped the
+  // column; this pass is what actually draws the club's avatar.
+  await resolveAvatarUrls(
+    rows.flatMap((row) => [row.author, row.club]),
+    supabase
+  )
 
   const riders = new Map<string, PostcardFilterOption>()
   const clubs = new Map<string, PostcardFilterOption>()
@@ -260,7 +274,7 @@ export async function getClubFeed(
   clubId: string,
   { before, limit = FEED_PAGE_SIZE }: FeedPage = {}
 ): Promise<Postcard[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
   let query = supabase
@@ -276,7 +290,7 @@ export async function getClubFeed(
 }
 
 export async function getPostcard(id: string): Promise<Postcard | null> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
   // maybeSingle, not single: `single()` treats "no row" as an error, which

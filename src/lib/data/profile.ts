@@ -1,10 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import type { Profile } from '@/types'
 
 export async function getCurrentProfile(): Promise<Profile | null> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
@@ -32,7 +32,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
  * writes must handle the conflict.
  */
 export async function isUsernameTaken(username: string): Promise<boolean> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const data = unwrap(
     await supabase.from('profiles').select('id').eq('username', username).maybeSingle(),
     'that username',
@@ -54,7 +54,7 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
  * strings — and is a property of the schema rather than a hope about behaviour.
  */
 export async function getProfileCountries(userId: string): Promise<string[]> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
 
   const rows = unwrapList(
     await supabase

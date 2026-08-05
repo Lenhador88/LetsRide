@@ -2,6 +2,12 @@
   "name": "letsride",
   "version": "0.1.0",
   "private": true,
+  "imports": {
+    "#supabase/data-client": {
+      "react-server": "./src/lib/supabase/resolve.rsc.ts",
+      "default": "./src/lib/supabase/resolve.browser.ts"
+    }
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

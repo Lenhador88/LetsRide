@@ -116,26 +116,83 @@ listed in `SKIP_MIGRATIONS`. Their boxes stay open because the work is not lande
 
 ## 3. Make the data layer isomorphic (Phase 2)
 
-- [ ] 3.1 Introduce a single **environment-aware** Supabase client accessor the 19
+**Done 2026-08-05.** One correction to record, because the plan specified a mechanism that
+does not build. 3.1 called for a **runtime** test — server client when there is no `document`.
+It cannot work: `lib/supabase/server.ts` imports `next/headers`, Next refuses to bundle that
+into a client graph, and a `typeof document` guard plus `await import()` does not help, because
+the bundler resolves the import statically whether or not the branch can be taken there.
+Measured on Next 16.2.9 / Turbopack: a `'use client'` page importing one read function fails
+the build with traces through both `[Client Component Browser]` and `[Client Component SSR]`.
+
+The split is now made where the bundler makes it — the **`react-server` export condition**, via
+a `#supabase/data-client` subpath import in `package.json`, with halves `resolve.rsc.ts` and
+`resolve.browser.ts`. D1's intent and every alternative it rules out are unchanged; only the
+discriminator moved from runtime to build time, which is strictly better: `next/headers` never
+enters the browser bundle at all rather than sitting behind a dead branch. Verified by chunk
+inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR chunk resolves
+`resolve.browser.ts`, and `.next/static` contains zero references to `next/headers`.
+
+- [x] 3.1 Introduce a single **environment-aware** Supabase client accessor the 19
   `src/lib/data/` functions resolve at call time: server client when there is no `document`,
   browser client when there is (design D1). No signature changes. The server branch survives
   until group 6 — 18 server pages and 26 server components still call this layer throughout.
-- [ ] 3.2 Convert all 19 read functions to it. Verify no signature moved:
+  **Shipped as the `react-server` condition rather than the `document` test — see above.**
+- [x] 3.2 Convert all 19 read functions to it. Verify no signature moved:
   `git grep -n '^export async function' -- 'src/lib/data/*.ts'` matches the list in design.md.
-- [ ] 3.3 Add a unit test asserting the data layer works under both branches, alongside the
+  **Verified by diffing that command's output across the change: 19 functions, names and
+  signatures identical, only line numbers moved where a type alias was deleted.**
+- [x] 3.3 Add a unit test asserting the data layer works under both branches, alongside the
   existing `use-server-exports` test — the same class of failure that shipped `/postcards/new`
   dead, and the exact failure an earlier revision of this plan would have shipped.
-- [ ] 3.4 **One unit, one PR:** `024_drop_legacy_avatar_url.sql` dropping `profiles.avatar_url`
+  **`src/lib/data/__tests__/isomorphic.test.ts`, 16 assertions.** It walks the local module
+  graph from every `lib/data/` module and fails if any of them reaches `next/headers`; asserts
+  the conditional mapping's shape and that nothing bypasses it; and imports both halves to
+  prove each is the one it claims. Negative-controlled — re-introducing the server import into
+  `lib/data/profile.ts` fails exactly that module's case.
+- [x] 3.4 **One unit, one PR:** `024_drop_legacy_avatar_url.sql` dropping `profiles.avatar_url`
   and `clubs.avatar_url`, *together with* the `PUBLIC_PROFILE_COLUMNS` edit at
-  `src/lib/data/columns.ts` and the `resolveAvatarUrls` fallback removal. The constant is
-  interpolated into 14 query sites across five `lib/data/` files; the migration alone returns
-  `42703`, `unwrap` throws by design, and every authenticated screen hits the error boundary on
-  a production database. Re-run the census first — 0 non-NULL as of 2026-08-05 — and stop rather
-  than migrate values silently if it has changed.
-- [ ] 3.5 Assertions for 3.4: the columns are absent from `information_schema.columns`, and a
-  rider still cannot write any image reference outside their own Storage folder.
-- [ ] 3.6 Extend the Vitest suite to cover `src/lib/data/` for the first time — currently
-  uncovered, and this group changes every function in it.
+  `src/lib/data/columns.ts` and the `resolveAvatarUrls` fallback removal. Re-run the census
+  first — 0 non-NULL as of 2026-08-05 — and stop rather than migrate values silently if it has
+  changed. **Census re-run at write time: `profiles` 4 rows / 0 non-NULL, `clubs` 2 rows / 0
+  non-NULL.**
+
+  **This task's repair list was six query sites short, and the missing six were a live bug.**
+  It named `PUBLIC_PROFILE_COLUMNS` and `resolveAvatarUrls`. Three club embeds in `rides.ts`,
+  two in `postcards.ts` and one hand-spelled profile select in `rides.ts` named `avatar_url`
+  directly, reachable through neither. Five of those six fed an `<Avatar>` — the rides list, the
+  ride-detail chip, the ride filter tiles, the postcard filter tiles — and `clubs.avatar_url`
+  was NULL on every row and always had been, so **all of them silently drew initials**. A club
+  avatar uploaded through `/clubs/new` (016) appeared on the Clubs screens, which sign
+  `avatar_path`, and nowhere else. Fixed by `CLUB_EMBED_COLUMNS` plus a `resolveAvatarUrls` pass
+  at each site; the deck's embed went back to `id, name` because it draws only the name.
+- [x] 3.5 Assertions for 3.4: the columns are absent from `information_schema.columns`, and a
+  rider still cannot write any image reference outside their own Storage folder. **13 new
+  assertions, suite 370 → 383.** Mutation-tested: three name-preserving mutations of the
+  constraints and policies each fail exactly one new assertion and nothing pre-existing.
+- [x] 3.6 Extend the Vitest suite to cover `src/lib/data/` for the first time — currently
+  uncovered, and this group changes every function in it. **`media.test.ts` (13) and
+  `columns.test.ts` (12).** `media.ts` first because every screen depends on it and none fail
+  loudly when it is wrong — a missed signing pass renders initials, which is a state the design
+  draws deliberately elsewhere, so the bug reads as a design choice. `columns.test.ts` scans
+  every select in the layer for a dropped column, which is the guard that would have caught all
+  six sites in 3.4; both are negative-controlled.
+
+### Two things this group found that the plan did not predict
+
+- **`021` would have aborted on apply, and no local suite could have shown it.** Its §1 SELECT
+  grant list named `avatar_url`. `run.sh` applies by filename, so locally `021` lands *before*
+  `024` and the column is still there; against the hosted project it lands *after*, where
+  `grant select (avatar_url)` raises `42703` and takes the whole migration down mid-deploy.
+  Removed from the list — required under every reading of `021`'s open shape question, since a
+  column that does not exist cannot be granted either way. Proven both directions against a
+  scratch database in the real hosted order: the old list aborts with `42703`, the new one
+  applies cleanly.
+- **The code change is backward-compatible, so `024` need not land in the same instant.** Every
+  changed select was probed against the live schema *before* `024` — PostgREST returns `42703`
+  for a column that does not exist and `42501` for one the role cannot read, so the two are
+  distinguishable without a session, and all seven came back `42501`. The safe order is
+  therefore **merge and deploy the code first, then apply `024`** — same PR, but with no window
+  in which either half is alone. Applying `024` first is an immediate outage on `main`.
 
 ## 4. Session, auth and the recovery grant (Phase 3)
 

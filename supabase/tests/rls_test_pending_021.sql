@@ -172,9 +172,24 @@ select assert_eq(
 select assert_eq(
   has_column_privilege('authenticated', 'public.profiles', 'username', 'update'),
   true, 'and still writable — onboarding step 1 needs it');
+-- This used to assert `has_column_privilege(..., 'avatar_url', 'update')` is
+-- false — 021's cheap half of the fix, leaving the column readable but not
+-- writable. **024 drops the column outright, which is the whole fix**, so there
+-- is no privilege left to ask about: `has_column_privilege` raises 42703 on a
+-- dropped column rather than returning false, and the old line failed the suite
+-- rather than passing it. Restated as absence, which is strictly stronger.
+--
+-- Two things this run does NOT prove, and both belong to whoever lands 021:
+--   * run.sh applies migrations in filename order, so 021 lands BEFORE 024 here
+--     and its `grant select (avatar_url)` finds the column present. Against the
+--     hosted project 021 applies AFTER 024, where that grant raises 42703 and
+--     aborts. `avatar_url` must come out of 021 §1's SELECT list first.
+--   * with the column gone, 021's own justification for that line is spent.
 select assert_eq(
-  has_column_privilege('authenticated', 'public.profiles', 'avatar_url', 'update'),
-  false, 'avatar_url is read-only: nothing writes it and it reaches every member list');
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles'
+      and column_name = 'avatar_url'),
+  0, 'avatar_url is not merely read-only but absent (024), so 021 need not grant it');
 
 select assert_eq(has_function_privilege('anon', 'public.my_profile_stamps()', 'execute'),
   false, 'anon cannot call the accessor');

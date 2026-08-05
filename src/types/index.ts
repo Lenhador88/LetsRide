@@ -3,6 +3,12 @@ export type Profile = {
   // Nullable until onboarding step 1 completes — the trigger creates the row
   // the instant the auth user exists, before a name has been chosen.
   username: string | null
+  /**
+   * **Not a column.** `024` dropped `profiles.avatar_url`; this is the
+   * short-lived signed URL `resolveAvatarUrls` writes over `avatar_path` at read
+   * time, and it is the only field a component should ever put in an `<img
+   * src>`. Null when the row has no avatar, or when signing was refused.
+   */
   avatar_url: string | null
   /** Storage object path — see 014. Rendered via a signed URL, never directly. */
   avatar_path: string | null
@@ -77,7 +83,7 @@ export type RideListItem = {
   meeting_point: string
   departure_at: string
   /** The chip above the title. Null for a ride that belongs to no club. */
-  club: Pick<Club, 'id' | 'name' | 'avatar_url'> | null
+  club: EmbeddedClub | null
   /** Drawn first in the avatar row, with the brand ring. */
   organizer: PublicProfile | null
   /** Organizer first, then the crew — capped at RIDE_AVATAR_LIMIT. */
@@ -120,7 +126,7 @@ export type RideDetail = {
   club_id: string | null
   organizer_id: string
   organizer: PublicProfile | null
-  club: { id: string; name: string; avatar_url: string | null } | null
+  club: EmbeddedClub | null
   /** This viewer's own RSVP. The organizer reads as `going` without a row. */
   attendance: RideAttendance
   is_organizer: boolean
@@ -187,10 +193,32 @@ export type RideFilters = {
   clubs: RideFilterOption[]
 }
 
+/**
+ * A club as it appears *embedded on something else* — the chip above a ride, a
+ * tile on a filter bar. `CLUB_EMBED_COLUMNS` in lib/data/columns.ts is the query
+ * half of this type; keep the two together.
+ *
+ * `avatar_path` is what the query selects. `avatar_url` is the signed URL
+ * `resolveAvatarUrls` writes over it at read time — **not** a column: `024`
+ * dropped `clubs.avatar_url`. Both fields are present for the same reason
+ * `ClubListItem` carries both, and reading the wrong one is now a rendering bug
+ * rather than a silent NULL.
+ */
+export type EmbeddedClub = {
+  id: string
+  name: string
+  avatar_path: string | null
+  avatar_url: string | null
+}
+
 export type Club = {
   id: string
   name: string
   description: string | null
+  /** Storage object paths — see 016. Rendered via signed URLs, never directly. */
+  avatar_path: string | null
+  cover_image_path: string | null
+  /** Not a column — the signed URL, exactly as on `Profile`. `024` dropped it. */
   avatar_url: string | null
   is_public: boolean
   owner_id: string
@@ -208,10 +236,10 @@ export type Club = {
  *
  * `016` added the two image columns, and Create club is what fills them — which
  * is why they landed together rather than with the list. The `*_url` fields are
- * signed URLs written by `signClubImages` at read time; they are **not**
- * `clubs.avatar_url`, which is the legacy column nothing writes. Two names so
- * "the signed URL" and "the dead column" can never be the same field, which is
- * the ambiguity 014 had to unpick on `profiles`.
+ * signed URLs written by `signClubImages` at read time. They used to be
+ * distinguished from `clubs.avatar_url`, the legacy column nothing wrote; `024`
+ * dropped it, so `*_path` is the column and `*_url` is the signed URL, with
+ * nothing else in between.
  */
 export type ClubListItem = {
   id: string

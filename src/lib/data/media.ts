@@ -1,7 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 /**
  * How long a postcard image URL stays valid. One hour is comfortably longer
@@ -31,13 +29,13 @@ export const SIGNED_URL_TTL_SECONDS = 60 * 60
  */
 export async function signImagePaths(
   paths: string[],
-  supabase?: SupabaseServerClient
+  supabase?: DataClient
 ): Promise<Map<string, string>> {
   const urls = new Map<string, string>()
   const unique = [...new Set(paths.filter(Boolean))]
   if (unique.length === 0) return urls
 
-  const client = supabase ?? (await createClient())
+  const client = supabase ?? (await resolveSupabase())
   const { data, error } = await client.storage
     .from(MEDIA_BUCKET)
     .createSignedUrls(unique, SIGNED_URL_TTL_SECONDS)
@@ -54,8 +52,13 @@ export async function signImagePaths(
 }
 
 /**
- * Resolves `avatar_path` into `avatar_url` on a set of profiles, in one signing
+ * Resolves `avatar_path` into `avatar_url` on a set of rows, in one signing
  * request.
+ *
+ * **Riders or clubs.** The parameter is structural rather than `PublicProfile`
+ * because `clubs` carries the identical pair, and after `024` the club chip on a
+ * ride and the club tile on a filter bar need exactly this pass — see
+ * `CLUB_EMBED_COLUMNS`. One helper, because two would drift.
  *
  * **Why it writes into `avatar_url` rather than adding a field.** Nine
  * components render an avatar and every one of them already reads
@@ -65,18 +68,19 @@ export async function signImagePaths(
  * owns how it got there. `avatar_path` still ships to the client because it is
  * in PUBLIC_PROFILE_COLUMNS, but nothing has to look at it.
  *
- * The legacy column is the fallback, not the override: a signed path wins, and
- * a profile with no `avatar_path` keeps whatever `avatar_url` held. 014's header
- * explains why that column still exists — nothing has ever written it, but this
- * container could not prove it is NULL everywhere, so it is preserved until
- * someone can.
+ * **There is no longer a legacy fallback, because there is no longer a legacy
+ * column.** This used to end `?? profile.avatar_url ?? null`, preserving
+ * whatever the `avatar_url` *column* held for a row with no `avatar_path` —
+ * `014` kept it rather than dropping it unverified. `024` verified it (0
+ * non-NULL rows on `profiles` and on `clubs`) and dropped it. The field is now
+ * write-only from here, so a row with no path resolves to null, full stop.
  *
- * **Mutates, deliberately.** Profiles arrive nested — `author` on a postcard,
- * `organizer` on a ride, `riders[].profile` on a crew — and rebuilding those
- * shapes immutably would mean a bespoke mapper per call site, which is exactly
- * the per-surface duplication this helper exists to avoid. The rows are freshly
- * built by the query one statement earlier and shared with nothing, so the
- * mutation is invisible.
+ * **Mutates, deliberately.** Rows arrive nested — `author` on a postcard,
+ * `organizer` on a ride, `riders[].profile` on a crew, `club` on both — and
+ * rebuilding those shapes immutably would mean a bespoke mapper per call site,
+ * which is exactly the per-surface duplication this helper exists to avoid. The
+ * rows are freshly built by the query one statement earlier and shared with
+ * nothing, so the mutation is invisible.
  *
  * Signing is not authorization. 014's Storage SELECT policy decides whether an
  * avatar object is readable at all, and it inherits the profiles predicate — so
@@ -85,19 +89,17 @@ export async function signImagePaths(
  * policy already decided that upstream by returning the row.
  */
 export async function resolveAvatarUrls(
-  profiles: (({ avatar_path?: string | null; avatar_url?: string | null }) | null | undefined)[],
-  supabase?: SupabaseServerClient
+  rows: (({ avatar_path?: string | null; avatar_url?: string | null }) | null | undefined)[],
+  supabase?: DataClient
 ): Promise<void> {
-  const present = profiles.filter(
-    (profile): profile is { avatar_path?: string | null; avatar_url?: string | null } => !!profile
+  const present = rows.filter(
+    (row): row is { avatar_path?: string | null; avatar_url?: string | null } => !!row
   )
-  const paths = present.map((profile) => profile.avatar_path).filter((path): path is string => !!path)
+  const paths = present.map((row) => row.avatar_path).filter((path): path is string => !!path)
   if (paths.length === 0) return
 
   const urls = await signImagePaths(paths, supabase)
-  for (const profile of present) {
-    if (profile.avatar_path) {
-      profile.avatar_url = urls.get(profile.avatar_path) ?? profile.avatar_url ?? null
-    }
+  for (const row of present) {
+    if (row.avatar_path) row.avatar_url = urls.get(row.avatar_path) ?? null
   }
 }
