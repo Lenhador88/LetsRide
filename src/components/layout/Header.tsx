@@ -29,6 +29,17 @@ type HeaderProps = {
    * spells the sheet out, and one of its two rows — Sign out — is built.
    */
   action?: React.ReactNode
+  /**
+   * Rendered immediately before the title, inside the same centred group — the
+   * 28px avatar `v2 / Component / Header` draws in its `Type=Club` and
+   * `Type=User` shapes. This file used to say that title was "still not built";
+   * the club detail is the first screen that needs it.
+   *
+   * It shares the title's flex row rather than sitting absolute like `backHref`
+   * and `action`, because it is part of the title: avatar and name centre
+   * together, which is what the design draws.
+   */
+  titleLeading?: React.ReactNode
   className?: string
 }
 
@@ -54,10 +65,10 @@ type HeaderProps = {
  * the app is installed and to the design's 8px content padding otherwise, which
  * is the same 48px visible header height on device.
  *
- * The avatar-and-name title of `Type=User` / `Type=Club` is still not built —
- * the profile and club screens are the ones that need it.
+ * The avatar-and-name title of `Type=User` / `Type=Club` is `titleLeading`,
+ * built for the club detail. The profile screen does not use it yet.
  */
-export function Header({ title, backHref, subRow, action, className }: HeaderProps) {
+export function Header({ title, backHref, subRow, action, titleLeading, className }: HeaderProps) {
   return (
     <header
       className={cn(
@@ -80,7 +91,10 @@ export function Header({ title, backHref, subRow, action, className }: HeaderPro
         {/* Symmetric so the title stays centred on the header rather than on the
             space left beside the back button. Asymmetric padding would shift it
             off-centre, which the design does not do. */}
-        <h1 className="truncate px-12 text-base font-semibold text-foreground">{title}</h1>
+        <div className="flex min-w-0 items-center gap-2 px-12">
+          {titleLeading}
+          <h1 className="truncate text-base font-semibold text-foreground">{title}</h1>
+        </div>
         {/* Absolute for the same reason the back button is: the title centres on
             the header, so neither control may take part in its flex row. */}
         {action && <div className="absolute right-0">{action}</div>}

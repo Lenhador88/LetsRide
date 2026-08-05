@@ -107,7 +107,7 @@ src/
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew
-│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id]
+│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id] (Timeline) + /rides, /members, /about
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
@@ -120,7 +120,7 @@ src/
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
 │   ├── rides/              # RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
-│   ├── clubs/              # ClubCard, ClubMembershipButton, ClubPageMenu, JoinClubButton, MarkClubSeen
+│   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
 ├── lib/
@@ -224,6 +224,7 @@ Three further rules:
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
 | `postcard_hides` | `(postcard_id, user_id)` composite PK. **Per-viewer and one-directional**, unlike `blocks` — a row only ever removes a postcard from its own `user_id`'s feed. It is an input to the `postcards` SELECT policy, so `club_id` is no longer the sole determinant of what a viewer sees. |
 | `profile_countries` | `(user_id, country_code)` composite PK, added by `014`. Countries a rider says they have ridden in, **entered manually** — the derived reading is unbuildable, `rides` has no country or coordinates. `country_code` is ISO 3166-1 alpha-2 with a CHECK; there is no `countries` reference table, because the picker's list is the client's and nothing joins against it. SELECT inherits the profiles predicate via `EXISTS`, so blocking works without the word appearing in the policy. |
+| `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` remains the legacy column nothing writes. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
 
@@ -236,7 +237,14 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`015` are all applied — there is no drift.** `015` (`feed_reads`) was
+**Applied state: `001`–`016` are all applied — there is no drift.** `016` (club media) was
+applied 2026-08-05 and verified live: 6 new `storage.objects` policies (3 each for
+`club-avatars/` and `club-covers/`), 15 in total across five upload surfaces, 0 targeting
+anything but `authenticated`, 0 UPDATE policies, 4 path CHECKs on `clubs`, and both columns
+present. The policies were also exercised against the live project with `curl`: an upload into
+your own folder returns 200, into another rider's 400, and a malformed path 400.
+
+**Applied state before that: `001`–`015`.** `015` (`feed_reads`) was
 applied 2026-08-05 and verified live: 3 policies, all `to authenticated`, 0 `anon` grants,
 `authenticated` holding no DELETE, `indnullsnotdistinct` true, `prosecdef` false on
 `club_unread_counts`, RLS on, and the new `rides (club_id, created_at desc)` index present.

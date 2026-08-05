@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapList } from '@/lib/data/unwrap'
-import { resolveAvatarUrls } from '@/lib/data/media'
-import type { Club, ClubListItem, PublicProfile } from '@/types'
+import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
+import type { Club, ClubDetail, ClubListItem, ClubRosterMember, PublicProfile } from '@/types'
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 type ClubOption = Pick<Club, 'id' | 'name'>
@@ -44,7 +44,7 @@ export const CLUB_MEMBERSHIP_LIMIT = 100
  * where it stops being theoretical.
  */
 const CLUB_LIST_SELECT = `
-  id, name, is_public,
+  id, name, is_public, avatar_path, cover_image_path,
   members_count:club_members(count),
   riders:club_members(user_id, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
 `
@@ -53,6 +53,8 @@ export type ClubListRow = {
   id: string
   name: string
   is_public: boolean
+  avatar_path: string | null
+  cover_image_path: string | null
   members_count: { count: number }[] | null
   riders: { user_id: string; profile: PublicProfile | null }[] | null
 }
@@ -70,6 +72,11 @@ export function toClubListItem(row: ClubListRow, unread?: number): ClubListItem 
     id: row.id,
     name: row.name,
     is_public: row.is_public,
+    avatar_path: row.avatar_path,
+    cover_image_path: row.cover_image_path,
+    // Filled by signClubImages, which runs once per page rather than per row.
+    avatar_url: null,
+    cover_image_url: null,
     riders: riders.slice(0, CLUB_AVATAR_LIMIT),
     // The aggregate, not `riders.length` — the embed is capped at five, and a
     // member whose profile the policies hide still counts towards the club.
@@ -124,6 +131,32 @@ async function signRiderAvatars(items: ClubListItem[], supabase: SupabaseServerC
   )
 }
 
+/**
+ * Signs both club images for a whole page in one request.
+ *
+ * Unlike `resolveAvatarUrls` this writes into *new* fields rather than back over
+ * the path, because `clubs.avatar_url` still exists as a legacy column and
+ * overloading it would make "signed URL" and "the dead column" the same field —
+ * which is exactly the ambiguity 014 had to unpick on profiles. Two names, one
+ * meaning each.
+ *
+ * A path that will not sign lands as null and the card falls back to initials.
+ * That is the correct outcome for a private club's cover seen by someone the
+ * policy excludes, and signing is not the check — 016's SELECT policy is.
+ */
+async function signClubImages(items: ClubListItem[], supabase: SupabaseServerClient) {
+  const paths = items.flatMap((item) =>
+    [item.avatar_path, item.cover_image_path].filter((path): path is string => !!path)
+  )
+  if (paths.length === 0) return
+
+  const urls = await signImagePaths(paths, supabase)
+  for (const item of items) {
+    item.avatar_url = item.avatar_path ? (urls.get(item.avatar_path) ?? null) : null
+    item.cover_image_url = item.cover_image_path ? (urls.get(item.cover_image_path) ?? null) : null
+  }
+}
+
 /** Alphabetical. The design specifies no order, and a list scanned by name should not reshuffle. */
 function byName(a: ClubListItem, b: ClubListItem) {
   return a.name.localeCompare(b.name)
@@ -160,7 +193,7 @@ export async function getYourClubs(): Promise<ClubListItem[]> {
   ])
 
   const items = rows.map((row) => toClubListItem(row, unread.get(row.id) ?? 0)).sort(byName)
-  await signRiderAvatars(items, supabase)
+  await Promise.all([signRiderAvatars(items, supabase), signClubImages(items, supabase)])
   return items
 }
 
@@ -208,8 +241,117 @@ export async function getExploreClubs(): Promise<ClubListItem[]> {
   // No unread. The design puts `Join club` in the slot the counter occupies,
   // and 015 refuses a watermark for a club you have not joined anyway.
   const items = rows.map((row) => toClubListItem(row)).sort(byName)
-  await signRiderAvatars(items, supabase)
+  await Promise.all([signRiderAvatars(items, supabase), signClubImages(items, supabase)])
   return items
+}
+
+/**
+ * One club, for the detail screens.
+ *
+ * `notFound()` is the caller's job, not this function's — it returns null for
+ * "no such club" *and* for "a club the policy hides", which are deliberately the
+ * same answer. Distinguishing them would confirm a private club exists to
+ * someone who cannot see it, which is the whole point of decision #1.
+ */
+export async function getClub(id: string): Promise<ClubDetail | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { data } = await supabase
+    .from('clubs')
+    .select(
+      `id, name, description, is_public, owner_id, created_at, avatar_path, cover_image_path,
+       owner:profiles!owner_id(${PUBLIC_PROFILE_COLUMNS}),
+       members_count:club_members(count)`
+    )
+    .eq('id', id)
+    .maybeSingle()
+
+  if (!data) return null
+
+  const row = data as unknown as {
+    id: string
+    name: string
+    description: string | null
+    is_public: boolean
+    owner_id: string
+    created_at: string
+    avatar_path: string | null
+    cover_image_path: string | null
+    owner: PublicProfile | null
+    members_count: { count: number }[] | null
+  }
+
+  // Membership is read separately rather than as an embed filtered by user_id:
+  // the club_members SELECT policy scopes *visibility*, so an embed would return
+  // the whole roster to find one row.
+  const { data: membership } = user
+    ? await supabase
+        .from('club_members')
+        .select('role')
+        .eq('club_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+    : { data: null }
+
+  const club: ClubDetail = {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    is_public: row.is_public,
+    owner_id: row.owner_id,
+    created_at: row.created_at,
+    avatar_path: row.avatar_path,
+    cover_image_path: row.cover_image_path,
+    avatar_url: null,
+    cover_image_url: null,
+    owner: row.owner,
+    members_count: row.members_count?.[0]?.count ?? 0,
+    viewer_role: (membership?.role as ClubDetail['viewer_role']) ?? null,
+  }
+
+  const paths = [club.avatar_path, club.cover_image_path].filter((p): p is string => !!p)
+  if (paths.length > 0) {
+    const urls = await signImagePaths(paths, supabase)
+    club.avatar_url = club.avatar_path ? (urls.get(club.avatar_path) ?? null) : null
+    club.cover_image_url = club.cover_image_path
+      ? (urls.get(club.cover_image_path) ?? null)
+      : null
+  }
+  if (club.owner) await resolveAvatarUrls([club.owner], supabase)
+
+  return club
+}
+
+/**
+ * A club's roster.
+ *
+ * Bounded for the same reason `RIDE_CREW_LIMIT` is: nothing caps `club_members`,
+ * so an unbounded read selects every row plus a joined profile each and renders
+ * one list item per row with no virtualisation. Beyond the bound the list
+ * truncates rather than misleads, which is the honest trade until pagination
+ * gets a design.
+ */
+export const CLUB_ROSTER_LIMIT = 200
+
+export async function getClubMembers(clubId: string): Promise<ClubRosterMember[]> {
+  const supabase = await createClient()
+
+  const rows = unwrapList(
+    await supabase
+      .from('club_members')
+      .select(`user_id, role, joined_at, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`)
+      .eq('club_id', clubId)
+      .order('joined_at', { ascending: true })
+      .limit(CLUB_ROSTER_LIMIT),
+    "this club's members",
+  ) as unknown as ClubRosterMember[]
+
+  // A membership whose profile the policies hide is dropped rather than drawn
+  // as a nameless row — the same rule getMyClubs applies to a missing club.
+  const members = rows.filter((member) => !!member.profile)
+  await resolveAvatarUrls(members.map((member) => member.profile), supabase)
+  return members
 }
 
 /**

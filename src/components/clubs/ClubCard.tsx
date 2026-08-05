@@ -45,21 +45,26 @@ export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean
       </Link>
 
       <div className="relative h-26 w-24 shrink-0">
-        {/* The design's 80×104 image container, empty. It carries no icon: the
+        {/* The design's 80×104 image container. Empty it carries no icon: the
             avatar overlaps it from x24, so anything centred in it renders
             underneath and cannot be seen — which is worse than an empty
             container, because it looks finished in the diff. `List / Ride`
             keeps its location pin only because nothing covers it. */}
-        <div className="absolute inset-y-0 left-0 w-20 overflow-hidden rounded bg-border" />
+        <div className="absolute inset-y-0 left-0 w-20 overflow-hidden rounded bg-border">
+          {club.cover_image_url && (
+            <img src={club.cover_image_url} alt="" className="h-full w-full object-cover" />
+          )}
+        </div>
         {/* `bg-surface`, because the design's Avatar frame is filled White/100.
             Avatar's own fallback is `bg-foreground/10` — fine over a card, and
-            over this placeholder it is translucent enough that the icon behind
+            over this container it is translucent enough that what sits behind
             shows straight through the initials. Caught by looking at the
             rendered page; it compiles and reads as a smudge. */}
         <Avatar
+          src={club.avatar_url}
           name={club.name}
           size="xl"
-          className="absolute top-4 left-6 h-18 w-18 rounded-xl border-surface bg-surface"
+          className="absolute top-4 left-6 h-18 w-18 rounded-xl border-surface bg-surface object-cover"
         />
       </div>
 

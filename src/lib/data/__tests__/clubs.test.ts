@@ -15,6 +15,8 @@ function row(overrides: Partial<ClubListRow> = {}): ClubListRow {
     id: 'club-1',
     name: 'Biker Mice from Mars',
     is_public: true,
+    avatar_path: null,
+    cover_image_path: null,
     members_count: [{ count: 0 }],
     riders: [],
     ...overrides,
@@ -84,6 +86,24 @@ describe('toClubListItem', () => {
   it('carries privacy through, since the row draws Lock or Globe from it', () => {
     expect(toClubListItem(row({ is_public: false })).is_public).toBe(false)
     expect(toClubListItem(row({ is_public: true })).is_public).toBe(true)
+  })
+
+  /**
+   * The signed URLs are written afterwards by `signClubImages`, in one request
+   * for the whole page. Starting them as null rather than leaving them
+   * undefined is what keeps "not signed yet" and "signing refused" the same
+   * state at render — the card falls back to initials either way, and a private
+   * club's cover legitimately refuses.
+   */
+  it('carries the image paths and leaves the signed URLs to the signer', () => {
+    const item = toClubListItem(
+      row({ avatar_path: 'club-avatars/a/b.jpg', cover_image_path: 'club-covers/a/c.jpg' })
+    )
+
+    expect(item.avatar_path).toBe('club-avatars/a/b.jpg')
+    expect(item.cover_image_path).toBe('club-covers/a/c.jpg')
+    expect(item.avatar_url).toBeNull()
+    expect(item.cover_image_url).toBeNull()
   })
 
   /**

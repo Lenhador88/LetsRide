@@ -206,17 +206,21 @@ export type Club = {
  * `is Joined`. Neither is a stored field: privacy is `is_public` inverted, and
  * joined is which of the two sub-pages the row is on.
  *
- * There is deliberately no cover or avatar image here. The design leads the
- * card with both, `clubs` has never carried either (seven columns since 001,
- * and `avatar_url` has never been written by anything), and adding the columns
- * without the upload screen that fills them would render exactly the same
- * empty container while planting the dead column 014 had to clean up on
- * `profiles`. It sizes with Create/Edit club. See docs/FIGMA-FIDELITY-TODO.md.
+ * `016` added the two image columns, and Create club is what fills them — which
+ * is why they landed together rather than with the list. The `*_url` fields are
+ * signed URLs written by `signClubImages` at read time; they are **not**
+ * `clubs.avatar_url`, which is the legacy column nothing writes. Two names so
+ * "the signed URL" and "the dead column" can never be the same field, which is
+ * the ambiguity 014 had to unpick on `profiles`.
  */
 export type ClubListItem = {
   id: string
   name: string
   is_public: boolean
+  avatar_path: string | null
+  cover_image_path: string | null
+  avatar_url: string | null
+  cover_image_url: string | null
   /** Faces for the design's overlapping row, capped at `CLUB_AVATAR_LIMIT`. */
   riders: PublicProfile[]
   /** Everyone in the club, including the faces the row does not draw. */
@@ -229,6 +233,39 @@ export type ClubListItem = {
    * `Join club` link in the same slot.
    */
   unread?: number
+}
+
+/**
+ * One club on its detail screens.
+ *
+ * `viewer_role` is the viewer's own `club_members.role`, or null for a
+ * non-member — which is the only thing the screen needs to choose between Join
+ * and Leave, and the only thing it may safely infer. It is **not** an
+ * authorization signal: 001's policies decide every write, and a screen that
+ * treated this as permission would be re-deciding in the weaker of the two
+ * places.
+ */
+export type ClubDetail = {
+  id: string
+  name: string
+  description: string | null
+  is_public: boolean
+  owner_id: string
+  created_at: string
+  avatar_path: string | null
+  cover_image_path: string | null
+  avatar_url: string | null
+  cover_image_url: string | null
+  owner: PublicProfile | null
+  members_count: number
+  viewer_role: 'owner' | 'admin' | 'member' | null
+}
+
+export type ClubRosterMember = {
+  user_id: string
+  role: 'owner' | 'admin' | 'member'
+  joined_at: string
+  profile: PublicProfile | null
 }
 
 export type ClubMember = {

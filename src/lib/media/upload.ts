@@ -6,7 +6,14 @@
  */
 
 import { createClient } from '@/lib/supabase/client'
-import { MEDIA_BUCKET, buildAvatarPath, buildCoverPath, buildPostcardImagePath } from './constants'
+import {
+  MEDIA_BUCKET,
+  buildAvatarPath,
+  buildClubAvatarPath,
+  buildClubCoverPath,
+  buildCoverPath,
+  buildPostcardImagePath,
+} from './constants'
 import { compressImage } from './compress'
 import { validateImageFile } from './validate'
 
@@ -155,4 +162,24 @@ export function uploadAvatarImage(file: File, options: UploadObjectOptions = {})
 
 export function uploadCoverImage(file: File, options: UploadObjectOptions = {}) {
   return uploadOwnImage(file, buildCoverPath, 1080, options)
+}
+
+/**
+ * The club surfaces (016). Same `uploadOwnImage` shape, because the path is
+ * still keyed on the uploader — a club id cannot appear in it, since the object
+ * has to land before the club row exists.
+ *
+ * 512 and 1080 match the profile sizes rather than the drawn boxes: the club
+ * avatar is 72 on `List / Club` and 28 in the detail header, and the cover is 80
+ * wide on the card. Compressing to those would be right until the first screen
+ * draws either one larger, and re-uploading everyone's images is not a thing
+ * this app can do. Matching the profile sizes costs a few kilobytes and removes
+ * that failure entirely.
+ */
+export function uploadClubAvatarImage(file: File, options: UploadObjectOptions = {}) {
+  return uploadOwnImage(file, buildClubAvatarPath, 512, options)
+}
+
+export function uploadClubCoverImage(file: File, options: UploadObjectOptions = {}) {
+  return uploadOwnImage(file, buildClubCoverPath, 1080, options)
 }

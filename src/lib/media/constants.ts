@@ -14,6 +14,8 @@ export const MEDIA_BUCKET = 'media'
 export const POSTCARDS_FOLDER = 'postcards'
 export const AVATARS_FOLDER = 'avatars'
 export const COVERS_FOLDER = 'covers'
+export const CLUB_AVATARS_FOLDER = 'club-avatars'
+export const CLUB_COVERS_FOLDER = 'club-covers'
 
 const UUID_SRC = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
@@ -56,6 +58,16 @@ export const AVATAR_IMAGE_PATH_RE = objectPathRe(AVATARS_FOLDER)
 export const COVER_IMAGE_PATH_RE = objectPathRe(COVERS_FOLDER)
 
 /**
+ * 016's club surfaces. The `<uploader uuid>` slot is the club *owner*, not the
+ * club — a club id cannot be in the path, because the object has to be uploaded
+ * before the club row it belongs to exists. The migration's second CHECK is what
+ * ties the path back to `owner_id`; this shape is the same one every other
+ * surface uses, which is the point of the shared builder.
+ */
+export const CLUB_AVATAR_PATH_RE = objectPathRe(CLUB_AVATARS_FOLDER)
+export const CLUB_COVER_PATH_RE = objectPathRe(CLUB_COVERS_FOLDER)
+
+/**
  * Builds a fresh, well-formed postcard image path for this uploader. The
  * object id defaults to a fresh random uuid rather than taking one as a
  * required argument, so an ordinary call site can't accidentally reuse a
@@ -65,3 +77,5 @@ export const COVER_IMAGE_PATH_RE = objectPathRe(COVERS_FOLDER)
 export const buildPostcardImagePath = buildObjectPath(POSTCARDS_FOLDER)
 export const buildAvatarPath = buildObjectPath(AVATARS_FOLDER)
 export const buildCoverPath = buildObjectPath(COVERS_FOLDER)
+export const buildClubAvatarPath = buildObjectPath(CLUB_AVATARS_FOLDER)
+export const buildClubCoverPath = buildObjectPath(CLUB_COVERS_FOLDER)
