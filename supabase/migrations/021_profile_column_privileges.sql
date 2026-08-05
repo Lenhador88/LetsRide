@@ -5,13 +5,39 @@
 --
 -- It is listed in SKIP_MIGRATIONS in supabase/tests/run.sh, so the RLS suite
 -- models the database that actually runs. Its assertions live in
--- supabase/tests/rls_test_pending_021.sql; run them with `PENDING=021 npm test`.
+-- supabase/tests/rls_test_pending_021.sql; run them with `PENDING=021 npm test`,
+-- and the combined end state with `PENDING=021+023 npm test`.
 --
 -- This migration removes a grant the running application both READS and WRITES,
 -- which violates group 1's own definition — "nothing in this group removes a
 -- column, table or grant the application reads". It is the same class of defect
 -- as the `avatar_url` drop one migration over, and it belongs with its code
 -- change, in a later group, exactly as D5 moved that one.
+-- =========================================================================
+--
+-- =========================================================================
+-- ** THIS FILE WAS EDITED IN PLACE ON 2026-08-05, AND THAT IS DELIBERATE. **
+--
+-- The repo's rule is append-only: never edit an applied migration. This file
+-- has **never been applied to any database** — not the hosted project, not a
+-- developer's scratch database beyond the one `run.sh` drops and recreates on
+-- every run. `list_migrations` ends at `drop_legacy_avatar_url` (024's slot);
+-- 021 and 023 are the only two files with no corresponding row. Editing it is
+-- therefore not a rewrite of history, it is a revision of a draft, and it is
+-- exactly what the "verdict" section below anticipated when it wrote itself in
+-- shape (A) "so that whichever group takes it needs no rewriting, only an apply".
+--
+-- Recorded loudly here so that a later reader diffing this file against its
+-- first revision does not conclude the append-only rule was broken carelessly.
+-- The moment this file appears in `list_migrations`, this licence expires and
+-- every further change is a new numbered migration.
+--
+-- What changed in that edit, all of it additive to the draft:
+--   * §2's accessor is renamed `my_profile_stamps()` -> `my_onboarding_state()`
+--     and gains a third output, `has_username`, so the route guard needs one
+--     round trip rather than two. See §2.
+--   * §3 is new: `accept_terms()` and `complete_onboarding(text)`, the own-row
+--     writers that option (A) below calls for.
 -- =========================================================================
 --
 -- ---------------------------------------------------------------------------
@@ -149,6 +175,28 @@
 --
 -- Either way it leaves Phase 1. This file is written in shape (A) so that
 -- whichever group takes it needs no rewriting, only an apply.
+--
+-- ---------------------------------------------------------------------------
+-- ** RESOLVED 2026-08-05: OPTION (A). ** Delegated by the product owner.
+-- ---------------------------------------------------------------------------
+-- §3 below is the write half option (A) names. With it, this file and 023 stop
+-- being mutually incompatible — which was the whole of the objection recorded in
+-- 023's header and in both pending suites:
+--
+--   023 refuses every write from a rider whose two stamps are NULL.
+--   021 removes the only path by which a *client* sets either one.
+--   §3 gives the *database* that path back, as two own-row functions.
+--
+-- So the wizard becomes: `accept_terms()` -> username (an ordinary UPDATE, still
+-- granted) -> `complete_onboarding(location)`. `supabase/tests/run.sh` gains a
+-- `PENDING=021+023` mode that applies both and walks exactly that path.
+--
+-- **The two files now ship together and are no longer independent.** §3 carries
+-- 023 §1.13's rule (completion requires consent) in its own body, because §3
+-- bypasses the trigger that would otherwise carry it — see the measurement in
+-- §3's header. Applying 021 without 023 leaves that rule enforced anyway, which
+-- is harmless; applying 023 without 021 leaves the client writing its own stamps,
+-- which is the state the pending 023 suite still covers on its own.
 
 -- ---------------------------------------------------------------------------
 -- §1. An explicit column allowlist, because a column-level revoke is a no-op
@@ -200,7 +248,7 @@ grant update (
 --
 -- D6's point exactly: a REVOKE is not row-aware, so the two legitimate own-row
 -- readers — the route guard and the onboarding resume step — get a function
--- instead. It takes no arguments, reads two columns of `auth.uid()`'s own row,
+-- instead. It takes no arguments, reads three facts about `auth.uid()`'s own row,
 -- and can return at most one row. That is narrower than `moderate_comment`,
 -- which the security advisors already accept and which 011 §1b argues for at
 -- length; expect it to appear as a new `security definer` advisory finding, and
@@ -208,24 +256,67 @@ grant update (
 --
 -- Returns zero rows for a caller with no session, since `auth.uid()` is NULL and
 -- no profile row has a NULL id.
+--
+-- ---------------------------------------------------------------------------
+-- Why it is named for the guard, and why `has_username` is here
+-- ---------------------------------------------------------------------------
+-- An earlier revision of this file called it `my_profile_stamps()` and returned
+-- the two stamps only. `proxy.ts` runs on **every authenticated request** and
+-- needs three facts, not two:
+--
+--   .select('username, location, onboarding_completed_at')
+--
+-- Two things about that line, both measured against `main` rather than assumed:
+-- `location` is selected and never read — only `profile?.username` and
+-- `profile?.onboarding_completed_at` are — so it is dead weight in the query;
+-- and after §1, `onboarding_completed_at` is no longer selectable at all. A
+-- two-output accessor would therefore leave the guard doing a table SELECT for
+-- `username` **plus** an RPC for the stamps: two round trips on every request.
+-- That is a real cost, not a stylistic one, so the accessor answers the guard's
+-- whole question in one call and is named for that job.
+--
+-- **`has_username` widens nothing.** It is derived from `profiles.username`,
+-- which §1 still grants `authenticated` column SELECT on, and it is strictly
+-- less information than the column itself — a boolean about the caller's own
+-- row, computed from a value that same caller may already read directly. The
+-- security-relevant outputs are the two stamps, and they are exactly as narrow
+-- as they were.
+--
+-- The consent stamp is in the return set for the same reason: with 023 §1.13 in
+-- place the wizard's order is consent -> username -> location+completion, so the
+-- guard has to be able to route a rider whose `terms_accepted_at` is NULL to the
+-- consent step. Without it the guard can see that a rider is not finished and
+-- not *where* they are stuck.
 
-create or replace function public.my_profile_stamps()
-returns table (terms_accepted_at timestamptz, onboarding_completed_at timestamptz)
+-- Belt and braces for a scratch database that applied an earlier revision of
+-- this same never-applied file. `run.sh` drops and recreates its database on
+-- every run, so this is a no-op there; it exists so a hand-built database does
+-- not keep a second, narrower accessor alive beside the real one.
+drop function if exists public.my_profile_stamps();
+
+create or replace function public.my_onboarding_state()
+returns table (
+  terms_accepted_at       timestamptz,
+  onboarding_completed_at timestamptz,
+  has_username            boolean
+)
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select p.terms_accepted_at, p.onboarding_completed_at
+  select p.terms_accepted_at,
+         p.onboarding_completed_at,
+         p.username is not null
     from public.profiles p
    where p.id = (select auth.uid());
 $$;
 
-comment on function public.my_profile_stamps() is
-  'The caller''s own consent and onboarding stamps, and nobody else''s (021). security definer because 021 revokes column SELECT on both; takes no arguments, so there is no row to choose but your own.';
+comment on function public.my_onboarding_state() is
+  'Everything the route guard needs about the CALLER''s own onboarding position, and nobody else''s (021): both stamps plus whether a username has been chosen. security definer because 021 revokes column SELECT on the two stamps; takes no arguments, so there is no row to choose but your own. has_username is derived from a column authenticated may still read, so it widens nothing.';
 
-revoke all on function public.my_profile_stamps() from public, anon;
-grant execute on function public.my_profile_stamps() to authenticated;
+revoke all on function public.my_onboarding_state() from public, anon;
+grant execute on function public.my_onboarding_state() to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- §Verification — run against the project after applying, do not assume

@@ -76,11 +76,22 @@ export async function proxy(request: NextRequest) {
   // Decision #5: the gate is read from the database on every request. It
   // deliberately does not live in user_metadata, which the client can write via
   // supabase.auth.updateUser() to mark itself onboarded.
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('username, location, onboarding_completed_at')
-    .eq('id', user.id)
-    .maybeSingle()
+  //
+  // Through the RPC rather than a table select because 021 revokes column SELECT
+  // on both stamps — a select naming them answers 403, which the branch below
+  // would read as a deploy mismatch and bounce every signed-in rider out of
+  // every screen. The function returns the three things this guard needs in one
+  // round trip; it runs on every authenticated request, so a second one to fetch
+  // `username` separately would be a real cost rather than a tidiness question.
+  //
+  // The old select also named `location`, which nothing here ever read.
+  const { data: state, error } = await supabase
+    .rpc('my_onboarding_state')
+    .maybeSingle<{
+      terms_accepted_at: string | null
+      onboarding_completed_at: string | null
+      has_username: boolean
+    }>()
 
   // A failed read and a genuinely un-onboarded rider are different states, and
   // treating them the same is how a deploy mismatch turns into a redirect loop:
@@ -100,22 +111,38 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (!profile?.onboarding_completed_at) {
+  // Consent comes before the wizard, because 023 refuses to stamp completion
+  // while the consent stamp is NULL. A rider who signed up through the current
+  // flow never sees this screen — signUp records consent the instant the account
+  // exists — so in practice it is reached only by the accounts that predate that
+  // write. Q11 chose a prompt over a backfill: a fabricated consent record is
+  // worse than a missing one.
+  if (!state?.terms_accepted_at) {
+    if (pathname === '/onboarding/terms') return supabaseResponse
+    return redirect('/onboarding/terms')
+  }
+
+  if (!state?.onboarding_completed_at) {
     // Resume position is derived from which fields are still empty; completion
     // itself is stored, so editing your profile later never re-gates you.
     if (isOnboarding) {
       // Step 2 cannot be reached before step 1 is done. The database refuses
       // completion unless both fields are set, so without this a rider who
       // deep-links to /onboarding/location submits, gets a check violation
-      // rendered as "Could not save that", and has no way forward from a
-      // screen that can never succeed. Going backwards stays allowed — step 2
-      // has a Back link, and editing a username you already chose is fine.
-      if (pathname === '/onboarding/location' && !profile?.username) {
+      // rendered as "Finish the earlier steps first", and has no way forward
+      // from a screen that can never succeed. Going backwards stays allowed —
+      // step 2 has a Back link, and editing a username you already chose is
+      // fine. /onboarding/terms is past for this rider, and falls through to
+      // the redirect below rather than rendering a screen that would no-op.
+      if (pathname === '/onboarding/location' && !state?.has_username) {
         return redirect('/onboarding/username')
+      }
+      if (pathname === '/onboarding/terms') {
+        return redirect(state?.has_username ? '/onboarding/location' : '/onboarding/username')
       }
       return supabaseResponse
     }
-    return redirect(profile?.username ? '/onboarding/location' : '/onboarding/username')
+    return redirect(state?.has_username ? '/onboarding/location' : '/onboarding/username')
   }
 
   if (isOnboarding || isAuthEntry) {

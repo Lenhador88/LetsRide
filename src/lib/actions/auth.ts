@@ -67,18 +67,19 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
   // Decision #6: email confirmation is off, so the session is live here and the
   // consent record can be written immediately. It is stored rather than kept in
   // form state because it has to outlive the request that collected it.
-  const { data: consent } = await supabase
-    .from('profiles')
-    .update({ terms_accepted_at: new Date().toISOString() })
-    .eq('id', data.user.id)
-    .select('id')
-    .maybeSingle()
+  //
+  // Through the RPC rather than an UPDATE because 021 revokes the client's
+  // UPDATE grant on the column. That is not a workaround for the revoke, it is
+  // the point of it: the timestamp is now originated by the database, so a
+  // back-dated first write is impossible rather than merely reverted. 012's
+  // trigger could only ever replace a value the client supplied.
+  const { data: consent, error: consentError } = await supabase.rpc('accept_terms')
 
-  // Checked rather than fire-and-forget. This write only succeeds because #6
+  // Checked rather than fire-and-forget. This call only succeeds because #6
   // leaves the session live at this point; turn email confirmation on and it
   // runs unauthenticated, is refused, and the rider would otherwise finish
   // onboarding with no consent record while the screen reported success.
-  if (!consent) {
+  if (consentError || !consent) {
     return { error: 'Your account was created but we could not record your consent. Sign in to continue.' }
   }
 
