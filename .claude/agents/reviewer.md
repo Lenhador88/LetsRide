@@ -51,7 +51,7 @@ And the accessibility check, which has been found ad hoc three times and never h
 
 - **Contrast.** For any new colour pairing carrying text, compute the ratio and state it.
   4.5:1 for body, 3:1 for large text (18pt+, or 14pt+ bold — 12px semibold is **not** large).
-  Three failures are already documented and deliberately left as drawn pending the designer;
+  Four failures are already documented and deliberately left as drawn pending the designer;
   the rule is that new ones are *measured*, not estimated. **Compute the ratio, then write the
   sentence** — the other order has produced wrong numbers here twice, once in the direction
   that would have let a failure ship as a pass.
