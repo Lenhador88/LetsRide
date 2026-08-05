@@ -18,7 +18,7 @@ type FilterRow = {
 // The raw shape PostgREST returns before the like state is folded in:
 // `likes_count` arrives as the one-row aggregate array Supabase's `(count)`
 // embed always produces, and `is_liked` does not exist yet.
-type PostcardRow = Omit<Postcard, 'likes_count' | 'comments_count' | 'is_liked'> & {
+type PostcardRow = Omit<Postcard, 'likes_count' | 'comments_count' | 'is_liked' | 'is_own'> & {
   likes_count: { count: number }[] | null
   comments_count: { count: number }[] | null
 }
@@ -87,6 +87,15 @@ async function attachLikeState(
     likes_count: row.likes_count?.[0]?.count ?? 0,
     comments_count: row.comments_count?.[0]?.count ?? 0,
     is_liked: likedIds.has(row.id),
+    // Which overflow menu the card shows. Computed here rather than passed down
+    // as a viewer id, because the deck is a client component two levels below
+    // the only place the session is known — and because it is the same shape as
+    // `is_liked`: a per-viewer answer the card renders rather than derives.
+    //
+    // It decides presentation only. `deletePostcard` is authorized by 009's
+    // DELETE policy, so a forged `is_own` changes which rows are drawn and not
+    // which rows can be destroyed.
+    is_own: !!viewerId && row.author_id === viewerId,
     image_url: imageUrls.get(row.image_path) ?? null,
   }))
 }

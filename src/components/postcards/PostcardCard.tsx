@@ -2,6 +2,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { LikeButton } from '@/components/postcards/LikeButton'
 import { CommentsLink } from '@/components/postcards/CommentsLink'
 import { ShareButton } from '@/components/postcards/ShareButton'
+import { PostcardMenu } from '@/components/postcards/PostcardMenu'
 import { cn, formatPostcardDate } from '@/lib/utils'
 import type { Postcard } from '@/types'
 
@@ -132,9 +133,15 @@ export function PostcardCard({ postcard, linkToThread = true, fill = false }: Po
           linkToThread={linkToThread}
         />
         <ShareButton postcardId={postcard.id} />
-        {/* The design closes this row with an overflow menu — hide, block,
-            report. Those server actions exist and nothing calls them yet, so the
-            slot is left empty rather than shipping a button that does nothing. */}
+        {/* The design closes this row with the overflow menu, pushed right. */}
+        <div className="ml-auto">
+          <PostcardMenu
+            postcardId={postcard.id}
+            authorId={postcard.author_id}
+            authorName={username}
+            isOwn={postcard.is_own ?? false}
+          />
+        </div>
       </div>
     </article>
   )

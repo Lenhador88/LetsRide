@@ -218,6 +218,8 @@ export type Postcard = {
   club?: Pick<Club, 'id' | 'name'>
   likes_count?: number
   is_liked?: boolean
+  /** This viewer authored it — decides which overflow menu the card shows. */
+  is_own?: boolean
   // A short-lived signed URL for `image_path`, attached by the read functions in
   // lib/data/postcards.ts. The `media` bucket is private (010), so this is the
   // only way a postcard image renders — `image_path` alone is not fetchable.
