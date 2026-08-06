@@ -84,7 +84,7 @@ build work, the rest are the owner's.
 | | Blocker | Why it blocks |
 |---|---|---|
 | 1 | **The shell itself** | No `capacitor.config.*`, no `ios/`, no `android/`. Zero work done |
-| 2 | **Account deletion** | App Store 5.1.1(v) — hard rejection for any app with account creation. Proposal at `openspec/changes/add-account-deletion/`, nothing built |
+| 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | **Inbox is a disabled stub** | `UNBUILT` in `src/components/layout/Navbar.tsx`; no route, no tables. Guideline 4.2 risk — a reviewer taps every tab |
 | 4 | **No edit or delete UI anywhere** | Create a ride, never cancel or correct it. The policies exist and are tested; nothing calls them |
 | 5 | **Email confirmation is off** | Decision #6 — anyone can sign up with an address they do not control. **Owner** |
@@ -96,10 +96,10 @@ will not.
 
 ## Owner actions — nobody in a session can do these
 
-Four of them also appear in the store table above; this is where the detail lives. Every one is
-a dashboard click or a credential a human holds, so **ask for them rather than working around
-them** — the working principle in `CLAUDE.md` exists because a session once reported a block
-five times without once requesting the fix.
+Six now, and four of them also appear in the store table above; this is where the detail lives.
+Every one is a dashboard click or a credential a human holds, so **ask for them rather than
+working around them** — the working principle in `CLAUDE.md` exists because a session once
+reported a block five times without once requesting the fix.
 
 1. **Exercise signup end to end.** Still never done on this database, and it is now the one
    remaining unproven path — `npm run walk` covers everything after it. The owner's account
@@ -115,8 +115,27 @@ five times without once requesting the fix.
    accessors from `021`/`026`/`011` and the `password_reset_grants` no-policy INFO are all
    there on purpose. `CLAUDE.md` §Supabase Rules has the table naming each.
 4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
-   serves nothing, with no alert. Needed before anything resembling launch.
-5. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
+   serves nothing, with no alert. Needed before anything resembling launch. It also breaks
+   account deletion specifically: a rider who cannot reach a paused project cannot delete their
+   account, and "I tried and it failed" is the complaint that reaches a store reviewer.
+
+5. **Deploy the `delete-account` Edge Function, and supply the T&C version string.** Two
+   separate asks that both land here:
+
+   - There is no `supabase` CLI in the build container and the Supabase MCP server exposes no
+     deploy tool, so **no session can deploy it**. It needs the CLI and a project access token:
+
+     ```bash
+     supabase functions deploy delete-account --project-ref zwprydcyryvudhurbnye
+     supabase secrets set SERVICE_ROLE_KEY=... --project-ref zwprydcyryvudhurbnye
+     ```
+
+     Then exercise task 2.6's five cases against a disposable account before group 3 is built.
+   - `030` stamps every new consent with `0-placeholder`, because `/legal/terms` is placeholder
+     copy that disclaims being an agreement. **Replace it when the binding text lands** — one
+     line in `private.current_terms_version()`, in a new migration. Consents already stamped
+     keep the version they were given, which is the point of the column.
+6. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
    2026-08-06 as `qa-verify`: *"0 object(s) in your folder, 0 referenced by a postcard. No
    orphans."* That settles nothing about the two objects (1.15 MB) the note refers to, because
    the sweeper signs in as a rider and `010`'s Storage policies scope it to
@@ -142,8 +161,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **535** |
-| Unit tests | `npm run test:unit` — **481** |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **594** |
+| Unit tests | `npm run test:unit` — **664**. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number now moves whenever a file is added |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -189,15 +208,24 @@ timeout:**
 
 ---
 
-## Two changes are proposed and ready to pick up
+## Two changes: one part-built, one ready to pick up
 
-Both were written 2026-08-06 and neither is started. `npm run openspec -- list --json` is the
-live view; this is the orientation.
+Both were written 2026-08-06. `npm run openspec -- list --json` is the live view; this is the
+orientation.
 
 | Change | State | What blocks starting |
 |---|---|---|
-| `enforce-creator-membership` | Proposed, 44 tasks, validates strict | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
-| `add-account-deletion` | Proposed, validates strict. **Store blocker 2** | **1 new blocking question** plus the 2 it already carried. The new one is a real defect found while checking it: `account-erasure-cascade` says a club with no members left holds postcards "entirely their own by construction", which is false — a rider can leave a club while their postcards stay, so the branch designed to protect third-party content can destroy it |
+| `enforce-creator-membership` | Proposed, 44 tasks, validates strict. **Not started** | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
+| `add-account-deletion` | **Groups 1, 2 and 5 built and applied** (`029`–`032`). **Store blocker 2** | Groups 3 and 4 are blocked on the Edge Function being deployed — an owner action. Q4 and Q7 still open, plus the postcard half of 1.6b |
+
+**The 1.6b defect that PR #60 found while checking the proposal was found independently in
+review of the branch that built it, and is half fixed.** `account-erasure-cascade` claims a club
+with no members left holds postcards "entirely their own by construction"; a rider can leave a
+club while their postcards stay, so the branch designed to protect third-party content can
+destroy it. `032` fixed the *rides* half — the delete branch now removes only rides that
+`ON DELETE SET NULL` would strand. **The postcards half is a product decision and is open**: the
+proposal's default hands the club to the author of the oldest surviving postcard, which means
+giving a club to someone who never joined it.
 
 **They collide, and OpenSpec will not warn you.** Both carry a delta modifying
 `database-enforced-integrity`'s *Club membership role SHALL NOT be self-assignable*, and
@@ -249,11 +277,50 @@ text they should converge on. Read it before archiving either.
   > **This session** N — 3 blocking questions, two of them product-owner decisions (may an
   > owner leave their own club? may an organizer leave their own crew?)
 
+- **Two riders deleting at the same moment can still destroy a third's postcards.** The narrow
+  race `032` §3 documents and deliberately does not close. `private.transfer_owned_clubs` locks
+  the successor's `profiles` row, but that lock dies with the RPC transaction — well before the
+  Edge Function's Storage sweep and `deleteUser`. So: B's transfer commits (B owns nothing), A's
+  transfer picks B as successor for club C, then B's own deletion reaches `deleteUser` and C
+  cascades away with every postcard every other member posted into it. Which is the exact harm
+  the transfer exists to prevent, reached through it.
+
+  Not fixable in SQL — the window is between two HTTP calls in two processes. It needs either a
+  deletion-in-progress marker on `profiles` (a new column, a new state, and a new way to be
+  stuck if a run dies half way) or an advisory lock held across the whole Edge Function
+  invocation. **The RLS suite cannot see it either**: its idempotency assertion runs both calls
+  inside one psql transaction, so it proves nothing about two.
+
+  > **Complexity** 4/10 — an advisory lock is small; a marker column is a migration plus a
+  > recovery story for runs that die holding it
+  > **Urgency** 1/10 now, and it is genuinely conditional: it needs two riders deleting within
+  > seconds, in a club they share. There are four accounts. It rises with the user count and
+  > sharply the day deletion is reachable from the UI at all
+  > **Recommendation** 6/10 — worth closing before the flow ships, not before the flow is built
+  > **This session** N — it is a design choice between two mechanisms, and the flow it protects
+  > does not exist yet
+
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are tested,
   but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments are
   the exception: deletable, not editable, which `011` forbids by design. **Store blocker 4.**
-- **Account deletion is not built.** Proposal at `openspec/changes/add-account-deletion/`, and
-  it gets larger once location tracks exist. **Store blocker 2.**
+- **Account deletion has a database half and no flow.** `029`–`032` are applied, the Edge
+  Function is written at `supabase/functions/delete-account/` and has **never been deployed or
+  run**, and nothing in `src/` calls it. What is left is groups 3 (the flow: sheet row,
+  confirmation, re-auth, impact summary, sign-out) and 4 (the four screens where "this rider is
+  gone" and "you are not allowed" are both zero rows). It gets larger once location tracks
+  exist. **Store blocker 2.**
+
+  **Deploy the function before building group 3**, not after — its own task list says a control
+  ships working or it does not ship, and the five negative cases in task 2.6 (second call
+  succeeds; another rider's id in the body still deletes only the caller; publishable key
+  refused; no token refused) can only be proven live.
+
+  > **Complexity** 5/10 — the flow is four screens and one action; the risk is all in the
+  > function, which is written
+  > **Urgency** 3/10 — nothing forces it until a store submission, which needs the shell first
+  > **Recommendation** 8/10 — the expensive half is done and the context is written down; it
+  > gets more expensive the longer the function sits unexercised
+  > **This session** N — needs the function deployed, which is an owner action
 - **Inbox has no route and no tables.** It is one of five nav tabs and it renders **disabled**
   rather than dead — `UNBUILT` in `Navbar.tsx` gives it `aria-disabled` and a "not built yet"
   title, so it is not a broken link. Still a guideline 4.2 question. **Store blocker 3.**

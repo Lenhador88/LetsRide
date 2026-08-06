@@ -62,12 +62,29 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'auth_admin') then
     create role auth_admin nologin;
   end if;
+  -- Supabase's own service_role, which plain Postgres does not have. It exists
+  -- here ONLY so 031's grants apply and its assertions can name a role — the
+  -- suite never assumes it, because on the hosted project service_role holds
+  -- every privilege by Supabase default and an assertion made as service_role
+  -- would pass for that reason rather than for the intended one. 015's footer
+  -- learned this the expensive way: it counted DELETE grants table-wide and read
+  -- 2 against a correct database, because postgres and service_role hold
+  -- everything. Assert privileges OF this role, never FROM it.
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then
+    create role service_role nologin;
+  end if;
 end
 $$;
 
 grant usage on schema auth to auth_admin;
 grant insert, select on auth.users to auth_admin;
 grant usage on schema public to anon, authenticated;
+
+-- service_role holds this by Supabase default, so without it the 031 call
+-- assertion would fail for a reason production does not have. It is USAGE on
+-- the schema only — every function and table in `public` still decides for
+-- itself, and 031's assertions check that it did.
+grant usage on schema public to service_role;
 
 -- Supabase lets both roles resolve auth.uid(); the RLS policies call it on
 -- every query, so without this the suite fails for a reason production does

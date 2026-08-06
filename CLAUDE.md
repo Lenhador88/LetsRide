@@ -245,7 +245,7 @@ src/
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── onboarding/         # /onboarding/terms, /onboarding/username, /onboarding/location — see decision #5
-│   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
+│   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion — public, decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme) — mounts <RouteGuard>
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
@@ -276,6 +276,7 @@ src/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
 supabase/
 ├── migrations/             # SQL migrations — append-only, see Supabase Rules
+├── functions/              # Edge Functions. ONE, and read the rule below before adding another
 └── tests/                  # RLS policy suite (npm test); README covers its scope
 docs/
 ├── HANDOFF.md              # Current position — read at session start
@@ -362,6 +363,33 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
+**There is exactly one Edge Function, and it is the only place a service-role key exists.**
+`supabase/functions/delete-account/` — added 2026-08-06, the first in the repo. Removing an
+`auth.users` row needs the Auth admin API, which needs the service-role key; that is decision
+#8's **first** reading ("more server compute, same database") and not its third. The function
+owns one operation, not the database.
+
+Four rules, and they are the whole reason this does not contradict §What Not To Do's "don't
+introduce a service-role key into the app" — **the function is not the app**:
+
+- **The key lives only in the function's secret store.** Not in `src/`, `.env.local.example`,
+  Vercel, a fixture or any `NEXT_PUBLIC_*`. `src/__tests__/no-service-role-key.test.ts` is the
+  tripwire, and it checks itself: it proves the detector still catches a real key in each
+  format, because a guard that has quietly stopped matching passes for ever and looks exactly
+  like a clean repo.
+- **It takes no user id.** The subject comes from the verified JWT and nowhere else. "We check
+  the id matches the caller" is one refactor away from not doing that.
+- **It verifies the JWT itself** rather than trusting the gateway — the publishable key is a
+  valid JWT and sails past a decode-only check.
+- **Nothing type-checks it.** `tsconfig.json` excludes `supabase/functions` because it is Deno
+  and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
+  Type Check job with it. It is the least-guarded code in the repo.
+
+**It is written, not deployed, and has never run.** There is no `supabase` CLI in the build
+container and the Supabase MCP server has no deploy tool, so deploying is an **owner action**.
+A function deployed by hand and never redeployed is the same class of drift as an unapplied
+migration, and CI has no path that would catch it.
+
 **There is one doorway now, and almost nothing should reach past it:**
 - **Anything in `src/lib/data/` or `src/lib/actions/`** →
   `import { resolveSupabase } from '@/lib/supabase/resolve'`.
@@ -379,9 +407,9 @@ Four rules, each with a test naming the trap it avoids:
 | Table | Purpose |
 |---|---|
 | `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone — `024`, applied 2026-08-05** after the code repair deployed. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. The name survives in `src/` as a *field on what `lib/data/` returns*, holding the signed URL — never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. |
-| `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. |
+| `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. The organizer FK is `ON DELETE CASCADE`, so **a ride is cancelled by its organizer's account deletion** — deliberate (a ride is one person's plan), and the crew is not notified because there is nothing to notify them with. `club_id` is `ON DELETE SET NULL`, which `029` treats as a trap rather than a default: a private club's ride left with `club_id` NULL and `is_public` false is visible only to its organizer while its `ride_members` rows survive, so the transfer function deletes a club's rides with the club instead. |
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
-| `clubs` | Clubs with `owner_id → profiles`. |
+| `clubs` | Clubs with `owner_id → profiles`. **A club outlives its owner as of `029`.** The FK is `ON DELETE CASCADE` and `postcards.club_id → clubs` cascades behind it, so deleting an owner would destroy every postcard every *other* member ever posted there — `009` reasoned that link out correctly for a club deleted *by* its owner and never considered it arriving as a side effect of a third party's erasure. `private.transfer_owned_clubs` hands the club to its longest-tenured remaining admin, else member, and only deletes it when nobody is left. Reached through `031`'s `service_role`-only wrapper, never by a client. |
 | `club_members` | `(club_id, user_id)` composite PK. `role`: `owner` \| `admin` \| `member`. |
 | ~~`friendships`~~ | **Dropped by `013`, applied 2026-08-04.** Gone from the schema and from `src/`. A v1 leftover; the design has no friendship concept. Listed here only so its absence is not mistaken for an oversight. |
 | `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`. **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
@@ -403,19 +431,30 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`028`, all of them. Zero drift.** Confirmed 2026-08-06 with
-`list_migrations`: **28 rows against 28 files**, ending `refresh_stale_column_comments` — which
-is comment-only, correcting a `003` column comment that still named the deleted `proxy.ts` as
-what gates every app route. (A database comment is the `data` agent's first read via
-`list_tables`, so it is the one piece of documentation no edit to this file can reach.) The
-27-row state before it ended `profile_column_privileges`. This is the
-first time in weeks the answer has been "everything", so the `SKIP_MIGRATIONS` machinery that
-modelled the held-back pair is **gone**, along with the three `rls_test_pending_*.sql` files.
-The full chain applies on every run. Suite **535** assertions — re-derive rather than trust it:
+**Applied state: `001`–`032`, all of them. Zero drift.** `029`–`032` landed 2026-08-06 as the
+database half of account deletion, and every one is additive — no column, table or grant
+removed, no SELECT policy touched — which is why they could land before the flow exists.
+`028` before them was comment-only, correcting a `003` column comment that still named the
+deleted `proxy.ts` as what gates every app route. (A database comment is the `data` agent's
+first read via `list_tables`, so it is the one piece of documentation no edit to this file can
+reach.) The `SKIP_MIGRATIONS` machinery that modelled the once-held-back pair is **gone**,
+along with the three `rls_test_pending_*.sql` files; the full chain applies on every run.
+Suite **594** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read 527 for a few hours, from
 a parallel session that folded the same three files independently; the two were reconciled by
 comparing *label sets* rather than counts, which is the only comparison that shows whether an
 assertion was lost.)
+
+**`031` exists because `029` shipped a function nothing could call, and that is the reusable
+lesson.** `029` put its worker in `private` and revoked EXECUTE from the client roles, assuming
+the deletion Edge Function would reach it as `service_role`. It could not: `service_role` holds
+no USAGE on `private`, and **PostgREST routes only to `public`**, so supabase-js's
+`.schema('private')` is refused before it reaches Postgres. `005` put the helpers there
+precisely so PostgREST could not publish them — it worked exactly as designed, against the one
+caller we wanted. Nothing caught it, because **the RLS suite runs as the table owner, for whom
+neither barrier exists.** The assertions that would have caught it name a *role*
+(`has_function_privilege('service_role', …)`) rather than calling the function, and that is the
+shape to copy whenever a non-client role is meant to reach something.
 
 **The sequencing lesson is the durable part, and it outlives these two files.** `023` and `025`
 could not be applied before their code deployed, and `021`'s accessors could not be applied
@@ -1051,7 +1090,7 @@ blocking.
 | **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **Built and verified against the design** as of 2026-08-04: the swipeable card deck and filter bar at `/postcards`, the composer at `/postcards/new`, one card plus its thread at `/postcards/[id]`. The home screen is a **card stack you swipe**, not a scrolling feed. **Share is a link share** (Web Share API, clipboard fallback) — the reading that needs no schema; a repost is still an open product question. Two design elements are blocked on schema, not design: unread badges and photo location. The hide/block/report menu was listed here as a third and that was wrong twice over — it needed no schema (`009` and `011` built every table) and it shipped 2026-08-05. See `docs/FIGMA-FIDELITY-TODO.md` |
 | **Inbox** — DMs, per-ride group chat, notifications | Not built |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
-| **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. Delete account is not built |
+| **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. **Account deletion has its database half and no flow** (2026-08-06): `029`–`032` and `supabase/functions/delete-account/` are in, the Edge Function is **written, not deployed and never run**, and nothing in `src/` points at it. `/legal/account-deletion` is public and live. What remains is `openspec/changes/add-account-deletion/` groups 3 and 4 |
 | **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan and Crew are built; Journal needs `postcards.ride_id` and Chat needs the Inbox epic.** `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
 | **Clubs** — public/private, Overview/Rides/Members/Posts tabs | **Built 2026-08-05**, all of it v2. `/clubs` and `/clubs/explore` are two sub-pages behind the header's dropdown, with `List / Club` rows carrying the type chip, the rider collage, the club images and the unread counter. `/clubs/[id]` is four sub-pages — Timeline, Rides, Members, About — built from the **private club** frames, which are the ones marked Done; both public-club epics are On hold. `/clubs/new` is a client page with an image upload (`016`). Two things remain unbuilt and both are logged: the Timeline's **activity feed** (no table behind joins/leaves) and **member invitations with an Admin role** (drawn on the v1 create frame; `club_members.role` has had `admin` since `001` and nothing writes it). Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. **Create club has no v2 design** — that epic reads To do, so its composition is ours |
 

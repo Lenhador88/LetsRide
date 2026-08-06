@@ -3835,6 +3835,502 @@ select assert_eq(
 
 rollback to savepoint grant_026;
 
+-- ===========================================================================
+-- 029: the profiles cascade — four indexes, and a club that outlives its owner
+-- ===========================================================================
+--
+-- Groundwork for account deletion. `clubs.owner_id → profiles` is ON DELETE
+-- CASCADE and `postcards.club_id → clubs` is ON DELETE CASCADE behind it, so
+-- one rider erasing their account destroys every postcard every OTHER rider
+-- ever posted into a club that rider happened to own. §C proves that defect
+-- exists before it proves the fix works — a fix asserted without its
+-- counterfactual is a test that passes if the transfer silently does nothing.
+--
+-- This section owns its own fixtures. The seed's c1/c2/c4 are shared with forty
+-- assertions above, and its `...00e5` postcard is deleted for real at line ~730,
+-- so nothing here leans on either.
+
+set role authenticated;
+select set_config('test.uid', '', false);
+select set_config('request.jwt.claims', '', false);
+reset role;
+
+\echo ''
+\echo '# 029 §A — every FK into profiles can be found by index, derived not listed'
+
+-- Written as a derivation over the catalogue rather than four names, so a table
+-- added next year fails this rather than slipping past a hardcoded list. This is
+-- the whole point of the assertion: the four indexes are the easy part.
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.contype = 'f'
+      and c.confrelid = 'public.profiles'::regclass
+      and not exists (select 1 from pg_index i
+                       where i.indrelid = c.conrelid
+                         and i.indkey[0] = c.conkey[1])),
+  0, '029: no FK into profiles lacks a leading-column index');
+
+-- 13, not the 11 the proposal claims. The grep it recommends counts 15 lines and
+-- two of them are `friendships`, which 013 dropped. Asserted so the number stops
+-- being re-derived by hand and getting it wrong a third time.
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where contype = 'f' and confrelid = 'public.profiles'::regclass),
+  13, '029: thirteen FKs reference public.profiles');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where contype = 'f' and confrelid = 'public.profiles'::regclass
+      and confdeltype = 'c'),
+  13, '029: ... and every one of them is ON DELETE CASCADE');
+
+-- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
+-- grounds that pinning the path to owner_id makes any transfer raise 23514;
+-- design D2 chose the other option in the same breath — null both paths on
+-- transfer — and says of it "no new constraint semantics". D2 is right, so all
+-- four survive and §B proves a transfer still works.
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.clubs'::regclass and contype = 'c'
+      and conname in ('clubs_avatar_path_shape', 'clubs_avatar_path_owned',
+                      'clubs_cover_image_path_shape', 'clubs_cover_image_path_owned')),
+  4, '029: 016''s four club path CHECKs are untouched');
+
+select assert_eq(
+  has_function_privilege('authenticated', 'private.transfer_owned_clubs(uuid)', 'execute'),
+  false, '029: authenticated cannot execute the transfer function');
+select assert_eq(
+  has_function_privilege('anon', 'private.transfer_owned_clubs(uuid)', 'execute'),
+  false, '029: anon cannot execute the transfer function');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'transfer_owned_clubs'),
+  0, '029: the worker itself is not in public, so PostgREST cannot route to it');
+
+-- 031: the door the Edge Function actually knocks on, and who it opens for.
+--
+-- 029 shipped the worker with NO caller able to reach it: service_role held no
+-- USAGE on `private` and PostgREST routes only to `public`, so
+-- `.schema('private').rpc(...)` fails before it reaches Postgres. The suite did
+-- not catch it because the suite runs as the table owner, for whom neither
+-- barrier exists — which is why these assertions name a ROLE rather than
+-- calling the function.
+select assert_eq(
+  has_function_privilege('service_role', 'public.transfer_owned_clubs_for_deletion(uuid)', 'execute'),
+  true, '031: service_role can reach the transfer through the public wrapper');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.transfer_owned_clubs_for_deletion(uuid)', 'execute'),
+  false, '031: a rider calling the wrapper is refused before a row is read');
+select assert_eq(
+  has_function_privilege('anon', 'public.transfer_owned_clubs_for_deletion(uuid)', 'execute'),
+  false, '031: and so is anon');
+select assert_eq(
+  has_function_privilege('service_role', 'private.transfer_owned_clubs(uuid)', 'execute'),
+  true, '031: ... because service_role also holds EXECUTE on the worker it calls');
+
+-- The assertion that matters most in 031: widening `private` for service_role
+-- must not widen it for the client. `005` put the helpers there so PostgREST
+-- could not publish them, and `009`'s footer asserts a direct call answers
+-- 42501 "permission denied for schema private".
+select assert_eq(
+  has_schema_privilege('authenticated', 'private', 'usage'),
+  false, '031: granting service_role USAGE on private did not grant it to riders');
+select assert_eq(
+  has_schema_privilege('anon', 'private', 'usage'),
+  false, '031: ... nor to anon');
+select assert_eq(
+  has_function_privilege('service_role', 'private.is_blocked(uuid,uuid)', 'execute'),
+  false, '031: schema USAGE alone did not hand service_role the other private helpers');
+
+-- **The assertion that would actually have caught 029's defect**, and the one
+-- the seven above cannot substitute for: CALL it as service_role, rather than
+-- asking whether the grant exists. A grant can be right while name resolution
+-- still fails — that is precisely the shape of what shipped, where EXECUTE was
+-- moot because the schema was unreachable. `has_function_privilege` returned a
+-- confident answer to the wrong question.
+--
+-- A uuid that owns no clubs, so this is a provable no-op rather than a
+-- transfer inside an assertion.
+do $$
+declare
+  n int;
+begin
+  set local role service_role;
+  select count(*) into n from public.transfer_owned_clubs_for_deletion(
+    '00000000-0000-0000-0000-0000deadbeef');
+  reset role;
+  if n <> 0 then
+    raise exception 'FAIL  031: the ghost uuid owns clubs — fixture drift, not a pass';
+  end if;
+  raise notice 'ok    031: service_role can actually CALL the wrapper, not just hold the grant';
+exception when insufficient_privilege then
+  reset role;
+  raise exception 'FAIL  031: service_role holds the grant but the call is refused — 029''s defect is back';
+end $$;
+
+set role authenticated;
+select assert_rejected(
+  $$select * from public.transfer_owned_clubs_for_deletion('00000000-0000-0000-0000-0000deadbeef')$$,
+  '42501', '031: ... and a rider calling it is refused for real, not just on paper');
+reset role;
+
+\echo ''
+\echo '# 029 §B — the transfer picks admin, then member, then deletes the club'
+
+savepoint transfer_029;
+
+-- Fixtures this section owns. 000a owns c1 (private, one other member: 000b),
+-- c2 (public, no other member) and c4 (public, two other members: 001a, 001b).
+-- That is one club per branch, which is why no new club is created here.
+--
+-- Images on c1, because "a transfer of a club WITH images succeeds" is the
+-- assertion the CHECK question turns on. Paths must satisfy the shape CHECK and
+-- sit under the CURRENT owner's uid.
+update clubs
+   set avatar_path      = 'club-avatars/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000000c1.jpg',
+       cover_image_path = 'club-covers/00000000-0000-0000-0000-00000000000a/bbbbbbbb-0000-4000-8000-0000000000c1.jpg'
+ where id = '00000000-0000-0000-0000-0000000000c1';
+
+-- A ride in the private club organised by SOMEONE ELSE, so it survives 000a's
+-- cascade and can be asserted against. d1 is organised by 000a and dies with
+-- them, which is correct and proves nothing about the club.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-000000029d01', 'Members Only Run', 'The Bridge', now() + interval '9 days',
+   false, '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000b');
+
+-- Two rides in c2 — the club that gets DELETED, because 000a is its only member
+-- — organised by a rider who is NOT 000a, so neither dies to the organizer
+-- cascade and 032 §2's rule is the only thing deciding their fate. c2 is public,
+-- which is what lets one of them be public: 022 forbids a ride wider than its
+-- club, so a private club could not host the first of these at all.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-000000032d01', 'Open Run', 'The Square', now() + interval '10 days',
+   true,  '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000c'),
+  ('00000000-0000-0000-0000-000000032d02', 'Quiet Run', 'The Lane', now() + interval '11 days',
+   false, '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000c');
+
+-- A crew on the private one, so "stranded zombie" is a real state rather than a
+-- hypothetical: without 032 §2's delete these rows outlive every reader.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-000000032d02', '00000000-0000-0000-0000-00000000000c', 'going');
+
+-- The third-party postcard: authored by 000c, scoped to 000a's private club.
+-- This is the row the whole change exists to protect.
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-000000029e01', '00000000-0000-0000-0000-00000000000c',
+   '00000000-0000-0000-0000-0000000000c1',
+   'postcards/00000000-0000-0000-0000-00000000000c/dddddddd-0000-4000-8000-00000029e001.jpg',
+   'Not mine to lose');
+
+-- Preconditions, asserted rather than assumed — the seed is shared and the
+-- assertions below are meaningless if it has drifted.
+select assert_eq((select count(*)::int from clubs where owner_id = '00000000-0000-0000-0000-00000000000a'),
+  4, '029: 000a owns four clubs before the transfer');
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000000000c2'
+                     and user_id <> '00000000-0000-0000-0000-00000000000a'),
+  0, '029: c2 has no member but its owner — the deletion branch');
+
+-- The fourth is c3, and it is worth naming because it is not a tidy fixture.
+-- Line ~82 inserts the club for real while its roster insert lives inside
+-- `assert_allowed`, which unwinds — so c3 is a club with an owner and NO
+-- membership row at all, not even its owner's. That is exactly the state
+-- `docs/HANDOFF.md` records as reachable on demand now that `createClub` does
+-- two inserts with no transaction, and it lands here by accident.
+--
+-- It exercises a branch the design did not enumerate: the successor query is
+-- `user_id <> departing`, so "no other member" and "no members whatsoever"
+-- take the same path and the club is deleted. Correct, and asserted rather
+-- than left as a coincidence.
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000000000c3'),
+  0, '029: c3 is an orphan club — an owner with no roster at all');
+
+-- Promote 001b in c4 so the admin arm is exercised. 001a and 001b were inserted
+-- in one statement so their joined_at is identical; without the promotion the
+-- tie breaks on user_id and 001a wins, which is the member arm again.
+update club_members set role = 'admin'
+ where club_id = '00000000-0000-0000-0000-0000000000c4'
+   and user_id = '00000000-0000-0000-0000-00000000001b';
+
+-- THE COUNTERFACTUAL, and it has to run HERE — before the transfer, not beside
+-- the cascade assertions in §C where it reads more naturally. Once the transfer
+-- has moved c1 to 000b, deleting 000a no longer reaches c1 and the "defect is
+-- real" assertion passes for the wrong reason: it would be measuring the fix it
+-- is supposed to be the control for. Cost an hour; written down so it does not
+-- cost a second one.
+--
+-- Without the transfer, deleting 000a destroys a postcard authored by 000c
+-- through profiles -> clubs -> postcards. If this ever starts failing, an FK
+-- changed and the transfer function may have become unnecessary — worth being
+-- told about rather than discovering as a silently redundant migration.
+savepoint no_transfer_029;
+delete from auth.users where id = '00000000-0000-0000-0000-00000000000a';
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-000000029e01'),
+  0, '029: WITHOUT the transfer, 000c''s postcard dies with 000a — the defect is real');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000000000c1'),
+  0, '029: ... because the club went with its owner');
+rollback to savepoint no_transfer_029;
+
+-- The call. Returns the object paths it surrendered so the caller can delete
+-- the bytes; both belong to c1 and this is the only place they are observable.
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-00000000000a')),
+  2, '029: the transfer returns both of c1''s Storage object paths');
+
+select assert_eq(
+  (select owner_id from clubs where id = '00000000-0000-0000-0000-0000000000c4'),
+  '00000000-0000-0000-0000-00000000001b'::uuid,
+  '029: c4 goes to the ADMIN, not to the equally-tenured member');
+select assert_eq(
+  (select role from club_members where club_id = '00000000-0000-0000-0000-0000000000c4'
+     and user_id = '00000000-0000-0000-0000-00000000001b'),
+  'owner', '029: ... and the roster agrees, so /members does not ring the wrong rider');
+
+select assert_eq(
+  (select owner_id from clubs where id = '00000000-0000-0000-0000-0000000000c1'),
+  '00000000-0000-0000-0000-00000000000b'::uuid,
+  '029: c1 goes to its only remaining member');
+select assert_eq(
+  (select avatar_path is null and cover_image_path is null from clubs
+    where id = '00000000-0000-0000-0000-0000000000c1'),
+  true, '029: ... and surrenders both images, which is what keeps 016''s CHECK satisfied');
+-- 032 changed this from a delete to a demotion, and the reason is the whole
+-- point: the transfer commits over PostgREST before the Edge Function's Storage
+-- sweep runs. `029` removed the row here, so one transient Storage error left a
+-- rider still holding an account and no longer a member of a private club they
+-- founded — which `club_members`' INSERT policy (`c.is_public or c.owner_id =
+-- auth.uid()`) makes unrejoinable. The row must survive a failure in between.
+select assert_eq(
+  (select role from club_members where club_id = '00000000-0000-0000-0000-0000000000c1'
+     and user_id = '00000000-0000-0000-0000-00000000000a'),
+  'member', '032: the departing rider is DEMOTED, not removed — a failed sweep must not eject them');
+
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000000000c2'),
+  0, '029: c2 is deleted — no member remained to receive it');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000000000c3'),
+  0, '029: ... and so is the orphan club with no roster at all');
+
+-- 032 §2. `029` deleted EVERY ride in a club it was deleting; D3's zombie
+-- argument only ever covered rides that `SET NULL` would strand — `club_id`
+-- NULL plus `is_public` false, which 022 §4 resolves to organizer-only while the
+-- crew rows survive. A PUBLIC ride loses nothing to SET NULL, so deleting it
+-- destroyed another rider's content for no stated reason.
+--
+-- Both rides below belong to c2, which has no member but its owner and is
+-- therefore deleted. Neither is organised by the departing rider, so neither
+-- cascades — the only thing that decides their fate is this rule.
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-000000032d01'),
+  1, '032: a PUBLIC ride survives its club being deleted, orphaned but readable');
+select assert_eq(
+  (select club_id from rides where id = '00000000-0000-0000-0000-000000032d01'),
+  null::uuid, '032: ... via ON DELETE SET NULL, exactly as 001 intended');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-000000032d02'),
+  0, '032: a PRIVATE ride is deleted instead of being stranded as a zombie');
+select assert_eq(
+  (select count(*)::int from clubs where owner_id = '00000000-0000-0000-0000-00000000000a'),
+  0, '029: 000a owns no club afterwards');
+
+-- D3's zombie: a ride whose club is deleted must not survive with club_id NULL
+-- and is_public false, which 022 §4 resolves to "only the organizer may see it"
+-- while its ride_members rows live on — a roster nobody can read.
+select assert_eq(
+  (select count(*)::int from rides r
+    where r.club_id is null and r.is_public = false
+      and exists (select 1 from ride_members m where m.ride_id = r.id)),
+  0, '029: no ride is left private, clubless and carrying a crew nobody can read');
+
+-- The transferred club's ride keeps its audience. 022's invariant is that a
+-- ride may not be wider than its club; the transfer must not widen either side.
+select assert_eq(
+  (select is_public from rides where id = '00000000-0000-0000-0000-000000029d01'),
+  false, '029: the private club''s ride stays private through the transfer');
+select assert_eq(
+  (select club_id from rides where id = '00000000-0000-0000-0000-000000029d01'),
+  '00000000-0000-0000-0000-0000000000c1'::uuid,
+  '029: ... and stays attached to its club');
+-- 022's invariant: no public ride in a private club. Asserted as "the transfer
+-- introduces no NEW violation" rather than "there are none", because there is
+-- one and it is deliberate — line ~2603 disables `enforce_ride_club_audience`
+-- to seed `...00d5 'Smuggled Run'` into private c1, which is the only way to
+-- produce a row that 022 §4's SELECT policy exists to handle. A flat `= 0` here
+-- passes only until someone reads it as proof the invariant is globally true.
+select assert_eq(
+  (select count(*)::int from rides r join clubs c on c.id = r.club_id
+    where r.is_public and not c.is_public
+      and r.id <> '00000000-0000-0000-0000-0000000000d5'),
+  0, '029: the transfer introduces no new 022 violation');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0000000000d5'),
+  1, '029: ... and the one deliberate violation is still there, so the exclusion above hides nothing');
+
+\echo ''
+\echo '# 029 §C — the cascade, and the defect it exists to prevent'
+
+-- The control for all of this ran in §B, above the transfer — see the note
+-- there for why it cannot live here.
+--
+-- The transfer has already happened, so this is the second half of the order
+-- the Edge Function performs: transfer, then delete. Calling it again is a
+-- deliberate no-op — 000a owns nothing now — and asserting that it returns no
+-- paths is the cheapest available proof that a retried deletion does not
+-- double-transfer a club (design D7's idempotency requirement).
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-00000000000a')),
+  0, '029: a second transfer for the same rider is a no-op — retry is safe');
+
+delete from auth.users where id = '00000000-0000-0000-0000-00000000000a';
+
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-00000000000a'),
+  0, '029: the profile row goes with auth.users — deleting the profile alone is what 012 §KNOWN LIMIT forbids');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-000000029e01'),
+  1, '029: WITH the transfer, 000c''s postcard survives 000a''s deletion');
+
+-- Asserted from 000c's OWN session, not the table owner's. "The row is still
+-- there" and "its author can still see it" are different claims, and only the
+-- second is the product promise.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-000000029e01'),
+  1, '029: ... and 000c can still read it under RLS, from their own session');
+select set_config('test.uid', '', false);
+reset role;
+
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-000000029d01'),
+  1, '029: 000b''s ride in the transferred club survives its old club owner');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000000000c1'),
+  1, '029: the club itself survives, under its new owner');
+select assert_eq(
+  (select count(*)::int from rides where organizer_id = '00000000-0000-0000-0000-00000000000a'),
+  0, '029: the departing rider''s OWN rides are cancelled — D3, and intended');
+select assert_eq(
+  (select count(*)::int from postcards where author_id = '00000000-0000-0000-0000-00000000000a'),
+  0, '029: and their own postcards go');
+
+-- Nothing is left dangling anywhere in the thirteen. A count per table would go
+-- stale the day a fourteenth arrives; this finds orphans by derivation.
+select assert_eq(
+  (select count(*)::int from club_members where user_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from ride_members where user_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from blocks where blocker_id = '00000000-0000-0000-0000-00000000000a'
+                                         or blocked_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from postcard_likes where user_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from postcard_comments where author_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from postcard_hides where user_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from postcard_reports where reporter_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from profile_countries where user_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from feed_reads where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0, '029: no row anywhere still references the deleted rider');
+
+rollback to savepoint transfer_029;
+
+-- ===========================================================================
+-- 030: consent records which terms it accepted
+-- ===========================================================================
+
+\echo ''
+\echo '# 030 — terms_version is server-owned, and the client cannot even name it'
+
+-- The task list asked for 012's shape — "a client-supplied version is replaced
+-- by the server's". The grant is stronger than the trigger: 025 revoked the
+-- table-level privileges and re-granted a column allowlist, this column is in
+-- none of the three, and column privileges are checked against the columns named
+-- in SET *before* any BEFORE trigger runs. So the client is refused rather than
+-- silently corrected, and that is what is asserted.
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'terms_version', 'select'),
+  false, '030: authenticated cannot read terms_version');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'terms_version', 'update'),
+  false, '030: authenticated cannot update terms_version');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'terms_version', 'insert'),
+  false, '030: authenticated cannot insert terms_version');
+select assert_eq(
+  has_column_privilege('anon', 'public.profiles', 'terms_version', 'select'),
+  false, '030: anon cannot read terms_version either');
+
+-- No backfill. Every profile that predates the column keeps NULL for ever — a
+-- version invented for a consent that predates the column is a fabricated
+-- evidence record, which is worse than an honest unknown.
+select assert_eq(
+  (select count(terms_version)::int from profiles),
+  0, '030: no consent was backfilled with a version it never saw');
+
+savepoint terms_version_030;
+
+-- This section owns its consenting rider rather than borrowing one. Every seed
+-- fixture with NULL stamps has been consented by an assertion somewhere above —
+-- 000d, the obvious candidate, is stamped by the time control reaches here — and
+-- `accept_terms()` is idempotent, so borrowing a consented rider would test
+-- nothing while passing. A fresh auth user gets a profile row from
+-- `handle_new_user` with both stamps NULL, which is the only state that stamps a
+-- version.
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000030d01', 'unconsented@example.com');
+reset role;
+
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000030d01'
+     and terms_accepted_at is null and terms_version is null),
+  1, '030: the fixture starts with neither a consent stamp nor a version');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000030d01', false);
+
+select assert_rejected(
+  $$select terms_version from profiles where id = '00000000-0000-0000-0000-000000030d01'$$,
+  '42501', '030: a rider reading their own terms_version is refused');
+select assert_rejected(
+  $$update profiles set terms_version = 'v99' where id = '00000000-0000-0000-0000-000000030d01'$$,
+  '42501', '030: a rider writing their own terms_version is refused, not corrected');
+
+select assert_eq((select terms_accepted_at from public.my_onboarding_state()),
+  null::timestamptz, '030: ... and has not consented yet');
+
+select public.accept_terms() is not null as consented;
+select set_config('test.uid', '', false);
+reset role;
+
+select assert_eq(
+  (select terms_version from profiles where id = '00000000-0000-0000-0000-000000030d01'),
+  '0-placeholder', '030: accept_terms() stamps the current version alongside the timestamp');
+
+-- Idempotency now pins the version as well as the timestamp: a rider who
+-- consented under one version is not silently re-recorded under a later one.
+-- Asserted by moving the recorded version out from under a second call, which
+-- is the only way to tell "did not re-stamp" from "re-stamped with the same
+-- constant" — the two are indistinguishable while there is one version string.
+update profiles set terms_version = 'v-earlier'
+  where id = '00000000-0000-0000-0000-000000030d01';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000030d01', false);
+select public.accept_terms();
+select set_config('test.uid', '', false);
+reset role;
+
+select assert_eq(
+  (select terms_version from profiles where id = '00000000-0000-0000-0000-000000030d01'),
+  'v-earlier', '030: a second accept_terms() leaves the recorded version alone');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'current_terms_version'),
+  0, '030: the version string is not published by PostgREST');
+
+rollback to savepoint terms_version_030;
+
 set role authenticated;
 select set_config('test.uid', '', false);
 select set_config('request.jwt.claims', '', false);

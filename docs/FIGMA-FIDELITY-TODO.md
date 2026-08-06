@@ -618,11 +618,21 @@ Blocked on schema, same shape as the ride detail's banner:
       that parses `FormData` — but a direct PostgREST call with a 10 MB bio would be accepted,
       because RLS grants the write and no constraint bounds it. Unlike `username`, whose rules
       are enforced twice. Worth a migration if it ever matters; stated rather than implied.
-- [ ] **Delete account is drawn and not built.** `Account options` has exactly two rows —
-      `Sign out` and `Delete account` — and `Confirm account deletion` (`2303:9370`) draws the
-      confirmation. Omitted rather than offered as a dead row. It needs the auth admin API or
-      an RPC, plus a decision about what happens to the rider's postcards, rides and club
-      memberships, which is a trust & safety epic rather than a menu item.
+- [ ] **Delete account is drawn and half built.** `Account options` has **three** rows —
+      `Preferences`, `Sign out` and `Delete account` — and `Confirm account deletion`
+      (`2303:9370`) draws the confirmation. This entry said "exactly two rows" until
+      2026-08-06; so did `ProfileMenu.tsx`, which also claimed to have read it from the frame.
+      Both were wrong. Re-derive rather than trust either:
+      `npm run figma -- tree "Profile / Delete account / Account options" --all` — none of the
+      three list items is hidden.
+
+      What now exists: `029` transfers a departing rider's clubs instead of cascading them
+      (which would destroy other riders' postcards), `030` versions the consent record, `031`
+      makes the transfer callable, and `supabase/functions/delete-account/` holds the Edge
+      Function that owns the auth delete. **The function is not deployed and has never run**,
+      so no row points at it — `openspec/changes/add-account-deletion/` group 3 is the flow
+      itself, and group 4 the four screens where "gone" and "forbidden" currently look
+      identical. `Preferences` is still undesigned as a destination and is a separate question.
 
 Deviations that are ours, not the design's:
 
