@@ -208,15 +208,24 @@ timeout:**
 
 ---
 
-## Two changes are proposed and ready to pick up
+## Two changes: one part-built, one ready to pick up
 
-Both were written 2026-08-06 and neither is started. `npm run openspec -- list --json` is the
-live view; this is the orientation.
+Both were written 2026-08-06. `npm run openspec -- list --json` is the live view; this is the
+orientation.
 
 | Change | State | What blocks starting |
 |---|---|---|
-| `enforce-creator-membership` | Proposed, 44 tasks, validates strict | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
-| `add-account-deletion` | Proposed, validates strict. **Store blocker 2** | **1 new blocking question** plus the 2 it already carried. The new one is a real defect found while checking it: `account-erasure-cascade` says a club with no members left holds postcards "entirely their own by construction", which is false — a rider can leave a club while their postcards stay, so the branch designed to protect third-party content can destroy it |
+| `enforce-creator-membership` | Proposed, 44 tasks, validates strict. **Not started** | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
+| `add-account-deletion` | **Groups 1, 2 and 5 built and applied** (`029`–`032`). **Store blocker 2** | Groups 3 and 4 are blocked on the Edge Function being deployed — an owner action. Q4 and Q7 still open, plus the postcard half of 1.6b |
+
+**The 1.6b defect that PR #60 found while checking the proposal was found independently in
+review of the branch that built it, and is half fixed.** `account-erasure-cascade` claims a club
+with no members left holds postcards "entirely their own by construction"; a rider can leave a
+club while their postcards stay, so the branch designed to protect third-party content can
+destroy it. `032` fixed the *rides* half — the delete branch now removes only rides that
+`ON DELETE SET NULL` would strand. **The postcards half is a product decision and is open**: the
+proposal's default hands the club to the author of the oldest surviving postcard, which means
+giving a club to someone who never joined it.
 
 **They collide, and OpenSpec will not warn you.** Both carry a delta modifying
 `database-enforced-integrity`'s *Club membership role SHALL NOT be self-assignable*, and
