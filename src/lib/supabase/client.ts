@@ -60,12 +60,42 @@ import { resolveSessionStore } from '@/lib/supabase/session-store'
  */
 let client: SupabaseClient | null = null
 
+/**
+ * Reads one of the two `NEXT_PUBLIC_SUPABASE_*` variables, or fails with the
+ * variable's name.
+ *
+ * These were `process.env.X!` — a non-null assertion, which TypeScript erases.
+ * A missing variable therefore inlined as `undefined` and surfaced as
+ * supabase-js's own `supabaseUrl is required`, from inside a dependency, on a
+ * page that has nothing to do with configuration. `RouteGuard` mounts in the
+ * root layout, so it fires during static prerendering and takes `next build`
+ * down with a message naming neither the variable nor the environment.
+ *
+ * Not hypothetical: splitting the Vercel variables between the PROD and DEV
+ * projects (2026-08-06) briefly left Preview holding the URL and not the key,
+ * which is exactly this. The names are read explicitly rather than via a
+ * variable because Next inlines `process.env.X` by literal match at build time
+ * — `process.env[name]` is not substituted and would be `undefined` in the
+ * browser however the deployment is configured.
+ */
+function requireEnv(name: string, value: string | undefined): string {
+  if (!value) {
+    throw new Error(
+      `${name} is not set. Both NEXT_PUBLIC_SUPABASE_URL and ` +
+        'NEXT_PUBLIC_SUPABASE_ANON_KEY must be defined for every Vercel ' +
+        'environment the app builds in — Production, Preview and Development. ' +
+        'See docs/ENVIRONMENTS.md.'
+    )
+  }
+  return value
+}
+
 export function createClient(): SupabaseClient {
   if (client) return client
 
   client = createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    requireEnv('NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL),
+    requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
     {
       auth: {
         storage: resolveSessionStore().store,
