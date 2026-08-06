@@ -43,7 +43,12 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
             aria-invalid={error ? true : undefined}
             aria-describedby={errorId}
             className={cn(
-              'w-full resize-y bg-transparent text-base text-foreground outline-none placeholder:text-muted disabled:cursor-not-allowed',
+              // `resize-none`: the native drag handle is a desktop affordance with
+              // no touch equivalent, and Figma draws no resize control on any
+              // frame using this box (caption, ride description/route, bio) — all
+              // are a fixed height on a 390px frame. A caller that genuinely wants
+              // a taller box sets `rows`, not a rider dragging a corner.
+              'w-full resize-none bg-transparent text-base text-foreground outline-none placeholder:text-muted disabled:cursor-not-allowed',
               className
             )}
             {...props}

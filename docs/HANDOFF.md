@@ -126,7 +126,7 @@ build work, the rest are the owner's.
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | **Inbox is a disabled stub** | `UNBUILT` in `src/components/layout/Navbar.tsx`; no route, no tables. Guideline 4.2 risk — a reviewer taps every tab |
 | 4 | **No edit or delete UI anywhere** | Create a ride, never cancel or correct it. The policies exist and are tested; nothing calls them |
-| 5 | **Email confirmation is off** | Decision #6 — anyone can sign up with an address they do not control. **Owner** |
+| 5 | ~~**Email confirmation is off**~~ — **it is ON**, measured 2026-08-06 | Not a store blocker after all; the decision #6 text was wrong, not the setting. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below. **Owner** still decides whether DEV wants it off |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
 | 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
 
@@ -201,7 +201,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **594** |
-| Unit tests | `npm run test:unit` — **664**. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number now moves whenever a file is added |
+| Unit tests | `npm run test:unit` — **674 on a clean tree**, measured 2026-08-06. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -418,22 +418,75 @@ delete from auth.users where email like '%@letsride.test';
 ```
 
 Two caveats: `.test` is an RFC 2606 reserved TLD that receives no mail, so neither account can
-sign up, recover a password or confirm anything the day email confirmation is turned on; and
-because both were SQL-inserted, **neither proves anything about the signup flow**. If you create
-another this way, set `confirmation_token`, `recovery_token`, `email_change` and the other token
-columns to `''`, never NULL — GoTrue scans them into non-nullable strings and a NULL turns every
-login into "do not match".
+sign up, recover a password or confirm anything — **and that day is today, not some future one:
+email confirmation is already on** (see §Signup below). Both accounts still sign in, because
+both were SQL-inserted with `email_confirmed_at` already set. And because they were SQL-inserted,
+**neither proves anything about the signup flow**. If you create another this way, set
+`confirmation_token`, `recovery_token`, `email_change` and the other token columns to `''`,
+never NULL — GoTrue scans them into non-nullable strings and a NULL turns every login into
+"do not match".
 
 There is also one **real** signup (a Gmail address, 2026-08-04) with no consent, no username, no
-onboarding and no sign-in. That is the shape of `signUp`'s documented consent-failure path.
+onboarding and no sign-in. This was recorded as "the shape of `signUp`'s documented
+consent-failure path", which was right about the shape and wrong about the cause: it is not a
+Supabase error, it is confirmation being on. That rider confirmed their address 13 seconds after
+signing up (`email_confirmed_at` is set), hit *"we could not record your consent — sign in to
+continue"*, and never came back. **They are the proof, not an anomaly beside it.**
+
+## Signup — the flow was broken on the live database, and is fixed
+
+Measured 2026-08-06, and the reason it went unnoticed for the project's life is worth more than
+the bug. `GET /auth/v1/settings` on `letsride` reports `"mailer_autoconfirm": false` — GoTrue
+for *confirmation required*. Decision #6 asserted the opposite, and three places in `src/`
+treated that sentence as a fact about the world:
+
+| Where | Assumed | Actually |
+|---|---|---|
+| `lib/actions/auth.ts` `signUp` | session live, so `accept_terms()` runs | no session; RPC runs as `anon`, which has no EXECUTE on it (`021`) |
+| `lib/auth/guard.ts` | the consent prompt is a legacy path | it is the ordinary path every new rider takes |
+| `signUp`'s duplicate-address comment | the leak is "a consequence of #6" | confirmation-on closes it — GoTrue returns success with empty `identities` |
+
+`signUp` now branches on `data.session` and returns `{ sent: true }` when there is none, and
+`/auth/signup` renders *"Check your email"* instead of navigating to an onboarding step the
+guard would bounce. **Consent is not lost**: the guard already sends any signed-in rider with a
+NULL stamp to `/onboarding/terms` ahead of the wizard, and `023` refuses their content writes
+until it is stamped — the database closes the gap, not trust.
+
+Verify in one line each:
+
+```bash
+curl -s "https://zwprydcyryvudhurbnye.supabase.co/auth/v1/settings" -H "apikey: <publishable>" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["mailer_autoconfirm"])'   # false = required
+grep -n "data.session" src/lib/actions/auth.ts
+```
+
+**Still unproven, and still the owner's:** a real signup, confirmed by clicking a real link, to
+an address the owner controls. The branch above was proven by stubbing GoTrue's confirmation-on
+reply to `POST /auth/v1/signup` — the response shape is real, the account is not. That is
+deliberate: creating one would send mail through the free tier's shared SMTP rate limit, which
+is the same limit the owner's own password recovery uses. Store blocker 7 stands.
 
 ---
 
 ## Open questions for the product owner
 
-1. **Email confirmation is off** (decision #6), so anyone can sign up with an address they do
-   not control. Must be revisited before public launch — and it interacts with both `.test`
-   accounts above.
+1. **Email confirmation is ON, not off — and that is a question for you, not a finding to file.**
+   Decision #6 said off for the project's whole life; `GET /auth/v1/settings` on `letsride`
+   reports `mailer_autoconfirm: false`, which is GoTrue for *required*. Nobody checked, because
+   nothing in the repo can: it is a dashboard setting with no file behind it.
+
+   The app half is fixed (§Signup below). **A first draft of this line said it "needs nothing
+   from you" — that was wrong, and review caught it.** Fixing `signUp` made the confirmation
+   email the whole flow, and the email is broken at the dashboard: `letsride`'s Site URL is
+   `http://localhost:3000` and neither the production origin nor the preview alias is on the
+   redirect allowlist, so **every link the app emails lands on a dead local address.** Measured,
+   with the one-line probe in `ENVIRONMENTS.md` §The redirect allowlist is broken. Two clicks,
+   §Owner setup items 8 and 9, and they are the most urgent items in this repo.
+
+   The **DEV** answer only becomes real once `letsride-dev` exists: `ENVIRONMENTS.md` wants it
+   **off on DEV** so fixtures can be created and **on for PROD**, which is where it already is.
+   Turning it off on the *one* project that exists today would weaken production to make testing
+   easier — so leave PROD alone and set DEV off at creation, as step 4 of §Owner setup says.
 2. **Branch protection is not enabled on `main` — and now needs to cover `development` too**,
    which doubled the exposure rather than adding a second nicety: there are now two branches a
    stray push can land on, and one of them deploys to riders. An agent session cannot enable it

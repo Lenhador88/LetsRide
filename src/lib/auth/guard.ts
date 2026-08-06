@@ -144,11 +144,17 @@ export function resolveDestination(pathname: string, state: GuardState): string 
   }
 
   // Consent comes before the wizard, because 023 refuses to stamp completion
-  // while the consent stamp is NULL. A rider who signed up through the current
-  // flow never sees this screen — signUp records consent the instant the account
-  // exists — so in practice it is reached only by the accounts that predate that
-  // write. Q11 chose a prompt over a backfill: a fabricated consent record is
-  // worse than a missing one.
+  // while the consent stamp is NULL. Q11 chose a prompt over a backfill: a
+  // fabricated consent record is worse than a missing one.
+  //
+  // This said a rider who signed up through the current flow never sees the
+  // screen, "because signUp records consent the instant the account exists", so
+  // in practice only accounts predating that write reach it. **That is wrong
+  // while email confirmation is on**, which — measured 2026-08-06 — it is:
+  // `signUp` gets no session back, cannot call `accept_terms()`, and returns
+  // without a stamp. So this branch is not a legacy path, it is the *ordinary*
+  // one every new rider takes, and it is what stops the missing stamp from
+  // becoming a rider who is signed in and cannot post.
   if (!state.terms_accepted_at) {
     return pathname === '/onboarding/terms' ? null : '/onboarding/terms'
   }

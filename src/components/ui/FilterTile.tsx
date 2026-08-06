@@ -67,7 +67,10 @@ export function FilterTile({
       href={href}
       scroll={false}
       aria-current={selected ? 'true' : undefined}
-      className="group flex w-20 shrink-0 flex-col items-center gap-1"
+      // No Figma State=Focus on this tile either — same rationale as
+      // `ButtonGroup`'s ring, added for the keyboard/WebKit case the design
+      // never drew rather than left to the browser default.
+      className="group flex w-20 shrink-0 flex-col items-center gap-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
       <div className="relative flex h-[68px] w-[68px] items-center justify-center">
         <div

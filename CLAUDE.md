@@ -956,7 +956,25 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — the route guard (`src/lib/auth/guard.ts`) redirects them back into the wizard, and `023` refuses their content writes regardless of what the guard does. The schema carries the incomplete state so an abandoned signup resumes where it left off.
 
-**6. Email confirmation is off, for now.** Signup lands straight in onboarding with a live session. This is a deliberate temporary trade — it permits signing up with an email you don't control — and must be revisited before public launch.
+**6. Email confirmation is ON, and this decision has said the opposite since it was written.**
+Measured 2026-08-06 against the live project — `GET /auth/v1/settings` reports
+`"mailer_autoconfirm": false`, which is GoTrue for *confirmation required*. It is a dashboard
+setting with no file behind it (`docs/ENVIRONMENTS.md` §Auth configuration), so nothing in this
+repo ever made the old claim true and nothing noticed when it wasn't.
+
+**The durable rule: an architectural decision about a dashboard setting is an *intention*, and
+code must read the setting rather than trust the sentence.** Three places in `src/` treated the
+old text as a fact and drove real behaviour off it; `signUp` now branches on `data.session` and
+is correct under either configuration. The post-mortem of what each one assumed is in
+`docs/HANDOFF.md` §Signup — it does not need to be carried into every session.
+
+**A second setting behind the same door is still broken**, and it is worse: `letsride`'s Site
+URL is `http://localhost:3000` and neither the production origin nor the preview alias is on
+the redirect allowlist, so every link the app emails lands on a dead local address. Owner
+action — `docs/ENVIRONMENTS.md` §Owner setup items 8 and 9.
+
+DEV wants confirmation **off** so fixtures can be made, PROD wants it **on**. There is one
+project today, so there is no per-environment answer to give yet.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 

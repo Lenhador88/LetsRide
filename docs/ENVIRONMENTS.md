@@ -175,21 +175,69 @@ defaults, and the default is email confirmation ON**, which is the opposite of d
 fresh DEV will therefore refuse to let you create a fixture rider, and it will look like a
 broken signup rather than a config difference.
 
+**That is not a hazard waiting for DEV — it already happened on PROD.** Measured 2026-08-06,
+`letsride` reports `mailer_autoconfirm: false`: the default was never changed, decision #6 said
+otherwise for the project's whole life, and `signUp` was written against the sentence rather
+than the setting. The result is one account on the live database created through the real
+signup flow with no consent stamp, no username and no sign-in — the exact shape this predicts.
+`signUp` now branches on `data.session`, so the app is correct either way, but the lesson is
+the one this section is for: **an unversioned setting drifts silently, and code that trusts a
+document instead of reading it drifts with it.** Verify with one call that needs no
+credentials:
+
+```bash
+curl -s "https://<ref>.supabase.co/auth/v1/settings" -H "apikey: <publishable key>" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["mailer_autoconfirm"])'
+# false = confirmation REQUIRED. true = autoconfirm, i.e. "off".
+```
+
+Note the polarity — `mailer_autoconfirm: false` reads like "confirmation off" and means the
+opposite.
+
 Check these on both projects whenever either changes:
 
-| Setting | DEV | PROD |
-|---|---|---|
-| Email confirmation | off | **on** before launch (decision #6) |
-| Site URL | the DEV preview alias | `https://letsrideapp.vercel.app` |
-| Redirect allowlist | `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | the production origin **only** |
-| Leaked-password protection | on | on |
-| `UpdatePasswordRequireCurrentPassword` | on | on |
+| Setting | DEV | PROD (intended) | **PROD, measured 2026-08-06** |
+|---|---|---|---|
+| Email confirmation | off | **on** before launch (decision #6) | **ON** — `mailer_autoconfirm: false` |
+| Site URL | the DEV preview alias | `https://letsrideapp.vercel.app` | ❌ **`http://localhost:3000`** |
+| Redirect allowlist | `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | the production origin **only** | ❌ **`http://localhost:3000` only** — neither the production origin nor the preview alias is on it |
+| Leaked-password protection | on | on | **off** — the one outstanding security advisor |
+| `UpdatePasswordRequireCurrentPassword` | on | on | **not measured** — no read-only probe found for it |
 
-The redirect allowlist matters more than it looks. `requestPasswordReset` builds its link from
-`window.location.origin` (`src/lib/actions/auth.ts:99`), and Vercel preview URLs are per
-deployment. Without the wildcard, recovery from a preview silently falls back to the Site URL.
-Narrowing PROD's list to the production origin is a security improvement independent of
-everything else.
+**Fill every cell in that last column or write "not measured".** A blank reads as "fine", and
+the first revision of this table left four blank while stating one measured row — which is how
+the two rows below went another day unnoticed.
+
+### The redirect allowlist is broken on production right now
+
+Not a hazard to design against — measured, and it breaks every emailed link the app sends.
+`GET /auth/v1/verify` with a bogus token reports where GoTrue *would* have sent the rider:
+
+```bash
+B="https://zwprydcyryvudhurbnye.supabase.co/auth/v1/verify?token=bogus&type=signup&redirect_to="
+for t in https://letsrideapp.vercel.app/auth/callback http://localhost:3000/auth/callback; do
+  curl -s -o /dev/null -D - "$B$t" -H "apikey: <publishable>" | grep -i '^location:'
+done
+# production origin -> http://localhost:3000#error=...   (discarded, fell back to Site URL)
+# localhost         -> http://localhost:3000/auth/callback#error=...   (honoured)
+```
+
+An unlisted `redirect_to` is **discarded silently** and replaced by the Site URL — which is
+itself `http://localhost:3000`. So a rider who signs up or requests a password reset on
+`letsrideapp.vercel.app` gets an email whose link confirms their address and then sends their
+phone to a dead local address. The account works; the rider cannot tell, and has no way back.
+
+**The live database already records this.** The one account created through the real signup flow
+has `email_confirmed_at` set 13 seconds after `created_at` and `last_sign_in_at` NULL. That row
+was read as proof of the consent bug (§Auth configuration above); it is equally proof of this
+one, and only the consent half has been fixed in code. The other half is two dashboard clicks —
+§Owner setup, items 8 and 9.
+
+`requestPasswordReset` builds its link from `window.location.origin`
+(`src/lib/actions/auth.ts`, the `origin` const — line number deliberately omitted, it has moved
+once already), and Vercel preview URLs are per deployment, so the wildcard is what makes
+recovery work from a preview at all. This section used to say only that, and never checked
+whether *production itself* was on the list. It is not.
 
 Adopting `config.toml` is what fixes this properly, and the first Edge Function deploy forces
 that decision anyway — see below.
@@ -244,6 +292,22 @@ Nobody in a session can do these.
    and `RLS Policy Tests`, require branches up to date, no bypass. Currently off entirely.
 7. **Supabase Pro.** The free tier has no daily backups, and with no down migrations, backups
    are the only rollback that exists.
+
+**8 and 9 are new, measured, and the most urgent things on this list** — they are the only two
+items here that are breaking production *today* rather than preparing for DEV. Both are on
+`letsride` → Authentication → URL Configuration:
+
+8. **Set Site URL to `https://letsrideapp.vercel.app`.** It is `http://localhost:3000`.
+9. **Add `https://letsrideapp.vercel.app/**` and
+   `https://letsrideapp-*-pedro-projects1.vercel.app/**` to the redirect allowlist.** Only
+   `http://localhost:3000` is on it, so both the production origin and every preview URL are
+   discarded and replaced by the Site URL.
+
+Until both are done, **every emailed link the app sends — signup confirmation and password
+recovery alike — lands a rider's phone on `http://localhost:3000`.** No error is shown to
+anyone; the deploy is green and the account is real. This is not the DEV split, it predates it,
+and item 4's "narrow PROD's redirect allowlist" was written on the assumption that the list was
+too *wide*. It is empty of anything usable.
 
 Then, in a session: apply the chain to DEV, run `npm run db:drift` to prove the three agree,
 seed it, and move the two `@letsride.test` fixtures off production.
