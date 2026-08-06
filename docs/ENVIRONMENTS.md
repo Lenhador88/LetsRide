@@ -134,6 +134,18 @@ Postcard images are absent — SQL cannot upload a JPEG — so the deck shows br
 until someone posts one through the app. Doing that early is worthwhile anyway: it is the only
 thing that exercises compression, EXIF stripping and the Storage policies.
 
+**The seed is gated in CI** (`npm run db:seed:check`, and a step in the RLS job). It builds a
+scratch database from the full chain, applies the seed, re-applies it to prove it resets rather
+than appends, and then proves the guard still refuses once a non-seed account exists — and that
+a refused run changes nothing.
+
+That gate exists because the seed is the only SQL here that runs *by hand, occasionally*.
+Everything else is exercised continuously, so the seed is the one file that rots without anyone
+noticing: a later migration adds a NOT NULL column, nothing goes red, and it is discovered by
+whoever is standing up DEV under time pressure. The guard half is checked for the same reason
+`no-service-role-key.test.ts` proves its own detector still fires — a guard that has quietly
+stopped matching passes for ever and looks exactly like a correct one.
+
 ---
 
 ## What is NOT in the repo, and therefore drifts silently
