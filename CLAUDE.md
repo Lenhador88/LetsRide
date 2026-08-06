@@ -1144,6 +1144,31 @@ Two things that make the list actually decidable:
   of build tasks hides the ones nobody but them can do.
 - **A single suggestion needs no letter.** `A)` on its own is ceremony.
 
+**Give every lettered option its own blockquote — its own left bar.** Product owner's
+instruction, 2026-08-06. The letter, the one-line description and all four ratings go *inside*
+one `>` block, and the next option starts a new one. Two options means two bars:
+
+> **A) Drop the dead column.**
+> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
+> **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
+> **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
+> **This session** N — wants its own branch, and the open PR should land first
+
+> **B) Enable leaked-password protection.**
+> **Recommendation** 9/10 — the only security advisor that is not deliberate
+> **Complexity** 1/10 — one dashboard toggle
+> **Urgency** 4/10 — low now, high the day real riders sign up
+> **This session** N — owner-only, nobody in a session can click it
+
+**The bar is the grouping, and that is the whole point.** Four ratings loose under a letter
+read as four more bullets in one long list, so a reader scanning three options has to work out
+where each one ends before they can compare them. One bar per option makes the boundary visual:
+the eye counts bars, not lines. It matters most exactly when it is most needed — a list of
+three or more, where "do A and C" is the reply you are hoping for.
+
+Do **not** put the letters in one shared blockquote, and do not leave the ratings outside the
+bar with only the letter inside it. Both defeat the grouping.
+
 **Committed and pushed is not shipped.** Work only counts when it is on `main`. A branch that
 is green, pushed and reviewed still changes nothing until it merges — and the gap between
 "I opened the PR" and "it landed" is where things get dropped, because every other signal
