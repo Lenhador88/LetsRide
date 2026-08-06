@@ -45,9 +45,8 @@ first is why it must never be dissolved back into components:
 
 1. RLS enforces *authorization*, never *validity*. Username charset, T&C acceptance and the
    onboarding completion stamp are integrity rules the client must not own. `018`–`027` moved
-   every one of them into the database as a CHECK, a trigger or a grant, which is what made
-   client-side writes safe in the first place. A Server Action omitting a column was never a
-   rule.
+   them into the database as a CHECK, a trigger or a grant, which is what made client-side
+   writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **Say "them", not "every one of them" — the gate is narrower than it reads.** `023` puts
    `enforce_participation_gate` on eight tables: `postcards`, `clubs`, `rides`, `club_members`,
@@ -117,8 +116,9 @@ against a real 18, because two pages carried doc comments saying they used to be
 — so a bare match counted a file's own description of its history as the thing it described.
 The third line is **not** a defect count: a component with no `'use client'` is fine, it just
 has no client hooks of its own and joins the client graph through its importer. This trap has
-been hit three times here — the `lucide-react` importer count, the v1-token count, and this
-very block. A directive is only a directive on line one.
+been hit **four** times here — the `lucide-react` importer count, the v1-token count, the
+`supabase.from(` grep above, and this very block. A directive is only a directive on line one,
+and a comment about deleted code looks exactly like the code.
 
 **One rule, and it is load-bearing rather than anticipatory now that the client owns writes:**
 
