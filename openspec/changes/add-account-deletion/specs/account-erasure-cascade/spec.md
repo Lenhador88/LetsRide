@@ -37,8 +37,14 @@ on `23505` — not because anything checks.
 - **WHEN** `023_participation_gate`'s `TG_OP`-guarded BEFORE INSERT arm is applied
 - **THEN** a self-inserted `profiles` row SHALL have its `terms_accepted_at` replaced with server
   time and SHALL be refused completion without username, location and consent
-- **AND** this feature SHALL NOT depend on that arm being applied, because `023` is in
-  `SKIP_MIGRATIONS` and gated behind an unbuilt consent prompt
+- **AND** this feature SHALL NOT depend on that arm being applied, because defence in depth that
+  assumes its own backstop is not defence in depth
+
+  *(The original reason given here — "`023` is in `SKIP_MIGRATIONS` and gated behind an unbuilt
+  consent prompt" — expired on 2026-08-05/06: `023` is applied, `/onboarding/terms` shipped, and
+  the `SKIP_MIGRATIONS` machinery was retired entirely. The requirement is unchanged; only its
+  justification had to be rewritten, because the old one would now read as false and invite
+  someone to delete the requirement with it.)*
 
 #### Scenario: A hard delete, not Supabase's soft delete
 - **WHEN** the auth row is removed

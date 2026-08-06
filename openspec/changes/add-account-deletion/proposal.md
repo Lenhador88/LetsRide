@@ -101,35 +101,75 @@ retention rules this change states in advance so the table cannot be created wit
 
 ### Modified Capabilities
 
-**This section is stale and must be redone before this change is applied.** It was written
-while `openspec/specs/` was empty. It is not: `migrate-to-client-rendered-shell` was archived on
-2026-08-06 — it now lives at
-`openspec/changes/archive/2026-08-06-migrate-to-client-rendered-shell/` — and folded four
-standing capabilities out of its deltas —
-`client-render-shell`, `client-cache-invalidation`, `client-session-storage`,
-`database-enforced-integrity`.
+**All four standing capabilities are modified.** They were folded out of
+`migrate-to-client-rendered-shell` when it was archived on 2026-08-06 — it now lives at
+`openspec/changes/archive/2026-08-06-migrate-to-client-rendered-shell/` — and each was read
+requirement by requirement against this change before the deltas below were written. "All four"
+is a conclusion, not a default: the reason it comes out that way is that deletion is the first
+event in this app that removes a rider *while other riders are looking at them*, and every one
+of the four capabilities has at least one requirement whose scope was drawn on the assumption
+that riders only ever arrive.
 
-At least two of those plausibly *are* modified by account deletion and need a delta rather than
-a new capability:
+- **`client-session-storage`** — MODIFIED `Sign-out SHALL destroy every local trace of the
+  rider`, plus one ADDED requirement. Deletion extends the rule rather than duplicating it, in
+  two directions the original could not see. On the deleting device, the revocation call is
+  *refused* by a server that no longer knows the account, which is a different failure from the
+  offline one the existing scenario covers — and an implementation that reads the refusal as
+  "the deletion failed" leaves a signed-in rider with a populated cache. On any *other* device,
+  no sign-out ever happens at all: the route guard's `unavailable` branch redirects and clears
+  nothing, `signIn` has never cleared anything, and only `signOut` does. That is the ADDED
+  requirement — a session whose account is gone must be destroyed, not merely redirected.
+- **`database-enforced-integrity`** — MODIFIED four requirements. `Club membership role SHALL
+  NOT be self-assignable` now has to admit exactly one promotion, because the club transfer
+  moves `clubs.owner_id` while the roster label and `viewer_role` are both read from
+  `club_members.role`, and `019` deliberately left that table with no UPDATE policy for anyone.
+  `Consent and lifecycle timestamps SHALL NOT be readable by other riders` names two columns and
+  must now name three, because `terms_version` is a consent record and `025`'s column allowlist
+  is the only thing deciding who can read it. `Onboarding completion SHALL gate participation`
+  was reasoned entirely about riders who *have* a `profiles` row; the gate happens to refuse a
+  rider who has none, and the five tables it deliberately excludes are held instead by a foreign
+  key — a different mechanism, a different error code, and no assertion behind either. `Storage
+  object ownership SHALL remain database-enforced` is touched because this change proposes to
+  relax `016`'s two club path CHECKs; the delta pins what must survive, and records that the
+  relaxation is very likely unnecessary — see the note under Impact.
+- **`client-cache-invalidation`** — MODIFIED `Counts SHALL stay per-viewer and SHALL NOT be
+  cached across viewers` and `Stale data SHALL be bounded and visible`. Deletion is the first
+  mutation in this app whose visible effects land almost entirely in *other riders'* caches,
+  none of which will ever run its `invalidate`, so its freshness contract is a revalidation rule
+  rather than an invalidation set. It also produces the first cached value that can change what
+  a rider is *allowed* to do rather than only what they see — a club that changed hands — and
+  the first signed URLs whose objects are gone before the signature expires.
+- **`client-render-shell`** — MODIFIED three requirements. `Permission-denied and empty SHALL be
+  told apart` is a two-way distinction and deletion makes it a three-way one, with a copy rule:
+  unavailable, never "you lack permission", never "this account was deleted". `Every screen
+  SHALL define its offline behaviour` offers a choice between refusing a write and holding it,
+  and deletion removes the second branch — stated *there* rather than only in this change's own
+  flow spec, because the offline queue will be built against that requirement. `The route guard
+  SHALL be a UX affordance` gains the branch deletion makes reachable for the first time.
 
-- `client-session-storage` — "Sign-out SHALL destroy every local trace of the rider". Deletion
-  is a stronger sign-out and the requirement probably extends rather than duplicates.
-- `database-enforced-integrity` — `023`'s participation gate is keyed on stamps that deletion
-  removes. What happens to a half-deleted row's writes is exactly the kind of negative case
-  `openspec/config.yaml` exists to force.
-
-Nothing automated catches this: `openspec validate --strict` passes because it does not read
-prose. Whoever picks this change up reads those four specs first and rewrites this section.
+**Nothing is REMOVED and nothing is RENAMED.** No SELECT policy changes, which is the property
+`design.md` §Context calls deliberate, and no standing requirement is weakened by this change —
+every delta above either narrows a choice or extends a rule to a case it did not cover.
 
 The original note, still true and worth keeping: **where this change contradicts a policy or FK
 that already exists, it says so in the delta rather than pretending the behaviour is new.**
 
 ## Impact
 
-**Database.** New migrations from `028`. One relaxed CHECK pair (`016`), one new
-`security definer` transfer function, four indexes, one column. **No SELECT policy changes** —
-that is a deliberate property, and it is what keeps this change from touching the visibility
+**Database.** New migrations from `029` — re-derive with `ls supabase/migrations/` rather than
+trusting either number in this document. One new `security definer` transfer function, four
+indexes, one column, and **possibly** a relaxed CHECK pair (`016`). **No SELECT policy changes**
+— that is a deliberate property, and it is what keeps this change from touching the visibility
 layer at all.
+
+**The `016` relaxation is probably not needed at all, and the delta says so rather than letting
+a migration be written for it.** `clubs_avatar_path_owned` is
+`avatar_path is null or avatar_path like ('club-avatars/' || owner_id::text || '/%')`, and a
+CHECK is evaluated against the finished row — so a transfer that clears both paths at or before
+the moment it changes `owner_id` satisfies both constraints as written, through the NULL arm
+they already have. Only a transfer that *keeps* the images needs the constraint changed, and
+that is the option D2 rejects on erasure grounds. Tasks 1.4 and 1.5 are therefore conditional
+on a decision this change has already taken the other way; see task 1.4a.
 
 **Code.** `src/components/profile/ProfileMenu.tsx` (the sheet currently ships one row of three),
 a new confirmation screen, `src/lib/actions/` gains one action that calls the Edge Function,
@@ -146,10 +186,12 @@ today. It brings a deploy step CI does not have and a secret Vercel does not hol
 `auth.users` row inside a savepoint and assert what survives — which is better than it sounds,
 because the cascade is the part of this change most likely to be wrong.
 
-**Sequencing.** This change **must not ship before `023` is applied**, or it must ship the
-`023` §4 INSERT arm itself. `023` is in `SKIP_MIGRATIONS` and gated behind the consent prompt
-(`migrate-to-client-rendered-shell` task 2.3). Ship deletion first and `012` §KNOWN LIMIT stops
-being theoretical on the same day. See `design.md` §D8 for the ordering that satisfies both.
+**Sequencing — this constraint is now satisfied and the note is kept as the reason.** This
+change must not ship before `023` is applied. **`023` was applied on 2026-08-06** (the consent
+prompt it waited on, `/onboarding/terms`, shipped 2026-08-05, and the `SKIP_MIGRATIONS`
+machinery that held it back is retired), so the ordering hazard is closed before this change
+starts rather than during it. Had deletion shipped first, `012` §KNOWN LIMIT would have stopped
+being theoretical on the same day. See `design.md` §D8.
 
 **A count worth re-deriving rather than reading here.** Eleven FKs reference
 `public.profiles` with `ON DELETE CASCADE`; the chain is two levels deep in two places:
