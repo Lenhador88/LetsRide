@@ -1050,6 +1050,24 @@ static allowlist: the twelve `mcp__Supabase__*` names sitting in `permissions.al
 there for a month and did not stop the prompts, since the classifier reads intent rather than
 that list. The rule it needed was prose telling it this project has already decided.
 
+**The grant is real and it is conditional, and the condition is not set — measured 2026-08-06.**
+`execute_sql` against production runs with no prompt in this session, verified rather than
+recalled. But `permissions.defaultMode` is **UNSET** in `.claude/settings.json`, so the mode is
+whatever a session happens to launch with, and every word of the grant lives under
+`permissions.autoMode.allow` — which the classifier reads *only while the session is in `AUTO`*.
+A session that starts in `default` mode falls back to the literal `mcp__Supabase__*` names in
+`permissions.allow`, and the paragraph above already records that those did not stop the prompts.
+So the owner's experience of being asked anyway is not a stale memory and not a misconfigured
+grant: it is the grant evaporating in any session that did not start in `AUTO`.
+
+**The one-line fix is an owner action, deliberately.** `"defaultMode": "auto"` in
+`.claude/settings.json` §permissions pins every session into the mode where the grant applies.
+No agent can write that line: the classifier blocks a session editing its own permission mode,
+and blocks writing a `PreToolUse` hook that returns `permissionDecision: allow`, which is the
+other route to the same end. Both refusals are correct — an agent widening its own envelope is
+exactly what that boundary is for — so **do not attempt either, and do not route around them via
+Bash.** Report it and let the owner decide; the ask is two words in a settings file.
+
 **The review gate for schema change here is the migration file, not the execution.** That is
 what makes the grant safe rather than lax, and it is the reason to keep writing the file first:
 it is append-only, it is read before it is applied, and §Supabase Rules already requires
