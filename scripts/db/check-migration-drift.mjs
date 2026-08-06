@@ -60,7 +60,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'supabase', 'migrations')
@@ -69,8 +69,14 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..',
  * Strip the extension and any leading numeric prefix, so `014_profile_media.sql`
  * from disk and `profile_media` from the database compare equal — and so do the
  * three rows that recorded the prefix. See trap 2 in the header.
+ *
+ * Exported because this two-line function is the whole check: get it wrong in
+ * the lenient direction and every comparison passes, which looks exactly like a
+ * database with no drift. `__tests__/check-migration-drift.test.ts` pins it in
+ * both directions for that reason — the same reasoning as
+ * `no-service-role-key.test.ts` proving its own detector still matches.
  */
-function normalise(name) {
+export function normalise(name) {
   return name.replace(/\.sql$/i, '').replace(/^\d+_/, '')
 }
 
@@ -119,6 +125,7 @@ function appliedMigrations(url, label) {
   )
 }
 
+function main() {
 const prod = appliedMigrations(process.env.PROD_DATABASE_URL, 'PROD')
 const dev = appliedMigrations(process.env.DEV_DATABASE_URL, 'DEV')
 
@@ -195,3 +202,10 @@ if (prod && dev) {
 
 console.log()
 process.exit(1)
+}
+
+// Only when invoked directly, so `normalise` can be imported and pinned by a
+// test without this file reading the environment or calling process.exit.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main()
+}

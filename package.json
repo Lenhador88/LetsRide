@@ -19,7 +19,8 @@
     "figma:components": "node scripts/figma/components.mjs",
     "openspec": "openspec",
     "walk": "node scripts/walk.mjs",
-    "db:drift": "node scripts/db/check-migration-drift.mjs"
+    "db:drift": "node scripts/db/check-migration-drift.mjs",
+    "db:seed:check": "./scripts/db/check-seed.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.111.0",
