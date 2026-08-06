@@ -40,6 +40,12 @@ export function CreateClubForm() {
   const [state, formAction, pending] = useActionState(createClub, emptyActionState)
   useActionRedirect(state)
   const formRef = useRef<HTMLFormElement>(null)
+  // What was on the form at submission, not what is on it now — see the same
+  // ref in `CreateRideForm`. React resets uncontrolled fields to their
+  // `defaultValue` once a form action settles, including on an error return,
+  // so re-reading the live DOM here would parse an empty form and could focus
+  // a different field than the one `state.error` is talking about.
+  const submittedData = useRef<FormData | null>(null)
 
   // Same reasoning as `CreateRideForm`: a disabled submit here read as the
   // resting state of an untouched form and left the tab order early, so this
@@ -49,9 +55,9 @@ export function CreateClubForm() {
   // could disagree with it.
   useEffect(() => {
     if (!state.error) return
+    const data = submittedData.current
     const form = formRef.current
-    if (!form) return
-    const data = new FormData(form)
+    if (!data || !form) return
     const parsed = clubSchema.safeParse({
       name: data.get('name'),
       description: data.get('description'),
@@ -106,7 +112,15 @@ export function CreateClubForm() {
   const busy = pending || uploading !== null
 
   return (
-    <form ref={formRef} action={formAction} noValidate className="flex flex-col gap-6">
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={(event) => {
+        submittedData.current = new FormData(event.currentTarget)
+      }}
+      noValidate
+      className="flex flex-col gap-6"
+    >
       <input type="hidden" name="avatar_path" value={avatarPath} />
       <input type="hidden" name="cover_image_path" value={coverPath} />
 

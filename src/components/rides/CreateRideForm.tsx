@@ -51,6 +51,12 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
   const [state, formAction, pending] = useActionState(createRide, emptyActionState)
   useActionRedirect(state)
   const formRef = useRef<HTMLFormElement>(null)
+  // What was actually on the form at submission, not what is on it now. React
+  // resets every uncontrolled field to its `defaultValue` (here, empty) once a
+  // form action settles — including on an error return, since nothing was
+  // thrown — so re-reading the live DOM in the effect below would find an
+  // empty form regardless of what was actually submitted.
+  const submittedData = useRef<FormData | null>(null)
 
   // A disabled submit was tried here first and reverted by review: it left the
   // control out of the tab order on first paint of an untouched form (WCAG
@@ -65,9 +71,9 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
   // different fields — both come from one parse of one schema.
   useEffect(() => {
     if (!state.error) return
+    const data = submittedData.current
     const form = formRef.current
-    if (!form) return
-    const data = new FormData(form)
+    if (!data || !form) return
     const rawMax = (data.get('max_riders') as string)?.trim()
     const rawClub = (data.get('club_id') as string)?.trim()
     const parsed = rideSchema.safeParse({
@@ -88,7 +94,15 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
   }, [state])
 
   return (
-    <form ref={formRef} action={formAction} noValidate className="flex flex-col gap-4">
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={(event) => {
+        submittedData.current = new FormData(event.currentTarget)
+      }}
+      noValidate
+      className="flex flex-col gap-4"
+    >
       <Input name="title" label="Title" required maxLength={RIDE_TITLE_MAX} />
 
       <Textarea name="description" label="Description" rows={3} maxLength={RIDE_DESCRIPTION_MAX} />

@@ -32,8 +32,23 @@ import type { Profile } from '@/types'
  *
  * `defaultValue` rather than controlled state, because there is nothing to
  * derive while typing — no live availability check as onboarding's username step
- * has, no counter the design specifies. Uncontrolled inputs also survive the
- * action's re-render with what the rider typed.
+ * has, no counter the design specifies.
+ *
+ * **This used to add "uncontrolled inputs also survive the action's re-render
+ * with what the rider typed". They do not** — measured 2026-08-06: React resets
+ * an uncontrolled field to its `defaultValue` once a `useActionState` action
+ * settles, on an error return as much as on success, because nothing was
+ * thrown. Typing into `bike_model` and then failing validation on `location`
+ * wipes the typed `bike_model` back to the saved value.
+ *
+ * Two consequences, one handled and one open. Handled: the focus effect below
+ * reads a `FormData` snapshot captured in `onSubmit` rather than re-reading the
+ * DOM, which by then describes the saved profile instead of the rejected
+ * submission — the same ref is in `CreateRideForm` and `CreateClubForm` for the
+ * same reason. Open: the rider sees the field revert, so the error can name a
+ * problem the focused field no longer appears to have. Closing that means
+ * controlled state across all three forms; it is a real papercut rather than
+ * data loss, and it is not this branch's to fix.
  */
 export function EditProfileForm({ profile }: { profile: Profile }) {
   const [state, formAction, pending] = useActionState(updateProfile, emptyActionState)
@@ -57,6 +72,13 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
   const saved = state.sent === true && !state.error && dismissed !== state
 
   const formRef = useRef<HTMLFormElement>(null)
+  // What was on the form at submission, not what is on it now — see the same
+  // ref in `CreateRideForm`. React resets uncontrolled fields to their
+  // `defaultValue` once a form action settles, including on an error return,
+  // so re-reading the live DOM here would parse the *saved* profile rather
+  // than what the rider just typed, and could focus a field the error is not
+  // about.
+  const submittedData = useRef<FormData | null>(null)
 
   // Same reasoning as `CreateRideForm`: a disabled Save read as the resting
   // state of a form nobody had touched yet (worse here, since `location`
@@ -67,9 +89,9 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
   // parses.
   useEffect(() => {
     if (!state.error) return
+    const data = submittedData.current
     const form = formRef.current
-    if (!form) return
-    const data = new FormData(form)
+    if (!data || !form) return
     const parsed = profileEditSchema.safeParse({
       location: data.get('location'),
       bio: data.get('bio'),
@@ -86,6 +108,9 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
     <form
       ref={formRef}
       action={formAction}
+      onSubmit={(event) => {
+        submittedData.current = new FormData(event.currentTarget)
+      }}
       onChange={() => setDismissed(state)}
       noValidate
       className="flex flex-col gap-4 px-6"
