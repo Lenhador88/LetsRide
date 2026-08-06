@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "permissions": {
+    "defaultMode": "auto",
     "allow": [
-      "defaultMode": "auto",
       "mcp__Supabase__execute_sql",
       "mcp__Supabase__apply_migration",
       "mcp__Supabase__list_tables",
