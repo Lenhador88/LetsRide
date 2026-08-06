@@ -1,13 +1,15 @@
 # LetsRide
 
-A mobile-first web app for motorcycle riders to organise rides, join clubs, and connect
+A mobile-first app for motorcycle riders to organise rides, join clubs, and connect
 with other riders.
 
-Built with Next.js 16 (App Router), Supabase, and Tailwind CSS v4. Deployed on Vercel.
+Built with Next.js 16 (App Router), Supabase, and Tailwind CSS v4. Deployed on Vercel, and
+rendered entirely client-side — it ships as a static bundle so it can go into a native
+iOS/Android build.
 
-> **Status: early development.** The core of rides and clubs works; postcards, the inbox,
-> and the garage are not built yet, and the UI is mid-migration between two design
-> systems, so it looks inconsistent by design.
+> **Status: early development.** Rides, clubs and postcards work and are built from the
+> current design. The inbox and the garage are not built. The native shell — and with it
+> store submission — is the next epic; see `docs/HANDOFF.md` for what blocks it.
 
 ## Getting started
 

@@ -83,8 +83,8 @@ export async function acceptTerms(
   const { data: accepted, error } = await supabase.rpc('accept_terms')
   if (error || !accepted) return { error: 'Could not record that. Try again.' }
 
-  // proxy.ts decides the real destination, the same way signIn leaves it to.
-  // Most riders who reach this screen are already fully onboarded — the prompt
+  // The route guard decides the real destination, the same way signIn leaves
+  // it to. Most riders who reach this screen are already fully onboarded — the prompt
   // exists for accounts whose consent predates the write, not for new ones — so
   // naming a wizard step here would send a finished rider to step 1 and rely on
   // the guard to undo it.
@@ -116,8 +116,8 @@ export async function setLocation(_prev: ActionState, formData: FormData): Promi
 
   if (error) {
     // 23514 is the function's own guard — username or consent still missing.
-    // Reachable by deep-linking to step 2, which proxy.ts also guards, so this
-    // is the second line rather than the first.
+    // Reachable by deep-linking to step 2, which the route guard also covers,
+    // so this is the second line rather than the first.
     if (error.code === '23514') return { error: 'Finish the earlier steps first.' }
     return { error: 'Could not save that. Try again.' }
   }

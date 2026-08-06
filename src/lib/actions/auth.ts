@@ -122,8 +122,8 @@ export async function updatePassword(
   const supabase = await resolveSupabase()
 
   // A recovery link yields an ordinary session, so "is signed in" is not
-  // evidence of anything here. proxy.ts deliberately stopped bouncing signed-in
-  // riders away from this page (Q1), which means without this check anyone
+  // evidence of anything here. The route guard deliberately does not bounce
+  // signed-in riders away from this page (Q1), which means without this check anyone
   // holding a session — a shared device, a borrowed laptop — could set a new
   // password without knowing the old one.
   //

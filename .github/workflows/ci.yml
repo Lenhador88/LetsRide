@@ -48,7 +48,7 @@ jobs:
 
           # A DENYLIST of paths that cannot affect the app, not an allowlist of
           # paths that can — the same reasoning as the public-path list in
-          # proxy.ts. A new top-level directory therefore runs CI by default:
+          # src/lib/auth/guard.ts. A new top-level directory therefore runs CI by default:
           # forgetting to list something costs one green run, never a missed break.
           if echo "$files" | grep -qvE '^(docs/|design/|openspec/|\.claude/|[^/]*\.md$)'; then
             app=true

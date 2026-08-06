@@ -22,71 +22,97 @@ has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-la
 
 ---
 
-## The big thing: the client-rendered migration is finished
+## The client-rendered migration is finished and archived
 
-**Done 2026-08-06.** `openspec/changes/migrate-to-client-rendered-shell/` — 25 requirements, 73
-scenarios, seven task groups — is complete. Every box in `tasks.md` is ticked, and each entry
-records what its task got *wrong*, which is the part worth reading before trusting any other
-plan in that directory.
+**Done 2026-08-06**, merged as #58. The architecture it produced is described in `CLAUDE.md`
+§Technology Decisions as settled fact — read it there, not here. The change is archived at
+`openspec/changes/archive/2026-08-06-migrate-to-client-rendered-shell/`; each task entry records
+what that task got *wrong*, which is the part worth reading before trusting any other plan in
+that directory.
 
-| Group | | Status |
-|---|---|---|
-| 1 | Integrity migrations `018`–`027` | Done, all applied |
-| 2 | Consent prompt | Done |
-| 3 | `lib/data/` isomorphic | Done |
-| 4 | Session → device storage, auth, recovery | **Done** |
-| 5 | Screens, one route group at a time | **Done — all 17 pages** |
-| 6 | Retire the server render path | **Done** |
-| 7 | Verification and handoff | Done |
+**Archiving it created `openspec/specs/`, which did not exist before** — this is the repo's
+first archived change, so it is also the first time the delta specs were folded into standing
+ones. Four capabilities, 25 requirements: `client-render-shell`, `client-cache-invalidation`,
+`client-session-storage`, `database-enforced-integrity`. Read those rather than the archived
+change when you want the *current* rule; the change directory is history, the specs are the
+contract. `npm run openspec -- list --json` shows what is still active.
 
-What that means concretely:
+Verify rather than trust, in one line each:
 
-- **Zero server pages.** `next build` reports every route `○ (Static)` except the five `[id]`
-  ones, which are dynamic for their segment and not for any data. No `ƒ Proxy (Middleware)`.
-- **`src/proxy.ts`, `src/lib/supabase/server.ts`, `resolve.rsc.ts` and
-  `src/app/auth/callback/route.ts` are deleted.** `@supabase/ssr` is uninstalled — seven runtime
-  dependencies.
-- **The session lives in `src/lib/supabase/session-store.ts`**, not a cookie.
-- **Routing decisions are `src/lib/auth/guard.ts`** — a pure function with 36 tests, applied by
-  `src/components/auth/RouteGuard.tsx`. It is *not* a security boundary; RLS is.
-- **`npm test` is one RLS suite again** — 535 assertions over all 27 migrations, zero skipped.
-  The `PENDING` machinery is gone.
+```bash
+git grep -L "^'use client'" -- 'src/app/**/page.tsx'   # zero server pages — prints nothing
+ls src/proxy.ts src/lib/supabase/server.ts             # both deleted — prints errors
+node -p "Object.keys(require('./package.json').dependencies).length"   # 7
+npm run build 2>&1 | grep -cE '^[├└│ ]*ƒ /'            # dynamic routes — 7
+```
 
-### What is left, and it is one thing
+**That last number is 7, not the 5 an earlier revision of this file claimed**, and it is the
+one the native epic actually needs: `next build` reports 21 static routes and **7 dynamic**
+(`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`, `/rides/[id]`, `/rides/[id]/crew`).
+They are dynamic for their *segment*, not for any data. No `ƒ Proxy (Middleware)` line appears
+at all. Measured 2026-08-06 — re-run it rather than trusting the 7.
 
-**The native shell.** Capacitor config, plugins, permission strings, deep links, signing and
-store upload. CLAUDE.md records that a `native` agent is deliberately absent and lands with the
-shell rather than before it; `rider-ux` gets its rewrite at the same time.
+## The next epic: the native shell, and store submission
 
-Two seams are already built and waiting for it:
+This is now the whole roadmap, and it belongs to the **`native` agent** (added 2026-08-06 —
+`CLAUDE.md` said it would land with the shell, and the shell is next). `rider-ux` was rewritten
+at the same time and no longer points at PWA work.
+
+**Two seams are already built and waiting**, which is why this is an epic and not a rewrite:
 
 - `window.__letsrideSecureStore` — implement it over the platform keychain and the session moves
   off `localStorage` with no application change. `session-store.test.ts` asserts that when it is
-  present, **nothing** lands in `localStorage`.
-- Next still server-renders client components on first load. That SSR pass goes with Capacitor,
-  and it is the only reason the *read in an effect, never during render* rule is still
-  load-bearing.
+  present, **nothing** lands in `localStorage`. That test is the contract; read it first.
+- `src/lib/auth/guard.ts` is a pure function, so routing survives a webview unchanged.
 
-## Do this first
+**One piece of the server render is still standing:** Next server-renders client components on
+first load. Retiring that SSR pass is the shell's work, not leftover migration work — a bundled
+app has no Node process to run it. Until it is gone, *read in an effect, never during render*
+stays load-bearing.
+
+### Store readiness — assessed 2026-08-06
+
+Nothing here is started. Ordered by what actually blocks a submission; the first four are
+build work, the rest are the owner's.
+
+| | Blocker | Why it blocks |
+|---|---|---|
+| 1 | **The shell itself** | No `capacitor.config.*`, no `ios/`, no `android/`. Zero work done |
+| 2 | **Account deletion** | App Store 5.1.1(v) — hard rejection for any app with account creation. Proposal at `openspec/changes/add-account-deletion/`, nothing built |
+| 3 | **Inbox is a disabled stub** | `UNBUILT` in `src/components/layout/Navbar.tsx`; no route, no tables. Guideline 4.2 risk — a reviewer taps every tab |
+| 4 | **No edit or delete UI anywhere** | Create a ride, never cancel or correct it. The policies exist and are tested; nothing calls them |
+| 5 | **Email confirmation is off** | Decision #6 — anyone can sign up with an address they do not control. **Owner** |
+| 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
+| 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
+
+Check each guideline against the live text before building to it — they move, and this table
+will not.
+
+## Owner actions — nobody in a session can do these
+
+Four of them also appear in the store table above; this is where the detail lives. Every one is
+a dashboard click or a credential a human holds, so **ask for them rather than working around
+them** — the working principle in `CLAUDE.md` exists because a session once reported a block
+five times without once requesting the fix.
 
 1. **Exercise signup end to end.** Still never done on this database, and it is now the one
    remaining unproven path — `npm run walk` covers everything after it. The owner's account
    predates the consent write, both `.test` fixtures were SQL-inserted because Supabase rejects
    that TLD, and the one real attempt matches `signUp`'s own documented failure path. Needs an
-   email domain the owner controls. **Owner action.**
-2. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. **Owner
-   action.** It is what actually closes the recovery hole `026` can only gate at the app's front
-   door — GoTrue's `PUT /auth/v1/user` accepts a password change from any live session, measured.
+   email domain the owner controls.
+2. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. It is what
+   actually closes the recovery hole `026` can only gate at the app's front door — GoTrue's
+   `PUT /auth/v1/user` accepts a password change from any live session, measured.
 3. **Enable leaked-password protection** — one dashboard toggle, still the only outstanding
-   security advisor that is not deliberate. **Owner action.**
-4. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
-   nothing, with no alert. **Owner action** — needs Pro before anything resembling launch.
+   security advisor that is not deliberate.
+4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
+   serves nothing, with no alert. Needed before anything resembling launch.
 5. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
    2026-08-06 as `qa-verify`: *"0 object(s) in your folder, 0 referenced by a postcard. No
    orphans."* That settles nothing about the two objects (1.15 MB) the note refers to, because
    the sweeper signs in as a rider and `010`'s Storage policies scope it to
    `postcards/<that rider's uid>/`. The orphans are in the folder of whoever hit the bug fixed
-   in #21, which is not this fixture. **Owner action**, with their own credentials:
+   in #21, which is not this fixture. Needs their own credentials:
 
    ```bash
    export $(grep -v '^#' .env.local | xargs -d '\n')
@@ -95,8 +121,9 @@ Two seams are already built and waiting for it:
 
    `NODE_USE_ENV_PROXY=1` and exporting `.env.local` are both required — the script reads the
    URL and key from the environment and Node's `fetch` ignores `HTTPS_PROXY` without the flag.
-6. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
-   `/postcards/[id]` still carry inferred composition; the design has frames for both.
+**Not an owner action, but the next thing a session should pick up if the shell is blocked:**
+verify the remaining Postcards screens against the design. `/postcards/new` and
+`/postcards/[id]` still carry inferred composition; the design has frames for both.
 
 ## Running things in this container
 
@@ -178,12 +205,18 @@ timeout:**
 
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are tested,
   but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments are
-  the exception: deletable, not editable, which `011` forbids by design.
-- **Account deletion is not built.** App Store guideline 5.1.1(v) makes it a hard rejection for
-  any app with account creation. Proposal exists at `openspec/changes/add-account-deletion/`. It
-  is a **store blocker**, and it gets larger once location tracks exist.
-- **Inbox and Garage have no routes and no tables** — two of five nav tabs. A reviewer tapping
-  five tabs finds two dead, which is a guideline 4.2 problem in its own right.
+  the exception: deletable, not editable, which `011` forbids by design. **Store blocker 4.**
+- **Account deletion is not built.** Proposal at `openspec/changes/add-account-deletion/`, and
+  it gets larger once location tracks exist. **Store blocker 2.**
+- **Inbox has no route and no tables.** It is one of five nav tabs and it renders **disabled**
+  rather than dead — `UNBUILT` in `Navbar.tsx` gives it `aria-disabled` and a "not built yet"
+  title, so it is not a broken link. Still a guideline 4.2 question. **Store blocker 3.**
+
+  A previous revision of this line said *"Inbox and Garage have no routes… a reviewer tapping
+  five tabs finds two dead"*, and both halves were wrong: Garage is not a nav tab at all (the
+  five are Home, Rides, Clubs, Inbox, Profile — `grep -n "href" src/components/layout/Navbar.tsx`),
+  and Inbox is disabled rather than dead. Garage remains unbuilt as a *domain*, per
+  `CLAUDE.md` §Product Scope, which is a different and much smaller claim.
 - **There is no `clubIdSchema`.** `/postcards/[id]` parses its id before issuing anything, so it
   can read in parallel and 404 a malformed segment; `/clubs/[id]` cannot, so its two content
   reads are serialised behind the club. Adding the schema and parallelising is a small, clear

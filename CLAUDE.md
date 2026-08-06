@@ -38,17 +38,16 @@ components call them directly; they use the server client internally. This exist
 exactly the trap `003` sets by dropping `full_name`. (Counts move — re-derive with
 `git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'` rather than trusting this line.)
 
-**Writes go through `src/lib/actions/`**, one function per mutation. They **were** Server
-Actions and are not any more — the render migration moved them into the browser alongside the
-reads, for the reasons under *The render model* below. The boundary is unchanged and it is the
-point: one place that writes, named and typed per mutation. The three arguments that put them
-there in the first place are worth keeping, because only the second has expired:
+**Writes go through `src/lib/actions/`**, one function per mutation — plain async functions in
+the browser, not Server Actions. The boundary is the point: one place that writes, named and
+typed per mutation. Two of the three arguments that created the directory still hold, and the
+first is why it must never be dissolved back into components:
 
 1. RLS enforces *authorization*, never *validity*. Username charset, T&C acceptance and the
-   onboarding completion stamp are integrity rules the client must not own. **This one got
-   stronger, not weaker**: group 1's migrations (`018`–`027`) moved them into the database as a
-   CHECK, a trigger or a grant, which is what made moving the writes client-side safe. A Server
-   Action omitting a column was never a rule.
+   onboarding completion stamp are integrity rules the client must not own. `018`–`027` moved
+   every one of them into the database as a CHECK, a trigger or a grant, which is what made
+   client-side writes safe in the first place. A Server Action omitting a column was never a
+   rule.
 
    **Say "them", not "every one of them" — the gate is narrower than it reads.** `023` puts
    `enforce_participation_gate` on eight tables: `postcards`, `clubs`, `rides`, `club_members`,
@@ -59,86 +58,87 @@ there in the first place are worth keeping, because only the second has expired:
    write a bio and upload an avatar with `terms_accepted_at` NULL. That path predates the render
    migration and `signUp`'s consent write was never the enforcement — but the claim is about
    *participation*, and stating it broader than that is how a gap gets inherited as covered.
-2. Auth flows have to set cookies. Server Components cannot; Server Actions and Route
-   Handlers can. Login, signup and password reset all need this.
-3. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
-   it works exactly the same with a plain async function as with a Server Action.
+2. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
+   it works exactly the same with a plain async function as with a Server Action, which is why
+   moving the writes into the browser changed no call site.
 
-   *(2 was the reason they had to be server-side. A browser client sets its own session, so it
-   no longer binds. 1 and 3 are why the directory still exists.)*
+   *(The third argument was that auth flows have to set cookies, which only a Server Action or
+   Route Handler could do. It expired when the browser client started setting its own session.
+   Noted because it is the one that otherwise gets re-argued from first principles.)*
 
-The legacy pattern — a client component calling `supabase.from()` then `router.refresh()` —
-is v1. `JoinRideButton` was deleted with the ride detail rebuild and `JoinClubButton` became a
-Server Action with the club list — which is what "migrate on contact" looks like in practice.
-**Nothing is left.** `/clubs/new` and `/rides/new` were the last two, and both became server
-pages with Server Actions on 2026-08-05. This line once called `JoinClubButton` "the last one"
-while both of those already existed, so count rather than trust it —
-`grep -rn "supabase.from(" src/app/ src/components/` returns nothing. Never add more.
+A component never calls `supabase.from()` directly — that was the v1 pattern, paired with
+`router.refresh()`, and none of it survives. Count rather than trust this line, **and note the
+second half of the pipe**:
 
-**The render model IS the client — done 2026-08-06 — and the two boundaries above are what
-made it affordable.** The app is a client-rendered bundle so it can go into a native
-iOS/Android build: store presence is a product requirement, and background location tracking is
-on the roadmap — which the web platform cannot do at all, on any browser, because JS is
-suspended the moment the app backgrounds.
+```bash
+grep -rn "supabase\.from(" src/app/ src/components/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'
+```
 
-What changed was the **render side**: server components became client components,
-`revalidatePath` became client-side cache invalidation, the cookie session became device
-storage, and `proxy.ts` became a client route guard rather than a security boundary. What did
-**not** change: `src/lib/data/`, `src/lib/actions/` — both kept every signature — or a single
-RLS policy. The client talks to Supabase directly under the same policies, with the same
-publishable key that already shipped in the bundle, so the security posture is unchanged.
-**This is decision #8 read literally, not a departure from it.** The backend stays Supabase; a
-handful of Edge Functions arrive later for the jobs needing a secret, a schedule or elevated
-rights (push delivery, ride reminders, account deletion).
+It must print nothing, and it does. **The naive version prints 3** — three comments in
+`EditProfileForm`, `JoinClubButton` and `ClubMembershipButton` describing the v1 code they
+replaced, one of which says so explicitly. This is the same trap as the `lucide-react` importer
+count and the `^'use client'` anchor: a file's description of what it migrated away from reads
+as the thing itself. Verified both ways — the filter returns 0 today and returns 1 the moment a
+real call site is added.
 
-**One claim in the plan's own risk register was wrong and is worth not re-inheriting.**
-`design.md` §Risks opens with "the refresh token becomes JS-readable", presented as a reduction
-this migration causes. It was already JS-readable: `@supabase/ssr` set `sb-<ref>-auth-token`
-with `httpOnly=false`, because the browser client had to read the session back out of
-`document.cookie`. Measured with a real sign-in. What moved is the *store*, not the exposure.
+**The render model is the client.** The app is a client-rendered bundle so it can go into a
+native iOS/Android build: store presence is a product requirement, and background location
+tracking is on the roadmap — which the web platform cannot do at all, on any browser, because
+JS is suspended the moment the app backgrounds.
 
-**What is left is the shell itself.** Next still server-renders client components on first
-load — that is the SSR pass, and it goes with Capacitor, not with this change. Until then the
-one rule below about reading in an effect is load-bearing rather than stylistic.
+The client talks to Supabase directly under the same RLS policies, with the same publishable
+key that already shipped in the bundle. **This is decision #8 read literally, not a departure
+from it** — the backend stays Supabase, and a handful of Edge Functions arrive for the jobs
+needing a secret, a schedule or elevated rights (push delivery, ride reminders, account
+deletion).
+
+**The refresh token is JS-readable, and always was.** Worth stating plainly because it reads
+like something the bundle caused: `@supabase/ssr` set `sb-<ref>-auth-token` with
+`httpOnly=false`, because the browser client had to read the session back out of
+`document.cookie`. Measured with a real sign-in. The *store* moved to
+`src/lib/supabase/session-store.ts`; the exposure did not change, and it closes for real only
+when `window.__letsrideSecureStore` is implemented over a platform keychain.
+
+**The SSR shell is the one piece of the server render still standing.** Next server-renders
+client components on first load, and that goes with the native shell rather than with the
+render model — it is the `native` agent's work. Until it is gone, the *read in an effect* rule
+below is load-bearing rather than stylistic.
 
 Re-derive the scope rather than trusting a number here — it grows with every epic:
 
 ```bash
 git grep -l "" -- 'src/app/**/page.tsx' | wc -l                     # pages
-git grep -L "^'use client'" -- 'src/app/**/page.tsx' | wc -l        # ... still server-rendered
-git grep -L "^'use client'" -- 'src/components/**/*.tsx' | wc -l    # server components
+git grep -L "^'use client'" -- 'src/app/**/page.tsx' | wc -l        # ... server-rendered: 0
+git grep -L "^'use client'" -- 'src/components/**/*.tsx' | wc -l    # presentational components
 ```
 
-**Note the `^` anchor and keep it.** The unanchored version reports 16 server pages against a
-real 18: `clubs/new/page.tsx` and `rides/new/page.tsx` both carry doc comments saying they used
-to be `'use client'`, so a bare match counts a file's own description of its migration as the
-thing it migrated away from. This is the third time that trap has been hit here — after the
-`lucide-react` importer count and the v1-token count — and the first version of *this very
-block* had it. A directive is only a directive on line one.
+**Note the `^` anchor and keep it.** The unanchored version once reported 16 server pages
+against a real 18, because two pages carried doc comments saying they used to be `'use client'`
+— so a bare match counted a file's own description of its history as the thing it described.
+The third line is **not** a defect count: a component with no `'use client'` is fine, it just
+has no client hooks of its own and joins the client graph through its importer. This trap has
+been hit three times here — the `lucide-react` importer count, the v1-token count, and this
+very block. A directive is only a directive on line one.
 
-**Two rules, and the second one is now history rather than guidance:**
+**One rule, and it is load-bearing rather than anticipatory now that the client owns writes:**
 
-1. **No new integrity rule may live only in a Zod schema.** The client owns the mutation path,
-   so anything not expressed as a CHECK, trigger or policy is advisory. `003`, `012` and `023`
-   cover onboarding and consent; `018` covers the text bounds. `bio`, `bike_model` and
-   `location` are bounded by `018` too. This rule is now load-bearing rather than anticipatory.
-2. ~~**Do not build a client-first screen ahead of the migration.**~~ ~~Lifted 2026-08-05.~~
-   **Moot 2026-08-06 — every screen is client-first.**
+**No new integrity rule may live only in a Zod schema.** Anything not expressed as a CHECK,
+trigger or policy is advisory, because a rider can simply not run your validation. `003`, `012`
+and `023` cover onboarding and consent; `018` covers the text bounds, including `bio`,
+`bike_model` and `location`.
 
 **`lib/data/` and `lib/actions/` are the only places that touch Supabase, and both resolve
-their client through `src/lib/supabase/resolve.ts`.** That file used to be a *conditional*
-doorway — the `react-server` export condition, declared as a `#supabase/data-client` subpath
-import, with halves `resolve.rsc.ts` and `resolve.browser.ts`. The server half is gone and the
-import map with it, but **the indirection is not**, and that is deliberate: every caller goes
-through one name, which is what made the whole migration a change to one file instead of
-twenty-nine `.from()` call sites.
+their client through `src/lib/supabase/resolve.ts`.** One name, one doorway — which is what
+made the render migration a change to one file instead of twenty-nine `.from()` call sites, and
+is the reason to keep the indirection now that it resolves to a single implementation.
 
-The measurement that shaped it is worth carrying even though the code is deleted, because it
+The measurement behind it is worth carrying even though the server half is deleted, because it
 will otherwise be rediscovered expensively: `lib/supabase/server.ts` imported `next/headers`,
 and Next refuses to bundle that into a client graph **whether or not the branch importing it
 can be taken**. A `typeof document` guard around a dynamic `import()` does not help — the
-bundler resolves the specifier statically. That is why the split was ever a build-time
-condition rather than a runtime `if`.
+bundler resolves the specifier statically. That is why the split was ever a build-time export
+condition rather than a runtime `if`, and it is the thing to remember before anyone reaches for
+a "just check at runtime" fix to a bundling problem.
 
 **Read in an effect or an event handler, never during render.** A `'use client'` component is
 *still server-rendered* by Next on first load, and in that pass the browser client has no
@@ -165,12 +165,11 @@ field is missing.
 **`null` is a decided answer; `undefined` is "not yet".** Only the first is `notFound()`.
 Conflating them shows a 404 flash on every load of a detail screen.
 
-**Validation: Zod, one schema per concern, shared by both sides.** Lives in
-`src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
-client needs the same rules for live feedback. Two hand-written copies of the username rule
-will drift, and the one that drifts silently is the server's. This is the only new runtime
-dependency this section introduces. Per rule 1 above, Zod owns the **message**, never the
-**guarantee** — the database owns that.
+**Validation: Zod, one schema per concern.** Lives in `src/lib/validation/`. It parses
+`FormData` at the action boundary and drives live feedback in the form, from one definition
+rather than two copies that drift. Per the rule above, Zod owns the **message**, never the
+**guarantee** — the database owns that, and now that the client owns the mutation path a Zod
+rule with no constraint behind it is a suggestion a rider can decline.
 
 **Forms are hand-rolled** — controlled inputs plus `useActionState`. No React Hook Form or
 Formik; the forms in this app are one to three fields.
@@ -212,19 +211,20 @@ hardcoded `en-US`, and by 2026-08-05 they had one caller between them. Deleting 
 resolved the two-locale split this section used to describe. Write the screen's own
 formatter and let its name say where it belongs.
 
-**Ride times are pinned to `APP_TIME_ZONE`** (`Europe/Amsterdam`). The three `formatRide*`
-helpers run in server components, so before that they rendered in the server's zone — UTC on
-Vercel — and drew a 20:00 Amsterdam departure as 18:00. It is a documented **interim**: the
-correct model is wall-clock at the meeting point, which needs a zone column on `rides`. The
-viewer's own zone is not the answer — it renders different strings on server and client,
-i.e. a hydration mismatch. `formatRelativeTime` needs no zone (it measures elapsed instants)
-and keeps `en-US` because it produces English prose, not a date format.
+**Ride times are pinned to `APP_TIME_ZONE`** (`Europe/Amsterdam`), and the client render did
+not lift that. The pin arrived because the `formatRide*` helpers ran server-side and drew a
+20:00 Amsterdam departure as 18:00 in Vercel's UTC. **The SSR pass still runs on Vercel**, so
+an unpinned formatter would render the server's zone into the HTML and the rider's zone on
+hydration — the viewer's own zone is not the answer for exactly that reason, it is a hydration
+mismatch. It stays a documented **interim**: the correct model is wall-clock at the meeting
+point, which needs a zone column on `rides`. `formatRelativeTime` needs no zone (it measures
+elapsed instants) and keeps `en-US` because it produces English prose, not a date format.
 
 **`wallClockToUtc` is the write-side half of the same rule.** A `datetime-local` input sends a
-zone-less string, and `new Date(that)` resolves in whatever zone the runtime is in — the
-browser's in a client component, UTC on Vercel in a server one. The v1 create-ride form did
-exactly that, so the same typed time meant different instants for different organizers and
-none of them matched what `formatRideTime` drew back. It resolves the string as wall-clock in
+zone-less string, and `new Date(that)` resolves in whatever zone the runtime is in — which is
+now always the rider's browser, so the same typed time means a different instant for an
+organizer in Lisbon than for one in Berlin, and neither matches what `formatRideTime` draws
+back. The v1 create-ride form did exactly that. It resolves the string as wall-clock in
 `APP_TIME_ZONE`, in two passes so the two DST days a year are right, and its tests assert
 offsets rather than strings — `TZ=UTC` in `vitest.config.ts` would let a naive
 implementation pass.
@@ -264,7 +264,7 @@ src/
 │   │   ├── client.ts       # the memoised supabase-js client, on the session store
 │   │   └── session-store.ts # where the session lives: secure store, else localStorage
 │   ├── data/               # Read functions — the only place that queries Supabase
-│   ├── actions/            # Server Actions — the only place that writes
+│   ├── actions/            # Write functions — the only place that mutates
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # guard.ts (route rules, pure + tested), recovery.ts (grant + safeNext)
@@ -289,7 +289,9 @@ design/                     # Committed Figma snapshot — READ THIS, don't call
 ├── components/*.json       # One pruned tree per component set
 └── icons/                  # index.json + exported SVGs
 scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
-openspec/                   # Spec-driven change proposals + config.yaml
+openspec/                   # config.yaml, plus:
+├── specs/                  # Standing capability specs — the current contract
+└── changes/                # Active proposals; archive/ holds shipped ones
 .claude/
 ├── agents/                 # The specialist squad (see The Agent Squad)
 ├── commands/               # Slash commands (opsx/*)
@@ -530,26 +532,39 @@ anything resembling launch.
 **Read pattern** — the query lives in `src/lib/data/`, never in the page:
 ```ts
 // src/lib/data/rides.ts
-export async function getRide(id: string) {
-  const supabase = await createClient()
-  const { data } = await supabase.from('rides').select('*, organizer:profiles(*)').eq('id', id).single()
+export async function getRide(id: string): Promise<RideDetail | null> {
+  const supabase = await resolveSupabase()
+  const { data } = await supabase.from('rides').select(RIDE_SELECT).eq('id', id).single()
   return data
 }
 ```
 
-**Mutation pattern** — a Server Action, called from the client component:
+**The page calls it through `useQuery`, with its key from `keys.ts`** — never during render:
+```tsx
+'use client'
+const { data: ride } = useQuery(keys.ride(id), () => getRide(id))
+if (ride === null) notFound()      // null is decided; undefined is "not yet"
+if (!ride) return <RideSkeleton /> // gate on the data, never on isLoading
+```
+
+**Mutation pattern** — a plain async function, called from the component:
 ```ts
 // src/lib/actions/rides.ts
-'use server'
-export async function joinRide(rideId: string) {
-  const supabase = await createClient()
-  await supabase.from('ride_members').insert(...)
-  revalidatePath(`/rides/${rideId}`)
+export async function setRideAttendance(rideId: string, attendance: RideAttendance) {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to RSVP.' }
+  // ...upsert or delete...
+  invalidate(keys.ride(rideId))    // the cache claim that replaced revalidatePath
+  return {}
 }
 ```
 
-The older shape — `supabase.from()` inside a client component followed by `router.refresh()`
-— is v1. See Technology Decisions; migrate on contact, don't extend it.
+Two shapes that are **not** this and must not come back: `supabase.from()` inside a component
+followed by `router.refresh()` (v1), and a `'use server'` module (no module under
+`lib/actions/` is one any more — `src/__tests__/use-server-exports.test.ts` is the tripwire if
+one returns, because a non-async export from one is legal TypeScript that takes the route down
+at runtime).
 
 **UI primitives** (always use these, don't reinvent):
 - `<Button>` — variants: `primary` (near-black `Grey/100`), `secondary`, `ghost`, `danger`. Prop: `loading`.
@@ -758,7 +773,8 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | `feature` | Complete vertical slice — route, page, components, types, wiring |
 | `realtime` | Chat (inbox + per-ride), notifications, unread counters, presence |
 | `media` | Photo upload, Supabase Storage, compression, **EXIF stripping** |
-| `rider-ux` | PWA, offline, geolocation, push, static map + deeplink, glove targets |
+| `rider-ux` | Offline, geolocation, push UX, static map + deeplink, glove targets |
+| `native` | The shell — Capacitor, plugins, permission strings, deep links, signing, store upload, store guidelines |
 | `test` | Vitest/Playwright infra and tests |
 | `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit + documentation-claims audit |
 
@@ -789,10 +805,18 @@ OpenSpec was adopted and never run, while `spec` produced one document
 (`docs/specs/login-onboarding.md`, kept as history, not a template). The old brief also told
 agents to call the Figma API, which §What Not To Do forbids.
 
-**A `native` agent is planned but deliberately absent** — Capacitor config, plugins, permission
-strings, deep links, signing and store upload have no owner today. It lands with the native
-shell, not before, so the squad does not carry a brief nothing can follow. `rider-ux` gets its
-full rewrite at the same time; its PWA-first priorities were superseded by the native decision.
+**`native` landed on 2026-08-06, when the client-render migration finished.** It was
+deliberately absent until then — "it lands with the native shell, not before, so the squad does
+not carry a brief nothing can follow" — and the shell is now the next epic, so it has work to
+follow. It owns Capacitor config, plugins, permission strings, deep links, secure storage,
+signing, store upload, and anything gated on a store review guideline. **It also owns retiring
+the SSR pass**, which is the last piece of the server render and belongs to the shell rather
+than to the render model.
+
+`rider-ux` got its rewrite at the same time, as that note promised. Its PWA-first priorities
+are gone — no manifest, no service worker, no Web Push — and the split with `native` is that
+`rider-ux` owns behaviour *inside* the shell (offline read, geolocation, push UX, glove
+targets) while `native` owns the shell itself.
 
 ### When to delegate — the agent decides
 
@@ -1096,9 +1120,12 @@ matter and the second is the one that gets dropped.
 - Don't query Supabase from inside a component — reads belong in `lib/data/`, writes in `lib/actions/`.
 - Don't introduce a service-role key into the app. It bypasses every RLS policy; see decision #8.
 - Don't add new UI libraries (no shadcn, Radix, MUI) — extend the existing custom primitives.
-- Don't create a `middleware.ts`. This is Next.js 16, where the file would be `proxy.ts` — but
-  routing decisions belong in `src/lib/auth/guard.ts`, and the app deliberately ships no
-  middleware at all.
+- Don't create a `middleware.ts` or a `proxy.ts`. This is Next.js 16, where the file would be
+  `proxy.ts` — but routing decisions belong in `src/lib/auth/guard.ts`, and the app deliberately
+  ships no middleware at all.
+- Don't re-add `@supabase/ssr`, a service worker, or a web app manifest. All three belong to
+  render models this app has left: the first went with the server render, the other two were
+  planned while the web was the destination rather than a native bundle.
 - Don't run `playwright install` — Chromium is pre-installed at `/opt/pw-browsers`.
 - Don't call the Figma API to answer a design question — read `design/`. Refreshing the
   snapshot is a deliberate monthly job, not something a feature task does.

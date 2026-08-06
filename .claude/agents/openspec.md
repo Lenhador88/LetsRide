@@ -96,8 +96,10 @@ Push hard on these — they are where the silent bugs come from:
 - **Maps** are a static thumbnail plus a Google Maps deeplink. No mapping SDK.
 - **Supabase with RLS is the backend.** Extra compute goes in Edge Functions, never behind a
   service-role API that owns the database.
-- **The render model is migrating to client-side** for a native build — see `CLAUDE.md`
-  §Technology Decisions. Specs should not assume server-side rendering is available.
+- **The render model is client-side** — the app is a bundle, for a native build. Specs must not
+  assume server-side rendering or a trusted server step is available. Anything a spec states as
+  a rule about *what a value may be* has to end up as a CHECK, trigger or policy; a rule that
+  only ever reaches a Zod schema is advisory, because the client owns the mutation path.
 
 ## Every open question gets a recommended default
 
