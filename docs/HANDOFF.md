@@ -22,6 +22,70 @@ has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-la
 
 ---
 
+## ⚠ GitHub Actions has not run since 2026-08-06 17:43 UTC — check this first
+
+**CI is the deploy gate for this repo, and right now it is not running at all.** Three PRs
+(#72, #73, #74) and two pushes to `development` produced **zero** workflow runs. The workflow
+itself is fine — `list_workflows` reports `state: active` and `ci.yml` still has
+`branches: [main, development]` on both triggers.
+
+The last run, `31123919151` on `b98e2d9`, is the tell: its `Detect what changed` job sat from
+17:42:50 to 17:57:53 and was **cancelled** after 15 minutes, so `Type Check, Lint & Build` and
+`RLS Policy Tests` both came out `skipped`. That run is recorded as a **failure that never
+tested anything** — which is worse than a red build, because the conclusion looks like a code
+problem and is not one.
+
+**Do not read a green PR as a checked PR until this is fixed.** Every merge since 17:43 was
+merged without CI.
+
+```bash
+# Is it back? (via the GitHub MCP tools — the REST API 403s from this container's shell)
+#   actions_list method=list_workflow_runs resource_id=ci.yml
+# Expect a run newer than 2026-08-06T17:43:27Z.
+```
+
+**Owner action — nobody in a session can fix this.** Check <https://www.githubstatus.com>, then
+the repo's Settings → Actions (permissions and runner availability) and the account's Actions
+usage. A 15-minute cancelled job on `ubuntu-latest` reads as runners never being assigned.
+
+**Until it is back, gate by hand.** Both CI jobs have local equivalents, and they were run in
+full against `3c9cc40` before the promotion below — all green:
+
+```bash
+npm ci
+npx tsc --noEmit                      # exit 0
+npm run lint                          # exit 0 — 5 pre-existing <img> warnings, 0 errors
+npm run test:unit                     # 674/674 across 29 files
+NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 7 dynamic routes
+PGPASSWORD=postgres npm test          # 594 assertions, 0 failures
+```
+
+**Two traps met while doing that, both of which produced a confident wrong answer first:**
+
+- **`node_modules` is not in a fresh container.** `npm ci` first, or `vitest: not found` reads
+  as a broken suite rather than a missing install.
+- **`cmd 2>&1 | tail -5 && echo PASS` always prints PASS** — `tail` exits 0 no matter what the
+  command did. Capture the exit code from the command itself, never from the end of a pipe.
+  This reported a passing type check on a tree with no dependencies installed.
+
+## Branching, as of 2026-08-06 21:00 UTC
+
+- **`development` is the repo's default branch.** So a session clones `development` and reads
+  `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
+  `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
+- **`main` and `development` are level at `f5c12c6`**, promoted via #74 as a merge commit with
+  the fast-forward back-merge done. Production is `READY` on that sha.
+- **Getting there went wrong once, and the correction is worth knowing.** `main` was *renamed*
+  to `Development` rather than the default *pointer* being moved to the existing `development`.
+  That left two branches differing only in case, no `main` at all, a Vercel Production Branch
+  pointing at a branch that no longer existed, and CI matching neither (GitHub branch filters
+  are case-sensitive). It was restored to `ce3204e`, its exact prior sha. **Rename and
+  "switch default branch" are different controls in different places** — Settings → General →
+  Default branch → ⇄ is the one that moves a pointer.
+
+---
+
 ## DEV and PROD — the split landed 2026-08-06, and it is half-done on purpose
 
 **`docs/ENVIRONMENTS.md` is the contract.** Read it before touching either project. What
