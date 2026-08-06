@@ -27,9 +27,14 @@ rules:
       non-member, and blocked user. `club_members.role` has had `admin` since
       `001`. The blocked case is the one most often missed, and blocking is
       symmetric even though the row is directional."
-    - "Do NOT enumerate a signed-out visitor. Decision #1 is no anonymous
-      access anywhere and `anon` holds zero grants, so a spec that writes a
-      rule for one is inventing a role the system does not have."
+    - "A signed-out visitor is never *granted* anything — decision #1 is no
+      anonymous access anywhere and `anon` holds zero grants, so a spec that
+      writes a visibility rule admitting one has invented a role the system
+      does not have. Asserting the negative is different and is welcome: when
+      a change adds a public surface, state that the visitor reaches the shell
+      and no data, the way the standing `client-session-storage` spec does. An
+      earlier revision of this rule banned the role outright and was wrong in
+      that second direction."
   # The artifact id is `specs`, plural. It read `spec` from adoption until
   # 2026-08-05, and the CLI silently discarded the rule below on every run —
   # printing `Unknown artifact ID in rules: "spec"` where nobody was reading.

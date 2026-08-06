@@ -37,8 +37,14 @@ on `23505` — not because anything checks.
 - **WHEN** `023_participation_gate`'s `TG_OP`-guarded BEFORE INSERT arm is applied
 - **THEN** a self-inserted `profiles` row SHALL have its `terms_accepted_at` replaced with server
   time and SHALL be refused completion without username, location and consent
-- **AND** this feature SHALL NOT depend on that arm being applied, because `023` is in
-  `SKIP_MIGRATIONS` and gated behind an unbuilt consent prompt
+- **AND** this feature SHALL NOT depend on that arm being applied, because defence in depth that
+  assumes its own backstop is not defence in depth
+
+  *(The original reason given here — "`023` is in `SKIP_MIGRATIONS` and gated behind an unbuilt
+  consent prompt" — expired on 2026-08-05/06: `023` is applied, `/onboarding/terms` shipped, and
+  the `SKIP_MIGRATIONS` machinery was retired entirely. The requirement is unchanged; only its
+  justification had to be rewritten, because the old one would now read as false and invite
+  someone to delete the requirement with it.)*
 
 #### Scenario: A hard delete, not Supabase's soft delete
 - **WHEN** the auth row is removed
@@ -71,10 +77,22 @@ reasoning is sound for its premise. Its premise moves here.
   club before and after, because the destructive path is two cascade levels deep and invisible in
   any single foreign key
 
-#### Scenario: A club with no remaining members goes with its owner
-- **WHEN** the departing rider is the club's only member
-- **THEN** the club SHALL be deleted with them, together with its postcards — which are entirely
-  their own by construction — and this is `009`'s original case and its original answer
+#### Scenario: A club with no remaining members goes with its owner ONLY if no third-party content remains
+- **WHEN** the departing rider is the club's only remaining member
+- **AND** no `postcards` row in that club was authored by anyone else
+- **THEN** the club SHALL be deleted with them — `009`'s original case and its original answer
+- **AND WHEN** third-party postcards *do* remain, the club SHALL NOT be deleted; it SHALL be
+  transferred to the author of the oldest such postcard, whose `club_members` row SHALL be
+  inserted as `owner`
+
+  **"Their postcards are entirely their own by construction" was false and is the reason this
+  scenario has a second arm.** A rider can leave a club while the postcards they wrote there
+  stay — nothing deletes a postcard when its author leaves. So "only remaining *member*" does
+  not imply "only remaining *author*", and `postcards.club_id` is `ON DELETE CASCADE` from
+  `clubs` (`009`). The branch this design treated as the safe one could therefore destroy
+  exactly the third-party content the transfer exists to protect. **PO decides the final rule
+  (task 1.6b); the arm above is the recommended default, stated here so the scenario is not
+  archived in its refuted form.**
 
 #### Scenario: The transfer is possible at all
 - **WHEN** the club carries an `avatar_path` or `cover_image_path`

@@ -338,7 +338,12 @@ rather than leaving a blank the rider cannot get back to.
   already have policies. Notifying them needs Inbox; recorded as out of scope rather than
   assumed away.
 - **Deleting the last owner of a large club still destroys content** when they are the only
-  member — but then there is no content but their own, so the case is empty by construction.
+  remaining member. ~~The case is empty by construction.~~ **It is not — that claim was refuted
+  2026-08-06.** A rider can leave a club while their postcards stay, so "only remaining member"
+  does not imply "only remaining author", and `postcards.club_id` cascades from `clubs`. The
+  delete branch can therefore destroy the third-party content D2 exists to protect. Recommended
+  default: delete only when no other rider's postcards remain, else transfer to the author of
+  the oldest one. Task 1.6b; **PO decides.**
 - **Four missing FK indexes turn a deletion into four sequential scans.** → Free to add now, at
   three rides and two clubs. Not free at ten thousand, and the deletion holds locks while it
   runs. `011` added exactly this index for `postcard_comments` and named the reason; the other
