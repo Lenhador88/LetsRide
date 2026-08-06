@@ -88,8 +88,12 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
           the write-side half of the bug #37 fixed on the read side.
         */}
         <Input name="departure_at" type="datetime-local" label="Departure" required />
+        {/* One template literal rather than text interleaved with {expr}: JSX
+            drops whitespace at a line boundary, so the moment a formatter wraps
+            the mixed form it renders "Amsterdamtime" with no gap — observed
+            here, and invisible in the source that causes it. */}
         <p className="px-1 text-xs text-muted">
-          Times are in {DEPARTURE_ZONE_LABEL} time, whatever zone you&apos;re riding in.
+          {`Times are in ${DEPARTURE_ZONE_LABEL} time, whatever zone you're riding in.`}
         </p>
       </div>
 

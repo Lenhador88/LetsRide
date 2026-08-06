@@ -201,7 +201,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **594** |
-| Unit tests | `npm run test:unit` — **664**. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number now moves whenever a file is added |
+| Unit tests | `npm run test:unit` — **674 on a clean tree**, measured 2026-08-06. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
