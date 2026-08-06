@@ -176,129 +176,161 @@ select assert_denied('select count(*) from profiles',
 reset role;
 
 \echo ''
-\echo '# The onboarding gate cannot be forged from the client (migration 003)'
+\echo '# The completion and consent stamps are refused for the client outright (migrations 003, 012, 025)'
 
--- "Users can update their own profile" lets a rider PATCH any column on their
--- own row, so onboarding_completed_at is client-writable unless something stops
--- it. Without enforce_onboarding_completion() the gate is decorative: a
--- hand-rolled PostgREST call sets the timestamp and walks past the wizard.
+-- Until 025 landed, "Users can update their own profile" covered these two
+-- columns and 003's/012's BEFORE trigger was the only thing stopping a rider
+-- rewriting their own completion and consent record — so this section used to
+-- write both columns directly and check the trigger's CHECK logic (a NULL
+-- username or location refuses completion, a clear or a back-date is silently
+-- re-pinned). 025 revokes SELECT, INSERT and UPDATE on both columns from
+-- `authenticated` outright (an explicit re-grant allowlist, because a
+-- column-scoped REVOKE against a table-level GRANT is a documented no-op — see
+-- the migration's own DEFECT 1). A statement naming either column now fails at
+-- the GRANT, before the trigger is ever entered — so the refusal is
+-- unconditional rather than value-dependent, which the "syntactically valid
+-- completion" case below exists to prove: it is refused exactly as hard as a
+-- forged one.
+--
+-- The trigger's rule content did not go away; it moved into
+-- `complete_onboarding()` and `accept_terms()`, the only remaining path to
+-- either column (021 §3, asserted in the 021 section below), because a
+-- `security definer` function runs as its owner and the trigger's
+-- `current_user <> 'authenticated'` guard short-circuits for it. Re-asserting
+-- the CHECK's exact wording here would be asserting dead code: no role can
+-- ever reach it carrying a value the client chose.
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
-select assert_rejected($$
+
+select assert_denied($$
   update profiles set onboarding_completed_at = now()
   where id = '00000000-0000-0000-0000-00000000000e'$$,
-  '23514', 'completion cannot be claimed with a NULL username');
+  'a direct write to the completion stamp is refused before the trigger ever runs');
 
 -- PostgREST's upsert (Prefer: resolution=merge-duplicates) is INSERT ... ON
--- CONFLICT DO UPDATE, which is a second route to the same column. Postgres does
--- fire BEFORE UPDATE triggers on the DO UPDATE branch, and this proves it.
-select assert_rejected($$
+-- CONFLICT DO UPDATE, a second route to the same column — INSERT is granted by
+-- column too, so 025 closes it for free.
+select assert_denied($$
   insert into profiles (id, onboarding_completed_at)
   values ('00000000-0000-0000-0000-00000000000e', now())
   on conflict (id) do update set onboarding_completed_at = excluded.onboarding_completed_at$$,
-  '23514', 'the gate survives a PostgREST-style upsert, not just a plain update');
+  'and so is the same write sent as a PostgREST-style upsert');
 
+select assert_denied($$
+  update profiles set terms_accepted_at = now()
+  where id = '00000000-0000-0000-0000-00000000000e'$$,
+  'a direct write to the consent stamp is refused the same way');
+
+select assert_denied($$
+  insert into profiles (id, terms_accepted_at)
+  values ('00000000-0000-0000-0000-00000000000e', now())
+  on conflict (id) do update set terms_accepted_at = excluded.terms_accepted_at$$,
+  'and so is its upsert form');
+
+-- 012's INSERT-arm gap (023 §1.14): a bare INSERT naming the consent column,
+-- with no ON CONFLICT at all. No fixture needed — the grant refuses it before
+-- any row-existence or ownership question is reached.
+select assert_denied($$
+  insert into profiles (id, terms_accepted_at)
+  values ('00000000-0000-0000-0000-00000000009e', now())$$,
+  'a bare INSERT naming the consent column is refused just the same — grant-enforced, not trigger-enforced');
+
+-- The rider whose wizard step this would legitimately complete is refused
+-- exactly as hard. 000d has a username and no location; the pre-025 version of
+-- this suite completed the wizard with this exact statement and read the row
+-- back to prove it. That path is gone — this is a grant, not a value check.
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000d', false);
-select assert_rejected($$
-  update profiles set onboarding_completed_at = now()
+select assert_denied($$
+  update profiles set location = 'Braga', onboarding_completed_at = now()
   where id = '00000000-0000-0000-0000-00000000000d'$$,
-  '23514', 'completion cannot be claimed with a NULL location');
-
--- Written for real and read back: an UPDATE filtered to zero rows does not
--- error, so assert_allowed cannot tell "permitted" from "forbidden entirely".
-savepoint wizard_completes;
-update profiles set location = 'Braga', onboarding_completed_at = now()
-  where id = '00000000-0000-0000-0000-00000000000d';
-select assert_eq(
-  (select (location = 'Braga' and onboarding_completed_at is not null)
-     from profiles where id = '00000000-0000-0000-0000-00000000000d')::text,
-  'true', 'the last wizard step completes once username and location are both set');
-rollback to savepoint wizard_completes;
+  'a syntactically valid completion is refused too — the grant does not read the value');
 
 \echo ''
-\echo '# Onboarding completion is a one-way door (migration 003)'
+\echo '# Neither stamp is readable by the client either, own row or not (migration 025)'
 
--- Completion is stored rather than derived precisely so that a later profile
--- edit can never re-gate a rider. That only holds if the column cannot move
--- once set; both updates below succeed as statements and are silently pinned
--- back to the fixture timestamp by the trigger.
-
+-- RLS is row-level: the profiles SELECT policy admits every non-blocked rider
+-- with a username, which includes 000a admitting 000c and vice versa. Before
+-- 025 that meant every column of the row, including these two. The column
+-- grant is what narrows it now, so the same row that RLS admits still refuses
+-- the two stamps specifically.
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
 
-update profiles set onboarding_completed_at = null
-  where id = '00000000-0000-0000-0000-00000000000a';
-select assert_eq((select onboarding_completed_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
-  timestamptz '2026-01-01 00:00:00+00', 'completion cannot be cleared to re-trigger the wizard');
+select assert_denied($$select terms_accepted_at from profiles where id = auth.uid()$$,
+  'a rider cannot read their OWN consent stamp directly');
+select assert_denied($$select onboarding_completed_at from profiles where id = auth.uid()$$,
+  'nor their own completion stamp');
+select assert_denied($$select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000c'$$,
+  'nor another rider''s consent stamp — the row is visible, the column is not');
+select assert_denied($$select onboarding_completed_at from profiles where id = '00000000-0000-0000-0000-00000000000c'$$,
+  'nor another rider''s completion stamp');
 
-update profiles set onboarding_completed_at = timestamptz '2020-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-00000000000a';
-select assert_eq((select onboarding_completed_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
-  timestamptz '2026-01-01 00:00:00+00', 'completion cannot be back-dated');
-
--- The trigger fires on every profile update, so the cost of getting it wrong is
--- that ordinary profile editing breaks. It must pass everything else through.
-update profiles set bio = 'Rides at dawn', location = 'Coimbra'
-  where id = '00000000-0000-0000-0000-00000000000a';
-select assert_eq((select bio from profiles where id = '00000000-0000-0000-0000-00000000000a'),
-  'Rides at dawn', 'an onboarded rider can still edit the rest of their profile');
-select assert_eq((select onboarding_completed_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
-  timestamptz '2026-01-01 00:00:00+00', 'an ordinary profile edit does not disturb completion');
+-- `select=*` is the shape PostgREST issues for an unqualified projection, and
+-- it is the shape getMyProfile used to send for the caller's own row. It needs
+-- SELECT on every column, so it is refused even for your own row.
+select assert_denied($$select * from profiles where id = auth.uid()$$,
+  'select * over your OWN profile is refused — it would leak the two columns above');
+select assert_denied($$select * from profiles where id = '00000000-0000-0000-0000-00000000000c'$$,
+  'select * over another rider''s profile is refused the same way');
 
 \echo ''
-\echo '# The consent stamp is not client-owned (migration 012)'
+\echo '# Ordinary profile writes and reads are untouched by the revoke (guards against over-tightening)'
 
--- terms_accepted_at is evidence that a specific rider accepted specific terms at
--- a specific time. "Users can update their own profile" covers the column, so
--- without 012 the subject of that evidence can rewrite it.
+-- Written for real and read back through a column that IS still granted; the
+-- two stamps themselves can only be read through my_onboarding_state() now
+-- (asserted in the 021 section below), since a direct select is exactly what
+-- the block above just proved is refused.
+update profiles set bio = 'Still rides at dawn' where id = auth.uid();
+select assert_eq((select bio from profiles where id = auth.uid()),
+  'Still rides at dawn', 'an onboarded rider can still edit the rest of their profile');
 
--- Rider 000a is deliberately an *onboarded* rider, and that is the load-bearing
--- part of these two. The trigger returns early once onboarding_completed_at is
--- set, so a consent guard written below that branch would never run for anyone
--- who has finished the wizard — i.e. for every rider this protects. These fail
--- if 012's block is ever moved below the early return.
-select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+\echo ''
+\echo '# The grant is what decides, not a value check (migration 025)'
 
-update profiles set terms_accepted_at = null
-  where id = '00000000-0000-0000-0000-00000000000a';
-select assert_eq((select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
-  timestamptz '2026-01-01 00:00:00+00', 'consent cannot be cleared by the rider who gave it');
+-- Scoped to the grantee: postgres and service_role hold everything by Supabase
+-- default, so a table-wide count reads wrong against a correct database — the
+-- mistake 015's footer made and documented. has_column_privilege/
+-- has_table_privilege need no particular active role to ask the question, so
+-- this runs after dropping back to the connection's own role like the other
+-- catalog-introspection blocks in this file.
+reset role;
 
-update profiles set terms_accepted_at = timestamptz '2020-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-00000000000a';
-select assert_eq((select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
-  timestamptz '2026-01-01 00:00:00+00', 'consent cannot be back-dated');
-
-update profiles set bio = 'Still rides at dawn'
-  where id = '00000000-0000-0000-0000-00000000000a';
-select assert_eq((select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
-  timestamptz '2026-01-01 00:00:00+00', 'an ordinary profile edit does not disturb consent');
-
--- First acceptance: the client says *that*, the server says *when*. 000e is the
--- step-1 rider, the only fixture with no stamp yet. Pinning alone would leave
--- this hole — the very first write choosing any timestamp it liked.
-select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
-
-savepoint first_consent;
-update profiles set terms_accepted_at = timestamptz '2020-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-00000000000e';
 select assert_eq(
-  (select terms_accepted_at > timestamptz '2026-06-01 00:00:00+00'
-     from profiles where id = '00000000-0000-0000-0000-00000000000e')::text,
-  'true', 'a first consent write is stamped with server time, not the value sent');
-rollback to savepoint first_consent;
+  has_column_privilege('authenticated', 'public.profiles', 'terms_accepted_at', 'select'),
+  false, 'authenticated holds no column SELECT on terms_accepted_at');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'onboarding_completed_at', 'select'),
+  false, 'authenticated holds no column SELECT on onboarding_completed_at');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'terms_accepted_at', 'update'),
+  false, 'nor UPDATE on terms_accepted_at');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'onboarding_completed_at', 'update'),
+  false, 'nor UPDATE on onboarding_completed_at');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'terms_accepted_at', 'insert'),
+  false, 'nor INSERT — the upsert route needs closing too');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'onboarding_completed_at', 'insert'),
+  false, 'nor INSERT on the completion stamp');
 
--- PostgREST's upsert is INSERT ... ON CONFLICT DO UPDATE, the same second route
--- to the column that 003's completion gate had to cover.
--- Identity first: `rollback to savepoint` above restores the row, not
--- `test.uid`, so anything here would otherwise still run as 000e and be
--- refused by RLS against 000a's row — an UPDATE 0 that reads like setup.
-select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
-insert into profiles (id, terms_accepted_at)
-  values ('00000000-0000-0000-0000-00000000000a', timestamptz '2020-01-01 00:00:00+00')
-  on conflict (id) do update set terms_accepted_at = excluded.terms_accepted_at;
-select assert_eq((select terms_accepted_at from profiles where id = '00000000-0000-0000-0000-00000000000a'),
-  timestamptz '2026-01-01 00:00:00+00', 'the consent guard survives a PostgREST-style upsert');
+-- The table-level grant is what a column-level REVOKE cannot touch (Postgres
+-- discards it with a warning), so its absence is the assertion that 025 used
+-- the allowlist SHAPE its own header's DEFECT 1 says is the only one that works.
+select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'select'),
+  false, 'there is no table-wide SELECT left to override the column grants');
+
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'username', 'select'),
+  true, 'username is still readable (guards against over-tightening)');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'avatar_path', 'select'),
+  true, 'and avatar_path — the app cannot draw a byline without both');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'username', 'update'),
+  true, 'and username is still writable — onboarding step 2 is an ordinary UPDATE');
+
+set role authenticated;
 
 \echo ''
 \echo '# Username charset, length and reserved names (migration 003, Q4)'
@@ -2730,18 +2762,22 @@ select assert_allowed($$
 -- 021: the own-row accessor and the two own-row writers
 -- ===========================================================================
 --
--- 021 is APPLIED, so its assertions belong here rather than in a pending suite.
--- It creates three functions and nothing else — `my_onboarding_state()`,
--- `accept_terms()` and `complete_onboarding(text)` — and it is deliberately
--- additive: every grant this file's other 380-odd assertions rely on is
--- untouched by it.
+-- 021 is APPLIED, so its assertions belong here. It creates three functions
+-- and nothing else — `my_onboarding_state()`, `accept_terms()` and
+-- `complete_onboarding(text)` — and is deliberately additive: on its own it
+-- moves no grant.
 --
--- **What is NOT here is the revoke.** That is `025`, still pending, with its own
--- suite. The split follows the migrations exactly: anything asserting these
--- functions' BEHAVIOUR is mainline, anything asserting
--- `has_column_privilege(...) = false` is pending on 025. The two must not drift
--- into each other — an assertion about the revoke that ran here would fail
--- against the database that actually runs.
+-- **The revoke itself — `025` — is also applied now, and this section still
+-- only covers 021's own behaviour.** `025`'s grant assertions
+-- (`has_column_privilege(...) = false` and friends) live in the block just
+-- above ("The grant is what decides, not a value check"), immediately after
+-- the direct-write and direct-read denials they explain. This section used to
+-- carry two of its own — "021 left the table-wide SELECT alone" — asserting
+-- that 021 alone had not moved a grant, back when 025 was still pending and
+-- the two states differed. They no longer do: every grant fact this database
+-- has is asserted once, in the grant block, rather than twice under two
+-- different framings that would drift apart the next time either migration
+-- changes.
 --
 -- ---------------------------------------------------------------------------
 -- The trap these functions exist inside, measured rather than recalled
@@ -2978,11 +3014,11 @@ select assert_eq(has_function_privilege('authenticated', 'public.my_onboarding_s
 select assert_eq(has_function_privilege('anon', 'public.accept_terms()', 'execute'),
   false, 'anon cannot call accept_terms()');
 select assert_eq(has_function_privilege('authenticated', 'public.accept_terms()', 'execute'),
-  true, 'authenticated can — it is the only path to the consent stamp once 025 lands');
+  true, 'authenticated can — it is the only path to the consent stamp now that 025 has landed');
 select assert_eq(has_function_privilege('anon', 'public.complete_onboarding(text)', 'execute'),
   false, 'anon cannot call complete_onboarding()');
 select assert_eq(has_function_privilege('authenticated', 'public.complete_onboarding(text)', 'execute'),
-  true, 'authenticated can — it is the only path to the completion stamp once 025 lands');
+  true, 'authenticated can — it is the only path to the completion stamp now that 025 has landed');
 
 -- All three must be `security definer`, or 025 takes the stamps away with nothing
 -- left able to write them. Asserted from the catalog rather than trusted from the
@@ -2997,15 +3033,415 @@ select assert_eq(
       and prosecdef and proconfig @> array['search_path=""']),
   3, 'all three 021 functions are security definer with a pinned search_path');
 
--- 021 is additive: it must not have moved a single grant. If any of these is
--- false, something from 025 has leaked into it.
-select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'select'),
-  true, '021 left the table-wide SELECT alone — the revoke is 025''s job');
-select assert_eq(
-  has_column_privilege('authenticated', 'public.profiles', 'onboarding_completed_at', 'update'),
-  true, '... and the completion stamp is still client-writable until 025');
+-- The grant state itself — that 025 really did take the column away, leaving
+-- these three functions as the only path back to it — is asserted once, in
+-- the block above this section, rather than restated here under a second
+-- framing.
 
 rollback to savepoint accessors_021;
+
+set role authenticated;
+select set_config('test.uid', '', false);
+reset role;
+
+-- ===========================================================================
+-- 023: onboarding and consent gate participation, not just navigation
+-- ===========================================================================
+--
+-- 023 is APPLIED, alongside 025 (the revoke just above) and 021 (the writers
+-- just above that) — so this section, not a pending suite, is where its
+-- assertions belong. It adds a BEFORE INSERT trigger to eight tables —
+-- `postcards`, `clubs`, `rides`, `club_members`, `ride_members`,
+-- `postcard_comments`, `postcard_likes`, `postcard_reports` — refusing any
+-- write from a rider who has not finished onboarding AND accepted the terms.
+-- Five tables are deliberately NOT gated, each for its own reason given in the
+-- migration header: `blocks` and `postcard_hides` are safety valves that must
+-- work for an un-onboarded rider too, `feed_reads` produces nothing anyone
+-- sees, `profile_countries` is a fact about the rider's own profile, and
+-- `profiles` is the row the wizard itself writes — gating it would make
+-- onboarding unreachable, which is the one failure mode this whole change must
+-- not have.
+--
+-- This section adds two fixtures of its own and rolls them back at the end,
+-- so nothing above it moves:
+--
+--   0011  username, location, onboarding_completed_at SET, terms NULL — the
+--         state 3 of the 4 riders on the hosted project were actually in when
+--         023 was written, and the one that makes the consent prompt a
+--         precondition of applying this migration at all
+--   0012  username, location, BOTH stamps set, and no content of any kind —
+--         so each of its writes below is a first write, not a duplicate
+
+savepoint participation_gate_023;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000000011', 'noconsent@example.com'),
+  ('00000000-0000-0000-0000-000000000012', 'qualified@example.com');
+reset role;
+
+update profiles set username = 'noconsent', location = 'Braga',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000000011';
+update profiles set username = 'qualified', location = 'Aveiro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000000012';
+
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  'the 023 assertions run as authenticated, or they prove nothing');
+
+\echo ''
+\echo '# A rider with two NULL stamps reaches the far side of the wizard end to end (023 + 021 + 025)'
+
+-- The proof this pair composes at all: 000e is seed.sql's step-1 rider — no
+-- username, no location, no stamps, the worst case — walked through the
+-- wizard using only what the shipped app has (the two RPCs and an ordinary
+-- profile UPDATE), with the gate checked shut at every step it should be shut
+-- and open exactly once it is not. This is the scenario that failed with
+-- "permission denied for table profiles" the first time 023 and the revoke
+-- were put in one database, before 021 gave the wizard a way through.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
+
+savepoint the_whole_path;
+
+select assert_eq((select terms_accepted_at from public.my_onboarding_state()),
+  null::timestamptz, 'start: no consent');
+select assert_eq((select onboarding_completed_at from public.my_onboarding_state()),
+  null::timestamptz, 'start: not onboarded');
+select assert_eq((select has_username from public.my_onboarding_state()),
+  false, 'start: no username');
+
+select assert_rejected($$
+  insert into postcards (author_id, image_path, caption)
+  values ('00000000-0000-0000-0000-00000000000e',
+          'postcards/00000000-0000-0000-0000-00000000000e/eeeeeeee-0000-4000-8000-00000000ab01.jpg', 'hi')$$,
+  '23514', 'start: the gate refuses a postcard');
+
+-- Step 1 as it works once 023 §1.13 is live: consent first, because completion
+-- now requires it.
+select public.accept_terms();
+select assert_eq((select terms_accepted_at is not null from public.my_onboarding_state()),
+  true, 'step 1: accept_terms() records consent');
+
+-- Step 2: the username, an ordinary UPDATE on a column 025 still grants.
+update profiles set username = 'rookie' where id = auth.uid();
+select assert_eq((select has_username from public.my_onboarding_state()),
+  true, 'step 2: the username is an ordinary UPDATE and still works');
+
+-- The gate is still shut, because completion has not happened yet — asserted
+-- so the path cannot pass by opening early.
+select assert_rejected($$
+  insert into postcards (author_id, image_path, caption)
+  values ('00000000-0000-0000-0000-00000000000e',
+          'postcards/00000000-0000-0000-0000-00000000000e/eeeeeeee-0000-4000-8000-00000000ab02.jpg', 'hi')$$,
+  '23514', 'mid-wizard: consent alone does not open the gate');
+
+-- Step 3: location and completion, in one statement.
+select assert_eq(public.complete_onboarding('Amsterdam') is not null,
+  true, 'step 3: complete_onboarding() returns the stamp it set');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Amsterdam', 'step 3: the location landed in the same statement');
+select assert_eq((select onboarding_completed_at is not null from public.my_onboarding_state()),
+  true, 'step 3: and so did the completion stamp');
+
+-- And the gate opens. This one assertion is the whole reason this mode of the
+-- suite was written: it is the statement that failed the day 023 and 025 were
+-- first tried in the same database.
+savepoint the_first_postcard;
+insert into postcards (author_id, image_path, caption)
+values ('00000000-0000-0000-0000-00000000000e',
+        'postcards/00000000-0000-0000-0000-00000000000e/eeeeeeee-0000-4000-8000-00000000ab03.jpg', 'hi');
+select assert_eq((select count(*)::int from postcards
+                   where author_id = '00000000-0000-0000-0000-00000000000e'),
+  1, 'THE PATH HOLDS: the rider who started with two NULL stamps has posted');
+rollback to savepoint the_first_postcard;
+
+rollback to savepoint the_whole_path;
+
+\echo ''
+\echo '# A rider with neither stamp cannot create anything (migration 023)'
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
+
+select assert_rejected($$
+  insert into postcards (author_id, image_path, caption)
+  values ('00000000-0000-0000-0000-00000000000e',
+          'postcards/00000000-0000-0000-0000-00000000000e/eeeeeeee-0000-4000-8000-00000000aa01.jpg', 'hi')$$,
+  '23514', 'un-onboarded: postcards refused');
+
+select assert_rejected($$
+  insert into clubs (name, is_public, owner_id)
+  values ('Ghost MC', true, '00000000-0000-0000-0000-00000000000e')$$,
+  '23514', 'un-onboarded: clubs refused');
+
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values ('Ghost Run', 'Nowhere', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-00000000000e')$$,
+  '23514', 'un-onboarded: rides refused');
+
+select assert_rejected($$
+  insert into club_members (club_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000e')$$,
+  '23514', 'un-onboarded: club_members refused');
+
+select assert_rejected($$
+  insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-00000000000e', 'going')$$,
+  '23514', 'un-onboarded: ride_members refused');
+
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000e', 'hello')$$,
+  '23514', 'un-onboarded: postcard_comments refused');
+
+select assert_rejected($$
+  insert into postcard_likes (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000e')$$,
+  '23514', 'un-onboarded: postcard_likes refused');
+
+-- Decided explicitly rather than by pattern: with email confirmation off
+-- (decision #6) an account can be made with an address nobody controls, and no
+-- admin role exists to triage what it files.
+select assert_rejected($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-0000000000e1', 'spam')$$,
+  '23514', 'un-onboarded: postcard_reports refused');
+
+\echo ''
+\echo '# Onboarded but never consented is refused just the same (migration 023)'
+
+-- The state 3 of the 4 riders on the hosted project were actually in when 023
+-- was written, so this is the arm that decided whether the gate needed a
+-- consent prompt (task 2.3) before it could ship at all.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000011', false);
+
+select assert_rejected($$
+  insert into postcards (author_id, image_path, caption)
+  values ('00000000-0000-0000-0000-000000000011',
+          'postcards/00000000-0000-0000-0000-000000000011/11111111-0000-4000-8000-00000000aa02.jpg', 'hi')$$,
+  '23514', 'no consent: postcards refused');
+
+select assert_rejected($$
+  insert into clubs (name, is_public, owner_id)
+  values ('Unconsented MC', true, '00000000-0000-0000-0000-000000000011')$$,
+  '23514', 'no consent: clubs refused');
+
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values ('Unconsented Run', 'Nowhere', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-000000000011')$$,
+  '23514', 'no consent: rides refused');
+
+select assert_rejected($$
+  insert into club_members (club_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-000000000011')$$,
+  '23514', 'no consent: club_members refused');
+
+select assert_rejected($$
+  insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-000000000011', 'going')$$,
+  '23514', 'no consent: ride_members refused');
+
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-000000000011', 'hello')$$,
+  '23514', 'no consent: postcard_comments refused');
+
+select assert_rejected($$
+  insert into postcard_likes (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-000000000011')$$,
+  '23514', 'no consent: postcard_likes refused');
+
+select assert_rejected($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-0000000000e1', 'spam')$$,
+  '23514', 'no consent: postcard_reports refused');
+
+\echo ''
+\echo '# With both stamps, all eight succeed (migration 023)'
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000000012', false);
+
+select assert_allowed($$
+  insert into postcards (author_id, image_path, caption)
+  values ('00000000-0000-0000-0000-000000000012',
+          'postcards/00000000-0000-0000-0000-000000000012/12121212-0000-4000-8000-00000000aa03.jpg', 'hi')$$,
+  'qualified: postcards allowed');
+
+select assert_allowed($$
+  insert into clubs (name, is_public, owner_id)
+  values ('Qualified MC', true, '00000000-0000-0000-0000-000000000012')$$,
+  'qualified: clubs allowed');
+
+select assert_allowed($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values ('Qualified Run', 'The Pier', now() + interval '1 day', true,
+          '00000000-0000-0000-0000-000000000012')$$,
+  'qualified: rides allowed');
+
+select assert_allowed($$
+  insert into club_members (club_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-000000000012')$$,
+  'qualified: club_members allowed');
+
+select assert_allowed($$
+  insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-000000000012', 'going')$$,
+  'qualified: ride_members allowed');
+
+select assert_allowed($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-000000000012', 'hello')$$,
+  'qualified: postcard_comments allowed');
+
+select assert_allowed($$
+  insert into postcard_likes (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-000000000012')$$,
+  'qualified: postcard_likes allowed');
+
+select assert_allowed($$
+  insert into postcard_reports (reporter_id, postcard_id, reason)
+  values ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-0000000000e1', 'spam')$$,
+  'qualified: postcard_reports allowed');
+
+\echo ''
+\echo '# The five deliberate omissions still accept an un-onboarded rider (migration 023)'
+
+-- Named in 023's header with their reasons, so the omission is a decision.
+-- These are what stop it silently becoming an oversight later: a gate landing
+-- on `blocks` would mean "finish the wizard before you can get away from
+-- someone". `profiles`, the fifth, is covered below rather than here — a gate
+-- on it would make onboarding unreachable, which is a stronger claim than an
+-- insert.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
+
+select assert_allowed($$
+  insert into blocks (blocker_id, blocked_id)
+  values ('00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-00000000000a')$$,
+  'un-onboarded: blocks still allowed — safety is not gated');
+
+select assert_allowed($$
+  insert into postcard_hides (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-00000000000e')$$,
+  'un-onboarded: postcard_hides still allowed — per-viewer');
+
+select assert_allowed($$
+  insert into feed_reads (user_id, club_id, last_seen_at)
+  values ('00000000-0000-0000-0000-00000000000e', null, now())$$,
+  'un-onboarded: feed_reads still allowed — a watermark shows nobody anything');
+
+select assert_allowed($$
+  insert into profile_countries (user_id, country_code)
+  values ('00000000-0000-0000-0000-00000000000e', 'PT')$$,
+  'un-onboarded: profile_countries still allowed — it is their own profile');
+
+\echo ''
+\echo '# Nobody is stranded — the one failure mode this pair must not have (023 + 025)'
+
+-- Three things must all be true for a NULL-consent rider, or the gate is
+-- unshippable and the rider is locked out of the app by the very migration
+-- meant to protect them. The consent prompt the route guard sends them to
+-- needs all three.
+select set_config('test.uid', '00000000-0000-0000-0000-000000000011', false);
+
+-- (a) they can read their own position, which is what the guard routes on.
+select assert_eq((select count(*)::int from public.my_onboarding_state()),
+  1, 'stranded check (a): a NULL-consent rider can read their own state');
+select assert_eq((select terms_accepted_at from public.my_onboarding_state()),
+  null::timestamptz, '... and it correctly reports the missing consent');
+
+-- (b) they can consent — the one the gate would otherwise make impossible,
+-- since 023 refuses their writes and 025 refuses their UPDATE.
+savepoint stranded_consent;
+select assert_eq(public.accept_terms() is not null,
+  true, 'stranded check (b): a NULL-consent rider can call accept_terms()');
+-- ... and having done so, the gate opens. Otherwise consenting leads nowhere.
+select assert_allowed($$
+  insert into clubs (name, is_public, owner_id)
+  values ('Newly Consented MC', true, '00000000-0000-0000-0000-000000000011')$$,
+  '... and consenting opens the gate for a rider who was already onboarded');
+rollback to savepoint stranded_consent;
+
+-- (c) the rider's own ordinary profile writes still work while both stamps are
+-- NULL. `profiles` is the fifth deliberate omission from the gate, and this is
+-- what that omission is for. Written for real and read back, because an
+-- UPDATE filtered to zero rows by RLS does not error.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
+savepoint stranded_wizard;
+update profiles set username = 'rookie' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'rookie', 'stranded check (c): step 1 still writes with both stamps NULL');
+update profiles set bio = 'still mid-wizard' where id = auth.uid();
+select assert_eq((select bio from profiles where id = auth.uid()),
+  'still mid-wizard', '... and so does an ordinary profile column');
+rollback to savepoint stranded_wizard;
+
+\echo ''
+\echo '# The gate is wired the way it has to be (migration 023)'
+
+-- Catalog introspection, so the role drops back to the owner. It has to be:
+-- `has_function_privilege` resolves `private.may_participate()` by name, and
+-- `authenticated` has no USAGE on that schema by design (005) — the check
+-- itself would answer 42501 rather than a boolean.
+reset role;
+
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal),
+  8, 'eight gate triggers, one per gated table');
+
+-- Named rather than counted. A bare total would not notice a gate landing on
+-- `blocks`, which is the omission that matters most.
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate'
+      and c.relname in ('blocks','postcard_hides','feed_reads','profile_countries','profiles')),
+  0, 'and none of the five deliberate omissions acquired one');
+
+-- The WHEN guard is load-bearing twice over: without it the gate fires for the
+-- seed and the migration role, and with the guard in the function body instead
+-- it fires for nobody, because the function is security definer and
+-- `current_user` is then its owner. Neither failure shows up in a positive test.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal
+      and pg_get_triggerdef(oid) ilike '%current_user%'),
+  8, 'every gate trigger carries the WHEN guard that reads the invoking role');
+
+-- The two halves of the security-definer question, and they point opposite
+-- ways. The gate functions MUST be definer; the profile completion guard must
+-- NOT be, because as definer its own `current_user <> 'authenticated'` early
+-- return would be true on every call and it would enforce nothing while
+-- passing every positive test — the shape 022 once shipped wrong, in the other
+-- direction.
+select assert_eq(
+  (select prosecdef from pg_proc
+    where proname = 'may_participate' and pronamespace = 'private'::regnamespace),
+  true, 'private.may_participate() is security definer');
+select assert_eq(
+  (select prosecdef from pg_proc
+    where proname = 'enforce_participation_gate' and pronamespace = 'public'::regnamespace),
+  true, 'public.enforce_participation_gate() is security definer');
+select assert_eq(
+  (select prosecdef from pg_proc
+    where proname = 'enforce_onboarding_completion' and pronamespace = 'public'::regnamespace),
+  false, 'public.enforce_onboarding_completion() is security INVOKER, or it enforces nothing');
+
+select assert_eq(has_function_privilege('anon', 'private.may_participate()', 'execute'),
+  false, 'anon cannot call the gate helper');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.enforce_participation_gate()', 'execute'),
+  false, 'the trigger function is not callable as an RPC');
+
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where c.relname = 'profiles' and not t.tgisinternal),
+  2, 'profiles carries the 003/012 UPDATE trigger and 023''s INSERT one');
+
+rollback to savepoint participation_gate_023;
 
 set role authenticated;
 select set_config('test.uid', '', false);
