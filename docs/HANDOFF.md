@@ -220,12 +220,17 @@ text they should converge on. Read it before archiving either.
   - **"A UI orphan rather than a hidden row" is only true of a *public* orphan.** A private one
     is on neither club list, so it is reachable from **no screen at all**, by anyone, including
     its owner. (0 private clubs exist today — measured, not assumed.)
-  - **The create race is the narrower of two doors, and the wider one needs no accident.**
-    `ClubMembershipButton` has no owner branch; `/clubs/[id]/about` passes
-    `isMember={!!viewer_role}` and `'owner'` is truthy, so **a club owner sees a "Leave Club"
-    button on their own club**, and `club_members` DELETE is `auth.uid() = user_id` with no
-    owner exception (checked against `pg_policy`, not recalled). One tap orphans the club.
-    The proposal's Why section carries the full evidence chain.
+  - **There is a second door of the same width: `leaveClub`.** `club_members` DELETE is
+    `auth.uid() = user_id` with no owner arm (read from `pg_policy`), and `leaveClub` deletes
+    unconditionally — so an owner can orphan their own club with a hand-rolled request. The UI
+    *does* guard it (`{!isOwner && …}` at `/clubs/[id]/about:103`), but in the weaker of the
+    two places, which that page's own comment concedes. Same shape for an organizer via
+    `setRideAttendance(rideId, null)`.
+
+    **A draft of this entry claimed the owner is shown a "Leave Club" button and one tap
+    orphans the club. That was wrong** — it came from grepping `isOwner` under
+    `src/components/clubs/` only and citing the line inside the guard rather than the guard.
+    Caught by review. Both doors need a hand-rolled request; neither is reachable by tapping.
 
   Also corrected there: both call-site comments and this entry named a `security definer`
   function *the client calls*. An RPC binds only its callers, and the publishable key ships in
@@ -236,10 +241,11 @@ text they should converge on. Read it before archiving either.
   hit". Re-run at apply time.
 
   > **Complexity** 5/10 — two migrations, four triggers, a backfill, three deploy steps
-  > **Urgency** 6/10 — raised from 3/10 by the `leaveClub` door: the create race needs an
-  > accident, this needs a rider doing what the interface openly invites
+  > **Urgency** 4/10 — a draft said 6/10 on a refuted premise (see above); back to roughly
+  > where it was. Both doors need a hand-rolled request. Rises the day a real rider abandons a
+  > create, and sharply if create gets a retry affordance or the store build ships
   > **Recommendation** 8/10 — the last place a client can leave the database in a state no
-  > constraint forbids
+  > constraint forbids, and the invariant is unasserted in *two* places rather than one
   > **This session** N — 3 blocking questions, two of them product-owner decisions (may an
   > owner leave their own club? may an organizer leave their own crew?)
 

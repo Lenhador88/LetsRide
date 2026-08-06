@@ -1,6 +1,6 @@
 > **⚠ COORDINATION — two active changes modify `Club membership role SHALL NOT be
 > self-assignable`, and OpenSpec will not warn you.** The other is
-> `{other}`. Archiving folds a delta into
+> `enforce-creator-membership`. Archiving folds a delta into
 > `openspec/specs/database-enforced-integrity/spec.md` by replacing the requirement wholesale,
 > so **whichever change archives second silently discards the first one's edit**.
 >
@@ -23,16 +23,25 @@
 
 ### Requirement: Club membership role SHALL NOT be self-assignable
 
-The database SHALL refuse any `club_members` row whose `role` is `owner` or `admin`, except the
-row a club's own `owner_id` creates for themselves, **and except the promotion the account-deletion
-ownership transfer performs on the rider it is simultaneously making `clubs.owner_id`.**
+**This is the merged text — see the coordination banner above.** The database SHALL refuse any
+`club_members` row whose `role` is `owner` or `admin` **from `authenticated`, without
+exception**. The owner's row SHALL be written by the database itself when the club is created
+(`enforce-creator-membership`'s `AFTER INSERT` trigger), never by the client. The **only**
+exception is the account-deletion ownership transfer, which promotes the rider it is
+simultaneously making `clubs.owner_id`; it runs `security definer` in the `private` schema with
+no `authenticated` EXECUTE, so it does not write as `authenticated` at all and the narrowing
+above does not bind it.
 
-**This is a live defect, not a risk the migration introduces.** `club_members` INSERT is
-`auth.uid() = user_id AND (club is public OR club owner is caller)`. It constrains *who* the
-row is for and says nothing about `role`; the only rule on `role` is the enum CHECK. `joinClub`
-omits the column and relies on the `'member'` default — which is a convention in our code, not
-a rule in the database, and PostgREST does not read our code. Any rider can already join any
-public club as `admin` today. The migration is where this is fixed, not where it begins.
+**`019` closed the original hole, and this requirement's earlier text described the world
+before it.** That text read: *"Any rider can already join any public club as `admin` today."*
+`019_club_member_role` was applied 2026-08-05 and its INSERT policy admits `role = 'owner'`
+only when `clubs.owner_id = auth.uid()`, so that sentence has been false since. It is recorded
+here rather than deleted because it was copied forward twice — once into the standing spec and
+once into this delta — and a reader who meets it a third time should recognise it.
+
+What `019` left is narrower and is what the two changes above close between them: its owner arm
+still admits a client-written `role = 'owner'` row, which stops being needed the moment the
+database writes that row itself.
 
 The roster screen renders the value — `/clubs/[id]/members` labels `owner` and `admin` and
 draws an owner ring — so a forged role is visible to every member of the club.
@@ -52,10 +61,16 @@ stated here rather than discovered when a club arrives ownerless.
   with `role` set to `owner` or `admin`
 - **THEN** the database SHALL reject the write
 
-#### Scenario: The creator's own owner row is still permitted
-- **WHEN** the rider named in `clubs.owner_id` inserts their own membership row with
-  `role = 'owner'`
-- **THEN** the write SHALL succeed
+#### Scenario: Not even the club's own owner may insert an owner row
+- **WHEN** the rider named in `clubs.owner_id` inserts a `club_members` row for their own club
+  with `role = 'owner'`
+- **THEN** the write SHALL be refused
+- **AND** this SHALL NOT break club creation, because the database wrote that row in the same
+  statement as the club and no client statement ever needs to attempt it
+
+  *(This scenario replaced one reading "The creator's own owner row is still permitted … the
+  write SHALL succeed". Both changes touching this requirement must state it the same way or
+  the second to archive silently reinstates a write the first removed.)*
 
 #### Scenario: Nobody can promote an existing member
 - **WHEN** any rider — including the club owner, an admin, an ordinary member, a non-member or

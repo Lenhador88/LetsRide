@@ -2,7 +2,7 @@
 
 > **⚠ COORDINATION — two active changes modify `Club membership role SHALL NOT be
 > self-assignable`, and OpenSpec will not warn you.** The other is
-> `{other}`. Archiving folds a delta into
+> `add-account-deletion`. Archiving folds a delta into
 > `openspec/specs/database-enforced-integrity/spec.md` by replacing the requirement wholesale,
 > so **whichever change archives second silently discards the first one's edit**.
 >
@@ -223,6 +223,52 @@ absence of a change to the visibility layer is a checked claim rather than an as
 - **AND** the club itself SHALL still be returned, because `clubs` deliberately carries no block
   predicate
 
+**The six scenarios above are `club_members` only, and this change seeds `ride_members` too.**
+The ride half is stated below rather than assumed to be symmetric, because it is not: the two
+tables reach the same outcome by different mechanisms, and an implementer who generalises from
+the club rules will write the wrong assertion.
+
+Measured from `pg_policy` on 2026-08-06, `ride_members` SELECT is:
+
+```
+EXISTS (SELECT 1 FROM rides r WHERE r.id = ride_members.ride_id)
+AND (user_id = auth.uid() OR NOT private.is_blocked(auth.uid(), user_id))
+```
+
+So **two** block predicates bear on the organizer's own crew row: its own, on the roster
+member (`user_id`, which for this row *is* the organizer), and the transitive one inside
+`rides` SELECT (`NOT private.is_blocked(auth.uid(), organizer_id)`). Either alone would hide it.
+That redundancy is the current state, not a requirement — the assertions below must pin the
+outcome, so that removing one predicate later fails a test rather than passing silently.
+
+#### Scenario: Organizer — their own crew row
+- **WHEN** the rider named in `rides.organizer_id` reads `ride_members` for their own ride
+- **THEN** their `going` row SHALL be returned, on a public ride and on a private-club ride alike
+- **AND** they SHALL NOT be able to delete it, by the `BEFORE DELETE` guard this change adds
+- **AND** they SHALL still be able to change its `status` to `maybe`, because the invariant is
+  presence on the crew, not a particular status
+
+#### Scenario: Club admin and club member — a private club's ride
+- **WHEN** a rider holding `role = 'admin'` or `role = 'member'` in the ride's club reads the roster
+- **THEN** the organizer's crew row SHALL be returned, because `rides` SELECT admits them through
+  `private.is_club_member(club_id)`
+- **AND** neither SHALL be able to insert, alter or delete it
+
+#### Scenario: Non-member — public ride versus private-club ride
+- **WHEN** a signed-in rider who is not in the ride's club reads the roster
+- **THEN** the organizer's crew row SHALL be returned for a public ride whose club is NULL or
+  public, and **zero rows** for a ride whose `club_id` names a private club
+- **AND** the refusal SHALL come from `rides` SELECT via the `EXISTS`, not from any predicate on
+  `ride_members` itself — so a future change that widens `rides` widens this too, deliberately
+
+#### Scenario: Blocked rider — both predicates, asserted separately
+- **WHEN** a rider blocked by the organizer, in either direction, reads the roster
+- **THEN** the organizer's crew row SHALL NOT be returned
+- **AND** this SHALL be asserted **twice**: once proving `ride_members`' own
+  `NOT private.is_blocked(auth.uid(), user_id)` arm hides it, and once proving the ride itself is
+  invisible so the `EXISTS` hides it — because a single assertion cannot distinguish which
+  predicate did the work, and a later edit could remove one while the test stays green
+
 #### Scenario: No SELECT policy is edited
 - **WHEN** this change is applied
 - **THEN** the policy set for `clubs`, `club_members`, `rides` and `ride_members` SHALL differ from
@@ -232,9 +278,17 @@ absence of a change to the visibility layer is a checked claim rather than an as
 
 ### Requirement: Club membership role SHALL NOT be self-assignable
 
-The database SHALL refuse any `club_members` row whose `role` is `owner` or `admin`, from
-`authenticated`, without exception. The owner's row SHALL be written by the database itself when
-the club is created, and SHALL NOT be writable by the client at all.
+**This is the merged text — see the coordination banner above.** The database SHALL refuse any
+`club_members` row whose `role` is `owner` or `admin`, from `authenticated`, without exception.
+The owner's row SHALL be written by the database itself when the club is created, and SHALL NOT
+be writable by the client at all.
+
+**One privileged exception exists and must survive whichever change archives second.**
+`add-account-deletion` proposes an ownership transfer that promotes the rider it is
+simultaneously making `clubs.owner_id`. It runs `security definer` in the `private` schema with
+no `authenticated` EXECUTE, so it never writes as `authenticated` and the narrowing above does
+not bind it. Stated here explicitly because this delta would otherwise fold into the standing
+spec as an unconditional prohibition and silently delete that exception.
 
 **What changed and why.** `019` admitted one exception: the rider named in `clubs.owner_id` could
 insert their own `role = 'owner'` row, because `createClub` wrote it as a second round trip and

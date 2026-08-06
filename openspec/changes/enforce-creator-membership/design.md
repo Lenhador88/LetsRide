@@ -19,7 +19,7 @@ this defect and one of which describes the fix in a shape this document rejects.
 | `enforce_participation_gate` | 8 tables, `when (current_user = 'authenticated')` | `023` §3 |
 | `clubs` UPDATE policy | `using` **and** `with check` both `auth.uid() = owner_id` | `008:54` |
 | Next free migration number | **029** — `028` landed 2026-08-06 | `ls supabase/migrations/` |
-| Orphan clubs / rides on the live project | **NOT MEASURED** — see proposal §Impact | task 0.1 |
+| Orphan clubs / rides on the live project | **0 / 0**, measured 2026-08-06 with RLS bypassed, on 2 clubs and 3 rides — see proposal §Impact | task 0.1 (answered) |
 
 Five facts shape everything below.
 
@@ -157,6 +157,17 @@ that breaks the naive version:
    delete their own club** — a policy that exists and is tested. This is the third measurement for
    the scratch database, alongside D1's.
 
+**All four functions — the two seeding and the two guarding — SHALL be `security definer`, and
+for rule 3 that is a correctness requirement rather than a convention.** Under invoker rights
+the probe in rule 3 runs beneath the caller's RLS, so *"the club row is invisible to me"* and
+*"the club row does not exist"* return the same empty result — and the guard's response to the
+second is to **permit the delete**. That is a guard that fails **open**, which is precisely the
+hazard D7 spends a section on for assertions and must not then leave to chance in the guard
+itself. No exploit is reachable today (every rider who can delete a `club_members` row is that
+row's own `user_id` and can therefore see the club through `009`'s roster predicate), but the
+property must hold by construction rather than by a coincidence of the current policy set.
+`security definer` makes the probe answer the existence question it is actually asking.
+
 `check_violation` (`23514`) for the refusal, not `insufficient_privilege`, for `023` §2's reason:
 `42501` is indistinguishable from an ordinary RLS denial and an assertion that accepted "any error"
 would pass when the wrong rule fired.
@@ -225,8 +236,11 @@ two features — the same shape `021`'s header dissects and `024`'s footer recor
 
 Step 1 is safe against both databases: against today's, `upsert … ignoreDuplicates` on
 `(club_id, user_id)` behaves identically to the insert; against `029`'s, it finds the trigger's row
-and does nothing. It is the shape `joinClub` already uses, and for the same reason — there is no
-UPDATE grant on `club_members`, so the default on-conflict-update would answer `42501`.
+and does nothing. It is the shape `joinClub` already uses. The reason usually given for it —
+"there is no UPDATE grant on `club_members`" — is **wrong**, and `019`'s §Verification block
+says so: `authenticated` does hold the table-level UPDATE grant, and promotion is blocked by the
+missing UPDATE *policy*, which filters to zero rows rather than raising. `ignoreDuplicates` is
+still correct, for the better reason that an on-conflict-update would silently affect nothing.
 
 Steps 1 and 3 can be one PR each or three commits on one branch; what cannot move is that `029`
 lands between them.
@@ -304,13 +318,13 @@ give it.
   Default: **no**, with `maybe` as the way to express uncertainty. `RideAttendanceBar` already
   hides the control from them, so the default costs nothing today. Blocking for the same reason as
   Q1.
-- **Q3 — product owner, or anyone holding a credential. The live orphan pre-flight.**
-  Default: **assume non-zero and write the backfill anyway** — a backfill over zero rows is a no-op
-  and costs one statement, while a missing backfill over a non-zero count leaves a private club
-  nobody can reach. Blocking because it must be measured before `029` is written, and this session
-  could not: the project answers `401` through the proxy, this container has no `.env.local` and no
-  rider credential, and the Supabase MCP tools did not load. **This is the one item nobody in a
-  session can do alone.**
+- ~~**Q3 — the live orphan pre-flight.**~~ **ANSWERED 2026-08-06: 0 orphan clubs, 0 orphan
+  rides, on 2 clubs and 3 rides, RLS bypassed.** The agent drafting this design could not run it
+  (no credential, MCP tools absent from its toolset); the parent session ran it the same day.
+  The recommended default stands unchanged — **write the backfill anyway** — because a backfill
+  over zero rows is a no-op costing one statement, while a missing backfill over a count that is
+  non-zero *at apply time* leaves a private club nobody can reach. Re-run at apply time; a zero
+  today is not a zero then. **No longer blocking.**
 
 **Non-blocking**
 

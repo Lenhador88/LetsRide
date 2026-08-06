@@ -95,8 +95,14 @@ Today `getExploreClubs` excludes by membership, so a public club whose owner has
 appears in Explore **to its own owner** with a `Join club` button. Tapping it records them as
 `role = 'member'` on the club they own, irreversibly — `club_members` has no UPDATE policy.
 `ClubMembershipButton` and `RideAttendanceBar` do hide their controls from the owner and the
-organizer, but they hide them on `viewer_role` and `is_organizer`, which are read from the very
-rows that are missing.
+organizer — but **only the club half of that guard depends on the row that is missing.**
+`viewer_role` is `membership?.role` (`src/lib/data/clubs.ts:343`), so an orphaned club's owner
+reads `null` and the guard stops firing. `is_organizer` is **not** from `ride_members`: it is
+`user.id === row.organizer_id` (`src/lib/data/rides.ts:302`), read from `rides.organizer_id`,
+which is never missing — so the RSVP bar stays correctly hidden from the organizer of an orphan
+ride. The ride half of this requirement therefore rests on the roster disagreement
+(`toRideListItem` draws the organizer as attending "by construction" while `getRideCrew` reads
+`ride_members`), not on a broken guard.
 
 #### Scenario: An owner never sees their own club on Explore
 - **WHEN** a rider who owns a club loads `/clubs/explore`

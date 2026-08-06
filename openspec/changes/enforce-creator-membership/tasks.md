@@ -23,7 +23,7 @@
   `proposal.md` §Impact.
 
   (The `admin`-rows zero independently confirms `019` Q10's premise, and the private-clubs zero
-  confirms `CLAUDE.md`'s "not reachable today (0 private clubs)" for the `createRide` `23514`
+  confirms `docs/HANDOFF.md`'s "not reachable today (0 private clubs)" for the `createRide` `23514`
   message — both were assumptions elsewhere and are now measurements.)
 - [ ] 0.2 **Q1 — product owner.** May a club owner leave their own club? Default: no. This decides
   whether `029` contains a delete guard, which is half the change.
@@ -51,8 +51,13 @@ the way `024`'s header records doing.
 
 - [ ] 1.1 `createClub`: `supabase.from('club_members').insert(...)` becomes
   `.upsert({ club_id, user_id, role: 'owner' }, { onConflict: 'club_id,user_id', ignoreDuplicates: true })`.
-  The shape `joinClub` already uses, and for the same reason: there is no UPDATE grant on
-  `club_members`, so the default on-conflict-update answers `42501`. **Keep the compensating
+  The shape `joinClub` already uses. **State the reason correctly:** `authenticated` **does**
+  hold the table-level UPDATE grant on `club_members` — `019`'s own §Verification block says so
+  explicitly ("Expected: **t** — and that is not a mistake") — and promotion is blocked by the
+  *absence of an UPDATE policy*, which filters to zero rows rather than refusing. The
+  `ignoreDuplicates` matters regardless, because an on-conflict-update would then silently
+  affect nothing instead of erroring. The "no UPDATE grant" phrasing is inherited from a stale
+  comment at `src/lib/actions/clubs.ts:253-254`; add it to group 5. **Keep the compensating
   delete** — it is still the only thing covering a genuine failure until `029` lands.
 - [ ] 1.2 `createRide`: the same for `ride_members`, `onConflict: 'ride_id,user_id'`.
 - [ ] 1.3 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build` green. No RLS
@@ -111,6 +116,21 @@ that touches SQL is paired with its assertion task, per `openspec/config.yaml`.
 - [ ] 2.11 Assertions for 2.10: the organizer cannot delete their own crew row; the organizer
   **can** update it to `maybe`, because the invariant is presence rather than status; an ordinary
   rider can still RSVP `No`; deleting the ride cascades.
+- [ ] 2.11a **Assertions for the ride-side role matrix**, which group 2 otherwise leaves to the
+  club-side scenarios and which is *not* symmetric with them — see the
+  `database-enforced-integrity` delta's ride scenarios for the measured policy. One per role
+  against the organizer's seeded crew row: organizer reads their own; club admin and club member
+  read it on a private-club ride; a non-member reads it on a public ride and gets **zero rows**
+  on a private-club ride; and a blocked rider gets zero rows **asserted twice** — once isolating
+  `ride_members`' own `NOT private.is_blocked(auth.uid(), user_id)` arm, once isolating the
+  `EXISTS` against `rides`. Two predicates currently hide the same row; one assertion cannot say
+  which, so removing one later would leave the suite green.
+- [ ] 2.11b **All four functions are `security definer`** — the two seeding *and* the two
+  guarding. For the guards this is correctness, not convention: rule 3 ("allow when the parent
+  is already gone") probes `select 1 from public.clubs where id = old.club_id`, and under
+  invoker rights "invisible to me" and "does not exist" are the same empty result, so the guard
+  would **fail open**. Assert the security context from `pg_proc.prosecdef`, and assert
+  `has_function_privilege('authenticated', …, 'EXECUTE')` is false for all four.
 - [ ] 2.12 Assertions for the participation gate, which 0.5(b) predicts stops firing on the seeded
   row: an un-onboarded rider cannot create a club or a ride at all, and holds no `club_members` or
   `ride_members` row afterwards. This is invisible in a positive test, which is `023` §2's own

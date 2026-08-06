@@ -47,7 +47,7 @@ That transitive step is the single most dangerous thing in this proposal.
 - **`auth.users` is what gets deleted; `public.profiles` is never deleted on its own.** The
   cascade does the rest. Deleting the profile row alone is the exact hole `012` names, and this
   proposal forbids it in a sentence rather than leaving it to the implementer.
-- **New migrations** (append-only from the next free number — **`029`** as of 2026-08-06; it read `028` until the comment-only `028_refresh_stale_column_comments` took that number, and `026` before that; `026` and `027` landed in the session that wrote this proposal, which is exactly why the task below says re-derive it —
+- **New migrations** (append-only. **`029` and `030` are claimed by `enforce-creator-membership`, so start at `031`** — and that change should land first, being much smaller. The number here read `026`, then `028` once `028_refresh_stale_column_comments` took that, then `029`; `run.sh` applies by filename so two files sharing a prefix is a trap this repo has sprung before; `026` and `027` landed in the session that wrote this proposal, which is exactly why the task below says re-derive it —
   re-derive with `ls supabase/migrations/` rather than trusting that, because the numbering moved
   underneath this document while it was being written: `021_profile_column_privileges` was split
   into an applied `021_onboarding_state_accessors` plus a pending
@@ -156,7 +156,8 @@ that already exists, it says so in the delta rather than pretending the behaviou
 
 ## Impact
 
-**Database.** New migrations from `029` — re-derive with `ls supabase/migrations/` rather than
+**Database.** New migrations from `031` (`029`/`030` are claimed by `enforce-creator-membership`,
+which should land first) — re-derive with `ls supabase/migrations/` rather than
 trusting either number in this document. One new `security definer` transfer function, four
 indexes, one column, and **possibly** a relaxed CHECK pair (`016`). **No SELECT policy changes**
 — that is a deliberate property, and it is what keeps this change from touching the visibility

@@ -42,28 +42,33 @@ the policy set rather than recalled:
 `auth.uid() = user_id` with **no owner exception** (verified live against `pg_policy`, not
 recalled).
 
-**There is no UI guard either, and an earlier revision of this paragraph said there was.**
-`ClubMembershipButton` contains no owner branch of any kind. `/clubs/[id]/about` renders it as
-`isMember={!!club.data.viewer_role}`, and `viewer_role` is `'owner' | 'admin' | 'member' | null`
-(`src/types/index.ts`), so `'owner'` is truthy and the button reads **"Leave Club"**. Every
-verified link in the chain:
+**The UI does guard it, and a previous revision of this paragraph claimed otherwise. That claim
+was wrong and is retracted here rather than quietly deleted**, because it is the kind of error
+that gets re-derived: the owner branch is at the **call site**, not in the component.
+`src/app/(app)/clubs/[id]/about/page.tsx:65` computes `const isOwner = viewer_role === 'owner'`
+and `:103` renders `{!isOwner && (<ClubMembershipButton … />)}`. The earlier draft cited `:104`
+— the line *inside* that guard — having grepped for `isOwner` in `src/components/clubs/` only,
+where it correctly does not appear. The page's own doc comment states **"The owner is offered
+nothing."** in as many words, and `ClubMembershipButton` is rendered from exactly one place.
 
-| Step | Evidence |
-|---|---|
-| Owner opens their own club's About page | `src/app/(app)/clubs/[id]/about/page.tsx:104` |
-| Button renders "Leave Club" for them | `isMember={!!viewer_role}`; no owner branch in `ClubMembershipButton.tsx` |
-| Tap calls `leaveClub(clubId)` | `ClubMembershipButton.tsx:43` |
-| Action deletes unconditionally | `src/lib/actions/clubs.ts:281` — no owner check |
-| RLS permits it | `club_members` DELETE policy = `auth.uid() = user_id`, no owner arm |
+Trace it properly and the states are: healthy club, `viewer_role = 'owner'` → **no button at
+all**. Already-orphaned club, `viewer_role = null` → the button reads **"Join Club"**. The only
+state in which an owner is shown "Leave Club" is one where they already hold `role = 'member'`
+— which is the broken state, not a route into it. **There is no single tap from healthy to
+orphaned.**
 
-So the orphan state is reachable by **a club owner tapping a visible button on their own club,
-once**. No tab close, no lost signal, no hand-rolled request, no race. The create-window race
-this proposal is named for is the *narrower* of the two doors.
+What remains is still worth closing, and is the reason this door is listed at all: the guard is
+in the *weaker of the two places*, which the page's comment concedes outright ("adding a guard
+here would put it in the weaker of the two places"). `leaveClub` deletes unconditionally
+(`src/lib/actions/clubs.ts:281`) and `club_members` DELETE is `auth.uid() = user_id` with no
+owner arm — read from `pg_policy`, not recalled. So the state is reachable by a hand-rolled
+request against the bundled publishable key, which is **the same class of reachability as the
+create race**, not a wider one. `setRideAttendance(rideId, null)` for an organizer is the same
+shape, guarded the same way, by `!is_organizer` in `RideAttendanceBar`.
 
-That also changes the urgency: the create window needs an accident, and this needs a rider
-doing something the interface openly invites. The same shape applies to
-`setRideAttendance(rideId, null)` for an organizer. **A fix that closes only the create window
-leaves the wider door open**, so this change states the invariant and closes both.
+**A fix that closes only the create window still leaves a second door**, so this change states
+the invariant and closes both — but it closes two equally-narrow doors, not one narrow and one
+open.
 
 Integrity, not confidentiality. `019` already prevents the abandoner forging a role on the way
 through — verified against the migration, whose INSERT policy admits `role = 'owner'` only when
@@ -146,10 +151,16 @@ owner_id` raise `23514`); an admin or invitation flow; a club-delete or ride-can
 
 ## Impact
 
-**Database.** Two migrations. Four new triggers, two new `security definer` trigger functions
-(both `revoke all … from public, anon, authenticated`, so **neither adds a security-advisor
-finding** — the advisor fires on definer functions `authenticated` can execute, which is why
-`enforce_participation_gate` is absent from `CLAUDE.md`'s table of six). One backfill. One policy
+**Database.** Two migrations. Four new triggers and **four** new trigger functions — two that
+seed (`establish_club_owner_membership`, `establish_ride_organizer_membership`) and two that
+guard deletion (`protect_club_owner_membership`, `protect_ride_organizer_membership`). **All
+four SHALL be `security definer` with `revoke all … from public, anon, authenticated`**, so none
+adds a security-advisor finding — the advisor fires on definer functions `authenticated` can
+execute, which is why `enforce_participation_gate` is absent from `CLAUDE.md`'s table of six.
+
+*(An earlier revision said "two", counting only the seeding pair, and left the guards' security
+context unstated — see design D3, where it is now stated and load-bearing rather than
+incidental.)* One backfill. One policy
 narrowed. **No SELECT policy changes at all**, which is a deliberate property: this change does not
 touch the visibility layer.
 
@@ -174,14 +185,30 @@ Applying `029` before step 1 makes the client's second insert raise `23505`, its
 the club, and every club and ride creation fail — an instant outage, and the same class of
 deadlock `021`'s header dissects.
 
-**A pre-flight this session could not run, stated as a gap rather than assumed away.** The counts
-below are **NOT MEASURED**. The hosted project is reachable — `curl -x $HTTPS_PROXY
-https://zwprydcyryvudhurbnye.supabase.co/auth/v1/health` returns `401`, verified 2026-08-06 — but
-this container holds no `.env.local`, no rider credential, and the Supabase MCP tools did not load
-in this session (`mcp__…__list_tables` → *No such tool available*). `anon` holds zero grants, so an
-unauthenticated read answers nothing. **Task 0.1 is blocking and must run these before `029` is
-written**, with RLS off (dashboard or `list_migrations`-grade access), because under a rider's
-session `club_members` is filtered by `009`'s block predicate and the count would be per-viewer:
+**Pre-flight: MEASURED 2026-08-06, RLS bypassed (service role).** The agent that drafted this
+proposal could not run it — no credential, and the Supabase MCP tools did not load in its
+toolset — so an earlier revision of this section read **NOT MEASURED** and marked task 0.1
+blocking. It was run in the same session by the parent, and these are true counts, not
+per-viewer ones:
+
+| Count | Value |
+|---|---|
+| Orphan clubs (no `club_members` row for `owner_id`) | **0** |
+| Clubs whose owner row exists with the wrong role | **0** |
+| Orphan rides (no `ride_members` row for `organizer_id`) | **0** |
+| Total clubs / rides | **2 / 3** |
+| `role = 'admin'` rows | **0** |
+| Private clubs | **0** |
+
+**Read the zero correctly.** This is a two-club, three-ride database. It says nobody has hit
+the window yet on a dataset this small — not that the window is hard to hit. What it does
+settle: **the backfill has nothing to repair today**, so `029` can be written constraint-first
+with the backfill as a guard for the apply-time re-run.
+
+Task 0.1 is therefore **answered, not blocking** — but the queries stay below because
+`029`'s header must record them re-run at apply time, the way `013`, `019` and `022` do. Run
+them with RLS off (dashboard or service-role access): under a rider's session `club_members` is
+filtered by `009`'s block predicate and the count would be per-viewer.
 
 ```sql
 -- Orphan clubs, and how many are private (reachable from no screen at all)
@@ -203,7 +230,7 @@ select count(*) filter (where r.departure_at >= now()) as upcoming, count(*) as 
                     where m.ride_id = r.id and m.user_id = r.organizer_id);
 ```
 
-The last numbers this repo recorded are `019`'s pre-flight of 2026-08-05 — 3 `club_members` rows,
-2 with `role = 'owner'` — and `022`'s of the same day — 3 rides, 0 with a `club_id`. Neither
-answers the orphan question, and both predate the client-render deploy that made the window
-reachable on demand. **Do not treat them as a zero.**
+For context, the older numbers this repo recorded — `019`'s pre-flight of 2026-08-05 (3
+`club_members` rows, 2 with `role = 'owner'`) and `022`'s of the same day (3 rides, 0 with a
+`club_id`) — never answered the orphan question and predate the client-render deploy. They are
+superseded by the table above rather than corroborated by it.
