@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { LogOutIcon, OptionsIcon } from '@/components/icons/generated'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
-import { signOut } from '@/lib/actions/auth'
+import { useSignOut } from '@/lib/actions/navigate'
 
 /**
  * The header's overflow control and its sheet — `Profile / Delete account /
@@ -18,15 +18,17 @@ import { signOut } from '@/lib/actions/auth'
  * than offered as a dead row, the same treatment Journal got on the ride
  * detail, and logged in docs/FIGMA-FIDELITY-TODO.md §Profile.
  *
- * Sign out goes through the **server action**, not `supabase.auth.signOut()` in
- * the browser as the v1 button did. Signing out is a cookie operation, and
- * CLAUDE.md puts those in actions for that reason: the client call leaves the
- * server's copy of the session cookie to be reconciled on the next request,
- * which is the shape of bug that logs you back in on a refresh.
+ * Sign out goes through `lib/actions/auth.ts`, not a bare
+ * `supabase.auth.signOut()` as the v1 button did — and that stays true now that
+ * the action runs in the browser too. What the action owns is everything
+ * *besides* the revocation: destroying the query cache so the next rider on a
+ * shared device inherits nothing, and falling back to a local sign-out when the
+ * network call fails, so pressing this always leaves the rider signed out. A
+ * bare client call does none of that. See `signOut` and `useSignOut`.
  */
 export function ProfileMenu() {
   const [open, setOpen] = useState(false)
-  const [pending, startTransition] = useTransition()
+  const { signOut, pending } = useSignOut()
 
   return (
     <>
@@ -42,15 +44,7 @@ export function ProfileMenu() {
       </button>
 
       <ContextMenu open={open} onClose={() => setOpen(false)} label="Account options">
-        <ContextMenuItem
-          // The callback is async and awaited. `startTransition(() => void
-          // signOut())` — a sync callback discarding the promise — ends the
-          // transition on the same tick, so `pending` flips back before the
-          // action has done anything and the label flashes. React only holds
-          // `isPending` for the life of a promise it is actually given.
-          onClick={() => startTransition(async () => { await signOut() })}
-          disabled={pending}
-        >
+        <ContextMenuItem onClick={signOut} disabled={pending}>
           <span className="flex items-center gap-2">
             <LogOutIcon className="h-6 w-6" />
             {pending ? 'Signing out…' : 'Sign out'}

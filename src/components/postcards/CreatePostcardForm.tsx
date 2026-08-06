@@ -7,6 +7,7 @@ import { createPostcard } from '@/lib/actions/postcards'
 // Seed state comes from the plain module, never from the `'use server'` one — a
 // const exported from there is not importable and takes the route down at module
 // evaluation. See the comment at the top of lib/actions/postcards.ts.
+import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { uploadPostcardImage, validateImageFile } from '@/lib/media'
 import { POSTCARD_CAPTION_MAX_LENGTH } from '@/lib/validation/postcards'
@@ -36,6 +37,7 @@ type Upload =
  */
 export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
   const [state, formAction, pending] = useActionState(createPostcard, emptyActionState)
+  useActionRedirect(state)
   const [upload, setUpload] = useState<Upload>({ status: 'idle' })
   const [preview, setPreview] = useState<string | null>(null)
   const [caption, setCaption] = useState('')

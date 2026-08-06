@@ -1,19 +1,25 @@
-'use server'
-
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { commentBodySchema } from '@/lib/validation/comments'
 import type { ActionState } from '@/lib/actions/state'
 
 /**
  * A comment moves the per-viewer count on the feed as well as the thread, so
- * both paths are revalidated. `/postcards/[id]` has no route yet; revalidating
- * a path with no matching route is a harmless no-op and saves the next person
- * remembering to add it.
+ * both were revalidated by path and both are invalidated by key now.
+ *
+ * `postcards.all()` rather than `postcards.comments(id)`, which would be the
+ * obvious narrow choice and would be wrong: the thread is only one of the two
+ * things a comment changes. The other is the count the deck draws on every
+ * card, which lives under `postcards.feed(filter)` — and the filter is the
+ * screen's, not this action's, so there is no narrower key it could name. That
+ * is precisely the case `keys.ts` widens for.
+ *
+ * **It takes no postcard id, and that closes a recorded gap** — see
+ * `deleteComment` below.
  */
-function revalidateThread(postcardId: string) {
-  revalidatePath('/postcards')
-  revalidatePath(`/postcards/${postcardId}`)
+function invalidateThread() {
+  invalidate(queryKeys.postcards.all())
 }
 
 /**
@@ -32,7 +38,7 @@ export async function addComment(_prev: ActionState, formData: FormData): Promis
   const parsed = commentBodySchema.safeParse(formData.get('body') ?? '')
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to comment.' }
 
@@ -45,7 +51,7 @@ export async function addComment(_prev: ActionState, formData: FormData): Promis
   // permission problem — so the message says that rather than accusing them.
   if (error) return { error: 'Could not post that comment. The postcard may no longer be available.' }
 
-  revalidateThread(postcardId)
+  invalidateThread()
   // `sent` is what lets the form tell "not submitted yet" from "submitted,
   // nothing to report" — both are `error: null` otherwise, so without it the
   // composer cannot know when to clear itself. This is the case state.ts
@@ -64,32 +70,26 @@ export async function addComment(_prev: ActionState, formData: FormData): Promis
  * in the RLS suite itself, where `assert_allowed` on a DELETE passes against
  * zero rows.
  *
- * The postcard id is read first because it is needed to revalidate and is gone
- * once the row is.
+ * **The KNOWN GAP recorded here is closed, and by the cache move rather than by
+ * the migration it was waiting on.** The gap was: the `select('postcard_id')`
+ * below runs under the same RLS that hides the row on the `moderate_comment`
+ * path, so for the one case that path exists for — an author removing a blocked
+ * harasser's comment from their own photo — `existing` came back null and the
+ * revalidation never fired. The delete succeeded and the screen did not update.
+ * The recorded fix was to have `moderate_comment` return the postcard id
+ * instead of a boolean, which is a migration.
  *
- * KNOWN GAP, latent today, real the day Trust & Safety ships: that read runs
- * under the same RLS that hides the row on the `moderate_comment` path, so for
- * the one case that path exists for — an author removing a blocked harasser's
- * comment from their own photo — `existing` is null and the revalidate below
- * never fires. The delete succeeds; the screen does not update until something
- * else refreshes it.
- *
- * Unreachable from the UI as built: a comment the author cannot read is never
- * rendered, so no delete control exists for it, and there is no block UI yet.
- * It becomes reachable the moment blocking gets a screen. The fix is to have
- * `moderate_comment` return the postcard id rather than a boolean — a migration,
- * not an edit here, which is why this is recorded rather than patched.
+ * It is not needed. `revalidatePath` had to name a *path*, and the path
+ * contains the postcard id; a cache key does not — `invalidateThread()` takes
+ * no argument, so it fires on both branches unconditionally. The
+ * `select('postcard_id')` this action used to open with is gone with it: it
+ * existed only to build that path, and keeping a read whose one consumer left
+ * is how a dead query survives a refactor.
  */
 export async function deleteComment(commentId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
-
-  const { data: existing } = await supabase
-    .from('postcard_comments')
-    .select('postcard_id')
-    .eq('id', commentId)
-    .maybeSingle()
 
   const { data: deleted, error } = await supabase
     .from('postcard_comments')
@@ -115,6 +115,8 @@ export async function deleteComment(commentId: string): Promise<ActionState> {
     if (!moderated) return { error: 'That comment is not yours to delete.' }
   }
 
-  if (existing?.postcard_id) revalidateThread(existing.postcard_id)
+  // Unconditional, unlike the `revalidatePath` it replaces — see the note
+  // above about the gap that closes.
+  invalidateThread()
   return { error: null }
 }

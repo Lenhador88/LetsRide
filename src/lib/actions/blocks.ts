@@ -1,7 +1,6 @@
-'use server'
-
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { EVERYTHING } from '@/lib/query/keys'
 import { riderIdSchema } from '@/lib/validation/blocks'
 import type { ActionState } from '@/lib/actions/state'
 
@@ -10,14 +9,27 @@ import type { ActionState } from '@/lib/actions/state'
  * blocked rider disappears from feeds, club rosters, ride crews, search and
  * chat simultaneously, because one predicate is applied across every policy.
  *
- * So the revalidation has to be just as broad. Revalidating `/postcards` alone
- * would leave a blocked rider still showing in a cached club roster, which is
- * exactly the half-applied block the architecture exists to prevent. The whole
+ * So the invalidation has to be just as broad. Clearing `postcards` alone would
+ * leave a blocked rider still showing in a cached club roster, which is exactly
+ * the half-applied block the architecture exists to prevent. The whole
  * authenticated tree is the honest blast radius; a block is rare enough that
  * the cost is irrelevant.
+ *
+ * `EVERYTHING` is the empty prefix, which matches every key — the direct
+ * translation of `revalidatePath('/', 'layout')`, and the case `keys.ts`
+ * documents it for. Task 5.10 is what makes it load-bearing rather than
+ * conservative: the blocked rider's content must leave **every cached view the
+ * blocker holds**, not only the next fetch, and no single prefix can express
+ * that because they appear under `postcards`, `rides`, `clubs` *and* `profile`.
+ *
+ * `invalidate` rather than `clearQueryCache`, and the difference matters here.
+ * Clearing would blank every screen the blocker is currently looking at down to
+ * a skeleton; invalidating refetches the mounted ones in place, so the block
+ * takes effect as content disappearing rather than as the app restarting. Only
+ * sign-out wants the destructive one.
  */
-function revalidateEverything() {
-  revalidatePath('/', 'layout')
+function invalidateEverything() {
+  invalidate(EVERYTHING)
 }
 
 /**
@@ -35,7 +47,7 @@ export async function blockRider(blockedId: string): Promise<ActionState> {
   const parsed = riderIdSchema.safeParse(blockedId)
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 
@@ -53,7 +65,7 @@ export async function blockRider(blockedId: string): Promise<ActionState> {
 
   if (error) return { error: 'Could not block that rider. Try again.' }
 
-  revalidateEverything()
+  invalidateEverything()
   return { error: null }
 }
 
@@ -71,7 +83,7 @@ export async function unblockRider(blockedId: string): Promise<ActionState> {
   const parsed = riderIdSchema.safeParse(blockedId)
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 
@@ -79,6 +91,6 @@ export async function unblockRider(blockedId: string): Promise<ActionState> {
 
   if (error) return { error: 'Could not unblock that rider. Try again.' }
 
-  revalidateEverything()
+  invalidateEverything()
   return { error: null }
 }

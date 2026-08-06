@@ -6,10 +6,12 @@ import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { signIn } from '@/lib/actions/auth'
+import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(signIn, emptyActionState)
+  useActionRedirect(state)
 
   return (
     <form action={formAction}>

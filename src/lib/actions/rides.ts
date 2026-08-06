@@ -1,25 +1,29 @@
-'use server'
-
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
 import type { ActionState } from '@/lib/actions/state'
 import type { RideAttendance } from '@/types'
 
 /**
- * This module exports only async functions, which `'use server'` requires. The
- * shared `emptyActionState` const lives in `lib/actions/state.ts` for exactly
- * that reason — see the note there, and `src/__tests__/use-server-exports.test.ts`,
- * which asserts the rule after `postcards.ts` broke `/postcards/new` by
- * violating it.
+ * The shared `emptyActionState` const lives in `lib/actions/state.ts` because
+ * a `'use server'` module may export only async functions — see the note there,
+ * and `src/__tests__/use-server-exports.test.ts`, which asserts the rule after
+ * `postcards.ts` broke `/postcards/new` by violating it. This module no longer
+ * carries the directive, so the rule no longer binds it; the split stays
+ * because the constant is genuinely shared.
  */
 
-function revalidateRide(rideId: string) {
-  revalidatePath('/rides')
-  revalidatePath(`/rides/${rideId}`)
-  revalidatePath(`/rides/${rideId}/crew`)
+/**
+ * `rides.all()` is the prefix over the list, its filter tiles, the detail and
+ * the crew — the three paths this replaces plus `filters`, which none of them
+ * named. An RSVP moves the attendee collage the list draws, so the tiles were
+ * always in the blast radius; `revalidatePath('/rides')` happened to cover them
+ * because they render on that route.
+ */
+function invalidateRide() {
+  invalidate(queryKeys.rides.all())
 }
 
 /**
@@ -65,7 +69,7 @@ export async function createRide(
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
   }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to create a ride.' }
 
@@ -112,8 +116,12 @@ export async function createRide(
     return { error: 'That ride could not be created.' }
   }
 
-  revalidatePath('/rides')
-  redirect(`/rides/${ride.id}`)
+  invalidate(queryKeys.rides.all())
+  // A ride created into a club appears on that club's Rides sub-page, which
+  // `revalidatePath('/rides')` never reached — `/rides/new` only began offering
+  // `club_id` on 2026-08-05 and this claim was not extended with it.
+  if (rest.club_id) invalidate(queryKeys.clubs.detail(rest.club_id))
+  return { error: null, redirectTo: `/rides/${ride.id}` }
 }
 
 /**
@@ -147,7 +155,7 @@ export async function setRideAttendance(
 ): Promise<ActionState> {
   if (!rideId) return { error: 'That ride could not be found.' }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to RSVP.' }
 
@@ -172,6 +180,6 @@ export async function setRideAttendance(
     return { error: 'Could not update your RSVP. The ride may no longer be available.' }
   }
 
-  revalidateRide(rideId)
+  invalidateRide()
   return { error: null, sent: true }
 }

@@ -6,6 +6,7 @@
  * lives in.
  */
 export { useQuery, type UseQueryOptions, type UseQueryResult } from '@/lib/query/useQuery'
+export { combineQueries } from '@/lib/query/combine'
 export {
   clearQueryCache,
   DEFAULT_STALE_TIME,

@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
 import { signUp } from '@/lib/actions/auth'
+import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 
 export default function SignupPage() {
   const [state, formAction, pending] = useActionState(signUp, emptyActionState)
+  useActionRedirect(state)
   const [accepted, setAccepted] = useState(false)
 
   return (

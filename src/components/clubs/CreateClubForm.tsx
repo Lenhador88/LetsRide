@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { createClub } from '@/lib/actions/clubs'
+import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
 import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX } from '@/lib/validation/clubs'
@@ -37,6 +38,7 @@ import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX } from '@/lib/validation/clubs'
  */
 export function CreateClubForm() {
   const [state, formAction, pending] = useActionState(createClub, emptyActionState)
+  useActionRedirect(state)
 
   const [avatarPath, setAvatarPath] = useState('')
   const [coverPath, setCoverPath] = useState('')

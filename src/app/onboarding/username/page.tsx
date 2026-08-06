@@ -6,6 +6,7 @@ import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Pagination } from '@/components/ui/Pagination'
+import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { checkUsernameAvailability, setUsername } from '@/lib/actions/onboarding'
 import { USERNAME_MIN_LENGTH } from '@/lib/validation/profile'
@@ -32,6 +33,7 @@ type Availability = { value: string; available: boolean; error: string | null }
  */
 export default function OnboardingUsernamePage() {
   const [state, formAction, pending] = useActionState(setUsername, emptyActionState)
+  useActionRedirect(state)
   const [username, setUsernameValue] = useState('')
   const [availability, setAvailability] = useState<Availability | null>(null)
 

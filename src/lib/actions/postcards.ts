@@ -1,49 +1,53 @@
-'use server'
-
-import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { createPostcardSchema } from '@/lib/validation/postcards'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
 import type { ActionState } from '@/lib/actions/state'
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
-
 /**
  * State lives in `lib/actions/state.ts`, not here, and that is load bearing
- * rather than tidiness: a `'use server'` module may only export async functions,
- * so the `emptyPostcardActionState` const this file used to export threw
- * `A "use server" file can only export async functions, found object` the moment
- * a client component imported it — taking the whole /postcards/new route down at
- * module evaluation. It was latent from the day it shipped because nothing
- * imported it yet.
+ * rather than tidiness: while this was a `'use server'` module it could only
+ * export async functions, so the `emptyPostcardActionState` const this file
+ * used to export threw `A "use server" file can only export async functions,
+ * found object` the moment a client component imported it — taking the whole
+ * /postcards/new route down at module evaluation. It was latent from the day it
+ * shipped because nothing imported it yet.
  *
- * Nothing in the build catches this. Type check, lint, `next build` and the unit
- * suite were all green while the route was dead in production, which is why
- * `src/__tests__/use-server-exports.test.ts` now asserts the rule directly.
+ * The directive is gone now (see `state.ts`), so the rule no longer binds — but
+ * the split stays, because re-merging it is free to redo and the constant is
+ * genuinely shared.
  *
- * Re-exported as a type here so callers can keep importing it from the module
- * whose actions they are using — a type re-export is erased at compile time and
- * is legal in a `'use server'` file, unlike a value.
+ * Nothing in the build catches that class of mistake. Type check, lint,
+ * `next build` and the unit suite were all green while the route was dead in
+ * production, which is why `src/__tests__/use-server-exports.test.ts` asserts
+ * the rule directly for any module that still carries the directive.
  */
 export type { ActionState as PostcardActionState } from '@/lib/actions/state'
 
-// `/postcards` is the home feed, which now exists — a like has to move the
-// count there, which is the whole reason this path was left to be filled in.
-// `/postcards/[id]` has no route yet; revalidating a path with no matching
-// route is a harmless no-op, and the name follows the `/rides/[id]` /
-// `/clubs/[id]` convention already in the repo. The club Posts tab gets added
-// here when that route lands.
-async function revalidatePostcardRoutes(supabase: SupabaseServerClient, postcardId: string) {
-  revalidatePath('/postcards')
-  revalidatePath(`/postcards/${postcardId}`)
+/**
+ * The client-cache replacement for this file's `revalidatePath('/postcards')`
+ * plus `` revalidatePath(`/postcards/${id}`) `` pair.
+ *
+ * `postcards.all()` rather than the feed and the detail key separately, and the
+ * reason is `keys.ts`'s own: a prefix invalidation reaches every filter set as
+ * well, and a like moves a count the filter bar draws. Naming the two keys
+ * precisely would under-invalidate by exactly the amount that is hard to see —
+ * the tile counts, on a screen the rider is looking at.
+ *
+ * The club lookup survives the move unchanged. A postcard posted into a club
+ * appears on that club's Timeline, and this action is only ever handed the
+ * postcard's id.
+ */
+async function invalidatePostcard(supabase: DataClient, postcardId: string) {
+  invalidate(queryKeys.postcards.all())
 
   const { data: postcard } = await supabase
     .from('postcards')
     .select('club_id')
     .eq('id', postcardId)
     .maybeSingle()
-  if (postcard?.club_id) revalidatePath(`/clubs/${postcard.club_id}`)
+  if (postcard?.club_id) invalidate(queryKeys.clubs.detail(postcard.club_id))
 }
 
 /**
@@ -53,7 +57,7 @@ async function revalidatePostcardRoutes(supabase: SupabaseServerClient, postcard
  * ignoring the conflict is correct, not just a workaround.
  */
 export async function likePostcard(postcardId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to like this.' }
 
@@ -66,7 +70,7 @@ export async function likePostcard(postcardId: string): Promise<ActionState> {
 
   if (error) return { error: 'Could not like that postcard. Try again.' }
 
-  await revalidatePostcardRoutes(supabase, postcardId)
+  await invalidatePostcard(supabase, postcardId)
   return { error: null }
 }
 
@@ -77,7 +81,7 @@ export async function likePostcard(postcardId: string): Promise<ActionState> {
  * owns, free to drift from the policy silently.
  */
 export async function unlikePostcard(postcardId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 
@@ -85,7 +89,7 @@ export async function unlikePostcard(postcardId: string): Promise<ActionState> {
 
   if (error) return { error: 'Could not unlike that postcard. Try again.' }
 
-  await revalidatePostcardRoutes(supabase, postcardId)
+  await invalidatePostcard(supabase, postcardId)
   return { error: null }
 }
 
@@ -104,18 +108,18 @@ export async function unlikePostcard(postcardId: string): Promise<ActionState> {
  * hidden input, set once uploadPostcardImage resolves, alongside a caption
  * textarea and a club selector.
  *
- * Redirects to the feed on success, the same shape as onboarding's actions —
- * `/postcards` now exists, which is the condition this was waiting on. That
- * also makes success distinguishable from the initial state: both are
- * `{ error: null }`, so a caller watching the returned state alone could not
- * tell "not submitted yet" from "posted", and would need a sentinel field to
- * fake what a redirect expresses directly.
+ * Navigates to the feed on success, the same shape as onboarding's actions.
+ * That is also what keeps success distinguishable from the initial state: both
+ * are `{ error: null }`, so a caller watching the returned state alone could
+ * not tell "not submitted yet" from "posted". `redirect()` used to express that
+ * by throwing; `redirectTo` expresses it as a value the form's
+ * `useActionRedirect` acts on (task 5.8).
  */
 export async function createPostcard(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to post.' }
 
@@ -128,7 +132,11 @@ export async function createPostcard(
 
   const { imagePath, caption, clubId } = parsed.data
 
-  const { data: postcard, error } = await supabase
+  // `.select('id').single()` with the row discarded: the id was only ever used
+  // to build `` revalidatePath(`/postcards/${id}`) ``, which a cache key does
+  // not need. `single()` stays because it is what turns a zero-row insert into
+  // an error rather than a silent success.
+  const { error } = await supabase
     .from('postcards')
     .insert({ author_id: user.id, image_path: imagePath, caption, club_id: clubId })
     .select('id')
@@ -151,14 +159,11 @@ export async function createPostcard(
   }
 
   // clubId is already in hand from the parsed form, so this skips the lookup
-  // revalidatePostcardRoutes would otherwise do to find it.
-  revalidatePath('/postcards')
-  revalidatePath(`/postcards/${postcard.id}`)
-  if (clubId) revalidatePath(`/clubs/${clubId}`)
+  // invalidatePostcard would otherwise do to find it.
+  invalidate(queryKeys.postcards.all())
+  if (clubId) invalidate(queryKeys.clubs.detail(clubId))
 
-  // Outside the try/catch shape above on purpose: redirect() signals by
-  // throwing, so it must not sit anywhere an error branch could swallow it.
-  redirect('/postcards')
+  return { error: null, redirectTo: '/postcards' }
 }
 
 /**
@@ -183,7 +188,7 @@ export async function createPostcard(
  * deleting someone else's postcard would be told it worked.
  */
 export async function deletePostcard(postcardId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 
@@ -211,8 +216,7 @@ export async function deletePostcard(postcardId: string): Promise<ActionState> {
     await supabase.storage.from(MEDIA_BUCKET).remove([existing.image_path])
   }
 
-  revalidatePath('/postcards')
-  revalidatePath(`/postcards/${postcardId}`)
-  if (existing?.club_id) revalidatePath(`/clubs/${existing.club_id}`)
+  invalidate(queryKeys.postcards.all())
+  if (existing?.club_id) invalidate(queryKeys.clubs.detail(existing.club_id))
   return { error: null }
 }

@@ -1,8 +1,6 @@
-'use server'
-
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { clubSchema } from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
 
@@ -52,7 +50,7 @@ export async function createClub(
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
   }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to create a club.' }
 
@@ -86,9 +84,12 @@ export async function createClub(
     return { error: 'That club could not be created.' }
   }
 
-  revalidatePath('/clubs')
-  revalidatePath('/clubs/explore')
-  redirect(`/clubs/${club.id}`)
+  // Both club lists at once: `clubs.all()` is the prefix over `yours`,
+  // `explore` and `mine` (the picker on the create-ride and create-postcard
+  // forms), which the two `revalidatePath` calls this replaces covered between
+  // them — and the picker, which neither did, because no route drew it.
+  invalidate(queryKeys.clubs.all())
+  return { error: null, redirectTo: `/clubs/${club.id}` }
 }
 
 /**
@@ -111,7 +112,7 @@ export async function createClub(
  * otherwise worked.
  */
 export async function markClubSeen(clubId: string): Promise<void> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
@@ -122,7 +123,13 @@ export async function markClubSeen(clubId: string): Promise<void> {
       { onConflict: 'user_id,club_id' }
     )
 
-  revalidatePath('/clubs')
+  // `yours` only, matching `revalidatePath('/clubs')` exactly rather than
+  // widening to the `clubs` prefix. Explore is the one club list with no
+  // counter to move: `getExploreClubs` deliberately calls `toClubListItem`
+  // without an unread argument, because the design puts `Join club` in the slot
+  // the badge occupies and `015` refuses a watermark for a club you have not
+  // joined. Invalidating it here would refetch a list nothing changed on.
+  invalidate(queryKeys.clubs.yours())
 }
 
 /**
@@ -140,7 +147,7 @@ export async function markClubSeen(clubId: string): Promise<void> {
  * every time the rider finished the deck.
  */
 export async function markFeedSeen(): Promise<void> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
@@ -151,7 +158,13 @@ export async function markFeedSeen(): Promise<void> {
       { onConflict: 'user_id,club_id' }
     )
 
-  revalidatePath('/postcards')
+  // The filter bar only, not the feed. `revalidatePath('/postcards')` re-ran
+  // the whole page because a path is the smallest thing it can name; the
+  // watermark moves the "All new" tile's count and nothing else. Refetching the
+  // deck here would be worse than wasteful — this fires the moment the deck is
+  // exhausted, so it would replace the card list underneath the "start over"
+  // state the rider is looking at.
+  invalidate(queryKeys.postcards.filters())
 }
 
 /**
@@ -173,7 +186,7 @@ export async function markFeedSeen(): Promise<void> {
  * already owns.
  */
 export async function joinClub(clubId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to join a club.' }
 
@@ -186,9 +199,10 @@ export async function joinClub(clubId: string): Promise<ActionState> {
 
   if (error) return { error: 'That club could not be joined.' }
 
-  revalidatePath('/clubs')
-  revalidatePath('/clubs/explore')
-  revalidatePath(`/clubs/${clubId}`)
+  // `clubs.all()` is the prefix over both lists, the detail and its member
+  // roster — the three paths this replaces plus `members`, which the roster
+  // sub-page reads and which membership obviously changes.
+  invalidate(queryKeys.clubs.all())
   return { error: null }
 }
 
@@ -206,7 +220,7 @@ export async function joinClub(clubId: string): Promise<ActionState> {
  * put the rule in the weakest of the two places. Registered rather than fixed.
  */
 export async function leaveClub(clubId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 
@@ -218,8 +232,9 @@ export async function leaveClub(clubId: string): Promise<ActionState> {
 
   if (error) return { error: 'You could not be removed from that club.' }
 
-  revalidatePath('/clubs')
-  revalidatePath('/clubs/explore')
-  revalidatePath(`/clubs/${clubId}`)
+  // `clubs.all()` is the prefix over both lists, the detail and its member
+  // roster — the three paths this replaces plus `members`, which the roster
+  // sub-page reads and which membership obviously changes.
+  invalidate(queryKeys.clubs.all())
   return { error: null }
 }
