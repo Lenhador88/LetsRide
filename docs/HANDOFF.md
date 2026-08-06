@@ -344,6 +344,20 @@ imports them. The real work is the 17 pages.
    Combined coverage must not fall below **464 + the non-duplicate part of 75**. Mutation-test
    a sample of the folded-in assertions rather than trusting the move.
 
+   **There is a partial first pass on `claude/rls-suite-fold-draft`. It is RED — do not merge
+   it — but do not redo its work either.** It repoints the ~20 stamp assertions correctly
+   (`assert_rejected('23514', ...)` becomes `assert_denied(...)`, because after `025` the
+   statement fails at the GRANT before the trigger is entered, so the refusal is unconditional
+   rather than value-dependent) and its rewritten section comment explains that well. Three
+   things are left undone, and the branch's commit message enumerates them.
+
+   **One of those three is already diagnosed, which saves a scare:** with the full chain a
+   qualified rider's `postcard_comments` insert is refused by RLS, and that is **fixture drift
+   from the fold, not a production bug**. Checked against the live project — *no* INSERT policy
+   on any of the eight gated tables references `profiles`, so `025` cannot have caused it. The
+   seeded rider almost certainly cannot see the seeded postcard under `rls_test.sql`'s fixtures,
+   where the pending file set them up differently.
+
    Until this is done every mode still passes — `npm test`, `PENDING=023`, `PENDING=025`,
    `PENDING=023+025` — so **nothing goes red to remind you.** This line is the only signal,
    which is exactly the shape of the `024` problem that sat unnoticed for a day.
