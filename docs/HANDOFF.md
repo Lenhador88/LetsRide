@@ -81,9 +81,20 @@ Two seams are already built and waiting for it:
    security advisor that is not deliberate. **Owner action.**
 4. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
    nothing, with no alert. **Owner action** — needs Pro before anything resembling launch.
-5. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
-   `-- --delete`. Two objects, 1.15 MB, left by a bug fixed in #21. Whether the tool has ever
-   been *run* is unknown; the dry run is free and settles it.
+5. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
+   2026-08-06 as `qa-verify`: *"0 object(s) in your folder, 0 referenced by a postcard. No
+   orphans."* That settles nothing about the two objects (1.15 MB) the note refers to, because
+   the sweeper signs in as a rider and `010`'s Storage policies scope it to
+   `postcards/<that rider's uid>/`. The orphans are in the folder of whoever hit the bug fixed
+   in #21, which is not this fixture. **Owner action**, with their own credentials:
+
+   ```bash
+   export $(grep -v '^#' .env.local | xargs -d '\n')
+   NODE_USE_ENV_PROXY=1 RIDER_EMAIL=… RIDER_PASSWORD=… npm run storage:sweep   # then -- --delete
+   ```
+
+   `NODE_USE_ENV_PROXY=1` and exporting `.env.local` are both required — the script reads the
+   URL and key from the environment and Node's `fetch` ignores `HTTPS_PROXY` without the flag.
 6. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
    `/postcards/[id]` still carry inferred composition; the design has frames for both.
 
