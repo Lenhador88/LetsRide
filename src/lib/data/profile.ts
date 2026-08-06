@@ -1,6 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls } from '@/lib/data/media'
+import { OWN_PROFILE_COLUMNS } from '@/lib/data/columns'
 import type { Profile } from '@/types'
 
 export async function getCurrentProfile(): Promise<Profile | null> {
@@ -9,7 +10,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   if (!user) return null
 
   const profile = unwrap(
-    await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+    await supabase.from('profiles').select(OWN_PROFILE_COLUMNS).eq('id', user.id).maybeSingle(),
     'your profile',
   ) as Profile | null
 

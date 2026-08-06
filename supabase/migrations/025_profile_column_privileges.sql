@@ -1,17 +1,49 @@
--- 021: the two profile stamps become own-row-only.
+-- 025: the two profile stamps become own-row-only, by grant.
 --
 -- =========================================================================
--- ** NOT APPLIED. DO NOT APPLY THIS FILE WITHOUT ITS CODE REPAIR. **
+-- ** NOT APPLIED. DESTRUCTIVE. APPLY ONLY AFTER THE CODE REPAIR DEPLOYS. **
 --
--- It is listed in SKIP_MIGRATIONS in supabase/tests/run.sh, so the RLS suite
--- models the database that actually runs. Its assertions live in
--- supabase/tests/rls_test_pending_021.sql; run them with `PENDING=021 npm test`.
+-- Listed in SKIP_MIGRATIONS in supabase/tests/run.sh, so the RLS suite models
+-- the database that actually runs. Its assertions live in
+-- supabase/tests/rls_test_pending_025.sql:
 --
--- This migration removes a grant the running application both READS and WRITES,
--- which violates group 1's own definition — "nothing in this group removes a
--- column, table or grant the application reads". It is the same class of defect
--- as the `avatar_url` drop one migration over, and it belongs with its code
--- change, in a later group, exactly as D5 moved that one.
+--   PENDING=025     npm test   # applies 025, skips 023
+--   PENDING=023+025 npm test   # applies both — the pair that must compose
+--
+-- This file removes a grant the running application both READS and WRITES. On
+-- its own, against the code on `main` today, it is a total outage for every
+-- signed-in rider — see DEFECT 2 below, which enumerates the four paths.
+-- =========================================================================
+--
+-- =========================================================================
+-- ** THIS FILE IS THE SECOND HALF OF WHAT USED TO BE 021. **
+--
+-- `021_profile_column_privileges.sql` contained two things that have to be
+-- applied at different times relative to the code deploy:
+--
+--   additive    the three own-row functions — now 021_onboarding_state_accessors
+--   destructive the revoke and the column allowlist — this file
+--
+-- Together in one file they deadlock, and neither ordering escapes it:
+--
+--   New code + old database -> `proxy.ts` calls `my_onboarding_state()`, which
+--     does not exist -> 42883 -> the guard's fail-closed branch bounces EVERY
+--     signed-in rider to /auth/login?error=profile_unavailable.
+--
+--   Old code + new database -> this file lands and DEFECT 2's four paths break.
+--
+-- Split, each half has a moment it is safe. The order, and **filename order
+-- equals apply order deliberately**, because `run.sh` applies by filename and a
+-- file whose local order differs from its hosted order is a bug this repo has
+-- already hit once — see the `avatar_url` note in §1:
+--
+--   1. apply 021 (the functions) — safe today, against `main` as it stands;
+--   2. merge and deploy the code repair;
+--   3. apply 023, then this file.
+--
+-- **Nothing in this file changed when it moved.** The revoke, the three grant
+-- lists and the reasoning below are what 021 carried. Only the number and the
+-- surrounding frame are new.
 -- =========================================================================
 --
 -- ---------------------------------------------------------------------------
@@ -117,39 +149,40 @@
 --      that (d) is real.
 --
 -- (c) was found by the reviewer. (a), (b) and (d) were found while verifying it.
--- (a) is the worst of the four and is not about writes at all.
 --
 -- ---------------------------------------------------------------------------
--- The verdict this file exists to record
+-- The verdict, and how it was resolved
 -- ---------------------------------------------------------------------------
--- The requirement is right and the phase is wrong. Read the spec closely and its
--- normative content is about **reading**: "Consent and lifecycle timestamps
--- SHALL NOT be readable by other riders", and its testable scenario is that
--- `authenticated` must not retain column-level **SELECT**. D6 adds "INSERT and
--- UPDATE go the same way, since 012's trigger already overrides whatever the
--- client sends" — and that sentence is the whole error. The trigger overrides a
--- value; it does not originate one.
+-- The requirement is right and the original phasing was wrong. Read the spec
+-- closely and its normative content is about **reading**: "Consent and lifecycle
+-- timestamps SHALL NOT be readable by other riders", and its testable scenario
+-- is that `authenticated` must not retain column-level **SELECT**. D6 adds
+-- "INSERT and UPDATE go the same way, since 012's trigger already overrides
+-- whatever the client sends" — and that sentence is the whole error. The trigger
+-- overrides a value; it does not originate one. Take the UPDATE grant away and
+-- there is no statement left that names the column at all, so consent stops
+-- being recorded rather than being recorded server-side.
 --
--- So there are two honest ways forward, and choosing between them is a decision
--- for the change's owner rather than for this file:
+-- The resolution, settled 2026-08-05 and delegated by the product owner, is the
+-- option the earlier header called (A): ship it whole, in the group that owns
+-- the code, and **give the stamps their own writers** so the database writes
+-- what the client no longer may. Those writers are 021:
 --
---   A) Ship it whole, in the group that owns the code. Repoint proxy.ts and
---      getMyProfile at §2's accessor, and give consent an own-row RPC
---      (`accept_terms()`, `complete_onboarding(location)`) so the stamps are
---      written by the database rather than granted to the client. That is the
---      strongest end state and it is four application changes, which is
---      precisely why it is not a Phase 1 migration.
+--   my_onboarding_state()          read  — the caller's own position
+--   accept_terms()                 write — the caller's own consent
+--   complete_onboarding(text)      write — the caller's own final wizard step
 --
---   B) Narrow the revoke to SELECT, now. SELECT is what the requirement is
---      about and what leaks; the write grants are already neutered by 012's
---      trigger (immutable, server-timed) and 003's completion guard. But (a)
---      and (d) still bite — proxy.ts and getMyProfile *read* the columns — so
---      even the narrow version needs its two readers repointed first. There is
---      no version of this that is additive.
+-- That also dissolved a standing incompatibility with 023, which refuses every
+-- write from a rider whose two stamps are NULL: this file removes the client's
+-- path to setting them, and 021 gives the database one. `PENDING=023+025` walks
+-- the whole path and is the proof.
 --
--- Either way it leaves Phase 1. This file is written in shape (A) so that
--- whichever group takes it needs no rewriting, only an apply.
-
+-- The rejected alternative, recorded so it is not reopened by accident: narrow
+-- this to SELECT only and leave the write grants, on the grounds that 012's
+-- trigger and 003's guard already neuter them. It does not help. DEFECT 2 (a)
+-- and (d) are *reads*, so even the narrow version needs `proxy.ts` and
+-- `getMyProfile` repointed first. **There is no version of this that is
+-- additive**, which is exactly why it is a separate file from 021.
 -- ---------------------------------------------------------------------------
 -- §1. An explicit column allowlist, because a column-level revoke is a no-op
 -- ---------------------------------------------------------------------------
@@ -170,12 +203,17 @@
 --
 -- Naming it here is now an APPLY-TIME ABORT rather than a stale comment.
 -- `grant select (avatar_url)` raises `42703` against a database that has had
--- `024`, and the hosted project will, since `024` lands with its code repair
--- while this file is still held back. Note the local suite cannot catch it:
--- `run.sh` applies by filename, so `021` runs *before* `024` there and finds the
--- column present either way. Removing it costs nothing under any reading of this
--- migration's open shape question — a column that does not exist cannot be
--- granted, whether this ships whole or narrowed to SELECT.
+-- `024`, which the hosted project now has.
+--
+-- **The renumbering fixed the blind spot this paragraph used to describe.** As
+-- `021` it read: "the local suite cannot catch it — `run.sh` applies by filename,
+-- so `021` runs *before* `024` there and finds the column present either way,
+-- while against the hosted project it applies *after* and aborts." That was the
+-- exact trap, and it is why filename order was made to equal apply order when
+-- this file was split out. At 025 the file runs after 024 in **both** places, so
+-- the local suite would now fail on a reintroduced `avatar_url` rather than
+-- passing and leaving the outage for the hosted apply. Two orderings agreeing is
+-- worth more here than any assertion.
 
 revoke select, insert, update on public.profiles from authenticated;
 
@@ -194,38 +232,6 @@ grant update (
   username, bio, bike_model, location, avatar_path, cover_image_path
 ) on public.profiles to authenticated;
 
--- ---------------------------------------------------------------------------
--- §2. The accessor that supplies the row-awareness a grant cannot express
--- ---------------------------------------------------------------------------
---
--- D6's point exactly: a REVOKE is not row-aware, so the two legitimate own-row
--- readers — the route guard and the onboarding resume step — get a function
--- instead. It takes no arguments, reads two columns of `auth.uid()`'s own row,
--- and can return at most one row. That is narrower than `moderate_comment`,
--- which the security advisors already accept and which 011 §1b argues for at
--- length; expect it to appear as a new `security definer` advisory finding, and
--- expect that to be the right outcome rather than a regression.
---
--- Returns zero rows for a caller with no session, since `auth.uid()` is NULL and
--- no profile row has a NULL id.
-
-create or replace function public.my_profile_stamps()
-returns table (terms_accepted_at timestamptz, onboarding_completed_at timestamptz)
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select p.terms_accepted_at, p.onboarding_completed_at
-    from public.profiles p
-   where p.id = (select auth.uid());
-$$;
-
-comment on function public.my_profile_stamps() is
-  'The caller''s own consent and onboarding stamps, and nobody else''s (021). security definer because 021 revokes column SELECT on both; takes no arguments, so there is no row to choose but your own.';
-
-revoke all on function public.my_profile_stamps() from public, anon;
-grant execute on function public.my_profile_stamps() to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- §Verification — run against the project after applying, do not assume
@@ -249,8 +255,28 @@ grant execute on function public.my_profile_stamps() to authenticated;
 --          has_column_privilege('authenticated','public.profiles','avatar_path','select'),
 --          has_column_privilege('authenticated','public.profiles','username','update');
 --
--- Expected: f — nothing is readable table-wide any more.
+-- Expected: f — nothing is readable table-wide any more. This is the assertion
+-- that the file used the right SHAPE: a column-level revoke against a table-level
+-- grant is discarded with a warning (DEFECT 1), so a version that only revoked
+-- the columns would satisfy every check above by accident of the policy while
+-- leaving the exposure exactly where it was.
 --   select has_table_privilege('authenticated','public.profiles','select');
 --
--- Expected: f — anon gains nothing here, as everywhere.
---   select has_function_privilege('anon','public.my_profile_stamps()','execute');
+-- Expected: t, t, t — 021's writers must already be present, or this file has
+-- just made both stamps unwritable by anyone and the wizard is a dead end. Check
+-- this BEFORE applying, not after.
+--   select has_function_privilege('authenticated','public.my_onboarding_state()','execute'),
+--          has_function_privilege('authenticated','public.accept_terms()','execute'),
+--          has_function_privilege('authenticated','public.complete_onboarding(text)','execute');
+--
+-- Expected: 0 — the four DEFECT 2 paths are repaired in the deployed code. This
+-- one cannot be answered from SQL; it is a `git grep` against what is live on
+-- `main`, and it is the real precondition for applying this file.
+--   git grep -n "onboarding_completed_at\|terms_accepted_at" -- src/ | grep -v __tests__
+--
+-- STANDING COST, repeated here because it outlives this migration: **every
+-- column added to `profiles` from now on is invisible to `authenticated` until
+-- it is added to §1's grant lists.** A later migration that adds a column and
+-- forgets is a column that silently does not exist for the app — not an error,
+-- just absent. That is the permanent price of the allowlist shape, and the
+-- allowlist shape is the only one that restricts a column at all (DEFECT 1).

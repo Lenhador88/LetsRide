@@ -4,27 +4,36 @@
 -- How to run it, and why there are two of these files rather than one
 -- ---------------------------------------------------------------------------
 --
---   PENDING=021 npm test      # applies 021, skips 023, runs rls_test_pending_021.sql
---   PENDING=023 npm test      # applies 023, skips 021, runs rls_test_pending_023.sql
+--   PENDING=023     npm test  # applies 023, skips 025, runs this file
+--   PENDING=025     npm test  # applies 025, skips 023, runs rls_test_pending_025.sql
+--   PENDING=023+025 npm test  # applies BOTH, runs rls_test_pending_023_025.sql
 --
--- Each runs **instead of** rls_test.sql, and there is deliberately no mode that
--- applies both. Two reasons, and both are findings rather than inconveniences:
+-- Each runs **instead of** rls_test.sql, for one reason that still stands and
+-- one that no longer does:
 --
---   1. 021 turns roughly twenty of rls_test.sql's own assertions red. 003's and
---      012's stamp assertions read `terms_accepted_at` and
+--   1. **Still true.** 025 turns roughly twenty of rls_test.sql's own assertions
+--      red. 003's and 012's stamp assertions read `terms_accepted_at` and
 --      `onboarding_completed_at` directly as the caller, which is exactly the
---      column SELECT 021 revokes. When 021 lands with its code repair, those
---      assertions move to the accessor and rls_test_pending_021.sql merges back
+--      column SELECT 025 revokes. When 025 lands with its code repair, those
+--      assertions move to the accessor and rls_test_pending_025.sql merges back
 --      into rls_test.sql.
 --
---   2. **021 and 023 cannot both hold as drafted.** 023 refuses every write from
---      a rider whose two stamps are not set; 021 removes the only path by which
---      a client ever sets either one. Applied together, no rider can become
---      qualified to participate and the wizard is a dead end. This was not
---      reasoned out in advance — it was found by writing a single pending suite
---      and watching the onboarding-completes assertion fail with "permission
---      denied for table profiles". Whichever change lands 021 owns resolving it,
---      by giving consent and completion their own `security definer` writers.
+--   2. **RESOLVED 2026-08-05.** This note used to read: "021 and 023 cannot both
+--      hold as drafted. 023 refuses every write from a rider whose two stamps
+--      are not set; 021 removes the only path by which a client ever sets either
+--      one. Applied together, no rider can become qualified to participate and
+--      the wizard is a dead end." That was found by writing a single pending
+--      suite and watching the onboarding-completes assertion fail with
+--      "permission denied for table profiles", so it was a real finding and the
+--      fix had to be real too. `021` was split: its `accept_terms()` and
+--      `complete_onboarding(text)` are applied and give the database the write
+--      path, and only its revoke stays pending, as `025`. The pair that must
+--      compose is 023 and 025, and `PENDING=023+025` is the mode that proves it.
+--
+-- **This file models 023 WITHOUT the revoke**, which is a real state — it is what
+-- the database looks like between applying 023 and applying 025. So the direct
+-- stamp UPDATEs below are refused as 23514 by 023's guard rather than as 42501 by
+-- a missing grant. The combined suite asserts the other shape, deliberately.
 --
 -- Everything here uses harness.sql's identity idiom — `set_config('test.uid', …)`,
 -- which is what the harness's `auth.uid()` reads. The hosted database uses

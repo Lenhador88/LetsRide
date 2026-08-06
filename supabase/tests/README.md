@@ -24,27 +24,46 @@ major version.
 
 ### The two undeployed migrations
 
-**The suite models the database that actually runs**, so `run.sh` skips `021`
-and `023` by default: both are written, both are deliberately not applied to the
+**The suite models the database that actually runs**, so `run.sh` skips `023` and
+`025` by default: both are written, both are deliberately not applied to the
 hosted project, and a suite asserting a schema production does not have is worse
 than no suite. Their assertions run on demand:
 
 ```bash
-PENDING=021 npm test   # applies 021, skips 023, runs rls_test_pending_021.sql
-PENDING=023 npm test   # applies 023, skips 021, runs rls_test_pending_023.sql
+PENDING=023     npm test   # applies 023, skips 025
+PENDING=025     npm test   # applies 025, skips 023
+PENDING=023+025 npm test   # applies BOTH — the state that will actually ship
 ```
 
-Each runs *instead of* `rls_test.sql`, and there is no mode that applies both.
-Two reasons, both of which are findings rather than inconveniences:
+Each runs *instead of* `rls_test.sql`, because **`025` revokes the column SELECT
+that ~20 of `rls_test.sql`'s own `003`/`012` assertions read directly**, so that
+file cannot pass with `025` applied. When `025` lands with its code repair those
+assertions move to the accessor and `rls_test_pending_025.sql` merges back in.
 
-- `021` revokes the column SELECT that ~20 of `rls_test.sql`'s own `003`/`012`
-  assertions read directly, so that file cannot pass with `021` applied.
-- **`021` and `023` cannot both hold as drafted.** `023` refuses every write from
-  a rider whose two stamps are unset; `021` removes the only path by which a
-  client ever sets either. Together, no rider can ever qualify.
+Each pending suite fails without its migration — checked, not assumed — so
+neither is a placeholder.
 
-Both suites fail without their migration — checked, not assumed — so neither is
-a placeholder.
+**Two things here changed on 2026-08-05 and are worth knowing before reading
+older notes.**
+
+`021` used to be on this list. It was `021_profile_column_privileges.sql` and
+held two things that must be applied on opposite sides of the code deploy: the
+own-row functions, and the revoke. New code against a database without
+`my_onboarding_state()` bounces every rider at the route guard; old code against
+the revoke breaks four live paths. Split, `021_onboarding_state_accessors.sql` is
+purely additive and applied — so its assertions live in `rls_test.sql` like any
+other shipped migration — and only the revoke stays pending, as `025`.
+
+And there used to be no mode applying both, because "`023` requires two stamps
+that `021` removes the only client path to setting". `021`'s `accept_terms()` and
+`complete_onboarding(text)` resolved that by giving the database the write path,
+so `PENDING=023+025` now exists and walks a rider from two NULL stamps to a
+published postcard.
+
+**When you add an assertion, the question is which migration it constrains, not
+which file you happened to be reading.** Behaviour of the three functions is
+mainline; anything of the form `has_column_privilege(...) = false` is pending
+on `025`.
 
 ## Files
 
@@ -52,10 +71,16 @@ a placeholder.
 |---|---|
 | `harness.sql` | Stand-in for Supabase: `auth.users`, `auth.uid()`, the `anon`/`authenticated`/`auth_admin` roles, their default grants, and the assertion helpers |
 | `seed.sql` | Fixtures: three onboarded riders, two riders mid-onboarding, a private club with a member, a public club, a club-only ride, a public ride |
-| `rls_test.sql` | The assertions, against the deployed schema |
-| `rls_test_pending_021.sql` | Assertions for `021`, which is written and not deployed |
-| `rls_test_pending_023.sql` | Assertions for `023`, likewise. Adds three riders of its own so no expected value in `rls_test.sql` moves |
-| `run.sh` | Applies everything in order and runs one of the three suites |
+| `rls_test.sql` | The assertions, against the deployed schema — including `021`'s three own-row functions, which are applied |
+| `rls_test_pending_023.sql` | Assertions for `023`, written and not deployed. Models `023` *without* the revoke, so its stamp refusals are `23514` |
+| `rls_test_pending_025.sql` | Assertions for `025`, likewise. Only what the revoke changes; the functions' behaviour is mainline |
+| `rls_test_pending_023_025.sql` | The pair applied together — the shipping state. Walks the whole rider path, and asserts the refusals that move from `23514` to `42501` |
+| `run.sh` | Applies everything in order and runs one of the four suites |
+
+Each pending suite adds fixture riders of its own rather than extending
+`seed.sql`, so no expected value in `rls_test.sql` moves. `rls_test.sql`'s own
+`021` section does the same and rolls them back, which is why it sits at the end
+of the file.
 
 ## Writing assertions
 

@@ -22,12 +22,41 @@
  * `select('*')`. Adding it here would ship a column to every member list and
  * postcard byline that none of them draws.
  *
- * Your own row is exempt: `select('*')` with `eq('id', user.id)` is fine.
+ * Your own row is **no longer exempt** — see `OWN_PROFILE_COLUMNS` below.
  *
  * Deliberately free of imports so client components can use it too — anything
  * reaching into `lib/supabase/server` would drag `next/headers` into the bundle.
  */
 export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
+
+/**
+ * The columns of your **own** profile row that the client may read.
+ *
+ * This used to be `select('*')`, and the comment above used to say your own row
+ * was exempt from the projection rule. `021` ends that: it revokes table-level
+ * SELECT on `profiles` from `authenticated` and re-grants an explicit column
+ * allowlist, because a column-level revoke against a table-level grant is a
+ * documented no-op. `select('*')` requires SELECT on *every* column, so after
+ * `021` it returns `42501` and `unwrap` throws — the profile screen lands on the
+ * error boundary. This constant is that allowlist, spelled from the client side.
+ *
+ * **It must stay in step with `021`'s `grant select (...)` list.** That is the
+ * standing cost of the allowlist shape and it is permanent: a migration adding a
+ * column to `profiles` must add it in both places, or the column silently does
+ * not exist for the app. `columns.test.ts` pins the pair.
+ *
+ * `terms_accepted_at` and `onboarding_completed_at` are absent because they are
+ * no longer grantable to the client at all. The two legitimate own-row readers
+ * — the route guard and the wizard's resume step — go through
+ * `my_onboarding_state()`, which supplies the row-awareness a grant cannot
+ * express (design D6).
+ *
+ * `cover_image_path` IS here, unlike in `PUBLIC_PROFILE_COLUMNS`: the profile
+ * screen is the one screen that draws a cover, and this is the query it draws it
+ * from.
+ */
+export const OWN_PROFILE_COLUMNS =
+  'id, username, bio, bike_model, created_at, location, avatar_path, cover_image_path'
 
 /**
  * The club columns an embed needs to draw a club's **image**.

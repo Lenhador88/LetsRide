@@ -15,6 +15,7 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 | Styling | Tailwind CSS v4 (CSS-first config, no `tailwind.config.*`) |
 | Database / Auth | Supabase (Postgres + RLS + `@supabase/ssr`) |
 | Icons | The Figma set, generated to `src/components/icons/generated.tsx` (see Design System). `lucide-react` is **gone** — uninstalled 2026-08-05 with the last v1 page |
+| Client cache | Hand-rolled, `src/lib/query/` — `useQuery`, `invalidate`, `setQueryData`, `clearQueryCache`. **Not TanStack Query**: this app needs a well-bounded subset and the dependency rule below is deliberate. `keys.ts` is the contract mapping all 33 `revalidatePath` claims to cache keys |
 | Deployment | Vercel (auto-deploy from `main`) |
 | CI | GitHub Actions — type check + lint + unit tests + build, and the RLS suite. Path-scoped; see Branching & CI |
 
@@ -111,6 +112,14 @@ block* had it. A directive is only a directive on line one.
    `document.cookie` to find a session in — so a read issued from a component body is anonymous,
    and `anon` holds zero grants, so it fails closed at RLS. `src/lib/data/__tests__/isomorphic.test.ts`
    guards the module graph; nothing can guard this one, which is why it is written down.
+
+**Reads in a client component go in an effect, never during render, and through `useQuery`.**
+`resolve.browser.ts` throws a named error if you read during a server render of a client
+component — there is no session there, so the read would fail closed at RLS. The cache lives in
+`src/lib/query/`, and **every key is spelled in `keys.ts`**: a key written inline in a component
+is a bug even when the string happens to be right. The 33 `revalidatePath` claims the Server
+Actions make are that file's whole reason to exist — freshness used to be one `git grep` away
+and must not become 33 independent guesses.
 
 **Validation: Zod, one schema per concern, shared by both sides.** Lives in
 `src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
@@ -317,11 +326,34 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`020`, `022` and `024`. `021` and `023` are written and deliberately
+**Applied state: `001`–`022`, `024` and `026`. `023` and `025` are written and deliberately
 NOT applied — the one case where the "unapplied migrations are drift" rule must not be followed
-blindly.** Confirmed 2026-08-05 with `list_migrations`: **22 rows** ending
-`drop_legacy_avatar_url`, against **24 files** in `supabase/migrations/`. The two missing are
-exactly `021` and `023`.
+blindly.** Confirmed 2026-08-05 with `list_migrations`: **24 rows** ending
+`password_reset_grant`, against **26 files**. The two missing are exactly `023` and `025`.
+
+**`021` was split on 2026-08-05 because it contained a deployment deadlock**, and the split is
+the general lesson rather than a one-off. It held both the accessor functions and the revoke
+that makes them necessary; those must apply at *different times relative to the code deploy*,
+and no ordering of a single file satisfies both. It is now
+`021_onboarding_state_accessors.sql` (additive, applied) and
+`025_profile_column_privileges.sql` (the revoke, unapplied). **Filename order equals apply
+order** — `run.sh` applies by filename, so a file whose local order differs from its hosted
+order is a trap this repo has already sprung.
+
+**Do not apply `025` before the code that stops selecting those columns has deployed** — it is
+an instant outage, for the four reasons its own §DEFECT 2 enumerates. `023_participation_gate`
+refuses writes from riders whose consent stamp is NULL, so it needs the consent prompt deployed
+first; that shipped 2026-08-05 as `/onboarding/terms`. Both are in `SKIP_MIGRATIONS` in
+`supabase/tests/run.sh`, with pending suites `PENDING=023`, `PENDING=025` and — because the two
+were once mutually incompatible and no longer are — **`PENDING=023+025`**.
+
+**Three own-row RPCs now own the two profile stamps**, because `025` takes the client's grant
+away: `my_onboarding_state()` (the route guard's one round trip — both stamps plus
+`has_username`), `accept_terms()` and `complete_onboarding(location)`. **Each restates the
+invariants its triggers carry, and must.** Inside a `security definer` function `current_user`
+is the *owner*, so `003`'s and `012`'s guards — which begin
+`if current_user <> 'authenticated' then return new` — short-circuit and never run. CHECK
+constraints do still fire. Measured on Postgres 16, not recalled.
 
 `024` was applied 2026-08-05, in the order its header demands: PR #52 merged, Vercel deployment
 `READY` at `b60618a`, *then* the drop. Doing it the other way is an instant outage, because the

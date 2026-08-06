@@ -17,9 +17,38 @@
 -- Listed in SKIP_MIGRATIONS in supabase/tests/run.sh. Its assertions live in
 -- supabase/tests/rls_test_pending_023.sql; run them with `PENDING=023 npm test`.
 --
--- **021 and 023 cannot both be applied as drafted** — 023 requires two stamps
--- that 021 removes the only client path to setting. That is why there is no mode
--- applying both, and it is 021's problem to resolve rather than this file's.
+-- ** RESOLVED 2026-08-05 — 023 and the profile revoke are no longer incompatible. **
+-- This file used to say "021 and 023 cannot both be applied as drafted — 023
+-- requires two stamps that 021 removes the only client path to setting. That is
+-- why there is no mode applying both, and it is 021's problem to resolve rather
+-- than this file's." It was resolved, and then `021` was split in two, so the
+-- names have moved — read the resolution rather than the old numbers:
+--
+--   021_onboarding_state_accessors      APPLIED, purely additive. Holds
+--                                       `accept_terms()` and
+--                                       `complete_onboarding(text)`, which give
+--                                       the *database* the write path to the two
+--                                       stamps.
+--   025_profile_column_privileges       PENDING. Holds the revoke that takes that
+--                                       path away from the *client*.
+--
+-- So the pair that must compose is **023 and 025**, and there is a mode applying
+-- both — `PENDING=023+025 npm test` — which walks the whole rider path end to
+-- end. 021 is no longer pending at all.
+--
+-- Nothing in this file changed to achieve that. What changed is that the wizard
+-- has a way to reach the stamps this gate requires. Two consequences worth
+-- carrying, both asserted in the combined suite:
+--
+--   * With 025 applied, a direct `update profiles set onboarding_completed_at`
+--     is refused as **42501** (no column grant) rather than reaching §4's guard
+--     and being refused as 23514. The rule is unchanged; the layer that enforces
+--     it moves outward, and it fails *earlier*.
+--   * §4's guard therefore stops being the enforcement of record for anything
+--     the client can reach. `complete_onboarding()` restates §1.13's rule in its
+--     own body, because a `security definer` function runs as its owner and this
+--     guard's `current_user <> 'authenticated'` early return short-circuits for
+--     it. Measured, not assumed — see 021's §3.
 -- =========================================================================
 --
 -- ---------------------------------------------------------------------------
@@ -31,6 +60,15 @@
 --   onboarded but with no consent ............................. 3
 --
 --   select count(*) from public.profiles where terms_accepted_at is null;
+--
+-- ** NOT RE-MEASURED 2026-08-05 (second pass). ** The session that added 021's §3
+-- had no credential able to read these counts: `anon` holds zero grants on
+-- `public.profiles` (verified live — 42501, which is decision #1 holding), and
+-- reading them needs a rider session or `service_role`, which must never enter
+-- this repo. The numbers above are therefore CARRIED FORWARD, not confirmed.
+-- **Re-run the count at apply time**; it is the check that decides whether
+-- applying this file is safe, and a stale 4-of-4 would be exactly as misleading
+-- as a stale 0-of-4.
 --
 -- Q12 established that this is provenance rather than a broken write: the owner
 -- predates 003 by two days, two rows are `.test` fixtures SQL-inserted straight
@@ -117,7 +155,7 @@
 -- and no profile row has a NULL id — which is the right answer and not an
 -- accident of the query shape.
 --
--- `security definer` is for stability today and for privilege the moment 021
+-- `security definer` is for stability today and for privilege the moment 025
 -- lands, which revokes column SELECT on both stamps from `authenticated`. Worth
 -- stating both ways round: an earlier draft justified it as "stability only,
 -- since the caller can already read their own row", and that sentence stops
@@ -161,7 +199,7 @@ grant execute on function private.may_participate() to authenticated;
 -- The function must be `security definer` for two independent reasons: `private`
 -- has no USAGE for `authenticated` (005), and a plpgsql body resolves
 -- `private.may_participate` by name at prepare time — the same failure 022 hit;
--- and once 021 lands, `authenticated` has no column SELECT on the two stamps at
+-- and once 025 lands, `authenticated` has no column SELECT on the two stamps at
 -- all, so an invoker-rights read of them is 42501. Inside a `security definer`
 -- function `current_user` is the function's owner, so a body-level
 -- `current_user <> 'authenticated'` check would be true on **every** call and the
@@ -404,6 +442,29 @@ create trigger enforce_onboarding_completion_insert
 -- exposed schemas at all.
 --   select has_function_privilege('anon','private.may_participate()','execute');
 --
--- Expected: f, then t — before the consent prompt ships, the owner is gated.
--- This is the check that decides whether it is safe to apply.
---   select count(*) from public.profiles where terms_accepted_at is null;  -- must be 0
+-- Expected: 0. **This is the check that decides whether applying this file is
+-- safe**, and it is the one number in this migration that must be re-measured
+-- rather than read off the pre-flight above. Any rider still NULL here is locked
+-- out of creating anything the moment this applies — including the owner.
+--   select count(*) from public.profiles where terms_accepted_at is null;
+--
+-- Expected: t, t — 021's writers must already be applied, and without them the
+-- count above can never reach 0, because nothing else can write the column.
+--   select has_function_privilege('authenticated','public.accept_terms()','execute'),
+--          has_function_privilege('authenticated','public.complete_onboarding(text)','execute');
+--
+-- Expected: t — §4's guard is `security invoker`, and it has to stay that way.
+-- As `security definer` its own `current_user <> 'authenticated'` early return
+-- would be true on every call and it would enforce nothing, while passing every
+-- positive test. This is the shape 022 got wrong in the opposite direction; check
+-- it rather than assume the file that was applied matches the file in git.
+--   select not prosecdef from pg_proc
+--    where pronamespace = 'public'::regnamespace
+--      and proname = 'enforce_onboarding_completion';
+--
+-- Expected: t, t — and the two gate functions are the reverse, definer by
+-- design, for the reasons §1 and §2 give.
+--   select prosecdef from pg_proc where proname = 'may_participate'
+--     and pronamespace = 'private'::regnamespace;
+--   select prosecdef from pg_proc where proname = 'enforce_participation_gate'
+--     and pronamespace = 'public'::regnamespace;

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { CLUB_EMBED_COLUMNS, OWN_PROFILE_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 
 const SRC = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)))
 
@@ -70,6 +70,64 @@ describe('the column allowlists', () => {
     expect(CLUB_EMBED_COLUMNS).not.toContain('avatar_url')
     expect(PUBLIC_PROFILE_COLUMNS).toContain('avatar_path')
     expect(CLUB_EMBED_COLUMNS).toContain('avatar_path')
+  })
+})
+
+/**
+ * `025` revokes table-level SELECT on `profiles` from `authenticated` and
+ * re-grants an explicit column allowlist, because a column-level revoke against
+ * a table-level grant is a documented no-op. `OWN_PROFILE_COLUMNS` is that same
+ * list spelled from the client side, and **the two must agree exactly**:
+ *
+ * - a column in the constant but not the grant → `getCurrentProfile` returns
+ *   `42501` the moment `025` applies, `unwrap` throws, and the profile screen
+ *   lands on the error boundary;
+ * - a column in the grant but not the constant → dead grant, and a column the
+ *   app cannot see for a reason nobody will find.
+ *
+ * `025`'s own header calls this out as the standing, permanent cost of the
+ * allowlist shape: *every column added to `profiles` from now on is invisible to
+ * `authenticated` until it is added to these grants.* A comment saying so is not
+ * a guard. This is — it reads the migration and compares.
+ */
+describe('OWN_PROFILE_COLUMNS matches 025 grant list', () => {
+  const migration = readFileSync(
+    path.join(SRC, '..', 'supabase', 'migrations', '025_profile_column_privileges.sql'),
+    'utf8'
+  )
+
+  /** The first `grant select (...) on public.profiles to authenticated`. */
+  const granted = (() => {
+    const match = migration.match(
+      /grant\s+select\s*\(([^)]*)\)\s*\n?\s*on\s+public\.profiles\s+to\s+authenticated/i
+    )
+    if (!match) throw new Error('no `grant select (...) on public.profiles` found in 025')
+    return match[1]
+      .split(',')
+      .map((c) => c.replace(/--.*$/gm, '').trim())
+      .filter(Boolean)
+      .sort()
+  })()
+
+  const constant = OWN_PROFILE_COLUMNS.split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .sort()
+
+  it('finds a real grant list, so this cannot pass by matching nothing', () => {
+    expect(granted.length).toBeGreaterThan(4)
+    expect(granted).toContain('username')
+  })
+
+  it('grants exactly what the client selects, and nothing more', () => {
+    expect(constant).toEqual(granted)
+  })
+
+  it('never selects a stamp the grant deliberately withholds', () => {
+    for (const withheld of ['terms_accepted_at', 'onboarding_completed_at']) {
+      expect(OWN_PROFILE_COLUMNS).not.toContain(withheld)
+      expect(granted).not.toContain(withheld)
+    }
   })
 })
 

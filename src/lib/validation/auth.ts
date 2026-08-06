@@ -26,13 +26,19 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Enter your password.'),
 })
 
+// Q9: the primary button is disabled until this is ticked, but the action
+// re-checks it — a disabled button is not a trust boundary. Named rather than
+// inlined because two screens collect consent: signup, and the standalone
+// prompt for riders whose stamp predates that write (Q11).
+const acceptedTermsSchema = z.literal(true, 'Accept the terms to continue.')
+
 export const signUpSchema = z.object({
   email: emailSchema,
   password: newPasswordSchema,
-  // Q9: the primary button is disabled until this is ticked, but the action
-  // re-checks it — a disabled button is not a trust boundary.
-  acceptedTerms: z.literal(true, 'Accept the terms to continue.'),
+  acceptedTerms: acceptedTermsSchema,
 })
+
+export const consentSchema = z.object({ acceptedTerms: acceptedTermsSchema })
 
 export const resetRequestSchema = z.object({ email: emailSchema })
 

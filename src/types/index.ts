@@ -16,9 +16,26 @@ export type Profile = {
   bio: string | null
   bike_model: string | null
   location: string | null
-  onboarding_completed_at: string | null
-  terms_accepted_at: string | null
   created_at: string
+}
+
+/**
+ * The caller's own consent and onboarding stamps, from `my_onboarding_state()`.
+ *
+ * They are **not** fields on `Profile`, and that is the point of `021`: the
+ * client holds no SELECT grant on either column, so no query can return them on
+ * a profile row — yours or anyone else's. Typing them as if it could would put a
+ * field on `Profile` that is `undefined` on every path, which is the exact shape
+ * of bug `columns.ts` exists to prevent.
+ *
+ * `has_username` rides along because the route guard needs it in the same round
+ * trip to pick the wizard's resume step, and it derives from a column the caller
+ * can already read.
+ */
+export type OnboardingState = {
+  terms_accepted_at: string | null
+  onboarding_completed_at: string | null
+  has_username: boolean
 }
 
 /**
