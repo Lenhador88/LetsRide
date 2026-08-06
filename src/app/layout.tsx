@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Poppins } from 'next/font/google'
+import { RouteGuard } from '@/components/auth/RouteGuard'
 import './globals.css'
 
 const poppins = Poppins({
@@ -24,7 +25,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`h-full ${poppins.variable}`}>
       <body className="min-h-full bg-background text-foreground font-sans antialiased">
-        {children}
+        {/* The root layout and not `(app)`'s, because three of the rules the
+            guard enforces are about paths outside that group: bouncing a
+            signed-in rider off /auth/login, sending an un-onboarded one into
+            the wizard, and resolving /. */}
+        <RouteGuard>{children}</RouteGuard>
       </body>
     </html>
   )

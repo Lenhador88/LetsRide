@@ -1,0 +1,203 @@
+import type { OnboardingState } from '@/types'
+
+/**
+ * Where a rider is allowed to be — the client-side replacement for `proxy.ts`'s
+ * routing decisions (task 5.1).
+ *
+ * ## What moved, and what did not
+ *
+ * `proxy.ts` was never a security boundary and this is not one either. RLS is,
+ * and group 1 finished the job of putting every rule this file reads about into
+ * the database: `023` refuses content writes from a rider with no consent stamp,
+ * `003` and `012` own the completion invariants, and `025` means the client
+ * cannot even read the two stamps except through a `security definer` accessor.
+ * A rider who defeats this guard reaches a screen whose every query returns
+ * nothing. That is what makes moving it to the client an honest change rather
+ * than a downgrade — and it is exactly what task 6.1 asks to be audited.
+ *
+ * What this owns is **where to send someone**, which is a product decision about
+ * dead ends, not about permission. Decision #5: onboarding is required and not
+ * skippable, and an abandoned signup resumes where it left off.
+ *
+ * ## Why the decision is a pure function
+ *
+ * `proxy.ts` interleaved reading state with deciding on it, so none of its
+ * branches could be tested — and it carries five comments explaining traps
+ * (redirect loops, the `!state` case, step 2 before step 1) that were found by
+ * reasoning rather than by a failing test. Splitting the read from the decision
+ * makes every one of those a case in `__tests__/guard.test.ts`.
+ */
+
+/**
+ * A denylist of public paths, not an allowlist of protected ones. Decision #1 is
+ * that everything requires a session, so a new route must be *added* here to
+ * become public — the old `protectedPaths` allowlist meant forgetting to list a
+ * route silently exposed it.
+ *
+ * /legal/* is the one deliberate exception to no-anonymous-access (Q6): the
+ * terms and privacy pages have to be readable before signup completes, and they
+ * are static copy with no data access.
+ */
+export const PUBLIC_PATHS = [
+  '/',
+  '/auth/login',
+  '/auth/signup',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/callback',
+]
+
+/**
+ * Signed-in riders are bounced away from these two only. Notably NOT
+ * /auth/reset-password: a Supabase recovery link establishes a session before
+ * landing there, so bouncing every /auth/* path sent the user to the home screen
+ * with their old password still active and no error (Q1).
+ */
+export const AUTH_ENTRY_PATHS = ['/auth/login', '/auth/signup']
+
+export type GuardState =
+  /** No session. */
+  | { kind: 'anonymous' }
+  /**
+   * A session, on a path that does not need the onboarding stamp — the legal
+   * pages and the whole recovery flow. `readGuardState` returns this instead of
+   * spending a round trip, exactly as `proxy.ts` skipped its profile read.
+   *
+   * It is its own state rather than being folded into `unavailable` on the
+   * reasoning that the branch order makes them equivalent. It does *not*: if a
+   * path that genuinely needs the stamp ever reaches `resolveDestination` with
+   * this, the correct answer is to fail closed, and only a distinct state can
+   * say so. Relying on two files agreeing about branch order is how a guard
+   * quietly stops guarding.
+   */
+  | { kind: 'session' }
+  /**
+   * A session, but the onboarding accessor did not answer. Deliberately its own
+   * state rather than being folded into "not onboarded" — see `resolveDestination`.
+   */
+  | { kind: 'unavailable' }
+  | ({ kind: 'rider' } & OnboardingState)
+
+export function isPublicPath(pathname: string): boolean {
+  // `/legal/` with the trailing slash, not `startsWith('/legal')` — the loose
+  // prefix also matches `/legalfoo`. Harmless while nothing routes there, but a
+  // public rider profile at `/[username]` is a plausible next route, and
+  // `legalbeagle` is a legal username under 003's rules.
+  return (
+    PUBLIC_PATHS.includes(pathname) || pathname === '/legal' || pathname.startsWith('/legal/')
+  )
+}
+
+/**
+ * `null` means "stay here". A string is the path to replace the current one
+ * with.
+ *
+ * Every branch below is `proxy.ts`'s, in its order, for the reasons its comments
+ * gave. The order is load-bearing in three places and each is marked.
+ */
+export function resolveDestination(pathname: string, state: GuardState): string | null {
+  const isAuthEntry = AUTH_ENTRY_PATHS.includes(pathname)
+  const isOnboarding = pathname.startsWith('/onboarding')
+  const isPublic = isPublicPath(pathname)
+
+  if (state.kind === 'anonymous') {
+    // `/` is public, so an anonymous rider landing on the splash is *allowed*
+    // to be there — but there is nothing to see. The server version could not
+    // express this: `/` was a server page that redirected, so the guard never
+    // had to have an opinion. Now the page renders the splash and this is what
+    // sends them on.
+    if (pathname === '/') return '/auth/login'
+    return isPublic ? null : '/auth/login'
+  }
+
+  // Public paths that are not a way back into signup need no onboarding state,
+  // so `readGuardState` skips the round trip entirely for them. That covers the
+  // legal pages and the whole recovery flow.
+  if (state.kind === 'session') {
+    // Fail closed if the caller skipped the read on a path that needed it —
+    // see the type's own note. `needsOnboardingState` and this must agree, and
+    // this is the half that notices when they stop.
+    return needsOnboardingState(pathname) ? '/auth/login?error=profile_unavailable' : null
+  }
+
+  // A read that did not answer and a genuinely un-onboarded rider are different
+  // states, and treating them the same is how a deploy mismatch turns into a
+  // redirect loop: a missing function answers PGRST202 and every authenticated
+  // route would otherwise bounce into a wizard that cannot help. Fail closed and
+  // visibly rather than into it.
+  //
+  // `unavailable` also covers the accessor returning ZERO ROWS for a caller with
+  // no `profiles` row. Read as "not onboarded" that would send the rider to the
+  // consent prompt, where `accept_terms()` has no row to update, returns NULL,
+  // and fails every submit — a trap with no exit. Unreachable today because
+  // `handle_new_user` guarantees the row, but `023` and the account-deletion
+  // proposal both name deleting a `profiles` row without its `auth.users` row as
+  // the thing that makes it reachable.
+  if (state.kind === 'unavailable') {
+    // The auth entry paths must fall through rather than redirect. They are
+    // public but still reach this branch (a signed-in rider is normally bounced
+    // off them), so sending /auth/login to /auth/login is an infinite loop — and
+    // it would fire on exactly the failure this branch exists to survive,
+    // locking every signed-in rider out with no way to sign out.
+    if (isAuthEntry) return null
+    return '/auth/login?error=profile_unavailable'
+  }
+
+  // Consent comes before the wizard, because 023 refuses to stamp completion
+  // while the consent stamp is NULL. A rider who signed up through the current
+  // flow never sees this screen — signUp records consent the instant the account
+  // exists — so in practice it is reached only by the accounts that predate that
+  // write. Q11 chose a prompt over a backfill: a fabricated consent record is
+  // worse than a missing one.
+  if (!state.terms_accepted_at) {
+    return pathname === '/onboarding/terms' ? null : '/onboarding/terms'
+  }
+
+  if (!state.onboarding_completed_at) {
+    // Resume position is derived from which fields are still empty; completion
+    // itself is stored, so editing your profile later never re-gates you.
+    const resume = state.has_username ? '/onboarding/location' : '/onboarding/username'
+
+    if (isOnboarding) {
+      // Step 2 cannot be reached before step 1 is done. The database refuses
+      // completion unless both fields are set, so without this a rider who
+      // deep-links to /onboarding/location submits, gets a check violation
+      // rendered as "Finish the earlier steps first", and has no way forward
+      // from a screen that can never succeed. Going backwards stays allowed —
+      // step 2 has a Back link, and editing a username you already chose is
+      // fine. /onboarding/terms is past for this rider, so it redirects on.
+      if (pathname === '/onboarding/location' && !state.has_username) {
+        return '/onboarding/username'
+      }
+      if (pathname === '/onboarding/terms') return resume
+      return null
+    }
+    return resume
+  }
+
+  if (isOnboarding || isAuthEntry || pathname === '/') {
+    // Postcards is the home screen; /dashboard was deleted with the feed that
+    // replaced it.
+    return '/postcards'
+  }
+
+  return null
+}
+
+/**
+ * Does this path need the onboarding accessor at all?
+ *
+ * Split out so the guard can skip a round trip on the legal pages and the whole
+ * recovery flow, exactly as `proxy.ts` did — and so the skip is testable rather
+ * than being an early `return` buried in the middle of the decision.
+ */
+export function needsOnboardingState(pathname: string): boolean {
+  if (!isPublicPath(pathname)) return true
+  if (AUTH_ENTRY_PATHS.includes(pathname)) return true
+  // The splash has to know where to send a signed-in rider, which is the resume
+  // step when they are mid-wizard.
+  return pathname === '/'
+}
+
+/** The shape `readGuardState` expects back from `my_onboarding_state()`. */
+export type OnboardingStateRow = OnboardingState
