@@ -22,6 +22,38 @@ has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-la
 
 ---
 
+## DEV and PROD — the split landed 2026-08-06, and it is half-done on purpose
+
+**`docs/ENVIRONMENTS.md` is the contract.** Read it before touching either project. What
+belongs here is only which half is real.
+
+**Real, in this repo:** the `development` branch, CI triggering on it (`ci.yml` `on:` lists both
+branches on both triggers — a base branch missing from those lists runs *zero* jobs and shows no
+red mark), `npm run db:drift`, `supabase/seeds/development.sql`, and every doc claim above.
+
+**Not real yet — all owner actions:** the `letsride-dev` Supabase project does not exist.
+`list_projects` returns one project. **Until it does, Vercel Preview still points at production,
+so previews are writing to the live database.** That is the most urgent item in
+`ENVIRONMENTS.md` §Owner setup, and step 1 there is just *checking* how the Vercel variables are
+currently scoped — which no session can do, there being no MCP tool for Vercel env vars.
+
+Two rules that bite immediately, before any of the owner steps happen:
+
+- **PRs go to `development`, not `main`.** `CLAUDE.md` §Branching & CI said `main` until today
+  and it is the thing an agent gets wrong by habit. `main` takes exactly one kind of PR: the
+  promotion.
+- **Never promote a Vercel preview to production.** `NEXT_PUBLIC_SUPABASE_*` is inlined at
+  build time and Vercel's own API docs say promote *"does not rebuild the deployment"* — so it
+  would ship DEV credentials to riders with a green deploy and no error.
+
+Verify rather than trust, one line each:
+
+```bash
+git ls-remote --heads origin development          # does the branch exist
+grep -A 5 '^on:' .github/workflows/ci.yml         # both branches, both triggers
+npm run db:drift                                  # needs PROD_DATABASE_URL / DEV_DATABASE_URL
+```
+
 ## The client-rendered migration is finished and archived
 
 **Done 2026-08-06**, merged as #58. The architecture it produced is described in `CLAUDE.md`
@@ -395,12 +427,14 @@ onboarding and no sign-in. That is the shape of `signUp`'s documented consent-fa
 1. **Email confirmation is off** (decision #6), so anyone can sign up with an address they do
    not control. Must be revisited before public launch — and it interacts with both `.test`
    accounts above.
-2. **Branch protection on `main` is not enabled**, and an agent session cannot enable it — the
-   GitHub MCP server has no branch-protection tool and the REST endpoint 403s. Needs a human in
-   the repo settings. Recommended: require a PR, require **`Type Check, Lint & Build`** and
-   **`RLS Policy Tests`** (the job `name:` values in `ci.yml`), require branches up to date, no
-   bypass. With agents pushing, this is what makes "CI is the safety net" true rather than
-   aspirational.
+2. **Branch protection is not enabled on `main` — and now needs to cover `development` too**,
+   which doubled the exposure rather than adding a second nicety: there are now two branches a
+   stray push can land on, and one of them deploys to riders. An agent session cannot enable it
+   — the GitHub MCP server has no branch-protection tool and the REST endpoint 403s. Needs a
+   human in the repo settings. Recommended for both: require a PR, require **`Type Check, Lint
+   & Build`** and **`RLS Policy Tests`** (the job `name:` values in `ci.yml`), require branches
+   up to date, no bypass. With agents pushing, this is what makes "CI is the safety net" true
+   rather than aspirational.
 3. **The 🟠-prefixed Figma sections** — are they dead explorations that can be deleted? They are
    the OLD stylesheet marked "In progress", which makes them look newer than the `Done` v2 flows
    beside them. Decision #4 says build from `v2 /` and ignore them.

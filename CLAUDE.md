@@ -280,6 +280,7 @@ supabase/
 └── tests/                  # RLS policy suite (npm test); README covers its scope
 docs/
 ├── HANDOFF.md              # Current position — read at session start
+├── ENVIRONMENTS.md         # DEV vs PROD — branches, targets, apply order, what drifts
 ├── FIGMA-FIDELITY-TODO.md  # Values inferred, not read — verify before trusting the UI
 └── specs/                  # Implementation specs (login-onboarding.md)
 design/                     # Committed Figma snapshot — READ THIS, don't call the API
@@ -424,12 +425,33 @@ migration, and CI has no path that would catch it.
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
-**The canonical project is `letsride`, ref `zwprydcyryvudhurbnye`** (`eu-west-1`). There is
-exactly one, and every environment points at it — Vercel's `NEXT_PUBLIC_SUPABASE_URL` and
-the GitHub Actions secrets of the same name. A second project named `LetsRide`
-(`ylxnicopnaroltebvfnc`) existed briefly, was never referenced by anything, and has been
-deleted. Recorded here because it is not secret — the ref ships in the client bundle as
-part of the Supabase URL — and because not knowing it cost real time.
+**The production project is `letsride`, ref `zwprydcyryvudhurbnye`** (`eu-west-1`). Recorded
+here because it is not secret — the ref ships in the client bundle as part of the Supabase URL
+— and because not knowing it cost real time.
+
+**There are two projects as of 2026-08-06, and this line used to insist there was one.** It
+read *"There is exactly one, and every environment points at it"*, which was true and is the
+sentence the environment split had to change. `letsride-dev` is the DEV database: Vercel's
+Preview and Development targets and the GitHub Actions secrets point at it, Production points
+at `letsride`. **`docs/ENVIRONMENTS.md` is the contract** — which branch maps to which target
+to which database, the apply order for a migration, and the settings that are dashboard-only
+and therefore drift. Read it before touching either project.
+
+Two consequences worth carrying here rather than only there:
+
+- **Never promote a Vercel preview to production.** Both Supabase variables are
+  `NEXT_PUBLIC_*`, so they are inlined at build time and a build permanently carries whichever
+  database it was built against. Vercel's own API docs say promotion *"does not rebuild the
+  deployment"*, so promoting a DEV-built preview ships DEV credentials to real riders, with a
+  green deploy and no error. Promotion is a git merge that rebuilds.
+- **Check drift rather than claiming it.** `npm run db:drift` compares files against both
+  databases. It compares migration *names*, never versions or ordering, because the recorded
+  version is an apply-time timestamp — PROD's rows run `001`, `004`, `005`, `006`, `007`, `002`
+  — while a freshly-replayed DEV records filename order. The same chain, permanently different
+  versions.
+
+A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
+by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
 **Applied state: `001`–`032`, all of them. Zero drift.** `029`–`032` landed 2026-08-06 as the
 database half of account deletion, and every one is additive — no column, table or grant
@@ -765,6 +787,9 @@ npx tsc --noEmit # type check
 npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY)
 npm run test:unit # Vitest — validation, the query cache, the route guard, the session store
 npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/README.md)
+
+# Do the repo, DEV and PROD agree on the migration chain? See docs/ENVIRONMENTS.md
+PROD_DATABASE_URL=postgresql://... DEV_DATABASE_URL=postgresql://... npm run db:drift
 
 # The only gate that renders anything — see supabase-relay.mjs's header first
 NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<ref>.supabase.co node scripts/supabase-relay.mjs &
@@ -1127,8 +1152,18 @@ chain to a scratch database and asserts what each role can reach.
 
 ## Branching & CI
 
-- `main` = production. Auto-deploys to Vercel.
-- All work on feature branches. Open PRs against `main`.
+- **`main` = production, `development` = DEV.** Both auto-deploy to Vercel; `main` builds the
+  Production target against the `letsride` project, `development` builds a Preview against
+  `letsride-dev`. Feature branches are Previews too, so they also point at DEV.
+- **Branch off `development`, and open PRs against `development` — not `main`.** This line said
+  `main` until 2026-08-06 and it is the one an agent will get wrong by habit. `main` receives
+  exactly one kind of PR: the promotion from `development`, which is what ships to riders.
+- **Never promote a Vercel preview to production**, and never merge `main` into a feature
+  branch. Full reasoning in `docs/ENVIRONMENTS.md`; the short version is that
+  `NEXT_PUBLIC_SUPABASE_*` is inlined at build time and Vercel's promote does not rebuild.
+- **If anything ever lands on `main` without coming through `development`** — a production
+  hotfix — merge `main` back into `development` immediately, or the next promotion silently
+  reverts it.
 - **CI is scoped to what a PR can actually break**, decided by a `changes` job that
   diffs against the merge base:
   - **`Type Check, Lint & Build`** (tsc → ESLint → Vitest → `next build`) runs unless
@@ -1138,12 +1173,15 @@ chain to a scratch database and asserts what each role can reach.
     one green run rather than a missed break.
   - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
     changes — the migration chain and the assertions are its only inputs.
-  - A push to `main` always runs both. It is the deploy gate and it is rare.
+  - A push to either long-lived branch always runs both. Each is a deploy gate.
   - Skipped jobs are skipped with `if:`, never a workflow-level `paths:` filter: a
     filtered-out workflow never reports its check, and a required check that never
     reports blocks the merge forever.
+  - **`on:` lists both branches, on both triggers.** A base branch missing from those
+    lists runs *zero* jobs and shows no red mark — a workflow that never triggers reports
+    nothing at all, which is indistinguishable from a PR that had nothing to check.
 - Whatever runs must pass before merging.
-- Never push directly to `main`.
+- Never push directly to `main` or `development`.
 
 **One PR per session, opened at the wrap-up — and merged in the same session.** Standing
 instruction from the product owner, 2026-08-05: do not ask permission to open one. Both halves
@@ -1161,8 +1199,11 @@ matter and the second is the one that gets dropped.
   written truthfully in the PR that deploys the code. Docs-only follow-ups are cheap — `docs/`,
   `openspec/`, `.claude/` and root `*.md` are in the CI denylist, so they run zero jobs.
 - **Restarting a merged branch:** the designated branch name is reused, so once its PR merges,
-  `git fetch origin main && git checkout -B <branch> origin/main` before the next change. Never
-  stack new commits on merged history.
+  `git fetch origin development && git checkout -B <branch> origin/development` before the next
+  change. Never stack new commits on merged history. **Note the base is `development`, not
+  `main`** — branching a feature off `main` and merging it into `development` is harmless, but
+  the reverse carries whatever is sitting unreleased in `development` straight into a
+  production PR.
 
 ## What Not To Do
 
