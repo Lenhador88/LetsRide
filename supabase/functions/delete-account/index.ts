@@ -25,13 +25,20 @@
  *
  * **`supabase/functions` is excluded from `tsconfig.json`**, because this is
  * Deno: `Deno.env`, `Deno.serve` and `jsr:` specifiers do not resolve under the
- * Next compiler, and `tsconfig`'s `include` is `**/*.ts`, so without the
- * exclusion `npx tsc --noEmit` fails on this file and takes CI's whole
- * Type Check job with it. The alternative — adding Deno's types as a
- * devDependency — buys type checking for one file at the cost of a dependency,
+ * Next compiler, whose include glob covers every TypeScript file in the repo —
+ * so without the exclusion `npx tsc --noEmit` fails on this file and takes CI's
+ * whole Type Check job with it. The alternative, adding Deno's types as a
+ * devDependency, buys type checking for one file at the cost of a dependency,
  * which §Technology Decisions asks us not to do. **So nothing type-checks this
  * file.** Treat it accordingly: it is the least-guarded code in the repo, which
  * is another reason it must be exercised live before anything points at it.
+ *
+ * ESLint *does* still parse it, and that is worth keeping. It is the only tool
+ * left pointed at this file, and it immediately earned its place: the sentence
+ * above originally spelled the include glob out literally, and the `*` `/` pair
+ * inside it closed this comment block early and turned the rest of the header
+ * into syntax errors. `tsc` could not see it. Do not add this directory to the
+ * ESLint ignores to make a warning go away.
  *
  * ---------------------------------------------------------------------------
  * Why this exists at all, against decision #8

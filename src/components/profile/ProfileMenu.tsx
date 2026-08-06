@@ -9,14 +9,25 @@ import { useSignOut } from '@/lib/actions/navigate'
  * The header's overflow control and its sheet — `Profile / Delete account /
  * Account options` (`2303:8097`).
  *
- * The sheet has **exactly two rows** in the design, and that is read from the
- * frame rather than assumed: `Sign out` and `Delete account`. Only the first is
- * built. Deleting an account is not a row to add lightly — it needs the auth
- * admin API or an RPC, a confirmation screen the design does draw
- * (`Confirm account deletion`, `2303:9370`), and a decision about what happens
- * to the rider's postcards, rides and club memberships. It is omitted rather
- * than offered as a dead row, the same treatment Journal got on the ride
- * detail, and logged in docs/FIGMA-FIDELITY-TODO.md §Profile.
+ * The sheet has **three rows** in the design: `Preferences`, `Sign out` and
+ * `Delete account` (`Warning/100`, `Element / Icon / Trash`). Only the middle
+ * one is built.
+ *
+ * This comment said "exactly two rows … read from the frame rather than assumed"
+ * until 2026-08-06, and it was wrong — verified with
+ * `npm run figma -- tree "Profile / Delete account / Account options" --all`,
+ * where the hidden nodes are the header's back button and an unused button
+ * container, and none of the three list items. **A claim that names its own
+ * method and is still wrong is the most expensive kind**, because the method
+ * reads as verification and nobody rechecks it.
+ *
+ * `Delete account` is omitted rather than offered as a dead row, the same
+ * treatment Journal got on the ride detail. Its groundwork is in: 029 transfers
+ * a departing rider's clubs so the cascade does not destroy other riders'
+ * postcards, 031 makes that reachable, and the Edge Function that owns the auth
+ * delete is written at supabase/functions/delete-account/. **It is not deployed
+ * and has never run**, which is exactly why no row points at it yet. See
+ * openspec/changes/add-account-deletion/ group 3.
  *
  * Sign out goes through `lib/actions/auth.ts`, not a bare
  * `supabase.auth.signOut()` as the v1 button did — and that stays true now that

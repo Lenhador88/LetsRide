@@ -34,6 +34,22 @@
  * The remaining known leak: picking a second photo before submitting abandons
  * the first upload. Registered in docs/FIGMA-FIDELITY-TODO.md.
  *
+ * ## What this is NOT a remedy for
+ *
+ * **A deleted rider's objects.** This sweeps `postcards/` only, for the ONE
+ * rider whose email and password it is given, because 010 scopes the DELETE
+ * grant to `postcards/<that rider's uid>/`. There is no credential in this repo
+ * that can reach a departed rider's folder, and decision #8 says there must not
+ * be one in the app — which is why `supabase/functions/delete-account/` deletes
+ * the objects itself, before the rows, while it still holds the service-role
+ * key and the paths still exist. Run in the other order and the bytes are
+ * unreachable for ever.
+ *
+ * It also ignores the other four prefixes entirely — `avatars/`, `covers/`,
+ * `club-avatars/`, `club-covers/`. A clean run here says nothing about them.
+ * `docs/HANDOFF.md` records a run that reported "0 orphans" and was read as
+ * settling a question about two objects it could not have seen.
+ *
  * ## Usage
  *
  *   NEXT_PUBLIC_SUPABASE_URL=...  NEXT_PUBLIC_SUPABASE_ANON_KEY=... \

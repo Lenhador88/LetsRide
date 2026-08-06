@@ -84,7 +84,7 @@ build work, the rest are the owner's.
 | | Blocker | Why it blocks |
 |---|---|---|
 | 1 | **The shell itself** | No `capacitor.config.*`, no `ios/`, no `android/`. Zero work done |
-| 2 | **Account deletion** | App Store 5.1.1(v) — hard rejection for any app with account creation. Proposal at `openspec/changes/add-account-deletion/`, nothing built |
+| 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`031` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | **Inbox is a disabled stub** | `UNBUILT` in `src/components/layout/Navbar.tsx`; no route, no tables. Guideline 4.2 risk — a reviewer taps every tab |
 | 4 | **No edit or delete UI anywhere** | Create a ride, never cancel or correct it. The policies exist and are tested; nothing calls them |
 | 5 | **Email confirmation is off** | Decision #6 — anyone can sign up with an address they do not control. **Owner** |
@@ -96,10 +96,10 @@ will not.
 
 ## Owner actions — nobody in a session can do these
 
-Four of them also appear in the store table above; this is where the detail lives. Every one is
-a dashboard click or a credential a human holds, so **ask for them rather than working around
-them** — the working principle in `CLAUDE.md` exists because a session once reported a block
-five times without once requesting the fix.
+Six now, and four of them also appear in the store table above; this is where the detail lives.
+Every one is a dashboard click or a credential a human holds, so **ask for them rather than
+working around them** — the working principle in `CLAUDE.md` exists because a session once
+reported a block five times without once requesting the fix.
 
 1. **Exercise signup end to end.** Still never done on this database, and it is now the one
    remaining unproven path — `npm run walk` covers everything after it. The owner's account
@@ -115,8 +115,27 @@ five times without once requesting the fix.
    accessors from `021`/`026`/`011` and the `password_reset_grants` no-policy INFO are all
    there on purpose. `CLAUDE.md` §Supabase Rules has the table naming each.
 4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
-   serves nothing, with no alert. Needed before anything resembling launch.
-5. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
+   serves nothing, with no alert. Needed before anything resembling launch. It also breaks
+   account deletion specifically: a rider who cannot reach a paused project cannot delete their
+   account, and "I tried and it failed" is the complaint that reaches a store reviewer.
+
+5. **Deploy the `delete-account` Edge Function, and supply the T&C version string.** Two
+   separate asks that both land here:
+
+   - There is no `supabase` CLI in the build container and the Supabase MCP server exposes no
+     deploy tool, so **no session can deploy it**. It needs the CLI and a project access token:
+
+     ```bash
+     supabase functions deploy delete-account --project-ref zwprydcyryvudhurbnye
+     supabase secrets set SERVICE_ROLE_KEY=... --project-ref zwprydcyryvudhurbnye
+     ```
+
+     Then exercise task 2.6's five cases against a disposable account before group 3 is built.
+   - `030` stamps every new consent with `0-placeholder`, because `/legal/terms` is placeholder
+     copy that disclaims being an agreement. **Replace it when the binding text lands** — one
+     line in `private.current_terms_version()`, in a new migration. Consents already stamped
+     keep the version they were given, which is the point of the column.
+6. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
    2026-08-06 as `qa-verify`: *"0 object(s) in your folder, 0 referenced by a postcard. No
    orphans."* That settles nothing about the two objects (1.15 MB) the note refers to, because
    the sweeper signs in as a rider and `010`'s Storage policies scope it to
@@ -142,8 +161,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **535** |
-| Unit tests | `npm run test:unit` — **481** |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **589** |
+| Unit tests | `npm run test:unit` — **664**. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number now moves whenever a file is added |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -216,8 +235,24 @@ timeout:**
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are tested,
   but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments are
   the exception: deletable, not editable, which `011` forbids by design. **Store blocker 4.**
-- **Account deletion is not built.** Proposal at `openspec/changes/add-account-deletion/`, and
-  it gets larger once location tracks exist. **Store blocker 2.**
+- **Account deletion has a database half and no flow.** `029`–`031` are applied, the Edge
+  Function is written at `supabase/functions/delete-account/` and has **never been deployed or
+  run**, and nothing in `src/` calls it. What is left is groups 3 (the flow: sheet row,
+  confirmation, re-auth, impact summary, sign-out) and 4 (the four screens where "this rider is
+  gone" and "you are not allowed" are both zero rows). It gets larger once location tracks
+  exist. **Store blocker 2.**
+
+  **Deploy the function before building group 3**, not after — its own task list says a control
+  ships working or it does not ship, and the five negative cases in task 2.6 (second call
+  succeeds; another rider's id in the body still deletes only the caller; publishable key
+  refused; no token refused) can only be proven live.
+
+  > **Complexity** 5/10 — the flow is four screens and one action; the risk is all in the
+  > function, which is written
+  > **Urgency** 3/10 — nothing forces it until a store submission, which needs the shell first
+  > **Recommendation** 8/10 — the expensive half is done and the context is written down; it
+  > gets more expensive the longer the function sits unexercised
+  > **This session** N — needs the function deployed, which is an owner action
 - **Inbox has no route and no tables.** It is one of five nav tabs and it renders **disabled**
   rather than dead — `UNBUILT` in `Navbar.tsx` gives it `aria-disabled` and a "not built yet"
   title, so it is not a broken link. Still a guideline 4.2 question. **Store blocker 3.**
