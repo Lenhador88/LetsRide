@@ -169,9 +169,20 @@ Deno.serve(async (req: Request) => {
 
   try {
     // 1. Clubs first, while the rows that describe them still exist.
+    //
+    // Through 031's `public` wrapper, NOT `.schema('private')` — PostgREST only
+    // routes to `public`, so a private-schema RPC is refused before it reaches
+    // Postgres, and service_role held no USAGE on `private` either. Measured;
+    // 031's header carries both queries. The wrapper is privilege-free and
+    // executable by service_role alone.
+    //
+    // It takes a uuid, which is the one place an id crosses a boundary in this
+    // flow. That is safe here and only here: the caller is this function, the
+    // id came from `getUser(token)` twenty lines above, and the endpoint is
+    // unreachable without the service-role key. Rule 1 is enforced at the HTTP
+    // boundary, where a rider's identity actually exists.
     const { data: surrendered, error: transferError } = await admin
-      .schema('private')
-      .rpc('transfer_owned_clubs', { departing: uid })
+      .rpc('transfer_owned_clubs_for_deletion', { departing: uid })
 
     if (transferError) throw new Error(`transfer: ${transferError.message}`)
 

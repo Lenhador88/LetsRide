@@ -3904,7 +3904,42 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'transfer_owned_clubs'),
-  0, '029: the transfer function is not in public, so PostgREST cannot publish it');
+  0, '029: the worker itself is not in public, so PostgREST cannot route to it');
+
+-- 031: the door the Edge Function actually knocks on, and who it opens for.
+--
+-- 029 shipped the worker with NO caller able to reach it: service_role held no
+-- USAGE on `private` and PostgREST routes only to `public`, so
+-- `.schema('private').rpc(...)` fails before it reaches Postgres. The suite did
+-- not catch it because the suite runs as the table owner, for whom neither
+-- barrier exists — which is why these assertions name a ROLE rather than
+-- calling the function.
+select assert_eq(
+  has_function_privilege('service_role', 'public.transfer_owned_clubs_for_deletion(uuid)', 'execute'),
+  true, '031: service_role can reach the transfer through the public wrapper');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.transfer_owned_clubs_for_deletion(uuid)', 'execute'),
+  false, '031: a rider calling the wrapper is refused before a row is read');
+select assert_eq(
+  has_function_privilege('anon', 'public.transfer_owned_clubs_for_deletion(uuid)', 'execute'),
+  false, '031: and so is anon');
+select assert_eq(
+  has_function_privilege('service_role', 'private.transfer_owned_clubs(uuid)', 'execute'),
+  true, '031: ... because service_role also holds EXECUTE on the worker it calls');
+
+-- The assertion that matters most in 031: widening `private` for service_role
+-- must not widen it for the client. `005` put the helpers there so PostgREST
+-- could not publish them, and `009`'s footer asserts a direct call answers
+-- 42501 "permission denied for schema private".
+select assert_eq(
+  has_schema_privilege('authenticated', 'private', 'usage'),
+  false, '031: granting service_role USAGE on private did not grant it to riders');
+select assert_eq(
+  has_schema_privilege('anon', 'private', 'usage'),
+  false, '031: ... nor to anon');
+select assert_eq(
+  has_function_privilege('service_role', 'private.is_blocked(uuid,uuid)', 'execute'),
+  false, '031: schema USAGE alone did not hand service_role the other private helpers');
 
 \echo ''
 \echo '# 029 §B — the transfer picks admin, then member, then deletes the club'
