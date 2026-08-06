@@ -326,10 +326,15 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`022`, `024` and `026`. `023` and `025` are written and deliberately
-NOT applied — the one case where the "unapplied migrations are drift" rule must not be followed
-blindly.** Confirmed 2026-08-05 with `list_migrations`: **24 rows** ending
-`password_reset_grant`, against **26 files**. The two missing are exactly `023` and `025`.
+**Applied state: `001`–`027`, all of them. Zero drift.** Confirmed 2026-08-05 with
+`list_migrations`: **27 rows against 27 files**, ending `profile_column_privileges`. This is the
+first time in weeks the answer has been "everything", so the `SKIP_MIGRATIONS` machinery that
+modelled the held-back pair is being retired with it.
+
+**The sequencing lesson is the durable part, and it outlives these two files.** `023` and `025`
+could not be applied before their code deployed, and `021`'s accessors could not be applied
+after. The order that works — additive first, deploy, destructive last — is a property of the
+split, not of these migrations, and it is why `021` had to become two files.
 
 **`021` was split on 2026-08-05 because it contained a deployment deadlock**, and the split is
 the general lesson rather than a one-off. It held both the accessor functions and the revoke

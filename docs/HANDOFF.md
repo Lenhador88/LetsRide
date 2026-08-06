@@ -44,7 +44,7 @@ renumbered them, which is how "group 2" ended up meaning two different things in
 
 | Group | Phase | | Status |
 |---|---|---|---|
-| 1 | 1 | Integrity migrations `018`–`026` | **Done.** `018`–`022`, `021`, `026` applied; `023` + `025` apply after this deploys |
+| 1 | 1 | Integrity migrations `018`–`027` | **Done and fully applied.** Zero unapplied migrations for the first time in weeks |
 | 2 | 1b | Consent prompt (one screen, one user) | **Done 2026-08-05** — `/onboarding/terms`, exercised against the live database |
 | 3 | 2 | Make `lib/data/` isomorphic | **Done 2026-08-05** |
 | 4 | 3 | Session → device secure storage, auth, recovery | **Done except 4.1/4.2/4.5/4.6** — see below |
@@ -82,9 +82,7 @@ Action omitting a column has never been a rule.
 
 ### Where group 1 got to — finished, and `021` was two migrations
 
-Applied 2026-08-05, each pre-flighted at apply time: `018_text_bounds`,
-`019_club_member_role`, `020_profile_countries_known_code`, `022_private_club_rides`,
-`021_onboarding_state_accessors` and `026_password_reset_grant`.
+All of `018`–`027` are applied, each pre-flighted at apply time.
 
 **`021` held a deployment deadlock and was split.** It contained both the accessor functions and
 the revoke that makes them necessary, and those must apply at different times relative to the
@@ -93,13 +91,12 @@ bounces every signed-in rider; old code on a new database loses four live paths.
 ordering of one file works. Now:
 
 - **`021_onboarding_state_accessors.sql`** — additive only: `my_onboarding_state()`,
-  `accept_terms()`, `complete_onboarding(location)`. **Applied.**
-- **`025_profile_column_privileges.sql`** — the revoke and the column allowlist. **Unapplied**;
-  applies after this change deploys.
+  `accept_terms()`, `complete_onboarding(location)`. Applied *before* the code deployed.
+- **`025_profile_column_privileges.sql`** — the revoke and the column allowlist. Applied *after*.
 
 That split is also what made `023` and `025` compatible, which they were not before: `023` gated
 on stamps `021` removed the only client path to setting, and the answer is that the database
-writes them now. `PENDING=023+025 npm test` proves the pair.
+writes them now.
 
 **The Postgres trap that shaped all three functions.** Inside a `security definer` function
 `current_user` is the *owner*, so `003`'s and `012`'s trigger guards — which both begin
@@ -107,9 +104,24 @@ writes them now. `PENDING=023+025 npm test` proves the pair.
 invariant those triggers carry is restated in the function bodies. CHECK constraints do still
 fire. Measured on Postgres 16, with the NOTICE output in `021`'s header.
 
-**Still unapplied, deliberately: `023` and `025`.** Both are in `SKIP_MIGRATIONS`. Apply order
-after this merges and Vercel reports READY: **`023`, then `025`.** `list_migrations` reads 25
-rows against 27 files once `027` is in; it reads 27 when `023` and `025` follow.
+**Everything is applied. `list_migrations` reads 27 rows against 27 files** — checked
+2026-08-05, right after `023` and `025` went in. That is the first time this repo has had zero
+drift in weeks, and it means the `SKIP_MIGRATIONS` machinery in `supabase/tests/run.sh` has no
+reason to exist any more.
+
+The order actually executed, which is the one to copy:
+
+1. `021` (additive accessors) — safe against `main` as it stood.
+2. `026`, then `027` — also additive.
+3. Merge #54; **wait for Vercel to report READY** at `3974125`.
+4. `023`, then `025`.
+
+`025`'s footer predicts eight values and all eight were confirmed live: `authenticated` holds
+neither SELECT nor UPDATE on either stamp, still holds them on `username` and `avatar_path`,
+and holds no table-wide SELECT at all. `023` put its eight triggers on, with `may_participate`
+in `private` where PostgREST cannot publish it. **Then `npm run walk` was re-run against the
+post-`025` database and all 8 screens still render** — `/profile` in particular, since
+`getCurrentProfile` is the read `025` would have broken had it still used `select('*')`.
 
 ### One correction to the risk register, measured
 
@@ -131,11 +143,17 @@ This also has a happy consequence for sequencing, recorded under *What is left* 
 a client component can already read the session, the screens can be converted before the
 session moves.
 
-### Security advisors after `021` and `026` — eight findings, all deliberate
+### Security advisors with everything applied — eight findings, all deliberate
 
-Checked 2026-08-05, immediately after applying both. Nothing here is a regression, and the
-count is higher than `021`'s own footer predicted because the advisor reports **one finding per
+Checked 2026-08-05 after the last migration. Nothing here is a regression, and the count is
+higher than `021`'s own footer predicted because the advisor reports **one finding per
 function**, not one for the batch.
+
+**`023` added two `security definer` functions and neither appears, which is the result to
+want.** `private.may_participate()` lives in an unpublished schema, and
+`public.enforce_participation_gate()` has EXECUTE revoked from `public`, `anon` *and*
+`authenticated` — a trigger function needs no caller. So the advisor's silence about them is
+evidence they are locked down, not evidence it missed them.
 
 - **Five `security definer` functions callable by `authenticated`** — `my_onboarding_state`,
   `accept_terms`, `complete_onboarding`, `has_password_reset_grant`,
@@ -304,13 +322,32 @@ imports them. The real work is the 17 pages.
 
 ## Do this first
 
-1. **Apply `023`, then `025`** — in that order, and only once this change has merged and Vercel
-   reports READY. Both are written, asserted and in `SKIP_MIGRATIONS`. **Applying `025` before
-   the deploy is an instant outage**; applying it before `023` is fine but pointless. Nothing
-   goes red if this is forgotten: CI is green either way, and this line is the only signal.
-   `list_migrations` reads **24 rows against 26 files** today; it reads 26 when both are in.
-   Then `get_advisors` (security) — expect the two known findings plus the `security definer`
-   functions `021` and `026` added, which are correct rather than regressions.
+1. **The default RLS suite now models a database two migrations behind reality.** `023` and
+   `025` are applied, but `supabase/tests/run.sh` still lists both in `SKIP_MIGRATIONS`, so
+   `npm test` applies a chain the real database no longer matches. CLAUDE.md is explicit that
+   the suite must model what actually runs, and the skip mechanism existed *only* to honour
+   that while the two were held back — it is now doing the opposite of its purpose.
+
+   **It is not a one-line fix, which is why it was left rather than rushed.** `PENDING=023+025`
+   runs `rls_test_pending_023_025.sql` *instead of* `rls_test.sql`, because `025` revokes the
+   column SELECT that **~20 of `rls_test.sql`'s `003`/`012` stamp assertions read directly as
+   the caller**. Flip the default naively and you either keep skipping two applied migrations
+   or trade a 464-assertion suite for a 75-assertion one. The actual job:
+
+   - repoint those ~20 assertions at `my_onboarding_state()` / `accept_terms()` /
+     `complete_onboarding()` instead of direct column reads;
+   - empty `SKIP_ALL_PENDING` and delete the `PENDING` modes;
+   - fold `rls_test_pending_023.sql`, `_025.sql` and `_023_025.sql` into `rls_test.sql`,
+     deduplicating — the combined file is largely the union of the other two;
+   - update `supabase/tests/README.md`, which documents the modes.
+
+   Combined coverage must not fall below **464 + the non-duplicate part of 75**. Mutation-test
+   a sample of the folded-in assertions rather than trusting the move.
+
+   Until this is done every mode still passes — `npm test`, `PENDING=023`, `PENDING=025`,
+   `PENDING=023+025` — so **nothing goes red to remind you.** This line is the only signal,
+   which is exactly the shape of the `024` problem that sat unnoticed for a day.
+
 2. **Group 5: convert the screens.** Read *Starting group 5* above for the corrected sequencing
    — screens first under cookie sessions, then the session and guard together. The
    infrastructure is built; no screen uses it yet.
@@ -339,7 +376,7 @@ imports them. The real work is the 17 pages.
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*, the cluster is down: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*, the role has no password: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Pending-migration suites | `PGPASSWORD=postgres PENDING=023 npm test`, same for `025`, and **`PENDING=023+025`** for the pair — the mode that proves the two once-incompatible migrations apply together |
+| Pending-migration suites | `PGPASSWORD=postgres PENDING=023 npm test`, same for `025`, and **`PENDING=023+025`** for the pair. **All three migrations are now applied, so this machinery is obsolete and the default suite is the one that is wrong** — see item 1 of *Do this first* |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **464** on 2026-08-05 |
 | Unit tests | `npm run test:unit` — **453** on 2026-08-05 |
 | Dev server | **`NODE_USE_ENV_PROXY=1 npm run dev`** — Node's `fetch` ignores `HTTPS_PROXY`, so every server-side Supabase call fails with a proxy page while `curl` succeeds. The app surfaces that as "That email and password do not match an account", which reads like a credentials problem and is not one |
