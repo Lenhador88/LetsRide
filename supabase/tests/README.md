@@ -22,48 +22,33 @@ keep in sync.
 CI runs the same script against `postgres:17`, matching the Supabase project's
 major version.
 
-### The two undeployed migrations
+### `023` and `025`: no longer pending
 
-**The suite models the database that actually runs**, so `run.sh` skips `023` and
-`025` by default: both are written, both are deliberately not applied to the
-hosted project, and a suite asserting a schema production does not have is worse
-than no suite. Their assertions run on demand:
+Until 2026-08-05 this suite skipped two written-but-undeployed migrations —
+`023` (gates participation on a consent stamp all four live riders had NULL)
+and `025` (revokes a grant `proxy.ts`, `getMyProfile`, `setLocation` and
+`signUp` all depend on, pending its code repair) — via `SKIP_MIGRATIONS` in
+`run.sh`, and ran their assertions from three separate files on demand
+(`PENDING=023`, `PENDING=025`, `PENDING=023+025`). **The suite models the
+database that actually runs**, and that mechanism existed only to honour that
+principle while the two migrations were held back.
 
-```bash
-PENDING=023     npm test   # applies 023, skips 025
-PENDING=025     npm test   # applies 025, skips 023
-PENDING=023+025 npm test   # applies BOTH — the state that will actually ship
-```
+Both are applied to the hosted project now — confirmed with `list_migrations`:
+27 rows against 27 files, zero drift. `SKIP_MIGRATIONS` and the three
+`PENDING` modes are gone, and their assertions have moved into `rls_test.sql`:
+the direct-write and direct-read denials `025`'s revoke causes live right
+after the sections they replace (003's and 012's old direct-column tests,
+which is why that block is now titled for 003, 012 *and* 025 together), and
+the participation gate itself — the full walk from two NULL stamps to a
+published postcard, the eight-tables-gated / five-omissions story, and the
+trigger wiring — lives in its own `023` section near the end of the file,
+alongside `021`'s.
 
-Each runs *instead of* `rls_test.sql`, because **`025` revokes the column SELECT
-that ~20 of `rls_test.sql`'s own `003`/`012` assertions read directly**, so that
-file cannot pass with `025` applied. When `025` lands with its code repair those
-assertions move to the accessor and `rls_test_pending_025.sql` merges back in.
-
-Each pending suite fails without its migration — checked, not assumed — so
-neither is a placeholder.
-
-**Two things here changed on 2026-08-05 and are worth knowing before reading
-older notes.**
-
-`021` used to be on this list. It was `021_profile_column_privileges.sql` and
-held two things that must be applied on opposite sides of the code deploy: the
-own-row functions, and the revoke. New code against a database without
-`my_onboarding_state()` bounces every rider at the route guard; old code against
-the revoke breaks four live paths. Split, `021_onboarding_state_accessors.sql` is
-purely additive and applied — so its assertions live in `rls_test.sql` like any
-other shipped migration — and only the revoke stays pending, as `025`.
-
-And there used to be no mode applying both, because "`023` requires two stamps
-that `021` removes the only client path to setting". `021`'s `accept_terms()` and
-`complete_onboarding(text)` resolved that by giving the database the write path,
-so `PENDING=023+025` now exists and walks a rider from two NULL stamps to a
-published postcard.
-
-**When you add an assertion, the question is which migration it constrains, not
-which file you happened to be reading.** Behaviour of the three functions is
-mainline; anything of the form `has_column_privilege(...) = false` is pending
-on `025`.
+**When you add an assertion, the question is which migration it constrains,
+not which section you happened to be reading.** The three migrations still
+have separate identities — `021` gave the wizard a write path, `025` took the
+client's own path away, `023` gates participation on the result — even though
+one `npm test` run now exercises all three together.
 
 ## Files
 
@@ -71,16 +56,13 @@ on `025`.
 |---|---|
 | `harness.sql` | Stand-in for Supabase: `auth.users`, `auth.uid()`, the `anon`/`authenticated`/`auth_admin` roles, their default grants, and the assertion helpers |
 | `seed.sql` | Fixtures: three onboarded riders, two riders mid-onboarding, a private club with a member, a public club, a club-only ride, a public ride |
-| `rls_test.sql` | The assertions, against the deployed schema — including `021`'s three own-row functions, which are applied |
-| `rls_test_pending_023.sql` | Assertions for `023`, written and not deployed. Models `023` *without* the revoke, so its stamp refusals are `23514` |
-| `rls_test_pending_025.sql` | Assertions for `025`, likewise. Only what the revoke changes; the functions' behaviour is mainline |
-| `rls_test_pending_023_025.sql` | The pair applied together — the shipping state. Walks the whole rider path, and asserts the refusals that move from `23514` to `42501` |
-| `run.sh` | Applies everything in order and runs one of the four suites |
+| `rls_test.sql` | The full assertion suite, against the deployed schema — every applied migration, `021` through `027` included |
+| `run.sh` | Applies the whole migration chain in order, then `rls_test.sql` |
 
-Each pending suite adds fixture riders of its own rather than extending
-`seed.sql`, so no expected value in `rls_test.sql` moves. `rls_test.sql`'s own
-`021` section does the same and rolls them back, which is why it sits at the end
-of the file.
+Sections that need a fixture state `seed.sql` does not provide — `021`'s and
+`023`'s among them — add their own riders inside a `savepoint` and roll it
+back at the end, so no expected value elsewhere in the file moves. That is why
+they sit near the end of it.
 
 ## Writing assertions
 

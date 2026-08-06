@@ -106,8 +106,16 @@ fire. Measured on Postgres 16, with the NOTICE output in `021`'s header.
 
 **Everything is applied. `list_migrations` reads 27 rows against 27 files** — checked
 2026-08-05, right after `023` and `025` went in. That is the first time this repo has had zero
-drift in weeks, and it means the `SKIP_MIGRATIONS` machinery in `supabase/tests/run.sh` has no
-reason to exist any more.
+drift in weeks — and the `SKIP_MIGRATIONS` machinery in `supabase/tests/run.sh` has been
+**removed** with it, along with the three `rls_test_pending_*.sql` files, whose non-duplicate
+assertions are folded into `rls_test.sql`. The full 27-file chain now applies unconditionally,
+every run. Suite 464 → **527**.
+
+That fold turned up a trap worth knowing before writing any new assertion: the fixture postcard
+`…0000e1` is **really deleted partway through the suite**, by migration 011's
+"deleting a postcard cascades its interactions" section, which is not inside a savepoint. Any
+section after that point must seed its own postcard — reusing `e1` fails in a way that looks
+like an RLS bug and is really test ordering.
 
 The order actually executed, which is the one to copy:
 
@@ -322,65 +330,25 @@ imports them. The real work is the 17 pages.
 
 ## Do this first
 
-1. **The default RLS suite now models a database two migrations behind reality.** `023` and
-   `025` are applied, but `supabase/tests/run.sh` still lists both in `SKIP_MIGRATIONS`, so
-   `npm test` applies a chain the real database no longer matches. CLAUDE.md is explicit that
-   the suite must model what actually runs, and the skip mechanism existed *only* to honour
-   that while the two were held back — it is now doing the opposite of its purpose.
-
-   **It is not a one-line fix, which is why it was left rather than rushed.** `PENDING=023+025`
-   runs `rls_test_pending_023_025.sql` *instead of* `rls_test.sql`, because `025` revokes the
-   column SELECT that **~20 of `rls_test.sql`'s `003`/`012` stamp assertions read directly as
-   the caller**. Flip the default naively and you either keep skipping two applied migrations
-   or trade a 464-assertion suite for a 75-assertion one. The actual job:
-
-   - repoint those ~20 assertions at `my_onboarding_state()` / `accept_terms()` /
-     `complete_onboarding()` instead of direct column reads;
-   - empty `SKIP_ALL_PENDING` and delete the `PENDING` modes;
-   - fold `rls_test_pending_023.sql`, `_025.sql` and `_023_025.sql` into `rls_test.sql`,
-     deduplicating — the combined file is largely the union of the other two;
-   - update `supabase/tests/README.md`, which documents the modes.
-
-   Combined coverage must not fall below **464 + the non-duplicate part of 75**. Mutation-test
-   a sample of the folded-in assertions rather than trusting the move.
-
-   **There is a partial first pass on `claude/rls-suite-fold-draft`. It is RED — do not merge
-   it — but do not redo its work either.** It repoints the ~20 stamp assertions correctly
-   (`assert_rejected('23514', ...)` becomes `assert_denied(...)`, because after `025` the
-   statement fails at the GRANT before the trigger is entered, so the refusal is unconditional
-   rather than value-dependent) and its rewritten section comment explains that well. Three
-   things are left undone, and the branch's commit message enumerates them.
-
-   **One of those three is already diagnosed, which saves a scare:** with the full chain a
-   qualified rider's `postcard_comments` insert is refused by RLS, and that is **fixture drift
-   from the fold, not a production bug**. Checked against the live project — *no* INSERT policy
-   on any of the eight gated tables references `profiles`, so `025` cannot have caused it. The
-   seeded rider almost certainly cannot see the seeded postcard under `rls_test.sql`'s fixtures,
-   where the pending file set them up differently.
-
-   Until this is done every mode still passes — `npm test`, `PENDING=023`, `PENDING=025`,
-   `PENDING=023+025` — so **nothing goes red to remind you.** This line is the only signal,
-   which is exactly the shape of the `024` problem that sat unnoticed for a day.
-
-2. **Group 5: convert the screens.** Read *Starting group 5* above for the corrected sequencing
+1. **Group 5: convert the screens.** Read *Starting group 5* above for the corrected sequencing
    — screens first under cookie sessions, then the session and guard together. The
    infrastructure is built; no screen uses it yet.
-3. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. **Owner action.**
+2. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. **Owner action.**
    It is what actually closes the recovery hole `026` can only gate at the app's front door —
    see *The recovery cookie is gone* above. Measured as currently off.
-4. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
+3. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
    nothing, with no alert. **Owner action** — needs Pro before anything resembling launch.
-5. **Exercise signup end to end.** Still never done on this database: the owner's account
+4. **Exercise signup end to end.** Still never done on this database: the owner's account
    predates the consent write, both `.test` fixtures were SQL-inserted because Supabase rejects
    that TLD, and the one real attempt matches `signUp`'s own documented failure path. Needs an
    email domain the owner controls. **Owner action.** Note `npm run walk` now covers everything
    *after* signup, so this is the one remaining unproven path.
-6. **Enable leaked-password protection** — one dashboard toggle, still the only outstanding
+5. **Enable leaked-password protection** — one dashboard toggle, still the only outstanding
    security advisor that is not deliberate. **Owner action.**
-7. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
+6. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
    `-- --delete`. Two objects, 1.15 MB, left by a bug fixed in #21. Whether the tool has ever
    been *run* is unknown; the dry run is free and settles it.
-8. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
+7. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
    `/postcards/[id]` still carry inferred composition; the design has frames for both.
 
 ## Running things in this container
@@ -390,8 +358,7 @@ imports them. The real work is the 17 pages.
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*, the cluster is down: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*, the role has no password: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Pending-migration suites | `PGPASSWORD=postgres PENDING=023 npm test`, same for `025`, and **`PENDING=023+025`** for the pair. **All three migrations are now applied, so this machinery is obsolete and the default suite is the one that is wrong** — see item 1 of *Do this first* |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **464** on 2026-08-05 |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **527** on 2026-08-05 |
 | Unit tests | `npm run test:unit` — **453** on 2026-08-05 |
 | Dev server | **`NODE_USE_ENV_PROXY=1 npm run dev`** — Node's `fetch` ignores `HTTPS_PROXY`, so every server-side Supabase call fails with a proxy page while `curl` succeeds. The app surfaces that as "That email and password do not match an account", which reads like a credentials problem and is not one |
 | `.env.local` | Write `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
