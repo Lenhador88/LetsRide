@@ -55,6 +55,12 @@ near the top (in the `003`/`012` section they replaced), `021`'s three functions
 in the `021` section, and the participation gate in a `023` section of its own at
 the end.
 
+**When you add an assertion, the question is which migration it constrains, not
+which section you happened to be reading.** The three still have separate
+identities — `021` gave the wizard a write path, `025` took the client's own path
+away, `023` gates participation on the result — even though one `npm test` run
+now exercises all three together.
+
 ### The one thing that made the fold non-mechanical
 
 `025` revokes the column SELECT and UPDATE that ~20 of `rls_test.sql`'s `003` and
