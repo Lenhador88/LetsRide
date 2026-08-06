@@ -21,23 +21,36 @@
  * rendered at all. It asks one question per route — did this come back as a
  * screen, or as a redirect, an error boundary, or an empty body.
  *
- * ## Running it
+ * ## Running it, and the one thing that will otherwise waste an hour
  *
- *   NODE_USE_ENV_PROXY=1 npm run dev          # in one shell
+ *   NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<ref>.supabase.co \
+ *     node scripts/supabase-relay.mjs &
+ *   NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
  *   WALK_EMAIL=... WALK_PASSWORD=... npm run walk
  *
- * `NODE_USE_ENV_PROXY=1` is not optional in a proxied container: Node's fetch
- * ignores HTTPS_PROXY, so every server-side Supabase call fails with a proxy
- * page while curl succeeds — and the app surfaces that as "That email and
- * password do not match an account", which reads like a credentials problem and
- * is not one.
+ * **The relay is not optional in this container, and the reason changed with the
+ * render migration.** Chromium here cannot reach Supabase at all — measured
+ * 2026-08-06: `curl -x $HTTPS_PROXY .../auth/v1/health` returns 401 (tunnel
+ * open, host allowed), while the same fetch from a Chromium page launched with
+ * `--proxy-server=$HTTPS_PROXY` hangs until aborted, with no response, no
+ * `requestfailed`, and no entry in the agent proxy's own `recentRelayFailures`
+ * — where a genuinely blocked host *does* appear. Bare,
+ * `--ignore-certificate-errors`, `--disable-quic` and `--disable-http2` all hang
+ * identically.
  *
- * Chromium here has no proxy of its own either, so Supabase signed-URL <img>
- * fetches never complete and every photo renders blank. That is not an
- * application bug. `--proxy-server` below fixes it, with localhost bypassed so
- * the dev server stays directly reachable.
+ * This file used to say "`--proxy-server` below fixes it". **That was wrong**,
+ * and it was survivable only because the browser had nothing important to fetch:
+ * the dev server was the Supabase client, and the symptom was blank photos. Now
+ * the browser *is* the client, so the same limitation takes sign-in and
+ * therefore the entire walk. `scripts/supabase-relay.mjs` restores it; its
+ * header carries the full measurement. The `--proxy-server` args below are kept
+ * because they are harmless and because a different sandbox may need them.
  *
- * Pass paths as arguments to walk a subset.
+ * `NODE_USE_ENV_PROXY=1` is separately not optional: Node's fetch ignores
+ * HTTPS_PROXY, so the relay itself cannot reach Supabase without it.
+ *
+ * Pass paths as arguments to walk a subset — that skips the guard and sign-out
+ * phases, which need the full run.
  */
 import { chromium } from 'playwright-core'
 
@@ -228,6 +241,9 @@ const GUARD_CASES_SIGNED_IN = [
   ['/auth/reset-password', '/auth/reset-password'],
 ]
 
+/** How many assertions `checkSignOut` makes, for the summary line. */
+const SIGN_OUT_CHECKS = 4
+
 const GUARD_CASES_SIGNED_OUT = [
   ['/', '/auth/login'],
   ['/postcards', '/auth/login'],
@@ -252,9 +268,65 @@ async function checkGuard(target, cases, label) {
   return bad
 }
 
+/**
+ * Sign-out leaves nothing behind — tasks 4.5 and 4.6, the shared-device case.
+ *
+ * Unit tests cover `clearSessionStore` against a fake `window`; what they cannot
+ * cover is whether the *real* client, the *real* GoTrue revocation and the query
+ * cache all agree. This asks the only question that matters afterwards: is there
+ * anything on this device the next rider could use or see.
+ *
+ * The cookie check is not ceremony. The session lived in a cookie until group 6,
+ * and `@supabase/ssr` set it `httpOnly=false` — so a leftover one would be both
+ * present and readable, and would still be *sent*, which is the one storage this
+ * app no longer knows how to clear.
+ */
+async function checkSignOut() {
+  console.log('\nsign-out leaves nothing behind:')
+  let bad = 0
+  const report = (ok, label, detail) => {
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(800)
+  await page.click('button[aria-label="Account options"]').catch(() => {})
+  await page.waitForTimeout(300)
+  await page.click('text=Sign out').catch(() => {})
+  await page.waitForTimeout(2500)
+
+  report(
+    new URL(page.url()).pathname === '/auth/login',
+    'lands on /auth/login',
+    `landed on ${new URL(page.url()).pathname}`
+  )
+
+  const leftover = await page.evaluate(() =>
+    Object.keys(localStorage).filter((k) => k.startsWith('sb-'))
+  )
+  report(leftover.length === 0, 'no sb-* keys in localStorage', leftover.join(', '))
+
+  const cookies = (await page.context().cookies()).map((c) => c.name).filter((n) => n.startsWith('sb-'))
+  report(cookies.length === 0, 'no sb-* cookie', cookies.join(', '))
+
+  // The real question behind 4.6: can the next rider reach a screen at all.
+  await page.goto(`${BASE}/postcards`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(1200)
+  report(
+    new URL(page.url()).pathname === '/auth/login',
+    '/postcards is unreachable afterwards',
+    `landed on ${new URL(page.url()).pathname}`
+  )
+
+  return bad
+}
+
 let guardFailures = 0
 if (isFullWalk) {
   guardFailures += await checkGuard(page, GUARD_CASES_SIGNED_IN, 'signed in')
+
+  guardFailures += await checkSignOut()
 
   const anonContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
   const anonPage = await anonContext.newPage()
@@ -266,7 +338,7 @@ await browser.close()
 
 console.log(`\n${paths.length - failures}/${paths.length} screens rendered clean`)
 if (isFullWalk) {
-  const total = GUARD_CASES_SIGNED_IN.length + GUARD_CASES_SIGNED_OUT.length
-  console.log(`${total - guardFailures}/${total} route-guard redirects correct`)
+  const total = GUARD_CASES_SIGNED_IN.length + GUARD_CASES_SIGNED_OUT.length + SIGN_OUT_CHECKS
+  console.log(`${total - guardFailures}/${total} guard and sign-out checks correct`)
 }
 process.exit(failures || guardFailures ? 1 : 0)

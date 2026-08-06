@@ -199,5 +199,25 @@ export function needsOnboardingState(pathname: string): boolean {
   return pathname === '/'
 }
 
-/** The shape `readGuardState` expects back from `my_onboarding_state()`. */
-export type OnboardingStateRow = OnboardingState
+/**
+ * What `my_onboarding_state()` answered, mapped to a `GuardState`.
+ *
+ * Its own function because **`data: null, error: null` is a distinct case that
+ * must not read as "not onboarded"**, and that is the single most consequential
+ * line in this file. The accessor returns ZERO ROWS for a caller with no
+ * `profiles` row, and PostgREST reports zero rows exactly that way. Read as
+ * un-onboarded, the rider goes to the consent prompt, where `accept_terms()` has
+ * no row to update, returns NULL, and fails every submit — a trap with no exit.
+ *
+ * Unreachable today, because `handle_new_user` guarantees the row. `023` and the
+ * account-deletion proposal both name deleting a `profiles` row without its
+ * `auth.users` row as the thing that makes it reachable, which is why this is a
+ * tested branch rather than a comment.
+ */
+export function onboardingStateFrom(result: {
+  data: OnboardingState | null
+  error: unknown
+}): GuardState {
+  if (result.error || !result.data) return { kind: 'unavailable' }
+  return { kind: 'rider', ...result.data }
+}

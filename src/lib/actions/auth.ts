@@ -1,5 +1,6 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { clearQueryCache } from '@/lib/query'
+import { clearSessionStore } from '@/lib/supabase/session-store'
 import { RECOVERY_EXPIRED_MESSAGE, consumePasswordResetGrant } from '@/lib/auth/recovery'
 import type { ActionState } from '@/lib/actions/state'
 import {
@@ -158,9 +159,17 @@ export async function updatePassword(
  * rider B's session — task 4.6.
  *
  * Signed image URLs go with it. They live nowhere but inside the cached rows
- * that hold them, so there is no second store to sweep — a property worth
- * stating, because a signed URL outliving the sign-out that should have
+ * that hold them, so there is no second store to sweep for those — a property
+ * worth stating, because a signed URL outliving the sign-out that should have
  * invalidated it would be readable for the rest of its hour.
+ *
+ * **`clearSessionStore()` is the second half and it was written without a
+ * caller.** `supabase.auth.signOut()` removes the keys the library knows it
+ * wrote *in this page load*; the store's own sweep also clears anything left by
+ * a session written before a reload, which the library's in-memory bookkeeping
+ * cannot see. It runs after the revocation on purpose — clearing first would
+ * take the refresh token away from the call that needs it, turning every
+ * sign-out into a local-only one.
  *
  * **The rider ends up signed out even when the revocation fails**, which is the
  * offline case 4.5 names. `signOut()` defaults to `scope: 'global'` — a network
@@ -178,5 +187,6 @@ export async function signOut(): Promise<ActionState> {
   if (error) await supabase.auth.signOut({ scope: 'local' })
 
   clearQueryCache()
+  await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
 }

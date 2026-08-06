@@ -9,9 +9,17 @@ const SRC = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)))
 /**
  * Every module that can issue a PostgREST query, not only `lib/data/`.
  *
- * `src/proxy.ts` selects profile columns on **every authenticated request**, and
- * `lib/actions/` writes and reads too. Scoping this to the data layer would have
- * left the single most-executed query in the app outside the guard.
+ * `lib/actions/` writes and reads too, and the route guard reads on **every
+ * navigation** — so scoping this to the data layer would leave the most-executed
+ * query in the app outside the guard.
+ *
+ * **That most-executed query used to be `src/proxy.ts`'s**, which selected
+ * profile columns on every authenticated request. Group 6 deleted it; the read
+ * moved to `components/auth/RouteGuard.tsx`, which is scanned in its place. The
+ * guard reads through `my_onboarding_state()` rather than a column select, so it
+ * currently contributes nothing to find — which is the point of scanning it: the
+ * day someone adds a `.select()` there, it is already covered rather than
+ * needing to be remembered.
  */
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -24,7 +32,7 @@ function walk(dir: string): string[] {
 const queryModules = [
   ...walk(path.join(SRC, 'lib', 'data')),
   ...walk(path.join(SRC, 'lib', 'actions')),
-  path.join(SRC, 'proxy.ts'),
+  path.join(SRC, 'components', 'auth', 'RouteGuard.tsx'),
 ].map((file) => ({ name: path.relative(SRC, file), source: readFileSync(file, 'utf8') }))
 
 /**

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   needsOnboardingState,
+  onboardingStateFrom,
   resolveDestination,
   type GuardState,
 } from '@/lib/auth/guard'
@@ -104,10 +105,11 @@ async function readGuardState(pathname: string): Promise<GuardState> {
 
   if (!needsOnboardingState(pathname)) return { kind: 'session' }
 
-  const { data, error } = await supabase.rpc('my_onboarding_state').maybeSingle<OnboardingState>()
-  if (error || !data) return { kind: 'unavailable' }
-
-  return { kind: 'rider', ...data }
+  // The mapping — including the zero-rows case, which must not read as "not
+  // onboarded" — lives in `onboardingStateFrom` so it has a test.
+  return onboardingStateFrom(
+    await supabase.rpc('my_onboarding_state').maybeSingle<OnboardingState>()
+  )
 }
 
 /**
