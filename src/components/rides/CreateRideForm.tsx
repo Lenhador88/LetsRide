@@ -88,10 +88,14 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
           the write-side half of the bug #37 fixed on the read side.
         */}
         <Input name="departure_at" type="datetime-local" label="Departure" required />
-        {/* One template literal rather than text interleaved with {expr}: JSX
-            drops whitespace at a line boundary, so the moment a formatter wraps
-            the mixed form it renders "Amsterdamtime" with no gap — observed
-            here, and invisible in the source that causes it. */}
+        {/* One template literal rather than text interleaved with {expr}. JSX
+            drops whitespace at a line boundary, so if a formatter ever wraps
+            the expression onto its own line the hint renders "Amsterdamtime"
+            with no gap — a defect invisible in the source that causes it.
+            The mixed form is *not* broken today, at this line width: the
+            identical shape on /auth/signup renders its space correctly. This
+            is the cheaper of two ways to write the same string, not a fix for
+            a live bug. */}
         <p className="px-1 text-xs text-muted">
           {`Times are in ${DEPARTURE_ZONE_LABEL} time, whatever zone you're riding in.`}
         </p>
