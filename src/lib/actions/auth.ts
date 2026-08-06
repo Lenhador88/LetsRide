@@ -40,9 +40,20 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
   const supabase = await resolveSupabase()
+  // `window.location.origin`, matching `requestPasswordReset` below rather than
+  // leaving this unset. With email confirmation on (the live setting, see the
+  // comment on the `!data.session` branch), GoTrue's confirmation link is the
+  // entire rest of this flow — without `emailRedirectTo` it falls back to the
+  // project's Site URL rather than wherever this rider actually signed up.
+  // `next=/postcards` lands a confirmed rider on any authenticated route; the
+  // route guard takes it from there; `accept_terms()` has not run yet at that
+  // point (no session existed to run it with), so the guard's own consent
+  // check sends them to `/onboarding/terms`, which stamps it once there.
+  const origin = window.location.origin
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
+    options: { emailRedirectTo: `${origin}/auth/callback?next=/postcards` },
   })
 
   if (error) {

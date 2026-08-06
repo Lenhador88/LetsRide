@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useRef, useState } from 'react'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { ImageIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
@@ -11,7 +11,7 @@ import { createClub } from '@/lib/actions/clubs'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
-import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX } from '@/lib/validation/clubs'
+import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX, clubSchema } from '@/lib/validation/clubs'
 
 /**
  * `Create club`.
@@ -39,6 +39,32 @@ import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX } from '@/lib/validation/clubs'
 export function CreateClubForm() {
   const [state, formAction, pending] = useActionState(createClub, emptyActionState)
   useActionRedirect(state)
+  const formRef = useRef<HTMLFormElement>(null)
+
+  // Same reasoning as `CreateRideForm`: a disabled submit here read as the
+  // resting state of an untouched form and left the tab order early, so this
+  // moves focus to the schema-rejected field instead, off the same `clubSchema`
+  // the action parses (`lib/actions/clubs.ts`'s null-coalescing on the two path
+  // fields), rather than a second, hand-rolled "is `name` empty" check that
+  // could disagree with it.
+  useEffect(() => {
+    if (!state.error) return
+    const form = formRef.current
+    if (!form) return
+    const data = new FormData(form)
+    const parsed = clubSchema.safeParse({
+      name: data.get('name'),
+      description: data.get('description'),
+      is_public: data.get('is_public') === 'on',
+      avatar_path: (data.get('avatar_path') as string) || null,
+      cover_image_path: (data.get('cover_image_path') as string) || null,
+    })
+    const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
+    if (typeof field === 'string') {
+      const el = form.elements.namedItem(field)
+      if (el instanceof HTMLElement) el.focus()
+    }
+  }, [state])
 
   const [avatarPath, setAvatarPath] = useState('')
   const [coverPath, setCoverPath] = useState('')
@@ -80,7 +106,7 @@ export function CreateClubForm() {
   const busy = pending || uploading !== null
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form ref={formRef} action={formAction} noValidate className="flex flex-col gap-6">
       <input type="hidden" name="avatar_path" value={avatarPath} />
       <input type="hidden" name="cover_image_path" value={coverPath} />
 
@@ -169,14 +195,8 @@ export function CreateClubForm() {
         </p>
       )}
 
-      {/*
-        Gated on `name` alone — the only `required` field below — rather than a
-        new rule: `clubSchema` already refuses an empty name. Without this, an
-        empty-form tap meets the browser's own unstyleable "Please fill out this
-        field" bubble instead of the app's own validation, on a v2 screen.
-      */}
-      <Button type="submit" size="lg" loading={pending} disabled={busy || !name.trim()}>
-        {name.trim() ? 'Create club' : 'Name your club first'}
+      <Button type="submit" size="lg" loading={pending} disabled={busy}>
+        Create club
       </Button>
     </form>
   )

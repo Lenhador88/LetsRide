@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useRef, useState } from 'react'
+import { useActionState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
@@ -14,6 +14,7 @@ import {
   RIDE_MEETING_POINT_MAX,
   RIDE_ROUTE_MAX,
   RIDE_TITLE_MAX,
+  rideSchema,
 } from '@/lib/validation/rides'
 
 // "Europe/Amsterdam" -> "Amsterdam", so the hint can never name a different
@@ -50,25 +51,44 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
   const [state, formAction, pending] = useActionState(createRide, emptyActionState)
   useActionRedirect(state)
   const formRef = useRef<HTMLFormElement>(null)
-  const [ready, setReady] = useState(false)
 
-  // Mirrors the `required` attributes below rather than adding a new rule —
-  // rideSchema already refuses an empty title, meeting point or departure with
-  // `.min(1, …)`. Without this, a rider who taps "Create ride" on an empty form
-  // meets the browser's own "Please fill out this field" bubble: unstyleable,
-  // positioned by the OS rather than the design, and the kind of native chrome
-  // that renders inconsistently inside a webview. Disabling the submit control
-  // makes that implicit-submission path unreachable instead.
-  function updateReady() {
+  // A disabled submit was tried here first and reverted by review: it left the
+  // control out of the tab order on first paint of an untouched form (WCAG
+  // 1.4.3's inactive-control exemption covers a *transient* disabled state, not
+  // a resting one), and its label named no field. `noValidate` below turns off
+  // the browser's own bubble — same reason, still unstyleable and inconsistent
+  // in a webview — so this effect replaces what that bubble did for free:
+  // moving focus to the field the rider needs to fix. It re-parses the same
+  // `rideSchema` the action itself does, from the same FormData shape
+  // (`lib/actions/rides.ts`'s `rawMax`/`rawClub` handling), so the field this
+  // focuses and the message `state.error` shows below can never name two
+  // different fields — both come from one parse of one schema.
+  useEffect(() => {
+    if (!state.error) return
     const form = formRef.current
     if (!form) return
     const data = new FormData(form)
-    const filled = (field: string) => String(data.get(field) ?? '').trim().length > 0
-    setReady(filled('title') && filled('meeting_point') && filled('departure_at'))
-  }
+    const rawMax = (data.get('max_riders') as string)?.trim()
+    const rawClub = (data.get('club_id') as string)?.trim()
+    const parsed = rideSchema.safeParse({
+      title: data.get('title'),
+      description: data.get('description'),
+      meeting_point: data.get('meeting_point'),
+      route_description: data.get('route_description'),
+      departure_at: data.get('departure_at'),
+      max_riders: rawMax ? Number(rawMax) : null,
+      is_public: data.get('is_public') === 'on',
+      club_id: rawClub || null,
+    })
+    const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
+    if (typeof field === 'string') {
+      const el = form.elements.namedItem(field)
+      if (el instanceof HTMLElement) el.focus()
+    }
+  }, [state])
 
   return (
-    <form ref={formRef} action={formAction} onChange={updateReady} className="flex flex-col gap-4">
+    <form ref={formRef} action={formAction} noValidate className="flex flex-col gap-4">
       <Input name="title" label="Title" required maxLength={RIDE_TITLE_MAX} />
 
       <Textarea name="description" label="Description" rows={3} maxLength={RIDE_DESCRIPTION_MAX} />
@@ -150,8 +170,8 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
         </p>
       )}
 
-      <Button type="submit" size="lg" loading={pending} disabled={!ready}>
-        {ready ? 'Create ride' : 'Fill in the required fields'}
+      <Button type="submit" size="lg" loading={pending}>
+        Create ride
       </Button>
     </form>
   )

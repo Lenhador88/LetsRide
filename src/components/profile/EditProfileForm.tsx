@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useRef, useState } from 'react'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
@@ -8,7 +8,7 @@ import { FormError } from '@/components/auth/FormError'
 import { updateProfile } from '@/lib/actions/profile'
 import { emptyActionState } from '@/lib/actions/state'
 import type { ActionState } from '@/lib/actions/state'
-import { BIKE_MODEL_MAX_LENGTH, BIO_MAX_LENGTH } from '@/lib/validation/profile'
+import { BIKE_MODEL_MAX_LENGTH, BIO_MAX_LENGTH, profileEditSchema } from '@/lib/validation/profile'
 import type { Profile } from '@/types'
 
 /**
@@ -57,22 +57,37 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
   const saved = state.sent === true && !state.error && dismissed !== state
 
   const formRef = useRef<HTMLFormElement>(null)
-  // Seeded from the loaded profile rather than `false`: `location` almost
-  // always arrives pre-filled from onboarding, and starting this `false` would
-  // disable Save on a form nobody has touched yet.
-  const [locationFilled, setLocationFilled] = useState(Boolean(profile.location?.trim()))
 
-  function handleChange() {
-    setDismissed(state)
+  // Same reasoning as `CreateRideForm`: a disabled Save read as the resting
+  // state of a form nobody had touched yet (worse here, since `location`
+  // almost always arrives pre-filled — the disable only ever fired on a rider
+  // who *cleared* it), and it left the tab order early for AT. `noValidate`
+  // below turns off the browser's own bubble, so this moves focus to the
+  // schema-rejected field instead, off the same `profileEditSchema` the action
+  // parses.
+  useEffect(() => {
+    if (!state.error) return
     const form = formRef.current
-    if (form) setLocationFilled(String(new FormData(form).get('location') ?? '').trim().length > 0)
-  }
+    if (!form) return
+    const data = new FormData(form)
+    const parsed = profileEditSchema.safeParse({
+      location: data.get('location'),
+      bio: data.get('bio'),
+      bike_model: data.get('bike_model'),
+    })
+    const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
+    if (typeof field === 'string') {
+      const el = form.elements.namedItem(field)
+      if (el instanceof HTMLElement) el.focus()
+    }
+  }, [state])
 
   return (
     <form
       ref={formRef}
       action={formAction}
-      onChange={handleChange}
+      onChange={() => setDismissed(state)}
+      noValidate
       className="flex flex-col gap-4 px-6"
     >
       <Input
@@ -106,15 +121,8 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
           with different rules; the shared component is already correct. */}
       <FormError message={state.error} />
 
-      {/*
-        Gated on `location` alone — the only `required` field here — rather than
-        a new rule: `profileEditSchema` already refuses an empty one. Without
-        this, clearing the field and tapping Save meets the browser's own
-        unstyleable "Please fill out this field" bubble instead of the app's own
-        validation.
-      */}
-      <Button type="submit" loading={pending} disabled={!locationFilled}>
-        {locationFilled ? 'Save changes' : 'Add where you ride from'}
+      <Button type="submit" loading={pending}>
+        Save changes
       </Button>
 
       {/* The region is always mounted and only its text changes. A `role="status"`
