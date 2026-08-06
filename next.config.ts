@@ -39,8 +39,66 @@ if (missingEnv.length > 0) {
   )
 }
 
-const nextConfig: NextConfig = {
-  /* config options here */
-};
+/**
+ * `CAPACITOR_BUILD=1` switches this build to a fully static bundle for the
+ * native shell. **Anything else — including the Vercel build — must come out
+ * byte-for-byte the same as it did before this flag existed**, which is why the
+ * flag gates an entire config object rather than tweaking fields on a shared
+ * one. `main` and `development` both auto-deploy from this repo and neither
+ * sets it (docs/ENVIRONMENTS.md).
+ *
+ * ## Why the native build needs it at all
+ *
+ * Capacitor copies a directory of files into the app bundle and serves them
+ * from a local scheme handler. There is no Node process in an app bundle, so
+ * `ƒ (Dynamic) server-rendered on demand` has nothing to render it — those
+ * seven routes are the whole reason this flag exists.
+ *
+ * ## Each option, and what breaks without it
+ *
+ * - **`output: 'export'`** — emits HTML/JS/CSS only. Measured 2026-08-06: with
+ *   nothing else changed it fails at `/clubs/[id]` with *"Page is missing
+ *   generateStaticParams() so it cannot be rendered"*. See
+ *   `src/app/(app)/**\/[id]/layout.tsx` for how that is answered and why the
+ *   answer is a placeholder rather than a real id list.
+ * - **`trailingSlash: true`** — makes `/clubs` an `out/clubs/index.html`
+ *   directory instead of an `out/clubs.html` sibling file. Capacitor's asset
+ *   handler resolves a URL path against the filesystem, so `/clubs` finds a
+ *   directory's `index.html` and never finds `clubs.html`. Without this the
+ *   shell shows a blank screen on every route but `/`.
+ * - **`images: { unoptimized: true }`** — `next/image` is used on six screens
+ *   and its default loader is a server route. Export refuses to build without
+ *   this, and there is no server in a bundle to run the optimiser.
+ * - **`distDir`** — keeps the export's build cache out of `.next`, so a local
+ *   `npm run build` and a local `CAPACITOR_BUILD=1` build cannot hand each other
+ *   a half-static cache.
+ *
+ * ## `webDir` is `.next-capacitor`, not `out/` — measured, and it is a trap
+ *
+ * A first draft of this comment said *"`out/` is fixed by Next and is the
+ * `webDir`"*. It is not. With a custom `distDir`, Next 16 writes the export into
+ * **`distDir`** and never creates `out/` at all: after a clean
+ * `CAPACITOR_BUILD=1` build, `ls out` is *No such file or directory* and the
+ * HTML is at `.next-capacitor/postcards/placeholder/index.html`. Measured
+ * 2026-08-06.
+ *
+ * So whoever writes `capacitor.config.ts` must set `webDir: '.next-capacitor'`.
+ * Pointing it at `out/` yields an empty bundle — and an empty `webDir` fails at
+ * *launch*, on a device, as a white screen, which is the most expensive place in
+ * this whole epic to discover a one-word mistake. `/.next-capacitor/` is
+ * gitignored alongside `/out/` for the same reason either would be.
+ */
+const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1'
+
+const nextConfig: NextConfig = isCapacitorBuild
+  ? {
+      output: 'export',
+      distDir: '.next-capacitor',
+      trailingSlash: true,
+      images: { unoptimized: true },
+    }
+  : {
+      /* config options here */
+    };
 
 export default nextConfig;

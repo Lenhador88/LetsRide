@@ -13,6 +13,12 @@
 /out/
 next-env.d.ts
 
+# The native shell's static export. `CAPACITOR_BUILD=1 npm run build` writes its
+# build cache here and its output to /out/ (already ignored above) — a separate
+# distDir so a web build and a Capacitor build cannot hand each other a
+# half-static cache. See next.config.ts.
+/.next-capacitor/
+
 # production
 /build
 

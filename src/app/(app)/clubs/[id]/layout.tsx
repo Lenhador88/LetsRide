@@ -1,3 +1,5 @@
+import { staticParamsForNativeShell } from '@/lib/native/static-params'
+
 /**
  * The vertical chrome the four club sub-pages share.
  *
@@ -17,4 +19,18 @@
  */
 export default function ClubDetailLayout({ children }: { children: React.ReactNode }) {
   return <div className="pt-header-sub-extra pb-8">{children}</div>
+}
+
+/**
+ * One `generateStaticParams` covers all four club sub-pages — `/clubs/[id]`
+ * plus `/rides`, `/members` and `/about` — because it answers for the `[id]`
+ * *segment*, and everything nested under it inherits the answer.
+ *
+ * Worth stating, because the nesting was flagged as the shape a static export
+ * handles worst. It is not: depth costs nothing here. What costs is that the
+ * ids are unknowable, and that is one problem however deep the tree goes. See
+ * `src/lib/native/static-params.ts`.
+ */
+export function generateStaticParams() {
+  return staticParamsForNativeShell()
 }
