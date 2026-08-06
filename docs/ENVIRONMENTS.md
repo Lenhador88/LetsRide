@@ -80,6 +80,69 @@ production hotfix at 2am — **merge `main` back into `development` immediately*
 `development` still holds the old version of that file, and the next promotion silently
 reverts the fix. This is the classic failure of this branch model and it is not hypothetical.
 
+### The last piece: make `development` the repo's default branch
+
+**The branch model is adopted everywhere except the one setting that decides what a fresh
+checkout sees, and that gap has a cost nobody was paying attention to.** Measured 2026-08-06:
+
+```
+GitHub default_branch = "main"
+  -> CLAUDE_CODE_BASE_REF = main          (environment type: cloud_default)
+    -> the session container clones main  (.git/config carries [branch "main"])
+      -> CLAUDE.md and .claude/ load from main
+```
+
+Two consequences, and the second is the one that compounds:
+
+- **Agent sessions read instructions from `main`.** So a standing instruction merged into
+  `development` is *written but not in force* — the next session follows the superseded rule and
+  cannot tell. On the day this was found, `main` was five commits behind and a session starting
+  fresh would have read a `CLAUDE.md` still claiming `letsride-dev` did not exist.
+- **Every feature branch is cut from the wrong base.** Sessions branch from `main` and open PRs
+  against `development`, so each one starts behind and has to rebase. This file already tells
+  people to branch with `git checkout -B <branch> origin/development`; the environment hands
+  them `main` regardless.
+
+Setting the default to `development` is not a new commitment to GitFlow — it is finishing the
+one already made when the environments were split. `main` stays exactly what it is: the
+production branch, receiving only the promotion.
+
+**Do these in order. Step 1 gates step 3, and skipping it is the one way to cause real harm.**
+
+1. **Verify Vercel's Production Branch reads `main`.** Vercel → Project → Settings → Git →
+   Production Branch. It defaults to the repo's default branch *at import time* and is normally
+   stored explicitly afterwards — but if it tracks the default rather than storing it, flipping
+   GitHub would point Production at `development` and ship DEV-built code, with DEV credentials
+   inlined, to real riders on a green deploy. That is §Never use Vercel's promote, reached by a
+   different door. **Unverified at the time of writing** — no MCP tool reads Vercel project
+   settings, so this needs a human eye once.
+2. **Check GitHub → Settings → General → "Automatically delete head branches".** In a promotion
+   PR, `development` is the *head* branch, so with this on, merging `development` → `main` would
+   delete `development`. It has not happened (#64 was that promotion and the branch survived), so
+   it is presently off or was declined. Note that step 3 makes this moot in the safest possible
+   way: **GitHub refuses to delete the default branch**, so once `development` is the default it
+   cannot be removed by a merge, a setting, or a mis-click.
+3. **GitHub → Settings → General → Default branch → switch to `development`.**
+4. **Re-point branch protection.** Covered by Owner setup item 6, which is still outstanding for
+   both branches — but note the default branch is the one most tooling protects by convention,
+   so do not assume a rule written for `main` moved with it.
+5. **Confirm it took.** Start a fresh session and check that it opens on `development`:
+
+   ```bash
+   echo "$CLAUDE_CODE_BASE_REF"                       # expect: development
+   git rev-parse --abbrev-ref HEAD                    # the work branch, cut from development
+   git rev-list --count origin/development..HEAD      # expect 0 at session start
+   ```
+
+**What does not need changing, verified 2026-08-06.** `ci.yml` already lists both branches on
+both triggers, so no workflow is affected. The only `main` references in code are the two
+fallbacks in `.claude/hooks/*.sh`, which are deliberate — they prefer `development` and fall
+back only in a clone that never fetched it.
+
+**The one habit that changes:** after the flip, a new PR defaults to base `development`, which
+is right for every PR except the promotion. **The `development` → `main` promotion must set its
+base explicitly** — and it is still a merge commit, never a squash (§Promote with a merge commit).
+
 ---
 
 ## Migrations
@@ -308,6 +371,10 @@ Nobody in a session can do these.
    and `RLS Policy Tests`, require branches up to date, no bypass. Currently off entirely.
 7. **Supabase Pro.** The free tier has no daily backups, and with no down migrations, backups
    are the only rollback that exists.
+7a. **Make `development` the repo's default branch** — the ordered checklist is in §The last
+   piece above, and step 1 (verify Vercel's Production Branch reads `main`) gates the rest.
+   Until this is done, every agent session reads `CLAUDE.md` and `.claude/` from `main`, so any
+   instruction merged to `development` is written but not in force.
 
 **8 and 9 are new, measured, and the most urgent things on this list** — they are the only two
 items here that are breaking production *today* rather than preparing for DEV. Both are on
