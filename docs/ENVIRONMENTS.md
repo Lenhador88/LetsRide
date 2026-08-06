@@ -4,11 +4,14 @@
 which database is which, how a change travels from a branch to production, and the handful of
 things that are *not* in the repo and therefore drift silently.
 
-> **Status, 2026-08-06: half of this is a contract, not a description.** The `development`
-> branch and everything in this repo are real. **The `letsride-dev` Supabase project does not
-> exist yet** — creating it is an owner action (§Owner setup). Until it does, Vercel Preview
-> still points at production, so *previews are still writing to the production database*. That
-> is the single most important line in this file.
+> **Status, 2026-08-06: the DEV database exists and the Vercel half does not.** `Letsride-dev`
+> (ref **`fpmrimzxadewsaiwpsel`**, `eu-west-1`) was created, the full chain applied, and its
+> schema verified byte-identical to production — see §The two environments.
+>
+> **Vercel Preview still points at production**, so *previews are still writing to the
+> production database*. Measured, not assumed: `NEXT_PUBLIC_SUPABASE_URL` is scoped
+> "Production and Preview" with the PROD value. That is now the single most important line in
+> this file, and it is §Owner setup items 3 and 3a.
 
 ---
 
@@ -19,7 +22,7 @@ things that are *not* in the repo and therefore drift silently.
 | Git branch | `development` | `main` |
 | Vercel target | Preview | Production |
 | URL | `letsrideapp-git-development-pedro-projects1.vercel.app` | `letsrideapp.vercel.app` |
-| Supabase project | `letsride-dev` — **not created yet** | `letsride` / `zwprydcyryvudhurbnye` |
+| Supabase project | `Letsride-dev` / `fpmrimzxadewsaiwpsel` — **created 2026-08-06, chain applied, schema verified identical to PROD** | `letsride` / `zwprydcyryvudhurbnye` |
 | Who can reach it | Owner only (Vercel SSO on Preview) | Anyone with the link |
 | Test accounts | `@letsride.dev`, seeded | None. Real riders only |
 | Email confirmation | Off, so fixtures can be made | **On** once riders are live (decision #6) |
@@ -279,13 +282,26 @@ scheduled job is written, not after it has fired from the wrong database.**
 
 Nobody in a session can do these.
 
-1. **Check the current Vercel variable scoping.** If `NEXT_PUBLIC_SUPABASE_URL` and
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY` are scoped to *all* environments, previews are writing to
-   production right now. This is the most urgent item in this file.
-2. **Create `letsride-dev`** in the same org and region (`eu-west-1`).
+1. ~~**Check the current Vercel variable scoping.**~~ **Done, and it was the bad case.**
+   `NEXT_PUBLIC_SUPABASE_URL` is scoped *Production and Preview* with the PROD value, so every
+   preview and feature branch has been reading and writing production.
+2. ~~**Create `letsride-dev`.**~~ **Done** — `fpmrimzxadewsaiwpsel`, `eu-west-1`, same org.
 3. **Set the variables per target** — Production → `letsride`; Preview and Development →
-   `letsride-dev`.
-4. **Replicate auth config** on DEV, and narrow PROD's redirect allowlist (table above).
+   `Letsride-dev` (`https://fpmrimzxadewsaiwpsel.supabase.co`). **This is now the only thing
+   standing between previews and the production database.**
+
+   Add a *second row* per variable rather than editing the existing one: Vercel allows one
+   value per name per environment, so each name ends up with a Production row and a Preview row.
+
+3a. **Leave the Preview rows' branch filter empty.** A Preview variable scoped to a single git
+   branch applies to that branch alone — and feature branches deploy to Preview too, so they
+   would build with the variable missing. Which does **not** fail loudly: measured, `next build`
+   exits 0 without the anon key and ships a green deployment that fails in every browser.
+   `next.config.ts` now asserts both at build time so that turns red instead.
+4. ~~**Replicate auth config** on DEV~~ **Done and verified** — confirmation **off**
+   (`mailer_autoconfirm: true`), Site URL set to the DEV preview alias, and both
+   `http://localhost:3000/**` and the preview wildcard on the redirect allowlist. PROD's
+   allowlist was also repaired the same day (items 8 and 9 below).
 5. **Repoint the GitHub Actions secrets at DEV.** CI only uses them for `next build`, which
    fetches nothing, so production credentials have no business being there.
 6. **Branch protection on both `main` and `development`** — require `Type Check, Lint & Build`
