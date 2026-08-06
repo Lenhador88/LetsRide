@@ -307,12 +307,12 @@ text they should converge on. Read it before archiving either.
   3 rides. Read that as "nobody has hit it on a tiny dataset", not as "the window is hard to
   hit". Re-run at apply time.
 
+  > **Recommendation** 8/10 — the last place a client can leave the database in a state no
+  > constraint forbids, and the invariant is unasserted in *two* places rather than one
   > **Complexity** 5/10 — two migrations, four triggers, a backfill, three deploy steps
   > **Urgency** 4/10 — a draft said 6/10 on a refuted premise (see above); back to roughly
   > where it was. Both doors need a hand-rolled request. Rises the day a real rider abandons a
   > create, and sharply if create gets a retry affordance or the store build ships
-  > **Recommendation** 8/10 — the last place a client can leave the database in a state no
-  > constraint forbids, and the invariant is unasserted in *two* places rather than one
   > **This session** N — 3 blocking questions, two of them product-owner decisions (may an
   > owner leave their own club? may an organizer leave their own crew?)
 
@@ -330,12 +330,12 @@ text they should converge on. Read it before archiving either.
   invocation. **The RLS suite cannot see it either**: its idempotency assertion runs both calls
   inside one psql transaction, so it proves nothing about two.
 
+  > **Recommendation** 6/10 — worth closing before the flow ships, not before the flow is built
   > **Complexity** 4/10 — an advisory lock is small; a marker column is a migration plus a
   > recovery story for runs that die holding it
   > **Urgency** 1/10 now, and it is genuinely conditional: it needs two riders deleting within
   > seconds, in a club they share. There are four accounts. It rises with the user count and
   > sharply the day deletion is reachable from the UI at all
-  > **Recommendation** 6/10 — worth closing before the flow ships, not before the flow is built
   > **This session** N — it is a design choice between two mechanisms, and the flow it protects
   > does not exist yet
 
@@ -354,11 +354,11 @@ text they should converge on. Read it before archiving either.
   succeeds; another rider's id in the body still deletes only the caller; publishable key
   refused; no token refused) can only be proven live.
 
+  > **Recommendation** 8/10 — the expensive half is done and the context is written down; it
+  > gets more expensive the longer the function sits unexercised
   > **Complexity** 5/10 — the flow is four screens and one action; the risk is all in the
   > function, which is written
   > **Urgency** 3/10 — nothing forces it until a store submission, which needs the shell first
-  > **Recommendation** 8/10 — the expensive half is done and the context is written down; it
-  > gets more expensive the longer the function sits unexercised
   > **This session** N — needs the function deployed, which is an owner action
 - **Inbox has no route and no tables.** It is one of five nav tabs and it renders **disabled**
   rather than dead — `UNBUILT` in `Navbar.tsx` gives it `aria-disabled` and a "not built yet"
