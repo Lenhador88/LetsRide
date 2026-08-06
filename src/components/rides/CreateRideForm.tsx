@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
@@ -8,12 +8,17 @@ import { Textarea } from '@/components/ui/Textarea'
 import { createRide } from '@/lib/actions/rides'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
+import { APP_TIME_ZONE } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
   RIDE_MEETING_POINT_MAX,
   RIDE_ROUTE_MAX,
   RIDE_TITLE_MAX,
 } from '@/lib/validation/rides'
+
+// "Europe/Amsterdam" -> "Amsterdam", so the hint can never name a different
+// city than the zone `wallClockToUtc` actually resolves against.
+const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') ?? APP_TIME_ZONE
 
 /**
  * `Create ride`.
@@ -44,9 +49,26 @@ import {
 export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[] }) {
   const [state, formAction, pending] = useActionState(createRide, emptyActionState)
   useActionRedirect(state)
+  const formRef = useRef<HTMLFormElement>(null)
+  const [ready, setReady] = useState(false)
+
+  // Mirrors the `required` attributes below rather than adding a new rule —
+  // rideSchema already refuses an empty title, meeting point or departure with
+  // `.min(1, …)`. Without this, a rider who taps "Create ride" on an empty form
+  // meets the browser's own "Please fill out this field" bubble: unstyleable,
+  // positioned by the OS rather than the design, and the kind of native chrome
+  // that renders inconsistently inside a webview. Disabling the submit control
+  // makes that implicit-submission path unreachable instead.
+  function updateReady() {
+    const form = formRef.current
+    if (!form) return
+    const data = new FormData(form)
+    const filled = (field: string) => String(data.get(field) ?? '').trim().length > 0
+    setReady(filled('title') && filled('meeting_point') && filled('departure_at'))
+  }
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form ref={formRef} action={formAction} onChange={updateReady} className="flex flex-col gap-4">
       <Input name="title" label="Title" required maxLength={RIDE_TITLE_MAX} />
 
       <Textarea name="description" label="Description" rows={3} maxLength={RIDE_DESCRIPTION_MAX} />
@@ -58,19 +80,25 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
         maxLength={RIDE_MEETING_POINT_MAX}
       />
 
-      {/*
-        `datetime-local` sends a zone-less string, which the action resolves as
-        wall-clock in APP_TIME_ZONE — see wallClockToUtc. Sending an ISO string
-        from here instead would put the browser's zone into the write, which is
-        the write-side half of the bug #37 fixed on the read side.
-      */}
-      <Input name="departure_at" type="datetime-local" label="Departure" required />
+      <div className="flex flex-col gap-1.5">
+        {/*
+          `datetime-local` sends a zone-less string, which the action resolves as
+          wall-clock in APP_TIME_ZONE — see wallClockToUtc. Sending an ISO string
+          from here instead would put the browser's zone into the write, which is
+          the write-side half of the bug #37 fixed on the read side.
+        */}
+        <Input name="departure_at" type="datetime-local" label="Departure" required />
+        <p className="px-1 text-xs text-muted">
+          Times are in {DEPARTURE_ZONE_LABEL} time, whatever zone you&apos;re riding in.
+        </p>
+      </div>
 
       <Textarea name="route_description" label="Route" rows={2} maxLength={RIDE_ROUTE_MAX} />
 
       <Input
         name="max_riders"
         type="number"
+        inputMode="numeric"
         min={1}
         max={999}
         label="Maximum riders"
@@ -114,8 +142,8 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
         </p>
       )}
 
-      <Button type="submit" size="lg" loading={pending}>
-        Create ride
+      <Button type="submit" size="lg" loading={pending} disabled={!ready}>
+        {ready ? 'Create ride' : 'Fill in the required fields'}
       </Button>
     </form>
   )

@@ -175,11 +175,30 @@ defaults, and the default is email confirmation ON**, which is the opposite of d
 fresh DEV will therefore refuse to let you create a fixture rider, and it will look like a
 broken signup rather than a config difference.
 
+**That is not a hazard waiting for DEV — it already happened on PROD.** Measured 2026-08-06,
+`letsride` reports `mailer_autoconfirm: false`: the default was never changed, decision #6 said
+otherwise for the project's whole life, and `signUp` was written against the sentence rather
+than the setting. The result is one account on the live database created through the real
+signup flow with no consent stamp, no username and no sign-in — the exact shape this predicts.
+`signUp` now branches on `data.session`, so the app is correct either way, but the lesson is
+the one this section is for: **an unversioned setting drifts silently, and code that trusts a
+document instead of reading it drifts with it.** Verify with one call that needs no
+credentials:
+
+```bash
+curl -s "https://<ref>.supabase.co/auth/v1/settings" -H "apikey: <publishable key>" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["mailer_autoconfirm"])'
+# false = confirmation REQUIRED. true = autoconfirm, i.e. "off".
+```
+
+Note the polarity — `mailer_autoconfirm: false` reads like "confirmation off" and means the
+opposite.
+
 Check these on both projects whenever either changes:
 
-| Setting | DEV | PROD |
-|---|---|---|
-| Email confirmation | off | **on** before launch (decision #6) |
+| Setting | DEV | PROD | Actual, measured 2026-08-06 |
+|---|---|---|---|
+| Email confirmation | off | **on** before launch (decision #6) | **ON** on `letsride` — `mailer_autoconfirm: false` |
 | Site URL | the DEV preview alias | `https://letsrideapp.vercel.app` |
 | Redirect allowlist | `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | the production origin **only** |
 | Leaked-password protection | on | on |

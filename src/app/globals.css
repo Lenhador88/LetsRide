@@ -158,9 +158,37 @@ body {
   --navbar-action: 4rem; /* 16 pad + 40 button + 8 */
   --ride-rsvp-bar: 6rem; /* 16 pad + 20 prompt + 12 gap + 40 group + 8 */
   --safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  /* `Header`'s own content height (`Header.tsx`'s `pt-safe` + `h-10` row + its
+     8px bottom padding) — the same expression `.pt-header` uses below, lifted
+     here so it has one source instead of two copies that can drift, matching
+     `--navbar-tabs` etc. Excludes the header's own `border-b`; see
+     `--scroll-padding-top` for why that extra pixel is added back. */
+  --header-height: calc(max(0.5rem, env(safe-area-inset-top)) + 3rem);
 }
 .pt-header {
-  padding-top: calc(max(0.5rem, env(safe-area-inset-top)) + 3rem);
+  padding-top: var(--header-height);
+}
+/* Reserves space at the top of the document's scrolling box for the fixed
+   header, for every `scrollIntoView()` — native or programmatic — not just
+   the ones this component library calls directly. `scroll-padding-top` on
+   the scroller (not `scroll-margin-top` on each target) is what makes this
+   one rule instead of an annotation on every input, textarea, select and
+   anchor: found live when the browser's own required-field validation
+   scrolled `/rides/new`'s Title field to y=0 and showed its bubble pointing
+   at a field now entirely hidden under the header. The `+ 1px` is the
+   header's own `border-b`, which `--header-height` deliberately excludes so
+   `.pt-header` keeps drawing content flush against the hairline rather than
+   1px below it.
+
+   Deliberately global rather than only the taller (`.pt-header-sub-extra`)
+   header's height: the reproduced case — required-field validation — lives
+   on the plain-header create forms (`/rides/new`, `/clubs/new`, `/profile`),
+   none of which carry a sub-page switcher row. A page using the taller
+   header would still land 24px high rather than under the header entirely,
+   which is the smaller of the two failures and not one anything here
+   reproduces today. */
+html {
+  scroll-padding-top: calc(var(--header-height) + 1px);
 }
 /* The taller header — the one carrying a sub-page switcher under the title row
    (`v2 / Component / Header` Type=User / Type=Club, 120px against Regular's 96).

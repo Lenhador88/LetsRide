@@ -19,13 +19,14 @@ export type ActionState = {
    * "not submitted yet" from "submitted, nothing to report" — both of which
    * are `error: null` otherwise.
    *
-   * Two actions need it: `requestPasswordReset`, which renders a confirmation
-   * in place, and `addComment`, which stays on the thread and whose composer
-   * clears itself on it. Every other action navigates on success, so its
-   * success state is never rendered. If you are adding a third, set this rather
-   * than inventing a second success signal — and note that consecutive
-   * successes are indistinguishable by value, so a screen reacting to it must
-   * compare the state object's identity.
+   * Three actions need it: `requestPasswordReset`, which renders a confirmation
+   * in place; `addComment`, which stays on the thread and whose composer clears
+   * itself on it; and `signUp`, when email confirmation is on and the account
+   * exists with no session to navigate anywhere with. Every other action
+   * navigates on success, so its success state is never rendered. If you are
+   * adding a fourth, set this rather than inventing a second success signal —
+   * and note that consecutive successes are indistinguishable by value, so a
+   * screen reacting to it must compare the state object's identity.
    */
   sent?: boolean
   /**

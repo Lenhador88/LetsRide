@@ -169,8 +169,14 @@ export function CreateClubForm() {
         </p>
       )}
 
-      <Button type="submit" size="lg" loading={pending} disabled={busy}>
-        Create club
+      {/*
+        Gated on `name` alone — the only `required` field below — rather than a
+        new rule: `clubSchema` already refuses an empty name. Without this, an
+        empty-form tap meets the browser's own unstyleable "Please fill out this
+        field" bubble instead of the app's own validation, on a v2 screen.
+      */}
+      <Button type="submit" size="lg" loading={pending} disabled={busy || !name.trim()}>
+        {name.trim() ? 'Create club' : 'Name your club first'}
       </Button>
     </form>
   )

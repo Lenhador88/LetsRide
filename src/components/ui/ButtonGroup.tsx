@@ -53,6 +53,12 @@ export function ButtonGroup<T extends string>({
             onClick={() => onChange(option.value)}
             className={cn(
               'h-9 flex-1 px-4 text-sm font-medium transition-colors disabled:opacity-60',
+              // No State=Focus in the Figma set — this is a keyboard case the
+              // design never drew. Matches the ring every other custom control
+              // in the library uses rather than leaving the browser default,
+              // which WebKit (the native shell's renderer) does not reliably
+              // draw on a <button> at all.
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               selected
                 ? 'rounded-lg bg-foreground text-surface'
                 : 'rounded-[3px] text-muted active:bg-black/5'

@@ -164,8 +164,12 @@ type ItemProps = {
 // 56px tall, 4px radius, 16px horizontal padding, Poppins/16/Medium. `State=Down`
 // is `Grey/10%`, which is `active:` here rather than `hover:` — this is a touch
 // surface and a sticky hover state on mobile reads as a stuck selection.
+//
+// The sheet already traps focus and is reachable by keyboard (see the effect
+// above), so its rows need their own visible indicator rather than the
+// browser default — same reasoning as `ButtonGroup`.
 const itemBase =
-  'flex h-14 w-full items-center gap-4 rounded px-4 text-left text-base font-medium transition-colors active:bg-border'
+  'flex h-14 w-full items-center gap-4 rounded px-4 text-left text-base font-medium transition-colors active:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface'
 
 export function ContextMenuItem({
   icon,

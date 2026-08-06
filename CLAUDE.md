@@ -956,7 +956,37 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — the route guard (`src/lib/auth/guard.ts`) redirects them back into the wizard, and `023` refuses their content writes regardless of what the guard does. The schema carries the incomplete state so an abandoned signup resumes where it left off.
 
-**6. Email confirmation is off, for now.** Signup lands straight in onboarding with a live session. This is a deliberate temporary trade — it permits signing up with an email you don't control — and must be revisited before public launch.
+**6. Email confirmation is ON, and this decision has said the opposite since it was written.**
+Measured 2026-08-06 against the live project — `GET /auth/v1/settings` reports
+`"mailer_autoconfirm": false`, which is GoTrue for *confirmation required*. It is a dashboard
+setting with no file behind it (`docs/ENVIRONMENTS.md` §Auth configuration), so nothing in this
+repo ever made the old claim true and nothing noticed when it wasn't.
+
+The decision as written was: *off, for now — signup lands straight in onboarding with a live
+session; a deliberate temporary trade that permits signing up with an email you don't control,
+to be revisited before public launch.* Keep the intent, **read the setting rather than the
+decision.** Three things in `src/` asserted the old text as fact and drove real behaviour off
+it; all three are corrected, and the shape of the mistake is the thing to carry:
+
+- `signUp` went straight to `accept_terms()` "because #6 leaves the session live at this point".
+  With confirmation on, `signUp` returns a user and **no session**, the RPC runs as `anon` which
+  holds no EXECUTE on it (`021`), and the rider was told their consent could not be recorded and
+  to *"sign in to continue"* — advice that cannot work, because sign-in is refused until the
+  address is confirmed.
+- `guard.ts` said a rider who signed up through the current flow "never sees" the consent
+  prompt. It is the *ordinary* path every new rider takes, and it is what stops the missing
+  stamp from becoming a signed-in rider who cannot post.
+- The duplicate-signup leak `signUp` documents as "a known consequence of #6" is largely closed
+  by confirmation being on: GoTrue applies its own mitigation and returns success with an empty
+  `identities` array rather than the "already registered" error.
+
+**The general rule this earns:** an architectural decision about a dashboard setting is an
+*intention*, and code must read the setting rather than trust the sentence. `signUp` now
+branches on `data.session` and is correct under either configuration.
+
+One consequence for `docs/ENVIRONMENTS.md`'s table: DEV wants it **off** so fixtures can be
+made, PROD wants it **on**. There is only one project today, so there is no per-environment
+answer to give — the split is `letsride-dev`'s to resolve when it exists.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 

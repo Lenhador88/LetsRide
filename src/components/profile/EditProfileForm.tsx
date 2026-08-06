@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
@@ -56,10 +56,23 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
   const [dismissed, setDismissed] = useState<ActionState | null>(null)
   const saved = state.sent === true && !state.error && dismissed !== state
 
+  const formRef = useRef<HTMLFormElement>(null)
+  // Seeded from the loaded profile rather than `false`: `location` almost
+  // always arrives pre-filled from onboarding, and starting this `false` would
+  // disable Save on a form nobody has touched yet.
+  const [locationFilled, setLocationFilled] = useState(Boolean(profile.location?.trim()))
+
+  function handleChange() {
+    setDismissed(state)
+    const form = formRef.current
+    if (form) setLocationFilled(String(new FormData(form).get('location') ?? '').trim().length > 0)
+  }
+
   return (
     <form
+      ref={formRef}
       action={formAction}
-      onChange={() => setDismissed(state)}
+      onChange={handleChange}
       className="flex flex-col gap-4 px-6"
     >
       <Input
@@ -93,8 +106,15 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
           with different rules; the shared component is already correct. */}
       <FormError message={state.error} />
 
-      <Button type="submit" loading={pending}>
-        Save changes
+      {/*
+        Gated on `location` alone — the only `required` field here — rather than
+        a new rule: `profileEditSchema` already refuses an empty one. Without
+        this, clearing the field and tapping Save meets the browser's own
+        unstyleable "Please fill out this field" bubble instead of the app's own
+        validation.
+      */}
+      <Button type="submit" loading={pending} disabled={!locationFilled}>
+        {locationFilled ? 'Save changes' : 'Add where you ride from'}
       </Button>
 
       {/* The region is always mounted and only its text changes. A `role="status"`

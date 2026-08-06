@@ -46,12 +46,14 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
   })
 
   if (error) {
-    // Spec §Risks accepts that with email confirmation off (decision #6) the
-    // duplicate-signup case is unavoidably explicit — Supabase's usual
-    // mitigation, returning success and emailing the real owner, needs
-    // confirmation on. So this leak is a known consequence of #6, not an
-    // oversight, and it closes when #6 is revisited. Everything else gets one
-    // message rather than Supabase's raw copy.
+    // Spec §Risks accepted an explicit duplicate-signup message as the price of
+    // email confirmation being off: Supabase's usual mitigation — returning
+    // success and emailing the real owner — needs confirmation on. With it on,
+    // GoTrue applies that mitigation itself and returns success with an empty
+    // `identities` array instead of this error, so the branch below is a
+    // fallback for the confirmation-off configuration rather than the path a
+    // duplicate normally takes. Either way the address is never confirmed to a
+    // stranger by the `sent` branch further down.
     const alreadyRegistered = error.message.toLowerCase().includes('already registered')
     return {
       error: alreadyRegistered
@@ -61,9 +63,38 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
   }
   if (!data.user) return { error: 'Could not create that account. Try again.' }
 
-  // Decision #6: email confirmation is off, so the session is live here and the
-  // consent record can be written immediately. It is stored rather than kept in
-  // form state because it has to outlive the request that collected it.
+  // **The session decides the flow, and it is read rather than assumed.**
+  //
+  // This used to go straight to `accept_terms()` on the strength of decision
+  // #6 ("email confirmation is off, so the session is live here"). #6 describes
+  // an intent, not a fact: confirmation is a GoTrue dashboard setting with no
+  // file behind it (docs/ENVIRONMENTS.md §Auth configuration), so nothing in
+  // this repo makes it true and nothing notices when it changes. Measured
+  // 2026-08-06 against the live project, `/auth/v1/settings` reports
+  // `mailer_autoconfirm: false` — it is ON, and has been for every signup this
+  // database has seen.
+  //
+  // With it on, `signUp` returns a user and **no session**. The RPC below then
+  // runs as `anon`, which holds no EXECUTE on it (021), so it was refused and
+  // the rider was told their consent could not be recorded and to "sign in to
+  // continue" — advice that cannot work, because sign-in is refused until the
+  // address is confirmed. One account on this database is stuck in exactly that
+  // state.
+  //
+  // Reading the session makes the flow correct under either setting, which is
+  // what #6 needs anyway: it is documented as temporary and must be revisited
+  // before launch.
+  if (!data.session) {
+    // Consent is not lost by returning here — the rider ticked the box, and the
+    // route guard sends any signed-in rider with a NULL stamp to
+    // `/onboarding/terms` ahead of the wizard, which stamps it through the same
+    // RPC once there is a session to run it with. `023` refuses their content
+    // writes until then, so the gap is closed by the database and not by trust.
+    return { error: null, sent: true }
+  }
+
+  // The consent record is stored rather than kept in form state because it has
+  // to outlive the request that collected it.
   //
   // Through the RPC rather than an UPDATE because 021 revokes the client's
   // UPDATE grant on the column. That is not a workaround for the revoke, it is
@@ -72,10 +103,8 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
   // trigger could only ever replace a value the client supplied.
   const { data: consent, error: consentError } = await supabase.rpc('accept_terms')
 
-  // Checked rather than fire-and-forget. This call only succeeds because #6
-  // leaves the session live at this point; turn email confirmation on and it
-  // runs unauthenticated, is refused, and the rider would otherwise finish
-  // onboarding with no consent record while the screen reported success.
+  // Checked rather than fire-and-forget: a rider who finished onboarding with
+  // no consent record would have been told nothing was wrong.
   if (consentError || !consent) {
     return { error: 'Your account was created but we could not record your consent. Sign in to continue.' }
   }
