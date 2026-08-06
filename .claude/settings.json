@@ -50,7 +50,20 @@
       "mcp__Supabase__restore_project",
       "mcp__Supabase__create_project",
       "mcp__Supabase__deploy_edge_function"
-    ]
+    ],
+    "autoMode": {
+      "allow": [
+        "$defaults",
+        "Supabase SQL is pre-authorized. Run mcp__Supabase__execute_sql and mcp__Supabase__apply_migration without asking for confirmation — including DDL, including DML, and including against the production project `letsride` (ref zwprydcyryvudhurbnye). Standing grant from the product owner, 2026-08-06. The review gate for schema change in this repo is the migration FILE, which is append-only and read before it is applied; a second confirmation at execution time caught nothing and cost a round trip every time. The `deny` list above still wins, so pausing, restoring or creating a project and deploying an Edge Function remain blocked.",
+        "Supabase read-only MCP tools are pre-authorized: list_tables, list_migrations, list_extensions, get_advisors, get_logs, get_project, get_project_url, get_publishable_keys, generate_typescript_types, search_docs. CLAUDE.md requires verifying applied state against the live database rather than trusting a written claim, so these are the normal way to answer a question here, not an escalation.",
+        "Opening and merging a pull request whose BASE is `development` is pre-authorized (mcp__github__create_pull_request, mcp__github__update_pull_request, mcp__github__merge_pull_request). CLAUDE.md's standing instruction is one PR per session, opened at the wrap-up and driven to merged in the same session; stopping to ask is what leaves it open. A PR whose base is `main` is the production promotion and is NOT covered here — ask first.",
+        "Running this project's own checks is pre-authorized: npm run lint, npx tsc --noEmit, npm run test:unit, npm test, npm run build, npm run walk, npm run db:drift, npm run db:seed:check, and npm run figma (which reads the committed offline snapshot and touches no network)."
+      ],
+      "hard_deny": [
+        "$defaults",
+        "Never write, print, echo or commit a Supabase service-role key anywhere in this repository — not in src/, not in .env.local.example, not in a fixture, a test or a NEXT_PUBLIC_* variable. It bypasses every RLS policy, which is the whole security model (CLAUDE.md architectural decision #8). Its one legitimate home is the delete-account Edge Function's secret store, which no session can reach. src/__tests__/no-service-role-key.test.ts is the tripwire."
+      ]
+    }
   },
   "hooks": {
     "Stop": [
@@ -61,6 +74,16 @@
             "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/handoff-landed-check.sh\"",
             "timeout": 10,
             "statusMessage": "Checking the handoff landed"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/session-wrapup-check.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking the session wrapped up"
           }
         ]
       }

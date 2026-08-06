@@ -299,8 +299,8 @@ openspec/                   # config.yaml, plus:
 ├── agents/                 # The specialist squad (see The Agent Squad)
 ├── commands/               # Slash commands (opsx/*)
 ├── skills/                 # Project skills
-├── hooks/                  # handoff-landed-check.sh — Stop hook, see Working Principles
-└── settings.json           # Project hook config
+├── hooks/                  # two Stop hooks — handoff-landed-check.sh, session-wrapup-check.sh
+└── settings.json           # Hooks, permissions, and the autoMode classifier rules
 ```
 
 **The per-directory contents above are a hand-copied `ls` and go stale silently** — the `ui/`
@@ -1042,11 +1042,34 @@ Two rules that follow:
   verified to compile and not verified to work" is a lower-fidelity artifact and needs an
   explicit ask. Only the second kind is escalated, or the signal drowns.
 
+**Under `AUTO` permissions, run the SQL. Do not stop to ask.** Standing grant from the product
+owner, 2026-08-06: when the session's permission mode is `AUTO`, `execute_sql` and
+`apply_migration` are pre-authorized — DDL, DML, and against production. Encoded as
+`permissions.autoMode.allow` in `.claude/settings.json`, because `AUTO` is a *classifier*, not a
+static allowlist: the twelve `mcp__Supabase__*` names sitting in `permissions.allow` had been
+there for a month and did not stop the prompts, since the classifier reads intent rather than
+that list. The rule it needed was prose telling it this project has already decided.
+
+**The review gate for schema change here is the migration file, not the execution.** That is
+what makes the grant safe rather than lax, and it is the reason to keep writing the file first:
+it is append-only, it is read before it is applied, and §Supabase Rules already requires
+verifying the result against the live database afterwards. A confirmation prompt between those
+two caught nothing. The `deny` list is untouched and still wins — pausing, restoring or creating
+a project, and deploying an Edge Function, all remain blocked — and the service-role key is in
+`autoMode.hard_deny`, which is the one boundary no amount of user intent clears.
+
 **Notify when the work is done and the owner may not be watching.** Standing request from the
-product owner, 2026-08-05: send a push notification when a session's work is finished, in the
-form `Done ; ) <name of the session>` — the name being what the session was *about*, so a
-notification read on a phone hours later identifies itself without opening anything. One at the
+product owner, 2026-08-05, restated and tightened 2026-08-06: send a push notification when a
+session's work is finished, in the form `Done ; ) <name of the session>` — the name being what
+the session was *about*, so a notification read on a phone hours later identifies itself without
+opening anything. **Every session that changed something, not just the long ones.** One at the
 end, not per milestone; a notification they did not need is annoying in a way that accumulates.
+
+It is the last step of the wrap-up, after the PR is merged, so the message can say what actually
+landed. `.claude/hooks/session-wrapup-check.sh` reminds you — but treat the reminder as a
+backstop and not as the trigger, because it can only fire once the branch is committed, pushed
+and ahead of `development`, and a session that ends without ever reaching that state gets no
+prompt at all.
 
 **Say less while building.** Standing request from the product owner, 2026-08-06: progress
 feedback during a build is a line or two — what landed, what is next, what broke. Not a
@@ -1228,6 +1251,15 @@ chain to a scratch database and asserts what each role can reach.
 **One PR per session, opened at the wrap-up — and merged in the same session.** Standing
 instruction from the product owner, 2026-08-05: do not ask permission to open one. Both halves
 matter and the second is the one that gets dropped.
+
+**Wrapping up a session *means* a PR to `development`, whenever the session changed anything.**
+Restated by the product owner 2026-08-06 as the definition rather than a step: if the tree
+differs from `development`, the session is not wrapped up until that difference is a PR. It
+applies to every kind of change, not only features — a docs-only or `.claude/`-only session
+still opens one, and those are the cheapest possible PRs because `docs/`, `openspec/`,
+`.claude/` and root `*.md` are in the CI denylist and run zero jobs. The one case that needs no
+PR is a session that changed nothing, and *that* is worth saying out loud rather than leaving
+the reader to infer it from silence.
 
 - **Open it at the end, not per milestone.** A session is usually one coherent unit of work, and
   a PR per commit fragments the reasoning across reviews that each see a third of it. Commit and
