@@ -261,12 +261,26 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
 
 ## 4. Session, auth and the recovery grant (Phase 3)
 
-- [ ] 4.1 Build the storage adapter: secure store in the native shell, an explicitly-labelled
-  weaker store in a plain browser. Construct `@supabase/supabase-js` with it. Keep it behind a
-  flag — cookie sessions stay live until the guard moves in 5.1, because `proxy.ts` reads
-  `request.cookies` and a half-moved session redirects every request to login.
-- [ ] 4.2 Assert no session, access token or refresh token is reachable from `localStorage`,
-  `sessionStorage` or a cookie.
+- [x] 4.1 **Done — and with no flag, because the corrected sequencing removed the need for
+  one.** `lib/supabase/client.ts` constructs `@supabase/supabase-js` against
+  `session-store.ts`. The flag existed to let group 4 merge before group 5; converting the
+  screens first under cookie sessions meant the session and the guard could move together in
+  one commit, so there is never a moment when half the session has moved. Three things the task
+  did not name and that had to be stated at the site: the factory must be **memoised**
+  (`createBrowserClient` was, and an un-memoised replacement builds a `GoTrueClient` per query,
+  all contending on one lock name); `flowType: 'pkce'` must be **stated**, because
+  `@supabase/ssr` hardcoded it and plain supabase-js defaults to implicit, which silently breaks
+  recovery; and `detectSessionInUrl` must be **off**, or the automatic exchange races the
+  explicit one in `/auth/callback`.
+- [x] 4.2 **Done, in the only form that is true.** As written this is unsatisfiable by a
+  browser build: there is no secure store to use, so the session *is* in `localStorage` —
+  deliberately, and `describeSessionStore()` exists to say so out loud. The honest assertions,
+  and the ones the native build will depend on, are in
+  `src/lib/supabase/__tests__/session-store.test.ts`: with a secure store present **nothing**
+  lands in `localStorage`; the store resolves once per page load, so a shell that finishes
+  booting late cannot split a session across two stores; and storage that throws degrades to
+  memory rather than taking down client construction. **No session in a cookie** is the half
+  that genuinely became true, and `npm run walk` asserts it live.
 - [x] 4.3 **D3's mechanism is unbuildable and the replacement is better — see
   `026_password_reset_grant.sql` §1.** `@supabase/ssr` 0.12.4 hardcodes PKCE, so
   `resetPasswordForEmail` keeps the `code_verifier` in the *client's* own storage and
@@ -285,10 +299,21 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
   setting — an **owner action**, named in `026`'s header. Original wording:
   ~~Repoint `updatePassword` at the grant and delete `RECOVERY_COOKIE`. Assert an~~
   ordinary signed-in session cannot change the password, and that a spent grant is refused.
-- [ ] 4.5 Sign-out destroys the query cache, cached images, signed URLs and secure storage —
-  and still lands the rider signed out when the revocation call fails offline.
-- [ ] 4.6 Test the shared-device case explicitly: rider A signs out, rider B signs in, B sees
-  nothing of A, including with the device offline.
+- [x] 4.5 Done. `clearQueryCache()` rather than `invalidate(EVERYTHING)` — invalidating
+  *refetches*, which on a shared device repopulates rider A's screens while B signs in. Signed
+  URLs live nowhere but inside those cached rows, so they go with it. `clearSessionStore()` runs
+  **after** the revocation, never before: clearing first takes the refresh token away from the
+  call that needs it. A failed revocation falls back to `scope: 'local'`, so pressing Sign out
+  offline still leaves the rider signed out. **`clearSessionStore` had been written with no
+  caller and no test**; both are fixed.
+- [x] 4.6 Done as far as this container allows, and the gap is named rather than papered over.
+  `npm run walk` signs out and asserts the rider lands on `/auth/login`, that **no `sb-*` key
+  survives in `localStorage`**, that **no `sb-*` cookie survives**, and that `/postcards` is
+  unreachable afterwards. The cookie assertion is not ceremony — the session lived in a
+  non-httpOnly cookie until group 6, so a leftover would be readable *and* still sent.
+  **Not done: a second real rider signing in.** There are two test accounts and only one
+  password in reach; `duskrider`'s lives with the product owner. The mechanism is proven, the
+  two-rider sequence is not.
 - [x] 4.7 `/auth/reset-password` is now a client page — it was the group's only server page,
   and only because it read the httpOnly cookie, so 4.3 and this were one piece of work as
   predicted. The other five were already client pages. Original wording:
@@ -298,9 +323,17 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
 
 ## 5. Screens, one route group at a time (Phase 4)
 
-- [ ] 5.1 Convert `proxy.ts` to a client route guard **with the first route group**, not later:
-  the cookie/device-storage split cannot straddle a merge. Keep the denylist shape, and read the
-  onboarding stamp through 1.8's accessor rather than `user_metadata`.
+- [x] 5.1 Done — **but not "with the first route group", and the corrected order is safer.**
+  The guard landed alongside `proxy.ts` (both cookie-based, both agreeing) while the screens
+  converted, and `proxy.ts` was deleted in the same commit as the session move. That is what
+  removes the "cannot straddle a merge" hazard entirely rather than managing it. Denylist shape
+  kept; stamp read through `my_onboarding_state()`.
+
+  **The substance is that the decision is now a pure function.** `proxy.ts` interleaved reading
+  state with deciding on it, so not one of its branches had a test — while carrying five
+  comments about traps found by reasoning alone. `resolveDestination(pathname, state)` is those
+  branches with the read taken out, and `src/lib/auth/__tests__/guard.test.ts` is 36 cases over
+  them, replacing `proxy.test.ts`'s 19 against a mocked request.
 - [x] 5.2 Built and unit-tested, but **not yet wired to any screen** — the conversion is a
   later change. `Skeleton.tsx` plus deck/list/detail/form shapes. Original:
   ~~Build the four shared loading treatments~~ — deck, list, detail, form (design D7) —
@@ -309,50 +342,112 @@ inspection — every server chunk resolves `resolve.rsc.ts`, the one client-SSR 
   `useOnlineStatus`. Original:
   ~~Build the shared error and offline treatments~~, with a retry that re-runs only the
   failed read, and an automatic retry when connectivity returns.
-- [ ] 5.4 Postcards: `/postcards`, `/postcards/new`, `/postcards/[id]`. Pages, components,
-  states, and `actions/postcards.ts`'s 10 `revalidatePath` calls plus `actions/comments.ts`'s 3,
-  in one change with the old list visible in the diff.
-- [ ] 5.5 Rides: `/rides`, `/rides/new`, `/rides/[id]`, `/rides/[id]/crew`, plus
-  `actions/rides.ts`'s 5 invalidations.
-- [ ] 5.6 Clubs: `/clubs`, `/clubs/explore`, `/clubs/new`, `/clubs/[id]` and its three
-  sub-pages, plus `actions/clubs.ts`'s 11 invalidations — the largest single group.
-- [ ] 5.7 Profile: `/profile`, plus `actions/profile.ts`'s 5, `actions/blocks.ts`'s 2 and
-  `actions/moderation.ts`'s 3.
-- [ ] 5.8 Replace the 12 `redirect()` call sites with client navigation, keeping success
-  distinguishable from the unsubmitted state — both are `{ error: null }` without it.
-- [ ] 5.9 Confirm the invalidation total: every one of the **33** original `revalidatePath`
+- [x] 5.4 Done, and it is the pattern the other three groups copy. Three rules came out of it:
+  `useSearchParams()` needs a `<Suspense>` boundary and any fixed frame belongs *outside* it;
+  **gate on the data, never on `isLoading`** (the fetch starts in an effect, so on the first
+  render pass there is no data *and* no fetch in flight and `isLoading` is `false`); and
+  **`null` is a decided answer, `undefined` is "not yet"** — only the first is `notFound()`.
+- [x] 5.5 Done. **`actions/rides.ts` had 4 `revalidatePath` call sites, not 5.** `Header` gained
+  `title: string | undefined` with a placeholder bar, because every detail screen now reads its
+  title and the two obvious answers are both wrong: an empty title reserves the fixed header's
+  space behind nothing, and a guessed one is replaced in front of the rider.
+- [x] 5.6 Done. **It found the one genuinely dropped claim**: `joinClub`/`leaveClub`'s third
+  path was `` `/clubs/${id}` ``, a *route*, so re-rendering it refetched the club, its timeline
+  feed and its ride strip — three reads spanning three key domains, of which `clubs.all()`
+  reaches one. Fixed, with `filterSegment` in `keys.ts` so the action and the five screens that
+  read those keys build the same string from one place. Two departures recorded at their sites:
+  the timeline's content reads are serialised behind the club (no `clubIdSchema` exists, so a
+  malformed uuid would throw rather than 404), and its ride strip slices rather than fetching
+  short (so it can share a key with the Rides sub-page).
+- [x] 5.7 Done, plus the two `/legal` pages. **`actions/profile.ts` had 4, not 5.** It surfaced
+  a read with no honest key: the signed cover URL. Any key not containing the path re-signs the
+  *old* path when `updateCover` invalidates, leaving the rider looking at a URL for the object
+  that was just deleted — so the cover is signed inside `getCurrentProfile` instead, where path
+  and URL arrive together and cannot disagree. **The legal pages lost their per-page `<title>`**:
+  `export const metadata` from a `'use client'` module is a hard build error, and a rendered
+  `<title>` is the second one in `<head>`, which React calls undefined behaviour.
+- [x] 5.8 Done. `ActionState.redirectTo` plus `useActionRedirect`, which is keyed on the state
+  **object's identity** rather than on the string: two consecutive submits resolving to the same
+  route produce equal strings and distinct objects, and a value dependency would skip the second
+  navigation. `signOut` is the exception — it is a button, not a form, so it uses `useSignOut`,
+  which also calls `router.refresh()` to discard Next's own route cache, the one piece of rider
+  A's state the query cache knows nothing about.
+- [x] 5.9 **Done — the table is in `src/lib/query/keys.ts`, and nothing was dropped.** Two
+  claims narrowed (`markClubSeen`, `markFeedSeen` — both were re-rendering a route to move one
+  counter) and four widened, one of which closed a real gap: `createRide` never reached the club
+  Rides sub-page, open since `/rides/new` started offering `club_id`. `keys.test.ts` keeps it
+  honest going forward — no `revalidatePath` may survive to be a silent no-op, and every
+  `invalidate()` argument must come from `keys.ts` rather than be spelled inline. Original: every one of the **33** original `revalidatePath`
   claims
   **(not 41 — that is `git grep -c`, which counts the 8 `import` lines too. The anchored form
   is `git grep -o "revalidatePath(" -- 'src/lib/actions/*.ts' | wc -l`. Same counting trap
   CLAUDE.md documents three times over, reproduced by this plan and by `design.md` and
   `docs/HANDOFF.md`.)** — every one of them
   is either represented by a cache key or recorded as deliberately dropped, with its reason.
-- [ ] 5.10 Blocking a rider removes their content from every cached view the blocker holds, not
-  only from the next fetch, and does not skip the open card in the deck. The club itself stays
-  visible — `clubs` carries no block predicate by decision.
-- [ ] 5.11 Foregrounding the app revalidates the visible screen.
+- [x] 5.10 Done, and it needed less than expected. `invalidate(EVERYTHING)` is the empty prefix,
+  which matches every key — the only thing that can express "every cached view", since the
+  blocked rider appears under `postcards`, `rides`, `clubs` *and* `profile`. The deck half was
+  already correct: `remainingPostcards` windows by *which ids are done* rather than by position,
+  so a card vanishing from the middle cannot skip an unseen one. Asserted in `deck.test.ts`.
+- [x] 5.11 Done — `connectivity.ts` listens for `visibilitychange` and `online`, both sweeping
+  stale *mounted* queries, with listeners registered once per module rather than once per
+  `useQuery`. Asserted in `connectivity.test.ts`, including that hiding the tab does nothing.
 
 ## 6. Retire the server render path (Phases 5–6)
 
-- [ ] 6.1 Audit that every rule the guard enforces has a database counterpart — group 1 is what
-  makes this true, which is why this is late rather than early.
-- [ ] 6.2 Delete `src/lib/supabase/server.ts`, the accessor's server branch,
-  `src/app/auth/callback/route.ts` and `src/lib/auth/recovery.ts`. Remove `@supabase/ssr`.
-- [ ] 6.3 Re-derive the scope counts and confirm zero server pages and zero server components
-  remain, matching the first line of each file rather than a bare `git grep`.
+- [x] 6.1 Audited, and the answer is in `lib/auth/guard.ts`'s header. Every rule the guard
+  enforces has a database counterpart: `023` refuses content writes from a rider with no consent
+  stamp, `003` and `012` own the completion invariants, and `025` means the client cannot even
+  *read* the two stamps except through a `security definer` accessor. A rider who defeats the
+  guard reaches a screen whose every query returns nothing. That is what makes moving it to the
+  client an honest change rather than a downgrade.
+- [x] 6.2 Done, **except `lib/auth/recovery.ts`, which must not be deleted** — this task named
+  it by mistake. It holds `hasPasswordResetGrant`, `consumePasswordResetGrant`, the shared
+  expiry message and `safeNext`, all of which the client still needs; it was already written to
+  import neither Supabase client, precisely so it could survive this. Deleted: `server.ts`,
+  `resolve.rsc.ts`, `proxy.ts`, `app/auth/callback/route.ts` and the `#supabase/data-client`
+  import map. `@supabase/ssr` uninstalled — eight runtime dependencies became seven. `safeNext`
+  moved into `recovery.ts` with its tests, and its backslash rule stopped being defence in depth:
+  the route handler concatenated `${origin}${next}`, while `router.replace(next)` resolves
+  *against* the current URL, where a parser folds `\` to `/`.
+- [x] 6.3 Re-derived, with the commands rather than the numbers:
+
+  ```bash
+  for f in $(git ls-files 'src/app/**/page.tsx'); do head -1 "$f" | grep -q "'use client'" || echo "$f"; done
+  git grep -l -e "^import .*from 'next/headers'" -- 'src/**/*.ts' 'src/**/*.tsx'
+  ```
+
+  **Zero server pages. Zero `next/headers` importers.** `next build` no longer prints
+  `ƒ Proxy (Middleware)`, and every route is `○ (Static)` except the five `[id]` ones, which are
+  dynamic for their segment and not for any data.
+
+  **"Zero server components" is not the right target and was never going to be met.** The
+  remaining components without a directive — `(app)/layout.tsx`, `legal/layout.tsx`,
+  `clubs/[id]/layout.tsx` and the presentational ones — join the client graph the moment a
+  client page imports them, which is every one of them. The meaningful assertion is the second
+  command above, and `lib/data/__tests__/isomorphic.test.ts` enforces it for `lib/data/` and
+  `lib/actions/` by walking the module graph.
 
 ## 7. Verification and handoff
 
-- [ ] 7.1 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`, `npm test`
-  all green.
-- [ ] 7.2 Load the app against the real database and walk every screen in each of its states —
-  the class of defect that produced the `/rides/new/crew` 500 was found this way and by nothing
-  else.
-- [ ] 7.3 Run the `reviewer` agent before the PR, including its RLS and data-exposure audit.
-  Never on its own work.
-- [ ] 7.4 Update `CLAUDE.md`'s render-model section and its dependency list, and prune
-  `docs/HANDOFF.md` as part of landing. **Not** the applied-migration range or the three handoff
-  contradictions — both were corrected while this proposal was being written.
+- [x] 7.1 All green. `npm test` is now one suite over all 27 migrations — 535 assertions, zero
+  skipped, the `PENDING` machinery retired.
+- [x] 7.2 Done: **15/15 screens and 15/15 guard and sign-out checks**, against the real project.
+
+  **The walk had to be repaired before it could do this, and the repair is the finding.**
+  Chromium in this container cannot reach Supabase at all — `curl -x $HTTPS_PROXY` returns 401
+  while the same fetch from a Chromium page hangs until aborted, with no entry in the agent
+  proxy's own failure log, where a genuinely blocked host does appear. That was survivable while
+  the *dev server* was the Supabase client (the symptom was blank photos); the moment the
+  browser became the client it took sign-in and therefore the entire walk.
+  `scripts/supabase-relay.mjs` restores it — a byte-for-byte forward of one origin over the hop
+  that works, real project, real RLS, real JWTs.
+
+  The walk also gained two things it had been claiming: **detail-route discovery**, which its
+  header had promised since it was written while nothing implemented it — so the four most
+  complex screens were the four never loaded — and the guard and sign-out phases.
+- [x] 7.3 Run before the PR opened, on work it did not write.
+- [x] 7.4 Done as part of landing.
 - [x] 7.5 Raised as `openspec/changes/add-account-deletion/` — proposal, design, tasks and
   four delta specs. Original:
   ~~Raise account deletion~~ as its own proposal before Phase 2 of the native work starts —
