@@ -80,6 +80,12 @@ grant usage on schema auth to auth_admin;
 grant insert, select on auth.users to auth_admin;
 grant usage on schema public to anon, authenticated;
 
+-- service_role holds this by Supabase default, so without it the 031 call
+-- assertion would fail for a reason production does not have. It is USAGE on
+-- the schema only — every function and table in `public` still decides for
+-- itself, and 031's assertions check that it did.
+grant usage on schema public to service_role;
+
 -- Supabase lets both roles resolve auth.uid(); the RLS policies call it on
 -- every query, so without this the suite fails for a reason production does
 -- not have.

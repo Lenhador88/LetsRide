@@ -3941,6 +3941,38 @@ select assert_eq(
   has_function_privilege('service_role', 'private.is_blocked(uuid,uuid)', 'execute'),
   false, '031: schema USAGE alone did not hand service_role the other private helpers');
 
+-- **The assertion that would actually have caught 029's defect**, and the one
+-- the seven above cannot substitute for: CALL it as service_role, rather than
+-- asking whether the grant exists. A grant can be right while name resolution
+-- still fails — that is precisely the shape of what shipped, where EXECUTE was
+-- moot because the schema was unreachable. `has_function_privilege` returned a
+-- confident answer to the wrong question.
+--
+-- A uuid that owns no clubs, so this is a provable no-op rather than a
+-- transfer inside an assertion.
+do $$
+declare
+  n int;
+begin
+  set local role service_role;
+  select count(*) into n from public.transfer_owned_clubs_for_deletion(
+    '00000000-0000-0000-0000-0000deadbeef');
+  reset role;
+  if n <> 0 then
+    raise exception 'FAIL  031: the ghost uuid owns clubs — fixture drift, not a pass';
+  end if;
+  raise notice 'ok    031: service_role can actually CALL the wrapper, not just hold the grant';
+exception when insufficient_privilege then
+  reset role;
+  raise exception 'FAIL  031: service_role holds the grant but the call is refused — 029''s defect is back';
+end $$;
+
+set role authenticated;
+select assert_rejected(
+  $$select * from public.transfer_owned_clubs_for_deletion('00000000-0000-0000-0000-0000deadbeef')$$,
+  '42501', '031: ... and a rider calling it is refused for real, not just on paper');
+reset role;
+
 \echo ''
 \echo '# 029 §B — the transfer picks admin, then member, then deletes the club'
 
