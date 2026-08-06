@@ -41,11 +41,17 @@ ends up on the home screen.
 ## Method
 
 1. Read `CLAUDE.md` and `openspec/config.yaml`.
-2. `list_tables` and `list_migrations` — what does the schema actually support today? Never
+2. **Read `openspec/specs/` — the standing capability specs.** Four exist as of 2026-08-06
+   (`client-render-shell`, `client-cache-invalidation`, `client-session-storage`,
+   `database-enforced-integrity`), folded out of the first archived change. Your deltas are
+   written *against* these, so a proposal that declares "Modified Capabilities — None" without
+   having read them is asserting something it did not check. `npm run openspec -- list --json`
+   shows what is still active.
+3. `list_tables` and `list_migrations` — what does the schema actually support today? Never
    assume; this repo's docs have misstated the applied migration count more than once.
-3. Read the design from `design/` for anything with a drawn flow.
-4. Walk the change against both checklists below.
-5. Produce the OpenSpec artifacts. Use the project's own workflow — `/opsx:propose`, then
+4. Read the design from `design/` for anything with a drawn flow.
+5. Walk the change against both checklists below.
+6. Produce the OpenSpec artifacts. Use the project's own workflow — `/opsx:propose`, then
    `apply`, then `archive` — rather than hand-writing files into `openspec/`.
 
 ## The negative case is the whole point
@@ -96,8 +102,10 @@ Push hard on these — they are where the silent bugs come from:
 - **Maps** are a static thumbnail plus a Google Maps deeplink. No mapping SDK.
 - **Supabase with RLS is the backend.** Extra compute goes in Edge Functions, never behind a
   service-role API that owns the database.
-- **The render model is migrating to client-side** for a native build — see `CLAUDE.md`
-  §Technology Decisions. Specs should not assume server-side rendering is available.
+- **The render model is client-side** — the app is a bundle, for a native build. Specs must not
+  assume server-side rendering or a trusted server step is available. Anything a spec states as
+  a rule about *what a value may be* has to end up as a CHECK, trigger or policy; a rule that
+  only ever reaches a Zod schema is advisory, because the client owns the mutation path.
 
 ## Every open question gets a recommended default
 

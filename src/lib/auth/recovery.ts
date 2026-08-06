@@ -1,8 +1,12 @@
 /**
- * The password-recovery grant. Shared by /auth/callback, the reset screen and
- * the updatePassword action, and deliberately importing none of them — a Server
- * Action importing a Route Handler module would drag the handler's exports into
- * the action's graph, and this module is now read from a client component too.
+ * The password-recovery grant. Shared by the reset screen and the
+ * updatePassword action, and deliberately importing neither.
+ *
+ * (It was also shared with /auth/callback, a Route Handler that no longer
+ * exists. The original reason for importing nothing — a Server Action importing
+ * a Route Handler module would drag the handler's exports into the action's
+ * graph — expired with the server render. The independence is kept because it
+ * is still the right shape, not because that constraint still binds.)
  *
  * ## What replaced the cookie, and why it had to
  *
@@ -18,9 +22,9 @@
  *   2. The ability to reset is spent by the reset. One link, one reset.
  *
  * The threat is not that someone holds a recovery link. It is that a recovery
- * link produces an *ordinary* session, and `proxy.ts` deliberately does not
+ * link produces an *ordinary* session, and the route guard deliberately does not
  * bounce signed-in riders off `/auth/reset-password` (Q1 — bouncing them broke
- * recovery). Without a marker, anyone holding a live session on a shared device
+ * recovery; `guard.ts` bounces only `/auth/login` and `/auth/signup`). Without a marker, anyone holding a live session on a shared device
  * can set a new password without knowing the old one.
  *
  * The marker is now Supabase's own: GoTrue records how a session was
@@ -47,10 +51,15 @@ export const RECOVERY_PATH = '/auth/reset-password'
 export const RECOVERY_EXPIRED_MESSAGE = 'That reset link has expired. Request a new one.'
 
 /**
- * Structural rather than the `SupabaseClient` type, so this module imports
- * neither `lib/supabase/server` nor `lib/supabase/client`. Both call sites are
- * on different sides of the `react-server` condition and importing either one
- * here would put it in the other's graph.
+ * Structural rather than the `SupabaseClient` type, so this module imports no
+ * Supabase client at all and stays testable with a two-line fake.
+ *
+ * **The original reason has expired — do not reason from it.** It was that the
+ * two call sites sat on different sides of the `react-server` export condition,
+ * so importing either client here would pull it into the other's graph. That
+ * condition is gone with the server render (`lib/supabase/server.ts` and
+ * `resolve.rsc.ts` are deleted). The structural type is kept on its own merits;
+ * if you are here to delete it, delete it for a current reason.
  */
 type RpcClient = {
   rpc(fn: string): PromiseLike<{ data: unknown; error: unknown }>

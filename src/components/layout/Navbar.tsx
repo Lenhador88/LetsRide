@@ -74,7 +74,7 @@ export function Navbar() {
         {navItems.map(({ href, label, Icon }) => {
           // Exact match on the segment root, then a `/` boundary — plain
           // startsWith would light up Clubs for a hypothetical `/clubsomething`,
-          // the same trap proxy.ts documents for `/legal`.
+          // the same trap `src/lib/auth/guard.ts` documents for `/legal`.
           const active = pathname === href || pathname.startsWith(`${href}/`)
           const unbuilt = UNBUILT.has(href)
 

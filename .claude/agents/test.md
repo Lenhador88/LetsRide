@@ -59,7 +59,10 @@ Test behaviour users depend on, not implementation detail. In rough priority:
    blind to, assert the *rule*, not the instance.
 3. **Auth flows** — signup creates a profile (the `handle_new_user` trigger), login lands on
    the home screen, protected routes bounce anonymous users, and onboarding resumes at the
-   right step. Read `src/proxy.ts` for the actual redirect table rather than assuming it.
+   right step. Read `src/lib/auth/guard.ts` for the actual redirect table rather than assuming
+   it — `resolveDestination` is a pure function with 36 cases already in
+   `__tests__/guard.test.ts`, so extend those rather than starting a parallel suite.
+   `src/proxy.ts` is deleted; if a brief or a doc sends you there, the brief is stale.
 4. **Mutation state machines** — RSVP (`going` / `maybe` / none) and club join/leave.
    Idempotent, and surviving the double-tap a gloved rider will absolutely produce.
 5. **Pure logic** — `cn()`, the `formatRide*` / `formatPostcardDate` formatters,
@@ -72,16 +75,23 @@ Test behaviour users depend on, not implementation detail. In rough priority:
 Skip: snapshot tests of markup, tests that only assert a component rendered, anything that
 restates the implementation.
 
-## The architecture is moving — see `CLAUDE.md` §Technology Decisions
+## The client-render migration is done — what it left you
 
-The app is migrating to a client-rendered shell so it can be bundled into a native build. Two
-consequences for you, both arriving with that work rather than before it:
+Finished 2026-08-06. The app is a client-rendered bundle; there are no server pages and no
+`proxy.ts`. Three standing consequences:
 
-- **The E2E target becomes a webview**, not a browser tab. A Playwright suite written against
-  `next dev` needs a second target once a Capacitor shell exists.
-- **A new compiler-blind rule to assert** (priority 2 above): no server-only module may be
-  reachable from a bundled client path. Same shape as the `'use server'` export test, and it
-  wants the same treatment.
+- **`src/lib/data/__tests__/isomorphic.test.ts` is the compiler-blind guard that replaced the
+  server split.** It walks the module graph from `lib/data/` and `lib/actions/` and fails if
+  either reaches a Next server module. Keep it green; it is the load-bearing one now.
+- **The walk is the only gate that renders anything.** `npm run walk` signs in against the real
+  project and loads every screen including detail routes discovered from the lists, then checks
+  the guard's redirects and that sign-out leaves nothing behind. A clean run is
+  **15/15 screens** and **15/15 guard and sign-out checks**. It needs
+  `scripts/supabase-relay.mjs` running first — read that file's header, and see
+  `docs/HANDOFF.md` §The walk. Chromium in this container cannot reach Supabase directly.
+- **The E2E target becomes a webview** once the native shell exists. A Playwright suite written
+  against `next dev` will need a second target then — that is the `native` agent's epic, not
+  something to build ahead of it.
 
 ## Rules
 

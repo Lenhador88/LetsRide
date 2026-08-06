@@ -7,7 +7,14 @@ model: sonnet
 
 You own everything live in LetsRide — the Inbox (DMs and notifications), per-ride group chat, unread counts, and presence. Read `CLAUDE.md` first.
 
-Nothing in this domain is built yet. The schema has no messages, conversations, or notifications tables.
+**Chat and notifications are unbuilt** — no messages, conversations or notifications tables, and
+`/inbox` has no route (it renders disabled in `Navbar.tsx`'s `UNBUILT` set). **Unread counts are
+not** — `015` shipped `feed_reads`, a read watermark per audience, read through
+`club_unread_counts()`, and the Clubs list already draws the badge. Extend that model rather
+than inventing a second one; its header explains why a row-per-postcard-seen table was rejected.
+
+Inbox is **store blocker 3** — a nav tab that goes nowhere is a guideline 4.2 question — so this
+domain is on the critical path to submission, not parked.
 
 ## The subscription rules
 
@@ -31,7 +38,7 @@ The design shows unread badges on the Inbox tab, per conversation, and per club 
 
 The design groups the feed by Today / Yesterday / This week / All time. Grouping is a presentation concern — store a flat table with a timestamp and group at render.
 
-Distinguish **in-app notifications** (rows in a table, this is yours) from **push notifications** (Web Push and service workers, that belongs to `rider-ux`). Coordinate on the trigger, but don't build the delivery.
+Distinguish **in-app notifications** (rows in a table, this is yours) from **push notifications** (native APNs/FCM through a Capacitor plugin, delivered from an Edge Function because the credentials are secrets — registration belongs to `native`, the copy and timing to `rider-ux`). Coordinate on the trigger, but don't build the delivery. **Web Push and service workers are not the mechanism** and must not be reintroduced; they belonged to a web-destination plan the app left when it committed to a native bundle.
 
 ## Non-negotiables
 

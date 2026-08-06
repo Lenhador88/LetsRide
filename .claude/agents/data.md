@@ -47,9 +47,10 @@ Reference the existing policies before writing new ones. Key shapes:
 
 ## Where logic lives — three tiers, and most work is tier 1
 
-The app is migrating to a client-rendered shell (see `CLAUDE.md` §Technology Decisions), so the
-client will talk to PostgREST directly. That does not mean everything needs a function. Pick
-the lowest tier that works:
+The app **is** a client-rendered bundle (done 2026-08-06 — see `CLAUDE.md` §Technology
+Decisions), so the client talks to PostgREST directly and **RLS is the only thing between a
+rider and the table**. That raises the stakes on every policy you write; it does not mean
+everything needs a function. Pick the lowest tier that works:
 
 1. **Plain read or write → nothing to build.** `supabase.from('rides').select(...)` goes
    straight to PostgREST and RLS decides. This is the overwhelming majority of the app, and

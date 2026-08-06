@@ -507,6 +507,11 @@ Deviations that are ours, not the design's:
       one hiding the bug; the new assertions check the CET *and* CEST offsets and that the
       date rolls with the clock, none of which UTC formatting can fake.
 
+      **The client-render migration did not make the pin unnecessary — do not remove it.**
+      The helpers no longer run in server components, but Next still server-renders them on
+      first load, so an unpinned formatter would put Vercel's UTC in the HTML and the rider's
+      zone on hydration. Same bug, now wearing a hydration mismatch.
+
       **Still open, and it is the interesting half:** a fixed zone is right for the current
       user base and wrong in principle. The correct model is wall-clock **at the meeting
       point** — a ride in Lisbon reads 10:00 to everyone, wherever they look from — which

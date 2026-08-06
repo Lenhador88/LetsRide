@@ -3,7 +3,9 @@ import Link from 'next/link'
 /**
  * The one deliberate exception to decision #1 (no anonymous access): a rider
  * has to be able to read these before completing signup. Static copy only —
- * these pages read no data, and /legal is allowlisted in proxy.ts.
+ * these pages read no data, and `/legal/*` is one of the public paths in
+ * `src/lib/auth/guard.ts`. Protection is a denylist of those, not an allowlist
+ * of protected routes, so a new route is gated unless it is added there.
  */
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (

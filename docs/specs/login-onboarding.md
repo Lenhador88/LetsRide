@@ -1,5 +1,15 @@
 # Login & Onboarding
 
+> **HISTORY, NOT A CONTRACT — read this before trusting anything below.** This document was
+> produced by the retired `spec` workflow and is kept as a record of how the login epic was
+> decided, not as a description of the code. It predates the client-render migration
+> (2026-08-06), so **its `proxy.ts` sections describe a file that no longer exists**: routing
+> decisions now live in `src/lib/auth/guard.ts` as a pure function with 36 tests, applied by
+> `src/components/auth/RouteGuard.tsx`, and the guard is **not** a security boundary. The
+> settled product decisions below — required onboarding, username not full name — did survive
+> and are restated in `CLAUDE.md` §Architectural Decisions, which is where to read them.
+> New specs go through OpenSpec; the standing ones live in `openspec/specs/`.
+
 Figma: `1883:10157` (epic section "Login")   Status in Figma: **Done** (all five flows)
 File key: `gDoteM1ow1AZpSEGSNhpc7`
 

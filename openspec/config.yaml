@@ -4,8 +4,11 @@ schema: spec-driven
 # and conventions. It is deliberately not duplicated here — two copies drift,
 # and the one that drifts is always the one you did not read.
 context: |
-  LetsRide: mobile-first web app for motorcycle riders to organise rides, join
-  clubs and connect with friends. Next.js 16 App Router, Supabase, Tailwind v4.
+  LetsRide: mobile-first app for motorcycle riders to organise rides, join
+  clubs and connect with other riders — client-rendered, headed for a native
+  build. There is no "friends" concept; `013` dropped `friendships` and the
+  social graph is clubs plus blocking. Next.js 16 App Router, Supabase,
+  Tailwind v4.
   Read CLAUDE.md at the repo root before writing any artifact; it covers the
   stack, repo layout, Supabase client rules, and design system.
 
@@ -20,8 +23,13 @@ rules:
     - State who must NOT be able to see or do this, not only who must. An
       unstated negative case is how private club rosters ended up world-readable.
     - "For anything touching clubs, rides, memberships or profiles, name the
-      visibility rule for each role that can reach it: owner, member,
-      non-member, signed-out visitor."
+      visibility rule for each role that can reach it: owner, admin, member,
+      non-member, and blocked user. `club_members.role` has had `admin` since
+      `001`. The blocked case is the one most often missed, and blocking is
+      symmetric even though the row is directional."
+    - "Do NOT enumerate a signed-out visitor. Decision #1 is no anonymous
+      access anywhere and `anon` holds zero grants, so a spec that writes a
+      rule for one is inventing a role the system does not have."
   # The artifact id is `specs`, plural. It read `spec` from adoption until
   # 2026-08-05, and the CLI silently discarded the rule below on every run —
   # printing `Unknown artifact ID in rules: "spec"` where nobody was reading.

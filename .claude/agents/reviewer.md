@@ -107,31 +107,40 @@ Two standing rules worth applying to any documentation in the diff:
   already there, or that document a one-off rather than a durable rule, are a permanent
   tax on every future run. Flag them.
 
-## The architecture migration — check these while it is in flight
+## The client-rendered bundle — check these on every diff
 
-`CLAUDE.md` §Technology Decisions commits the app to a client-rendered shell for a native
-build. Until it lands, both shapes live in the repo:
+The migration landed 2026-08-06. The app ships as a client-rendered bundle, which changes what
+counts as a defect. These are now standing checks, not transitional ones:
 
 - **Are `src/lib/data/` and `src/lib/actions/` still the only things touching Supabase?**
-  `grep -rn "supabase.from(" src/app/ src/components/` must return nothing. That boundary is
-  what keeps the migration bounded — a component reaching past it is the most expensive drift
-  available right now.
-- **Does a new integrity rule live only in a Zod schema?** Once the client owns writes,
-  anything without a CHECK, trigger or policy behind it is advisory. Flag it and name the
-  constraint it needs.
-- **Was a client-first screen built ahead of the migration?** A `'use client'` page reading
-  Supabase directly bypasses `lib/data/`. That is a migration task, not a feature ticket.
-- **Once the split lands:** no server-only module reachable from a bundled client path, session
-  tokens in device secure storage rather than `localStorage`, and no secret reachable from the
-  bundle. The publishable key is fine — it has always shipped there.
+  `grep -rn "supabase\.from(" src/app/ src/components/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`
+  must return nothing. **Use that exact form** — the bare grep matches three comments
+  describing the v1 code they replaced, so a reviewer running it reports a violation that is
+  not there. That boundary is what made the render migration affordable and it is what keeps
+  the next one affordable.
+- **Does a new integrity rule live only in a Zod schema?** The client owns the mutation path,
+  so anything without a CHECK, trigger or policy behind it is advisory — a rider can simply
+  not run your validation. Flag it and name the constraint it needs. **This is the single
+  highest-value check in this section.**
+- **Does anything read Supabase during render?** A read issued from a component body runs in
+  the SSR pass with no session and fails closed at RLS. It belongs in an effect or an event
+  handler. Likewise: a screen gated on `isLoading` renders `undefined` on the first pass, and
+  `undefined` treated as `null` shows a 404 flash on every detail-screen load.
+- **Is every cache key from `src/lib/query/keys.ts`?** An inline key is a bug even when the
+  string is right, and a mutation that invalidates nothing leaves a stale screen.
+- **No secret reachable from the bundle**, and no server-only module reachable from a client
+  path — `src/lib/data/__tests__/isomorphic.test.ts` asserts the second. The publishable key is
+  fine; it has always shipped there.
+- **Session handling:** tokens belong in `src/lib/supabase/session-store.ts`, and sign-out must
+  leave no `sb-*` key, no cached query data, and no reachable screen.
 
 ## Then the ordinary review
 
-- **Correctness** — off-by-ones, unhandled null from a Supabase query, a missing `await` on
-  `createClient()` where the server client is used, a mutation racing the refresh that follows it.
-- **Convention drift** — wrong Supabase client for the context, relative imports instead of `@/*`, inline types that belong in `src/types/index.ts`, a hand-rolled button instead of `<Button>`.
+- **Correctness** — off-by-ones, unhandled null from a Supabase query, a mutation racing the
+  cache invalidation that follows it, an `await` missing on a promise the screen renders from.
+- **Convention drift** — Supabase reached without going through `resolve.ts`, relative imports instead of `@/*`, inline types that belong in `src/types/index.ts`, a hand-rolled button instead of `<Button>`.
 - **v1 regression** — `zinc-*`, `orange-500`, Geist, or a re-added `lucide-react` dependency. v1 is fully retired: the last v1 page and the lucide dependency both came out with the clubs epic, so any reappearance is a regression rather than a leftover.
-- **Next.js 16 specifics** — a `middleware.ts` appearing (must stay `proxy.ts`), client/server boundary violations, a non-async export from a `'use server'` module (legal TypeScript that takes the whole route down at runtime).
+- **Next.js 16 specifics** — a `middleware.ts` or `proxy.ts` appearing (routing decisions belong in `src/lib/auth/guard.ts`; the app deliberately ships no middleware at all), a re-added `@supabase/ssr`, or a non-async export from a `'use server'` module (legal TypeScript that takes the whole route down at runtime — no module is `'use server'` today, and `src/__tests__/use-server-exports.test.ts` is the tripwire if one returns).
 - **Dead weight** — commented-out code, unused imports, a comment restating what the line already says.
 
 ## Calibration

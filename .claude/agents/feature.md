@@ -27,29 +27,40 @@ That last one especially. This repo has three times nearly rebuilt something it 
 
 ## The two boundaries that never move
 
-These hold today and hold after the migration described below. They are the load-bearing
-convention in this codebase:
+They survived the client-render migration with every signature intact, which is exactly why
+they are non-negotiable — they are what kept that migration a change to one file instead of
+twenty-nine call sites:
 
 - **Reads go through `src/lib/data/`.** Named, typed functions that own their query shape.
 - **Writes go through `src/lib/actions/`.** One per mutation.
 
-A component never calls `supabase.from()` directly. `grep -rn "supabase.from(" src/app/ src/components/` returns nothing, and it must keep returning nothing.
+A component never calls `supabase.from()` directly. Check it with the comment-excluding form —
+the bare grep matches three comments describing the v1 code they replaced:
 
-## The shape today
-
-**Server component** reads through `lib/data/` and renders:
-
-```ts
-import { getRide } from '@/lib/data/rides'
-
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const ride = await getRide(id)
-  // ...
-}
+```bash
+grep -rn "supabase\.from(" src/app/ src/components/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'
 ```
 
-**Client component** calls a Server Action, which revalidates:
+It prints nothing, and it must keep printing nothing.
+
+## The shape today — every page is a client page
+
+The app is a **client-rendered bundle** (done 2026-08-06, so it can go into a native build).
+There are zero server pages; verify rather than trust that —
+`git grep -L "^'use client'" -- 'src/app/**/page.tsx'` returns nothing.
+
+**A page reads through `useQuery`, with its key from `src/lib/query/keys.ts`:**
+
+```ts
+'use client'
+import { useQuery } from '@/lib/query'
+import { keys } from '@/lib/query/keys'
+import { getRide } from '@/lib/data/rides'
+
+const { data: ride } = useQuery(keys.ride(id), () => getRide(id))
+```
+
+**A mutation is a plain async function from `lib/actions/`, driven by `useActionState`:**
 
 ```ts
 'use client'
@@ -58,43 +69,42 @@ import { joinRide } from '@/lib/actions/rides'
 const [state, action, pending] = useActionState(joinRide, emptyState)
 ```
 
-Never import the server client into a `'use client'` file. Never import
-`@supabase/supabase-js` directly. Never export a non-async value from a `'use server'`
-module — that is legal TypeScript which takes the whole route down at runtime; shared
-constants go in `src/lib/actions/state.ts`.
+Four rules that come out of that model, each of which has already cost this repo something:
 
-## The architecture is moving — read this before designing a screen
+- **Read in an effect or an event handler, never during render.** Next still server-renders
+  client components on first load, and in that pass there is no `localStorage` to find a
+  session in — so a read issued from a component body is anonymous and fails closed at RLS.
+  `resolve.browser.ts` throws a named error, so getting it wrong fails `next build`.
+- **Gate a screen on its data, never on `isLoading`.** `useQuery` starts its fetch in an
+  effect, so on the first pass there is no data *and* no fetch in flight.
+- **`null` is a decided answer; `undefined` is "not yet".** Only the first is `notFound()`.
+- **Every cache key is spelled in `keys.ts`.** A key written inline is a bug even when the
+  string happens to be right.
 
-The app is migrating to a **client-rendered shell** so it can be bundled into a native build.
-`CLAUDE.md` §Technology Decisions carries the reasoning. What it means for you:
+Never import `@supabase/supabase-js` directly — `lib/data/` and `lib/actions/` both resolve
+their client through `src/lib/supabase/resolve.ts`, and that is the only doorway.
 
-- **The two boundaries above survive unchanged.** `lib/data/` and `lib/actions/` keep their
-  names and signatures; what changes inside them is which Supabase client they construct. This
-  is precisely why the boundary is non-negotiable — it is what keeps the migration bounded.
-- **What moves is the render side**: server components become client components, and
-  `revalidatePath` becomes client-side cache invalidation.
-- **Do not freelance a client-first screen** ahead of the migration. A client component cannot
-  call today's `lib/data/` functions — they construct the server client — so building one
-  means either bypassing the boundary or making the data layer isomorphic. The second is a
-  migration task, not a feature task. If a ticket seems to need it, **say so and stop** rather
-  than working around it.
-- **No new integrity rule may live only in a Zod schema.** This is the one thing that gets
-  expensive to retrofit. When the client owns the mutation path, anything not expressed as a
-  CHECK, trigger or RLS policy is advisory. If your feature adds a rule about what a value may
-  contain, hand it to `data` for a constraint — Zod stays for the message, not the guarantee.
+**No new integrity rule may live only in a Zod schema.** The client owns the mutation path, so
+anything not expressed as a CHECK, trigger or RLS policy is advisory. If your feature adds a
+rule about what a value may contain, hand it to `data` for a constraint — Zod owns the
+**message**, never the **guarantee**.
 
 ## Non-negotiables
 
-- **Auth is gated by `src/proxy.ts` today** — protected routes already redirect unauthenticated
-  users, so don't re-check auth in the page. Do use `auth.getUser()` when you need the current
-  user's id for a query. (After the migration this gate becomes a client route guard and stops
-  being a security boundary; RLS always was the real one.)
+- **Auth is gated by `src/components/auth/RouteGuard.tsx`**, which applies the pure decision in
+  `src/lib/auth/guard.ts`. `src/proxy.ts` is **deleted** — do not look for it and do not add a
+  `middleware.ts`. Protected routes already redirect unauthenticated users, so don't re-check
+  auth in the page; do use `auth.getUser()` when you need the current user's id for a query.
+  **The guard is not a security boundary** — RLS is, and always was. Every rule the guard
+  enforces has a database counterpart.
 - **RLS already filters by user.** Don't add `.eq('user_id', user.id)` to a select RLS already
   scopes. This repo has shipped that bug twice — an application-side `is_public` filter that
   *subtracted* from a policy already unioning public with "yours" and "your club's", making
   private clubs and their rides unreachable. Rely on the policy.
 - **New routes go under `src/app/(app)/`** if they need auth and the Navbar. Public routes go
-  at the top level, and a new public path must be added to `proxy.ts`'s denylist deliberately.
+  at the top level, and a new public path must be added to the denylist in
+  `src/lib/auth/guard.ts` deliberately — protection is a denylist of public paths, so a new
+  route is protected unless someone opens it on purpose.
 - **Types live in `src/types/index.ts`.** Never inline. Supabase's inferred types don't include
   joined relations — define and cast to the type.
 - **Use the existing UI primitives** in `src/components/ui/`. If one you need doesn't exist,
