@@ -2,13 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  BikeIcon,
-  ClubsIcon,
-  HomeIcon,
-  MailboxIcon,
-  ProfileIcon,
-} from '@/components/icons/generated'
+import { BikeIcon, ClubsIcon, HomeIcon, ProfileIcon } from '@/components/icons/generated'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
@@ -27,17 +21,30 @@ import { cn } from '@/lib/utils'
  * only state with a fill (Grey/10%). Read off `Navigation / Bar / Tile`'s three
  * State variants.
  */
+/**
+ * **Four tabs, and Inbox is deliberately not one of them.** It shipped as a
+ * fifth, disabled tab — no route, no tables — on the reasoning that the design
+ * draws five and a link to a 404 is worse than an inert tile. The product owner
+ * removed it on 2026-08-06 for store submission: App Store guideline 4.2 asks
+ * whether the app is more than a repackaged website, and a reviewer taps every
+ * tab. A tab that announces "not built yet" answers that question badly, and it
+ * is the one screen a reviewer cannot avoid finding.
+ *
+ * **This is not a decision the design settles**, which is why removing it is
+ * defensible rather than a fidelity regression: the frames draw three different
+ * bars — `Home - Postcards - All new` has 5 tiles, the profile frame 3, and
+ * `Rides - All rides` has no bar at all (counted, `docs/FIGMA-FIDELITY-TODO.md`
+ * §Profile). A value with three shapes across three frames was never a spec.
+ *
+ * Inbox comes back with the epic that builds it — the route, the tables and the
+ * `realtime` work — not before. Do not re-add the tile ahead of them.
+ */
 const navItems = [
   { href: '/postcards', label: 'Home', Icon: HomeIcon },
   { href: '/rides', label: 'Rides', Icon: BikeIcon },
   { href: '/clubs', label: 'Clubs', Icon: ClubsIcon },
-  { href: '/inbox', label: 'Inbox', Icon: MailboxIcon },
   { href: '/profile', label: 'Profile', Icon: ProfileIcon },
 ] as const
-
-/** Inbox has no route yet; the tab is drawn because the design has five, but a
- *  link to a 404 is worse than a disabled tab, so it renders inert until built. */
-const UNBUILT = new Set<string>(['/inbox'])
 
 /**
  * The sticky action belongs to the screen, but it renders *inside* the bar —
@@ -76,33 +83,19 @@ export function Navbar() {
           // startsWith would light up Clubs for a hypothetical `/clubsomething`,
           // the same trap `src/lib/auth/guard.ts` documents for `/legal`.
           const active = pathname === href || pathname.startsWith(`${href}/`)
-          const unbuilt = UNBUILT.has(href)
 
-          const content = (
-            <>
-              <Icon className="h-6 w-6" />
-              {label}
-            </>
-          )
-
-          const className = cn(
-            'flex flex-1 flex-col items-center gap-1 rounded-xl pt-2 pb-1 text-2xs font-semibold transition-colors',
-            active ? 'text-foreground' : 'text-muted',
-            unbuilt ? 'cursor-not-allowed opacity-40' : 'active:bg-border'
-          )
-
-          return unbuilt ? (
-            <span key={href} aria-disabled className={className} title={`${label} is not built yet`}>
-              {content}
-            </span>
-          ) : (
+          return (
             <Link
               key={href}
               href={href}
               aria-current={active ? 'page' : undefined}
-              className={className}
+              className={cn(
+                'flex flex-1 flex-col items-center gap-1 rounded-xl pt-2 pb-1 text-2xs font-semibold transition-colors active:bg-border',
+                active ? 'text-foreground' : 'text-muted'
+              )}
             >
-              {content}
+              <Icon className="h-6 w-6" />
+              {label}
             </Link>
           )
         })}

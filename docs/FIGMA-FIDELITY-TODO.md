@@ -804,9 +804,21 @@ Poppins/16/Semibold.
       second). Background is `Grey/5` — the page colour, not `bg-surface` — with a **1px top
       border** only. Five tiles, 24px icons, Poppins/10/Semibold labels.
       **Active is `Grey/100` with no background, not the brand green this used to apply**;
-      pressed is the only state with a fill (`Grey/10%`). Inbox renders inert — the design has
-      five tabs and the route does not exist, and a tab that 404s is worse than a disabled one.
+      pressed is the only state with a fill (`Grey/10%`). ~~Inbox renders inert — the design has
+      five tabs and the route does not exist, and a tab that 404s is worse than a disabled one.~~
       → `src/components/layout/Navbar.tsx`
+- [x] **Inbox is no longer a tab at all — four tiles, not five.** Product owner's decision,
+      2026-08-06, taken for store submission: App Store guideline 4.2 asks whether the app is
+      more than a repackaged website, a reviewer taps every tab, and an inert tile labelled
+      "not built yet" is the one screen they cannot avoid finding. The inert-tab reasoning
+      above was right for a web app and wrong for a submission.
+
+      **Recorded as a decision rather than a divergence, because the design does not settle
+      it.** Three frames draw three different bars — `Home - Postcards - All new` has 5 tiles,
+      the profile frame **3** (§Profile, still open with the designer), and `Rides - All rides`
+      has no bar at all. A value with three shapes across three frames was never a spec, so
+      there is no single drawn tab set this contradicts. The tile returns with the Inbox epic
+      that builds the route and the tables — not before.
 - [x] ~~**Header placement**~~ — the header is **per screen**, not part of the shell: each
       design frame gives it its own title, back affordance and variant.
       → `src/components/layout/Header.tsx`
