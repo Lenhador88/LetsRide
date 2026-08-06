@@ -5,9 +5,9 @@ phase's definition, not a description of it — one Supabase project, `main` aut
 removal landing without its code repair is a production outage. The `avatar_url` drop lived here
 in an earlier revision and has moved to group 3.
 
-**State, 2026-08-05 — group 1 is finished, and `021` turned out to be two migrations.**
-`018`, `019`, `020`, `022` and now `021` are applied. `023` and `025` are written, asserted and
-deliberately unapplied until this change's code deploys.
+**State, 2026-08-05 — group 1 is finished and fully applied.** `list_migrations` reads **27
+rows against 27 files**: zero drift, for the first time in weeks. `021` turned out to be two
+migrations, and that split is what made the rest possible.
 
 **`021` contained a deployment deadlock, and splitting it is what resolved the "mutually
 incompatible" problem below.** The file held both the accessor functions and the revoke that
@@ -22,8 +22,9 @@ deploy*:
 So no ordering of one file works. Split:
 
 - **`021_onboarding_state_accessors.sql`** — purely additive, three `security definer`
-  functions. **Applied 2026-08-05**, safe against `main` as it stood.
-- **`025_profile_column_privileges.sql`** — the revoke and the column allowlist. Unapplied.
+  functions. Applied *before* the code deployed, safe against `main` as it stood.
+- **`025_profile_column_privileges.sql`** — the revoke and the column allowlist. Applied
+  *after*, once Vercel reported READY at `3974125`.
 
 Filename order equals apply order in both directions, deliberately: `run.sh` applies by
 filename, and a file whose local order differs from its hosted order is a trap this repo has
@@ -33,7 +34,8 @@ mistake).
 **The two mutually-incompatible migrations are now compatible, and the fix is the accessor's
 write half.** `023` gated on stamps `021` removed the only client path to setting; the answer is
 that the database writes them. `accept_terms()` and `complete_onboarding(location)` are that
-path, and `PENDING=023+025 npm test` is the mode that proves the pair applies together.
+path. Both are applied, so the `PENDING` machinery that modelled them as held back is retired
+with them.
 
 **One trap worth carrying forward, measured on Postgres 16 rather than recalled.** Inside a
 `security definer` function `current_user` is the *owner*, so `003`'s and `012`'s trigger guards
@@ -41,7 +43,8 @@ path, and `PENDING=023+025 npm test` is the mode that proves the pair applies to
 do not run. Every invariant those triggers carry had to be restated in the function bodies.
 CHECK constraints, by contrast, do still fire.
 
-- **`023` still needs the consent prompt deployed first**, which task 2.3 now delivers.
+- **`023` needed the consent prompt deployed first**, which task 2.3 delivered — and the apply
+  order honoured it.
 
 - [x] 1.1 Pre-flight every constraint below against the live project: count violating rows for
   each column before writing its migration, the way `013` did. Record each count in the
@@ -69,9 +72,9 @@ CHECK constraints, by contrast, do still fire.
 - [x] 1.7 Assertions for 1.6: `ZZ` and `XX` refused, `NL` accepted, lowercase still refused.
 - [x] 1.8 **Split into two files — see the deadlock note under this heading.**
   `021_onboarding_state_accessors.sql` holds `my_onboarding_state()`,
-  `accept_terms()` and `complete_onboarding(location)`; **applied 2026-08-05** and verified
-  live. `025_profile_column_privileges.sql` holds the revoke and the allowlist; written,
-  asserted, **unapplied** until this change deploys. The accessor gained a third output,
+  `accept_terms()` and `complete_onboarding(location)`, applied *before* the deploy;
+  `025_profile_column_privileges.sql` holds the revoke and the allowlist, applied *after*.
+  Both verified live. The accessor gained a third output,
   `has_username`, so the route guard keeps one round trip — it reads a column `authenticated`
   may still select, so it widens nothing. Original wording kept below for the diff:
   ~~`021_profile_column_privileges.sql` — `revoke select, insert, update~~
@@ -97,7 +100,9 @@ CHECK constraints, by contrast, do still fire.
   club member, non-member on a clubless public ride, non-member on a private club's ride
   (zero rows, and its crew unreachable through `ride_members`), blocked rider, signed-out
   visitor.
-- [x] 1.12 **WRITTEN AND ASSERTED, UNAPPLIED — applies after this change deploys.**
+- [x] 1.12 **APPLIED 2026-08-05**, after the consent prompt deployed. Pre-flight re-run at
+  apply time: 4 profiles, 3 with NULL consent, 1 not onboarded. Eight triggers live, with
+  `may_participate` in `private` where PostgREST cannot publish it.
   **UNBLOCKED — Q11 answered 2026-08-05** — `023_participation_gate.sql`. A rider whose
   `onboarding_completed_at` is NULL, or whose `terms_accepted_at` is NULL, may not insert into
   `postcards`, `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`,
@@ -125,9 +130,11 @@ CHECK constraints, by contrast, do still fire.
   the rider's own onboarding `profiles` updates still succeed while NULL, so nobody is stranded
   mid-wizard; completion refused while `terms_accepted_at` is NULL; a fresh `profiles` INSERT
   cannot choose its own consent timestamp.
-- [x] 1.16 ~~Apply `018`–`023`~~ **Apply `018`, `019`, `020` and `022` only** — see the state
-  note under this heading; applying `021` or `023` today is an outage, not a step. Done
-  2026-08-05. Then check the Supabase security advisors
+- [x] 1.16 **All of `018`–`027` applied, in the order the split requires**: additive first
+  (`021`, `026`, `027`), then the deploy, then destructive (`023`, `025`). `025`'s footer
+  predicts eight values and all eight were confirmed live; `npm run walk` was re-run against
+  the post-`025` database and all 8 screens still render. Original wording:
+  ~~Apply `018`–`023` / Apply `018`, `019`, `020` and `022` only.~~ Then check the Supabase security advisors
   and confirm the only findings are the two known ones (`moderate_comment` by design, the
   leaked-password toggle) plus, if it appears, the new own-row accessor — which is narrower than
   `moderate_comment` and expected. `npm test` green before any of this is called done.
