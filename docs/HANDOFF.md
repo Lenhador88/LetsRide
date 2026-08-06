@@ -27,9 +27,16 @@ has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-la
 **`docs/ENVIRONMENTS.md` is the contract.** Read it before touching either project. What
 belongs here is only which half is real.
 
-**Real, in this repo:** the `development` branch, CI triggering on it (`ci.yml` `on:` lists both
-branches on both triggers — a base branch missing from those lists runs *zero* jobs and shows no
-red mark), `npm run db:drift`, `supabase/seeds/development.sql`, and every doc claim above.
+**Real, and exercised end to end on 2026-08-06** — the full loop ran once, deliberately:
+feature branch → `development` (#63) → `main` (#64), then a fast-forward back-merge leaving both
+branches at the same SHA.
+
+- **`development` is deployed**: `letsrideapp-git-development-pedro-projects1.vercel.app`,
+  Preview target, `READY`. Owner-only, because Preview carries Vercel SSO.
+- **CI triggers on a `development` base** — confirmed by run 149's own `pull_request` event.
+  `ci.yml` `on:` lists both branches on both triggers; a base missing from those lists runs
+  *zero* jobs and shows no red mark, which is indistinguishable from having nothing to check.
+- `npm run db:drift`, `npm run db:seed:check` (also a CI step), `supabase/seeds/development.sql`.
 
 **Not real yet — all owner actions:** the `letsride-dev` Supabase project does not exist.
 `list_projects` returns one project. **Until it does, Vercel Preview still points at production,

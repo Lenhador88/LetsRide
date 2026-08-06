@@ -42,6 +42,20 @@ feature-x ──PR──▶ development ──PR──▶ main
    missing from those lists runs *no checks at all* while showing no red mark.
 3. Merge. Vercel rebuilds the DEV deployment. Check it there.
 4. PR `development` → `main`. Merge. Vercel builds fresh against Production variables.
+5. **Back-merge**: fast-forward `development` to `main` so the two are identical again.
+
+### Promote with a merge commit, never a squash
+
+Steps 1–3 squash-merge, which is right: a feature branch's intermediate commits are noise.
+
+**Step 4 must not.** A squash creates a *new* commit on `main` whose parent is not
+`development`, so the branches diverge permanently even though their trees are identical.
+Every later promotion PR then re-shows commits that already shipped, the diff stops meaning
+"what is unreleased", and step 5 can no longer fast-forward.
+
+Verified on the first promotion (#64): merged with a merge commit, after which
+`git merge origin/main --ff-only` on `development` succeeded and both branches sat at the same
+SHA. A squash would have made that fast-forward impossible from the very first release.
 
 ### Never use Vercel's promote or instant-rollback to cross the boundary
 
