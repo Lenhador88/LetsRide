@@ -38,11 +38,30 @@ branches at the same SHA.
   *zero* jobs and shows no red mark, which is indistinguishable from having nothing to check.
 - `npm run db:drift`, `npm run db:seed:check` (also a CI step), `supabase/seeds/development.sql`.
 
-**Not real yet — all owner actions:** the `letsride-dev` Supabase project does not exist.
-`list_projects` returns one project. **Until it does, Vercel Preview still points at production,
-so previews are writing to the live database.** That is the most urgent item in
-`ENVIRONMENTS.md` §Owner setup, and step 1 there is just *checking* how the Vercel variables are
-currently scoped — which no session can do, there being no MCP tool for Vercel env vars.
+**The DEV database now exists — created 2026-08-06.** `Letsride-dev`, ref
+**`fpmrimzxadewsaiwpsel`**, `eu-west-1`, same org. Verified against production:
+
+| Check | Result |
+|---|---|
+| Migrations `001`–`032` | 32 applied, one `apply_migration` call each |
+| Stored SQL vs the files | **byte-identical, 32/32** (md5 of each file vs the stored statement) |
+| Drift (files / DEV / PROD) | **none** — name sets identical after `normalise()` |
+| Full schema fingerprint | **identical hash on both** — 14 tables all RLS-on, 43 policies, 15 storage policies, 69 constraints, 14 triggers, 33 indexes, 21 functions |
+| Security advisors | exactly the documented eight |
+| Auth config | confirmation **off** (`mailer_autoconfirm: true`), Site URL and both redirect entries verified |
+
+**The Vercel half is not done, and that is now the only gap.** `NEXT_PUBLIC_SUPABASE_URL` is
+still scoped **Production and Preview** against PROD, so previews still read and write the live
+database — measured 2026-08-06, which finally answers `ENVIRONMENTS.md` §Owner setup item 1.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` was narrowed to Production only mid-session, so Preview
+currently holds a URL and no key. Both need a second row scoped to **Preview with no branch
+filter** — a branch-scoped Preview variable applies to that branch alone, and feature branches
+deploy to Preview too.
+
+That misconfiguration does **not** fail the build — measured, `next build` exits 0 and ships,
+because `createClient()` is only called from an effect and the prerender pass never reaches it.
+`next.config.ts` now asserts both variables at build time so it turns red instead of
+green-and-broken.
 
 Two rules that bite immediately, before any of the owner steps happen:
 
@@ -126,7 +145,7 @@ build work, the rest are the owner's.
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | **Inbox is a disabled stub** | `UNBUILT` in `src/components/layout/Navbar.tsx`; no route, no tables. Guideline 4.2 risk — a reviewer taps every tab |
 | 4 | **No edit or delete UI anywhere** | Create a ride, never cancel or correct it. The policies exist and are tested; nothing calls them |
-| 5 | **Email confirmation is off** | Decision #6 — anyone can sign up with an address they do not control. **Owner** |
+| 5 | ~~**Email confirmation is off**~~ — **it is ON**, measured 2026-08-06 | Not a store blocker after all; the decision #6 text was wrong, not the setting. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below. **Owner** still decides whether DEV wants it off |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
 | 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
 
@@ -201,7 +220,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **594** |
-| Unit tests | `npm run test:unit` — **664**. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number now moves whenever a file is added |
+| Unit tests | `npm run test:unit` — **674 on a clean tree**, measured 2026-08-06. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -307,12 +326,12 @@ text they should converge on. Read it before archiving either.
   3 rides. Read that as "nobody has hit it on a tiny dataset", not as "the window is hard to
   hit". Re-run at apply time.
 
+  > **Recommendation** 8/10 — the last place a client can leave the database in a state no
+  > constraint forbids, and the invariant is unasserted in *two* places rather than one
   > **Complexity** 5/10 — two migrations, four triggers, a backfill, three deploy steps
   > **Urgency** 4/10 — a draft said 6/10 on a refuted premise (see above); back to roughly
   > where it was. Both doors need a hand-rolled request. Rises the day a real rider abandons a
   > create, and sharply if create gets a retry affordance or the store build ships
-  > **Recommendation** 8/10 — the last place a client can leave the database in a state no
-  > constraint forbids, and the invariant is unasserted in *two* places rather than one
   > **This session** N — 3 blocking questions, two of them product-owner decisions (may an
   > owner leave their own club? may an organizer leave their own crew?)
 
@@ -330,12 +349,12 @@ text they should converge on. Read it before archiving either.
   invocation. **The RLS suite cannot see it either**: its idempotency assertion runs both calls
   inside one psql transaction, so it proves nothing about two.
 
+  > **Recommendation** 6/10 — worth closing before the flow ships, not before the flow is built
   > **Complexity** 4/10 — an advisory lock is small; a marker column is a migration plus a
   > recovery story for runs that die holding it
   > **Urgency** 1/10 now, and it is genuinely conditional: it needs two riders deleting within
   > seconds, in a club they share. There are four accounts. It rises with the user count and
   > sharply the day deletion is reachable from the UI at all
-  > **Recommendation** 6/10 — worth closing before the flow ships, not before the flow is built
   > **This session** N — it is a design choice between two mechanisms, and the flow it protects
   > does not exist yet
 
@@ -354,11 +373,11 @@ text they should converge on. Read it before archiving either.
   succeeds; another rider's id in the body still deletes only the caller; publishable key
   refused; no token refused) can only be proven live.
 
+  > **Recommendation** 8/10 — the expensive half is done and the context is written down; it
+  > gets more expensive the longer the function sits unexercised
   > **Complexity** 5/10 — the flow is four screens and one action; the risk is all in the
   > function, which is written
   > **Urgency** 3/10 — nothing forces it until a store submission, which needs the shell first
-  > **Recommendation** 8/10 — the expensive half is done and the context is written down; it
-  > gets more expensive the longer the function sits unexercised
   > **This session** N — needs the function deployed, which is an owner action
 - **Inbox has no route and no tables.** It is one of five nav tabs and it renders **disabled**
   rather than dead — `UNBUILT` in `Navbar.tsx` gives it `aria-disabled` and a "not built yet"
@@ -418,22 +437,101 @@ delete from auth.users where email like '%@letsride.test';
 ```
 
 Two caveats: `.test` is an RFC 2606 reserved TLD that receives no mail, so neither account can
-sign up, recover a password or confirm anything the day email confirmation is turned on; and
-because both were SQL-inserted, **neither proves anything about the signup flow**. If you create
-another this way, set `confirmation_token`, `recovery_token`, `email_change` and the other token
-columns to `''`, never NULL — GoTrue scans them into non-nullable strings and a NULL turns every
-login into "do not match".
+sign up, recover a password or confirm anything — **and that day is today, not some future one:
+email confirmation is already on** (see §Signup below). Both accounts still sign in, because
+both were SQL-inserted with `email_confirmed_at` already set. And because they were SQL-inserted,
+**neither proves anything about the signup flow**. If you create another this way, set
+`confirmation_token`, `recovery_token`, `email_change` and the other token columns to `''`,
+never NULL — GoTrue scans them into non-nullable strings and a NULL turns every login into
+"do not match".
 
 There is also one **real** signup (a Gmail address, 2026-08-04) with no consent, no username, no
-onboarding and no sign-in. That is the shape of `signUp`'s documented consent-failure path.
+onboarding and no sign-in. This was recorded as "the shape of `signUp`'s documented
+consent-failure path", which was right about the shape and wrong about the cause: it is not a
+Supabase error, it is confirmation being on. That rider confirmed their address 13 seconds after
+signing up (`email_confirmed_at` is set), hit *"we could not record your consent — sign in to
+continue"*, and never came back. **They are the proof, not an anomaly beside it.**
+
+## Signup — the flow was broken on the live database, and is fixed
+
+Measured 2026-08-06, and the reason it went unnoticed for the project's life is worth more than
+the bug. `GET /auth/v1/settings` on `letsride` reports `"mailer_autoconfirm": false` — GoTrue
+for *confirmation required*. Decision #6 asserted the opposite, and three places in `src/`
+treated that sentence as a fact about the world:
+
+| Where | Assumed | Actually |
+|---|---|---|
+| `lib/actions/auth.ts` `signUp` | session live, so `accept_terms()` runs | no session; RPC runs as `anon`, which has no EXECUTE on it (`021`) |
+| `lib/auth/guard.ts` | the consent prompt is a legacy path | it is the ordinary path every new rider takes |
+| `signUp`'s duplicate-address comment | the leak is "a consequence of #6" | confirmation-on closes it — GoTrue returns success with empty `identities` |
+
+`signUp` now branches on `data.session` and returns `{ sent: true }` when there is none, and
+`/auth/signup` renders *"Check your email"* instead of navigating to an onboarding step the
+guard would bounce. **Consent is not lost**: the guard already sends any signed-in rider with a
+NULL stamp to `/onboarding/terms` ahead of the wizard, and `023` refuses their content writes
+until it is stamped — the database closes the gap, not trust.
+
+Verify in one line each:
+
+```bash
+curl -s "https://zwprydcyryvudhurbnye.supabase.co/auth/v1/settings" -H "apikey: <publishable>" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["mailer_autoconfirm"])'   # false = required
+grep -n "data.session" src/lib/actions/auth.ts
+```
+
+**The flow is now proven end to end — on DEV, 2026-08-06.** Against the real `Letsride-dev`
+project through the relay, no stubs anywhere:
+
+```
+/auth/signup  ->  /onboarding/username  ->  /onboarding/location  ->  /postcards
+```
+
+Zero page errors, and the database agrees: `terms_accepted_at` stamped by `accept_terms()`,
+`terms_version` `0-placeholder`, `username` set, `onboarding_completed_at` set. **That consent
+write is the exact one that was failing on production**, so this is the first evidence the fix
+works against a live database rather than a stubbed response.
+
+**What is still unproven, and is still the owner's:** the *confirmation-on* path — a real
+signup where a real emailed link is clicked. DEV has confirmation **off**, so this run never
+sent an email and never exercised `/auth/callback`. The two are genuinely different paths:
+with confirmation on, `signUp` returns no session and takes the `sent` branch instead.
+
+Two consequences, and the second is the one that will bite:
+
+- The PROD path still needs an address the owner controls. **Store blocker 7 stands.**
+- **`/auth/callback` has no signup arm.** A rider confirming on a *different device* than they
+  signed up on has no PKCE `code_verifier`, and the callback's failure path sends them to
+  `/auth/forgot-password?error=invalid_link` — reset copy after a signup. Deliberately not
+  built: getting it right needs GoTrue's real confirmation-link shape, which only the owner
+  test above produces. Build it from that link, not from a guess.
+
+Reproduce the DEV run rather than trusting this: point the relay at
+`https://fpmrimzxadewsaiwpsel.supabase.co`, run the dev server against it, and sign up with any
+`@letsride.dev` address. That suffix matters — `supabase/seeds/development.sql` refuses to run
+if any account exists that does *not* match it, so test riders on any other domain block
+seeding.
 
 ---
 
 ## Open questions for the product owner
 
-1. **Email confirmation is off** (decision #6), so anyone can sign up with an address they do
-   not control. Must be revisited before public launch — and it interacts with both `.test`
-   accounts above.
+1. **Email confirmation is ON, not off — and that is a question for you, not a finding to file.**
+   Decision #6 said off for the project's whole life; `GET /auth/v1/settings` on `letsride`
+   reports `mailer_autoconfirm: false`, which is GoTrue for *required*. Nobody checked, because
+   nothing in the repo can: it is a dashboard setting with no file behind it.
+
+   The app half is fixed (§Signup below). **A first draft of this line said it "needs nothing
+   from you" — that was wrong, and review caught it.** Fixing `signUp` made the confirmation
+   email the whole flow, and the email is broken at the dashboard: `letsride`'s Site URL is
+   `http://localhost:3000` and neither the production origin nor the preview alias is on the
+   redirect allowlist, so **every link the app emails lands on a dead local address.** Measured,
+   with the one-line probe in `ENVIRONMENTS.md` §The redirect allowlist is broken. Two clicks,
+   §Owner setup items 8 and 9, and they are the most urgent items in this repo.
+
+   The **DEV** answer only becomes real once `letsride-dev` exists: `ENVIRONMENTS.md` wants it
+   **off on DEV** so fixtures can be created and **on for PROD**, which is where it already is.
+   Turning it off on the *one* project that exists today would weaken production to make testing
+   easier — so leave PROD alone and set DEV off at creation, as step 4 of §Owner setup says.
 2. **Branch protection is not enabled on `main` — and now needs to cover `development` too**,
    which doubled the exposure rather than adding a second nicety: there are now two branches a
    stray push can land on, and one of them deploys to riders. An agent session cannot enable it

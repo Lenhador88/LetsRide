@@ -31,7 +31,7 @@ export function SectionHeader({
       {action && (
         <Link
           href={action.href}
-          className="ml-auto text-sm font-semibold text-accent"
+          className="ml-auto rounded text-sm font-semibold text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           {action.label}
         </Link>

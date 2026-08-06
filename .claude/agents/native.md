@@ -76,9 +76,19 @@ without confirming it still says what the file claims.
 
 ## Before any of that ships
 
-**Email confirmation is off** (`CLAUDE.md` decision #6), so anyone can sign up with an address
-they do not control, and **Supabase is on the free tier**, which auto-pauses after ~7 days idle
-and serves nothing when it does. Both are **product-owner actions** and both are launch
+**Email confirmation is ON** — measured 2026-08-06, `mailer_autoconfirm: false`. This brief said
+"off (decision #6), so anyone can sign up with an address they do not control" until then, and
+so did the decision; nobody had checked, because it is a dashboard setting with no file behind
+it. Do not escalate that blocker, it does not exist.
+
+**What does exist, and is worse:** `letsride`'s Site URL is `http://localhost:3000` and neither
+the production origin nor the preview alias is on the redirect allowlist, so **every link the
+app emails — signup confirmation and password recovery alike — lands a rider's phone on a dead
+local address.** That will fail a store review the first time a reviewer creates an account.
+`docs/ENVIRONMENTS.md` §Owner setup items 8 and 9.
+
+**Supabase is on the free tier**, which auto-pauses after ~7 days idle
+and serves nothing when it does. All of these are **product-owner actions** and all are launch
 blockers. Say so; do not route around them, and do not treat a paused project as a bug in your
 own work.
 

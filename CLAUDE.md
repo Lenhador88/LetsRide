@@ -299,8 +299,8 @@ openspec/                   # config.yaml, plus:
 ├── agents/                 # The specialist squad (see The Agent Squad)
 ├── commands/               # Slash commands (opsx/*)
 ├── skills/                 # Project skills
-├── hooks/                  # handoff-landed-check.sh — Stop hook, see Working Principles
-└── settings.json           # Project hook config
+├── hooks/                  # two Stop hooks — handoff-landed-check.sh, session-wrapup-check.sh
+└── settings.json           # Hooks, permissions, and the autoMode classifier rules
 ```
 
 **The per-directory contents above are a hand-copied `ls` and go stale silently** — the `ui/`
@@ -956,7 +956,25 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — the route guard (`src/lib/auth/guard.ts`) redirects them back into the wizard, and `023` refuses their content writes regardless of what the guard does. The schema carries the incomplete state so an abandoned signup resumes where it left off.
 
-**6. Email confirmation is off, for now.** Signup lands straight in onboarding with a live session. This is a deliberate temporary trade — it permits signing up with an email you don't control — and must be revisited before public launch.
+**6. Email confirmation is ON, and this decision has said the opposite since it was written.**
+Measured 2026-08-06 against the live project — `GET /auth/v1/settings` reports
+`"mailer_autoconfirm": false`, which is GoTrue for *confirmation required*. It is a dashboard
+setting with no file behind it (`docs/ENVIRONMENTS.md` §Auth configuration), so nothing in this
+repo ever made the old claim true and nothing noticed when it wasn't.
+
+**The durable rule: an architectural decision about a dashboard setting is an *intention*, and
+code must read the setting rather than trust the sentence.** Three places in `src/` treated the
+old text as a fact and drove real behaviour off it; `signUp` now branches on `data.session` and
+is correct under either configuration. The post-mortem of what each one assumed is in
+`docs/HANDOFF.md` §Signup — it does not need to be carried into every session.
+
+**A second setting behind the same door is still broken**, and it is worse: `letsride`'s Site
+URL is `http://localhost:3000` and neither the production origin nor the preview alias is on
+the redirect allowlist, so every link the app emails lands on a dead local address. Owner
+action — `docs/ENVIRONMENTS.md` §Owner setup items 8 and 9.
+
+DEV wants confirmation **off** so fixtures can be made, PROD wants it **on**. There is one
+project today, so there is no per-environment answer to give yet.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 
@@ -1024,29 +1042,71 @@ Two rules that follow:
   verified to compile and not verified to work" is a lower-fidelity artifact and needs an
   explicit ask. Only the second kind is escalated, or the signal drowns.
 
+**Under `AUTO` permissions, run the SQL. Do not stop to ask.** Standing grant from the product
+owner, 2026-08-06: when the session's permission mode is `AUTO`, `execute_sql` and
+`apply_migration` are pre-authorized — DDL, DML, and against production. Encoded as
+`permissions.autoMode.allow` in `.claude/settings.json`, because `AUTO` is a *classifier*, not a
+static allowlist: the twelve `mcp__Supabase__*` names sitting in `permissions.allow` had been
+there for a month and did not stop the prompts, since the classifier reads intent rather than
+that list. The rule it needed was prose telling it this project has already decided.
+
+**The review gate for schema change here is the migration file, not the execution.** That is
+what makes the grant safe rather than lax, and it is the reason to keep writing the file first:
+it is append-only, it is read before it is applied, and §Supabase Rules already requires
+verifying the result against the live database afterwards. A confirmation prompt between those
+two caught nothing. The `deny` list is untouched and still wins — pausing, restoring or creating
+a project, and deploying an Edge Function, all remain blocked — and the service-role key is in
+`autoMode.hard_deny`, which is the one boundary no amount of user intent clears.
+
 **Notify when the work is done and the owner may not be watching.** Standing request from the
-product owner, 2026-08-05: send a push notification when a session's work is finished, in the
-form `Done ; ) <name of the session>` — the name being what the session was *about*, so a
-notification read on a phone hours later identifies itself without opening anything. One at the
+product owner, 2026-08-05, restated and tightened 2026-08-06: send a push notification when a
+session's work is finished, in the form `Done ; ) <name of the session>` — the name being what
+the session was *about*, so a notification read on a phone hours later identifies itself without
+opening anything. **Every session that changed something, not just the long ones.** One at the
 end, not per milestone; a notification they did not need is annoying in a way that accumulates.
+
+It is the last step of the wrap-up, after the PR is merged, so the message can say what actually
+landed. `.claude/hooks/session-wrapup-check.sh` reminds you — but treat the reminder as a
+backstop and not as the trigger, because it can only fire once the branch is committed, pushed
+and ahead of `development`, and a session that ends without ever reaching that state gets no
+prompt at all.
+
+**Say less while building.** Standing request from the product owner, 2026-08-06: progress
+feedback during a build is a line or two — what landed, what is next, what broke. Not a
+recap of the reasoning, not a restatement of the plan, not a summary of a file that was just
+read. The owner is watching the work happen; narrating it twice is the cost, and it buries the
+one line that actually needed reading.
+
+Three things stay long no matter how brief the running commentary gets, because each is a
+*decision* rather than a status: **the rating block below**, a **blocked capability** (the
+product owner has to act on it, so it needs the ask spelled out), and **anything inferred
+rather than measured** — an unlabelled guess is the failure this file's own principles exist
+to prevent, and "short" is never the reason one goes unlabelled. Brevity is about the
+narration, not about the record.
 
 **Rate every suggestion on four lines, always in this order.** Whenever you propose optional
 work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
 with numbers buried in it; the point is that the reader can skim four lines and still decide.
 
+> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
 > **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
 > **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
-> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
 > **This session** N — wants its own branch, and the open PR should land first
+
+**Recommendation goes first, and that order is the product owner's — set 2026-08-06.** It is
+the line that answers *should we*, so it is the one being looked for; the other three exist to
+justify it. The block used to open with Complexity, which made two cost lines the price of
+reaching the verdict. Blocks written in the old order survive in `docs/HANDOFF.md`'s history
+and in archived proposals — the order above is the one to write.
 
 What each one means:
 
+- **Recommendation** — how strongly you actually advise doing it, independent of how much fun
+  it is to build.
 - **Complexity** — effort plus risk plus the maintenance it adds. Not "is it interesting".
 - **Urgency** — *when*, not *whether*. **Name the trigger where one exists**, because most
   urgency here is conditional rather than scheduled: "low now, high the day real riders sign
   up" is the whole content, and the bare number would have hidden it.
-- **Recommendation** — how strongly you actually advise doing it, independent of how much fun
-  it is to build.
 - **This session** — **Y or N, never a number**, plus the half-line of why. It answers "should
   *this* session pick it up next", which is a question about the session rather than about the
   work: what context is already loaded, whether a branch is open, whether it is blocked on an
@@ -1191,6 +1251,15 @@ chain to a scratch database and asserts what each role can reach.
 **One PR per session, opened at the wrap-up — and merged in the same session.** Standing
 instruction from the product owner, 2026-08-05: do not ask permission to open one. Both halves
 matter and the second is the one that gets dropped.
+
+**Wrapping up a session *means* a PR to `development`, whenever the session changed anything.**
+Restated by the product owner 2026-08-06 as the definition rather than a step: if the tree
+differs from `development`, the session is not wrapped up until that difference is a PR. It
+applies to every kind of change, not only features — a docs-only or `.claude/`-only session
+still opens one, and those are the cheapest possible PRs because `docs/`, `openspec/`,
+`.claude/` and root `*.md` are in the CI denylist and run zero jobs. The one case that needs no
+PR is a session that changed nothing, and *that* is worth saying out loud rather than leaving
+the reader to infer it from silence.
 
 - **Open it at the end, not per milestone.** A session is usually one coherent unit of work, and
   a PR per commit fragments the reasoning across reviews that each see a third of it. Commit and

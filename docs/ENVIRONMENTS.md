@@ -4,11 +4,14 @@
 which database is which, how a change travels from a branch to production, and the handful of
 things that are *not* in the repo and therefore drift silently.
 
-> **Status, 2026-08-06: half of this is a contract, not a description.** The `development`
-> branch and everything in this repo are real. **The `letsride-dev` Supabase project does not
-> exist yet** — creating it is an owner action (§Owner setup). Until it does, Vercel Preview
-> still points at production, so *previews are still writing to the production database*. That
-> is the single most important line in this file.
+> **Status, 2026-08-06: the DEV database exists and the Vercel half does not.** `Letsride-dev`
+> (ref **`fpmrimzxadewsaiwpsel`**, `eu-west-1`) was created, the full chain applied, and its
+> schema verified byte-identical to production — see §The two environments.
+>
+> **Vercel Preview still points at production**, so *previews are still writing to the
+> production database*. Measured, not assumed: `NEXT_PUBLIC_SUPABASE_URL` is scoped
+> "Production and Preview" with the PROD value. That is now the single most important line in
+> this file, and it is §Owner setup items 3 and 3a.
 
 ---
 
@@ -19,7 +22,7 @@ things that are *not* in the repo and therefore drift silently.
 | Git branch | `development` | `main` |
 | Vercel target | Preview | Production |
 | URL | `letsrideapp-git-development-pedro-projects1.vercel.app` | `letsrideapp.vercel.app` |
-| Supabase project | `letsride-dev` — **not created yet** | `letsride` / `zwprydcyryvudhurbnye` |
+| Supabase project | `Letsride-dev` / `fpmrimzxadewsaiwpsel` — **created 2026-08-06, chain applied, schema verified identical to PROD** | `letsride` / `zwprydcyryvudhurbnye` |
 | Who can reach it | Owner only (Vercel SSO on Preview) | Anyone with the link |
 | Test accounts | `@letsride.dev`, seeded | None. Real riders only |
 | Email confirmation | Off, so fixtures can be made | **On** once riders are live (decision #6) |
@@ -76,6 +79,69 @@ If anything is ever committed to `main` that did not come through `development` 
 production hotfix at 2am — **merge `main` back into `development` immediately**. Otherwise
 `development` still holds the old version of that file, and the next promotion silently
 reverts the fix. This is the classic failure of this branch model and it is not hypothetical.
+
+### The last piece: make `development` the repo's default branch
+
+**The branch model is adopted everywhere except the one setting that decides what a fresh
+checkout sees, and that gap has a cost nobody was paying attention to.** Measured 2026-08-06:
+
+```
+GitHub default_branch = "main"
+  -> CLAUDE_CODE_BASE_REF = main          (environment type: cloud_default)
+    -> the session container clones main  (.git/config carries [branch "main"])
+      -> CLAUDE.md and .claude/ load from main
+```
+
+Two consequences, and the second is the one that compounds:
+
+- **Agent sessions read instructions from `main`.** So a standing instruction merged into
+  `development` is *written but not in force* — the next session follows the superseded rule and
+  cannot tell. On the day this was found, `main` was five commits behind and a session starting
+  fresh would have read a `CLAUDE.md` still claiming `letsride-dev` did not exist.
+- **Every feature branch is cut from the wrong base.** Sessions branch from `main` and open PRs
+  against `development`, so each one starts behind and has to rebase. This file already tells
+  people to branch with `git checkout -B <branch> origin/development`; the environment hands
+  them `main` regardless.
+
+Setting the default to `development` is not a new commitment to GitFlow — it is finishing the
+one already made when the environments were split. `main` stays exactly what it is: the
+production branch, receiving only the promotion.
+
+**Do these in order. Step 1 gates step 3, and skipping it is the one way to cause real harm.**
+
+1. **Verify Vercel's Production Branch reads `main`.** Vercel → Project → Settings → Git →
+   Production Branch. It defaults to the repo's default branch *at import time* and is normally
+   stored explicitly afterwards — but if it tracks the default rather than storing it, flipping
+   GitHub would point Production at `development` and ship DEV-built code, with DEV credentials
+   inlined, to real riders on a green deploy. That is §Never use Vercel's promote, reached by a
+   different door. **Unverified at the time of writing** — no MCP tool reads Vercel project
+   settings, so this needs a human eye once.
+2. **Check GitHub → Settings → General → "Automatically delete head branches".** In a promotion
+   PR, `development` is the *head* branch, so with this on, merging `development` → `main` would
+   delete `development`. It has not happened (#64 was that promotion and the branch survived), so
+   it is presently off or was declined. Note that step 3 makes this moot in the safest possible
+   way: **GitHub refuses to delete the default branch**, so once `development` is the default it
+   cannot be removed by a merge, a setting, or a mis-click.
+3. **GitHub → Settings → General → Default branch → switch to `development`.**
+4. **Re-point branch protection.** Covered by Owner setup item 6, which is still outstanding for
+   both branches — but note the default branch is the one most tooling protects by convention,
+   so do not assume a rule written for `main` moved with it.
+5. **Confirm it took.** Start a fresh session and check that it opens on `development`:
+
+   ```bash
+   echo "$CLAUDE_CODE_BASE_REF"                       # expect: development
+   git rev-parse --abbrev-ref HEAD                    # the work branch, cut from development
+   git rev-list --count origin/development..HEAD      # expect 0 at session start
+   ```
+
+**What does not need changing, verified 2026-08-06.** `ci.yml` already lists both branches on
+both triggers, so no workflow is affected. The only `main` references in code are the two
+fallbacks in `.claude/hooks/*.sh`, which are deliberate — they prefer `development` and fall
+back only in a clone that never fetched it.
+
+**The one habit that changes:** after the flip, a new PR defaults to base `development`, which
+is right for every PR except the promotion. **The `development` → `main` promotion must set its
+base explicitly** — and it is still a merge commit, never a squash (§Promote with a merge commit).
 
 ---
 
@@ -175,21 +241,69 @@ defaults, and the default is email confirmation ON**, which is the opposite of d
 fresh DEV will therefore refuse to let you create a fixture rider, and it will look like a
 broken signup rather than a config difference.
 
+**That is not a hazard waiting for DEV — it already happened on PROD.** Measured 2026-08-06,
+`letsride` reports `mailer_autoconfirm: false`: the default was never changed, decision #6 said
+otherwise for the project's whole life, and `signUp` was written against the sentence rather
+than the setting. The result is one account on the live database created through the real
+signup flow with no consent stamp, no username and no sign-in — the exact shape this predicts.
+`signUp` now branches on `data.session`, so the app is correct either way, but the lesson is
+the one this section is for: **an unversioned setting drifts silently, and code that trusts a
+document instead of reading it drifts with it.** Verify with one call that needs no
+credentials:
+
+```bash
+curl -s "https://<ref>.supabase.co/auth/v1/settings" -H "apikey: <publishable key>" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["mailer_autoconfirm"])'
+# false = confirmation REQUIRED. true = autoconfirm, i.e. "off".
+```
+
+Note the polarity — `mailer_autoconfirm: false` reads like "confirmation off" and means the
+opposite.
+
 Check these on both projects whenever either changes:
 
-| Setting | DEV | PROD |
-|---|---|---|
-| Email confirmation | off | **on** before launch (decision #6) |
-| Site URL | the DEV preview alias | `https://letsrideapp.vercel.app` |
-| Redirect allowlist | `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | the production origin **only** |
-| Leaked-password protection | on | on |
-| `UpdatePasswordRequireCurrentPassword` | on | on |
+| Setting | DEV | PROD (intended) | **PROD, measured 2026-08-06** |
+|---|---|---|---|
+| Email confirmation | off | **on** before launch (decision #6) | **ON** — `mailer_autoconfirm: false` |
+| Site URL | the DEV preview alias | `https://letsrideapp.vercel.app` | ❌ **`http://localhost:3000`** |
+| Redirect allowlist | `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | the production origin **only** | ❌ **`http://localhost:3000` only** — neither the production origin nor the preview alias is on it |
+| Leaked-password protection | on | on | **off** — the one outstanding security advisor |
+| `UpdatePasswordRequireCurrentPassword` | on | on | **not measured** — no read-only probe found for it |
 
-The redirect allowlist matters more than it looks. `requestPasswordReset` builds its link from
-`window.location.origin` (`src/lib/actions/auth.ts:99`), and Vercel preview URLs are per
-deployment. Without the wildcard, recovery from a preview silently falls back to the Site URL.
-Narrowing PROD's list to the production origin is a security improvement independent of
-everything else.
+**Fill every cell in that last column or write "not measured".** A blank reads as "fine", and
+the first revision of this table left four blank while stating one measured row — which is how
+the two rows below went another day unnoticed.
+
+### The redirect allowlist is broken on production right now
+
+Not a hazard to design against — measured, and it breaks every emailed link the app sends.
+`GET /auth/v1/verify` with a bogus token reports where GoTrue *would* have sent the rider:
+
+```bash
+B="https://zwprydcyryvudhurbnye.supabase.co/auth/v1/verify?token=bogus&type=signup&redirect_to="
+for t in https://letsrideapp.vercel.app/auth/callback http://localhost:3000/auth/callback; do
+  curl -s -o /dev/null -D - "$B$t" -H "apikey: <publishable>" | grep -i '^location:'
+done
+# production origin -> http://localhost:3000#error=...   (discarded, fell back to Site URL)
+# localhost         -> http://localhost:3000/auth/callback#error=...   (honoured)
+```
+
+An unlisted `redirect_to` is **discarded silently** and replaced by the Site URL — which is
+itself `http://localhost:3000`. So a rider who signs up or requests a password reset on
+`letsrideapp.vercel.app` gets an email whose link confirms their address and then sends their
+phone to a dead local address. The account works; the rider cannot tell, and has no way back.
+
+**The live database already records this.** The one account created through the real signup flow
+has `email_confirmed_at` set 13 seconds after `created_at` and `last_sign_in_at` NULL. That row
+was read as proof of the consent bug (§Auth configuration above); it is equally proof of this
+one, and only the consent half has been fixed in code. The other half is two dashboard clicks —
+§Owner setup, items 8 and 9.
+
+`requestPasswordReset` builds its link from `window.location.origin`
+(`src/lib/actions/auth.ts`, the `origin` const — line number deliberately omitted, it has moved
+once already), and Vercel preview URLs are per deployment, so the wildcard is what makes
+recovery work from a preview at all. This section used to say only that, and never checked
+whether *production itself* was on the list. It is not.
 
 Adopting `config.toml` is what fixes this properly, and the first Edge Function deploy forces
 that decision anyway — see below.
@@ -231,19 +345,52 @@ scheduled job is written, not after it has fired from the wrong database.**
 
 Nobody in a session can do these.
 
-1. **Check the current Vercel variable scoping.** If `NEXT_PUBLIC_SUPABASE_URL` and
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY` are scoped to *all* environments, previews are writing to
-   production right now. This is the most urgent item in this file.
-2. **Create `letsride-dev`** in the same org and region (`eu-west-1`).
+1. ~~**Check the current Vercel variable scoping.**~~ **Done, and it was the bad case.**
+   `NEXT_PUBLIC_SUPABASE_URL` is scoped *Production and Preview* with the PROD value, so every
+   preview and feature branch has been reading and writing production.
+2. ~~**Create `letsride-dev`.**~~ **Done** — `fpmrimzxadewsaiwpsel`, `eu-west-1`, same org.
 3. **Set the variables per target** — Production → `letsride`; Preview and Development →
-   `letsride-dev`.
-4. **Replicate auth config** on DEV, and narrow PROD's redirect allowlist (table above).
+   `Letsride-dev` (`https://fpmrimzxadewsaiwpsel.supabase.co`). **This is now the only thing
+   standing between previews and the production database.**
+
+   Add a *second row* per variable rather than editing the existing one: Vercel allows one
+   value per name per environment, so each name ends up with a Production row and a Preview row.
+
+3a. **Leave the Preview rows' branch filter empty.** A Preview variable scoped to a single git
+   branch applies to that branch alone — and feature branches deploy to Preview too, so they
+   would build with the variable missing. Which does **not** fail loudly: measured, `next build`
+   exits 0 without the anon key and ships a green deployment that fails in every browser.
+   `next.config.ts` now asserts both at build time so that turns red instead.
+4. ~~**Replicate auth config** on DEV~~ **Done and verified** — confirmation **off**
+   (`mailer_autoconfirm: true`), Site URL set to the DEV preview alias, and both
+   `http://localhost:3000/**` and the preview wildcard on the redirect allowlist. PROD's
+   allowlist was also repaired the same day (items 8 and 9 below).
 5. **Repoint the GitHub Actions secrets at DEV.** CI only uses them for `next build`, which
    fetches nothing, so production credentials have no business being there.
 6. **Branch protection on both `main` and `development`** — require `Type Check, Lint & Build`
    and `RLS Policy Tests`, require branches up to date, no bypass. Currently off entirely.
 7. **Supabase Pro.** The free tier has no daily backups, and with no down migrations, backups
    are the only rollback that exists.
+7a. **Make `development` the repo's default branch** — the ordered checklist is in §The last
+   piece above, and step 1 (verify Vercel's Production Branch reads `main`) gates the rest.
+   Until this is done, every agent session reads `CLAUDE.md` and `.claude/` from `main`, so any
+   instruction merged to `development` is written but not in force.
+
+**8 and 9 are new, measured, and the most urgent things on this list** — they are the only two
+items here that are breaking production *today* rather than preparing for DEV. Both are on
+`letsride` → Authentication → URL Configuration:
+
+8. **Set Site URL to `https://letsrideapp.vercel.app`.** It is `http://localhost:3000`.
+9. **Add `https://letsrideapp.vercel.app/**` and
+   `https://letsrideapp-*-pedro-projects1.vercel.app/**` to the redirect allowlist.** Only
+   `http://localhost:3000` is on it, so both the production origin and every preview URL are
+   discarded and replaced by the Site URL.
+
+Until both are done, **every emailed link the app sends — signup confirmation and password
+recovery alike — lands a rider's phone on `http://localhost:3000`.** No error is shown to
+anyone; the deploy is green and the account is real. This is not the DEV split, it predates it,
+and item 4's "narrow PROD's redirect allowlist" was written on the assumption that the list was
+too *wide*. It is empty of anything usable.
 
 Then, in a session: apply the chain to DEV, run `npm run db:drift` to prove the three agree,
 seed it, and move the two `@letsride.test` fixtures off production.

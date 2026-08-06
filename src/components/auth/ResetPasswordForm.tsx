@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { updatePassword } from '@/lib/actions/auth'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
+import { NEW_PASSWORD_MIN_LENGTH } from '@/lib/validation/auth'
 
 /**
  * No back link (Q Screens note: entered from an email deep link, not from
@@ -26,9 +27,11 @@ export function ResetPasswordForm() {
             type="password"
             label="Password"
             autoComplete="new-password"
-            minLength={8}
+            enterKeyHint="done"
+            minLength={NEW_PASSWORD_MIN_LENGTH}
             required
           />
+          <p className="px-1 text-xs text-muted">At least {NEW_PASSWORD_MIN_LENGTH} characters.</p>
         </div>
         <div className="flex flex-col gap-2">
           <FormError message={state.error} />

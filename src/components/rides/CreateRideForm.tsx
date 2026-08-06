@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
@@ -8,12 +8,18 @@ import { Textarea } from '@/components/ui/Textarea'
 import { createRide } from '@/lib/actions/rides'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
+import { APP_TIME_ZONE } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
   RIDE_MEETING_POINT_MAX,
   RIDE_ROUTE_MAX,
   RIDE_TITLE_MAX,
+  rideSchema,
 } from '@/lib/validation/rides'
+
+// "Europe/Amsterdam" -> "Amsterdam", so the hint can never name a different
+// city than the zone `wallClockToUtc` actually resolves against.
+const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') ?? APP_TIME_ZONE
 
 /**
  * `Create ride`.
@@ -44,9 +50,59 @@ import {
 export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[] }) {
   const [state, formAction, pending] = useActionState(createRide, emptyActionState)
   useActionRedirect(state)
+  const formRef = useRef<HTMLFormElement>(null)
+  // What was actually on the form at submission, not what is on it now. React
+  // resets every uncontrolled field to its `defaultValue` (here, empty) once a
+  // form action settles — including on an error return, since nothing was
+  // thrown — so re-reading the live DOM in the effect below would find an
+  // empty form regardless of what was actually submitted.
+  const submittedData = useRef<FormData | null>(null)
+
+  // A disabled submit was tried here first and reverted by review: it left the
+  // control out of the tab order on first paint of an untouched form (WCAG
+  // 1.4.3's inactive-control exemption covers a *transient* disabled state, not
+  // a resting one), and its label named no field. `noValidate` below turns off
+  // the browser's own bubble — same reason, still unstyleable and inconsistent
+  // in a webview — so this effect replaces what that bubble did for free:
+  // moving focus to the field the rider needs to fix. It re-parses the same
+  // `rideSchema` the action itself does, from the same FormData shape
+  // (`lib/actions/rides.ts`'s `rawMax`/`rawClub` handling), so the field this
+  // focuses and the message `state.error` shows below can never name two
+  // different fields — both come from one parse of one schema.
+  useEffect(() => {
+    if (!state.error) return
+    const data = submittedData.current
+    const form = formRef.current
+    if (!data || !form) return
+    const rawMax = (data.get('max_riders') as string)?.trim()
+    const rawClub = (data.get('club_id') as string)?.trim()
+    const parsed = rideSchema.safeParse({
+      title: data.get('title'),
+      description: data.get('description'),
+      meeting_point: data.get('meeting_point'),
+      route_description: data.get('route_description'),
+      departure_at: data.get('departure_at'),
+      max_riders: rawMax ? Number(rawMax) : null,
+      is_public: data.get('is_public') === 'on',
+      club_id: rawClub || null,
+    })
+    const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
+    if (typeof field === 'string') {
+      const el = form.elements.namedItem(field)
+      if (el instanceof HTMLElement) el.focus()
+    }
+  }, [state])
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={(event) => {
+        submittedData.current = new FormData(event.currentTarget)
+      }}
+      noValidate
+      className="flex flex-col gap-4"
+    >
       <Input name="title" label="Title" required maxLength={RIDE_TITLE_MAX} />
 
       <Textarea name="description" label="Description" rows={3} maxLength={RIDE_DESCRIPTION_MAX} />
@@ -58,19 +114,33 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
         maxLength={RIDE_MEETING_POINT_MAX}
       />
 
-      {/*
-        `datetime-local` sends a zone-less string, which the action resolves as
-        wall-clock in APP_TIME_ZONE — see wallClockToUtc. Sending an ISO string
-        from here instead would put the browser's zone into the write, which is
-        the write-side half of the bug #37 fixed on the read side.
-      */}
-      <Input name="departure_at" type="datetime-local" label="Departure" required />
+      <div className="flex flex-col gap-1.5">
+        {/*
+          `datetime-local` sends a zone-less string, which the action resolves as
+          wall-clock in APP_TIME_ZONE — see wallClockToUtc. Sending an ISO string
+          from here instead would put the browser's zone into the write, which is
+          the write-side half of the bug #37 fixed on the read side.
+        */}
+        <Input name="departure_at" type="datetime-local" label="Departure" required />
+        {/* One template literal rather than text interleaved with {expr}. JSX
+            drops whitespace at a line boundary, so if a formatter ever wraps
+            the expression onto its own line the hint renders "Amsterdamtime"
+            with no gap — a defect invisible in the source that causes it.
+            The mixed form is *not* broken today, at this line width: the
+            identical shape on /auth/signup renders its space correctly. This
+            is the cheaper of two ways to write the same string, not a fix for
+            a live bug. */}
+        <p className="px-1 text-xs text-muted">
+          {`Times are in ${DEPARTURE_ZONE_LABEL} time, whatever zone you're riding in.`}
+        </p>
+      </div>
 
       <Textarea name="route_description" label="Route" rows={2} maxLength={RIDE_ROUTE_MAX} />
 
       <Input
         name="max_riders"
         type="number"
+        inputMode="numeric"
         min={1}
         max={999}
         label="Maximum riders"

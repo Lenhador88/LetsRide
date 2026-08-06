@@ -11,6 +11,12 @@ export const emailSchema = z
   .toLowerCase()
   .pipe(z.email('Enter a valid email address.'))
 
+// Named rather than inlined so the signup and reset-password screens can show
+// the rule as helper text without a second, hand-typed "8" that can drift from
+// the schema's own bound.
+export const NEW_PASSWORD_MIN_LENGTH = 8
+export const NEW_PASSWORD_MAX_LENGTH = 72
+
 /**
  * Applies to signup and password reset only. Login deliberately does not use
  * it: an account created before these rules existed would be locked out by a
@@ -18,8 +24,8 @@ export const emailSchema = z
  */
 export const newPasswordSchema = z
   .string()
-  .min(8, 'Must be at least 8 characters.')
-  .max(72, 'Must be 72 characters or fewer.')
+  .min(NEW_PASSWORD_MIN_LENGTH, `Must be at least ${NEW_PASSWORD_MIN_LENGTH} characters.`)
+  .max(NEW_PASSWORD_MAX_LENGTH, `Must be ${NEW_PASSWORD_MAX_LENGTH} characters or fewer.`)
 
 export const loginSchema = z.object({
   email: emailSchema,

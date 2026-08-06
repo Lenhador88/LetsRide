@@ -199,9 +199,12 @@ unresolvable author.
 #### Scenario: An un-onboarded rider cannot file moderation records
 - **WHEN** a rider who has not completed onboarding reports a postcard
 - **THEN** the write SHALL be refused
-- **AND** this SHALL hold specifically because email confirmation is off (decision #6), so an
-  account can be created with an address nobody controls and used to file reports that no
-  admin role exists to triage
+- **AND** this SHALL hold regardless of whether an address is verified, because the gate is the
+  onboarding stamp and never the address. The requirement previously justified itself by
+  "email confirmation is off (decision #6)"; that premise was measured false on 2026-08-06
+  (`mailer_autoconfirm: false` — confirmation is required). The rule is unchanged and its
+  justification is stronger without the premise: a verified address is not evidence of
+  onboarding, and no admin role exists to triage reports either way
 
 #### Scenario: Completing onboarding is still the only way through
 - **WHEN** the same rider sets a username and location and receives the completion stamp
