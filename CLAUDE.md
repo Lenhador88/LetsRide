@@ -329,7 +329,8 @@ part of the Supabase URL — and because not knowing it cost real time.
 **Applied state: `001`–`027`, all of them. Zero drift.** Confirmed 2026-08-05 with
 `list_migrations`: **27 rows against 27 files**, ending `profile_column_privileges`. This is the
 first time in weeks the answer has been "everything", so the `SKIP_MIGRATIONS` machinery that
-modelled the held-back pair is being retired with it.
+modelled the held-back pair is **gone**, along with the three `rls_test_pending_*.sql` files.
+The full chain applies on every run. Suite **527** assertions.
 
 **The sequencing lesson is the durable part, and it outlives these two files.** `023` and `025`
 could not be applied before their code deployed, and `021`'s accessors could not be applied
@@ -348,9 +349,8 @@ order is a trap this repo has already sprung.
 **Do not apply `025` before the code that stops selecting those columns has deployed** — it is
 an instant outage, for the four reasons its own §DEFECT 2 enumerates. `023_participation_gate`
 refuses writes from riders whose consent stamp is NULL, so it needs the consent prompt deployed
-first; that shipped 2026-08-05 as `/onboarding/terms`. Both are in `SKIP_MIGRATIONS` in
-`supabase/tests/run.sh`, with pending suites `PENDING=023`, `PENDING=025` and — because the two
-were once mutually incompatible and no longer are — **`PENDING=023+025`**.
+first; that shipped 2026-08-05 as `/onboarding/terms`. **Both are applied**, and the ordering
+above is the record of how, not a thing still to do.
 
 **Three own-row RPCs now own the two profile stamps**, because `025` takes the client's grant
 away: `my_onboarding_state()` (the route guard's one round trip — both stamps plus
@@ -369,12 +369,11 @@ the two known findings. Also probed through PostgREST: the old selects now retur
 every select `main` ships returns `42501`.
 
 **Do not apply `021` or `023` without reading its header.** `021_profile_column_privileges` revokes
-column grants that `proxy.ts` reads on *every authenticated request* — applying it alone logs
-out every rider and makes onboarding impossible to complete. `023_participation_gate` refuses
-writes from riders whose consent stamp is NULL, which is all four of them. They are also
-mutually incompatible: `023` gates on stamps `021` removes the only path to setting. Both are
-listed in `SKIP_MIGRATIONS` in `supabase/tests/run.sh` so the suite models the database that
-actually runs, and each has its own pending suite (`PENDING=021`, `PENDING=023`).
+column grants that `proxy.ts` reads on *every authenticated request*. **This paragraph is
+history — both are applied, and `021` no longer contains the revoke at all.** It is kept because
+the failure it describes is the one the split exists to prevent, and because the pair really was
+mutually incompatible until `021`'s `accept_terms()` and `complete_onboarding()` gave the
+database the write path `025` takes away from the client.
 
 This line has been wrong in both directions — it said `016` for a day after `017` landed, then
 `017` for an hour after four more did. Run `list_migrations` against `ls supabase/migrations/`
