@@ -1,10 +1,22 @@
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@/components/icons/generated'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { cn } from '@/lib/utils'
 
 type HeaderProps = {
-  /** Centred regardless of whether a back button is present, as in the design. */
-  title: string
+  /**
+   * Centred regardless of whether a back button is present, as in the design.
+   *
+   * **`undefined` means "not known yet", and draws a placeholder bar** — not an
+   * empty title. Every detail screen reads its title now, so between mount and
+   * the read landing there is a real state the server render never had. The
+   * alternatives were both worse: an empty header reserves its space behind
+   * nothing and reads as a broken screen, and a guessed string ("Ride") is
+   * replaced in front of the rider a moment later. Everything else the header
+   * carries — back, the sub-page switcher, the overflow control — comes from the
+   * URL, so it is live immediately and only the title waits.
+   */
+  title: string | undefined
   /** Renders the 40×40 back control at the left of the title row. */
   backHref?: string
   /**
@@ -93,7 +105,14 @@ export function Header({ title, backHref, subRow, action, titleLeading, classNam
             off-centre, which the design does not do. */}
         <div className="flex min-w-0 items-center gap-2 px-12">
           {titleLeading}
-          <h1 className="truncate text-base font-semibold text-foreground">{title}</h1>
+          {title === undefined ? (
+            // Sized to the title's own line box (`text-base`/24px) so the header
+            // does not change height when the real one arrives, and narrower
+            // than a plausible title so it does not read as one.
+            <Skeleton className="h-4 w-32" />
+          ) : (
+            <h1 className="truncate text-base font-semibold text-foreground">{title}</h1>
+          )}
         </div>
         {/* Absolute for the same reason the back button is: the title centres on
             the header, so neither control may take part in its flex row. */}

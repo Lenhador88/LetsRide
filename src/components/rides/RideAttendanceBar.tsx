@@ -24,11 +24,11 @@ const toChoice = (attendance: RideAttendance): Choice | null =>
  * button group is 358×40.
  *
  * Optimistic by hand rather than via `useOptimistic`: the value has to survive
- * the server round trip *and* stay put afterwards, since the action revalidates
- * and re-renders this component with the new prop. `useOptimistic` would be the
- * right tool if this were inside a form action; it is a three-way toggle with no
- * form, so a plain state seeded from the prop is less machinery for the same
- * result.
+ * the round trip *and* stay put afterwards, since the action invalidates
+ * `rides.all()` and the page's `useQuery` re-renders this component with the new
+ * prop. `useOptimistic` would be the right tool if this were inside a form
+ * action; it is a three-way toggle with no form, so a plain state seeded from
+ * the prop is less machinery for the same result.
  *
  * On failure it rolls back to what the server last told us and shows why — a
  * silent revert would read as the tap not registering.
