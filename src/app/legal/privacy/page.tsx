@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 /**
  * Static copy, and one of the two pages a rider can reach without a session
  * (decision #1's deliberate exception, and `/legal/*` in the guard's public
@@ -26,6 +28,11 @@ export default function PrivacyPage() {
       <p className="text-muted">
         Do not treat this page as a privacy notice. It exists so the signup checkbox has a
         real destination, and must be replaced before the app accepts real users.
+      </p>
+      <p className="text-muted">
+        <Link href="/legal/account-deletion" className="underline">
+          How to delete your account
+        </Link>
       </p>
     </>
   )
