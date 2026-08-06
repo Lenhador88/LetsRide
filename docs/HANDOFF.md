@@ -208,6 +208,22 @@ timeout:**
 
 ---
 
+## Two changes are proposed and ready to pick up
+
+Both were written 2026-08-06 and neither is started. `npm run openspec -- list --json` is the
+live view; this is the orientation.
+
+| Change | State | What blocks starting |
+|---|---|---|
+| `enforce-creator-membership` | Proposed, 44 tasks, validates strict | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
+| `add-account-deletion` | Proposed, validates strict. **Store blocker 2** | **1 new blocking question** plus the 2 it already carried. The new one is a real defect found while checking it: `account-erasure-cascade` says a club with no members left holds postcards "entirely their own by construction", which is false — a rider can leave a club while their postcards stay, so the branch designed to protect third-party content can destroy it |
+
+**They collide, and OpenSpec will not warn you.** Both carry a delta modifying
+`database-enforced-integrity`'s *Club membership role SHALL NOT be self-assignable*, and
+archiving replaces a requirement wholesale — so **whichever archives second silently discards
+the first one's edit**. Both delta files now open with a coordination banner carrying the merged
+text they should converge on. Read it before archiving either.
+
 ## Known issues, roughly by cost to fix
 
 - **`createClub` and `createRide` do two inserts with no transaction, and the hand-rolled
@@ -217,20 +233,40 @@ timeout:**
   leaves a club with an owner and no membership row — or a ride whose organizer is not on its
   own crew. **That state went from reachable only on a Supabase error to reachable on demand.**
 
-  Integrity, not confidentiality: `019` means the abandoner cannot forge a role on the way
-  through. The orphan club is missing from *Your clubs* (which reads membership) but a public
-  one shows on Explore to everyone and is joinable, so it is a UI orphan rather than a hidden
-  row. The fix is the `security definer` function both call sites have named since they were
-  written, doing both inserts in one statement — and nothing currently asserts "a club has an
-  owner-membership row" as a CHECK or trigger, which is the real gap.
+  **Proposed 2026-08-06 as `openspec/changes/enforce-creator-membership/` — read that, not
+  this.** Two things in the paragraph above are now known to be understatements:
 
-  > **Complexity** 4/10 — one migration with two functions, plus repointing two actions
-  > **Urgency** 3/10 — nothing forces it; rises the day a real rider abandons a create, and
-  > sharply if club or ride creation ever gets a retry affordance
-  > **Recommendation** 7/10 — it is the last place where a client can leave the database in a
-  > state no constraint forbids
-  > **This session** N — it is a new migration at the end of a long session, and the sequencing
-  > rules deserve a fresh head
+  - **"A UI orphan rather than a hidden row" is only true of a *public* orphan.** A private one
+    is on neither club list, so it is reachable from **no screen at all**, by anyone, including
+    its owner. (0 private clubs exist today — measured, not assumed.)
+  - **There is a second door of the same width: `leaveClub`.** `club_members` DELETE is
+    `auth.uid() = user_id` with no owner arm (read from `pg_policy`), and `leaveClub` deletes
+    unconditionally — so an owner can orphan their own club with a hand-rolled request. The UI
+    *does* guard it (`{!isOwner && …}` at `/clubs/[id]/about:103`), but in the weaker of the
+    two places, which that page's own comment concedes. Same shape for an organizer via
+    `setRideAttendance(rideId, null)`.
+
+    **A draft of this entry claimed the owner is shown a "Leave Club" button and one tap
+    orphans the club. That was wrong** — it came from grepping `isOwner` under
+    `src/components/clubs/` only and citing the line inside the guard rather than the guard.
+    Caught by review. Both doors need a hand-rolled request; neither is reachable by tapping.
+
+  Also corrected there: both call-site comments and this entry named a `security definer`
+  function *the client calls*. An RPC binds only its callers, and the publishable key ships in
+  the bundle — the shape that binds every writer is a trigger.
+
+  Live pre-flight, 2026-08-06, RLS bypassed: **0 orphan clubs, 0 orphan rides**, on 2 clubs and
+  3 rides. Read that as "nobody has hit it on a tiny dataset", not as "the window is hard to
+  hit". Re-run at apply time.
+
+  > **Complexity** 5/10 — two migrations, four triggers, a backfill, three deploy steps
+  > **Urgency** 4/10 — a draft said 6/10 on a refuted premise (see above); back to roughly
+  > where it was. Both doors need a hand-rolled request. Rises the day a real rider abandons a
+  > create, and sharply if create gets a retry affordance or the store build ships
+  > **Recommendation** 8/10 — the last place a client can leave the database in a state no
+  > constraint forbids, and the invariant is unasserted in *two* places rather than one
+  > **This session** N — 3 blocking questions, two of them product-owner decisions (may an
+  > owner leave their own club? may an organizer leave their own crew?)
 
 - **Two riders deleting at the same moment can still destroy a third's postcards.** The narrow
   race `032` §3 documents and deliberately does not close. `private.transfer_owned_clubs` locks

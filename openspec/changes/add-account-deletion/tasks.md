@@ -54,50 +54,114 @@ removal landing without its code repair is an outage.
 - [x] 1.3 Assertions for 1.2: a query over `pg_index` finds no FK column referencing
   `public.profiles` without a leading-column index. Write it as a derivation, not as a list of
   four names, so a table added next year fails the assertion rather than slipping past it.
+- [x] 1.4a **Decide whether 1.4 and 1.5 are needed at all, before writing either.** A CHECK is
+  evaluated against the finished row, and both constraints already carry a NULL arm
+  (`avatar_path is null or avatar_path like ('club-avatars/' || owner_id::text || '/%')`). A
+  transfer that clears both paths at or before the moment it changes `owner_id` therefore passes
+  as written, and D2 already chose to clear them. Prove it on a scratch database — one UPDATE
+  setting `owner_id` and both paths to NULL — and if it passes, **drop 1.4 and 1.5 and keep the
+  constraints**, which is what the `database-enforced-integrity` delta requires. Only a transfer
+  that keeps the images needs the relaxation, and that option is rejected.
+
+  *(Run, and it passes — so 1.4 and 1.5 are dropped and all four CHECKs survive `029` untouched.
+  Measured on the real constraint definition: a transfer that KEEPS the path is refused `23514`;
+  a transfer that NULLs it is allowed. This task and the same conclusion were reached
+  independently on two branches at the same time, which is about as much corroboration as a
+  measurement gets.)*
 - [x] ~~1.4 Relax `016`'s `clubs_avatar_path_owned` and `clubs_cover_image_path_owned`.~~
-  **DROPPED — the premise is wrong, and D2 already said so.** The CHECK is
-  `avatar_path is null OR avatar_path like 'club-avatars/' || owner_id || '/%'`, so it pins only
-  a **non-NULL** path to the current owner. "Any ownership transfer raises `23514`" is true only
-  of a transfer that *keeps* the path — and D2 chose the other option in the same breath ("null
-  both paths on transfer… **no new constraint semantics**"). This task contradicts the design it
-  implements. Measured on the real constraint before dropping it: transfer keeping the path is
-  refused `23514`; transfer nulling it is allowed. All four CHECKs survive `029` untouched.
-- [x] 1.5 Assertions for 1.4 — kept, retargeted at what actually happens: an ownership transfer
-  on a club with both images set succeeds *and surrenders both*; the four path CHECKs `016`
-  verified still exist by name. Both are in the `029` §B block.
+  **DROPPED by 1.4a.** The proposal's §Impact bullet still asserts the relaxation is needed;
+  it contradicts D2 in the same document ("null both paths on transfer… **no new constraint
+  semantics**"), and D2 is the one that is right.
+- [x] ~~1.5 Assertions for 1.4.~~ Kept in spirit, retargeted at what actually happens: an
+  ownership transfer on a club with both images set succeeds *and surrenders both*, and the four
+  path CHECKs `016` verified still exist by name. Both are in the `029` §B block.
 - [x] 1.6 `security definer` transfer function: reassign `clubs.owner_id` to the longest-tenured
   remaining `admin` by `club_members.joined_at`, else the longest-tenured remaining `member`,
   else delete the club. Null both image paths on transfer and return their object paths so the
   caller can delete the objects. Delete the club's rides when the club is deleted, rather than
   letting `rides.club_id`'s `ON DELETE SET NULL` orphan them into the zombie state design D3
   describes. It lives in `private` so PostgREST does not publish it, matching `is_blocked` and
-  `is_club_member`; `authenticated` gets no EXECUTE. *(Done in `029` — and this instruction is
-  **incomplete in a way that shipped a broken function**. "In `private`, no EXECUTE for
-  `authenticated`" describes who must be kept out and never says who must be let in, so `029`
-  landed a function no caller could reach: `service_role` holds no USAGE on `private`, and
-  PostgREST routes only to `public`. `031` adds a `service_role`-only `public` wrapper. The
+  `is_club_member`; `authenticated` gets no EXECUTE. *(Done in `029`, corrected by `032` — and
+  this instruction is **incomplete in a way that shipped a broken function**. "In `private`, no
+  EXECUTE for `authenticated`" describes who must be kept out and never says who must be let in,
+  so `029` landed a function no caller could reach: `service_role` holds no USAGE on `private`,
+  and PostgREST routes only to `public`. `031` adds a `service_role`-only `public` wrapper. The
   general form of the miss: **a task that names only the negative case produces a function that
   refuses everyone**, which is the exact inverse of the failure `openspec/config.yaml` was
   written to prevent, and just as silent.)*
-- [x] 1.6b `031` — `public.transfer_owned_clubs_for_deletion(uuid)`, `security invoker` and
+- [x] 1.6a **The transfer must move `club_members.role`, not only `clubs.owner_id`.** The roster
+  label and `ClubDetail.viewer_role` are both read from `club_members.role`; `clubs` UPDATE and
+  DELETE are decided by `owner_id`. Move one without the other and the club has a database owner
+  with no owner affordances and a roster showing no owner at all — and `019` left `club_members`
+  with no UPDATE policy, so nobody can repair it afterwards. Promote the recipient's row to
+  `owner` in the same transaction, inside the same `private` function, with no caller-supplied
+  role. **Do not add an UPDATE policy to `club_members`** — that would hand promotion to every
+  rider the policy admits, which is exactly what `019` refused.
+
+  *(Done in `029` and asserted. No UPDATE policy was added.)*
+- [ ] 1.6b **Re-check the "only member remaining" branch: "its postcards are entirely their own
+  by construction" is false.** A rider can leave a club while the postcards they wrote there stay
+  — nothing deletes a postcard when its author leaves the club. So a club whose *only remaining
+  member* is the departing owner can still hold another rider's postcards, and the delete branch
+  destroys them: the exact outcome D2 exists to prevent, reached by the branch D2 treats as safe.
+  Recommended default: the branch condition becomes "no rows authored by anyone else remain" —
+  if third-party postcards exist, transfer to the author of the oldest one and insert their
+  `club_members` row as `owner` rather than deleting the club. **PO decides**; blocking for 1.6,
+  because it changes what the function does.
+
+  **PARTLY ADDRESSED, and the open half is the important one.** Independently found in review of
+  this branch, and `032` fixed the *rides* half: the delete branch now removes only rides that
+  `ON DELETE SET NULL` would strand (`is_public = false`), where `029` deleted every ride in the
+  club including other riders' public ones. Confirmed live that the premise holds —
+  `Users can leave clubs` is a bare `auth.uid() = user_id`, and `seed.sql`'s `...00e5` is
+  captioned "Posted before I left".
+
+  **The postcards half is NOT built**, because the recommended default is a product decision the
+  PO has not made: it hands a club to someone who never joined it, on the strength of having
+  posted there once. `/legal/account-deletion` currently states the built behaviour — the club
+  and its posts go — so the page and the code agree today and both change together if this is
+  adopted.
+- [x] 1.6c `031` — `public.transfer_owned_clubs_for_deletion(uuid)`, `security invoker` and
   privilege-free, EXECUTE to `service_role` alone; plus USAGE on `private` and EXECUTE on the
   worker for that role. Asserted to grant nothing to riders and none of the other six helpers.
-- [x] 1.7 Assertions for 1.6, one per branch: transfer to an admin; transfer to a member when no
-  admin exists; deletion when no member remains; **another rider's postcards in the club survive
-  the owner's deletion**, asserted from that rider's own session; a private club's transferred
-  rides keep `is_public = false` and `022`'s invariant still holds; no ride is left with `club_id`
-  NULL and `is_public` false and a roster its own crew cannot read.
+- [x] 1.7 Assertions for 1.6, 1.6a and 1.6b, one per branch: transfer to an admin; transfer to a
+  member when no admin exists; deletion when no member remains ~~**and no other rider's postcards
+  remain**~~ *(that clause waits on 1.6b)*; the recipient's `club_members.role` reads `owner` and
+  no club ends with two owner rows; ~~a blocked rider is an eligible recipient and
+  `private.is_blocked` is not consulted~~ *(true by construction — the function never mentions
+  blocks — but not separately asserted)*; `authenticated` still holds no EXECUTE on the transfer
+  function and `club_members` still has exactly three policies with no UPDATE among them;
+  **another rider's postcards in the club survive the owner's deletion**, asserted from that
+  rider's own session; a private club's transferred rides keep `is_public = false` and `022`'s
+  invariant still holds; no ride is left with `club_id` NULL and `is_public` false and a roster
+  its own crew cannot read.
 - [x] 1.8 `profiles.terms_version` (Q14), server-owned and immutable in the same
   `enforce_onboarding_completion` shape `012` uses for the timestamp. **No backfill** — the same
   ruling `023` records, for the same reason.
-- [x] 1.9 Assertions for 1.8, and the first one is asserted **stronger than asked**: a
-  client-supplied version is not "replaced by the server's" but **refused with `42501`**,
-  because `030` gives `authenticated` no column grant at all and column privileges are checked
-  against the columns named in SET *before* any BEFORE trigger runs (`025` §DEFECT 2c). Refusal
-  beats correction, and it leaves `enforce_onboarding_completion` — which `003`, `012` and `023`
-  have each layered — untouched. Idempotency is asserted by moving the stored version out from
+- [x] 1.8a **`terms_version` goes into none of `025`'s three column allowlists.** `025` revoked
+  the table-level grant and re-granted an explicit list, so a new column on `profiles` is
+  invisible and unwritable to `authenticated` until someone adds it — and for a consent record
+  that is the correct end state, not a bug to fix. Do **not** add it to `grant select`,
+  `grant insert` or `grant update`; the own-row `security definer` accessor writes it, exactly as
+  it writes the timestamp. Adding it to the SELECT list would republish a consent record to every
+  rider who can see the row, which is `025`'s hole reopened one column across.
+
+  *(Done in `030`, and it is what makes 1.9 assertable in the stronger form below. Reached
+  independently on both branches.)*
+- [x] 1.9 Assertions for 1.8 and 1.8a, and the first is asserted **stronger than asked**: a
+  client-supplied version is not "replaced by the server's" but **refused with `42501`**, because
+  `030` gives `authenticated` no column grant at all and column privileges are checked against
+  the columns named in SET *before* any BEFORE trigger runs (`025` §DEFECT 2c). Refusal beats
+  correction, and it leaves `enforce_onboarding_completion` — which `003`, `012` and `023` have
+  each layered — untouched. `authenticated` and `anon` hold no SELECT, INSERT or UPDATE on the
+  column, asserted per grantee. Idempotency is asserted by moving the stored version out from
   under a second `accept_terms()` call, since "did not re-stamp" and "re-stamped with the same
   constant" are otherwise indistinguishable while there is one version string.
+
+  *(The per-role `select *` sweep — club owner, admin, fellow member, non-member, blocked rider —
+  is not separately written: `025` already revoked table-level SELECT, so `select *` is `42501`
+  for every one of them before the column exists, and the suite asserts that. Noted rather than
+  silently skipped.)*
 - [ ] 1.10 If Q4 is "retain": the `consent_records` table — salted hash of the subject uuid, terms
   version, server timestamp, nothing else. RLS enabled, **no policy at all**, no grant to
   `authenticated`, so the refusal does not rest on a policy being written correctly.
@@ -197,6 +261,48 @@ removal landing without its code repair is an outage.
   deletes an account on an emailed identifier is an account-deletion service for strangers.
 - [x] 5.3 Link it from `/legal/terms` and `/legal/privacy` so a store reviewer finds it without
   being given the URL.
+
+## 7. The four standing capabilities this change modifies
+
+**Numbered 7 so nothing above renumbers, but it runs alongside groups 3 and 4, not after group
+6.** These are the deltas against `openspec/specs/` — behaviour that already had a contract and
+now has a case it did not cover. Each one is a rule a reviewer can check against the standing
+spec, which is why they are listed apart from the flow's own tasks rather than folded into them.
+
+- [ ] 7.1 **Destroy, do not merely redirect, when the account is gone**
+  (`client-session-storage`). The route guard's `unavailable` branch is reachable in production
+  for the first time because of this change: `my_onboarding_state()` returns zero rows for a
+  caller with no `profiles` row, `onboardingStateFrom` maps that to `unavailable`, and
+  `resolveDestination` redirects to `/auth/login?error=profile_unavailable` — while clearing
+  nothing. `signIn` has never cleared the cache; only `signOut` does. Clear the session store and
+  the query cache on that branch, before the login screen renders, without needing the network.
+- [ ] 7.2 Unit tests for 7.1 in the existing guard and session-store suites: the `unavailable`
+  branch destroys the store entry and bumps every cache generation; it still falls through on the
+  two auth entry paths rather than redirecting to itself; zero rows is never mapped to
+  un-onboarded. The last one already has a guard test — extend it to assert the destruction, not
+  only the destination.
+- [ ] 7.3 **The deletion clears the cache rather than invalidating it**
+  (`client-cache-invalidation`), and its cache claim is recorded in `src/lib/query/keys.ts`'s
+  contract table like every other mutation's. `invalidate()` refetches, which with a dead token
+  repopulates nothing and burns the one moment the cache could have been destroyed.
+- [ ] 7.4 A cached signed URL whose Storage object was deleted renders the ordinary fallback —
+  initials for an avatar, the club's initials for club imagery — and not a broken image, a
+  whole-screen error, or a retry loop against a URL that cannot start working again. This is the
+  club-transfer path as much as the deletion path: D2 nulls both club image paths and deletes the
+  objects, so every member holding a cached club row has a URL that will 404 for the rest of its
+  hour.
+- [ ] 7.5 The offline exclusion is written where the offline queue will be built, not only in
+  this change's flow spec (`client-render-shell`). The standing requirement offers "refuse **or**
+  hold"; deletion removes the second branch. When durable offline queuing ships it must carry an
+  explicit exclusion rather than inheriting deletion by default.
+- [ ] 7.6 The unavailable copy from group 4 satisfies the three-way distinction, not the two-way
+  one: never "you do not have permission", never "this account was deleted", and identical for a
+  club owner, a club admin, a fellow member, a non-member and a rider on either side of a block.
+  A difference between any two of them is a disclosure.
+- [ ] 7.7 Re-read all four standing specs before opening the PR and confirm the deltas still
+  match them. They are one archive old; a second archive lands more requirements into
+  `openspec/specs/`, and a delta whose MODIFIED block no longer matches the standing text loses
+  detail silently at archive time rather than failing.
 
 ## 6. Verification and handoff
 
