@@ -38,11 +38,30 @@ branches at the same SHA.
   *zero* jobs and shows no red mark, which is indistinguishable from having nothing to check.
 - `npm run db:drift`, `npm run db:seed:check` (also a CI step), `supabase/seeds/development.sql`.
 
-**Not real yet — all owner actions:** the `letsride-dev` Supabase project does not exist.
-`list_projects` returns one project. **Until it does, Vercel Preview still points at production,
-so previews are writing to the live database.** That is the most urgent item in
-`ENVIRONMENTS.md` §Owner setup, and step 1 there is just *checking* how the Vercel variables are
-currently scoped — which no session can do, there being no MCP tool for Vercel env vars.
+**The DEV database now exists — created 2026-08-06.** `Letsride-dev`, ref
+**`fpmrimzxadewsaiwpsel`**, `eu-west-1`, same org. Verified against production:
+
+| Check | Result |
+|---|---|
+| Migrations `001`–`032` | 32 applied, one `apply_migration` call each |
+| Stored SQL vs the files | **byte-identical, 32/32** (md5 of each file vs the stored statement) |
+| Drift (files / DEV / PROD) | **none** — name sets identical after `normalise()` |
+| Full schema fingerprint | **identical hash on both** — 14 tables all RLS-on, 43 policies, 15 storage policies, 69 constraints, 14 triggers, 33 indexes, 21 functions |
+| Security advisors | exactly the documented eight |
+| Auth config | confirmation **off** (`mailer_autoconfirm: true`), Site URL and both redirect entries verified |
+
+**The Vercel half is not done, and that is now the only gap.** `NEXT_PUBLIC_SUPABASE_URL` is
+still scoped **Production and Preview** against PROD, so previews still read and write the live
+database — measured 2026-08-06, which finally answers `ENVIRONMENTS.md` §Owner setup item 1.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` was narrowed to Production only mid-session, so Preview
+currently holds a URL and no key. Both need a second row scoped to **Preview with no branch
+filter** — a branch-scoped Preview variable applies to that branch alone, and feature branches
+deploy to Preview too.
+
+That misconfiguration does **not** fail the build — measured, `next build` exits 0 and ships,
+because `createClient()` is only called from an effect and the prerender pass never reaches it.
+`next.config.ts` now asserts both variables at build time so it turns red instead of
+green-and-broken.
 
 Two rules that bite immediately, before any of the owner steps happen:
 
@@ -460,11 +479,37 @@ curl -s "https://zwprydcyryvudhurbnye.supabase.co/auth/v1/settings" -H "apikey: 
 grep -n "data.session" src/lib/actions/auth.ts
 ```
 
-**Still unproven, and still the owner's:** a real signup, confirmed by clicking a real link, to
-an address the owner controls. The branch above was proven by stubbing GoTrue's confirmation-on
-reply to `POST /auth/v1/signup` — the response shape is real, the account is not. That is
-deliberate: creating one would send mail through the free tier's shared SMTP rate limit, which
-is the same limit the owner's own password recovery uses. Store blocker 7 stands.
+**The flow is now proven end to end — on DEV, 2026-08-06.** Against the real `Letsride-dev`
+project through the relay, no stubs anywhere:
+
+```
+/auth/signup  ->  /onboarding/username  ->  /onboarding/location  ->  /postcards
+```
+
+Zero page errors, and the database agrees: `terms_accepted_at` stamped by `accept_terms()`,
+`terms_version` `0-placeholder`, `username` set, `onboarding_completed_at` set. **That consent
+write is the exact one that was failing on production**, so this is the first evidence the fix
+works against a live database rather than a stubbed response.
+
+**What is still unproven, and is still the owner's:** the *confirmation-on* path — a real
+signup where a real emailed link is clicked. DEV has confirmation **off**, so this run never
+sent an email and never exercised `/auth/callback`. The two are genuinely different paths:
+with confirmation on, `signUp` returns no session and takes the `sent` branch instead.
+
+Two consequences, and the second is the one that will bite:
+
+- The PROD path still needs an address the owner controls. **Store blocker 7 stands.**
+- **`/auth/callback` has no signup arm.** A rider confirming on a *different device* than they
+  signed up on has no PKCE `code_verifier`, and the callback's failure path sends them to
+  `/auth/forgot-password?error=invalid_link` — reset copy after a signup. Deliberately not
+  built: getting it right needs GoTrue's real confirmation-link shape, which only the owner
+  test above produces. Build it from that link, not from a guess.
+
+Reproduce the DEV run rather than trusting this: point the relay at
+`https://fpmrimzxadewsaiwpsel.supabase.co`, run the dev server against it, and sign up with any
+`@letsride.dev` address. That suffix matters — `supabase/seeds/development.sql` refuses to run
+if any account exists that does *not* match it, so test riders on any other domain block
+seeding.
 
 ---
 
