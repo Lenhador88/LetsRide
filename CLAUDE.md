@@ -962,31 +962,19 @@ Measured 2026-08-06 against the live project — `GET /auth/v1/settings` reports
 setting with no file behind it (`docs/ENVIRONMENTS.md` §Auth configuration), so nothing in this
 repo ever made the old claim true and nothing noticed when it wasn't.
 
-The decision as written was: *off, for now — signup lands straight in onboarding with a live
-session; a deliberate temporary trade that permits signing up with an email you don't control,
-to be revisited before public launch.* Keep the intent, **read the setting rather than the
-decision.** Three things in `src/` asserted the old text as fact and drove real behaviour off
-it; all three are corrected, and the shape of the mistake is the thing to carry:
+**The durable rule: an architectural decision about a dashboard setting is an *intention*, and
+code must read the setting rather than trust the sentence.** Three places in `src/` treated the
+old text as a fact and drove real behaviour off it; `signUp` now branches on `data.session` and
+is correct under either configuration. The post-mortem of what each one assumed is in
+`docs/HANDOFF.md` §Signup — it does not need to be carried into every session.
 
-- `signUp` went straight to `accept_terms()` "because #6 leaves the session live at this point".
-  With confirmation on, `signUp` returns a user and **no session**, the RPC runs as `anon` which
-  holds no EXECUTE on it (`021`), and the rider was told their consent could not be recorded and
-  to *"sign in to continue"* — advice that cannot work, because sign-in is refused until the
-  address is confirmed.
-- `guard.ts` said a rider who signed up through the current flow "never sees" the consent
-  prompt. It is the *ordinary* path every new rider takes, and it is what stops the missing
-  stamp from becoming a signed-in rider who cannot post.
-- The duplicate-signup leak `signUp` documents as "a known consequence of #6" is largely closed
-  by confirmation being on: GoTrue applies its own mitigation and returns success with an empty
-  `identities` array rather than the "already registered" error.
+**A second setting behind the same door is still broken**, and it is worse: `letsride`'s Site
+URL is `http://localhost:3000` and neither the production origin nor the preview alias is on
+the redirect allowlist, so every link the app emails lands on a dead local address. Owner
+action — `docs/ENVIRONMENTS.md` §Owner setup items 8 and 9.
 
-**The general rule this earns:** an architectural decision about a dashboard setting is an
-*intention*, and code must read the setting rather than trust the sentence. `signUp` now
-branches on `data.session` and is correct under either configuration.
-
-One consequence for `docs/ENVIRONMENTS.md`'s table: DEV wants it **off** so fixtures can be
-made, PROD wants it **on**. There is only one project today, so there is no per-environment
-answer to give — the split is `letsride-dev`'s to resolve when it exists.
+DEV wants confirmation **off** so fixtures can be made, PROD wants it **on**. There is one
+project today, so there is no per-environment answer to give yet.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 

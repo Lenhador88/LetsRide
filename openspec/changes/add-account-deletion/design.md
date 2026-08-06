@@ -267,9 +267,13 @@ deletion is coming. Reading `023` as written:
 ### D9 — Blocks do not survive re-registration, and we say so rather than fix it
 
 `blocks` cascades on both `blocker_id` and `blocked_id`. A rider who is blocked can delete their
-account, sign up again with the same email — decision #6 has email confirmation off, so the
-address need not even be theirs — receive a new `auth.users` uuid, and be un-blocked by everyone
-who had blocked them.
+account, sign up again with the same email, receive a new `auth.users` uuid, and be un-blocked
+by everyone who had blocked them.
+
+This used to add "decision #6 has email confirmation off, so the address need not even be
+theirs". **Measured false on 2026-08-06** — `mailer_autoconfirm: false`, confirmation is
+required. That narrows the hole to someone re-registering an address they *do* control, which
+is the ordinary case and still evades the block.
 
 Every fix is worse than the problem:
 
@@ -280,9 +284,10 @@ Every fix is worse than the problem:
   breaks the ordinary "I deleted it by mistake, let me sign up again" case.
 
 So: accepted, stated, and mitigated only by the fact that blocking someone again is two taps.
-The scenario is written down so the first support conversation about it is not a discovery. It
-also gets worse if email confirmation stays off, which is one more argument for decision #6's
-"must be revisited before public launch".
+The scenario is written down so the first support conversation about it is not a discovery.
+Confirmation being on is what keeps it at "the same person, with their own address" rather than
+"anyone, with any address" — so this is one more reason not to turn it off on the project real
+riders use, whatever DEV ends up doing.
 
 ### D10 — The consent record: erasure wins, with one narrow retention
 

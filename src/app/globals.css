@@ -161,8 +161,9 @@ body {
   /* `Header`'s own content height (`Header.tsx`'s `pt-safe` + `h-10` row + its
      8px bottom padding) — the same expression `.pt-header` uses below, lifted
      here so it has one source instead of two copies that can drift, matching
-     `--navbar-tabs` etc. Excludes the header's own `border-b`; see
-     `--scroll-padding-top` for why that extra pixel is added back. */
+     `--navbar-tabs` etc. Excludes the header's own `border-b`, which the
+     `html { scroll-padding-top }` rule at the bottom of this file adds back as
+     the `+ 1px`. */
   --header-height: calc(max(0.5rem, env(safe-area-inset-top)) + 3rem);
 }
 .pt-header {

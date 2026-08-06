@@ -475,12 +475,18 @@ is the same limit the owner's own password recovery uses. Store blocker 7 stands
    reports `mailer_autoconfirm: false`, which is GoTrue for *required*. Nobody checked, because
    nothing in the repo can: it is a dashboard setting with no file behind it.
 
-   The app half is fixed (§Signup below) and needs nothing from you. What needs you is the
-   **DEV** answer, and it only becomes real once `letsride-dev` exists: `ENVIRONMENTS.md` wants
-   it **off on DEV** so fixtures can be created and **on for PROD**, which is where it already
-   is. Turning it off on the *one* project that exists today would weaken production to make
-   testing easier — so the recommendation is to leave PROD alone and set DEV off at creation,
-   as step 4 of §Owner setup already says.
+   The app half is fixed (§Signup below). **A first draft of this line said it "needs nothing
+   from you" — that was wrong, and review caught it.** Fixing `signUp` made the confirmation
+   email the whole flow, and the email is broken at the dashboard: `letsride`'s Site URL is
+   `http://localhost:3000` and neither the production origin nor the preview alias is on the
+   redirect allowlist, so **every link the app emails lands on a dead local address.** Measured,
+   with the one-line probe in `ENVIRONMENTS.md` §The redirect allowlist is broken. Two clicks,
+   §Owner setup items 8 and 9, and they are the most urgent items in this repo.
+
+   The **DEV** answer only becomes real once `letsride-dev` exists: `ENVIRONMENTS.md` wants it
+   **off on DEV** so fixtures can be created and **on for PROD**, which is where it already is.
+   Turning it off on the *one* project that exists today would weaken production to make testing
+   easier — so leave PROD alone and set DEV off at creation, as step 4 of §Owner setup says.
 2. **Branch protection is not enabled on `main` — and now needs to cover `development` too**,
    which doubled the exposure rather than adding a second nicety: there are now two branches a
    stray push can land on, and one of them deploys to riders. An agent session cannot enable it
