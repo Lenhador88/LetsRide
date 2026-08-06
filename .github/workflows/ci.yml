@@ -1,10 +1,16 @@
 name: CI
 
+# Both long-lived branches, on both triggers. `development` is not decoration
+# here: feature work merges there first and is promoted to `main` by a second
+# PR, so a `development` base missing from either list is a class of change that
+# runs no checks at all. That failure is silent in the worst way — a workflow
+# that never triggers reports nothing, so the PR shows no red check, just no
+# check, and branch protection has nothing to require.
 on:
   push:
-    branches: [main]
+    branches: [main, development]
   pull_request:
-    branches: [main]
+    branches: [main, development]
 
 jobs:
   # Which suites this change can actually affect. A docs or design-snapshot PR
@@ -34,7 +40,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          # A push to main is the deploy gate, and it is rare. Never narrow it.
+          # A push to either long-lived branch is a deploy gate — `main` ships to
+          # production, `development` to the DEV project — and both are rare.
+          # Never narrow this.
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "app=true" >> "$GITHUB_OUTPUT"
             echo "db=true" >> "$GITHUB_OUTPUT"

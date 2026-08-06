@@ -18,7 +18,8 @@
     "storage:sweep": "node scripts/storage/sweep-orphans.mjs",
     "figma:components": "node scripts/figma/components.mjs",
     "openspec": "openspec",
-    "walk": "node scripts/walk.mjs"
+    "walk": "node scripts/walk.mjs",
+    "db:drift": "node scripts/db/check-migration-drift.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.111.0",
