@@ -790,6 +790,7 @@ npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/R
 
 # Do the repo, DEV and PROD agree on the migration chain? See docs/ENVIRONMENTS.md
 PROD_DATABASE_URL=postgresql://... DEV_DATABASE_URL=postgresql://... npm run db:drift
+PGPASSWORD=postgres npm run db:seed:check   # does the DEV seed still apply, and still refuse?
 
 # The only gate that renders anything — see supabase-relay.mjs's header first
 NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<ref>.supabase.co node scripts/supabase-relay.mjs &

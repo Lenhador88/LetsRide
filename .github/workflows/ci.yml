@@ -64,9 +64,12 @@ jobs:
             app=false
           fi
 
-          # The RLS suite's only inputs are the migration chain and the assertions
-          # themselves, so an allowlist is correct here rather than merely cheap.
-          if echo "$files" | grep -qE '^(supabase/|\.github/workflows/)'; then
+          # The database job's inputs are the migration chain, the assertions,
+          # and the seed check that runs beside them — so an allowlist is correct
+          # here rather than merely cheap. `scripts/db/` is in it because the
+          # seed checker lives there while everything it exercises lives under
+          # supabase/; without it, a change to the checker itself runs nothing.
+          if echo "$files" | grep -qE '^(supabase/|scripts/db/|\.github/workflows/)'; then
             db=true
           else
             db=false
@@ -144,6 +147,20 @@ jobs:
 
       - name: Run RLS policy tests
         run: ./supabase/tests/run.sh
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+
+      # The development seed is the only SQL here that runs by hand, so it is
+      # the only SQL that rots without anyone finding out — the RLS suite has
+      # its own fixtures and never touches it. A later migration adding a NOT
+      # NULL column breaks it silently, and it gets discovered by whoever is
+      # standing up DEV under time pressure. This also re-proves its production
+      # guard still refuses, which is the half that would otherwise be assumed.
+      - name: Check the development seed
+        run: ./scripts/db/check-seed.sh
         env:
           PGHOST: localhost
           PGPORT: 5432
