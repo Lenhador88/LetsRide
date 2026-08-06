@@ -82,6 +82,21 @@ ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || exit 0
 [[ "$ahead" =~ ^[0-9]+$ ]] || exit 0
 [[ "$ahead" -gt 0 ]] || exit 0
 
+# ANCESTRY IS NOT CONTENT, and this repo squash-merges every feature PR.
+#
+# A squash merge replays the branch's content onto the base as a NEW commit with
+# a new sha, so the original commit is never an ancestor of the base and
+# `rev-list --count` keeps reporting "1 ahead" for ever after the PR has merged.
+# Without this guard the hook fires at the end of every successful session —
+# demanding a PR that is already merged — which is precisely how a warning
+# teaches people to ignore it.
+#
+# Compare trees instead: identical trees mean the work landed, whatever the shas
+# say. Note this is the SECOND appearance of this bug in one session; the first
+# was handoff-landed-check.sh comparing the working tree against the base tip.
+# Any "has this landed?" test written against sha ancestry alone is wrong here.
+git diff --quiet "$base" HEAD 2>/dev/null && exit 0
+
 marker="$(git rev-parse --git-dir 2>/dev/null)/wrapup-reminded" || exit 0
 [[ -f "$marker" && "$(cat "$marker" 2>/dev/null)" == "$head" ]] && exit 0
 printf '%s' "$head" >"$marker" 2>/dev/null
