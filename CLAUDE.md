@@ -1165,6 +1165,10 @@ chain to a scratch database and asserts what each role can reach.
 - **If anything ever lands on `main` without coming through `development`** — a production
   hotfix — merge `main` back into `development` immediately, or the next promotion silently
   reverts it.
+- **Squash-merge a feature PR; use a merge commit for the `development` → `main` promotion**,
+  then fast-forward `development` back to `main`. A squashed promotion puts a commit on `main`
+  that `development` does not contain, so the two diverge permanently despite identical trees,
+  and every later promotion re-shows commits that already shipped.
 - **CI is scoped to what a PR can actually break**, decided by a `changes` job that
   diffs against the merge base:
   - **`Type Check, Lint & Build`** (tsc → ESLint → Vitest → `next build`) runs unless
