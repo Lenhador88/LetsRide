@@ -1048,23 +1048,42 @@ form `Done ; ) <name of the session>` — the name being what the session was *a
 notification read on a phone hours later identifies itself without opening anything. One at the
 end, not per milestone; a notification they did not need is annoying in a way that accumulates.
 
+**Say less while building.** Standing request from the product owner, 2026-08-06: progress
+feedback during a build is a line or two — what landed, what is next, what broke. Not a
+recap of the reasoning, not a restatement of the plan, not a summary of a file that was just
+read. The owner is watching the work happen; narrating it twice is the cost, and it buries the
+one line that actually needed reading.
+
+Three things stay long no matter how brief the running commentary gets, because each is a
+*decision* rather than a status: **the rating block below**, a **blocked capability** (the
+product owner has to act on it, so it needs the ask spelled out), and **anything inferred
+rather than measured** — an unlabelled guess is the failure this file's own principles exist
+to prevent, and "short" is never the reason one goes unlabelled. Brevity is about the
+narration, not about the record.
+
 **Rate every suggestion on four lines, always in this order.** Whenever you propose optional
 work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
 with numbers buried in it; the point is that the reader can skim four lines and still decide.
 
+> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
 > **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
 > **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
-> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
 > **This session** N — wants its own branch, and the open PR should land first
+
+**Recommendation goes first, and that order is the product owner's — set 2026-08-06.** It is
+the line that answers *should we*, so it is the one being looked for; the other three exist to
+justify it. The block used to open with Complexity, which made two cost lines the price of
+reaching the verdict. Blocks written in the old order survive in `docs/HANDOFF.md`'s history
+and in archived proposals — the order above is the one to write.
 
 What each one means:
 
+- **Recommendation** — how strongly you actually advise doing it, independent of how much fun
+  it is to build.
 - **Complexity** — effort plus risk plus the maintenance it adds. Not "is it interesting".
 - **Urgency** — *when*, not *whether*. **Name the trigger where one exists**, because most
   urgency here is conditional rather than scheduled: "low now, high the day real riders sign
   up" is the whole content, and the bare number would have hidden it.
-- **Recommendation** — how strongly you actually advise doing it, independent of how much fun
-  it is to build.
 - **This session** — **Y or N, never a number**, plus the half-line of why. It answers "should
   *this* session pick it up next", which is a question about the session rather than about the
   work: what context is already loaded, whether a branch is open, whether it is blocked on an
