@@ -403,8 +403,12 @@ the GitHub Actions secrets of the same name. A second project named `LetsRide`
 deleted. Recorded here because it is not secret — the ref ships in the client bundle as
 part of the Supabase URL — and because not knowing it cost real time.
 
-**Applied state: `001`–`027`, all of them. Zero drift.** Confirmed 2026-08-05 with
-`list_migrations`: **27 rows against 27 files**, ending `profile_column_privileges`. This is the
+**Applied state: `001`–`028`, all of them. Zero drift.** Confirmed 2026-08-06 with
+`list_migrations`: **28 rows against 28 files**, ending `refresh_stale_column_comments` — which
+is comment-only, correcting a `003` column comment that still named the deleted `proxy.ts` as
+what gates every app route. (A database comment is the `data` agent's first read via
+`list_tables`, so it is the one piece of documentation no edit to this file can reach.) The
+27-row state before it ended `profile_column_privileges`. This is the
 first time in weeks the answer has been "everything", so the `SKIP_MIGRATIONS` machinery that
 modelled the held-back pair is **gone**, along with the three `rls_test_pending_*.sql` files.
 The full chain applies on every run. Suite **535** assertions — re-derive rather than trust it:

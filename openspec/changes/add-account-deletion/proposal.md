@@ -47,7 +47,7 @@ That transitive step is the single most dangerous thing in this proposal.
 - **`auth.users` is what gets deleted; `public.profiles` is never deleted on its own.** The
   cascade does the rest. Deleting the profile row alone is the exact hole `012` names, and this
   proposal forbids it in a sentence rather than leaving it to the implementer.
-- **New migrations** (append-only from the next free number — **`028`** as of 2026-08-05, not the `026` this line first said; `026` and `027` landed in the session that wrote this proposal, which is exactly why the task below says re-derive it —
+- **New migrations** (append-only from the next free number — **`029`** as of 2026-08-06; it read `028` until the comment-only `028_refresh_stale_column_comments` took that number, and `026` before that; `026` and `027` landed in the session that wrote this proposal, which is exactly why the task below says re-derive it —
   re-derive with `ls supabase/migrations/` rather than trusting that, because the numbering moved
   underneath this document while it was being written: `021_profile_column_privileges` was split
   into an applied `021_onboarding_state_accessors` plus a pending
