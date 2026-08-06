@@ -1,5 +1,10 @@
 -- 024: drop the legacy `avatar_url` columns from `profiles` and `clubs`.
 --
+-- ** APPLIED 2026-08-05 **, in the order this header demands: PR #52 merged,
+-- Vercel deployment READY at b60618a, then the drop. Verified after — the old
+-- selects answer 42703, every select `main` ships answers 42501, both columns
+-- absent, advisors unchanged. The paragraph below is the pre-apply note.
+--
 -- WRITTEN AND DELIBERATELY NOT APPLIED AT THE TIME OF WRITING. This is not the
 -- `021`/`023` situation — there is no unresolved decision here and it is not in
 -- SKIP_MIGRATIONS. It ships in one PR with the code repair described under
