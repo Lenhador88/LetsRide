@@ -1,6 +1,6 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
-import { queryKeys } from '@/lib/query/keys'
+import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { clubSchema } from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
 
@@ -10,7 +10,40 @@ import type { ActionState } from '@/lib/actions/state'
  * imports it, taking the whole route down rather than the one value. That is
  * not hypothetical: it is how `/postcards/new` shipped dead. Shared constants
  * belong in `lib/actions/state.ts`.
+ *
+ * **This module no longer carries the directive**, so that rule no longer binds
+ * it — writes run in the browser now. The split stays anyway, and the rule is
+ * kept here rather than deleted because it is enforced for any module that gets
+ * the directive back (`src/__tests__/use-server-exports.test.ts`).
  */
+
+/**
+ * What joining or leaving a club makes stale.
+ *
+ * `clubs.all()` is the prefix over both lists, the detail and its member roster
+ * — but **it is not the whole blast radius, and the naive translation missed
+ * that.** The third path these two actions used to revalidate was
+ * `` `/clubs/${clubId}` ``, and that is a *route*: re-rendering it refetched the
+ * club, its timeline feed AND its ride strip, because all three are read by the
+ * page at that path. Only the first of those three lives under the `clubs`
+ * prefix. The other two are `postcards.feed('club:<id>')` and
+ * `rides.list('club:<id>')`, which sit under `postcards` and `rides`.
+ *
+ * The symptom, found by review rather than by a test: a rider who looked at a
+ * public club's timeline before joining, then joined, then went back inside the
+ * 30s stale window, saw the pre-join content — an empty timeline for a club they
+ * were now in.
+ *
+ * This is the exact failure `keys.ts` predicts for a path-shaped claim that
+ * covers more than its own domain, and it is why `filterSegment` exists: the
+ * strings below have to match the ones five screens build, and now both come
+ * from the same place.
+ */
+function invalidateClubMembership(clubId: string) {
+  invalidate(queryKeys.clubs.all())
+  invalidate(queryKeys.postcards.feed(filterSegment.club(clubId)))
+  invalidate(queryKeys.rides.list(filterSegment.club(clubId)))
+}
 
 /**
  * Creates a club and makes its creator the owner.
@@ -199,10 +232,7 @@ export async function joinClub(clubId: string): Promise<ActionState> {
 
   if (error) return { error: 'That club could not be joined.' }
 
-  // `clubs.all()` is the prefix over both lists, the detail and its member
-  // roster — the three paths this replaces plus `members`, which the roster
-  // sub-page reads and which membership obviously changes.
-  invalidate(queryKeys.clubs.all())
+  invalidateClubMembership(clubId)
   return { error: null }
 }
 
@@ -232,9 +262,6 @@ export async function leaveClub(clubId: string): Promise<ActionState> {
 
   if (error) return { error: 'You could not be removed from that club.' }
 
-  // `clubs.all()` is the prefix over both lists, the detail and its member
-  // roster — the three paths this replaces plus `members`, which the roster
-  // sub-page reads and which membership obviously changes.
-  invalidate(queryKeys.clubs.all())
+  invalidateClubMembership(clubId)
   return { error: null }
 }

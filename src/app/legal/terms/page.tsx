@@ -1,5 +1,22 @@
-export const metadata = { title: 'Terms and Conditions — LetsRide' }
+'use client'
 
+/**
+ * Static copy, and one of the two pages a rider can reach without a session
+ * (decision #1's deliberate exception, and `/legal/*` in the guard's public
+ * denylist). It reads nothing, so there is no query here and no loading state —
+ * the directive is here only because the client-rendered shell has no server to
+ * render a server page on.
+ *
+ * **The `metadata` export had to go with it**, and that is the one behaviour
+ * this file could not preserve. Next refuses to compile a `metadata` export from
+ * a module marked `'use client'`; the tab now reads the root layout's
+ * `LetsRide — Ride Together` rather than `Terms and Conditions — LetsRide`. A
+ * rendered `<title>` is not the fix — Next renders its own metadata into the
+ * head slot ahead of the page tree, so a second `<title>` hoisted out of the
+ * body loses, and React's own docs call two titles undefined behaviour. When
+ * the shell lands and the Metadata API goes with the server render, every
+ * screen's title has to be set client-side; this one comes back there.
+ */
 export default function TermsPage() {
   return (
     <>

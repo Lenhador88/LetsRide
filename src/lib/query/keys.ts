@@ -38,6 +38,28 @@
 
 import type { QueryKey } from '@/lib/query/queryClient'
 
+/**
+ * The filter segment inside `postcards.feed(…)` and `rides.list(…)`.
+ *
+ * Both keys type that segment as `string | null`, because a feed filter is two
+ * fields (`kind` and `id`) and a cache key is flat. Which left five screens
+ * building `` `club:${id}` `` by hand — and then `joinClub` needing to build the
+ * *same* string to invalidate what they read. That is the drift this whole file
+ * exists to prevent, one level down from the keys: two spellings that must match
+ * exactly, with nothing forcing them to, and a mismatch that costs correctness
+ * silently rather than failing.
+ *
+ * `kind` is part of the string rather than dropped, because a rider and a club
+ * can hold the same uuid in principle, and two different feeds sharing one cache
+ * entry surfaces as somebody else's postcards.
+ */
+export const filterSegment = {
+  club: (clubId: string): string => `club:${clubId}`,
+  rider: (riderId: string): string => `rider:${riderId}`,
+  /** `/rides?mine` — the one filter with no id at all. */
+  mine: (): string => 'mine',
+} as const
+
 export const queryKeys = {
   /** `revalidatePath('/profile')` — 4 sites in actions/profile.ts. */
   profile: {

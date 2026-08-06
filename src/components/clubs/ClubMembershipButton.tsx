@@ -13,14 +13,18 @@ import { Button } from '@/components/ui/Button'
  * that only ever joins — an Explore row cannot show Leave, since a club you are
  * in is not on Explore.
  *
- * Both now go through Server Actions. The pattern this replaced took a second
- * round trip through `router.refresh()` to show its own result.
+ * Both go through `lib/actions/clubs.ts`, which invalidates the `clubs` cache
+ * prefix — so the About page, the roster and both club lists redraw from one
+ * call. The v1 pattern this replaced wrote from the component and then took a
+ * second round trip through `router.refresh()` to show its own result.
  *
- * It retires the last v1 write CLAUDE.md *names*, not the last one that exists:
- * `/clubs/new` and `/rides/new` are both `'use client'` pages still calling
- * `supabase.from()` directly, and they migrate with their own screens. Count
- * them rather than trusting this line —
- * `grep -rn "supabase.from(" src/app/ src/components/`.
+ * That pattern is gone from the repo rather than merely from this component.
+ * Count it rather than trusting the line — but **not** with the bare
+ * `grep -rn "supabase.from("` CLAUDE.md quotes, which now matches three
+ * sentences of prose describing the migration, this one included. The importer
+ * form is the one that means something:
+ * `grep -rn "from '@/lib/supabase/" src/app/ src/components/`, and its three
+ * hits are all auth surfaces that need a session rather than a row.
  *
  * It renders on the About sub-page rather than in a header menu, because the
  * design puts club actions behind an `Options` control whose contents it never

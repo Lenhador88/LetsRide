@@ -1,6 +1,6 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
-import { resolveAvatarUrls } from '@/lib/data/media'
+import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { OWN_PROFILE_COLUMNS } from '@/lib/data/columns'
 import type { Profile } from '@/types'
 
@@ -19,7 +19,31 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   // the ROW is not readability of the Storage OBJECT, and 014's policy is what
   // decides the second. Skipping it here would make your own avatar the one that
   // silently fails to render.
-  if (profile) await resolveAvatarUrls([profile], supabase)
+  if (profile) {
+    // The cover is signed here rather than by the screen, and that is a
+    // freshness decision rather than tidiness. `/profile` is a client component
+    // now, so it cannot sign in its body; a `useQuery` for the signed URL would
+    // need a key, and every key `keys.ts` could offer that does not contain the
+    // path re-signs the OLD path when `updateCover` invalidates — the profile
+    // row and the cover URL refetch concurrently, so the URL is built from a
+    // `cover_image_path` that is about to be replaced, pointing at the object
+    // `setProfileImage` just deleted. Signed here, the path and its URL arrive
+    // in the same result and cannot disagree.
+    //
+    // Two passes rather than one batch, matching `attachLikeState`: avatars and
+    // covers are different Storage folders with different policies, so a
+    // readable avatar does not imply a readable cover.
+    await resolveAvatarUrls([profile], supabase)
+
+    profile.cover_image_url = profile.cover_image_path
+      ? // A path that cannot be signed lands as null and draws the empty state,
+        // rather than taking the screen to its error boundary — the same trade
+        // `signImagePaths` already makes per item for a feed.
+        ((await signImagePaths([profile.cover_image_path], supabase)).get(
+          profile.cover_image_path
+        ) ?? null)
+      : null
+  }
   return profile
 }
 

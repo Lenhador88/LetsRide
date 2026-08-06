@@ -9,7 +9,7 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getRideFilters, getRides } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
-import { queryKeys } from '@/lib/query/keys'
+import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { parseRideFilter } from '@/lib/validation/rides'
 import type { RideFilter } from '@/types'
 
@@ -71,7 +71,11 @@ function RidesScreen() {
   // rather than being dropped to the id: `mine` carries no id at all, and two
   // different filters sharing a cache entry is the kind of bug that only shows
   // up as somebody else's rides.
-  const filterKey = filter ? (filter.kind === 'club' ? `club:${filter.id}` : 'mine') : null
+  const filterKey = filter
+    ? filter.kind === 'club'
+      ? filterSegment.club(filter.id)
+      : filterSegment.mine()
+    : null
 
   // The filter bar always describes every upcoming ride, never the filtered
   // slice — otherwise picking a club would erase every other tile and strand

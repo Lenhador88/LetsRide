@@ -1,9 +1,15 @@
-import { notFound } from 'next/navigation'
+'use client'
+
+import { notFound, useParams } from 'next/navigation'
 import { Globe2Icon, Lock2Icon } from '@/components/icons/generated'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
+import { ErrorState } from '@/components/ui/ErrorState'
 import { ListUser } from '@/components/ui/ListUser'
+import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { getClub } from '@/lib/data/clubs'
+import { useQuery } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { formatRideDateLong } from '@/lib/utils'
 
 /**
@@ -20,28 +26,57 @@ import { formatRideDateLong } from '@/lib/utils'
  * transfer path because the design draws none. Hiding the control is the honest
  * response to a rule the database does not enforce; adding a guard here would
  * put it in the weaker of the two places.
+ *
+ * The only screen in the group with a single read, so no `combineQueries` — it
+ * exists to give a *set* of queries one error and one retry, and one query
+ * already has both.
  */
-export default async function ClubAboutPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const club = await getClub(id)
-  if (!club) notFound()
+export default function ClubAboutPage() {
+  const { id } = useParams<{ id: string }>()
 
-  const TypeIcon = club.is_public ? Globe2Icon : Lock2Icon
-  const isOwner = club.viewer_role === 'owner'
+  const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
+
+  // `null` means "no such club, or a club you may not see" — deliberately the
+  // same answer, so that a private club's existence is not confirmed to someone
+  // outside it. `undefined` means the effect has not answered, and is not a 404.
+  if (club.data === null) notFound()
+
+  // Above both gates: back and the sub-page switcher come from the URL, so they
+  // stay usable while the club is arriving and when it has failed.
+  const header = <ClubDetailHeader clubId={id} club={club.data} current="about" />
+
+  if (club.error)
+    return (
+      <>
+        {header}
+        <ErrorState onRetry={club.refetch} />
+      </>
+    )
+
+  if (!club.data)
+    return (
+      <>
+        {header}
+        <SkeletonDetail />
+      </>
+    )
+
+  const TypeIcon = club.data.is_public ? Globe2Icon : Lock2Icon
+  const isOwner = club.data.viewer_role === 'owner'
 
   return (
     <>
-      <ClubDetailHeader club={club} current="about" />
+      {header}
 
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 px-4">
         <div className="flex flex-col gap-2 rounded-lg bg-surface p-4">
           <p className="flex items-center gap-1 text-sm font-medium text-muted">
             <TypeIcon className="h-6 w-6 shrink-0" />
-            {club.is_public ? 'Public club' : 'Private club'}
+            {club.data.is_public ? 'Public club' : 'Private club'}
           </p>
 
-          {club.description ? (
-            <p className="text-sm text-foreground">{club.description}</p>
+          {club.data.description ? (
+            <p className="text-sm text-foreground">{club.data.description}</p>
           ) : (
             <p className="text-sm font-medium text-muted">
               This club has not written a description, yet!
@@ -49,7 +84,7 @@ export default async function ClubAboutPage({ params }: { params: Promise<{ id: 
           )}
 
           <p className="text-xs font-medium text-muted">
-            Started {formatRideDateLong(club.created_at)}
+            Started {formatRideDateLong(club.data.created_at)}
           </p>
         </div>
 
@@ -57,15 +92,17 @@ export default async function ClubAboutPage({ params }: { params: Promise<{ id: 
           <h2 className="mb-2 text-sm font-medium text-muted">Club owner</h2>
           <div className="overflow-hidden rounded-lg bg-surface">
             <ListUser
-              name={club.owner?.username ?? 'Rider'}
-              avatarUrl={club.owner?.avatar_url}
+              name={club.data.owner?.username ?? 'Rider'}
+              avatarUrl={club.data.owner?.avatar_url}
               isHost
               note="Owner"
             />
           </div>
         </div>
 
-        {!isOwner && <ClubMembershipButton clubId={club.id} isMember={!!club.viewer_role} />}
+        {!isOwner && (
+          <ClubMembershipButton clubId={club.data.id} isMember={!!club.data.viewer_role} />
+        )}
       </div>
     </>
   )

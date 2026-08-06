@@ -9,7 +9,7 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonDeck } from '@/components/ui/Skeleton'
 import { getFeed, getPostcardFilters, type FeedFilter } from '@/lib/data/postcards'
 import { combineQueries, useQuery } from '@/lib/query'
-import { queryKeys } from '@/lib/query/keys'
+import { filterSegment, queryKeys } from '@/lib/query/keys'
 
 /**
  * The home screen — `Home - Postcards - All new` in the design.
@@ -61,7 +61,7 @@ function PostcardsScreen() {
   // dropped: a rider and a club can hold the same uuid in principle, and two
   // different feeds sharing a cache entry is the kind of bug that only shows up
   // as someone else's postcards.
-  const filterKey = filter ? `${filter.kind}:${filter.id}` : null
+  const filterKey = filter ? filterSegment[filter.kind](filter.id) : null
 
   // The filter bar always describes the whole feed, never the filtered slice —
   // otherwise picking a rider would erase every other tile and strand you
