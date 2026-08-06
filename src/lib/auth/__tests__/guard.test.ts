@@ -1,0 +1,216 @@
+import { describe, expect, it } from 'vitest'
+import {
+  AUTH_ENTRY_PATHS,
+  PUBLIC_PATHS,
+  isPublicPath,
+  needsOnboardingState,
+  resolveDestination,
+  type GuardState,
+} from '@/lib/auth/guard'
+
+/**
+ * The routing rules `proxy.ts` carried, now testable.
+ *
+ * That file interleaved reading state with deciding on it, so **not one of its
+ * branches had a test** — and it carries five comments describing traps found by
+ * reasoning alone: the two redirect loops, the `!state` case that sends a rider
+ * to a screen whose submit can never succeed, step 2 before step 1, and the
+ * `/auth/*` bounce that broke password recovery. Each of those is a case below.
+ * Splitting the decision out from the read is what made that possible, and it is
+ * the main reason the move is an improvement rather than a relocation.
+ */
+
+const anonymous: GuardState = { kind: 'anonymous' }
+const sessionOnly: GuardState = { kind: 'session' }
+const unavailable: GuardState = { kind: 'unavailable' }
+
+function rider(overrides: Partial<Omit<Extract<GuardState, { kind: 'rider' }>, 'kind'>> = {}): GuardState {
+  return {
+    kind: 'rider',
+    terms_accepted_at: '2026-08-05T00:00:00Z',
+    onboarding_completed_at: '2026-08-05T00:00:00Z',
+    has_username: true,
+    ...overrides,
+  }
+}
+
+describe('isPublicPath', () => {
+  it.each(PUBLIC_PATHS)('%s is public', (path) => {
+    expect(isPublicPath(path)).toBe(true)
+  })
+
+  it.each(['/postcards', '/rides', '/clubs/abc', '/profile', '/onboarding/username'])(
+    '%s is not',
+    (path) => {
+      expect(isPublicPath(path)).toBe(false)
+    }
+  )
+
+  it('matches /legal/* but not a route that merely starts with the letters', () => {
+    expect(isPublicPath('/legal')).toBe(true)
+    expect(isPublicPath('/legal/terms')).toBe(true)
+    expect(isPublicPath('/legal/privacy')).toBe(true)
+    // `legalbeagle` is a legal username under 003's rules, and `/[username]` is
+    // a plausible next route. A `startsWith('/legal')` guard would make it
+    // public.
+    expect(isPublicPath('/legalbeagle')).toBe(false)
+  })
+})
+
+describe('an anonymous visitor', () => {
+  it('is sent to login from every protected path', () => {
+    for (const path of ['/postcards', '/rides/abc', '/clubs', '/profile', '/onboarding/username']) {
+      expect(resolveDestination(path, anonymous)).toBe('/auth/login')
+    }
+  })
+
+  it('stays on the public ones', () => {
+    for (const path of ['/auth/login', '/auth/signup', '/auth/forgot-password', '/legal/terms']) {
+      expect(resolveDestination(path, anonymous)).toBeNull()
+    }
+  })
+
+  it('is sent to login from the splash, which is public but has nothing to show', () => {
+    expect(resolveDestination('/', anonymous)).toBe('/auth/login')
+  })
+
+  it('reaches the recovery screen, which a session gate would have broken (Q1)', () => {
+    expect(resolveDestination('/auth/reset-password', anonymous)).toBeNull()
+    expect(resolveDestination('/auth/callback', anonymous)).toBeNull()
+  })
+})
+
+describe('a signed-in rider whose onboarding state did not answer', () => {
+  it('is sent to login with a reason, not into the wizard', () => {
+    // Bouncing into the wizard is the failure this branch exists to prevent: a
+    // missing accessor answers PGRST202, and a guard that reads that as "not
+    // onboarded" sends every rider to a screen that cannot help them.
+    expect(resolveDestination('/postcards', unavailable)).toBe(
+      '/auth/login?error=profile_unavailable'
+    )
+  })
+
+  it.each(AUTH_ENTRY_PATHS)('does not redirect %s to itself', (path) => {
+    // The infinite loop. These are public but still reach this branch, so
+    // sending /auth/login to /auth/login locks every signed-in rider out with no
+    // way to sign out — on exactly the deploy mismatch this is meant to survive.
+    expect(resolveDestination(path, unavailable)).toBeNull()
+  })
+})
+
+describe('the session-only state', () => {
+  it('allows the paths that deliberately skip the round trip', () => {
+    for (const path of ['/legal/terms', '/auth/reset-password', '/auth/forgot-password']) {
+      expect(needsOnboardingState(path)).toBe(false)
+      expect(resolveDestination(path, sessionOnly)).toBeNull()
+    }
+  })
+
+  it('fails closed if it ever reaches a path that needed the state', () => {
+    // Not reachable through `readGuardState`, which asks `needsOnboardingState`
+    // first. This asserts the two cannot drift apart silently: if one gains a
+    // path the other does not, the answer is a refusal rather than a screen
+    // rendered on an unread stamp.
+    expect(needsOnboardingState('/postcards')).toBe(true)
+    expect(resolveDestination('/postcards', sessionOnly)).toBe(
+      '/auth/login?error=profile_unavailable'
+    )
+  })
+})
+
+describe('consent comes before the wizard', () => {
+  const noConsent = rider({ terms_accepted_at: null, onboarding_completed_at: null })
+
+  it('sends a rider with no consent stamp to the prompt from anywhere', () => {
+    for (const path of ['/postcards', '/onboarding/username', '/onboarding/location', '/profile']) {
+      expect(resolveDestination(path, noConsent)).toBe('/onboarding/terms')
+    }
+  })
+
+  it('lets them stay on the prompt itself', () => {
+    expect(resolveDestination('/onboarding/terms', noConsent)).toBeNull()
+  })
+
+  it('gates a fully-onboarded rider whose consent predates the write', () => {
+    // The population this screen exists for: onboarded long ago, no stamp.
+    // Ordering matters — 023 refuses to stamp completion while consent is NULL,
+    // so a rider sent to the wizard first would dead-end.
+    expect(
+      resolveDestination('/postcards', rider({ terms_accepted_at: null }))
+    ).toBe('/onboarding/terms')
+  })
+})
+
+describe('an un-onboarded rider resumes where they left off', () => {
+  const noUsername = rider({ onboarding_completed_at: null, has_username: false })
+  const hasUsername = rider({ onboarding_completed_at: null, has_username: true })
+
+  it('goes to step 1 with no username, step 2 with one', () => {
+    expect(resolveDestination('/postcards', noUsername)).toBe('/onboarding/username')
+    expect(resolveDestination('/postcards', hasUsername)).toBe('/onboarding/location')
+  })
+
+  it('cannot deep-link past step 1', () => {
+    // Without this a rider submits step 2, the database refuses completion, and
+    // they get "Finish the earlier steps first" on a screen with no way forward.
+    expect(resolveDestination('/onboarding/location', noUsername)).toBe('/onboarding/username')
+  })
+
+  it('may still go backwards to step 1 once step 2 is reachable', () => {
+    expect(resolveDestination('/onboarding/username', hasUsername)).toBeNull()
+    expect(resolveDestination('/onboarding/location', hasUsername)).toBeNull()
+  })
+
+  it('is moved on from the consent prompt, which is behind them', () => {
+    expect(resolveDestination('/onboarding/terms', noUsername)).toBe('/onboarding/username')
+    expect(resolveDestination('/onboarding/terms', hasUsername)).toBe('/onboarding/location')
+  })
+})
+
+describe('a fully onboarded rider', () => {
+  it('is bounced off the two auth entry paths', () => {
+    for (const path of AUTH_ENTRY_PATHS) {
+      expect(resolveDestination(path, rider())).toBe('/postcards')
+    }
+  })
+
+  it('is bounced off the wizard', () => {
+    for (const path of ['/onboarding/username', '/onboarding/location', '/onboarding/terms']) {
+      expect(resolveDestination(path, rider())).toBe('/postcards')
+    }
+  })
+
+  it('is resolved off the splash', () => {
+    expect(resolveDestination('/', rider())).toBe('/postcards')
+  })
+
+  it('is NOT bounced off the recovery screen — Q1, and it broke recovery once', () => {
+    // A Supabase recovery link establishes an ordinary session before landing
+    // here. Bouncing every /auth/* path sent the rider to the home screen with
+    // their old password still live and no error shown.
+    expect(resolveDestination('/auth/reset-password', rider())).toBeNull()
+  })
+
+  it('is left alone everywhere else', () => {
+    for (const path of ['/postcards', '/postcards/new', '/rides/abc/crew', '/clubs/x/members']) {
+      expect(resolveDestination(path, rider())).toBeNull()
+    }
+  })
+})
+
+describe('needsOnboardingState', () => {
+  it('is true for every protected path, and for the two ways back into signup', () => {
+    expect(needsOnboardingState('/postcards')).toBe(true)
+    for (const path of AUTH_ENTRY_PATHS) expect(needsOnboardingState(path)).toBe(true)
+  })
+
+  it('is true for the splash, which has to know the resume step', () => {
+    expect(needsOnboardingState('/')).toBe(true)
+  })
+
+  it('is false for the legal pages and the recovery flow', () => {
+    for (const path of ['/legal/terms', '/legal/privacy', '/auth/reset-password', '/auth/callback']) {
+      expect(needsOnboardingState(path)).toBe(false)
+    }
+  })
+})

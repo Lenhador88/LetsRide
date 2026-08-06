@@ -6,6 +6,7 @@ import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { updatePassword } from '@/lib/actions/auth'
+import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 
 /**
@@ -14,6 +15,7 @@ import { emptyActionState } from '@/lib/actions/state'
  */
 export function ResetPasswordForm() {
   const [state, formAction, pending] = useActionState(updatePassword, emptyActionState)
+  useActionRedirect(state)
 
   return (
     <form action={formAction}>

@@ -14,6 +14,14 @@ npm test                                  # localhost:5432, user postgres
 PGHOST=/tmp PGPORT=5433 npm test          # a socket-based local instance
 ```
 
+In this container `psql` needs the password in the environment, or it prompts
+and the suite looks broken rather than uncredentialed:
+
+```bash
+PGPASSWORD=postgres npm test
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # the assertion count
+```
+
 The runner drops and recreates `letsride_test`, applies `harness.sql`, then
 every file in `../migrations` in filename order, then `seed.sql`, then
 `rls_test.sql`. New migrations are picked up automatically — there is no list to
@@ -22,33 +30,68 @@ keep in sync.
 CI runs the same script against `postgres:17`, matching the Supabase project's
 major version.
 
-### `023` and `025`: no longer pending
+### There is one suite and one mode, and nothing is skipped
 
-Until 2026-08-05 this suite skipped two written-but-undeployed migrations —
-`023` (gates participation on a consent stamp all four live riders had NULL)
-and `025` (revokes a grant `proxy.ts`, `getMyProfile`, `setLocation` and
-`signUp` all depend on, pending its code repair) — via `SKIP_MIGRATIONS` in
-`run.sh`, and ran their assertions from three separate files on demand
-(`PENDING=023`, `PENDING=025`, `PENDING=023+025`). **The suite models the
-database that actually runs**, and that mechanism existed only to honour that
-principle while the two migrations were held back.
+**The suite models the database that actually runs.** As of 2026-08-06 that is
+the whole chain: `list_migrations` reads 27 rows against 27 files, so
+`SKIP_ALL_PENDING` in `run.sh` is empty and every migration applies here exactly
+as it applies on the hosted project. Check that rather than trust this line —
+`list_migrations` against `ls ../migrations/`.
 
-Both are applied to the hosted project now — confirmed with `list_migrations`:
-27 rows against 27 files, zero drift. `SKIP_MIGRATIONS` and the three
-`PENDING` modes are gone, and their assertions have moved into `rls_test.sql`:
-the direct-write and direct-read denials `025`'s revoke causes live right
-after the sections they replace (003's and 012's old direct-column tests,
-which is why that block is now titled for 003, 012 *and* 025 together), and
-the participation gate itself — the full walk from two NULL stamps to a
-published postcard, the eight-tables-gated / five-omissions story, and the
-trigger wiring — lives in its own `023` section near the end of the file,
-alongside `021`'s.
+**There used to be three extra modes and three extra suite files**, and the
+reason they are gone is worth stating once so they are not rebuilt out of habit.
+`023` and `025` were held back for a deploy ordering, so `run.sh` skipped them
+and `PENDING=023`, `PENDING=025` and `PENDING=023+025` each ran a separate file
+*instead of* `rls_test.sql`. That was correct while it was true. It stopped being
+true the moment both applied, and then it inverted: the default `npm test` was
+quietly asserting a schema two migrations behind production, and **nothing went
+red to say so** — all four modes stayed green. The skip mechanism is the one
+piece of this suite that can fail silently, which is why it now defaults to empty
+and `PENDING` exits with an error instead of being ignored.
 
-**When you add an assertion, the question is which migration it constrains,
-not which section you happened to be reading.** The three migrations still
-have separate identities — `021` gave the wizard a write path, `025` took the
-client's own path away, `023` gates participation on the result — even though
-one `npm test` run now exercises all three together.
+The three files were folded into `rls_test.sql` on 2026-08-06 and deleted. Their
+content lives in three places: the `025` grant assertions and the stamp denials
+near the top (in the `003`/`012` section they replaced), `021`'s three functions
+in the `021` section, and the participation gate in a `023` section of its own at
+the end.
+
+**When you add an assertion, the question is which migration it constrains, not
+which section you happened to be reading.** The three still have separate
+identities — `021` gave the wizard a write path, `025` took the client's own path
+away, `023` gates participation on the result — even though one `npm test` run
+now exercises all three together.
+
+### The one thing that made the fold non-mechanical
+
+`025` revokes the column SELECT and UPDATE that ~20 of `rls_test.sql`'s `003` and
+`012` assertions used directly as the caller — they wrote `terms_accepted_at` and
+`onboarding_completed_at` and read them back to check the trigger's logic. Those
+statements are now refused **at the GRANT, before the trigger is entered**, so
+the refusal is unconditional rather than value-dependent: `assert_rejected
+('23514', ...)` became `assert_denied(...)`.
+
+The rules themselves did not go away, they moved. `complete_onboarding()` and
+`accept_terms()` are the only remaining path to either column, and they restate
+every invariant in their own bodies — because a `security definer` function runs
+as its owner and the trigger's `current_user <> 'authenticated'` guard
+short-circuits for it. So the repointed assertions drive the rules through the
+RPCs and read the stamps back through `my_onboarding_state()`.
+
+Two consequences to know before adding an assertion here:
+
+- **A rule that no role can reach is not assertable, and should not be faked.**
+  With `025` applied, `enforce_onboarding_completion()`'s completion and
+  first-consent branches are unreachable: `authenticated` holds no grant on
+  either column, and every other role returns early on the function's own guard.
+  The only branches still live are the two `new.<stamp> := old.<stamp>` re-pins
+  an ordinary profile edit takes, and those *are* asserted. The rest is defence
+  in depth against a future re-grant, and the honest assertion for it is that the
+  grant is absent.
+- **Assert a grant fact once.** `has_column_privilege(...) = false` and friends
+  live in one block, next to the denials they explain. They used to be stated
+  twice under two framings — once as "025 took it away", once as "021 has not
+  taken it away yet" — which was right while the two migrations straddled a
+  deploy and is a drift hazard now that they do not.
 
 ## Files
 
@@ -56,13 +99,25 @@ one `npm test` run now exercises all three together.
 |---|---|
 | `harness.sql` | Stand-in for Supabase: `auth.users`, `auth.uid()`, the `anon`/`authenticated`/`auth_admin` roles, their default grants, and the assertion helpers |
 | `seed.sql` | Fixtures: three onboarded riders, two riders mid-onboarding, a private club with a member, a public club, a club-only ride, a public ride |
-| `rls_test.sql` | The full assertion suite, against the deployed schema — every applied migration, `021` through `027` included |
-| `run.sh` | Applies the whole migration chain in order, then `rls_test.sql` |
+| `rls_test.sql` | Every assertion, against the whole applied chain |
+| `run.sh` | Applies everything in order and runs the suite |
 
-Sections that need a fixture state `seed.sql` does not provide — `021`'s and
-`023`'s among them — add their own riders inside a `savepoint` and roll it
-back at the end, so no expected value elsewhere in the file moves. That is why
-they sit near the end of it.
+### Sections that add their own fixtures must also own them
+
+The `021` and `023` sections both add riders of their own rather than extending
+`seed.sql`, and both roll them back, so not one expected value earlier in the
+file moves. That is why they sit at the end.
+
+`023`'s section also seeds **a postcard of its own**, and the reason is a trap
+worth knowing about: `rls_test.sql` is one long transaction and earlier sections
+mutate the seed for real. The `011` cascade block deletes `postcards ...00e1`
+outside any savepoint, to prove its comments, hides and reports go with it. The
+pending suite these assertions came from ran *instead of* this file and so still
+had that row; folded in, the comment, like and report assertions pointed at a
+postcard that no longer existed and were refused by RLS — which reads exactly
+like a policy bug and is not one. **If an assertion near the end of this file
+fails on a fixture, check whether an earlier section deleted it before you go
+looking at a policy.**
 
 ## Writing assertions
 
@@ -72,11 +127,22 @@ on failure, and `psql -v ON_ERROR_STOP=1` turns that into a non-zero exit.
 `assert_allowed` unwinds its own write, so it leaves nothing behind for later
 assertions.
 
-`assert_denied` recognises only an RLS refusal (`42501`). Constraints and trigger
-guards refuse with `23514` / `23505`, so those use `assert_rejected`, which names
-the expected SQLSTATE — "rejected by the charset check" and "rejected as a
-duplicate" are different claims and a test that accepted any error would blur
-them.
+`assert_denied` recognises `42501`, `insufficient_privilege`. Constraints and
+trigger guards refuse with `23514` / `23505`, so those use `assert_rejected`,
+which names the expected SQLSTATE — "rejected by the charset check" and
+"rejected as a duplicate" are different claims and a test that accepted any
+error would blur them.
+
+**`42501` is two different refusals wearing one SQLSTATE**, and since `025` this
+suite asserts both: a *policy* refusing a row, and a *grant* refusing a column.
+They fire at different times — the grant is checked when the statement is
+planned, against the columns named in `SELECT`/`SET`, which is before any RLS
+predicate and long before a `BEFORE` trigger. That ordering is why the stamp
+assertions changed helper rather than changing expectation: the same statement
+that used to reach `003`'s guard and come back `23514` now never gets that far.
+When you write a `42501` assertion, say in its label which of the two you mean —
+"refused before the trigger ever runs" and "no row matched the policy" are
+different claims about different code.
 
 Switch identity with `set_config('test.uid', '<uuid>', false)`; the harness's
 `auth.uid()` reads it. The suite runs as the `authenticated` role and asserts

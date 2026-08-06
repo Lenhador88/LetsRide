@@ -1,6 +1,26 @@
 -- 023: onboarding and consent gate participation, not just navigation.
 --
 -- =========================================================================
+-- ** APPLIED 2026-08-05, after the consent prompt deployed. **
+--
+-- Everything below the next rule is the header as written *before* it was
+-- applied, kept because its reasoning is the record of why the order was what
+-- it was. Read it as history, not as instructions. Two of its claims are now
+-- false and would mislead:
+--
+--   * "NOT APPLIED" — it is. `list_migrations` shows 27 rows against 27 files,
+--     zero drift. Do not apply it again.
+--   * "Its assertions live in supabase/tests/rls_test_pending_023.sql; run them
+--     with PENDING=023 npm test" — that file is gone and the PENDING modes with
+--     it. The assertions are in `rls_test.sql` and `npm test` runs them, along
+--     with every other migration's, against the full 27-file chain. `run.sh`
+--     refuses a `PENDING=` invocation rather than ignoring it.
+--
+-- The banner is added rather than the text corrected in place because a
+-- migration file is append-only by CLAUDE.md's rule, and because the sequencing
+-- argument below is the most reusable thing in it.
+-- =========================================================================
+--
 -- ** NOT APPLIED. DO NOT APPLY THIS FILE UNTIL A CONSENT PROMPT EXISTS. **
 --
 -- All 4 riders on the hosted project have `terms_accepted_at` NULL (measured

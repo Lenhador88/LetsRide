@@ -1,7 +1,6 @@
-'use server'
-
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { unwrap } from '@/lib/data/unwrap'
 import { AVATAR_IMAGE_PATH_RE, COVER_IMAGE_PATH_RE, MEDIA_BUCKET } from '@/lib/media/constants'
 import { countryCodeSchema, profileEditSchema } from '@/lib/validation/profile'
@@ -37,7 +36,7 @@ export async function updateProfile(
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit your profile.' }
 
@@ -51,7 +50,7 @@ export async function updateProfile(
   if (error) return { error: 'Could not save your profile. Try again.' }
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
-  revalidatePath('/profile')
+  invalidate(queryKeys.profile.all())
   return { error: null, sent: true }
 }
 
@@ -80,7 +79,7 @@ async function setProfileImage(
   const shape = column === 'avatar_path' ? AVATAR_IMAGE_PATH_RE : COVER_IMAGE_PATH_RE
   if (!shape.test(path)) return { error: 'That image could not be saved.' }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit your profile.' }
 
@@ -104,7 +103,7 @@ async function setProfileImage(
     await supabase.storage.from(MEDIA_BUCKET).remove([old])
   }
 
-  revalidatePath('/profile')
+  invalidate(queryKeys.profile.all())
   return { error: null, sent: true }
 }
 
@@ -147,7 +146,7 @@ export async function addCountry(code: string): Promise<ActionState> {
   const parsed = countryCodeSchema.safeParse(code)
   if (!parsed.success) return { error: 'That is not a country we know.' }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit your profile.' }
 
@@ -160,7 +159,7 @@ export async function addCountry(code: string): Promise<ActionState> {
 
   if (error) return { error: 'Could not save that. Try again.' }
 
-  revalidatePath('/profile')
+  invalidate(queryKeys.profile.all())
   return { error: null, sent: true }
 }
 
@@ -168,7 +167,7 @@ export async function removeCountry(code: string): Promise<ActionState> {
   const parsed = countryCodeSchema.safeParse(code)
   if (!parsed.success) return { error: 'That is not a country we know.' }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit your profile.' }
 
@@ -184,6 +183,6 @@ export async function removeCountry(code: string): Promise<ActionState> {
 
   if (error) return { error: 'Could not remove that. Try again.' }
 
-  revalidatePath('/profile')
+  invalidate(queryKeys.profile.all())
   return { error: null, sent: true }
 }

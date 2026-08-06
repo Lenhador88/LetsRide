@@ -4,12 +4,9 @@
 architectural decisions, the working principles and the canonical Supabase project. This file
 is only the *current position* — the things that will be stale in a week.
 
-**This file was rewritten on 2026-08-05 and is a fraction of its previous size.** It had grown
-to ~900 lines by accreting a paragraph per session and deleting nothing, so the current
-position was buried in the history of how it was reached. Proof of something already verified
-belongs in its migration's own §Verification footer; a settled decision belongs in `CLAUDE.md`.
-**What stays here is what is still true and still undone.** Prune it as part of landing work,
-not as a separate task.
+**Prune it as part of landing work, not as a separate task.** Proof of something already
+verified belongs in its migration's own §Verification footer; a settled decision belongs in
+`CLAUDE.md`. What stays here is what is still true and still undone.
 
 ## Before you trust this file
 
@@ -25,346 +22,124 @@ has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-la
 
 ---
 
-## The big thing: the app is migrating to a client-rendered shell
+## The big thing: the client-rendered migration is finished
 
-**Decided 2026-08-05 with the product owner.** Store presence is a business requirement, and
-background location tracking is on the roadmap — which the web platform cannot do on any
-browser, because JS is suspended the moment the app backgrounds. The app becomes a
-client-rendered bundle inside Capacitor, talking to Supabase directly under the same RLS.
+**Done 2026-08-06.** `openspec/changes/migrate-to-client-rendered-shell/` — 25 requirements, 73
+scenarios, seven task groups — is complete. Every box in `tasks.md` is ticked, and each entry
+records what its task got *wrong*, which is the part worth reading before trusting any other
+plan in that directory.
 
-`CLAUDE.md` §Technology Decisions carries the reasoning. The plan is
-`openspec/changes/migrate-to-client-rendered-shell/` — 25 requirements, 73 scenarios,
-reviewed once and revised. **Read `tasks.md` before doing anything on this.**
-
-Seven task groups, six phases:
-
-**Use `tasks.md`'s group numbers, which is what this table does.** They do not line up with the
-phase numbers in the same headings — group 3 is Phase 2 — and an earlier version of this table
-renumbered them, which is how "group 2" ended up meaning two different things in one paragraph.
-
-| Group | Phase | | Status |
-|---|---|---|---|
-| 1 | 1 | Integrity migrations `018`–`027` | **Done and fully applied.** Zero unapplied migrations for the first time in weeks |
-| 2 | 1b | Consent prompt (one screen, one user) | **Done 2026-08-05** — `/onboarding/terms`, exercised against the live database |
-| 3 | 2 | Make `lib/data/` isomorphic | **Done 2026-08-05** |
-| 4 | 3 | Session → device secure storage, auth, recovery | **Done except 4.1/4.2/4.5/4.6** — see below |
-| 5 | 4 | Screens, one route group at a time | **← next build.** Infrastructure is built and tested; no screen is converted |
-| 6 | 5–6 | Retire the server render path | Not started |
-| 7 | — | Verification and handoff | 7.2/7.3/7.5 done; 7.1 green; the rest belongs to groups 5–6 |
-
-**Groups 5 and 6 are one continuous unit and neither is started.** Everything else has landed.
-
-### What is left, precisely
-
-Group 4's remainder is **only the session move**, and it is deliberately last: 4.1 (storage
-adapter wired), 4.2 (no tokens in web storage), 4.5 (sign-out destroys local state) and 4.6
-(shared device). The seam exists — `src/lib/supabase/session-store.ts`, with the native
-secure-store contract, the labelled `localStorage` fallback and `clearSessionStore()` — but
-**nothing constructs a client with it yet**, on purpose.
-
-**The plan's sequencing for groups 4–5 was wrong and the corrected order is safer.** `tasks.md`
-4.1 puts the session move first, behind a flag, because it assumed group 4 might merge before
-group 5. It does not have to. The session cookie `@supabase/ssr` sets is **not** httpOnly —
-measured, see below — so a client component reading through `lib/data/` works *today* under the
-cookie session. So:
-
-1. **Convert the screens first**, keeping cookie sessions and `proxy.ts` exactly as they are.
-   Every intermediate state is a working, walkable app, and `npm run walk` proves it.
-2. **Then move the session and the guard together**, in one change, and delete `@supabase/ssr`.
-
-That removes the flag entirely and the "cookie/device-storage split cannot straddle a merge"
-hazard with it, because there is never a moment when half the session has moved.
-
-**Group 1 is worth having whether or not the render migration ever happens.** It is the only
-one like that: three of its migrations close defects that are live today, because the
-publishable key ships in the client bundle and PostgREST accepts any rider's JWT. A Server
-Action omitting a column has never been a rule.
-
-### Where group 1 got to — finished, and `021` was two migrations
-
-All of `018`–`027` are applied, each pre-flighted at apply time.
-
-**`021` held a deployment deadlock and was split.** It contained both the accessor functions and
-the revoke that makes them necessary, and those must apply at different times relative to the
-code deploy — new code on an old database calls a function that does not exist and the guard
-bounces every signed-in rider; old code on a new database loses four live paths. Neither
-ordering of one file works. Now:
-
-- **`021_onboarding_state_accessors.sql`** — additive only: `my_onboarding_state()`,
-  `accept_terms()`, `complete_onboarding(location)`. Applied *before* the code deployed.
-- **`025_profile_column_privileges.sql`** — the revoke and the column allowlist. Applied *after*.
-
-That split is also what made `023` and `025` compatible, which they were not before: `023` gated
-on stamps `021` removed the only client path to setting, and the answer is that the database
-writes them now.
-
-**The Postgres trap that shaped all three functions.** Inside a `security definer` function
-`current_user` is the *owner*, so `003`'s and `012`'s trigger guards — which both begin
-`if current_user <> 'authenticated' then return new` — short-circuit and never run. Every
-invariant those triggers carry is restated in the function bodies. CHECK constraints do still
-fire. Measured on Postgres 16, with the NOTICE output in `021`'s header.
-
-**Everything is applied. `list_migrations` reads 27 rows against 27 files** — checked
-2026-08-05, right after `023` and `025` went in. That is the first time this repo has had zero
-drift in weeks — and the `SKIP_MIGRATIONS` machinery in `supabase/tests/run.sh` has been
-**removed** with it, along with the three `rls_test_pending_*.sql` files, whose non-duplicate
-assertions are folded into `rls_test.sql`. The full 27-file chain now applies unconditionally,
-every run. Suite 464 → **527**.
-
-That fold turned up a trap worth knowing before writing any new assertion: the fixture postcard
-`…0000e1` is **really deleted partway through the suite**, by migration 011's
-"deleting a postcard cascades its interactions" section, which is not inside a savepoint. Any
-section after that point must seed its own postcard — reusing `e1` fails in a way that looks
-like an RLS bug and is really test ordering.
-
-The order actually executed, which is the one to copy:
-
-1. `021` (additive accessors) — safe against `main` as it stood.
-2. `026`, then `027` — also additive.
-3. Merge #54; **wait for Vercel to report READY** at `3974125`.
-4. `023`, then `025`.
-
-`025`'s footer predicts eight values and all eight were confirmed live: `authenticated` holds
-neither SELECT nor UPDATE on either stamp, still holds them on `username` and `avatar_path`,
-and holds no table-wide SELECT at all. `023` put its eight triggers on, with `may_participate`
-in `private` where PostgREST cannot publish it. **Then `npm run walk` was re-run against the
-post-`025` database and all 8 screens still render** — `/profile` in particular, since
-`getCurrentProfile` is the read `025` would have broken had it still used `select('*')`.
-
-### One correction to the risk register, measured
-
-`design.md` §Risks opens with "**The refresh token becomes JS-readable**", presented as a
-reduction the migration causes and accepts. **It is already JS-readable, today, on `main`.**
-`@supabase/ssr` sets `sb-<ref>-auth-token` with `httpOnly=false` — it has to, because the
-browser client reads the session back out of `document.cookie`. Measured with a real sign-in:
-the cookie is present in `document.cookie` and is the only cookie the app sets besides the
-recovery marker.
-
-So the migration does not change refresh-token exposure at all. What it changes is the *store*
-— cookie to device storage, which in a native shell is strictly better. The genuine reduction
-in this change is elsewhere and smaller: `lr-recovery` **was** httpOnly, and `026` replaces it
-with a Supabase-signed claim plus a spent-grants table. The mitigations §Risks lists (no
-third-party scripts in the authenticated tree, refresh-token rotation) are still right; the
-sentence that motivates them was not.
-
-This also has a happy consequence for sequencing, recorded under *What is left* above: because
-a client component can already read the session, the screens can be converted before the
-session moves.
-
-### Security advisors with everything applied — eight findings, all deliberate
-
-Checked 2026-08-05 after the last migration. Nothing here is a regression, and the count is
-higher than `021`'s own footer predicted because the advisor reports **one finding per
-function**, not one for the batch.
-
-**`023` added two `security definer` functions and neither appears, which is the result to
-want.** `private.may_participate()` lives in an unpublished schema, and
-`public.enforce_participation_gate()` has EXECUTE revoked from `public`, `anon` *and*
-`authenticated` — a trigger function needs no caller. So the advisor's silence about them is
-evidence they are locked down, not evidence it missed them.
-
-- **Five `security definer` functions callable by `authenticated`** — `my_onboarding_state`,
-  `accept_terms`, `complete_onboarding`, `has_password_reset_grant`,
-  `consume_password_reset_grant`. All intentional and argued in their migration headers. Each is
-  narrower than `moderate_comment`, which the advisors have accepted since `011`: three take no
-  arguments at all, and none can reach a row that is not the caller's.
-- **`moderate_comment`** — pre-existing, by design, `011` §1b.
-- **`rls_enabled_no_policy` (INFO) on `password_reset_grants`** — RLS on, zero policies, zero
-  grants, deliberately. That combination is what makes the table unreachable by anything except
-  the two `security definer` functions; a policy would *widen* it. Expect this finding
-  permanently.
-- **Leaked-password protection disabled** — still the one genuinely outstanding item, still a
-  dashboard toggle. **Owner action.**
-
-### The recovery cookie is gone, and D3's Edge Function was unbuildable
-
-`026` replaces the httpOnly `lr-recovery` cookie. D3 specified an Edge Function that exchanges
-the recovery code — **it cannot be built.** `@supabase/ssr` 0.12.4 hardcodes PKCE, so
-`resetPasswordForEmail` stores the `code_verifier` in the storage of the client that asked for
-the link, and `exchangeCodeForSession` requires it back. **A separate Edge Function cannot hold
-it** — this app's own server client can and does, in the cookie jar, which is exactly why
-`/auth/callback` works today. The precise claim is about a *second* server, not about servers.
-
-What D3 wanted was a proof the client cannot forge, and one already exists: the project mints
-**ES256** tokens and GoTrue records `amr: [{method: "recovery"}]` for a recovery session.
-PostgREST verifies that signature before opening a transaction and puts the payload in
-`auth.jwt()`, so the check is plain SQL — no secret, no service-role key, nothing to deploy but
-a migration. Decision #8's second bullet stays shut.
-
-**`027` closes a defect review found in `026` after it was applied.** The function documents
-"never raises" and both callers are built on it — a raise turns a malformed token into a 500 on
-the reset screen instead of a refusal. `026` guarded exactly one cast, and two paths escaped:
-an `amr` timestamp of `1e300` raised `22008` out of `to_timestamp`, and non-JSON claims raised
-`22P02` out of `auth.jwt()` itself, which runs in a declaration default *before* any handler is
-in scope. Neither is reachable through a Supabase-signed token, so it was robustness rather than
-a live hole — but the asymmetry was the defect. `027` wraps the whole body, range-guards the
-epoch, and narrows a duplicated `recovery` entry from `max()` to `min()`. The suite asserts both
-raising inputs; without `027` it fails with the real `22008`.
-
-**What it does not close, and who closes it.** This gates the app's front door, exactly as the
-cookie did — not GoTrue's `PUT /auth/v1/user`, which any live-session holder can call with the
-publishable key that ships in the bundle. The platform gate that *would* close it is
-`UpdatePasswordRequireCurrentPassword`, whose implementation already checks
-`session.IsRecovery()`. **Owner action** — it is a project setting, not something a migration can
-reach. Measured against the live project: `PUT /auth/v1/user` with the fixture's existing
-password returns `422 same_password`, and that check sits *after* both platform gates, so
-reaching it proves both are currently off.
-
-### One Postgres gotcha worth carrying forward
-
-`revoke select, insert, update (col_a, col_b) on t from r` **does not do what it reads like.**
-Postgres binds a column list to the immediately preceding privilege only, so that revokes
-SELECT table-wide, INSERT table-wide, and UPDATE on two columns — and the last is a no-op
-against a table-level grant. It strips more than intended and leaves the target untouched.
-Reproduced on this Postgres: table-wide SELECT `f`, unrelated column SELECT `f`, target column
-UPDATE `t`. The working shape is revoke-table-level-then-grant-a-column-allowlist.
-
-### Where group 3 got to — done, with two corrections worth carrying
-
-`lib/data/` is isomorphic. All 19 read functions resolve their client through
-`src/lib/supabase/resolve.ts`; no signature moved.
-
-**The plan's mechanism does not build, and the replacement is better.** D1 specified a runtime
-test — server client when there is no `document`. `lib/supabase/server.ts` imports
-`next/headers`, Next refuses to bundle that into a client graph, and a `typeof document` guard
-around `await import()` does not help because the bundler resolves the specifier statically
-either way. Measured, not assumed: a `'use client'` page importing one read function fails
-`next build` with traces through both `[Client Component Browser]` and `[Client Component SSR]`.
-The split is now the **`react-server` export condition** (`#supabase/data-client` in
-`package.json`, halves `resolve.rsc.ts` / `resolve.browser.ts`). Confirmed by chunk inspection:
-
-```bash
-npm run build && grep -rho "src/lib/supabase/resolve\.[a-z]*\.ts" .next/server | sort | uniq -c
-grep -rc "next/headers" .next/static | grep -v ":0"   # prints nothing
-```
-
-**One rule, and it is enforced after all.** *Read in an effect or an event handler, never during
-render.* A `'use client'` component is still server-rendered until Phase 6, and there the browser
-client has no session to find. Moving the split from a build error to a build-time *condition*
-made that mistake legal to compile, so `resolve.browser.ts` throws a named error when there is no
-`document` — static prerendering runs the SSR pass, so the page fails the build with the message
-instead of failing closed at RLS in production. Verified by building exactly that page.
-
-**`024` drops `profiles.avatar_url` and `clubs.avatar_url`, and the plan's repair list was six
-query sites short.** Three club embeds in `rides.ts`, two in `postcards.ts`, one hand-spelled
-profile select — none reachable through `PUBLIC_PROFILE_COLUMNS`. `clubs.avatar_url` was NULL on
-every row and always had been, so **the three surfaces that draw a club image could only ever
-draw initials**: the ride-detail chip, the ride filter tiles and the postcard filter tiles.
-`/clubs/new` has been uploading to `avatar_path` since `016` and only the Clubs screens signed it.
-Fixed with `CLUB_EMBED_COLUMNS` and a signing pass at those three.
-
-Two corrections a review made to that paragraph, kept because both were easy to get wrong.
-**`RideCard` and `PostcardCard` draw the club as a text chip, not an avatar** — so the rides list
-and the postcard deck embed `id, name` and sign nothing; a first pass had the list selecting and
-signing an image nothing renders. And it was **latent, not live**: 0 clubs and 0 riders have any
-`avatar_path` either, so nothing has yet rendered differently. The defect was reading a column
-that could never hold a value.
-
-```sql
-select count(*) filter (where avatar_path is not null) from public.clubs;   -- 0 on 2026-08-05
-```
-
-**`024` shipped in the order its header demands** — PR #52 merged, Vercel `READY` at `b60618a`,
-*then* the drop, 2026-08-05. The reverse is an instant outage, because the code before that
-commit still selected the column. Verified after: old selects `42703`, every shipped select
-`42501`, advisors unchanged.
-
-**Keep the probe — it needs no session and it is the cheapest schema oracle here.** PostgREST
-answers `42703` for a column that does not exist and `42501` for one the role cannot read, so
-anonymous `curl` distinguishes the two:
-
-```bash
-curl -s "$URL/rest/v1/rides?select=id,club:clubs(id,name,avatar_path)&limit=1" \
-  -H "apikey: $KEY" -H "Authorization: Bearer $KEY"
-```
-
-**`021` would have aborted mid-deploy, and no local suite could have caught it.** Its §1 SELECT
-grant list named `avatar_url`. `run.sh` applies by filename, so locally `021` runs *before*
-`024` and finds the column; on the hosted project it runs *after*, where the grant raises
-`42703` and takes the migration down. Removed — required under every reading of `021`'s open
-shape question. Proven both ways against a scratch database in the real hosted order.
-
-### Starting group 5 — the surface, re-measured 2026-08-05
-
-Each line is a command, not a number to trust.
-
-| What | Value | Re-derive |
+| Group | | Status |
 |---|---|---|
-| Pages / of which server | 24 / **17** | first-line match, see below |
-| Components / of which server | 56 / **27** | same |
-| `revalidatePath` call sites | **33**, 8 files | `git grep -o "revalidatePath(" -- 'src/lib/actions/*.ts' \| wc -l` |
-| `redirect()` in actions | 14 / 5 files | `git grep -o 'redirect(' -- 'src/lib/actions/*.ts' \| wc -l` |
-| Real `next/headers` importers | **2** | `git grep -l -e "^import .*from 'next/headers'" -- 'src/**/*.ts' 'src/**/*.tsx'` |
+| 1 | Integrity migrations `018`–`027` | Done, all applied |
+| 2 | Consent prompt | Done |
+| 3 | `lib/data/` isomorphic | Done |
+| 4 | Session → device storage, auth, recovery | **Done** |
+| 5 | Screens, one route group at a time | **Done — all 17 pages** |
+| 6 | Retire the server render path | **Done** |
+| 7 | Verification and handoff | Done |
 
-**That was 3 and is now 2**: `/auth/reset-password` read the recovery cookie and no longer
-exists as a server page. The remaining two are `lib/actions/auth.ts` and
-`lib/supabase/server.ts` itself. Note the `-e` — without it `git grep` reads the pattern's
-`.*from` as a revision and dies, which reads like the file being absent.
+What that means concretely:
 
-```bash
-for f in $(git ls-files 'src/app/**/page.tsx'); do head -1 "$f" | grep -q "'use client'" || echo "$f"; done | wc -l
-```
+- **Zero server pages.** `next build` reports every route `○ (Static)` except the five `[id]`
+  ones, which are dynamic for their segment and not for any data. No `ƒ Proxy (Middleware)`.
+- **`src/proxy.ts`, `src/lib/supabase/server.ts`, `resolve.rsc.ts` and
+  `src/app/auth/callback/route.ts` are deleted.** `@supabase/ssr` is uninstalled — seven runtime
+  dependencies.
+- **The session lives in `src/lib/supabase/session-store.ts`**, not a cookie.
+- **Routing decisions are `src/lib/auth/guard.ts`** — a pure function with 36 tests, applied by
+  `src/components/auth/RouteGuard.tsx`. It is *not* a security boundary; RLS is.
+- **`npm test` is one RLS suite again** — 535 assertions over all 27 migrations, zero skipped.
+  The `PENDING` machinery is gone.
 
-**`revalidatePath` is 33, not the 41 in `design.md`, `tasks.md` and the earlier version of this
-file.** All three cite `git grep -c`, which counts *lines containing the word* — and 8 of those
-are the `import { revalidatePath } from 'next/cache'` line at the top of each of the 8 files.
-33 + 8 = 41. This is the same counting trap CLAUDE.md documents three times over (the
-`lucide-react` importer count, the v1-token count, the `next/headers` count), reproduced by the
-very plan that warns about it. The cache-key contract in `src/lib/query/keys.ts` maps all 33.
+### What is left, and it is one thing
 
-**Most of the 27 "server components" need no work.** They carry no `'use client'` directive but
-are pure presentational — they join the client graph automatically the moment a client page
-imports them. The real work is the 17 pages.
+**The native shell.** Capacitor config, plugins, permission strings, deep links, signing and
+store upload. CLAUDE.md records that a `native` agent is deliberately absent and lands with the
+shell rather than before it; `rider-ux` gets its rewrite at the same time.
 
-**What already exists for group 5, built and unit-tested but wired to nothing:**
+Two seams are already built and waiting for it:
 
-- `src/lib/query/` — `useQuery`, `invalidate`, `setQueryData`, `clearQueryCache`, plus
-  `keys.ts`, which is the contract mapping all 33 invalidation claims to cache keys.
-- `src/components/ui/Skeleton.tsx` and the four D7 shapes; `ErrorState`, `OfflineState`,
-  `useOnlineStatus`.
-
-**Two gotchas the conversion will meet on the first page.** `searchParams` becomes
-`useSearchParams()`, which Next requires inside a `<Suspense>` boundary; `params` becomes
-`useParams()`. And `lib/data/` must be read **in an effect, never during render** —
-`resolve.browser.ts` throws a named error if you get that wrong, which is deliberate.
+- `window.__letsrideSecureStore` — implement it over the platform keychain and the session moves
+  off `localStorage` with no application change. `session-store.test.ts` asserts that when it is
+  present, **nothing** lands in `localStorage`.
+- Next still server-renders client components on first load. That SSR pass goes with Capacitor,
+  and it is the only reason the *read in an effect, never during render* rule is still
+  load-bearing.
 
 ## Do this first
 
-1. **Group 5: convert the screens.** Read *Starting group 5* above for the corrected sequencing
-   — screens first under cookie sessions, then the session and guard together. The
-   infrastructure is built; no screen uses it yet.
-2. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. **Owner action.**
-   It is what actually closes the recovery hole `026` can only gate at the app's front door —
-   see *The recovery cookie is gone* above. Measured as currently off.
-3. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
-   nothing, with no alert. **Owner action** — needs Pro before anything resembling launch.
-4. **Exercise signup end to end.** Still never done on this database: the owner's account
+1. **Exercise signup end to end.** Still never done on this database, and it is now the one
+   remaining unproven path — `npm run walk` covers everything after it. The owner's account
    predates the consent write, both `.test` fixtures were SQL-inserted because Supabase rejects
    that TLD, and the one real attempt matches `signUp`'s own documented failure path. Needs an
-   email domain the owner controls. **Owner action.** Note `npm run walk` now covers everything
-   *after* signup, so this is the one remaining unproven path.
-5. **Enable leaked-password protection** — one dashboard toggle, still the only outstanding
+   email domain the owner controls. **Owner action.**
+2. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. **Owner
+   action.** It is what actually closes the recovery hole `026` can only gate at the app's front
+   door — GoTrue's `PUT /auth/v1/user` accepts a password change from any live session, measured.
+3. **Enable leaked-password protection** — one dashboard toggle, still the only outstanding
    security advisor that is not deliberate. **Owner action.**
-6. **Sweep the orphaned Storage objects** — `npm run storage:sweep` (dry run), then
-   `-- --delete`. Two objects, 1.15 MB, left by a bug fixed in #21. Whether the tool has ever
-   been *run* is unknown; the dry run is free and settles it.
-7. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
+4. **Supabase is on the free tier and auto-pauses after ~7 days idle.** A paused project serves
+   nothing, with no alert. **Owner action** — needs Pro before anything resembling launch.
+5. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
+   2026-08-06 as `qa-verify`: *"0 object(s) in your folder, 0 referenced by a postcard. No
+   orphans."* That settles nothing about the two objects (1.15 MB) the note refers to, because
+   the sweeper signs in as a rider and `010`'s Storage policies scope it to
+   `postcards/<that rider's uid>/`. The orphans are in the folder of whoever hit the bug fixed
+   in #21, which is not this fixture. **Owner action**, with their own credentials:
+
+   ```bash
+   export $(grep -v '^#' .env.local | xargs -d '\n')
+   NODE_USE_ENV_PROXY=1 RIDER_EMAIL=… RIDER_PASSWORD=… npm run storage:sweep   # then -- --delete
+   ```
+
+   `NODE_USE_ENV_PROXY=1` and exporting `.env.local` are both required — the script reads the
+   URL and key from the environment and Node's `fetch` ignores `HTTPS_PROXY` without the flag.
+6. **Verify the remaining Postcards screens against the design.** `/postcards/new` and
    `/postcards/[id]` still carry inferred composition; the design has frames for both.
 
 ## Running things in this container
 
-**Measured 2026-08-05. Re-measure rather than trust — each line is one command.**
+**Measured 2026-08-06. Re-measure rather than trust — each line is one command.**
 
 | What | How |
 |---|---|
-| RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*, the cluster is down: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*, the role has no password: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **527** on 2026-08-05 |
-| Unit tests | `npm run test:unit` — **453** on 2026-08-05 |
-| Dev server | **`NODE_USE_ENV_PROXY=1 npm run dev`** — Node's `fetch` ignores `HTTPS_PROXY`, so every server-side Supabase call fails with a proxy page while `curl` succeeds. The app surfaces that as "That email and password do not match an account", which reads like a credentials problem and is not one |
-| `.env.local` | Write `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
-| **Walking the app** | **`WALK_EMAIL=... WALK_PASSWORD=... npm run walk`**, with the dev server already up. Signs in as a real rider and reports every screen that redirected, hit the error boundary or came back empty. This is what task 7.2 asks for, and it is the only gate that renders anything — `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load |
-| Playwright | `npm install --no-save playwright-core` (already a devDependency of nothing — install it before `npm run walk`), `executablePath: /opt/pw-browsers/chromium-1194/chrome-linux/chrome`. Never `playwright install` |
-| OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`, installed 2026-08-05. The bare `openspec` npm name is a 0.0.0 stub |
+| RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **535** |
+| Unit tests | `npm run test:unit` — **481** |
+| **Walking the app** | See below. It is the only gate that renders anything |
+| `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
+| OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
+
+### The walk, and the relay it now needs
+
+```bash
+NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://zwprydcyryvudhurbnye.supabase.co \
+  node scripts/supabase-relay.mjs &
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
+WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+```
+
+**Chromium in this container cannot reach Supabase at all.** Measured 2026-08-06, and it is not
+a flake or a flag: `curl -x $HTTPS_PROXY .../auth/v1/health` returns 401 — tunnel open, host
+allowed — while the same fetch from a Chromium page launched with `--proxy-server=$HTTPS_PROXY`
+hangs until aborted, with no response, no `requestfailed`, and no entry in the agent proxy's own
+`recentRelayFailures`, where a genuinely blocked host *does* appear. Bare,
+`--ignore-certificate-errors`, `--disable-quic` and `--disable-http2` all hang identically.
+
+This used to cost only blank photos, because the *dev server* was the Supabase client. Now the
+browser is, so it costs sign-in and therefore the entire walk. `scripts/supabase-relay.mjs`
+forwards one origin over the hop that works — real project, real RLS, real JWTs, no application
+change. Its header carries the full measurement and the warning that it terminates TLS and must
+never become a development convenience.
+
+`NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
+relay itself cannot reach Supabase without it.
+
+**A clean run is `15/15 screens rendered clean` and `15/15 guard and sign-out checks correct`.**
+The walk discovers detail routes from the lists, checks eleven route-guard redirects in both
+signed-in and signed-out states, and asserts sign-out leaves no `sb-*` key in `localStorage`, no
+`sb-*` cookie, and no reachable screen.
 
 **Network, measured — a blocked host fails as `curl: (56) CONNECT tunnel failed`, not as a
 timeout:**
@@ -375,34 +150,56 @@ timeout:**
 | `*.vercel.app` | 403 at the proxy | Blocked. Use the Vercel MCP tools |
 | `api.github.com` | 403 on `/repos/...` | Effectively refused. Use the GitHub MCP tools |
 
-**Chromium here has no proxy configured**, so `<img>` fetches of Supabase signed URLs never
-complete and every photo renders blank, and `XMLHttpRequest` to Storage hangs without ever
-firing `onload` or `onerror` — an upload sits on "Uploading…" forever. **Neither is an
-application bug.** The same requests return 200 from the shell. Launch Chromium with
-`--proxy-server=$HTTPS_PROXY` if images need to render, and verify uploads with `curl`.
-
 ---
 
 ## Known issues, roughly by cost to fix
 
+- **`createClub` and `createRide` do two inserts with no transaction, and the hand-rolled
+  rollback stopped being one.** Found by review of the render migration. As Server Actions,
+  both inserts and the compensating delete ran inside one server request that finished whether
+  or not the tab survived; they run in the browser now, so closing the tab between the two
+  leaves a club with an owner and no membership row — or a ride whose organizer is not on its
+  own crew. **That state went from reachable only on a Supabase error to reachable on demand.**
+
+  Integrity, not confidentiality: `019` means the abandoner cannot forge a role on the way
+  through. The orphan club is missing from *Your clubs* (which reads membership) but a public
+  one shows on Explore to everyone and is joinable, so it is a UI orphan rather than a hidden
+  row. The fix is the `security definer` function both call sites have named since they were
+  written, doing both inserts in one statement — and nothing currently asserts "a club has an
+  owner-membership row" as a CHECK or trigger, which is the real gap.
+
+  > **Complexity** 4/10 — one migration with two functions, plus repointing two actions
+  > **Urgency** 3/10 — nothing forces it; rises the day a real rider abandons a create, and
+  > sharply if club or ride creation ever gets a retry affordance
+  > **Recommendation** 7/10 — it is the last place where a client can leave the database in a
+  > state no constraint forbids
+  > **This session** N — it is a new migration at the end of a long session, and the sequencing
+  > rules deserve a fresh head
+
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are tested,
-  but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments
-  are the exception: deletable, not editable, which `011` forbids by design.
+  but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments are
+  the exception: deletable, not editable, which `011` forbids by design.
 - **Account deletion is not built.** App Store guideline 5.1.1(v) makes it a hard rejection for
-  any app with account creation. On the backlog by owner decision, but it is a **store
-  blocker**, and it gets larger once location tracks exist.
+  any app with account creation. Proposal exists at `openspec/changes/add-account-deletion/`. It
+  is a **store blocker**, and it gets larger once location tracks exist.
 - **Inbox and Garage have no routes and no tables** — two of five nav tabs. A reviewer tapping
   five tabs finds two dead, which is a guideline 4.2 problem in its own right.
+- **There is no `clubIdSchema`.** `/postcards/[id]` parses its id before issuing anything, so it
+  can read in parallel and 404 a malformed segment; `/clubs/[id]` cannot, so its two content
+  reads are serialised behind the club. Adding the schema and parallelising is a small, clear
+  win.
+- **The legal pages lost their per-page `<title>`.** `export const metadata` and `'use client'`
+  cannot coexist, and a rendered `<title>` is the second one in `<head>`. Four lines with
+  `document.title` if it matters.
+- **`pb-rsvp-bar-extra` shifts when the RSVP bar appears** on the ride detail, because whether
+  it renders depends on the read.
 - **`createRide` returns a generic message on `23514`.** A rider picking a private club with
-  "public" ticked now gets "That ride could not be created." with no explanation. Not reachable
+  "public" ticked gets "That ride could not be created." with no explanation. Not reachable
   today (0 private clubs); live the moment someone makes one.
 - **`club_members` holds a table-level UPDATE grant nothing uses.** Promotion is blocked only by
   the *absence* of a policy, so RLS filters to zero rows rather than raising. Asserted both ways.
-- **`deleteComment` does not revalidate on the `moderate_comment` path** — latent until blocking
-  gets more UI. The fix is to have the function return the postcard id instead of a boolean,
-  which is a migration. Full note at the call site.
 - **`max_riders` has never been enforced** — not by an action, a policy or a trigger, since
-  `001`. `018` now bounds the *value* (1–999); nothing counts `ride_members` against it.
+  `001`. `018` bounds the *value* (1–999); nothing counts `ride_members` against it.
 - **The swipe deck only moves forward.** A swipe in either direction advances, per the product
   owner, so there is no way back except "Start over".
 - **Both RSVP pills fail WCAG AA**, and two more pairings besides — the Maybe pill at 2.54:1,
@@ -417,7 +214,7 @@ application bug.** The same requests return 200 from the shell. Launch Chromium 
 | Email | Username | State |
 |---|---|---|
 | `duskrider@letsride.test` | `duskrider` | Onboarded. **SQL-inserted**, never signed in |
-| `qa-verify@letsride.test` | `verify24321868` | Onboarded, **and consented 2026-08-05** — the first row on this database with a real `terms_accepted_at`, written by the consent prompt through `accept_terms()` rather than by SQL. **SQL-inserted** originally |
+| `qa-verify@letsride.test` | `verify24321868` | Onboarded and consented. **SQL-inserted** originally |
 
 **Passwords are not in this repo and must never be.** `duskrider`'s lives with the product
 owner; `qa-verify`'s is in the git history of this file and should be treated as burned — which
@@ -425,7 +222,11 @@ also makes it the credential `npm run walk` uses, since a burned password on a f
 for deletion is the right thing to hand a smoke test. Pass it in the environment, never on a
 command line that gets logged.
 
-Both are acceptable only because the app is **not live**. **Delete both before launch:**
+**Only having one reachable password is why the shared-device case (task 4.6) is proven by
+mechanism and not by sequence.** The walk asserts that sign-out destroys the session, the query
+cache and every `sb-*` key; a *second real rider signing in afterwards* has never been run.
+
+Both accounts are acceptable only because the app is **not live**. **Delete both before launch:**
 
 ```sql
 delete from auth.users where email like '%@letsride.test';
@@ -433,14 +234,13 @@ delete from auth.users where email like '%@letsride.test';
 
 Two caveats: `.test` is an RFC 2606 reserved TLD that receives no mail, so neither account can
 sign up, recover a password or confirm anything the day email confirmation is turned on; and
-because both were SQL-inserted, **neither proves anything about the signup flow**. If you
-create another this way, set `confirmation_token`, `recovery_token`, `email_change` and the
-other token columns to `''`, never NULL — GoTrue scans them into non-nullable strings and a
-NULL turns every login into "do not match".
+because both were SQL-inserted, **neither proves anything about the signup flow**. If you create
+another this way, set `confirmation_token`, `recovery_token`, `email_change` and the other token
+columns to `''`, never NULL — GoTrue scans them into non-nullable strings and a NULL turns every
+login into "do not match".
 
-There is also one **real** signup (a Gmail address, 2026-08-04) with no consent, no username,
-no onboarding and no sign-in. That is the shape of `signUp`'s documented consent-failure path.
-See item 3 in *Do this first*.
+There is also one **real** signup (a Gmail address, 2026-08-04) with no consent, no username, no
+onboarding and no sign-in. That is the shape of `signUp`'s documented consent-failure path.
 
 ---
 
@@ -458,10 +258,6 @@ See item 3 in *Do this first*.
 3. **The 🟠-prefixed Figma sections** — are they dead explorations that can be deleted? They are
    the OLD stylesheet marked "In progress", which makes them look newer than the `Done` v2 flows
    beside them. Decision #4 says build from `v2 /` and ignore them.
-4. **A proposal-review checklist for `reviewer`** was deliberately deferred until a real
-   proposal existed. One does now, and its review found twelve findings with no checklist at
-   all — so the evidence says the checklist is optional. Revisit only if a later review misses
-   something a checklist would have caught.
 
 ---
 
@@ -490,27 +286,31 @@ polling. It is a real countdown in seconds and waits have been measured in days.
 
 ## Constraints that will waste your time otherwise
 
-**`git log %G?` lies about signatures here.** Signing works; `gpg.ssh.allowedSignersFile` is
-not configured, so git reports `%G? = N` for correctly signed commits. Check the header:
+**`git log %G?` lies about signatures here.** Signing works; `gpg.ssh.allowedSignersFile` is not
+configured, so git reports `%G? = N` for correctly signed commits. Check the header:
 
 ```bash
 git cat-file commit <sha> | grep -q '^gpgsig' && echo signed || echo unsigned
 ```
 
-**`origin/HEAD` is not set in this clone.** Any script referencing it silently no-ops. Fall
-back to `origin/main` explicitly.
+**`origin/HEAD` is not set in this clone.** Any script referencing it silently no-ops. Fall back
+to `origin/main` explicitly.
 
-**`FIGMA_ACCESS_TOKEN` lives only in the session environment** and dies with the container if
-it is not in the environment config. Only `figma:pull` and `figma:icons` need it.
+**`playwright-core` is a devDependency now**, so `npm ci` installs it. It used to be installed
+with `--no-save`, which meant any later `npm install` silently removed it and the walk died with
+`ERR_MODULE_NOT_FOUND` — which reads like a broken script rather than a missing package.
 
-**Vercel's MCP fetch tool authenticates as the account owner**, so a 200 from it is not
-evidence that a URL is publicly reachable.
+**`FIGMA_ACCESS_TOKEN` lives only in the session environment** and dies with the container if it
+is not in the environment config. Only `figma:pull` and `figma:icons` need it.
 
-**MCP connector names are not stable, and permission rules are matched on them.** This session
+**Vercel's MCP fetch tool authenticates as the account owner**, so a 200 from it is not evidence
+that a URL is publicly reachable.
+
+**MCP connector names are not stable, and permission rules are matched on them.** A session has
 watched the Supabase server arrive as `Supabase` and later reconnect as
-`mcp__d217aba8-…__execute_sql`; Vercel and Figma did the same. Every
-`mcp__Supabase__*` rule in `.claude/settings.json` silently stopped matching at that moment, so
-long-approved tools started prompting again. The UUID-scoped mirror lives in
-`.claude/settings.local.json`, which is gitignored **because those ids are per-machine** — never
-commit them, and expect to re-add them if the ids rotate again. The symptom is a permission
-prompt for something the project already allows; the fix is not to widen the project rules.
+`mcp__d217aba8-…__execute_sql`; Vercel and Figma did the same. Every `mcp__Supabase__*` rule in
+`.claude/settings.json` silently stopped matching at that moment, so long-approved tools started
+prompting again. The UUID-scoped mirror lives in `.claude/settings.local.json`, which is
+gitignored **because those ids are per-machine** — never commit them, and expect to re-add them
+if the ids rotate again. The symptom is a permission prompt for something the project already
+allows; the fix is not to widen the project rules.

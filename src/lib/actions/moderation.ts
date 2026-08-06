@@ -1,7 +1,6 @@
-'use server'
-
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { reportPostcardSchema } from '@/lib/validation/comments'
 import type { ActionState } from '@/lib/actions/state'
 
@@ -28,7 +27,7 @@ import type { ActionState } from '@/lib/actions/state'
  * branch. Delete is the affordance for not wanting your own post.
  */
 export async function hidePostcard(postcardId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 
@@ -41,7 +40,7 @@ export async function hidePostcard(postcardId: string): Promise<ActionState> {
 
   if (error) return { error: 'Could not hide that postcard. Try again.' }
 
-  revalidatePath('/postcards')
+  invalidate(queryKeys.postcards.all())
   return { error: null }
 }
 
@@ -52,7 +51,7 @@ export async function hidePostcard(postcardId: string): Promise<ActionState> {
  * SELECT policy this predicate lives in. Nothing was ever deleted.
  */
 export async function unhidePostcard(postcardId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 
@@ -60,7 +59,7 @@ export async function unhidePostcard(postcardId: string): Promise<ActionState> {
 
   if (error) return { error: 'Could not unhide that postcard. Try again.' }
 
-  revalidatePath('/postcards')
+  invalidate(queryKeys.postcards.all())
   return { error: null }
 }
 
@@ -88,7 +87,7 @@ export async function reportPostcard(
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 

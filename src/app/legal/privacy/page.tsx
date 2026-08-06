@@ -1,5 +1,19 @@
-export const metadata = { title: 'Privacy Statement — LetsRide' }
+'use client'
 
+/**
+ * Static copy, and one of the two pages a rider can reach without a session
+ * (decision #1's deliberate exception, and `/legal/*` in the guard's public
+ * denylist). It reads nothing, so there is no query here and no loading state —
+ * the directive is here only because the client-rendered shell has no server to
+ * render a server page on.
+ *
+ * **The `metadata` export had to go with it**, and that is the one behaviour
+ * this file could not preserve. Next refuses to compile a `metadata` export from
+ * a module marked `'use client'`; the tab now reads the root layout's
+ * `LetsRide — Ride Together` rather than `Privacy Statement — LetsRide`. See
+ * `../terms/page.tsx` for why a rendered `<title>` is not the substitute it
+ * looks like.
+ */
 export default function PrivacyPage() {
   return (
     <>

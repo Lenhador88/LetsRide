@@ -6,7 +6,7 @@ import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
-import { signOut } from '@/lib/actions/auth'
+import { useActionRedirect, useSignOut } from '@/lib/actions/navigate'
 import { acceptTerms } from '@/lib/actions/onboarding'
 import { emptyActionState } from '@/lib/actions/state'
 
@@ -23,7 +23,7 @@ import { emptyActionState } from '@/lib/actions/state'
  *
  * There is no decline affordance and no skip, matching decision #5. Declining is
  * signing out, which the copy says plainly rather than dressing up as a choice
- * the app would then have to model — and it posts `signOut` rather than linking
+ * the app would then have to model — and it calls `signOut` rather than linking
  * to `/auth/login`, which the guard bounces straight back here.
  *
  * The design has no frame for this screen — it did not exist when the login epic
@@ -34,6 +34,8 @@ import { emptyActionState } from '@/lib/actions/state'
 export default function OnboardingTermsPage() {
   const [state, formAction, pending] = useActionState(acceptTerms, emptyActionState)
   const [accepted, setAccepted] = useState(false)
+  const { signOut, pending: signingOut } = useSignOut()
+  useActionRedirect(state)
 
   return (
     <form action={formAction}>
@@ -54,11 +56,12 @@ export default function OnboardingTermsPage() {
                 riders in exactly that state, so the affordance failed for every
                 rider who could see it. */}
             <button
-              type="submit"
-              formAction={signOut}
+              type="button"
+              onClick={signOut}
+              disabled={signingOut}
               className="text-center text-sm font-medium text-foreground underline underline-offset-2 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              Not ready? Sign out
+              {signingOut ? 'Signing out…' : 'Not ready? Sign out'}
             </button>
           </div>
         }

@@ -1,25 +1,29 @@
-'use server'
-
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
 import type { ActionState } from '@/lib/actions/state'
 import type { RideAttendance } from '@/types'
 
 /**
- * This module exports only async functions, which `'use server'` requires. The
- * shared `emptyActionState` const lives in `lib/actions/state.ts` for exactly
- * that reason — see the note there, and `src/__tests__/use-server-exports.test.ts`,
- * which asserts the rule after `postcards.ts` broke `/postcards/new` by
- * violating it.
+ * The shared `emptyActionState` const lives in `lib/actions/state.ts` because
+ * a `'use server'` module may export only async functions — see the note there,
+ * and `src/__tests__/use-server-exports.test.ts`, which asserts the rule after
+ * `postcards.ts` broke `/postcards/new` by violating it. This module no longer
+ * carries the directive, so the rule no longer binds it; the split stays
+ * because the constant is genuinely shared.
  */
 
-function revalidateRide(rideId: string) {
-  revalidatePath('/rides')
-  revalidatePath(`/rides/${rideId}`)
-  revalidatePath(`/rides/${rideId}/crew`)
+/**
+ * `rides.all()` is the prefix over the list, its filter tiles, the detail and
+ * the crew — the three paths this replaces plus `filters`, which none of them
+ * named. An RSVP moves the attendee collage the list draws, so the tiles were
+ * always in the blast radius; `revalidatePath('/rides')` happened to cover them
+ * because they render on that route.
+ */
+function invalidateRide() {
+  invalidate(queryKeys.rides.all())
 }
 
 /**
@@ -38,6 +42,27 @@ function revalidateRide(rideId: string) {
  * RSVP prompt to the person who created it, so the failure is rolled back by
  * hand rather than left. The real fix is a `security definer` function, and it
  * is a migration.
+ *
+ * **The rollback below stopped being a rollback when this module left the
+ * server, and that is a real change rather than a restatement.** As a Server
+ * Action, both inserts and the compensating delete ran inside one server request
+ * that completed whether or not the tab survived. They run in the browser now,
+ * so all three depend on it staying alive and cooperating — closing the tab
+ * between the two inserts leaves a club with an owner and no membership row.
+ * That state went from *reachable only on a Supabase error* to *reachable on
+ * demand*.
+ *
+ * It is an integrity problem and not a confidentiality one: `019` means the
+ * abandoner cannot forge a role on the way through, and `008`'s SELECT policy
+ * has an `owner_id = auth.uid()` arm so the creator can still *see* the club —
+ * it is `getYourClubs` reading membership that hides it, which makes this a UI
+ * orphan rather than a database one. A public one shows on Explore to everyone
+ * and is joinable.
+ *
+ * The fix is the same `security definer` function this comment has named since
+ * it was written, doing both inserts in one statement. Nothing asserts "a club
+ * has an owner-membership row" as a CHECK or trigger, and that is the actual
+ * gap. Logged in docs/HANDOFF.md §Known issues.
  *
  * `club_id` is offered here for the first time. The column has existed since
  * `001` and no screen has ever set it, which meant a club's Rides sub-page
@@ -65,7 +90,7 @@ export async function createRide(
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
   }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to create a ride.' }
 
@@ -112,8 +137,12 @@ export async function createRide(
     return { error: 'That ride could not be created.' }
   }
 
-  revalidatePath('/rides')
-  redirect(`/rides/${ride.id}`)
+  invalidate(queryKeys.rides.all())
+  // A ride created into a club appears on that club's Rides sub-page, which
+  // `revalidatePath('/rides')` never reached — `/rides/new` only began offering
+  // `club_id` on 2026-08-05 and this claim was not extended with it.
+  if (rest.club_id) invalidate(queryKeys.clubs.detail(rest.club_id))
+  return { error: null, redirectTo: `/rides/${ride.id}` }
 }
 
 /**
@@ -147,7 +176,7 @@ export async function setRideAttendance(
 ): Promise<ActionState> {
   if (!rideId) return { error: 'That ride could not be found.' }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to RSVP.' }
 
@@ -172,6 +201,6 @@ export async function setRideAttendance(
     return { error: 'Could not update your RSVP. The ride may no longer be available.' }
   }
 
-  revalidateRide(rideId)
+  invalidateRide()
   return { error: null, sent: true }
 }

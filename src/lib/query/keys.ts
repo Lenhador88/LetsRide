@@ -24,19 +24,71 @@
  *
  * ## The count
  *
- * There are **33** `revalidatePath` call sites, not the 41 quoted in
+ * There were **33** `revalidatePath` call sites, not the 41 quoted in
  * `design.md`, `tasks.md` and `docs/HANDOFF.md`. All three cite
  * `git grep -c revalidatePath -- 'src/lib/actions/*.ts'`, which counts *lines
  * containing the word* — and 8 of those are the `import { revalidatePath } from
  * 'next/cache'` line at the top of each of the 8 files. 33 + 8 = 41. This is the
  * same counting trap CLAUDE.md documents three times over (the `lucide-react`
  * importer count, the v1-token count, the `next/headers` count), reproduced by
- * the very plan that warns about it. Re-derive with the anchored form:
+ * the very plan that warns about it. Re-derive against the last commit that had
+ * them, which is the only place they exist now:
  *
- *     git grep -o "revalidatePath(" -- 'src/lib/actions/*.ts' | wc -l
+ *     git show c2688c5~1:src/lib/actions/clubs.ts | grep -c "revalidatePath("
+ *
+ * ## The reconciliation — task 5.9
+ *
+ * Every one of the 33 is accounted for below. **Nothing was dropped.** Two
+ * claims narrowed and four widened, each for a reason recorded at its own call
+ * site; the rest are direct translations.
+ *
+ * | Was | Is now |
+ * |---|---|
+ * | `auth.signOut` — `('/', 'layout')` | `clearQueryCache()`. The one that must **destroy**, not refresh: refetching on a shared device repopulates rider A's screens while B signs in |
+ * | `blocks` — `('/', 'layout')`, both actions | `invalidate(EVERYTHING)`. The empty prefix, and task 5.10's requirement that a block reach *every* cached view — no single domain prefix can, since the blocked rider appears under all four |
+ * | `createClub` — `/clubs`, `/clubs/explore` | `clubs.all()` — **wider**: it also reaches `clubs.mine()`, the club picker on the create-ride and create-postcard forms, which neither path covered because no route drew it |
+ * | `markClubSeen` — `/clubs` | `clubs.yours()` — **narrower**, deliberately. Explore is the one club list with no counter to move; `getExploreClubs` passes no unread argument at all |
+ * | `markFeedSeen` — `/postcards` | `postcards.filters()` — **narrower**. The watermark moves the "All new" tile's count and nothing else; refetching the deck would replace the cards under a rider looking at the exhausted state |
+ * | `joinClub` / `leaveClub` — `/clubs`, `/clubs/explore`, `` `/clubs/${id}` `` | `clubs.all()` **plus** `postcards.feed(club:<id>)` **plus** `rides.list(club:<id>)`. The third path was a *route*, and re-rendering it refetched three reads spanning three domains — see `invalidateClubMembership` for the bug the naive translation caused |
+ * | `addComment` / `deleteComment` — `/postcards`, `` `/postcards/${id}` `` | `postcards.all()`. **`deleteComment`'s is now unconditional**, which closes a recorded KNOWN GAP for free: the path needed an id the caller could not always read |
+ * | `hidePostcard` / `unhidePostcard` — `/postcards` | `postcards.all()` |
+ * | `likePostcard` / `unlikePostcard` — `/postcards`, `` `/postcards/${id}` ``, `` `/clubs/${club}` `` | `postcards.all()` + `clubs.detail(club)` |
+ * | `createPostcard` — same three | same |
+ * | `deletePostcard` — same three | same |
+ * | `updateProfile`, `setProfileImage`, `addCountry`, `removeCountry` — `/profile` ×4 | `profile.all()` ×4 |
+ * | `setRideAttendance` — `/rides`, `` `/rides/${id}` ``, `` `/rides/${id}/crew` `` | `rides.all()` — **wider**: it also reaches `rides.filters()`, whose attendee collage an RSVP moves and which `revalidatePath('/rides')` only covered by accident of rendering on that route |
+ * | `createRide` — `/rides` | `rides.all()` **plus** `clubs.detail(club_id)` — **wider**, and a real gap closed: a ride created into a club appears on that club's Rides sub-page, which the original never reached. `/rides/new` only began offering `club_id` on 2026-08-05 and the claim was never extended with it |
+ *
+ * `tasks.md` says "actions/rides.ts's 5 invalidations"; the file had **4**.
+ *
+ * `__tests__/keys.test.ts` is what keeps this honest going forward: it asserts
+ * no `revalidatePath` survives to be a silent no-op, and that every
+ * `invalidate()` argument comes from this file rather than being spelled inline.
  */
 
 import type { QueryKey } from '@/lib/query/queryClient'
+
+/**
+ * The filter segment inside `postcards.feed(…)` and `rides.list(…)`.
+ *
+ * Both keys type that segment as `string | null`, because a feed filter is two
+ * fields (`kind` and `id`) and a cache key is flat. Which left five screens
+ * building `` `club:${id}` `` by hand — and then `joinClub` needing to build the
+ * *same* string to invalidate what they read. That is the drift this whole file
+ * exists to prevent, one level down from the keys: two spellings that must match
+ * exactly, with nothing forcing them to, and a mismatch that costs correctness
+ * silently rather than failing.
+ *
+ * `kind` is part of the string rather than dropped, because a rider and a club
+ * can hold the same uuid in principle, and two different feeds sharing one cache
+ * entry surfaces as somebody else's postcards.
+ */
+export const filterSegment = {
+  club: (clubId: string): string => `club:${clubId}`,
+  rider: (riderId: string): string => `rider:${riderId}`,
+  /** `/rides?mine` — the one filter with no id at all. */
+  mine: (): string => 'mine',
+} as const
 
 export const queryKeys = {
   /** `revalidatePath('/profile')` — 4 sites in actions/profile.ts. */

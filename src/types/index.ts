@@ -13,6 +13,23 @@ export type Profile = {
   /** Storage object path — see 014. Rendered via a signed URL, never directly. */
   avatar_path: string | null
   cover_image_path: string | null
+  /**
+   * **Not a column either**, and it exists for the same reason `avatar_url`
+   * does — signed at read time from `cover_image_path`.
+   *
+   * It was added when `/profile` moved client-side. The server page signed the
+   * cover in the page body, which a client component cannot do, and the obvious
+   * replacement — a `useQuery` for it — has no honest key: `keys.ts` has none
+   * for a signed URL, and any key not containing the path re-signs the *old*
+   * path when `updateCover` invalidates, because `invalidate` refetches the
+   * cover and the profile row concurrently. The rider would be left looking at
+   * a signed URL for the object `setProfileImage` had just deleted.
+   *
+   * Signing it inside `getCurrentProfile` removes the question: one read, one
+   * key, and the URL cannot disagree with the path it came from because they
+   * arrive together.
+   */
+  cover_image_url: string | null
   bio: string | null
   bike_model: string | null
   location: string | null

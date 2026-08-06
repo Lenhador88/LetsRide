@@ -117,19 +117,35 @@ describe('isUseServerModule', () => {
   })
 })
 
+/**
+ * **There are none left, and that is the assertion.**
+ *
+ * This block used to require at least three, so it could not pass by scanning
+ * nothing. The render migration removed the directive from all nine
+ * `lib/actions/` modules — writes run in the browser now, and group 6 deletes
+ * the server client they imported — so the guard inverts: the count is zero,
+ * and any module that reappears with the directive is checked against the rule
+ * rather than being trusted.
+ *
+ * The pure functions above keep their tests either way. They are the part worth
+ * having if a `'use server'` module ever comes back, and they cost nothing to
+ * keep while none exists.
+ */
 describe("every 'use server' module in src/", () => {
   const serverModules = walk(SRC)
     .map((file) => ({ file, source: readFileSync(file, 'utf8') }))
     .filter(({ source }) => isUseServerModule(source))
 
-  it('finds the action modules, so this test cannot pass by scanning nothing', () => {
-    expect(serverModules.length).toBeGreaterThanOrEqual(3)
+  it('is empty — the app has no server module graph left', () => {
+    expect(serverModules.map(({ file }) => path.relative(SRC, file))).toEqual([])
   })
 
-  it.each(serverModules.map(({ file, source }) => [path.relative(SRC, file), source]))(
-    '%s exports only async functions',
-    (_relative, source) => {
-      expect(findIllegalExports(source as string)).toEqual([])
+  it('still checks any that come back', () => {
+    for (const { file, source } of serverModules) {
+      expect({ file: path.relative(SRC, file), illegal: findIllegalExports(source) }).toEqual({
+        file: path.relative(SRC, file),
+        illegal: [],
+      })
     }
-  )
+  })
 })

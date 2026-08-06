@@ -90,35 +90,85 @@ describe('the cache-key contract', () => {
 })
 
 /**
- * The count `keys.ts` is written around. If a Server Action gains or loses a
- * `revalidatePath`, this fails and whoever changed it has to decide which cache
- * key covers the new claim — which is the whole point of the file.
+ * The claims `keys.ts` was written to absorb — task 5.9.
  *
- * Anchored on `revalidatePath(`, not the bare word: the bare word is 41,
- * because each of the 8 files also imports it, and that off-by-eight is
- * currently written into `design.md` and `tasks.md`.
+ * There were **33** `revalidatePath(` call sites across the 8 Server Action
+ * files (not the 41 that `git grep -c` reports, which counts the 8 `import`
+ * lines too — the counting trap CLAUDE.md documents three times over). Every
+ * one of them is now either a `queryKeys.*` invalidation or recorded at its
+ * site as deliberately dropped.
+ *
+ * This block used to assert those two numbers. It cannot any more — they are
+ * both zero — so it asserts the property they were standing in for, which is
+ * the stronger one and the one that can still regress:
+ *
+ * 1. No `revalidatePath` survives anywhere under `lib/actions/`. It is a no-op
+ *    in a client-rendered app, so a stray one is a freshness claim that silently
+ *    does nothing — exactly the failure `keys.ts` exists to prevent.
+ * 2. Every `invalidate(...)` argument comes from `queryKeys` or is `EVERYTHING`.
+ *    A key spelled inline is a bug even when the string happens to be right,
+ *    because nothing then ties the write back to the read it invalidates.
  */
+/**
+ * Comments are stripped before any of the scans below run, and that is not
+ * fastidiousness — every module in `lib/actions/` documents the
+ * `revalidatePath` claim it replaced, by name, in prose. Scanning the raw
+ * source finds four files' worth of those and reports a completed migration as
+ * an incomplete one. `columns.test.ts` hit the same thing from the other side:
+ * a `.select()` matcher review defeated with a comment between the paren and
+ * the literal. This repo comments densely enough that a source scan which does
+ * not account for it is measuring the prose.
+ *
+ * Block comments first, then line comments — the other order leaves the `//`
+ * inside a `/* … *\/` block behind. Naive about `//` inside a string literal,
+ * which `lib/actions/` contains none of; it is a tripwire, not a parser.
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+}
+
 describe('the invalidation claims keys.ts maps', () => {
   const actions = path.join(SRC, 'lib', 'actions')
-  const callSites = readdirSync(actions)
+  const sources = readdirSync(actions)
     .filter((f) => f.endsWith('.ts'))
-    .map((f) => readFileSync(path.join(actions, f), 'utf8'))
-    .reduce((n, source) => n + (source.match(/revalidatePath\(/g)?.length ?? 0), 0)
+    .map((f) => [f, stripComments(readFileSync(path.join(actions, f), 'utf8'))] as const)
 
-  it('is still 33', () => {
-    expect(callSites).toBe(33)
+  it('has no revalidatePath left to be a no-op', () => {
+    const offenders = sources
+      .filter(([, source]) => /revalidatePath\(/.test(source))
+      .map(([name]) => name)
+    expect(offenders).toEqual([])
   })
 
-  it('is not the 41 that counting lines rather than calls produces', () => {
-    const byLine = readdirSync(actions)
-      .filter((f) => f.endsWith('.ts'))
-      .map((f) => readFileSync(path.join(actions, f), 'utf8'))
-      .reduce(
-        (n, source) => n + source.split('\n').filter((l) => l.includes('revalidatePath')).length,
-        0
-      )
-    expect(byLine).toBe(41)
-    expect(byLine - callSites).toBe(8)
+  it('spells every invalidation from keys.ts, never inline', () => {
+    const offenders: string[] = []
+
+    for (const [name, source] of sources) {
+      // The argument up to the first `)` — enough to tell `queryKeys.rides.all()`
+      // from `['rides']`, which is the whole distinction being policed.
+      for (const [, argument] of source.matchAll(/\binvalidate\(([^)]*)/g)) {
+        const arg = argument.trim()
+        if (arg === '' || arg.startsWith('queryKeys.') || arg === 'EVERYTHING') continue
+        offenders.push(`${name}: invalidate(${arg}…`)
+      }
+    }
+
+    expect(offenders).toEqual([])
+  })
+
+  it('leaves no action module without a way to claim freshness', () => {
+    // Every module that writes must either invalidate or say why it does not.
+    // `reportPostcard` is the one deliberate silence — a report changes nothing
+    // any screen renders — and `moderation.ts` invalidates for its other two.
+    const writesWithoutInvalidation = sources
+      .filter(([name]) => name !== 'state.ts' && name !== 'navigate.ts')
+      .filter(([, source]) => /\.from\(|\.rpc\(|auth\.signOut/.test(source))
+      .filter(([, source]) => !/\binvalidate\(|clearQueryCache\(/.test(source))
+      .map(([name]) => name)
+
+    // onboarding.ts writes the two profile stamps through RPCs and navigates
+    // away from every screen that could show them, so it claims nothing.
+    expect(writesWithoutInvalidation).toEqual(['onboarding.ts'])
   })
 })
 

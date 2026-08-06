@@ -79,3 +79,34 @@ export async function consumePasswordResetGrant(supabase: RpcClient): Promise<bo
   const { data, error } = await supabase.rpc('consume_password_reset_grant')
   return !error && data === true
 }
+
+/**
+ * `next` arrives from a URL the user clicked, so an unvalidated value makes
+ * this an open redirect — `?next=https://evil.example` would bounce a rider
+ * with a live session straight off the site.
+ *
+ * Only a path is accepted: it must start with a single `/`. `//evil.example`
+ * is protocol-relative and would leave the origin, so the second character is
+ * checked too.
+ *
+ * Backslashes and control characters are rejected as well. **They matter more
+ * now than they did**, and that is why this guard lives here rather than with
+ * the route handler it came from. That handler built `${origin}${next}` — a
+ * concatenation whose host was already fixed by literal text — so `\` was
+ * defence in depth. Its replacement calls `router.replace(next)`, which resolves
+ * the value *against* the current URL, and URL parsers fold `\` to `/` and strip
+ * tabs and newlines: `/\evil.example` resolves to the host `evil.example` under
+ * exactly that treatment. The guard was written to hold on its own rather than
+ * depend on how a caller assembles the redirect, and this is the change that
+ * cashed that in.
+ */
+export function safeNext(value: string | null): string {
+  const isPath =
+    !!value &&
+    value.startsWith('/') &&
+    !value.startsWith('//') &&
+    !value.includes('\\') &&
+    !/[\x00-\x1F\x7F]/.test(value)
+
+  return isPath ? value : RECOVERY_PATH
+}

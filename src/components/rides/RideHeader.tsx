@@ -25,7 +25,9 @@ export function RideHeader({
   current,
 }: {
   rideId: string
-  title: string
+  /** `undefined` while the ride is still being read — `Header` draws a
+   * placeholder bar for it. See that component's `title` prop. */
+  title: string | undefined
   current: 'plan' | 'crew'
 }) {
   return (

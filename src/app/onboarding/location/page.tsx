@@ -6,6 +6,7 @@ import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Pagination } from '@/components/ui/Pagination'
+import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { setLocation } from '@/lib/actions/onboarding'
 
@@ -17,6 +18,7 @@ import { setLocation } from '@/lib/actions/onboarding'
  */
 export default function OnboardingLocationPage() {
   const [state, formAction, pending] = useActionState(setLocation, emptyActionState)
+  useActionRedirect(state)
 
   return (
     <form action={formAction}>

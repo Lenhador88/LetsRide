@@ -13,7 +13,7 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 |---|---|
 | Framework | Next.js 16 (App Router, TypeScript strict) |
 | Styling | Tailwind CSS v4 (CSS-first config, no `tailwind.config.*`) |
-| Database / Auth | Supabase (Postgres + RLS + `@supabase/ssr`) |
+| Database / Auth | Supabase (Postgres + RLS + `@supabase/supabase-js`). **`@supabase/ssr` is gone** — uninstalled 2026-08-06 with the server render path; the session lives in `src/lib/supabase/session-store.ts` |
 | Icons | The Figma set, generated to `src/components/icons/generated.tsx` (see Design System). `lucide-react` is **gone** — uninstalled 2026-08-05 with the last v1 page |
 | Client cache | Hand-rolled, `src/lib/query/` — `useQuery`, `invalidate`, `setQueryData`, `clearQueryCache`. **Not TanStack Query**: this app needs a well-bounded subset and the dependency rule below is deliberate. `keys.ts` is the contract mapping all 33 `revalidatePath` claims to cache keys |
 | Deployment | Vercel (auto-deploy from `main`) |
@@ -25,8 +25,10 @@ LetsRide is a mobile-first web app for motorcycle riders to organise rides, join
 otherwise get answered differently in every epic. Drafted 2026-08-02; edit freely, but edit
 here rather than deciding again inside a PR.
 
-**Dependencies are added deliberately.** Eight runtime dependencies today, and that is a
-feature — `lucide-react` came out with the last v1 page rather than lingering unused. Before adding one, ask whether a thirty-line helper does the job. No UI component
+**Dependencies are added deliberately.** **Seven** runtime dependencies today, and that is a
+feature — `lucide-react` came out with the last v1 page rather than lingering unused, and
+`@supabase/ssr` came out with the server render. Count rather than trust that number:
+`node -p "Object.keys(require('./package.json').dependencies).length"`. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
 
 **Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
@@ -36,14 +38,34 @@ components call them directly; they use the server client internally. This exist
 exactly the trap `003` sets by dropping `full_name`. (Counts move — re-derive with
 `git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'` rather than trusting this line.)
 
-**Writes go through Server Actions**, one per mutation, in `src/lib/actions/`. In order of
-weight:
+**Writes go through `src/lib/actions/`**, one function per mutation. They **were** Server
+Actions and are not any more — the render migration moved them into the browser alongside the
+reads, for the reasons under *The render model* below. The boundary is unchanged and it is the
+point: one place that writes, named and typed per mutation. The three arguments that put them
+there in the first place are worth keeping, because only the second has expired:
 
 1. RLS enforces *authorization*, never *validity*. Username charset, T&C acceptance and the
-   onboarding completion stamp are integrity rules the client must not own.
+   onboarding completion stamp are integrity rules the client must not own. **This one got
+   stronger, not weaker**: group 1's migrations (`018`–`027`) moved them into the database as a
+   CHECK, a trigger or a grant, which is what made moving the writes client-side safe. A Server
+   Action omitting a column was never a rule.
+
+   **Say "them", not "every one of them" — the gate is narrower than it reads.** `023` puts
+   `enforce_participation_gate` on eight tables: `postcards`, `clubs`, `rides`, `club_members`,
+   `ride_members`, `postcard_comments`, `postcard_likes`, `postcard_reports`. It is **not** on
+   `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads` or any
+   `storage.objects` policy — those check the path prefix only. So an account created by calling
+   GoTrue's `/auth/v1/signup` directly, never calling `accept_terms()`, can still set a username,
+   write a bio and upload an avatar with `terms_accepted_at` NULL. That path predates the render
+   migration and `signUp`'s consent write was never the enforcement — but the claim is about
+   *participation*, and stating it broader than that is how a gap gets inherited as covered.
 2. Auth flows have to set cookies. Server Components cannot; Server Actions and Route
    Handlers can. Login, signup and password reset all need this.
-3. `useActionState` gives pending and error states without hand-rolled `useState` triples.
+3. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
+   it works exactly the same with a plain async function as with a Server Action.
+
+   *(2 was the reason they had to be server-side. A browser client sets its own session, so it
+   no longer binds. 1 and 3 are why the directory still exists.)*
 
 The legacy pattern — a client component calling `supabase.from()` then `router.refresh()` —
 is v1. `JoinRideButton` was deleted with the ride detail rebuild and `JoinClubButton` became a
@@ -53,21 +75,31 @@ pages with Server Actions on 2026-08-05. This line once called `JoinClubButton` 
 while both of those already existed, so count rather than trust it —
 `grep -rn "supabase.from(" src/app/ src/components/` returns nothing. Never add more.
 
-**The render model is moving to the client, and the two boundaries above are what make that
-affordable.** The app is being migrated to a client-rendered shell so it can be bundled into a
-native iOS/Android build: store presence is a product requirement, and background location
-tracking is on the roadmap — which the web platform cannot do at all, on any browser, because
-JS is suspended the moment the app backgrounds.
+**The render model IS the client — done 2026-08-06 — and the two boundaries above are what
+made it affordable.** The app is a client-rendered bundle so it can go into a native
+iOS/Android build: store presence is a product requirement, and background location tracking is
+on the roadmap — which the web platform cannot do at all, on any browser, because JS is
+suspended the moment the app backgrounds.
 
-What changes is the **render side**: server components become client components,
-`revalidatePath` becomes client-side cache invalidation, cookie sessions become device secure
-storage, and `proxy.ts` becomes a client route guard rather than a security boundary. What
-does **not** change: `src/lib/data/`, `src/lib/actions/`, or a single RLS policy. The client
-talks to Supabase directly under the same policies, with the same publishable key that already
-ships in the bundle today — so the security posture is unchanged. **This is decision #8 read
-literally, not a departure from it.** The backend stays Supabase; a handful of Edge Functions
-arrive later for the jobs needing a secret, a schedule or elevated rights (push delivery, ride
-reminders, account deletion).
+What changed was the **render side**: server components became client components,
+`revalidatePath` became client-side cache invalidation, the cookie session became device
+storage, and `proxy.ts` became a client route guard rather than a security boundary. What did
+**not** change: `src/lib/data/`, `src/lib/actions/` — both kept every signature — or a single
+RLS policy. The client talks to Supabase directly under the same policies, with the same
+publishable key that already shipped in the bundle, so the security posture is unchanged.
+**This is decision #8 read literally, not a departure from it.** The backend stays Supabase; a
+handful of Edge Functions arrive later for the jobs needing a secret, a schedule or elevated
+rights (push delivery, ride reminders, account deletion).
+
+**One claim in the plan's own risk register was wrong and is worth not re-inheriting.**
+`design.md` §Risks opens with "the refresh token becomes JS-readable", presented as a reduction
+this migration causes. It was already JS-readable: `@supabase/ssr` set `sb-<ref>-auth-token`
+with `httpOnly=false`, because the browser client had to read the session back out of
+`document.cookie`. Measured with a real sign-in. What moved is the *store*, not the exposure.
+
+**What is left is the shell itself.** Next still server-renders client components on first
+load — that is the SSR pass, and it goes with Capacitor, not with this change. Until then the
+one rule below about reading in an effect is load-bearing rather than stylistic.
 
 Re-derive the scope rather than trusting a number here — it grows with every epic:
 
@@ -84,42 +116,54 @@ thing it migrated away from. This is the third time that trap has been hit here 
 `lucide-react` importer count and the v1-token count — and the first version of *this very
 block* had it. A directive is only a directive on line one.
 
-**Two rules apply from now, before the migration starts:**
+**Two rules, and the second one is now history rather than guidance:**
 
-1. **No new integrity rule may live only in a Zod schema.** Once the client owns the mutation
-   path, anything not expressed as a CHECK, trigger or policy is advisory. `003` and `012`
-   cover onboarding; `bio`, `bike_model` and `location` are the known gap and want a migration.
-2. ~~**Do not build a client-first screen ahead of the migration.**~~ **Lifted 2026-08-05 —
-   `lib/data/` is isomorphic.** All 19 read functions resolve their Supabase client through
-   `src/lib/supabase/resolve.ts`, so a client component can call them today, unchanged. Two
-   things to know before you do.
+1. **No new integrity rule may live only in a Zod schema.** The client owns the mutation path,
+   so anything not expressed as a CHECK, trigger or policy is advisory. `003`, `012` and `023`
+   cover onboarding and consent; `018` covers the text bounds. `bio`, `bike_model` and
+   `location` are bounded by `018` too. This rule is now load-bearing rather than anticipatory.
+2. ~~**Do not build a client-first screen ahead of the migration.**~~ ~~Lifted 2026-08-05.~~
+   **Moot 2026-08-06 — every screen is client-first.**
 
-   **The split is a build-time one, not a runtime one.** `lib/supabase/server.ts` imports
-   `next/headers`, which Next refuses to bundle into a client graph — and a `typeof document`
-   guard around a dynamic `import()` does **not** rescue it, because the bundler resolves the
-   specifier statically regardless of whether the branch can be taken. Measured on Next 16.2.9:
-   a `'use client'` page importing one read function fails the build with traces through both
-   `[Client Component Browser]` and `[Client Component SSR]`. So the discriminator is the
-   **`react-server` export condition**, declared as the `#supabase/data-client` subpath import
-   in `package.json`, with halves `resolve.rsc.ts` and `resolve.browser.ts`. Server components,
-   Server Actions and Route Handlers get the first; both client layers get the second.
+**`lib/data/` and `lib/actions/` are the only places that touch Supabase, and both resolve
+their client through `src/lib/supabase/resolve.ts`.** That file used to be a *conditional*
+doorway — the `react-server` export condition, declared as a `#supabase/data-client` subpath
+import, with halves `resolve.rsc.ts` and `resolve.browser.ts`. The server half is gone and the
+import map with it, but **the indirection is not**, and that is deliberate: every caller goes
+through one name, which is what made the whole migration a change to one file instead of
+twenty-nine `.from()` call sites.
 
-   `proxy.ts` gets the server half too, measured — worth knowing, because it reads `profiles`
-   on every authenticated request and is the most likely future caller of this layer.
+The measurement that shaped it is worth carrying even though the code is deleted, because it
+will otherwise be rediscovered expensively: `lib/supabase/server.ts` imported `next/headers`,
+and Next refuses to bundle that into a client graph **whether or not the branch importing it
+can be taken**. A `typeof document` guard around a dynamic `import()` does not help — the
+bundler resolves the specifier statically. That is why the split was ever a build-time
+condition rather than a runtime `if`.
 
-   **Read in an effect or an event handler, never during render.** A `'use client'` component is
-   still server-rendered until Phase 6, and in that pass the browser client has no
-   `document.cookie` to find a session in — so a read issued from a component body is anonymous,
-   and `anon` holds zero grants, so it fails closed at RLS. `src/lib/data/__tests__/isomorphic.test.ts`
-   guards the module graph; nothing can guard this one, which is why it is written down.
+**Read in an effect or an event handler, never during render.** A `'use client'` component is
+*still server-rendered* by Next on first load, and in that pass the browser client has no
+`localStorage` to find a session in — so a read issued from a component body is anonymous, and
+`anon` holds zero grants, so it fails closed at RLS. `resolve.browser.ts` throws a named error
+when that happens, which turns a silent empty screen into a build failure: static prerendering
+runs the SSR pass, so a page that gets it wrong fails `next build` with the message.
+`src/lib/data/__tests__/isomorphic.test.ts` guards the module graph for both directories.
 
-**Reads in a client component go in an effect, never during render, and through `useQuery`.**
-`resolve.browser.ts` throws a named error if you read during a server render of a client
-component — there is no session there, so the read would fail closed at RLS. The cache lives in
-`src/lib/query/`, and **every key is spelled in `keys.ts`**: a key written inline in a component
-is a bug even when the string happens to be right. The 33 `revalidatePath` claims the Server
-Actions make are that file's whole reason to exist — freshness used to be one `git grep` away
-and must not become 33 independent guesses.
+**Reads in a client component go through `useQuery`, and every key is spelled in
+`src/lib/query/keys.ts`** — a key written inline in a component is a bug even when the string
+happens to be right. The 33 `revalidatePath` claims the actions used to make are that file's
+whole reason to exist, and its header now carries the table reconciling every one of them
+against the key that replaced it. `keys.ts` also owns `filterSegment`, because a feed filter is
+two fields flattened into one key segment, and five screens plus one action have to build the
+same string.
+
+**Gate a screen on its data, never on `isLoading`.** `useQuery` starts its fetch in an effect,
+so on the first render pass there is no data *and* no fetch in flight — `isLoading` is `false`
+and a screen gating on it renders `undefined` where its data should be. `combineQueries`
+deliberately does not expose an `isLoading` at all; its header explains why the obvious third
+field is missing.
+
+**`null` is a decided answer; `undefined` is "not yet".** Only the first is `notFound()`.
+Conflating them shows a 404 flash on every load of a detail screen.
 
 **Validation: Zod, one schema per concern, shared by both sides.** Lives in
 `src/lib/validation/`. A Server Action receives untrusted `FormData` and must parse it; the
@@ -136,17 +180,29 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/` | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Covers `lib/validation/`, `lib/media/`, `getInitials` and `safeNext`; `lib/data/` and `lib/actions/` are not covered yet |
-| End-to-end | Playwright | Deferred until a flow is stable enough to be worth maintaining |
+| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (36 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
+| Smoke walk | `npm run walk` — playwright-core against the real project | **The only gate that renders anything.** Signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load |
+| End-to-end | Playwright | Still deferred as a full suite — the walk makes no assertions about behaviour, only about whether a screen rendered |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
+
+**Chromium in this container cannot reach Supabase, and that now matters.** Measured
+2026-08-06: `curl -x $HTTPS_PROXY https://<ref>.supabase.co/auth/v1/health` returns 401 — tunnel
+open, host allowed — while the same fetch from a Chromium page launched with
+`--proxy-server=$HTTPS_PROXY` hangs until aborted, with no response, no `requestfailed`, and no
+entry in the agent proxy's own failure log, where a genuinely blocked host *does* appear. Bare,
+`--ignore-certificate-errors`, `--disable-quic` and `--disable-http2` all hang identically. It
+used to cost only blank photos, because the dev server was the Supabase client; now the browser
+is, so it takes sign-in and the whole walk with it. `scripts/supabase-relay.mjs` is the fix —
+read its header before running the walk.
 
 **Versions.** `package-lock.json` is committed and CI runs `npm ci`, so what ships is already
 pinned — this policy governs what moves on a routine `npm install`. Pin exact for anything
 the framework or auth depends on: `next`, `eslint-config-next`, `react`, `react-dom`,
-`@supabase/ssr`, `@supabase/supabase-js`. Caret is fine for leaves (`clsx`, `tailwind-merge`).
-Supabase is on that list because a minor bump that changes cookie handling breaks sessions
-silently.
+`@supabase/supabase-js`. Caret is fine for leaves (`clsx`, `tailwind-merge`).
+Supabase is on that list because a minor bump that changes **session storage or the auth flow
+type** breaks sessions silently — the same hazard the old note gave for cookie handling, moved
+to where it now lives. `@supabase/ssr` is off the list because it is uninstalled.
 
 **Dates: `Intl` only, no date library.** All in `src/lib/utils.ts`, and every formatter is
 **named for the screen it serves** — `formatPostcardDate`, `formatRideDate`,
@@ -203,19 +259,18 @@ src/
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
-│   │   ├── resolve.ts      # THE data layer's doorway — resolves per graph. Read its header
-│   │   ├── resolve.rsc.ts  # its react-server half   } picked by the #supabase/data-client
-│   │   ├── resolve.browser.ts # its default half     } condition in package.json
-│   │   ├── client.ts       # Browser client — use in 'use client' components
-│   │   └── server.ts       # Server client — use in server components / route handlers
+│   │   ├── resolve.ts      # THE doorway for lib/data and lib/actions. Read its header
+│   │   ├── resolve.browser.ts # the one half left, with the read-during-render tripwire
+│   │   ├── client.ts       # the memoised supabase-js client, on the session store
+│   │   └── session-store.ts # where the session lives: secure store, else localStorage
 │   ├── data/               # Read functions — the only place that queries Supabase
 │   ├── actions/            # Server Actions — the only place that writes
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
-│   ├── auth/               # recovery.ts — cookie name shared by callback + action
+│   ├── auth/               # guard.ts (route rules, pure + tested), recovery.ts (grant + safeNext)
+│   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRelativeTime(), getInitials()
-├── proxy.ts                # Auth middleware (Next.js 16 uses proxy.ts, not middleware.ts)
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
 supabase/
@@ -257,43 +312,62 @@ more** — the last page migrated 2026-08-05. This line tracked the migration sc
 and was wrong within a day of each edit; check rather than read it —
 `grep -rn "text-white\|zinc-\|orange-500" src/app/ | wc -l`.
 
-## Critical: proxy.ts (not middleware.ts)
+## Critical: the route guard is a client component, not middleware
 
-Next.js 16 uses `src/proxy.ts` instead of `src/middleware.ts`. The exported function must be named `proxy` (not `middleware`). Do not rename it or add a `middleware.ts` — the framework will break.
+**`src/proxy.ts` is deleted** (2026-08-06, with the server render path). Next.js 16 uses
+`proxy.ts` rather than `middleware.ts` and this repo *did* — the note is kept because the
+framework detail is still true and the file may come back for something else. If it ever does,
+the exported function must be named `proxy`, and do not add a `middleware.ts`.
 
-**Protection is a denylist of public paths, not an allowlist of protected ones.**
-Everything is gated except these, which is what makes decision #1 hold by default —
-a new route is protected unless someone deliberately opens it:
+Routing decisions now live in two places, split so the decision can be tested:
+
+- **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
+  `null` means stay; a string is where to go. 36 cases in `__tests__/guard.test.ts`.
+- **`src/components/auth/RouteGuard.tsx`** — reads the session and the onboarding stamp, applies
+  the decision, and renders the splash rather than the page while it decides. Mounted in the
+  **root** layout, because three of its rules concern paths outside `(app)`.
+
+**It is not a security boundary and must never be treated as one.** RLS is. Every rule the
+guard enforces has a database counterpart — `023` refuses content writes without a consent
+stamp, `003`/`012` own the completion invariants, `025` means the client cannot even read the
+two stamps except through a `security definer` accessor. A rider who defeats the guard reaches a
+screen whose every query returns nothing.
+
+**Protection is a denylist of public paths, not an allowlist of protected ones.** Everything is
+gated except these, which is what makes decision #1 hold by default — a new route is protected
+unless someone deliberately opens it:
 
 ```
 '/', '/auth/login', '/auth/signup', '/auth/forgot-password',
 '/auth/reset-password', '/auth/callback', and '/legal/*'
 ```
 
-Three further rules:
+Four rules, each with a test naming the trap it avoids:
 
-- **No session + non-public path** → `/auth/login`.
-- **Session + onboarding incomplete** → the resume step (`/onboarding/username` or
-  `/onboarding/location`), unless already under `/onboarding`. Read from
-  `profiles.onboarding_completed_at` on every request; never from `user_metadata`,
-  which the client can write.
-- **Session + `/auth/login` or `/auth/signup`** → `/postcards` (the home screen; `/dashboard`
-  was deleted with the feed that replaced it). Note the two paths:
-  bouncing *all* of `/auth/*` breaks password recovery, because Supabase's link
-  establishes a session before the reset page loads.
+- **No session + non-public path** → `/auth/login`. `/` is public but empty, so it goes too.
+- **Session + onboarding incomplete** → the resume step, unless already there. Read from
+  `my_onboarding_state()` on the paths that need it; never from `user_metadata`, which the
+  client can write. **Consent is gated ahead of the wizard**, because `023` refuses to stamp
+  completion while the consent stamp is NULL.
+- **Session + `/auth/login` or `/auth/signup`** → `/postcards`. Note the two paths: bouncing
+  *all* of `/auth/*` breaks password recovery, because Supabase's link establishes a session
+  before the reset page loads.
+- **The stamp read failed** → `/auth/login?error=profile_unavailable`, *except* on the two auth
+  entry paths, where it must fall through or it redirects to itself forever — on exactly the
+  deploy mismatch the branch exists to survive. Zero rows is this case, not "un-onboarded":
+  reading it as un-onboarded sends the rider to a prompt whose submit can never succeed.
 
 ## Supabase Rules
 
-**Always use the right client. There are now three doorways, and the first one is
-the one most code wants:**
-- **Anything in `src/lib/data/`** → `import { resolveSupabase } from '@/lib/supabase/resolve'`.
-  It resolves the right client per graph via the `react-server` export condition, which is what
-  makes the layer callable from a client component. **Reaching past it into
-  `@/lib/supabase/server` here re-breaks that**, and `src/lib/data/__tests__/isomorphic.test.ts`
-  fails loudly if you do.
-- Server components, Route Handlers, Server Actions → `import { createClient } from '@/lib/supabase/server'`
-- Client components (`'use client'`) → `import { createClient } from '@/lib/supabase/client'`
-- Never cross the last two. Never import the server client in a client component.
+**There is one doorway now, and almost nothing should reach past it:**
+- **Anything in `src/lib/data/` or `src/lib/actions/`** →
+  `import { resolveSupabase } from '@/lib/supabase/resolve'`.
+  `src/lib/data/__tests__/isomorphic.test.ts` walks the module graph from both directories and
+  fails loudly if anything in them reaches a Next server module.
+- A component that genuinely needs the client itself — the route guard, the reset screen —
+  imports `createClient` from `@/lib/supabase/client`. That is two files, and a third is
+  probably a read that belongs in `lib/data/`.
+- `@/lib/supabase/server` **no longer exists**. Neither does `@supabase/ssr`.
 
 **RLS is ON for all tables.** Every query runs under the authenticated user's session. You do not need to filter by `user_id` manually — RLS policies enforce ownership. But do add RLS policies in migrations for any new table.
 
@@ -330,7 +404,11 @@ part of the Supabase URL — and because not knowing it cost real time.
 `list_migrations`: **27 rows against 27 files**, ending `profile_column_privileges`. This is the
 first time in weeks the answer has been "everything", so the `SKIP_MIGRATIONS` machinery that
 modelled the held-back pair is **gone**, along with the three `rls_test_pending_*.sql` files.
-The full chain applies on every run. Suite **527** assertions.
+The full chain applies on every run. Suite **535** assertions — re-derive rather than trust it:
+`PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read 527 for a few hours, from
+a parallel session that folded the same three files independently; the two were reconciled by
+comparing *label sets* rather than counts, which is the only comparison that shows whether an
+assertion was lost.)
 
 **The sequencing lesson is the durable part, and it outlives these two files.** `023` and `025`
 could not be applied before their code deployed, and `021`'s accessors could not be applied
@@ -618,8 +696,13 @@ npm run dev      # start dev server
 npm run lint     # eslint
 npx tsc --noEmit # type check
 npm run build    # production build (requires NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY)
-npm run test:unit # Vitest — validation schemas, getInitials, safeNext, the Figma extractor
+npm run test:unit # Vitest — validation, the query cache, the route guard, the session store
 npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/README.md)
+
+# The only gate that renders anything — see supabase-relay.mjs's header first
+NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<ref>.supabase.co node scripts/supabase-relay.mjs &
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
+WALK_EMAIL=... WALK_PASSWORD=... npm run walk
 ```
 
 **Reading the design** — offline, from the committed snapshot in `design/`. None of these
@@ -769,7 +852,7 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **4. v2 is the only design.** v1 (`zinc-*`, `orange-500`, Geist, `lucide-react`) is superseded, and as of 2026-08-05 it is **fully retired**: zero `text-white` in `src/app/`, zero `lucide-react` importers, zero client-side `supabase.from()` writes, and the dependency uninstalled. What remains of those strings in the tree is comments describing the migration. Never add more.
 
-**5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — `proxy.ts` redirects them back into the wizard. The schema carries the incomplete state so an abandoned signup resumes where it left off.
+**5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — the route guard (`src/lib/auth/guard.ts`) redirects them back into the wizard, and `023` refuses their content writes regardless of what the guard does. The schema carries the incomplete state so an abandoned signup resumes where it left off.
 
 **6. Email confirmation is off, for now.** Signup lands straight in onboarding with a live session. This is a deliberate temporary trade — it permits signing up with an email you don't control — and must be revisited before public launch.
 
@@ -974,7 +1057,7 @@ chain to a scratch database and asserts what each role can reach.
   diffs against the merge base:
   - **`Type Check, Lint & Build`** (tsc → ESLint → Vitest → `next build`) runs unless
     *every* changed file is under `docs/`, `design/`, `openspec/`, `.claude/` or a
-    root `*.md`. That is a **denylist**, like `proxy.ts`'s public paths — a new
+    root `*.md`. That is a **denylist**, like the route guard's public paths — a new
     top-level directory runs CI by default, so forgetting to list something costs
     one green run rather than a missed break.
   - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
@@ -1013,7 +1096,9 @@ matter and the second is the one that gets dropped.
 - Don't query Supabase from inside a component — reads belong in `lib/data/`, writes in `lib/actions/`.
 - Don't introduce a service-role key into the app. It bypasses every RLS policy; see decision #8.
 - Don't add new UI libraries (no shadcn, Radix, MUI) — extend the existing custom primitives.
-- Don't create a `middleware.ts` — this is Next.js 16, use `proxy.ts`.
+- Don't create a `middleware.ts`. This is Next.js 16, where the file would be `proxy.ts` — but
+  routing decisions belong in `src/lib/auth/guard.ts`, and the app deliberately ships no
+  middleware at all.
 - Don't run `playwright install` — Chromium is pre-installed at `/opt/pw-browsers`.
 - Don't call the Figma API to answer a design question — read `design/`. Refreshing the
   snapshot is a deliberate monthly job, not something a feature task does.

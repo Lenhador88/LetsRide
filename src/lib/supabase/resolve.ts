@@ -1,69 +1,51 @@
-import { resolveSupabase } from '#supabase/data-client'
+import type { createClient } from '@/lib/supabase/client'
 
 /**
- * The one Supabase client every `src/lib/data/` read resolves at call time.
+ * The one Supabase client every `src/lib/data/` read and every
+ * `src/lib/actions/` write resolves at call time.
  *
- * **Why this exists.** The app is migrating to a client-rendered shell (see
- * CLAUDE.md §Technology Decisions). The 19 read functions in `lib/data/` have to
- * keep working from a server component *today* and from a client component
- * *after* the render migration, without changing a single signature — that
- * boundary staying still is the whole reason the migration is bounded. So the
- * environment is resolved here, once, rather than being threaded through
- * nineteen call sites.
+ * ## What this used to be, and why the shape is worth keeping
  *
- * ## How the environment is decided — and why not the way the plan said
+ * Through groups 3 to 5 this was a *conditional* doorway. The 19 read functions
+ * had to work from a server component today and from a client component after
+ * the render migration, without changing a signature — so the environment was
+ * resolved here, once, rather than threaded through nineteen call sites. The
+ * discriminator was the **`react-server` export condition**, declared as the
+ * `#supabase/data-client` subpath import in `package.json`, with halves
+ * `resolve.rsc.ts` and `resolve.browser.ts`.
  *
- * `design.md` D1 specifies a **runtime** test: "the server client when there is
- * no `document`, the browser client when there is". **That does not build**, and
- * the reason is worth carrying forward rather than rediscovering.
+ * Group 6 removed the server half, so the condition has nothing left to
+ * discriminate and both it and the import map are gone. **The indirection is
+ * not.** Every caller still goes through this one name, and that is what made
+ * the whole migration a change to one file instead of to twenty-nine `.from()`
+ * call sites — the property worth keeping whatever replaces the client next: a
+ * Capacitor-provided one, a test double, a second project.
  *
- * `lib/supabase/server.ts` imports `next/headers`, which Next refuses to bundle
- * into a client graph. Guarding it behind `typeof document === 'undefined'` and
- * a dynamic `await import()` does not help: the bundler resolves the import
- * statically, so the module lands in the client graph regardless of whether the
- * branch can ever be taken there. Measured on Next 16.2.9 / Turbopack — a `'use
- * client'` page importing one read function fails the build with import traces
- * through **both** `[Client Component Browser]` and `[Client Component SSR]`.
- * A runtime branch cannot fix a build-time reachability rule.
+ * The measurement that shaped it is worth carrying forward even though the code
+ * it justified is deleted, because it will otherwise be rediscovered the
+ * expensive way. `lib/supabase/server.ts` imported `next/headers`, and Next
+ * refuses to bundle that into a client graph **whether or not the branch
+ * importing it can ever be taken**. A `typeof document` guard around a dynamic
+ * `import()` does not help, because the bundler resolves the specifier
+ * statically. That is why the split was ever a build-time condition rather than
+ * a runtime `if`.
  *
- * So the split is made where the bundler makes it: the **`react-server` export
- * condition**, via the `#supabase/data-client` subpath import declared in
- * `package.json`. Next applies that condition to every server layer — server
- * components, Server Actions and Route Handlers — and to neither client layer.
- * The two halves are `resolve.rsc.ts` and `resolve.browser.ts`, and each is
- * compiled only into the graph that can run it.
+ * ## The one rule that outlives the server half
  *
- * The intent D1 argues for is unchanged, and so is everything it rules out:
- * nineteen signatures stay still, no `data/server/` + `data/client/` pair, no
- * client passed as a first argument. What changed is that the discriminator is
- * resolved at build time instead of at runtime, which is strictly better here —
- * `next/headers` never reaches the browser bundle at all, rather than reaching
- * it behind a branch.
+ * **Read in an effect or an event handler, never during render.** A `'use
+ * client'` component is *still server-rendered* by Next — group 6 retired the
+ * server *data* path, not the SSR pass, which goes with the native shell — and
+ * in that pass the browser client has no `localStorage` to find a session in. A
+ * read issued from a component body is therefore anonymous, and `anon` holds
+ * zero grants, so it fails closed at RLS.
  *
- * ## What each layer gets
- *
- * | Layer | Condition | Client |
- * |---|---|---|
- * | Server component | `react-server` | server (cookie session) |
- * | Server Action | `react-server` | server — `actions/onboarding.ts` calls `isUsernameTaken` |
- * | Route Handler | `react-server` | server |
- * | Client component, browser | — | browser |
- * | Client component, SSR pass | — | browser, with no session |
- *
- * The last row is the one to know about. A `'use client'` component is still
- * server-rendered by Next until Phase 6, and in that pass the browser client
- * constructs fine but has no `document.cookie` to read a session from — so a
- * read issued from a component *body* is anonymous, and `anon` holds zero
- * grants, so it fails closed at RLS. **Read in an effect or an event handler,
- * never during render.** That is the normal shape for client data fetching
- * anyway; it is written down because the failure is a runtime one that `tsc`,
- * ESLint and `next build` all stay green through — the same class of failure
- * that shipped `/postcards/new` dead.
- *
- * The server half dies in Phase 6 with `lib/supabase/server.ts`, not before: 18
- * server pages and 26 server components still call this layer.
+ * `resolve.browser.ts` throws a named error when that happens, which is what
+ * turns a silent empty screen into a build failure: static prerendering runs the
+ * SSR pass, so a page that gets it wrong fails `next build` with the message
+ * rather than failing in production. `useQuery` obeys the rule by construction —
+ * it only ever fetches inside `useEffect`.
  */
-export { resolveSupabase }
+export { resolveSupabase } from '@/lib/supabase/resolve.browser'
 
 /**
  * The client type the data layer's internal helpers pass around.
@@ -71,7 +53,7 @@ export { resolveSupabase }
  * Previously each of `clubs.ts`, `media.ts`, `postcards.ts` and `rides.ts`
  * declared its own `type SupabaseServerClient = Awaited<ReturnType<typeof
  * createClient>>`, which pinned four private aliases to the *server* client's
- * identity. One name, one place, and it no longer says "server" — because after
- * this change it is not one.
+ * identity. One name, one place, and it no longer says "server" — because there
+ * is not one.
  */
-export type DataClient = Awaited<ReturnType<typeof resolveSupabase>>
+export type DataClient = Awaited<ReturnType<typeof createClient>>

@@ -10,13 +10,14 @@ import { joinClub } from '@/lib/actions/clubs'
  *
  * The v1 version called `supabase.from()` in the browser and then
  * `router.refresh()`; CLAUDE.md marks that pattern for migration on contact,
- * and the clubs epic is the contact. Revalidation now happens server-side
- * inside the action, which is what makes the row leave Explore and appear on
- * Your clubs in one pass rather than two.
+ * and the clubs epic is the contact. The write is the same round trip it always
+ * was — what changed is that it goes through `lib/actions/clubs.ts`, which
+ * invalidates the `clubs` cache prefix, and that is what makes the row leave
+ * Explore and appear on Your clubs in one pass rather than two.
  *
- * This was the last such component CLAUDE.md named. It was not the last one in
- * the repo — the two v1 create pages still write from the client — so that
- * claim is corrected there rather than repeated here.
+ * The distinction that matters has never been *where* the write runs — it runs
+ * in the browser again now — but that it runs behind one named function that
+ * owns the mutation and states what it makes stale.
  *
  * `preventDefault` is not incidental. The card's navigation is a stretched link
  * *under* this control, so without it a tap would join the club and open it —

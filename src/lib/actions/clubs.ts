@@ -1,8 +1,6 @@
-'use server'
-
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidate } from '@/lib/query'
+import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { clubSchema } from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
 
@@ -12,7 +10,40 @@ import type { ActionState } from '@/lib/actions/state'
  * imports it, taking the whole route down rather than the one value. That is
  * not hypothetical: it is how `/postcards/new` shipped dead. Shared constants
  * belong in `lib/actions/state.ts`.
+ *
+ * **This module no longer carries the directive**, so that rule no longer binds
+ * it — writes run in the browser now. The split stays anyway, and the rule is
+ * kept here rather than deleted because it is enforced for any module that gets
+ * the directive back (`src/__tests__/use-server-exports.test.ts`).
  */
+
+/**
+ * What joining or leaving a club makes stale.
+ *
+ * `clubs.all()` is the prefix over both lists, the detail and its member roster
+ * — but **it is not the whole blast radius, and the naive translation missed
+ * that.** The third path these two actions used to revalidate was
+ * `` `/clubs/${clubId}` ``, and that is a *route*: re-rendering it refetched the
+ * club, its timeline feed AND its ride strip, because all three are read by the
+ * page at that path. Only the first of those three lives under the `clubs`
+ * prefix. The other two are `postcards.feed('club:<id>')` and
+ * `rides.list('club:<id>')`, which sit under `postcards` and `rides`.
+ *
+ * The symptom, found by review rather than by a test: a rider who looked at a
+ * public club's timeline before joining, then joined, then went back inside the
+ * 30s stale window, saw the pre-join content — an empty timeline for a club they
+ * were now in.
+ *
+ * This is the exact failure `keys.ts` predicts for a path-shaped claim that
+ * covers more than its own domain, and it is why `filterSegment` exists: the
+ * strings below have to match the ones five screens build, and now both come
+ * from the same place.
+ */
+function invalidateClubMembership(clubId: string) {
+  invalidate(queryKeys.clubs.all())
+  invalidate(queryKeys.postcards.feed(filterSegment.club(clubId)))
+  invalidate(queryKeys.rides.list(filterSegment.club(clubId)))
+}
 
 /**
  * Creates a club and makes its creator the owner.
@@ -24,12 +55,36 @@ import type { ActionState } from '@/lib/actions/state'
  *
  * **Two inserts and no transaction, which matters.** PostgREST has no
  * multi-statement transaction, so the membership row is a second round trip that
- * can fail on its own — leaving a club whose owner is not a member of it, which
- * is invisible on both Clubs sub-pages because `getYourClubs` reads membership.
- * The old page had exactly this hole and did not check the second result. This
+ * can fail on its own — leaving a club whose owner is not a member of it. That
+ * club is missing from *Your clubs*, which reads membership; it is **not**
+ * invisible, as this comment used to claim. `008`'s SELECT policy has an
+ * `owner_id = auth.uid()` arm, and a public one shows on Explore to every rider
+ * and is joinable. The old page had exactly this hole and did not check the
+ * second result. This
  * one does, and rolls the club back by hand so a partial create cannot survive.
  * The real fix is a `security definer` function doing both in one statement, and
  * it is a migration; recorded rather than pretended away.
+ *
+ * **The rollback below stopped being a rollback when this module left the
+ * server, and that is a real change rather than a restatement.** As a Server
+ * Action, both inserts and the compensating delete ran inside one server request
+ * that completed whether or not the tab survived. They run in the browser now,
+ * so all three depend on it staying alive and cooperating — closing the tab
+ * between the two inserts leaves a club with an owner and no membership row.
+ * That state went from *reachable only on a Supabase error* to *reachable on
+ * demand*.
+ *
+ * It is an integrity problem and not a confidentiality one: `019` means the
+ * abandoner cannot forge a role on the way through, and `008`'s SELECT policy
+ * has an `owner_id = auth.uid()` arm so the creator can still *see* the club —
+ * it is `getYourClubs` reading membership that hides it, which makes this a UI
+ * orphan rather than a database one. A public one shows on Explore to everyone
+ * and is joinable.
+ *
+ * The fix is the same `security definer` function this comment has named since
+ * it was written, doing both inserts in one statement. Nothing asserts "a club
+ * has an owner-membership row" as a CHECK or trigger, and that is the actual
+ * gap. Logged in docs/HANDOFF.md §Known issues.
  *
  * Images are already in Storage by the time this runs — the client uploads
  * first, so a failure here leaves an orphaned object rather than a club pointing
@@ -52,7 +107,7 @@ export async function createClub(
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
   }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to create a club.' }
 
@@ -86,9 +141,12 @@ export async function createClub(
     return { error: 'That club could not be created.' }
   }
 
-  revalidatePath('/clubs')
-  revalidatePath('/clubs/explore')
-  redirect(`/clubs/${club.id}`)
+  // Both club lists at once: `clubs.all()` is the prefix over `yours`,
+  // `explore` and `mine` (the picker on the create-ride and create-postcard
+  // forms), which the two `revalidatePath` calls this replaces covered between
+  // them — and the picker, which neither did, because no route drew it.
+  invalidate(queryKeys.clubs.all())
+  return { error: null, redirectTo: `/clubs/${club.id}` }
 }
 
 /**
@@ -111,7 +169,7 @@ export async function createClub(
  * otherwise worked.
  */
 export async function markClubSeen(clubId: string): Promise<void> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
@@ -122,7 +180,13 @@ export async function markClubSeen(clubId: string): Promise<void> {
       { onConflict: 'user_id,club_id' }
     )
 
-  revalidatePath('/clubs')
+  // `yours` only, matching `revalidatePath('/clubs')` exactly rather than
+  // widening to the `clubs` prefix. Explore is the one club list with no
+  // counter to move: `getExploreClubs` deliberately calls `toClubListItem`
+  // without an unread argument, because the design puts `Join club` in the slot
+  // the badge occupies and `015` refuses a watermark for a club you have not
+  // joined. Invalidating it here would refetch a list nothing changed on.
+  invalidate(queryKeys.clubs.yours())
 }
 
 /**
@@ -140,7 +204,7 @@ export async function markClubSeen(clubId: string): Promise<void> {
  * every time the rider finished the deck.
  */
 export async function markFeedSeen(): Promise<void> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
@@ -151,7 +215,13 @@ export async function markFeedSeen(): Promise<void> {
       { onConflict: 'user_id,club_id' }
     )
 
-  revalidatePath('/postcards')
+  // The filter bar only, not the feed. `revalidatePath('/postcards')` re-ran
+  // the whole page because a path is the smallest thing it can name; the
+  // watermark moves the "All new" tile's count and nothing else. Refetching the
+  // deck here would be worse than wasteful — this fires the moment the deck is
+  // exhausted, so it would replace the card list underneath the "start over"
+  // state the rider is looking at.
+  invalidate(queryKeys.postcards.filters())
 }
 
 /**
@@ -173,7 +243,7 @@ export async function markFeedSeen(): Promise<void> {
  * already owns.
  */
 export async function joinClub(clubId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to join a club.' }
 
@@ -186,9 +256,7 @@ export async function joinClub(clubId: string): Promise<ActionState> {
 
   if (error) return { error: 'That club could not be joined.' }
 
-  revalidatePath('/clubs')
-  revalidatePath('/clubs/explore')
-  revalidatePath(`/clubs/${clubId}`)
+  invalidateClubMembership(clubId)
   return { error: null }
 }
 
@@ -206,7 +274,7 @@ export async function joinClub(clubId: string): Promise<ActionState> {
  * put the rule in the weakest of the two places. Registered rather than fixed.
  */
 export async function leaveClub(clubId: string): Promise<ActionState> {
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
 
@@ -218,8 +286,6 @@ export async function leaveClub(clubId: string): Promise<ActionState> {
 
   if (error) return { error: 'You could not be removed from that club.' }
 
-  revalidatePath('/clubs')
-  revalidatePath('/clubs/explore')
-  revalidatePath(`/clubs/${clubId}`)
+  invalidateClubMembership(clubId)
   return { error: null }
 }

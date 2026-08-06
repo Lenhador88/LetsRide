@@ -1,6 +1,23 @@
 -- 025: the two profile stamps become own-row-only, by grant.
 --
 -- =========================================================================
+-- ** APPLIED 2026-08-05, after PR #54 merged and Vercel reported READY. **
+--
+-- The order this file demands was honoured: code first, then the revoke. All
+-- eight values its §Verification footer predicts were confirmed live, and
+-- `npm run walk` was re-run against the post-025 database with all 8 screens
+-- still rendering — `/profile` in particular, since `getCurrentProfile` is the
+-- read this would have broken had it still used `select('*')`.
+--
+-- Everything below the next rule is the pre-apply header. Read it as history.
+-- Two of its claims are now false:
+--
+--   * "NOT APPLIED" — it is. Do not apply it again.
+--   * The `PENDING=025` / `PENDING=023+025` modes and
+--     `rls_test_pending_025.sql` are gone. `npm test` applies all 27 migrations
+--     and runs every assertion, including this file's.
+-- =========================================================================
+--
 -- ** NOT APPLIED. DESTRUCTIVE. APPLY ONLY AFTER THE CODE REPAIR DEPLOYS. **
 --
 -- Listed in SKIP_MIGRATIONS in supabase/tests/run.sh, so the RLS suite models

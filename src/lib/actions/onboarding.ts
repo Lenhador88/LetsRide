@@ -1,7 +1,4 @@
-'use server'
-
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { resolveSupabase } from '@/lib/supabase/resolve'
 import { isUsernameTaken } from '@/lib/data/profile'
 import { locationSchema, usernameSchema } from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
@@ -26,9 +23,9 @@ export async function setUsername(_prev: ActionState, formData: FormData): Promi
   const parsed = usernameSchema.safeParse(formData.get('username'))
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) return { error: null, redirectTo: '/auth/login' }
 
   // .select() so a zero-row update is distinguishable from a successful one.
   // PostgREST reports no error when an update matches nothing, and the proxy
@@ -54,7 +51,7 @@ export async function setUsername(_prev: ActionState, formData: FormData): Promi
   }
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
-  redirect('/onboarding/location')
+  return { error: null, redirectTo: '/onboarding/location' }
 }
 
 /**
@@ -79,9 +76,9 @@ export async function acceptTerms(
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) return { error: null, redirectTo: '/auth/login' }
 
   const { data: accepted, error } = await supabase.rpc('accept_terms')
   if (error || !accepted) return { error: 'Could not record that. Try again.' }
@@ -91,16 +88,16 @@ export async function acceptTerms(
   // exists for accounts whose consent predates the write, not for new ones — so
   // naming a wizard step here would send a finished rider to step 1 and rely on
   // the guard to undo it.
-  redirect('/postcards')
+  return { error: null, redirectTo: '/postcards' }
 }
 
 export async function setLocation(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = locationSchema.safeParse(formData.get('location'))
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const supabase = await createClient()
+  const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) return { error: null, redirectTo: '/auth/login' }
 
   // Location is the last step, so completion is stamped here — and both halves
   // go in one RPC because 021 revokes the client's UPDATE grant on the stamp.
@@ -126,5 +123,5 @@ export async function setLocation(_prev: ActionState, formData: FormData): Promi
   }
   if (!completed) return { error: 'Your profile could not be found. Sign in again.' }
 
-  redirect('/postcards')
+  return { error: null, redirectTo: '/postcards' }
 }

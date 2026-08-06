@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { safeNext } from '@/app/auth/callback/route'
+import { safeNext } from '@/lib/auth/recovery'
 
 const FALLBACK = '/auth/reset-password'
 

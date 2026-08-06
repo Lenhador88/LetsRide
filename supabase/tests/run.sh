@@ -17,6 +17,17 @@ run_on() {
   psql -v ON_ERROR_STOP=1 -q -d "$1" "${@:2}"
 }
 
+# Refused loudly rather than ignored. `PENDING` selected one of three alternative
+# suite files while 023 and 025 were held back; both are applied and their
+# assertions are in rls_test.sql. Silently ignoring the variable would run the
+# right suite for the wrong reason, which is the exact failure this change was
+# about — the mechanism that outlived its purpose and went unnoticed because
+# nothing went red.
+if [ -n "${PENDING-}" ]; then
+  echo "PENDING is gone: 023 and 025 are applied and their assertions live in rls_test.sql. Run 'npm test'." >&2
+  exit 2
+fi
+
 echo "Resetting $TEST_DB on $PGHOST:$PGPORT"
 run_on postgres -c "drop database if exists $TEST_DB;" >/dev/null
 run_on postgres -c "create database $TEST_DB;" >/dev/null

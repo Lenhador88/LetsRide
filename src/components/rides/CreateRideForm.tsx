@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { createRide } from '@/lib/actions/rides'
+import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import {
   RIDE_DESCRIPTION_MAX,
@@ -42,6 +43,7 @@ import {
  */
 export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[] }) {
   const [state, formAction, pending] = useActionState(createRide, emptyActionState)
+  useActionRedirect(state)
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
