@@ -5,7 +5,9 @@
 > position*: what is half-done, what is blocked, and the exact next action. Neither is
 > complete without the other, and only this one gets auto-loaded.
 
-LetsRide is a mobile-first web app for motorcycle riders to organise rides, join clubs, and connect with friends. Built with Next.js 16 App Router, Supabase, and Tailwind v4. Targeting thousands of users — prioritise correctness, security, and clean code over cleverness.
+LetsRide is a mobile-first app for motorcycle riders to organise rides, join clubs, and connect with other riders — client-rendered, and headed for a native iOS/Android build. Built with Next.js 16 App Router, Supabase, and Tailwind v4. Targeting thousands of users — prioritise correctness, security, and clean code over cleverness.
+
+(**"Friends" is not a concept here** — `013` dropped `friendships` on 2026-08-04 and there is no Friends tab. The social graph is clubs plus blocking. This line said "connect with friends" long after that, which is how a dropped table gets designed back in.)
 
 ## Stack
 
@@ -66,19 +68,12 @@ first is why it must never be dissolved back into components:
    Noted because it is the one that otherwise gets re-argued from first principles.)*
 
 A component never calls `supabase.from()` directly — that was the v1 pattern, paired with
-`router.refresh()`, and none of it survives. Count rather than trust this line, **and note the
-second half of the pipe**:
+`router.refresh()`, and none of it survives. Keep the second half of the pipe; the bare grep
+prints 3, all comments (see *the comment trap* below):
 
 ```bash
 grep -rn "supabase\.from(" src/app/ src/components/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'
 ```
-
-It must print nothing, and it does. **The naive version prints 3** — three comments in
-`EditProfileForm`, `JoinClubButton` and `ClubMembershipButton` describing the v1 code they
-replaced, one of which says so explicitly. This is the same trap as the `lucide-react` importer
-count and the `^'use client'` anchor: a file's description of what it migrated away from reads
-as the thing itself. Verified both ways — the filter returns 0 today and returns 1 the moment a
-real call site is added.
 
 **The render model is the client.** The app is a client-rendered bundle so it can go into a
 native iOS/Android build: store presence is a product requirement, and background location
@@ -111,14 +106,18 @@ git grep -L "^'use client'" -- 'src/app/**/page.tsx' | wc -l        # ... server
 git grep -L "^'use client'" -- 'src/components/**/*.tsx' | wc -l    # presentational components
 ```
 
-**Note the `^` anchor and keep it.** The unanchored version once reported 16 server pages
-against a real 18, because two pages carried doc comments saying they used to be `'use client'`
-— so a bare match counted a file's own description of its history as the thing it described.
 The third line is **not** a defect count: a component with no `'use client'` is fine, it just
-has no client hooks of its own and joins the client graph through its importer. This trap has
-been hit **four** times here — the `lucide-react` importer count, the v1-token count, the
-`supabase.from(` grep above, and this very block. A directive is only a directive on line one,
-and a comment about deleted code looks exactly like the code.
+has no client hooks of its own and joins the client graph through its importer.
+
+**The comment trap — this repo's most-repeated measurement error, four times and counting.**
+A file's description of what it migrated *away from* looks exactly like the thing it migrated
+away from, so any grep for a retired pattern counts its own obituaries. It has produced a wrong
+number for the `lucide-react` importer count, the v1-token count, the `supabase.from(` grep
+above, and the `^'use client'` anchor here — where the unanchored version read 16 server pages
+against a real 18, because two pages carry doc comments saying they used to be `'use client'`.
+Two rules follow: **a directive is only a directive on line one** (hence the `^`), and when
+counting a retired pattern, exclude comment lines and verify the filter both ways — that it
+reads 0 now *and* that it still catches a real instance.
 
 **One rule, and it is load-bearing rather than anticipatory now that the client owns writes:**
 
@@ -239,20 +238,22 @@ src/
 ├── app/                    # Next.js App Router pages
 │   ├── (app)/              # Authenticated route group — has Navbar
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
+│   │   ├── error.tsx       # The app's only error boundary
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew
 │   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id] (Timeline) + /rides, /members, /about
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
+│   ├── onboarding/         # /onboarding/terms, /onboarding/username, /onboarding/location — see decision #5
 │   ├── legal/              # /legal/terms, /legal/privacy — public, see decision #1
-│   ├── layout.tsx          # Root layout (Poppins, v2 light theme)
+│   ├── layout.tsx          # Root layout (Poppins, v2 light theme) — mounts <RouteGuard>
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
 ├── components/
-│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ExpandableText, FilterTile, Input, ListUser, Pagination, SectionHeader, Textarea
+│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ErrorState, ExpandableText, FilterTile, Input, ListUser, OfflineState, Pagination, SectionHeader, Skeleton, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
-│   ├── auth/               # AuthScreen, FormError, ResetPasswordForm
+│   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout)
 │   ├── rides/              # CreateRideForm, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
 │   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
@@ -471,8 +472,8 @@ applied 2026-08-05 and verified live: 3 policies, all `to authenticated`, 0 `ano
 `rides` had carried **no index a `club_id` lookup could use** since `001` — only `rides_pkey` —
 which the badge's rides half would have turned into a sequential scan on every Clubs load.
 (This line said "no indexes at all" until review checked `pg_indexes`; the conclusion held and
-the superlative did not.) The advisors report nothing new — the two
-outstanding are still `moderate_comment` (deliberate) and the leaked-password toggle. One
+the superlative did not.) The advisors reported nothing new *at that time* — the count has
+since grown to eight as `021` and `026` added their accessors; see the advisor table below. One
 footer query in `015` was wrong on the first pass and is worth copying the fix rather than the
 mistake: it counted DELETE grants table-wide and read 2 against a correct database, because
 `postgres` and `service_role` hold everything by Supabase default. Scope a grant assertion to
@@ -485,12 +486,20 @@ columns present with 4 path constraints, and RLS enabled. Verify with `list_migr
 against `ls supabase/migrations/` rather than trusting this paragraph — it is the exact line
 that has been wrong before.
 
-**Security advisors after `014`: two, neither introduced by it and neither an accident.**
-`moderate_comment` is `security definer` and granted to `authenticated` **by design** —
-`011` §1b argues the case at length: the actor cannot read the row they must act on, the
-function deletes exactly one comment on a postcard the caller authored, and its narrowness
-is the defence. The other is the leaked-password toggle, still the one genuinely outstanding
-item and still a dashboard click. `list_migrations` on
+**Security advisors: eight as of 2026-08-06, and only one is outstanding.** Re-derive rather
+than trust the number — `get_advisors(security)` — but the *shape* is durable, because seven of
+the eight are things this repo chose:
+
+| Count | Advisor | Why it is there |
+|---|---|---|
+| 6 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored. Narrowness is the defence |
+| 1 | `rls_enabled_no_policy` on `password_reset_grants` (INFO) | Correct by design: `026` revokes everything on it from `anon` and `authenticated`, so a policy would be the thing that granted reach |
+| 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
+
+**This line read "two" for a day after `021` and `026` added six**, which is why the table
+above names each one: a bare count cannot tell a session whether a new WARN is expected. `026`
+§footer predicts its two and `021` the rest, so an unexpected advisor is one *not* in this
+table. `list_migrations` on
 2026-08-04 returns thirteen rows ending in `drop_friendships` (`20260804162819`). `012`
 (consent stamp guard) and `013` (drop `friendships`) were applied that day after sitting
 written-but-unapplied; `013`'s pre-flight returned **0 rows**, so nothing was destroyed, and
@@ -1040,7 +1049,7 @@ blocking.
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. Delete account is not built |
 | **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan and Crew are built; Journal needs `postcards.ride_id` and Chat needs the Inbox epic.** `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
-| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | **Built 2026-08-05**, all of it v2. `/clubs` and `/clubs/explore` are two sub-pages behind the header's dropdown, with `List / Club` rows carrying the type chip, the rider collage, the club images and the unread counter. `/clubs/[id]` is four sub-pages — Timeline, Rides, Members, About — built from the **private club** frames, which are the ones marked Done; both public-club epics are On hold. `/clubs/new` is a server page with an image upload (`016`). Two things remain unbuilt and both are logged: the Timeline's **activity feed** (no table behind joins/leaves) and **member invitations with an Admin role** (drawn on the v1 create frame; `club_members.role` has had `admin` since `001` and nothing writes it). Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. **Create club has no v2 design** — that epic reads To do, so its composition is ours |
+| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | **Built 2026-08-05**, all of it v2. `/clubs` and `/clubs/explore` are two sub-pages behind the header's dropdown, with `List / Club` rows carrying the type chip, the rider collage, the club images and the unread counter. `/clubs/[id]` is four sub-pages — Timeline, Rides, Members, About — built from the **private club** frames, which are the ones marked Done; both public-club epics are On hold. `/clubs/new` is a client page with an image upload (`016`). Two things remain unbuilt and both are logged: the Timeline's **activity feed** (no table behind joins/leaves) and **member invitations with an Admin role** (drawn on the v1 create frame; `club_members.role` has had `admin` since `001` and nothing writes it). Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. **Create club has no v2 design** — that epic reads To do, so its composition is ours |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
 chat, search, and ride crews simultaneously. It belongs in RLS policies, and every review

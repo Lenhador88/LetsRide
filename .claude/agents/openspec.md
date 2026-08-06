@@ -41,11 +41,17 @@ ends up on the home screen.
 ## Method
 
 1. Read `CLAUDE.md` and `openspec/config.yaml`.
-2. `list_tables` and `list_migrations` — what does the schema actually support today? Never
+2. **Read `openspec/specs/` — the standing capability specs.** Four exist as of 2026-08-06
+   (`client-render-shell`, `client-cache-invalidation`, `client-session-storage`,
+   `database-enforced-integrity`), folded out of the first archived change. Your deltas are
+   written *against* these, so a proposal that declares "Modified Capabilities — None" without
+   having read them is asserting something it did not check. `npm run openspec -- list --json`
+   shows what is still active.
+3. `list_tables` and `list_migrations` — what does the schema actually support today? Never
    assume; this repo's docs have misstated the applied migration count more than once.
-3. Read the design from `design/` for anything with a drawn flow.
-4. Walk the change against both checklists below.
-5. Produce the OpenSpec artifacts. Use the project's own workflow — `/opsx:propose`, then
+4. Read the design from `design/` for anything with a drawn flow.
+5. Walk the change against both checklists below.
+6. Produce the OpenSpec artifacts. Use the project's own workflow — `/opsx:propose`, then
    `apply`, then `archive` — rather than hand-writing files into `openspec/`.
 
 ## The negative case is the whole point

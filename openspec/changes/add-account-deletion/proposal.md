@@ -101,10 +101,28 @@ retention rules this change states in advance so the table cannot be created wit
 
 ### Modified Capabilities
 
-None. `openspec/specs/` is still empty — `migrate-to-client-rendered-shell` has not been
-archived — so every capability here is new even where it describes behaviour `001` already has.
-**Where this change contradicts a policy or FK that already exists, it says so in the delta
-rather than pretending the behaviour is new.**
+**This section is stale and must be redone before this change is applied.** It was written
+while `openspec/specs/` was empty. It is not: `migrate-to-client-rendered-shell` was archived on
+2026-08-06 — it now lives at
+`openspec/changes/archive/2026-08-06-migrate-to-client-rendered-shell/` — and folded four
+standing capabilities out of its deltas —
+`client-render-shell`, `client-cache-invalidation`, `client-session-storage`,
+`database-enforced-integrity`.
+
+At least two of those plausibly *are* modified by account deletion and need a delta rather than
+a new capability:
+
+- `client-session-storage` — "Sign-out SHALL destroy every local trace of the rider". Deletion
+  is a stronger sign-out and the requirement probably extends rather than duplicates.
+- `database-enforced-integrity` — `023`'s participation gate is keyed on stamps that deletion
+  removes. What happens to a half-deleted row's writes is exactly the kind of negative case
+  `openspec/config.yaml` exists to force.
+
+Nothing automated catches this: `openspec validate --strict` passes because it does not read
+prose. Whoever picks this change up reads those four specs first and rewrites this section.
+
+The original note, still true and worth keeping: **where this change contradicts a policy or FK
+that already exists, it says so in the delta rather than pretending the behaviour is new.**
 
 ## Impact
 

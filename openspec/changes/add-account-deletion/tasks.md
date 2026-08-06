@@ -177,6 +177,10 @@ removal landing without its code repair is an outage.
 - [ ] 6.6 Update `CLAUDE.md`: the Trust & Safety row in §Product Scope, the `clubs` and `rides`
   rows in §Schema where the cascade behaviour is now different, and — the first entry of its kind
   — the existence of an Edge Function and where its secret lives.
-- [ ] 6.7 Tick `migrate-to-client-rendered-shell` task 7.5 and its Q9, and record in that change's
-  design that its 1.14 is defence in depth rather than the primary control, per this change's
-  design D8.
+- [ ] 6.7 ~~Tick `migrate-to-client-rendered-shell` task 7.5 and its Q9~~ — **done, and the
+  target has moved.** 7.5 was ticked when that change was archived on 2026-08-06 (this proposal
+  *is* what it asked for), and the change now lives under
+  `openspec/changes/archive/2026-08-06-migrate-to-client-rendered-shell/`. **Do not edit an
+  archived change** — it is the record of what shipped. What survives of this task: record in
+  **this** change's design that `023`'s 1.14 INSERT arm is defence in depth rather than the
+  primary control, per D8.

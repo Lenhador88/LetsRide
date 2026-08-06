@@ -1,5 +1,17 @@
 # database-enforced-integrity Specification
 
+> **Provenance — read before quoting this file.** These requirements were folded out of
+> `migrate-to-client-rendered-shell`'s delta specs when it was archived on 2026-08-06, and that
+> was this repo's first archive, so this is the first time standing specs have existed at all.
+>
+> **The `### Requirement:` statements are the contract.** The prose under each one is the
+> *original argument* for it, written before the change shipped, and it therefore sometimes
+> describes the world as it was. Passages known to have gone stale have been corrected in place
+> and say so; anything still phrased as "today" or "becomes" that is not marked is unverified —
+> check it against the code before relying on it. Where this file and `CLAUDE.md` disagree about
+> what the code *does*, `CLAUDE.md` and the code win; where they disagree about what it *must*
+> do, this file does.
+
 ## Purpose
 Every write rule that must still hold when the browser is the only caller. Today validity is
 split between Zod schemas a Server Action parses and CHECK constraints in Postgres; once the
@@ -151,11 +163,20 @@ today and renders as a blank flag beside its own code forever.
 A rider whose `profiles.onboarding_completed_at` is NULL MUST NOT be able to create content or
 join anything, and the refusal SHALL come from the database rather than from a redirect.
 
-Decision #5 states onboarding is required and not skippable, and today `proxy.ts` is its
-**only** enforcement. No policy prevents a rider whose `onboarding_completed_at` is NULL from
-inserting a postcard, creating a club or a ride, or joining anything; `003`'s trigger guards
-the *stamp*, not the participation. Demoting the route guard to a UX affordance therefore
-removes the only thing holding decision #5.
+Decision #5 states onboarding is required and not skippable. This requirement is **met**:
+`023`'s `enforce_participation_gate` is the enforcement, applied 2026-08-05, and the route
+guard is only a UX affordance on top of it.
+
+The argument that produced it, kept because it is why the gate exists: before `023`, `proxy.ts`
+was the *only* thing holding decision #5 — no policy prevented a rider whose
+`onboarding_completed_at` was NULL from inserting a postcard, creating a club or a ride, or
+joining anything, because `003`'s trigger guards the *stamp*, not the participation. Demoting
+the route guard to a client component would have removed the only thing holding it.
+
+**The gate is narrower than the requirement above reads**, and that is worth carrying: `023`
+puts it on eight tables — `postcards`, `clubs`, `rides`, `club_members`, `ride_members`,
+`postcard_comments`, `postcard_likes`, `postcard_reports` — and **not** on `profiles` UPDATE,
+`profile_countries`, `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy.
 
 An un-onboarded rider also has a NULL `username`, which the `profiles` SELECT policy uses to
 hide them from other riders — so their content would appear to everyone else with an

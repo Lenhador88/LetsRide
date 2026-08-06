@@ -1,15 +1,30 @@
 # client-cache-invalidation Specification
 
+> **Provenance — read before quoting this file.** These requirements were folded out of
+> `migrate-to-client-rendered-shell`'s delta specs when it was archived on 2026-08-06, and that
+> was this repo's first archive, so this is the first time standing specs have existed at all.
+>
+> **The `### Requirement:` statements are the contract.** The prose under each one is the
+> *original argument* for it, written before the change shipped, and it therefore sometimes
+> describes the world as it was. Passages known to have gone stale have been corrected in place
+> and say so; anything still phrased as "today" or "becomes" that is not marked is unverified —
+> check it against the code before relying on it. Where this file and `CLAUDE.md` disagree about
+> what the code *does*, `CLAUDE.md` and the code win; where they disagree about what it *must*
+> do, this file does.
+
 ## Purpose
-What a screen shows after a mutation, and how it learns that data changed elsewhere, once
-`revalidatePath` no longer exists. Forty-one call sites across eight action files currently
-state which screens a write invalidates; that statement has to survive the move without
-becoming a component-by-component guess.
+What a screen shows after a mutation, and how it learns that data changed elsewhere, now that
+`revalidatePath` no longer exists. The 33 call sites that used to state which screens a write
+invalidates had to survive the move without becoming a component-by-component guess. The
+contract that replaced them is `src/lib/query/keys.ts`, whose header carries the table
+reconciling every one of the 33 against the key that replaced it.
 ## Requirements
 ### Requirement: Every mutation SHALL declare what it invalidates
 
-`revalidatePath` appears 41 times in `src/lib/actions/` (`git grep -c revalidatePath --
-'src/lib/actions/*.ts'`, 2026-08-05). Each call is a claim about which screens are now stale —
+`revalidatePath` had **33** call sites in `src/lib/actions/`, not the 41 this spec first
+claimed: `git grep -c revalidatePath -- 'src/lib/actions/*.ts'` counts *lines*, and several
+lines carried two calls. `keys.ts` §header records the recount. Each call was a claim about
+which screens are now stale —
 `createClub` names `/clubs` and `/clubs/explore`; `likePostcard` names the feed, the card, and
 the postcard's club timeline if it has one. Those claims SHALL be preserved as cache keys, not
 rediscovered.

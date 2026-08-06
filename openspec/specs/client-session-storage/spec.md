@@ -1,5 +1,17 @@
 # client-session-storage Specification
 
+> **Provenance — read before quoting this file.** These requirements were folded out of
+> `migrate-to-client-rendered-shell`'s delta specs when it was archived on 2026-08-06, and that
+> was this repo's first archive, so this is the first time standing specs have existed at all.
+>
+> **The `### Requirement:` statements are the contract.** The prose under each one is the
+> *original argument* for it, written before the change shipped, and it therefore sometimes
+> describes the world as it was. Passages known to have gone stale have been corrected in place
+> and say so; anything still phrased as "today" or "becomes" that is not marked is unverified —
+> check it against the code before relying on it. Where this file and `CLAUDE.md` disagree about
+> what the code *does*, `CLAUDE.md` and the code win; where they disagree about what it *must*
+> do, this file does.
+
 ## Purpose
 How a rider's session is held, proved and discarded once there is no server to set an httpOnly
 cookie. Covers the move to device secure storage, the replacement for the password-recovery
@@ -7,13 +19,22 @@ marker, and what sign-out must destroy on a device two people share.
 ## Requirements
 ### Requirement: Session tokens SHALL be held in device secure storage
 
-`@supabase/ssr` stores the session in httpOnly cookies, which JavaScript cannot read. The
-client-rendered shell has no such cookie, so the session moves into a storage adapter passed to
-`@supabase/supabase-js`. It SHALL be the platform secure store — Keychain on iOS, the Android
-Keystore-backed store — and SHALL NOT be `localStorage`, `sessionStorage` or IndexedDB.
+The session lives in a storage adapter passed to `@supabase/supabase-js`
+(`src/lib/supabase/session-store.ts`). It SHALL be the platform secure store — Keychain on iOS,
+the Android Keystore-backed store — and SHALL NOT be `localStorage`, `sessionStorage` or
+IndexedDB.
 
-The publishable key is not what changes here. It already ships in the bundle and is designed
-to; the refresh token is what becomes JS-readable, and it is the thing to protect.
+**KNOWN GAP, deliberate and open: this requirement is not met today.** The store resolves to
+`window.__letsrideSecureStore` when a native shell provides it and falls back to `localStorage`
+otherwise — and there is no native shell yet, so the fallback is what every rider gets. The
+seam and its test exist (`session-store.test.ts` asserts that when a secure store is present
+**nothing** lands in `localStorage`); the implementation behind the seam is the `native` agent's
+work. Recorded as a gap rather than quietly relaxing the requirement.
+
+The publishable key is not what changes here — it already ships in the bundle and is designed
+to. The refresh token is the thing to protect, and note it is **not** newly exposed:
+`@supabase/ssr` set its cookie with `httpOnly=false` because the browser client had to read the
+session back out of `document.cookie`. Measured with a real sign-in. What moved is the store.
 
 #### Scenario: The token is not in web storage
 - **WHEN** the app is running in the native shell
@@ -38,11 +59,20 @@ to; the refresh token is what becomes JS-readable, and it is the thing to protec
 Setting a new password SHALL require a grant that only following a recovery link can produce,
 and that grant MUST NOT be forgeable by the client.
 
-`updatePassword` gates on `lr-recovery`, an httpOnly cookie set by `/auth/callback` after a
-successful code exchange and cleared by the reset. It exists because a recovery link yields an
-ordinary session: without it, anyone already holding a session — a borrowed phone, a shared
-laptop — could set a new password without knowing the current one. Neither the Route Handler
-nor the httpOnly cookie survives into the native shell.
+It exists because a recovery link yields an *ordinary* session: without a grant, anyone already
+holding one — a borrowed phone, a shared laptop — could set a new password without knowing the
+current one.
+
+**The mechanism changed during implementation and the spec's original one is gone.** The
+proposal described an `lr-recovery` httpOnly cookie set by `/auth/callback` after a code
+exchange; that cookie and that Route Handler both died with the server render, exactly as this
+paragraph predicted they would. The shipped grant is `026`'s check of Supabase's own `amr`
+claim, verified in Postgres (`src/lib/auth/recovery.ts`) — which is stronger, because it is not
+forgeable by a client that owns its own storage, and a cookie set by JavaScript would have been.
+
+**Its real closure is still an owner action:** GoTrue's `PUT /auth/v1/user` accepts a password
+change from any live session, measured, so `026` gates the app's front door and
+`UpdatePasswordRequireCurrentPassword` in the Supabase dashboard is what shuts the back one.
 
 #### Scenario: An ordinary session cannot change the password
 - **WHEN** a rider with a normal signed-in session opens the reset screen directly

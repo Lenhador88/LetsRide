@@ -1,5 +1,17 @@
 # client-render-shell Specification
 
+> **Provenance — read before quoting this file.** These requirements were folded out of
+> `migrate-to-client-rendered-shell`'s delta specs when it was archived on 2026-08-06, and that
+> was this repo's first archive, so this is the first time standing specs have existed at all.
+>
+> **The `### Requirement:` statements are the contract.** The prose under each one is the
+> *original argument* for it, written before the change shipped, and it therefore sometimes
+> describes the world as it was. Passages known to have gone stale have been corrected in place
+> and say so; anything still phrased as "today" or "becomes" that is not marked is unverified —
+> check it against the code before relying on it. Where this file and `CLAUDE.md` disagree about
+> what the code *does*, `CLAUDE.md` and the code win; where they disagree about what it *must*
+> do, this file does.
+
 ## Purpose
 The behaviour every screen must exhibit once it renders in the browser from a static bundle
 rather than arriving complete from the server. Owns the per-screen state contract — empty,
@@ -109,9 +121,10 @@ and its reads fail.
 Every rule the guard enforces SHALL already be guaranteed in Postgres, and a rider who defeats
 the guard MUST gain no read or write they did not already have.
 
-`proxy.ts` becomes client-side. Anything it enforces that RLS does not also enforce becomes
+`proxy.ts` is deleted; the decision is `src/lib/auth/guard.ts`, a pure function applied by
+`src/components/auth/RouteGuard.tsx`. Anything it enforces that RLS does not also enforce is
 unenforced. The audit found exactly one such thing — the onboarding gate — and
-`database-enforced-integrity` carries the requirement that closes it.
+`database-enforced-integrity` carries the requirement that closed it, shipped as `023`.
 
 #### Scenario: Every guard rule has a database counterpart
 - **WHEN** the client guard redirects a rider

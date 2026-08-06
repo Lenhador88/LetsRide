@@ -3,26 +3,29 @@
  *
  * ## Why this exists
  *
- * The app is becoming a client-rendered bundle inside a native shell, because
- * store presence is a product requirement and background location tracking is
- * on the roadmap — neither of which the web platform can do (CLAUDE.md
- * §Technology Decisions). A native build has no server render, so there is
- * nothing left to set an httpOnly cookie, and `@supabase/ssr` leaves the runtime
- * path with the last server render.
+ * The app **is** a client-rendered bundle (done 2026-08-06), headed for a native
+ * shell, because store presence is a product requirement and background location
+ * tracking is on the roadmap — neither of which the web platform can do
+ * (CLAUDE.md §Technology Decisions). There is no server render left to set an
+ * httpOnly cookie, and `@supabase/ssr` is uninstalled.
  *
- * **This is a genuine reduction in security and design.md §Risks says so
- * plainly: the refresh token becomes JS-readable.** It is accepted because a
- * native build has no alternative, and it is the reason "no third-party scripts
- * in the authenticated tree" becomes a hard rule rather than a preference. What
- * this module can still decide is *which* JS-readable store, and it takes the
- * strongest one available rather than defaulting to the most convenient.
+ * **The refresh token is JS-readable — but it always was, and design.md §Risks
+ * was wrong to present that as a reduction this change causes.** `@supabase/ssr`
+ * set `sb-<ref>-auth-token` with `httpOnly=false`, because the browser client
+ * had to read the session back out of `document.cookie`; measured with a real
+ * sign-in. What moved is the *store*, not the exposure. It is still the reason
+ * "no third-party scripts in the authenticated tree" is a hard rule rather than
+ * a preference. What this module decides is *which* JS-readable store, and it
+ * takes the strongest one available rather than the most convenient.
  *
  * ## The seam
  *
- * The native shell does not exist yet — CLAUDE.md records that a `native` agent
- * is deliberately absent and that Capacitor config, plugins and permission
- * strings land with the shell rather than before it. So this file defines the
- * contract and nothing else: a shell that provides `window.__letsrideSecureStore`
+ * The native shell does not exist yet, so this file defines the contract and
+ * nothing else. (It used to add that a `native` agent was deliberately absent;
+ * that agent landed 2026-08-06 with the migration's completion, and `native.md`
+ * points at this module's test as the contract to implement against. The shell
+ * itself is still unbuilt — that part is unchanged.) A shell that provides
+ * `window.__letsrideSecureStore`
  * gets used, and a plain browser falls back with the weaker store *named* rather
  * than assumed (Q8: the browser build is a development and testing surface, with
  * the weaker token storage stated).

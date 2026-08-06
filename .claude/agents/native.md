@@ -34,9 +34,18 @@ The hard part is finished. Do not redo it, and do not assume it is half-done:
 **Next still server-renders client components on first load.** That SSR pass is the last piece
 of the render model, and retiring it is *your* work, not leftover migration work — a bundled
 app has no Node process to run it. Decide deliberately between a static export and whatever
-Next 16 offers for a fully-static bundle, and **measure what breaks** rather than assuming: the
-five `[id]` routes are dynamic for their segment, and dynamic segments are exactly what a
-static export handles worst.
+Next 16 offers for a fully-static bundle, and **measure what breaks** rather than assuming.
+`next build` today reports 20 static routes and **7 dynamic** — re-derive with
+`npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'` rather than trusting the 7:
+
+```
+/clubs/[id]  /clubs/[id]/about  /clubs/[id]/members  /clubs/[id]/rides
+/postcards/[id]  /rides/[id]  /rides/[id]/crew
+```
+
+**Three of those are nested club sub-routes**, which is the shape a static export handles
+worst — so what matters for your decision is not only how many but how deep. An earlier draft
+of this brief said five and omitted exactly those three.
 
 Until it is gone, the *read in an effect, never during render* rule stays load-bearing. When it
 is gone, say so plainly, because that rule can then be relaxed and several briefs cite it.

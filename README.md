@@ -4,12 +4,14 @@ A mobile-first app for motorcycle riders to organise rides, join clubs, and conn
 with other riders.
 
 Built with Next.js 16 (App Router), Supabase, and Tailwind CSS v4. Deployed on Vercel, and
-rendered entirely client-side — it ships as a static bundle so it can go into a native
-iOS/Android build.
+rendered entirely client-side — every page is a client page, so it can be bundled into a
+native iOS/Android build.
 
-> **Status: early development.** Rides, clubs and postcards work and are built from the
-> current design. The inbox and the garage are not built. The native shell — and with it
-> store submission — is the next epic; see `docs/HANDOFF.md` for what blocks it.
+> **Status: early development.** Clubs and postcards work and are built from the current
+> design; rides are partially built (the Journal and Chat sub-pages are not). The inbox and
+> the garage are not built at all. The native shell — and with it store submission — is the
+> next epic, and it still has to decide how to retire the server-render pass that 7 routes
+> currently use. See `docs/HANDOFF.md` for what blocks submission.
 
 ## Getting started
 

@@ -43,12 +43,18 @@ Verify rather than trust, in one line each:
 git grep -L "^'use client'" -- 'src/app/**/page.tsx'   # zero server pages — prints nothing
 ls src/proxy.ts src/lib/supabase/server.ts             # both deleted — prints errors
 node -p "Object.keys(require('./package.json').dependencies).length"   # 7
-npm run build 2>&1 | grep -cE '^[├└│ ]*ƒ /'            # dynamic routes — 7
+npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 7
 ```
 
-**That last number is 7, not the 5 an earlier revision of this file claimed**, and it is the
-one the native epic actually needs: `next build` reports 21 static routes and **7 dynamic**
+**Keep `┌` in that character class.** The route table's first row uses it, so the `├└│`-only
+version under-counts by one the day the first route is ever dynamic. It reads 7 correctly today
+only because `/` sorts first and is static — a filter that is right by luck.
+
+**That count is 7, not the 5 an earlier revision of this file claimed**, and it is the one the
+native epic actually needs: `next build` reports **20 static** and **7 dynamic**
 (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`, `/rides/[id]`, `/rides/[id]/crew`).
+Do not read the `Generating static pages (21/21)` line as the static route count — it is a
+different quantity, and 21 against 20 is exactly the kind of near-miss that gets copied.
 They are dynamic for their *segment*, not for any data. No `ƒ Proxy (Middleware)` line appears
 at all. Measured 2026-08-06 — re-run it rather than trusting the 7.
 
@@ -103,8 +109,11 @@ five times without once requesting the fix.
 2. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. It is what
    actually closes the recovery hole `026` can only gate at the app's front door — GoTrue's
    `PUT /auth/v1/user` accepts a password change from any live session, measured.
-3. **Enable leaked-password protection** — one dashboard toggle, still the only outstanding
-   security advisor that is not deliberate.
+3. **Enable leaked-password protection** — one dashboard toggle. It is the only outstanding
+   security advisor that is not deliberate, but note `get_advisors(security)` now returns
+   **eight**, not the two an earlier revision of this file implied: six `security definer`
+   accessors from `021`/`026`/`011` and the `password_reset_grants` no-policy INFO are all
+   there on purpose. `CLAUDE.md` §Supabase Rules has the table naming each.
 4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
    serves nothing, with no alert. Needed before anything resembling launch.
 5. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
@@ -121,6 +130,7 @@ five times without once requesting the fix.
 
    `NODE_USE_ENV_PROXY=1` and exporting `.env.local` are both required — the script reads the
    URL and key from the environment and Node's `fetch` ignores `HTTPS_PROXY` without the flag.
+
 **Not an owner action, but the next thing a session should pick up if the shell is blocked:**
 verify the remaining Postcards screens against the design. `/postcards/new` and
 `/postcards/[id]` still carry inferred composition; the design has frames for both.
