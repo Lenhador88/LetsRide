@@ -154,6 +154,28 @@ timeout:**
 
 ## Known issues, roughly by cost to fix
 
+- **`createClub` and `createRide` do two inserts with no transaction, and the hand-rolled
+  rollback stopped being one.** Found by review of the render migration. As Server Actions,
+  both inserts and the compensating delete ran inside one server request that finished whether
+  or not the tab survived; they run in the browser now, so closing the tab between the two
+  leaves a club with an owner and no membership row — or a ride whose organizer is not on its
+  own crew. **That state went from reachable only on a Supabase error to reachable on demand.**
+
+  Integrity, not confidentiality: `019` means the abandoner cannot forge a role on the way
+  through. The orphan club is missing from *Your clubs* (which reads membership) but a public
+  one shows on Explore to everyone and is joinable, so it is a UI orphan rather than a hidden
+  row. The fix is the `security definer` function both call sites have named since they were
+  written, doing both inserts in one statement — and nothing currently asserts "a club has an
+  owner-membership row" as a CHECK or trigger, which is the real gap.
+
+  > **Complexity** 4/10 — one migration with two functions, plus repointing two actions
+  > **Urgency** 3/10 — nothing forces it; rises the day a real rider abandons a create, and
+  > sharply if club or ride creation ever gets a retry affordance
+  > **Recommendation** 7/10 — it is the last place where a client can leave the database in a
+  > state no constraint forbids
+  > **This session** N — it is a new migration at the end of a long session, and the sequencing
+  > rules deserve a fresh head
+
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are tested,
   but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments are
   the exception: deletable, not editable, which `011` forbids by design.

@@ -28,6 +28,14 @@ import { resolveSessionStore } from '@/lib/supabase/session-store'
  * Measured with a real sign-in. What changes is the *store*, not the exposure —
  * and in a native shell the new store is strictly better.
  *
+ * **One thing did move that the risk register misses, and it belongs here rather
+ * than in a footnote.** The PKCE `code_verifier` was held in the *server*
+ * client's httpOnly cookie jar, because the server asked for the recovery link.
+ * The browser asks now, so the verifier lands in the same `localStorage` as the
+ * session — genuinely JS-readable where it was not before. It is useless without
+ * the emailed single-use code, so it is a small reduction rather than a hole,
+ * but it is a reduction and "nothing got worse" would be the wrong summary.
+ *
  * ## Memoised, and it has to be
  *
  * `resolveSupabase()` calls this on every read and every write, so an

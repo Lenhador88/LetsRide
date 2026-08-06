@@ -46,9 +46,19 @@ there in the first place are worth keeping, because only the second has expired:
 
 1. RLS enforces *authorization*, never *validity*. Username charset, T&C acceptance and the
    onboarding completion stamp are integrity rules the client must not own. **This one got
-   stronger, not weaker**: group 1's migrations (`018`–`027`) moved every one of them into the
-   database as a CHECK, a trigger or a grant, which is exactly what made moving the writes
-   client-side safe. A Server Action omitting a column was never a rule.
+   stronger, not weaker**: group 1's migrations (`018`–`027`) moved them into the database as a
+   CHECK, a trigger or a grant, which is what made moving the writes client-side safe. A Server
+   Action omitting a column was never a rule.
+
+   **Say "them", not "every one of them" — the gate is narrower than it reads.** `023` puts
+   `enforce_participation_gate` on eight tables: `postcards`, `clubs`, `rides`, `club_members`,
+   `ride_members`, `postcard_comments`, `postcard_likes`, `postcard_reports`. It is **not** on
+   `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads` or any
+   `storage.objects` policy — those check the path prefix only. So an account created by calling
+   GoTrue's `/auth/v1/signup` directly, never calling `accept_terms()`, can still set a username,
+   write a bio and upload an avatar with `terms_accepted_at` NULL. That path predates the render
+   migration and `signUp`'s consent write was never the enforcement — but the claim is about
+   *participation*, and stating it broader than that is how a gap gets inherited as covered.
 2. Auth flows have to set cookies. Server Components cannot; Server Actions and Route
    Handlers can. Login, signup and password reset all need this.
 3. `useActionState` gives pending and error states without hand-rolled `useState` triples — and

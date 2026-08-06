@@ -55,12 +55,36 @@ function invalidateClubMembership(clubId: string) {
  *
  * **Two inserts and no transaction, which matters.** PostgREST has no
  * multi-statement transaction, so the membership row is a second round trip that
- * can fail on its own — leaving a club whose owner is not a member of it, which
- * is invisible on both Clubs sub-pages because `getYourClubs` reads membership.
- * The old page had exactly this hole and did not check the second result. This
+ * can fail on its own — leaving a club whose owner is not a member of it. That
+ * club is missing from *Your clubs*, which reads membership; it is **not**
+ * invisible, as this comment used to claim. `008`'s SELECT policy has an
+ * `owner_id = auth.uid()` arm, and a public one shows on Explore to every rider
+ * and is joinable. The old page had exactly this hole and did not check the
+ * second result. This
  * one does, and rolls the club back by hand so a partial create cannot survive.
  * The real fix is a `security definer` function doing both in one statement, and
  * it is a migration; recorded rather than pretended away.
+ *
+ * **The rollback below stopped being a rollback when this module left the
+ * server, and that is a real change rather than a restatement.** As a Server
+ * Action, both inserts and the compensating delete ran inside one server request
+ * that completed whether or not the tab survived. They run in the browser now,
+ * so all three depend on it staying alive and cooperating — closing the tab
+ * between the two inserts leaves a club with an owner and no membership row.
+ * That state went from *reachable only on a Supabase error* to *reachable on
+ * demand*.
+ *
+ * It is an integrity problem and not a confidentiality one: `019` means the
+ * abandoner cannot forge a role on the way through, and `008`'s SELECT policy
+ * has an `owner_id = auth.uid()` arm so the creator can still *see* the club —
+ * it is `getYourClubs` reading membership that hides it, which makes this a UI
+ * orphan rather than a database one. A public one shows on Explore to everyone
+ * and is joinable.
+ *
+ * The fix is the same `security definer` function this comment has named since
+ * it was written, doing both inserts in one statement. Nothing asserts "a club
+ * has an owner-membership row" as a CHECK or trigger, and that is the actual
+ * gap. Logged in docs/HANDOFF.md §Known issues.
  *
  * Images are already in Storage by the time this runs — the client uploads
  * first, so a failure here leaves an orphaned object rather than a club pointing

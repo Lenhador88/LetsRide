@@ -43,6 +43,27 @@ function invalidateRide() {
  * hand rather than left. The real fix is a `security definer` function, and it
  * is a migration.
  *
+ * **The rollback below stopped being a rollback when this module left the
+ * server, and that is a real change rather than a restatement.** As a Server
+ * Action, both inserts and the compensating delete ran inside one server request
+ * that completed whether or not the tab survived. They run in the browser now,
+ * so all three depend on it staying alive and cooperating — closing the tab
+ * between the two inserts leaves a club with an owner and no membership row.
+ * That state went from *reachable only on a Supabase error* to *reachable on
+ * demand*.
+ *
+ * It is an integrity problem and not a confidentiality one: `019` means the
+ * abandoner cannot forge a role on the way through, and `008`'s SELECT policy
+ * has an `owner_id = auth.uid()` arm so the creator can still *see* the club —
+ * it is `getYourClubs` reading membership that hides it, which makes this a UI
+ * orphan rather than a database one. A public one shows on Explore to everyone
+ * and is joinable.
+ *
+ * The fix is the same `security definer` function this comment has named since
+ * it was written, doing both inserts in one statement. Nothing asserts "a club
+ * has an owner-membership row" as a CHECK or trigger, and that is the actual
+ * gap. Logged in docs/HANDOFF.md §Known issues.
+ *
  * `club_id` is offered here for the first time. The column has existed since
  * `001` and no screen has ever set it, which meant a club's Rides sub-page
  * could only ever be empty — a hole the club detail made visible.
