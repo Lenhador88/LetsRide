@@ -72,13 +72,13 @@
  *    is the tripwire.
  *
  * ---------------------------------------------------------------------------
- * Order of operations, and which half is the right one to lose
+ * Order of operations, and what a failure between them actually leaves
  * ---------------------------------------------------------------------------
  * Clubs, then objects, then rows.
  *
- *   1. `private.transfer_owned_clubs(sub)` — hands over every club this rider
- *      owns so the `clubs -> postcards` cascade does not destroy other riders'
- *      postcards. Returns the club image paths it surrendered.
+ *   1. `transfer_owned_clubs_for_deletion(sub)` — hands over every club this
+ *      rider owns so the `clubs -> postcards` cascade does not destroy other
+ *      riders' postcards. Returns the club image paths it surrendered.
  *   2. Storage delete, across all five prefixes plus the surrendered club
  *      images. **Objects before rows**, because the rows are what say which
  *      objects exist; the reverse leaves bytes nothing can enumerate, which is
@@ -89,15 +89,37 @@
  *      erased, and keeps that address from being reusable — turning a deletion
  *      into a permanent ban on the person's email.
  *
- * If step 2 fails, the whole call fails and nothing is deleted; the rider
- * retries. If step 3 fails, the objects are already gone — the one genuinely
- * partial state, unavoidable without a distributed transaction, and the right
- * half to lose: images without rows are orphans a sweeper can find, rows without
- * images render broken.
+ * **THERE IS NO TRANSACTION ACROSS THESE THREE, and an earlier version of this
+ * comment claimed otherwise.** It said "if step 2 fails, the whole call fails
+ * and nothing is deleted", copying design D7's "a failure before the auth delete
+ * leaves everything intact" and D2's "inside the deletion, in one transaction".
+ * Step 1 is a PostgREST call: it commits when the HTTP response returns, before
+ * step 2 begins. No arrangement of these three can be atomic — one is SQL, one
+ * is the Storage API and one is the Auth API.
  *
- * Already deleted returns success. The JWT resolves to a subject with no user
- * row, there is nothing to do, and reporting failure would strand a rider on a
- * screen with no exit.
+ * What is true instead, and what the design should have said:
+ *
+ *   - **Every step is idempotent, so the retry completes.** Step 1 finds no
+ *     owned clubs the second time. Step 2 re-lists and removes whatever is left.
+ *     Step 3 is the already-gone branch below.
+ *   - **A failure after step 1 leaves the rider an ordinary member** of the
+ *     clubs they used to own — not ejected from them. That is `032`, and it
+ *     exists precisely because `029` deleted the membership row here and made a
+ *     transient Storage error permanently eject someone from a private club they
+ *     could no longer rejoin.
+ *   - **A failure after step 2 leaves orphaned bytes and live rows**, which is
+ *     the right half to lose: images without rows are orphans a sweeper can
+ *     find, rows without images render broken.
+ *
+ * **Already deleted returns 401, not success**, and that is worth stating
+ * plainly because both this file and D7 previously claimed the opposite. The
+ * `getUser` call below runs first, and GoTrue rejects a token whose `sub` has no
+ * user row — so a retry against an account that is already gone never reaches
+ * the `deleteUser` already-gone branch. The client contract is therefore: **401
+ * on this endpoint means the session is dead, which for the deletion screen is
+ * indistinguishable from success and must be treated as such.** The
+ * already-gone branch in step 3 still earns its place — it covers the account
+ * disappearing between `getUser` and `deleteUser`.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -113,39 +135,98 @@ const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 const PREFIXES = ['postcards', 'avatars', 'covers', 'club-avatars', 'club-covers'] as const
 const BUCKET = 'media'
 const PAGE = 100
+/** `remove()` takes a path list in one request; a large folder must be chunked. */
+const REMOVE_CHUNK = 100
+/** Depth guard for the recursive list — see `listAll`. */
+const MAX_DEPTH = 8
+
+/**
+ * The app is a client-rendered bundle, so the caller is `functions.invoke()` in
+ * a browser. It sends `Authorization` and `Content-Type`, which forces a
+ * preflight — and a preflight that gets a 405 with no CORS headers is blocked
+ * before the POST is ever attempted. Every official Supabase template ships this
+ * for the same reason.
+ *
+ * Worth knowing before task 2.6's live exercise: a `curl` run passes without
+ * any of this, and the browser still fails. Test both.
+ */
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
 
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { ...CORS, 'content-type': 'application/json' },
   })
 
 /**
- * Every object under `<prefix>/<uid>/`, paged.
+ * Every object under `<prefix>/<uid>/`, paged AND recursed.
  *
- * `list()` truncates silently at its limit, so a single call reports success
- * having swept the first page and left the rest — which is exactly the failure
- * mode that produces permanent orphans, because nothing can reach that folder
- * once the account is gone.
+ * Two failure modes, both of which leave personal data behind for ever, because
+ * once `deleteUser` runs no credential in this system can reach the folder —
+ * every Storage policy is scoped to a live rider's own uid.
+ *
+ * **Paging**: `list()` truncates silently at its limit, so a single call reports
+ * success having swept the first page.
+ *
+ * **Nesting**: `list()` returns one level, and sub-folders come back as entries
+ * with `id === null`. Filtering those out without recursing looks correct and
+ * silently skips everything under them — and nested paths ARE legal today:
+ * `010`/`014`'s policies and the path CHECKs are all
+ * `like 'postcards/' || uid || '/%'`, and `%` matches `/`, so
+ * `postcards/<uid>/anything/photo.jpg` uploads fine. Nothing in the app creates
+ * such a path, which is exactly why this would never have been noticed.
  */
 async function listAll(
   storage: ReturnType<typeof createClient>['storage'],
   prefix: string,
+  depth = 0,
 ): Promise<string[]> {
+  if (depth >= MAX_DEPTH) return []
   const names: string[] = []
+  const folders: string[] = []
+
   for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await storage
-      .from(BUCKET)
-      .list(prefix, { limit: PAGE, offset })
-    if (error) throw new Error(`list ${prefix}: ${error.message}`)
-    if (!data || data.length === 0) return names
-    // `list` returns folder entries with a null id; only real objects have one.
-    names.push(...data.filter((e) => e.id !== null).map((e) => `${prefix}/${e.name}`))
-    if (data.length < PAGE) return names
+    const { data, error } = await storage.from(BUCKET).list(prefix, { limit: PAGE, offset })
+    // NOTE: the prefix contains the rider's uid, so it must never reach the
+    // thrown message — the catch at the bottom logs whatever it is given, and
+    // Q13 forbids writing a departing rider's id into a log.
+    if (error) throw new StorageListError(error.message)
+    if (!data || data.length === 0) break
+    for (const entry of data) {
+      if (entry.id === null) folders.push(`${prefix}/${entry.name}`)
+      else names.push(`${prefix}/${entry.name}`)
+    }
+    if (data.length < PAGE) break
+  }
+
+  for (const folder of folders) {
+    names.push(...(await listAll(storage, folder, depth + 1)))
+  }
+  return names
+}
+
+/** Carries no path, so the uid cannot reach a log line through it. */
+class StorageListError extends Error {
+  constructor(detail: string) {
+    super(`storage list failed: ${detail}`)
   }
 }
 
+/** Any uuid, anywhere in a message, becomes `<redacted>`. See the catch block. */
+const redactUuids = (message: string) =>
+  message.replace(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+    '<redacted>',
+  )
+
 Deno.serve(async (req: Request) => {
+  // Before the method check, or the preflight is answered with 405 and the
+  // browser never sends the POST.
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
   const authHeader = req.headers.get('Authorization') ?? ''
@@ -205,11 +286,17 @@ Deno.serve(async (req: Request) => {
       ...((surrendered ?? []) as { object_path: string }[]).map((r) => r.object_path),
     ]
 
-    if (paths.length > 0) {
-      const { error: removeError } = await admin.storage.from(BUCKET).remove(paths)
+    // Chunked: `remove()` sends the whole list in one request, and a rider with
+    // a large postcards folder would exceed the request limit — which fails the
+    // call and, before 032, used to leave them ejected from their own clubs.
+    for (let i = 0; i < paths.length; i += REMOVE_CHUNK) {
+      const { error: removeError } = await admin.storage
+        .from(BUCKET)
+        .remove(paths.slice(i, i + REMOVE_CHUNK))
       // Fails the whole call. The rows are what make the objects findable, and
-      // after step 3 nothing can enumerate them ever again.
-      if (removeError) throw new Error(`storage: ${removeError.message}`)
+      // after step 3 nothing can enumerate them ever again. The retry re-lists,
+      // so a chunk that already succeeded is simply not found the second time.
+      if (removeError) throw new Error(`storage remove failed: ${removeError.message}`)
     }
 
     // 3. The auth row. Hard delete — the second argument is `shouldSoftDelete`.
@@ -227,10 +314,19 @@ Deno.serve(async (req: Request) => {
 
     return json({ deleted: true }, 200)
   } catch (cause) {
-    // Deliberately no subject id in the log line. An audit trail of who deleted
-    // their account is a record of the people who asked to have no record
-    // (design Q13); the prefix that failed is what an operator actually needs.
-    console.error('delete-account failed:', cause instanceof Error ? cause.message : cause)
+    // Q13: the function may log, but never with a subject id. An audit trail of
+    // who deleted their account is a record of the people who asked to have no
+    // record.
+    //
+    // Redacted at the boundary rather than at each call site. An earlier version
+    // trusted the throw sites and leaked anyway — `listAll` threw
+    // `list ${prefix}: …` where the prefix was `postcards/<uid>`, under a comment
+    // asserting no id was logged. The call sites are now clean too, but they are
+    // not the control: any message from the Storage or PostgREST SDK may quote a
+    // path back, and this is the one place that sees all of them.
+    console.error('delete-account failed:', redactUuids(
+      cause instanceof Error ? cause.message : String(cause),
+    ))
     return json({ error: 'deletion_failed' }, 500)
   }
 })

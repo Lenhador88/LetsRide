@@ -3997,6 +3997,22 @@ insert into rides (id, title, meeting_point, departure_at, is_public, club_id, o
   ('00000000-0000-0000-0000-000000029d01', 'Members Only Run', 'The Bridge', now() + interval '9 days',
    false, '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000b');
 
+-- Two rides in c2 — the club that gets DELETED, because 000a is its only member
+-- — organised by a rider who is NOT 000a, so neither dies to the organizer
+-- cascade and 032 §2's rule is the only thing deciding their fate. c2 is public,
+-- which is what lets one of them be public: 022 forbids a ride wider than its
+-- club, so a private club could not host the first of these at all.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-000000032d01', 'Open Run', 'The Square', now() + interval '10 days',
+   true,  '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000c'),
+  ('00000000-0000-0000-0000-000000032d02', 'Quiet Run', 'The Lane', now() + interval '11 days',
+   false, '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000c');
+
+-- A crew on the private one, so "stranded zombie" is a real state rather than a
+-- hypothetical: without 032 §2's delete these rows outlive every reader.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-000000032d02', '00000000-0000-0000-0000-00000000000c', 'going');
+
 -- The third-party postcard: authored by 000c, scoped to 000a's private club.
 -- This is the row the whole change exists to protect.
 insert into postcards (id, author_id, club_id, image_path, caption) values
@@ -4080,10 +4096,16 @@ select assert_eq(
   (select avatar_path is null and cover_image_path is null from clubs
     where id = '00000000-0000-0000-0000-0000000000c1'),
   true, '029: ... and surrenders both images, which is what keeps 016''s CHECK satisfied');
+-- 032 changed this from a delete to a demotion, and the reason is the whole
+-- point: the transfer commits over PostgREST before the Edge Function's Storage
+-- sweep runs. `029` removed the row here, so one transient Storage error left a
+-- rider still holding an account and no longer a member of a private club they
+-- founded — which `club_members`' INSERT policy (`c.is_public or c.owner_id =
+-- auth.uid()`) makes unrejoinable. The row must survive a failure in between.
 select assert_eq(
-  (select count(*)::int from club_members where club_id = '00000000-0000-0000-0000-0000000000c1'
+  (select role from club_members where club_id = '00000000-0000-0000-0000-0000000000c1'
      and user_id = '00000000-0000-0000-0000-00000000000a'),
-  0, '029: ... and the departing rider is off the roster');
+  'member', '032: the departing rider is DEMOTED, not removed — a failed sweep must not eject them');
 
 select assert_eq(
   (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000000000c2'),
@@ -4091,6 +4113,25 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000000000c3'),
   0, '029: ... and so is the orphan club with no roster at all');
+
+-- 032 §2. `029` deleted EVERY ride in a club it was deleting; D3's zombie
+-- argument only ever covered rides that `SET NULL` would strand — `club_id`
+-- NULL plus `is_public` false, which 022 §4 resolves to organizer-only while the
+-- crew rows survive. A PUBLIC ride loses nothing to SET NULL, so deleting it
+-- destroyed another rider's content for no stated reason.
+--
+-- Both rides below belong to c2, which has no member but its owner and is
+-- therefore deleted. Neither is organised by the departing rider, so neither
+-- cascades — the only thing that decides their fate is this rule.
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-000000032d01'),
+  1, '032: a PUBLIC ride survives its club being deleted, orphaned but readable');
+select assert_eq(
+  (select club_id from rides where id = '00000000-0000-0000-0000-000000032d01'),
+  null::uuid, '032: ... via ON DELETE SET NULL, exactly as 001 intended');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-000000032d02'),
+  0, '032: a PRIVATE ride is deleted instead of being stranded as a zombie');
 select assert_eq(
   (select count(*)::int from clubs where owner_id = '00000000-0000-0000-0000-00000000000a'),
   0, '029: 000a owns no club afterwards');

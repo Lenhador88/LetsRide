@@ -3,7 +3,7 @@
 import Link from 'next/link'
 
 /**
- * Static copy, and one of the two pages a rider can reach without a session
+ * Static copy, and one of the three pages a rider can reach without a session
  * (decision #1's deliberate exception, and `/legal/*` in the guard's public
  * denylist). It reads nothing, so there is no query here and no loading state —
  * the directive is here only because the client-rendered shell has no server to

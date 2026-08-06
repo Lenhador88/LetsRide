@@ -239,13 +239,20 @@ comment on function private.transfer_owned_clubs(uuid) is
   'Hand every club this rider owns to its longest-tenured remaining admin, else its longest-tenured remaining member, else delete it with its rides (029). Returns the Storage object paths it surrendered so the caller can delete the bytes. Exists so one rider erasing their account does not destroy other riders'' postcards through the clubs -> postcards cascade. security definer because it rewrites rows across three tables under nobody''s ownership; in `private` so PostgREST never publishes it.';
 
 -- `private` has no USAGE for `authenticated` (005), so this is belt and braces —
--- and belt and braces is the point for a function that deletes clubs. The
--- caller is the deletion Edge Function, which reaches it as `service_role`; no
--- `public` wrapper is created here deliberately, because a row-deleting
--- privileged function on PostgREST's published surface is the thing 009 moved
--- `is_blocked` into `private` to avoid. The wrapper, if one is ever needed,
--- belongs with the Edge Function that calls it and can be exercised.
+-- and belt and braces is the point for a function that deletes clubs.
+--
+-- **This paragraph used to end by saying no `public` wrapper is created here
+-- deliberately, and that the wrapper "belongs with the Edge Function that calls
+-- it". `031` created exactly that wrapper, because without it NOTHING could call
+-- this function at all** — `service_role` holds no USAGE on `private`, and
+-- PostgREST routes only to `public`. Read `031` before reasoning about who
+-- reaches this; the deferral recorded here was the mistake, not the design.
 revoke all on function private.transfer_owned_clubs(uuid) from public, anon, authenticated;
+
+-- The body above is superseded by `032`, which demotes the departing rider
+-- instead of deleting their membership row, and deletes only the rides that
+-- `ON DELETE SET NULL` would strand. `create or replace` there, so this
+-- definition is history — read `032` for what actually runs.
 
 -- ---------------------------------------------------------------------------
 -- §3. Verification — run against the project after applying, do not assume
