@@ -90,10 +90,10 @@ so they are "checked by a human, not by CI" rather than unchecked.
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 5 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 694/694 across 30 files
+npm run test:unit                     # 721/721 across 31 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 7 dynamic routes
-PGPASSWORD=postgres npm test          # 594 assertions, 0 failures
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
+PGPASSWORD=postgres npm test          # 641 assertions, 0 failures
 ```
 
 **Two traps met while doing that, both of which produced a confident wrong answer first:**
@@ -199,7 +199,7 @@ Verify rather than trust, in one line each:
 ```bash
 git grep -L "^'use client'" -- 'src/app/**/page.tsx'   # zero server pages — prints nothing
 ls src/proxy.ts src/lib/supabase/server.ts             # both deleted — prints errors
-node -p "Object.keys(require('./package.json').dependencies).length"   # 7
+node -p "Object.keys(require('./package.json').dependencies).length"   # 9
 npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 8
 ```
 
@@ -422,8 +422,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **638** (was 594; `034`'s chat section added 44) |
-| Unit tests | `npm run test:unit` — **720 across 31 files on a clean tree**, measured 2026-08-07 after the ride chat (694 before it; 674 before the secure store). **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so the count moves whenever a *source* file is added — the chat added 6 source files and 17 real assertions, which is most of the +26. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **641** (was 594; `034`'s chat section added 47) |
+| Unit tests | `npm run test:unit` — **721 across 31 files on a clean tree**, measured 2026-08-07 after the ride chat (694 before it; 674 before the secure store). **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so the count moves whenever a *source* file is added — the chat added 6 source files and 17 real assertions, which is most of the +26. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -499,6 +499,25 @@ text they should converge on. Read it before archiving either.
 Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-120 (the unread
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
 Inbox or push exists.
+
+**One inconsistency on DEV, deliberately left and recorded rather than hidden.** `034` was
+applied to DEV, then corrected twice after review — once for the audience conjunction, once for
+the whitespace floor and the DELETE conjunct. The first correction was a clean drop-and-re-apply,
+so the recorded statement matched. The second was applied as a **delta** (`alter constraint`,
+`drop`/`create policy`), so **DEV's schema matches `034` exactly while its recorded
+`supabase_migrations.schema_migrations` text is one revision behind the file.**
+
+That matters to exactly one check — the byte-identity of stored SQL against the files, which was
+verified once on 2026-08-06 and which nothing automates (`npm run db:drift` compares *names*).
+PROD has never had `034` and will receive the file verbatim, so it is DEV-only and self-correcting.
+Reconcile whenever convenient, from a session with the file open:
+
+```sql
+-- then re-run apply_migration with the file's contents
+drop table public.ride_messages cascade;
+drop function private.is_ride_crew(uuid);
+delete from supabase_migrations.schema_migrations where name = 'ride_messages';
+```
 
 **The one outstanding action: apply `034` to PROD after the `development` → `main` promotion.**
 It is additive, so `docs/ENVIRONMENTS.md` §Order of operations sequences it apply-then-deploy and

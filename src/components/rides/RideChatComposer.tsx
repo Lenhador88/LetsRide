@@ -6,6 +6,25 @@ import { RIDE_MESSAGE_MAX_LENGTH } from '@/lib/validation/rides'
 import { cn } from '@/lib/utils'
 
 /**
+ * The message id, chosen here so an optimistic bubble and the server row can be
+ * recognised as the same message — see `sendRideMessage`.
+ *
+ * Isolated so its one failure mode has one home: `crypto.randomUUID` is
+ * **undefined outside a secure context**, and `http://<lan-ip>:3000` is exactly
+ * how this app gets opened on a real phone. `crypto.getRandomValues` IS
+ * available there, so the fallback is a real v4 rather than a weaker id.
+ */
+function newMessageId(): string {
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID()
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+/**
  * The `Reply` bar from `Ride - Chat` (`2226:4999`) and its focused variant in
  * `Ride - Chat - Text focus` (`2242:11086`).
  *
@@ -40,24 +59,35 @@ import { cn } from '@/lib/utils'
  */
 export function RideChatComposer({
   onSend,
-  disabled,
 }: {
   /** Resolves to an error message, or `null` when the message landed. */
   onSend: (body: string, messageId: string) => Promise<string | null>
-  disabled?: boolean
 }) {
   const [body, setBody] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const fieldRef = useRef<HTMLInputElement>(null)
 
-  const canSend = body.trim().length > 0 && !pending && !disabled
+  const canSend = body.trim().length > 0 && !pending
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!canSend) return
 
     const sending = body
+    // Generated BEFORE the field is cleared, because it can throw:
+    // `crypto.randomUUID` is undefined outside a secure context, which is
+    // exactly how a device test over `http://192.168.x.x:3000` runs. Clearing
+    // first meant the rider's text vanished, no error rendered, no bubble
+    // appeared, and the rejection went unhandled inside `startTransition`.
+    let messageId: string
+    try {
+      messageId = newMessageId()
+    } catch {
+      setError('This browser cannot send messages over an insecure connection.')
+      return
+    }
+
     // Cleared before the round trip, not after: the message is already drawn in
     // the thread by the time this resolves, so leaving it in the field too would
     // show it twice. Restored below if it never landed.
@@ -65,7 +95,12 @@ export function RideChatComposer({
     setError(null)
 
     startTransition(async () => {
-      const failure = await onSend(sending, crypto.randomUUID())
+      // `onSend` resolves rather than rejects by contract, but a bug on the
+      // other side of it must not become an unhandled rejection that leaves the
+      // composer locked with the rider's text gone.
+      const failure = await onSend(sending, messageId).catch(
+        () => 'Could not send that message. Try again.'
+      )
       if (!failure) return
 
       setError(failure)
@@ -93,7 +128,14 @@ export function RideChatComposer({
         // nobody reads. `role="status"` unconditionally would be wrong here —
         // the region is created with its content, which assistive tech misses —
         // so it is `alert`, which is announced on insertion.
-        <p role="alert" className="px-2 pb-2 text-xs font-medium text-danger">
+        // `danger-strong` (`Warning/110`), not `danger`. `Warning/100` #D92140
+        // on this bar's `Grey/10` ground is 3.60:1, under the 4.5:1 bar for
+        // 12px/500 — and this is the one string a rider reads when a send is
+        // refused, so it is the worst place in the screen to be unreadable.
+        // #99001A measures 6.45:1 on the same ground. Not one of the four
+        // documented AA failures; a new pairing, so it does not get to inherit
+        // "left exactly as drawn".
+        <p role="alert" className="px-2 pb-2 text-xs font-medium text-danger-strong">
           {error}
         </p>
       )}
@@ -108,12 +150,11 @@ export function RideChatComposer({
           // `rideMessageBodySchema` says so in words; this stops the rider
           // reaching either by typing.
           maxLength={RIDE_MESSAGE_MAX_LENGTH}
-          disabled={disabled}
           aria-label="Message"
           placeholder="Message the crew"
           className={cn(
             'h-10 min-w-0 flex-1 rounded-lg bg-background px-3 text-base text-foreground outline-none transition-colors',
-            'placeholder:text-muted/70 focus:bg-surface disabled:opacity-50'
+            'placeholder:text-muted/70 focus:bg-surface'
           )}
         />
         <button

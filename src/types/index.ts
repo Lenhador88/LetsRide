@@ -230,7 +230,15 @@ export type RideMessage = {
   author_id: string
   body: string
   created_at: string
-  author: PublicProfile | null
+  /**
+   * Narrower than `PublicProfile` on purpose — the name and nothing else.
+   *
+   * A chat bubble draws no avatar, so selecting `avatar_path` would mean a
+   * `createSignedUrls` round trip per distinct author for a URL nothing renders,
+   * on a screen that refetches on every incoming message. Widen this the day a
+   * bubble grows an avatar, and add the signing pass with it.
+   */
+  author: Pick<PublicProfile, 'id' | 'username'> | null
 }
 
 /**

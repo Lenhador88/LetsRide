@@ -17,16 +17,31 @@ import type { RideChatMessage } from '@/types'
  * - The author name (`Poppins/14/Semibold`) appears **only on other riders'
  *   bubbles**, and only on the first of a run — the frame's `Section` grouping.
  *   Your own name never appears; you know who you are.
- * - The time (`Poppins/12/Medium`) sits **inside** every bubble, below the text,
- *   at `White/50%` on your own and `Grey/80` on others'.
+ * - The time (`Poppins/12/Medium`) sits **inside** every bubble, below the text.
+ *   On your own it is `White/50%` — a real style in the file. On everyone else's
+ *   the frame gives a **raw `#000000` with no fill style attached**, so it
+ *   resolves to the nearest v2 token in intent, `Grey/100` (`text-foreground`).
+ *   An earlier revision of this line said `Grey/80` and the code matched it;
+ *   that is 4.17:1 on `Grey/10` and fails WCAG AA for 12px/500, so it would have
+ *   *added* a contrast failure under a policy that exists to keep the drawn ones
+ *   and add none. `Grey/100` measures 12.65:1. Read from
+ *   `design/frames/rides-view-ride-ride-chat.json`, not from the tree dump,
+ *   which prints the style name and not the literal fill.
  * - Bubbles are 294 wide against a 374 row, so ~78% — `max-w-[78%]`.
  * - Rows are 8 apart within a `Section` and the sections themselves further; the
  *   grouped spacing below reproduces that with 2 and 8.
  *
- * The frame draws a small `Corner` vector — a tail — on every bubble. It is not
- * reproduced: it is an 8×12 path that would need an SVG per bubble and per side,
- * and at 8px it reads as a rounding artifact rather than as a tail. Logged in
- * docs/FIGMA-FIDELITY-TODO.md rather than silently dropped.
+ * Two things the frame has that this does not, both logged in
+ * docs/FIGMA-FIDELITY-TODO.md rather than silently dropped:
+ *
+ * - The `Corner` tail vector on every bubble — an 8×12 path needing an SVG per
+ *   bubble per side, which at 8px reads as a rounding artifact.
+ * - **Per-rider author-name colours.** The frame gives each rider their own
+ *   untokenised fill (`Pedro Abreu` `#CC4429`, `Julia Windfield` `#1A804D`),
+ *   which is a group-chat name-colouring feature rather than a stray. Drawn in
+ *   `Grey/100` here because `#CC4429` on `Grey/10` is 3.45:1 and fails AA at
+ *   14px semibold — so building it as drawn would ship an unreadable name. It
+ *   is a designer question, not a decision this file should make quietly.
  *
  * ## Scrolling
  *
@@ -45,7 +60,12 @@ export function RideChatThread({ messages }: { messages: RideChatMessage[] }) {
   }, [messages.length])
 
   return (
-    <ol className="flex flex-1 flex-col overflow-y-auto px-2 py-4">
+    // The scroller is the wrapper, not the list, so the scroll sentinel below
+    // can be a sibling of the `ol` rather than a `div` child of it — only `li`,
+    // `script` and `template` are permitted there, which is the same rule that
+    // put the day separator *inside* its `li` further down.
+    <div className="flex flex-1 flex-col overflow-y-auto px-2 py-4">
+      <ol className="flex flex-col">
       {messages.map((message) => (
         <li
           key={message.id}
@@ -100,10 +120,11 @@ export function RideChatThread({ messages }: { messages: RideChatMessage[] }) {
             <p
               className={cn(
                 'text-xs font-medium',
-                // `White/50%` on your own bubble, `Grey/80` on everyone else's.
-                // The first has no token — it is an opacity on white rather than
-                // a palette entry — so it is expressed as one.
-                message.mine ? 'text-surface/50' : 'text-muted'
+                // `White/50%` on your own bubble — no token, it is an opacity
+                // on white rather than a palette entry, so it is expressed as
+                // one. `Grey/100` on everyone else's, which is what the frame's
+                // untokenised black resolves to. NOT `text-muted`: see above.
+                message.mine ? 'text-surface/50' : 'text-foreground'
               )}
             >
               {/* Reuses the ride's own time formatter rather than getting a
@@ -115,10 +136,11 @@ export function RideChatThread({ messages }: { messages: RideChatMessage[] }) {
           </div>
         </li>
       ))}
+      </ol>
       {/* The scroll target. A zero-height sentinel rather than scrolling the
           container to `scrollHeight`, which is off by the composer's height
           whenever the bar has just changed size on focus. */}
       <div ref={endRef} />
-    </ol>
+    </div>
   )
 }

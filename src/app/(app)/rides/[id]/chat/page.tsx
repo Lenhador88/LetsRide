@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { notFound, useParams } from 'next/navigation'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -87,6 +87,9 @@ export default function RideChatPage() {
         rideId={id}
         title={ride.data?.title}
         current="chat"
+        // Never draws the button on the page it links to, but the prop is
+        // required so a sub-page cannot silently omit it — see RideHeader.
+        isCrew={isCrew}
         ridersCount={crew ? crew.going.length + crew.maybe.length : undefined}
       />
 
@@ -124,6 +127,33 @@ function ChatBody({
   // Live delivery. The callback only *signals* — see the hook for why it does
   // not hand the payload row to the cache. Wrapped so the hook's effect does not
   // re-run for a new closure identity on every render.
+  /**
+   * Retire optimistic rows the server has confirmed.
+   *
+   * Rendering already hides them by id, so nothing draws twice without this —
+   * but the array would grow for the life of the screen, and the hiding is only
+   * as durable as the `RIDE_MESSAGES_PAGE_SIZE` window it checks against. Left
+   * unpruned, a long session busy enough to push a sent row out of the newest
+   * 200 would see its optimistic copy reappear, `pending` and out of order, at
+   * the bottom of the thread. Pruning on arrival keeps the retire-by-identity
+   * contract from depending on the page size.
+   */
+  const serverIdsKey = messages.data?.map((message) => message.id).join(',')
+  useEffect(() => {
+    if (!messages.data) return
+    const confirmed = new Set(messages.data.map((message) => message.id))
+    setSending((current) =>
+      current.some((message) => confirmed.has(message.id))
+        ? current.filter((message) => !confirmed.has(message.id))
+        : current
+    )
+    // Keyed on the ids rather than the array, which is a fresh object on every
+    // refetch — and this effect calls setState, so an identity dependency would
+    // loop. The guard above makes the state update a no-op when nothing landed;
+    // the key makes the effect not run at all.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverIdsKey, setSending])
+
   const refetchMessages = messages.refetch
   useRideMessageStream(
     // Not subscribed for a rider who is not on the ride: Realtime evaluates
@@ -138,9 +168,11 @@ function ChatBody({
       const optimistic: RideChatMessage = {
         id: messageId,
         ride_id: rideId,
-        // Filled in by the server row when it arrives. Neither is rendered on
-        // your own bubble — the design draws no name and no avatar there — so
-        // there is nothing to guess at and nothing to correct.
+        // Unknown until the server row arrives, and never rendered: the design
+        // draws no name and no avatar on your own bubble. Grouping does not read
+        // it either — `groupMessages` keys a `mine` row on identity-as-rendered
+        // rather than on this column, precisely so an optimistic message can
+        // still join the run above it. See that function.
         author_id: '',
         body,
         created_at: new Date().toISOString(),

@@ -67,6 +67,17 @@ export default function RidePage() {
    */
   const canRsvp = !!ride.data && ride.data.is_upcoming && !ride.data.is_organizer
 
+  /**
+   * Whether this rider is on the ride, which is what gates the header's chat
+   * button. Exactly `private.is_ride_crew`'s predicate (034), derived from data
+   * this screen already holds rather than asked for again — an organizer is on
+   * their own ride by construction, and any RSVP of either status is crew.
+   *
+   * `undefined` until the ride lands, so the button appears a moment late
+   * rather than being drawn and then withdrawn.
+   */
+  const isCrew = ride.data ? ride.data.is_organizer || ride.data.attendance !== null : undefined
+
   return (
     <>
       {/* Everything the chrome needs but the title comes out of the URL, so it
@@ -75,7 +86,7 @@ export default function RidePage() {
           it goes in as `undefined` and `Header` draws a placeholder bar for it —
           an empty title reserves the header's space behind nothing, and a
           guessed one would be replaced in front of the rider. */}
-      <RideHeader rideId={id} title={ride.data?.title} current="plan" />
+      <RideHeader rideId={id} title={ride.data?.title} current="plan" isCrew={isCrew} />
 
       {/* The shell reserves the 96px header; this screen's is the 120px variant,
           so it owes the 24px difference. Both paddings top up the shell's

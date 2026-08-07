@@ -139,6 +139,12 @@ grant execute on function private.is_ride_crew(uuid) to authenticated;
 -- against the server row on arrival instead of matched by guessing at its
 -- content. A collision is a primary-key violation, which is the correct answer.
 --
+-- It discloses nothing, and that is measured rather than assumed: RLS evaluates
+-- WITH CHECK *before* the index insert, so a caller who is not on the ride is
+-- refused 42501 and never reaches 23505. Only a crew member of that ride can
+-- observe a duplicate, and all it tells them is that some message somewhere
+-- holds an unguessable uuid.
+--
 -- No `updated_at`. postcard_comments carries one and 011's own header concedes
 -- it cannot move — there is no UPDATE grant — so it is a column that documents
 -- an intention rather than a fact. Editing is not designed here either (§4), so
@@ -165,13 +171,29 @@ create table public.ride_messages (
   -- than a comment's, not looser. 1000 is roughly 150 words — past any real
   -- message — and bounds a 200-message thread at ~200 KB on a phone connection.
   --
-  -- Floor on the TRIMMED length so a message of nothing but spaces is refused;
-  -- ceiling on the RAW length so padding cannot smuggle a longer body past a
-  -- trimmed check. RLS enforces authorization, never validity, so both live here
-  -- rather than in the client — CLAUDE.md's "no new integrity rule may live only
-  -- in a Zod schema".
+  -- The floor is `~ '\S'` — "contains at least one non-whitespace character" —
+  -- and NOT the `length(btrim(body)) >= 1` that postcard_comments uses, because
+  -- **`btrim` with no second argument strips spaces and nothing else**.
+  -- Measured on Postgres 16 rather than assumed:
+  --
+  --   select length(btrim(E'\n\n')), length(btrim('   '));   -->  2 | 0
+  --
+  -- So the `btrim` form accepts a body of newlines or tabs, while
+  -- `rideMessageBodySchema`'s JS `.trim()` refuses it — the client would be
+  -- STRICTER than the database, which is the exact inversion CLAUDE.md's "no new
+  -- integrity rule may live only in a Zod schema" exists to prevent. The
+  -- publishable key ships in the bundle, so anyone can post past the schema; the
+  -- thread renders `whitespace-pre-wrap` and there is no delete UI, so the result
+  -- is a tall blank bubble in every crew member's chat, permanently.
+  --
+  -- postcard_comments (011) carries the `btrim` form and therefore the same gap.
+  -- Not fixed here — it is a different table's constraint and a separate change
+  -- — but recorded so it is a known inheritance rather than a discovery.
+  --
+  -- The ceiling stays on the RAW length so padding cannot smuggle a longer body
+  -- past a trimmed check.
   constraint ride_messages_body_length check (
-    length(btrim(body)) >= 1 and length(body) <= 1000
+    body ~ '\S' and length(body) <= 1000
   )
 );
 
@@ -252,6 +274,21 @@ create policy "Crew post to their own ride's chat, as themselves"
 -- policy's first arm is `organizer_id = auth.uid()`, so an organizer can always
 -- see their own ride however private it is.
 --
+-- ** The visibility conjunct is here too, and an earlier draft left it out on
+-- reasoning that is false. ** That draft said "RLS filters a DELETE by what the
+-- caller may READ, so the SELECT policy covers it". It does not, in general:
+-- SELECT policies attach to a DELETE only when the statement has to *read* the
+-- row — a WHERE or RETURNING naming a column. Measured on Postgres 16 with a
+-- row the caller cannot select but does own:
+--
+--   delete from t where id = 1;   -->  DELETE 0   (SELECT policy applied)
+--   delete from t;                -->  DELETE 2   (it was not)
+--
+-- supabase-js will happily issue that second form. The policy survived anyway,
+-- because both arms are self-referential — but the *next* arm someone adds
+-- would not, and a comment asserting a guarantee the engine does not give is
+-- how that happens. Stated as a conjunct instead of as a claim.
+--
 -- ** KNOWN GAP, inherited from 011 and deliberately not closed here. ** RLS
 -- filters a DELETE by what the caller may READ. So an organizer who has blocked
 -- a rider cannot see that rider's messages, and a delete keyed on the message id
@@ -271,10 +308,13 @@ create policy "Crew post to their own ride's chat, as themselves"
 create policy "Riders delete their own messages, organizers moderate their ride"
   on public.ride_messages for delete to authenticated
   using (
-    author_id = auth.uid()
-    or exists (
-      select 1 from public.rides r
-      where r.id = ride_messages.ride_id and r.organizer_id = auth.uid()
+    exists (select 1 from public.rides r where r.id = ride_messages.ride_id)
+    and (
+      author_id = auth.uid()
+      or exists (
+        select 1 from public.rides r
+        where r.id = ride_messages.ride_id and r.organizer_id = auth.uid()
+      )
     )
   );
 

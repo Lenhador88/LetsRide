@@ -1,7 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
-import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapList } from '@/lib/data/unwrap'
-import { resolveAvatarUrls } from '@/lib/data/media'
 import { rideIdSchema } from '@/lib/validation/rides'
 import { rideZoneDayKey } from '@/lib/utils'
 import type { RideChatMessage, RideMessage } from '@/types'
@@ -67,7 +65,14 @@ export async function getRideMessages(rideId: string): Promise<RideChatMessage[]
   const rows = unwrapList(
     await supabase
       .from('ride_messages')
-      .select(`id, ride_id, author_id, body, created_at, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS})`)
+      // `username` only — deliberately NOT `PUBLIC_PROFILE_COLUMNS`, which the
+      // other reads use. That constant carries `avatar_path`, and signing it is
+      // a `createSignedUrls` round trip per distinct author; the design draws no
+      // avatar on a chat bubble at all, so every one of those URLs would be
+      // minted for nothing. It would also be *per message*, because a live
+      // thread refetches on every arrival. Add the column back the day a bubble
+      // grows an avatar, and add the `resolveAvatarUrls` pass with it.
+      .select(`id, ride_id, author_id, body, created_at, author:profiles!author_id(id, username)`)
       .eq('ride_id', rideId)
       // Both columns, matching `034`'s index. `created_at` alone is not a total
       // order — two messages sent in the same millisecond, or written in one
@@ -80,8 +85,6 @@ export async function getRideMessages(rideId: string): Promise<RideChatMessage[]
   ) as unknown as RideMessage[]
 
   rows.reverse()
-
-  await resolveAvatarUrls(rows.map((row) => row.author), supabase)
 
   return decorate(rows, user?.id)
 }
@@ -119,11 +122,23 @@ export function groupMessages(
   let previousDay: string | null = null
 
   return rows.map((row) => {
+    // **Not `row.author_id`**, and the difference is load-bearing for the one
+    // case this function is re-run for. An optimistic row is built before the
+    // server has said anything, so it has no `author_id` to carry — the screen
+    // knows only that the message is the viewer's. Keying on the raw column
+    // therefore broke every optimistic message out of its own run, and the unit
+    // test asserting otherwise passed only because its fixture invented an
+    // `author_id` the screen never has.
+    //
+    // "Mine" is a complete author identity for grouping: two consecutive `mine`
+    // rows are the same rider by definition, and a `mine` row can never be the
+    // same rider as one that is not.
+    const author = row.mine ? '@me' : row.author_id
     const day = rideZoneDayKey(row.created_at)
     const startsDay = day !== previousDay
-    const startsGroup = startsDay || row.author_id !== previousAuthor
+    const startsGroup = startsDay || author !== previousAuthor
 
-    previousAuthor = row.author_id
+    previousAuthor = author
     previousDay = day
 
     return { ...row, startsGroup, startsDay }

@@ -89,15 +89,23 @@ describe('groupMessages', () => {
     expect(grouped[0].pending).toBe(true)
   })
 
-  it('regroups a list that already carried flags — the optimistic-append case', () => {
-    // The screen re-runs this over the fetched list plus whatever is in flight.
-    // An optimistic message from the same rider as the last fetched one must
-    // NOT start a group, and computing it over the fetched list alone would
-    // have no way to know that.
-    const grouped = groupMessages([
-      message('a', 'me', '2026-08-07T09:00:00Z'),
-      { ...message('b', 'me', '2026-08-07T09:00:30Z'), pending: true },
-    ])
+  it('groups an optimistic row with your own previous message', () => {
+    // The screen re-runs this over the fetched list plus whatever is in flight,
+    // and an optimistic row **has no `author_id`** — it is built before the
+    // server has said anything. This fixture reproduces that exactly, which the
+    // first version of this test did not: it invented `author_id: 'me'`, so it
+    // asserted `[true, false]` and passed while the screen produced
+    // `[true, true]`. A test greener than the app is worse than no test.
+    const optimistic = { ...message('b', '', '2026-08-07T09:00:30Z'), mine: true, pending: true }
+    const grouped = groupMessages([message('a', 'me', '2026-08-07T09:00:00Z'), optimistic])
     expect(grouped.map((m) => m.startsGroup)).toEqual([true, false])
+  })
+
+  it('never groups an optimistic row with someone ELSE’s message', () => {
+    // The other half of keying on "mine": a blank `author_id` must not collide
+    // with another rider's, and must not be treated as the same author twice.
+    const optimistic = { ...message('b', '', '2026-08-07T09:00:30Z'), mine: true, pending: true }
+    const grouped = groupMessages([message('a', 'rider-1', '2026-08-07T09:00:00Z'), optimistic])
+    expect(grouped.map((m) => m.startsGroup)).toEqual([true, true])
   })
 })

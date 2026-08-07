@@ -47,8 +47,15 @@ export function RideHeader({
    * Whether this rider is on the ride — organizer, or any RSVP. `undefined`
    * while the ride is still being read, which is why the chat button appears a
    * moment after the header rather than being drawn and then withdrawn.
+   *
+   * **Required, not optional, and that is the whole point.** It was optional
+   * for one commit and *neither* caller passed it, so the button never rendered
+   * on any screen and the entire chat epic shipped reachable only by typing the
+   * URL. `tsc` was green throughout — an optional prop that gates a control is
+   * indistinguishable from a control nobody wanted. Required, a new ride
+   * sub-page cannot forget it. Pass `undefined` explicitly while loading.
    */
-  isCrew?: boolean
+  isCrew: boolean | undefined
   /** Chat only, and `undefined` until the roster lands. See the sub-row below. */
   ridersCount?: number
 }) {

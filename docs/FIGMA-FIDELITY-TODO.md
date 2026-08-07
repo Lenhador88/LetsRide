@@ -426,6 +426,23 @@ deviation is first:
   - [ ] **The bubble tail is not drawn.** Each `Text Balloon` carries an 8×12 `Corner` vector.
         Reproducing it needs an SVG per bubble per side, and at 8px it reads as a rounding
         artifact. Dropped deliberately.
+  - [ ] **Per-rider author-name colours are not drawn, and this one is a designer question.**
+        The frame gives each rider their own **untokenised** fill — `Pedro Abreu` is `#CC4429`,
+        `Julia Windfield` is `#1A804D` — which is a group-chat name-colouring feature rather
+        than a stray. Built in `Grey/100` instead, because `#CC4429` on `Grey/10` measures
+        **3.45:1** and fails AA at 14px semibold, so building it as drawn would ship an
+        unreadable name. Needs either an accessible palette or a decision to drop it.
+  - [ ] **The reply bar is 72px and 60px, not the drawn 80 and 56.** The design's flat 8px
+        bottom padding is replaced by `.pb-safe` (floor `0.75rem`, the real inset on a notched
+        device) because this screen hides the nav bar, so the composer sits at the true bottom
+        of the viewport and owes the home-indicator inset `Navbar` would otherwise have paid.
+        The 20px→8px top padding change on focus IS reproduced.
+  - [ ] **Others' bubble timestamps read `Grey/100`, and the frame's raw value is `#000000`.**
+        Recorded because the *first* build used `Grey/80` from a tree dump — which prints the
+        style name, not the literal fill — and that pairing is 4.17:1 on `Grey/10`, an AA
+        failure this screen would have *added*. `design/frames/rides-view-ride-ride-chat.json`
+        shows no fill style attached at all on those nodes. Read the frame JSON for a colour,
+        not `npm run figma -- tree`.
   - [ ] **The `Warning/100` unread dot on the chat button is not drawn.** There is no unread
         model — Linear PD-120 extends `015`'s watermark — and a badge that is always absent is
         indistinguishable from one that is broken.
@@ -443,7 +460,7 @@ deviation is first:
       with `Grey/100` — the opposite way round from several popular messaging apps. The author
       name is `Poppins/14/Semibold` on other riders' bubbles only and only on the first of a
       run; the time is `Poppins/12/Medium` inside every bubble, `White/50%` on your own. The
-      reply bar is 80px and collapses to 56 on focus with the field going `Grey/5` → `White/100`.
+      reply bar collapses on focus with the field going `Grey/5` → `White/100` (heights above).
       **The frame draws no navigation bar** (120 + 644 + 80 = 844), so `Navbar` returns null on
       this route — note that is *replacing* the bar, where `RideAttendanceBar` on the ride plan
       *stacks on top of* it. Which of the two a screen does is a per-screen fact the design

@@ -4678,7 +4678,30 @@ select assert_rejected($$
   insert into ride_messages (ride_id, author_id, body)
   values ('00000000-0000-0000-0000-000000034f01',
           '00000000-0000-0000-0000-0000000340a1', '   ')$$,
-  '23514', '034: a message of nothing but whitespace is refused');
+  '23514', '034: a message of nothing but spaces is refused');
+
+-- Newlines and tabs, and this is the assertion that matters. `btrim(body)` with
+-- no second argument strips **spaces only**, so the spaces-only case above
+-- passes against a constraint that still accepts a body of newlines — the
+-- client's JS `.trim()` would be stricter than the database, which is the
+-- inversion "no integrity rule may live only in a Zod schema" exists to stop.
+-- The thread renders `whitespace-pre-wrap` and ships no delete UI, so the
+-- artifact is a permanent tall blank bubble in every crew member's chat.
+select assert_rejected($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340a1', E'\n\n\n')$$,
+  '23514', '034: ... and so is one of nothing but newlines');
+select assert_rejected($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340a1', E'\t \t')$$,
+  '23514', '034: ... and tabs');
+select assert_allowed($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340a1', E'\n  see you  \n')$$,
+  '034: but whitespace AROUND real text is content, not emptiness');
 select assert_rejected($$
   insert into ride_messages (ride_id, author_id, body)
   values ('00000000-0000-0000-0000-000000034f01',

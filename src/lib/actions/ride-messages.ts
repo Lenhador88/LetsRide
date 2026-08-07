@@ -63,10 +63,23 @@ export async function sendRideMessage(
     if (error.code === '23514') {
       return { error: 'Finish setting up your account before posting.' }
     }
-    // `23505` is the primary key: this exact message id is already stored. That
-    // means a retry of a request that actually succeeded — the first attempt
-    // landed and its response was lost. The message is in the chat, so reporting
-    // a failure would be a lie that makes the rider send it twice.
+    // `23505` is the primary key: this exact message id is already stored.
+    //
+    // **Nothing in the app currently reaches this**, and saying so is the point.
+    // An earlier version of this comment justified the branch as "a retry of a
+    // request that succeeded" — but the composer generates the id *inside* its
+    // submit handler and supabase-js does not retry POSTs, so no path re-sends
+    // the same id. The branch is here for the shape the id makes *possible*: a
+    // caller that keeps the id across a retry after an ambiguous timeout, which
+    // is the only way to send exactly once over an unreliable link and is worth
+    // not foreclosing.
+    //
+    // Treating it as success is right for that caller and harmless for this one,
+    // where reaching it means a v4 uuid collision. What it must not do is report
+    // failure: the message would be in the chat and the rider would send it
+    // again. It discloses nothing either — RLS evaluates WITH CHECK before the
+    // index insert, so a non-crew caller is refused `42501` and never sees a
+    // duplicate-key error at all.
     if (error.code === '23505') {
       invalidateThread(rideId)
       return { error: null, sent: true }
