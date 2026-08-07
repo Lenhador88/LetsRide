@@ -992,9 +992,19 @@ Four measurements from making the switch, each of which will otherwise be redisc
   by checking the key is *gone*.
 - **The server rejects `notifications` on a self-bound trigger.** Push now comes from the session
   itself via `PushNotification`, at STEP 0 and STEP 5 of the procedure.
-- **`next_run_at` carries scheduler jitter and is not the schedule.** `0 0-23 * * *` created at
-  19:32 stored verbatim and returned `next_run_at: 20:05:35`. Check `cron_expression` for whether
-  the schedule survived; :05 is jitter, not the minute-anchoring rewrite.
+- **`next_run_at` is not the schedule, and a never-fired Routine's is the least trustworthy number
+  here.** `0 0-23 * * *` created at 19:32 stored verbatim and returned `next_run_at: 20:05:35`;
+  rewriting the same expression at 19:53 did not clear it (`20:05:51`), so it is sticky rather than
+  recomputed. The offset looks like a **first-run** property: the old Routine, same expression, had
+  already fired and sat on `17:00:00.667` — exact. Two samples, not a proven rule. Check
+  `cron_expression` for whether the schedule survived, and re-read `next_run_at` after the first
+  firing. (An earlier revision called this "scheduler jitter, up to 10% of the period" — that
+  figure is `CronCreate`'s, a different scheduler, and was a guess wearing an explanation's
+  clothes.)
+- **The "never delete a Routine" rule protects connectors, so it covers `…Gzy8e` and not
+  `…WJkMV`.** The self-bound one holds no `mcp_connections` and needs none — they come from the
+  session — so recreating it costs one call. The connector-holding one is irreplaceable from a
+  session. Keep the two straight in both directions.
 
 **The procedure moved out of the trigger prompt and into
 [`.claude/commands/queue-pickup.md`](../.claude/commands/queue-pickup.md)** — the trigger now says
