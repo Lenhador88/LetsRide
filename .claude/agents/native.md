@@ -47,8 +47,30 @@ Next 16 offers for a fully-static bundle, and **measure what breaks** rather tha
 worst — so what matters for your decision is not only how many but how deep. An earlier draft
 of this brief said five and omitted exactly those three.
 
-Until it is gone, the *read in an effect, never during render* rule stays load-bearing. When it
-is gone, say so plainly, because that rule can then be relaxed and several briefs cite it.
+**Measured 2026-08-07, so stop assuming it might work.** With `output: 'export'`, `next build`
+fails on the first dynamic route it reaches:
+
+```
+Error: Page "/postcards/[id]" is missing "generateStaticParams()"
+so it cannot be used with "output: export" config.
+```
+
+None of the seven can supply one — the ids are per-rider, RLS-scoped content that does not
+exist at build time — and returning `[]` does not rescue it, because `output: 'export'` forces
+`dynamicParams: false`, so every unknown id 404s instead. So the decision is not *whether* the
+route shape changes but *into what*, and it is a routing change with real negative cases: deep
+links, the guard's public-path denylist, and `notFound()` semantics all move with it. That
+makes it OpenSpec work before it is config work. `capacitor.config.ts` exists and its `webDir`
+(`out/`) is exactly what this blocks.
+
+**The *read in an effect, never during render* rule does not go away, and this brief used to
+say it would.** It said "when it is gone, say so plainly, because that rule can then be
+relaxed" — which reads the SSR pass as a *server* thing. It is not: `output: 'export'` still
+runs the same prerender at build time, once, and ships the HTML. There is no Node process at
+runtime, which is the part that mattered for the bundle, but a component body still executes in
+a pass with no `localStorage` and no session. So `resolve.browser.ts`'s tripwire keeps earning
+its place and the rule stays load-bearing permanently. Do not relax it, and do not tell other
+briefs it has been lifted.
 
 ## Store blockers — these are rejections, not backlog
 

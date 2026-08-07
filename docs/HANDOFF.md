@@ -22,40 +22,67 @@ has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-la
 
 ---
 
-## ⚠ GitHub Actions has not run since 2026-08-06 17:43 UTC — check this first
+## ⚠ CI is triggering again, but it is NOT proven healthy — and a green tick still is not a check
 
-**CI is the deploy gate for this repo, and right now it is not running at all.** Three PRs
-(#72, #73, #74) and two pushes to `development` produced **zero** workflow runs. The workflow
-itself is fine — `list_workflows` reports `state: active` and `ci.yml` still has
-`branches: [main, development]` on both triggers.
+**A draft of this section said "the outage is over, resolved ~23:36, it recovered on its own"
+and deleted the warning below. That was wrong, and review caught it.** The mistake is worth
+more than the correction, because it is a trap the next session will walk into the same way:
+**a run's `conclusion: success` says nothing about whether anything was tested.** Runs resumed
+~21:31 on 2026-08-06, and reading the run list alone — which is what the wrong draft did — they
+look fine.
 
-The last run, `31123919151` on `b98e2d9`, is the tell: its `Detect what changed` job sat from
-17:42:50 to 17:57:53 and was **cancelled** after 15 minutes, so `Type Check, Lint & Build` and
-`RLS Policy Tests` both came out `skipped`. That run is recorded as a **failure that never
-tested anything** — which is worse than a red build, because the conclusion looks like a code
-problem and is not one.
+Two things the run list cannot show you:
 
-**Do not read a green PR as a checked PR until this is fixed.** Every merge since 17:43 was
-merged without CI.
+- **The original failure recurred *after* the apparent recovery.** Run `31128482019`, a push to
+  `development` at **21:41:55Z**, has `Detect what changed` **cancelled** after 15 minutes
+  (21:41:55 → 21:56:57) with `runner_id: 0` and an empty `runner_name` — runners never
+  assigned, the exact signature of the original outage — and both real jobs `skipped` behind it.
+- **The runs that did succeed tested nothing, by design.** Everything from 23:36 onward
+  (#79, #80 and the pushes around them) changed only `.claude/` and `docs/`, which are in
+  `ci.yml`'s denylist. So `Type Check, Lint & Build` and `RLS Policy Tests` were **`skipped`**
+  and the run still reports `success`. Verified on run `31132461220`. That proves the
+  dispatcher works. It does **not** prove a code change can get a runner.
+
+**So: do not read a green PR as a checked PR.** Check the *jobs*, not the run:
 
 ```bash
-# Is it back? (via the GitHub MCP tools — the REST API 403s from this container's shell)
-#   actions_list method=list_workflow_runs resource_id=ci.yml
-# Expect a run newer than 2026-08-06T17:43:27Z.
+# via the GitHub MCP tools — the REST API 403s from this container's shell
+#   actions_list method=list_workflow_runs  resource_id=ci.yml
+#   actions_list method=list_workflow_jobs  resource_id=<run id>
+# A healthy code run has "Type Check, Lint & Build" with conclusion=success,
+# NOT skipped, and NOT a 15-minute cancelled "Detect what changed" above it.
 ```
 
-**Owner action — nobody in a session can fix this.** Check <https://www.githubstatus.com>, then
-the repo's Settings → Actions (permissions and runner availability) and the account's Actions
-usage. A 15-minute cancelled job on `ubuntu-latest` reads as runners never being assigned.
+**That test has now run, and it passed.** PR **#82** (`claude/store-submission-prep-lwsurd`) was
+the first code-touching change since the outage began, so it was the first whose jobs could not
+be skipped by the denylist. Run `31134935301`, 2026-08-07:
 
-**Until it is back, gate by hand.** Both CI jobs have local equivalents, and they were run in
-full against `3c9cc40` before the promotion below — all green:
+| Job | Result |
+|---|---|
+| `Detect what changed` | `success` in **7s** (00:31:18 → 00:31:25) — not the 15-minute cancel |
+| `Type Check, Lint & Build` | **`success` in 57s** (00:31:28 → 00:32:25) — a real runner, really assigned |
+| `RLS Policy Tests` | `skipped`, correctly — no `supabase/**` in the diff |
+
+**So runners are being assigned again, and this is the first evidence that actually shows it.**
+State it that narrowly: it is one healthy code run after two failures, and the second failure
+came *after* an apparent recovery. Until a few more land, keep checking **jobs rather than
+runs** — the denylist means a docs-only PR goes green having tested nothing, which is the trap
+that produced the wrong "it is resolved" claim in the first place. If the 15-minute cancel with
+`runner_id: 0` comes back, it is an **owner action**: <https://www.githubstatus.com>, then repo
+Settings → Actions and the account's Actions usage.
+
+**The gap it already left does not heal with the runners.** Between 17:43 and 23:36 every merge
+landed without CI: PRs **#72, #73 and #74**, plus two direct pushes to `development`. Those were
+gated by hand at the time — the full local equivalent below, run against `3c9cc40`, all green —
+so they are "checked by a human, not by CI" rather than unchecked.
+
+**The hand-gate, which is still what to run when CI is unavailable:**
 
 ```bash
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 5 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 674/674 across 29 files
+npm run test:unit                     # 694/694 across 30 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 7 dynamic routes
 PGPASSWORD=postgres npm test          # 594 assertions, 0 failures
@@ -186,17 +213,92 @@ This is now the whole roadmap, and it belongs to the **`native` agent** (added 2
 `CLAUDE.md` said it would land with the shell, and the shell is next). `rider-ux` was rewritten
 at the same time and no longer points at PWA work.
 
-**Two seams are already built and waiting**, which is why this is an epic and not a rewrite:
+**Two seams were built and waiting**, which is why this is an epic and not a rewrite. **One of
+them is now filled in:**
 
-- `window.__letsrideSecureStore` — implement it over the platform keychain and the session moves
-  off `localStorage` with no application change. `session-store.test.ts` asserts that when it is
-  present, **nothing** lands in `localStorage`. That test is the contract; read it first.
+- ~~`window.__letsrideSecureStore`~~ — **implemented 2026-08-07**,
+  `src/lib/native/secure-store.ts`. See §The shell below for what that does and does not prove.
 - `src/lib/auth/guard.ts` is a pure function, so routing survives a webview unchanged.
 
-**One piece of the server render is still standing:** Next server-renders client components on
-first load. Retiring that SSR pass is the shell's work, not leftover migration work — a bundled
-app has no Node process to run it. Until it is gone, *read in an effect, never during render*
-stays load-bearing.
+**One piece of the server render is still standing**, and what it is has been stated wrongly:
+Next server-renders client components on first load. A bundled app has no Node process, so the
+*runtime* half goes — but `output: 'export'` still runs the same prerender **at build time**,
+so a component body still executes in a pass with no `localStorage` and no session. **The
+*read in an effect, never during render* rule therefore stays load-bearing permanently**, and
+`resolve.browser.ts`'s tripwire keeps earning its place. `.claude/agents/native.md` said the
+rule could be relaxed once the SSR pass was retired; that was wrong and is corrected there.
+
+### The shell — started 2026-08-07
+
+**What landed**, both written-and-unverified-on-device, which is the honest label
+(`.claude/agents/native.md` §Before you report done):
+
+- **`capacitor.config.ts`** — `appId`, `appName`, `webDir: 'out'`, `androidScheme: 'https'`,
+  splash background `#3D996B`. **`appId` is `com.letsride.app` and is a placeholder needing
+  the owner's confirmation** — a bundle id cannot be changed after the first submission; a new
+  one is a new listing with no reviews or installs.
+- **`src/lib/native/secure-store.ts`** — the keychain/keystore behind the seam, installed from
+  `createClient()` immediately before the store resolves. That call site is deliberate and is
+  the only race-free one: `resolveSessionStore()` resolves **once per page load**, so anything
+  installing later (a layout effect, a plugin `load` event) loses to the first client
+  constructed, silently, with the token in `localStorage`.
+- Two plugin defaults overridden, both security-relevant: keychain access
+  `afterFirstUnlockThisDeviceOnly` (the default `whenUnlocked` blocks background token refresh
+  after a reboot **and** migrates the token to a replacement device through an encrypted
+  backup), and iCloud sync explicitly off (already the default — stated so a minor version
+  cannot change it quietly).
+
+**A real defect was found and fixed on the way**, and it is the part worth reading:
+`clearSessionStore`'s prefix sweep ran only for `kind === 'local'`. That cost nothing while the
+secure store was an unimplemented seam and became a **leak the moment one existed** — sign-out
+would clear the tracked session and leave *yesterday's* keychain entry, which is precisely the
+case the sweep exists for, in the store where a leftover credential matters most. `SessionStore`
+now carries an optional `keys()`, and any store that can enumerate itself is swept. Four new
+assertions in `session-store.test.ts` cover it, including a store that omits `keys()` and one
+whose `keys()` throws.
+
+**Review found eight things and two were High**, both in the same place and both worth carrying
+because the error was *reasoning where measurement was available*:
+
+- **The module claimed a failure mode it did not have.** Its docstring said "supabase-js reads a
+  storage error as 'no session', so the rider sees a signed-out app". False: `auth-js`'s
+  `__loadSession` is `try/finally` with **no** `catch`, and `RouteGuard` calls `getSession()`
+  from a `.then()` with no `.catch()` — so a rejecting read hangs the splash **forever**, which
+  a rider cannot retry past. `getItem` now resolves to `null` on failure, which makes the
+  original sentence true by construction instead of by assumption.
+- **`configured ??= applyPluginDefaults()` cached a *rejected* promise**, so one transient
+  plugin error would break every read and write for the rest of the app session with no retry.
+  The slot is cleared on failure now.
+
+The other six: the always-loaded `CLAUDE.md` still carried the *read in an effect* claim this
+commit corrected in `native.md` (fixed — they must not drift again), the repo-layout tree was
+missing `src/lib/native/` and `capacitor.config.ts` (fixed), the sweep followed only the
+resolved store so a token left in webview `localStorage` by an earlier build survived sign-out
+on a device (fixed), `keys` was feature-detected by truthiness where `Storage`'s named-property
+getter can make it a string (fixed), and the install-ordering invariant was documented on the
+call site that happens to satisfy it rather than on `resolveSessionStore()` itself (moved
+there). Five new assertions cover the behavioural ones.
+
+**What none of it proves:** nothing here has touched a keychain. The tests mock the plugin, so
+they assert the ordering, the overridden defaults, the failure modes and the forwarding —
+everything *around* the plugin call, which is where this module can be wrong — and nothing about
+iOS or Android behaviour. That needs a device.
+
+**The gate for everything else is the static export.** Measured 2026-08-07: with
+`output: 'export'`, `next build` fails with
+`Page "/postcards/[id]" is missing "generateStaticParams()"`. All seven dynamic routes hit it,
+none can supply one (the ids are per-rider RLS-scoped content), and returning `[]` does not
+help because export forces `dynamicParams: false` so unknown ids 404. **`npx cap sync` has
+nothing to copy until this is resolved**, and resolving it is a routing change with real
+negative cases — deep links, the guard's public-path denylist, `notFound()` semantics — so it
+wants an OpenSpec proposal rather than a config tweak. **This is the next thing to pick up.**
+
+**`ios/` and `android/` were deliberately not generated.** This container has no Android SDK
+(`ANDROID_HOME` unset, no `sdkmanager`), no Xcode and no CocoaPods, so `npx cap add ios` cannot
+finish its `pod install` and the Android scaffold would be unbuildable. JDK 21 and Gradle 8.14.3
+*are* here, which is not enough. Generating hundreds of unreviewable files that a Mac would
+regenerate anyway is worse than not having them. `@capacitor/ios` and `@capacitor/android` are
+installed so the Mac step is just `npx cap add ios` / `npx cap add android`.
 
 ### Store readiness — assessed 2026-08-06
 
@@ -205,10 +307,10 @@ build work, the rest are the owner's.
 
 | | Blocker | Why it blocks |
 |---|---|---|
-| 1 | **The shell itself** | No `capacitor.config.*`, no `ios/`, no `android/`. Zero work done |
+| 1 | **The shell itself** | **Started 2026-08-07.** `capacitor.config.ts` and the secure store are in; `ios/` and `android/` are not, and cannot be generated here. **Gated on the static-export route decision** — see §The shell, below |
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | **Inbox is a disabled stub** | `UNBUILT` in `src/components/layout/Navbar.tsx`; no route, no tables. Guideline 4.2 risk — a reviewer taps every tab |
-| 4 | **No edit or delete UI anywhere** | Create a ride, never cancel or correct it. The policies exist and are tested; nothing calls them |
+| 4 | **No edit or delete UI for rides or clubs** | Create a ride, never cancel or correct it. **Narrower than "anywhere", corrected 2026-08-07** — postcards, comments and profile all have working delete/update UI. For rides and clubs there is no action *at all* (no `deleteRide`, `updateRide`, `deleteClub`, `updateClub`), while all four RLS policies exist live. So it is an empty action layer, not an unwired UI |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON**, measured 2026-08-06 | Not a store blocker after all; the decision #6 text was wrong, not the setting. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below. **Owner** still decides whether DEV wants it off |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
 | 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
@@ -284,7 +386,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **594** |
-| Unit tests | `npm run test:unit` — **674 on a clean tree**, measured 2026-08-06. The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **694 on a clean tree**, measured 2026-08-07 (674 before the secure store: 18 new assertions plus 2 from the per-file `it.each` below). The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |

@@ -71,6 +71,26 @@ function memorySecureStore() {
   }
 }
 
+/**
+ * What the native shell actually provides — the same store plus `keys()`, which
+ * is what `src/lib/native/secure-store.ts` implements over the keychain. Kept
+ * separate from `memorySecureStore` so both halves of the optional method stay
+ * covered: a store that can enumerate itself gets swept, one that cannot still
+ * clears what this page load wrote.
+ */
+function enumerableSecureStore(seed: Record<string, string> = {}) {
+  const map = new Map<string, string>(Object.entries(seed))
+  return {
+    map,
+    store: {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      removeItem: (k: string) => void map.delete(k),
+      keys: () => [...map.keys()],
+    } satisfies SessionStore,
+  }
+}
+
 beforeEach(() => {
   resetSessionStoreForTests()
   globals.window = { localStorage: fakeLocalStorage() }
@@ -162,6 +182,99 @@ describe('sign-out destroys the session', () => {
 
     await clearSessionStore()
     expect(storedKeys(globals.window!.localStorage!)).toEqual(['letsride:last-seen-tip'])
+  })
+
+  it('sweeps a secure store for a session written before a reload', async () => {
+    // The hole this closes: the sweep used to run only for `kind === 'local'`,
+    // which was invisible while the secure store was an unimplemented seam and
+    // became a real leak the moment a shell provided one. Yesterday's keychain
+    // entry is in no tracked set — nothing in this process ever wrote it — so
+    // without enumeration it survives sign-out, in the store where a leftover
+    // credential matters most.
+    const secure = enumerableSecureStore({
+      'sb-zwprydcyryvudhurbnye-auth-token': 'yesterday',
+      'sb-zwprydcyryvudhurbnye-auth-token-code-verifier': 'pkce',
+    })
+    globals.window!.__letsrideSecureStore = secure.store
+    expect(resolveSessionStore().kind).toBe('secure')
+
+    await clearSessionStore()
+    expect([...secure.map.keys()]).toEqual([])
+  })
+
+  it('leaves everything that is not Supabase alone in the secure store too', async () => {
+    const secure = enumerableSecureStore({
+      'sb-ref-auth-token': 'session',
+      'letsride:device-id': 'keep me',
+    })
+    globals.window!.__letsrideSecureStore = secure.store
+    resolveSessionStore()
+
+    await clearSessionStore()
+    expect([...secure.map.keys()]).toEqual(['letsride:device-id'])
+  })
+
+  it('still clears tracked keys when the secure store cannot enumerate itself', async () => {
+    // `keys()` is optional on the type. A store without it degrades to exactly
+    // the behaviour every store had before the sweep generalised — strictly
+    // weaker, and the reason the native implementation provides one.
+    const secure = memorySecureStore()
+    globals.window!.__letsrideSecureStore = secure.store
+
+    const { store } = resolveSessionStore()
+    await store.setItem('sb-ref-auth-token', 'the-session')
+
+    await clearSessionStore()
+    expect(secure.map.size).toBe(0)
+  })
+
+  it('survives a secure store whose keys() throws', async () => {
+    const secure = enumerableSecureStore({ 'sb-ref-auth-token': 'yesterday' })
+    globals.window!.__letsrideSecureStore = {
+      ...secure.store,
+      keys: () => {
+        throw new Error('keychain unavailable')
+      },
+    }
+    resolveSessionStore()
+
+    // Sign-out must still resolve (4.5) — a store that cannot be enumerated must
+    // not be the thing that keeps a rider signed in.
+    await expect(clearSessionStore()).resolves.toBeUndefined()
+  })
+
+  it('sweeps localStorage even when the secure store is the resolved one', async () => {
+    // On a device the keychain wins, but a session written by an *earlier* build
+    // — a browser visit, or anything before the shell shipped — is sitting in
+    // the webview's localStorage, where a sweep that follows only the resolved
+    // store will never look. Sign-out has to reach both.
+    globals.window!.localStorage = fakeLocalStorage({
+      'sb-zwprydcyryvudhurbnye-auth-token': 'left by the browser build',
+      'letsride:last-seen-tip': 'keep me',
+    })
+    const secure = enumerableSecureStore({ 'sb-ref-auth-token': 'the-session' })
+    globals.window!.__letsrideSecureStore = secure.store
+    expect(resolveSessionStore().kind).toBe('secure')
+
+    await clearSessionStore()
+
+    expect([...secure.map.keys()]).toEqual([])
+    expect(storedKeys(globals.window!.localStorage!)).toEqual(['letsride:last-seen-tip'])
+  })
+
+  it('is not disabled by a stored item that happens to be named "keys"', async () => {
+    // `Storage` has a named-property getter, so `localStorage.keys` is the
+    // *string* here, not a method. A truthiness feature-detect would forward it
+    // as `keys`, hand `clearSessionStore` something non-callable, and silently
+    // turn the sweep off for the store that most needs it.
+    globals.window!.localStorage = fakeLocalStorage({
+      keys: 'not a method',
+      'sb-ref-auth-token': 'the-session',
+    })
+    resolveSessionStore()
+
+    await clearSessionStore()
+    expect(storedKeys(globals.window!.localStorage!)).toEqual(['keys'])
   })
 
   it('clears the secure store too, and survives one that throws', async () => {
