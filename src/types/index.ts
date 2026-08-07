@@ -209,6 +209,62 @@ export type RideCrew = {
   maybe: RideCrewMember[]
 }
 
+/**
+ * One message in a ride's chat — `Ride - Chat` (`2226:4999`), table `034`.
+ *
+ * `author` is nullable for the same reason every other embed's is: the
+ * `profiles` SELECT policy hides rows with a NULL username, so a message from a
+ * rider who is still mid-onboarding resolves to `null` rather than to a name.
+ * That state is unreachable through the app — `023`'s gate refuses the insert —
+ * but the type must admit it, because RLS is what makes the join nullable and
+ * the gate is a different rule that could be relaxed independently.
+ *
+ * There is deliberately no `updated_at` and no `edited` flag: `034` grants no
+ * UPDATE and declares no UPDATE policy, so a message's body cannot change. See
+ * that migration's §4 for why "edited" is a design question rather than a
+ * column.
+ */
+export type RideMessage = {
+  id: string
+  ride_id: string
+  author_id: string
+  body: string
+  created_at: string
+  author: PublicProfile | null
+}
+
+/**
+ * A ride's chat as the screen renders it, which is not the same list twice.
+ *
+ * `mine` is resolved once here rather than compared per bubble, because the
+ * viewer's id is a *read* concern — it comes from `auth.getUser()` — and having
+ * every bubble ask for it would either thread the id through the tree or make
+ * each row do its own async lookup. The design's two bubble styles key on
+ * exactly this flag.
+ *
+ * `startsGroup` is the design's `Section`: consecutive messages from one rider
+ * are drawn as a run with the author's name on the first only. Computed in the
+ * data layer for the same reason — it is a property of the *sequence*, so a
+ * component computing it per row would need its neighbours anyway.
+ */
+export type RideChatMessage = RideMessage & {
+  mine: boolean
+  startsGroup: boolean
+  /** First message of a new calendar day in `APP_TIME_ZONE` — draws a separator. */
+  startsDay: boolean
+  /**
+   * Drawn but not yet acknowledged by the database.
+   *
+   * Only ever set on a message this viewer just sent, and only until the real
+   * row arrives carrying the same `id` — which is why `034` leaves `id`
+   * client-suppliable. A send that *fails* does not set this and does not
+   * linger: the optimistic row is withdrawn and the text goes back in the
+   * composer, because `.claude/agents/realtime.md` is explicit that a message
+   * must never be left looking sent when it was not.
+   */
+  pending?: boolean
+}
+
 /** One club tile in the rides filter bar. */
 export type RideFilterOption = {
   id: string

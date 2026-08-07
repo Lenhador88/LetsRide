@@ -3283,6 +3283,24 @@ select assert_rejected($$
   values ('00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-000000023e01', 'spam')$$,
   '23514', 'un-onboarded: postcard_reports refused');
 
+-- 034's table, and the one case in this section where the SQLSTATE is the whole
+-- assertion. An un-onboarded rider is not on any ride, so a bare insert here
+-- would be refused 42501 by the crew policy and `assert_rejected(..., '23514')`
+-- would FAIL — correctly, but for a reason that reads like a broken gate. Put
+-- the rider on the ride first and the two refusals separate cleanly: 42501 means
+-- "not crew", 23514 means "crew, but not onboarded", and only the second is what
+-- this section is about.
+reset role;
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-00000000000e', 'going');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
+
+select assert_rejected($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-00000000000e', 'hello')$$,
+  '23514', 'un-onboarded: ride_messages refused even when crew');
+
 \echo ''
 \echo '# Onboarded but never consented is refused just the same (migration 023)'
 
@@ -3334,7 +3352,7 @@ select assert_rejected($$
   '23514', 'no consent: postcard_reports refused');
 
 \echo ''
-\echo '# With both stamps, all eight succeed (migration 023)'
+\echo '# With both stamps, all nine succeed (migrations 023 + 034)'
 
 -- The half that stops the gate passing by refusing everything. 0012 is a fresh
 -- rider with both stamps and no rows anywhere, so each of these is a first write
@@ -3386,6 +3404,28 @@ select assert_allowed($$
   insert into postcard_reports (reporter_id, postcard_id, reason)
   values ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000023e01', 'spam')$$,
   'qualified: postcard_reports allowed');
+
+-- The ninth (034). It needs a precondition none of the other eight do: the
+-- rider has to be ON the ride, because ride_messages is gated by crew rather
+-- than by ride visibility. `qualified: ride_members allowed` above proves the
+-- RSVP is permitted but rolls it back — assert_allowed always does — so the crew
+-- row is written here as the table owner, the same shape the club c3 case near
+-- the top of this file uses.
+--
+-- Without it this assertion would still pass while proving nothing about the
+-- gate: a non-crew rider is refused by RLS with 42501, and assert_allowed's
+-- failure message would send the next reader hunting through 034's policies for
+-- a bug in the consent gate.
+reset role;
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-000000000012', 'going');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000000012', false);
+
+select assert_allowed($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-000000000012', 'see you at the pier')$$,
+  'qualified: ride_messages allowed');
 
 \echo ''
 \echo '# The five deliberate omissions still accept an un-onboarded rider (migration 023)'
@@ -3467,10 +3507,13 @@ rollback to savepoint stranded_wizard;
 -- would answer 42501 rather than a boolean.
 reset role;
 
+-- Nine since 034 added ride_messages. This number is deliberately hand-written
+-- rather than derived: if it were `(select count(*) from the tables we gated)`
+-- it could not notice a gate going missing, which is the whole point.
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  8, 'eight gate triggers, one per gated table');
+  9, 'nine gate triggers, one per gated table');
 
 -- Named rather than counted. A bare total would not notice a gate landing on
 -- `blocks`, which is the omission that matters most.
@@ -3488,7 +3531,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  8, 'every gate trigger carries the WHEN guard that reads the invoking role');
+  9, 'every gate trigger carries the WHEN guard that reads the invoking role');
 
 -- The two halves of the security-definer question, and they point opposite ways.
 -- The gate functions MUST be definer; the profile completion guard must NOT be,
@@ -3873,15 +3916,22 @@ select assert_eq(
 -- 13, not the 11 the proposal claims. The grep it recommends counts 15 lines and
 -- two of them are `friendships`, which 013 dropped. Asserted so the number stops
 -- being re-derived by hand and getting it wrong a third time.
+--
+-- **14 since 034 added ride_messages.author_id**, and this assertion is why that
+-- was noticed rather than assumed: a new table holding personal data that the
+-- account-deletion path does not reach is unfinished work, and the only thing
+-- standing between "we added a table" and "we quietly stopped deleting all of a
+-- rider's data" is a count somebody has to change on purpose. The derived
+-- assertion above passed on the same run, so 034's author_id index is real.
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  13, '029: thirteen FKs reference public.profiles');
+  14, '029: fourteen FKs reference public.profiles');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  13, '029: ... and every one of them is ON DELETE CASCADE');
+  14, '029: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -4331,6 +4381,404 @@ select assert_eq(
 
 rollback to savepoint terms_version_030;
 
+\echo ''
+\echo '# A ride''s chat belongs to its CREW, not to everyone who can see the ride (034)'
+
+-- Self-contained fixtures, deliberately. This section could hang off d2/d3 from
+-- seed.sql — they already carry a crew and a block relationship — and that would
+-- be wrong twice: it runs last, so it would inherit whatever the twenty sections
+-- above left behind, and it needs one shape seed.sql cannot provide without
+-- moving an existing roster count (an organizer holding NO ride_members row).
+--
+-- The riders, and what each one is for:
+--   40a1  organizer, and deliberately NOT in ride_members  -- the arm that is
+--         easy to leave out, and whose absence locks a host out of their own chat
+--   40b1  crew, `going`                                    -- the ordinary case
+--   40c1  crew, `maybe`                                    -- same rights, no read-only tier
+--   40d1  onboarded, can SEE the public ride, never RSVP'd -- the whole point of 034
+--   40e1  crew, `going`, and has blocked 40b1
+savepoint ride_chat_034;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000340a1', 'chathost@example.com'),
+  ('00000000-0000-0000-0000-0000000340b1', 'chatgoing@example.com'),
+  ('00000000-0000-0000-0000-0000000340c1', 'chatmaybe@example.com'),
+  ('00000000-0000-0000-0000-0000000340d1', 'chatoutside@example.com'),
+  ('00000000-0000-0000-0000-0000000340e1', 'chatblocker@example.com'),
+  ('00000000-0000-0000-0000-0000000340f1', 'chathostblocker@example.com'),
+  ('00000000-0000-0000-0000-0000000340ab', 'chatclubleaver@example.com');
+reset role;
+
+update profiles set username = 'chathost',    location = 'Leiden',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000340a1';
+update profiles set username = 'chatgoing',   location = 'Delft',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000340b1';
+update profiles set username = 'chatmaybe',   location = 'Gouda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000340c1';
+update profiles set username = 'chatoutside', location = 'Breda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000340d1';
+update profiles set username = 'chatblocker', location = 'Utrecht',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000340e1';
+-- Crew, and blocks the ORGANIZER rather than a fellow rider — case 4b.
+update profiles set username = 'chathostblocker', location = 'Arnhem',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000340f1';
+-- Joins a private club, RSVPs to its ride, then leaves the club — case 4c.
+update profiles set username = 'chatclubleaver', location = 'Zwolle',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000340ab';
+
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000340e1', '00000000-0000-0000-0000-0000000340b1');
+
+-- Public, so 40d1 provably CAN see the ride. That is what makes "sees the ride,
+-- reads nothing" a statement about the crew rule rather than about visibility.
+-- No ride_members row for the organizer — see above.
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id) values
+  ('00000000-0000-0000-0000-000000034f01', 'Chat Test Run', 'The Locks',
+   now() + interval '5 days', true, '00000000-0000-0000-0000-0000000340a1');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-000000034f01', '00000000-0000-0000-0000-0000000340b1', 'going'),
+  ('00000000-0000-0000-0000-000000034f01', '00000000-0000-0000-0000-0000000340c1', 'maybe'),
+  ('00000000-0000-0000-0000-000000034f01', '00000000-0000-0000-0000-0000000340e1', 'going'),
+  ('00000000-0000-0000-0000-000000034f01', '00000000-0000-0000-0000-0000000340f1', 'going');
+
+-- One message per rider who is entitled to post one, so every count below is a
+-- different subset of the same four rows and a wrong policy moves at least one.
+insert into ride_messages (id, ride_id, author_id, body) values
+  ('00000000-0000-0000-0000-000000034a01', '00000000-0000-0000-0000-000000034f01',
+   '00000000-0000-0000-0000-0000000340a1', 'Meeting at the locks at eight.'),
+  ('00000000-0000-0000-0000-000000034b01', '00000000-0000-0000-0000-000000034f01',
+   '00000000-0000-0000-0000-0000000340b1', 'I will be there.'),
+  ('00000000-0000-0000-0000-000000034c01', '00000000-0000-0000-0000-000000034f01',
+   '00000000-0000-0000-0000-0000000340c1', 'Depends on the weather.'),
+  ('00000000-0000-0000-0000-000000034e01', '00000000-0000-0000-0000-000000034f01',
+   '00000000-0000-0000-0000-0000000340e1', 'Bringing spare fuel.');
+
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  'the 034 assertions run as authenticated, or they prove nothing');
+
+-- 1. The organizer, holding no ride_members row at all. If the crew helper is
+--    ever reduced to a membership lookup this is the assertion that fails, and
+--    it fails as "the host cannot read their own ride's chat".
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340a1', false);
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f01'),
+  4, '034: the organizer reads the thread with no ride_members row of their own');
+
+-- 2. The whole point of the table having its own predicate. 40d1 can see the
+--    ride — asserted, not assumed, because a hidden ride would make the second
+--    line pass for entirely the wrong reason.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340d1', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-000000034f01'),
+  1, '034: a non-crew rider CAN see the public ride ...');
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f01'),
+  0, '034: ... and still reads none of its chat — seeing a ride is not being on it');
+select assert_denied($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340d1', 'let me in')$$,
+  '034: a non-crew rider cannot post to the chat either');
+
+-- 3. `maybe` is crew. There is no read-only tier, and this is the assertion that
+--    says so — the alternative reading (only `going` may speak) is a plausible
+--    product rule that nothing in the schema would otherwise rule out.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340c1', false);
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f01'),
+  4, '034: a `maybe` RSVP reads the whole thread');
+select assert_allowed($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340c1', 'weather looks better')$$,
+  '034: a `maybe` RSVP can post, exactly like `going`');
+
+-- 4. Blocking, from both ends. Symmetric from one directional row: 40e1 blocked
+--    40b1, and neither can see the other's message, while both stay crew and
+--    both keep their own.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340b1', false);
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f01'),
+  3, '034: the blocked rider does not see the blocker''s message');
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-000000034b01'),
+  1, '034: ... but still sees their own');
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340e1', false);
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f01'),
+  3, '034: and the blocker does not see the blocked rider''s message');
+
+-- 4b. Blocking the ORGANIZER, which is a different question from blocking a
+--     fellow rider and is the one a crew-only predicate gets wrong. The rides
+--     SELECT policy carries the block clause, so blocking the host removes the
+--     ride — and decision #2 says a blocked rider disappears from feeds, search,
+--     chat, member lists and crews *simultaneously*. A `ride_members` row
+--     survives a block, so a predicate that asks only "are you on the crew"
+--     keeps the chat open after the ride itself is gone.
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000340f1', '00000000-0000-0000-0000-0000000340a1');
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340f1', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-000000034f01'),
+  0, '034: blocking the organizer takes the ride away ...');
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f01'),
+  0, '034: ... and the chat goes with it — decision #2 names chat explicitly');
+
+-- 4c. The same hole reached from the other side, and this one is a leak rather
+--     than an inconsistency: 022 pins a private club's rides to is_public =
+--     false, so leaving the club removes the ride. The ride_members row does not
+--     go with it, so a crew predicate alone leaves an ex-member reading a
+--     private club's ride chat.
+--
+--     Asserted separately from 4b even though one conjunct fixes both, because a
+--     single assertion cannot say WHICH visibility rule did the hiding — and
+--     these two are hidden by different arms of the rides policy.
+reset role;
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000340c9', 'Chat Private MC', false,
+   '00000000-0000-0000-0000-0000000340a1');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000000340c9', '00000000-0000-0000-0000-0000000340a1', 'owner'),
+  ('00000000-0000-0000-0000-0000000340c9', '00000000-0000-0000-0000-0000000340ab', 'member');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-000000034f02', 'Club Chat Run', 'The Yard',
+   now() + interval '6 days', false, '00000000-0000-0000-0000-0000000340c9',
+   '00000000-0000-0000-0000-0000000340a1');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-000000034f02', '00000000-0000-0000-0000-0000000340ab', 'going');
+insert into ride_messages (id, ride_id, author_id, body) values
+  ('00000000-0000-0000-0000-000000034a02', '00000000-0000-0000-0000-000000034f02',
+   '00000000-0000-0000-0000-0000000340a1', 'Club members only, this one.');
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340ab', false);
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f02'),
+  1, '034: a private club''s member reads that club''s ride chat');
+
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000000340c9'
+   and user_id = '00000000-0000-0000-0000-0000000340ab';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340ab', false);
+
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-000000034f02'),
+  0, '034: leaving the club takes the private ride away ...');
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f02'),
+  0, '034: ... and the chat with it — a ride_members row outlives the club membership');
+
+-- 4d. The client cannot choose a message's timestamp. `default now()` applies
+--     only when the column is OMITTED, and a table-level INSERT grant lets
+--     PostgREST name any column — so without a column-level grant a rider can
+--     stamp a message in the year 3000 and pin it to the end of every crew
+--     member's thread, permanently, with no delete UI to remove it. Ordering is
+--     the product on this screen, which is what makes it worse here than the
+--     same exposure on postcard_comments.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340a1', false);
+select assert_denied($$
+  insert into ride_messages (ride_id, author_id, body, created_at)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340a1', 'from the future',
+          timestamptz '3000-01-01 00:00:00+00')$$,
+  '034: a rider cannot write created_at — the server owns message order');
+
+-- 5. Authorship cannot be spoofed. The WITH CHECK names auth.uid() as well as
+--    the crew, so being on the ride is not enough to post as somebody else.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340b1', false);
+select assert_denied($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340c1', 'not mine to send')$$,
+  '034: a crew member cannot post as another rider');
+
+-- 6. No edits, and both halves are the enforcement — a missing grant is the
+--    outer gate, a missing policy the inner one. Absence is exactly what a
+--    well-meaning `grant all` restores by accident, so it is asserted rather
+--    than commented.
+select assert_denied($$
+  update ride_messages set body = 'edited'
+   where id = '00000000-0000-0000-0000-000000034b01'$$,
+  '034: nobody can edit a message, not even its author');
+
+-- 7. Deletes. Filtered by USING rather than refused, so a wrong-hands delete
+--    touches zero rows instead of raising — the surviving row is the evidence,
+--    and assert_allowed would pass here against a policy permitting nothing
+--    (the trap 011's section describes and had to be shown by mutation).
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-000000034c01'),
+  1, '034: 40c1''s message is there to begin with');
+delete from ride_messages where id = '00000000-0000-0000-0000-000000034c01';
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-000000034c01'),
+  1, '034: a crew member cannot delete another rider''s message');
+
+delete from ride_messages where id = '00000000-0000-0000-0000-000000034b01';
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-000000034b01'),
+  0, '034: a rider can delete their own message');
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340a1', false);
+delete from ride_messages where id = '00000000-0000-0000-0000-000000034c01';
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-000000034c01'),
+  0, '034: the organizer moderates any message on their own ride');
+
+-- 8. Leaving the crew. The negative case most likely to be read as a bug later,
+--    so it is pinned in both directions: the leaver loses the thread INCLUDING
+--    their own messages, and the messages themselves survive for everyone else.
+--    A conversation is not retracted because one participant left.
+reset role;
+insert into ride_messages (id, ride_id, author_id, body) values
+  ('00000000-0000-0000-0000-000000034b02', '00000000-0000-0000-0000-000000034f01',
+   '00000000-0000-0000-0000-0000000340b1', 'still here for now');
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340b1', false);
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-000000034f01'
+   and user_id = '00000000-0000-0000-0000-0000000340b1';
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-000000034f01'),
+  0, '034: a rider who leaves the crew loses the thread, their own messages included');
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000340a1', false);
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-000000034b02'),
+  1, '034: ... and what they wrote stays for the riders who are still on it');
+
+-- 9. The body bounds, which the client must not own (CLAUDE.md: no integrity
+--    rule may live only in a Zod schema). Floor on the TRIMMED length, ceiling
+--    on the RAW length — asserted separately because a naive `.trim()` in either
+--    place silently disagrees with the constraint in one direction only.
+select assert_rejected($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340a1', '   ')$$,
+  '23514', '034: a message of nothing but whitespace is refused');
+select assert_rejected($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340a1', repeat('x', 1001))$$,
+  '23514', '034: a message over 1000 characters is refused');
+select assert_allowed($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000034f01',
+          '00000000-0000-0000-0000-0000000340a1', repeat('x', 1000))$$,
+  '034: exactly 1000 characters is accepted — the boundary is inclusive');
+
+-- 10. The helper stays off the exposed API surface, the same hygiene 005
+--     established and 009 repeated. USAGE on `private` is what a direct call
+--     lacks; EXECUTE is what a policy expression needs, and they are different
+--     checks — which is why the grant in 034 is not redundant with the schema.
+select assert_denied(
+  $$select private.is_ride_crew('00000000-0000-0000-0000-000000034f01'::uuid)$$,
+  '034: authenticated cannot call is_ride_crew directly, only through a policy');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'is_ride_crew'),
+  0, '034: is_ride_crew is not in the PostgREST-exposed public schema');
+select assert_eq(has_function_privilege('anon', 'private.is_ride_crew(uuid)', 'execute'),
+  false, '034: anon cannot execute is_ride_crew');
+select assert_eq(has_function_privilege('authenticated', 'private.is_ride_crew(uuid)', 'execute'),
+  true, '034: authenticated can execute is_ride_crew (RLS policies need it)');
+
+-- 11. The grants, scoped to their grantee. 015's footer counted a privilege
+--     table-wide and read 2 against a correct database, because `postgres` and
+--     `service_role` hold everything by Supabase default.
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'ride_messages'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  0, '034: authenticated holds no UPDATE grant on ride_messages');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'ride_messages'
+      and grantee = 'anon'),
+  0, '034: anon holds nothing on ride_messages');
+
+-- The column grant, both ways. INSERT is granted per column so `created_at`
+-- cannot be named (§4b); asserting only the absence would pass against a
+-- migration that granted no INSERT at all and broke every send.
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'ride_messages'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'author_id,body,id,ride_id', '034: authenticated may insert exactly four columns');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'ride_messages'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'
+      and column_name = 'created_at'),
+  0, '034: ... and created_at is not one of them — the server owns message order');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'ride_messages'
+      and grantee = 'anon'),
+  0, '034: anon holds no column privilege either');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'ride_messages' and cmd = 'UPDATE'),
+  0, '034: and there is no UPDATE policy either');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'ride_messages'),
+  3, '034: three policies — select, insert, delete');
+select assert_eq(
+  (select relrowsecurity from pg_class
+    where oid = 'public.ride_messages'::regclass),
+  true, '034: row level security is enabled on ride_messages');
+
+-- 12. Realtime. Publication membership is what makes a subscription fire, and a
+--     table outside it produces a channel that connects, reports SUBSCRIBED and
+--     silently never delivers — indistinguishable from a quiet chat, which is
+--     why it is asserted here rather than left to a dashboard.
+select assert_eq(
+  (select count(*)::int from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public'
+      and tablename = 'ride_messages'),
+  1, '034: ride_messages is in the supabase_realtime publication');
+
+-- 13. Account deletion has to find a rider's messages by index rather than by
+--     scanning every message in the app — the same reason 009 indexed
+--     postcard_likes.user_id. 029 §A asserts this shape for every other FK into
+--     profiles; this is the new one.
+select assert_eq(
+  (select count(*)::int from pg_index i
+     join pg_class c on c.oid = i.indrelid
+     join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0]
+   where c.relname = 'ride_messages' and a.attname = 'author_id'),
+  1, '034: ride_messages.author_id leads an index, so the profiles cascade is not a seq scan');
+
+rollback to savepoint ride_chat_034;
+
 set role authenticated;
 select set_config('test.uid', '', false);
 select set_config('request.jwt.claims', '', false);
@@ -4362,6 +4810,7 @@ select assert_denied('select count(*) from postcard_hides', 'anon cannot read hi
 select assert_denied('select count(*) from postcard_reports', 'anon cannot read reports');
 select assert_denied('select count(*) from profile_countries', 'anon cannot read countries');
 select assert_denied('select count(*) from feed_reads', 'anon cannot read watermarks');
+select assert_denied('select count(*) from ride_messages', 'anon cannot read ride chat');
 reset role;
 
 rollback;

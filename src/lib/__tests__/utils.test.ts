@@ -4,7 +4,9 @@ import {
   formatRelativeTime,
   formatRideDate,
   formatRideDateLong,
+  formatRideMessageDay,
   formatRideTime,
+  rideZoneDayKey,
   wallClockToUtc,
   getInitials,
   googleMapsDirectionsUrl,
@@ -258,5 +260,56 @@ describe('wallClockToUtc', () => {
     // input in the year that does not round-trip.
     expect(wallClockToUtc('2026-03-29T02:30')).toBe('2026-03-29T01:30:00.000Z')
     expect(formatRideTime(wallClockToUtc('2026-03-29T02:30'))).toBe('03:30')
+  })
+})
+
+describe('rideZoneDayKey', () => {
+  it('answers in APP_TIME_ZONE, not the runtime zone', () => {
+    // TZ is pinned to UTC on the runner, so a helper reading the process zone
+    // would answer `2026-08-07` for both. In Europe/Amsterdam (UTC+2 in August)
+    // the second instant is already the 8th, which is the whole point: the day
+    // separator has to agree with the timestamps beside it, and those are
+    // pinned too.
+    expect(rideZoneDayKey('2026-08-07T21:30:00Z')).toBe('2026-08-07')
+    expect(rideZoneDayKey('2026-08-07T22:30:00Z')).toBe('2026-08-08')
+  })
+
+  it('is ISO-ordered, so string comparison is date comparison', () => {
+    expect(rideZoneDayKey('2026-01-02T12:00:00Z')).toBe('2026-01-02')
+  })
+
+  it('handles the winter offset too — the zone is not a fixed +2', () => {
+    // CET, UTC+1. 23:30Z is still the same day in Amsterdam in January, where
+    // in August it would have rolled over.
+    expect(rideZoneDayKey('2026-01-07T22:30:00Z')).toBe('2026-01-07')
+    expect(rideZoneDayKey('2026-01-07T23:30:00Z')).toBe('2026-01-08')
+  })
+})
+
+describe('formatRideMessageDay', () => {
+  const now = new Date('2026-08-07T12:00:00Z')
+
+  it('names today and yesterday rather than dating them', () => {
+    expect(formatRideMessageDay('2026-08-07T09:00:00Z', now)).toBe('TODAY')
+    expect(formatRideMessageDay('2026-08-06T09:00:00Z', now)).toBe('YESTERDAY')
+  })
+
+  it('falls back to the ride list card’s date shape further back', () => {
+    expect(formatRideMessageDay('2026-08-01T09:00:00Z', now)).toBe('SAT, 1 AUG')
+  })
+
+  it('decides "today" in APP_TIME_ZONE', () => {
+    // 22:30Z on the 7th is 00:30 on the 8th in Amsterdam — tomorrow relative to
+    // a `now` of midday on the 7th, so it is not "TODAY". A runtime-zone
+    // implementation would call it today and disagree with the 00:30 stamped on
+    // the message itself.
+    expect(formatRideMessageDay('2026-08-07T22:30:00Z', now)).not.toBe('TODAY')
+  })
+
+  it('is uppercase throughout, so the separators read as one component', () => {
+    for (const day of ['2026-08-07T09:00:00Z', '2026-08-06T09:00:00Z', '2026-07-01T09:00:00Z']) {
+      const label = formatRideMessageDay(day, now)
+      expect(label).toBe(label.toUpperCase())
+    }
   })
 })

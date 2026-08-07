@@ -252,6 +252,64 @@ export function formatRideDateLong(date: string) {
   return `${find('weekday')}, ${find('day')} ${find('month')}`
 }
 
+/**
+ * Which calendar day an instant falls on **in `APP_TIME_ZONE`**, as `YYYY-MM-DD`.
+ *
+ * Not a display format — nothing renders this. It exists so `getRideMessages`
+ * can decide where a day separator goes, and the comparison has to happen in a
+ * fixed zone for the same reason the rendering does: `new Date(a).getDate() !==
+ * new Date(b).getDate()` compares in the *runtime's* zone, so two messages
+ * either side of midnight Amsterdam would be one day to a rider in Lisbon and
+ * two to one in Berlin, and the separator would sit in a different place per
+ * device while the times beside it were pinned. A separator that disagrees with
+ * the timestamps under it is worse than none.
+ *
+ * `en-CA` because its short date is already ISO order; the parts are Intl's, so
+ * this is a formatting trick rather than arithmetic on the offset.
+ */
+export function rideZoneDayKey(date: string): string {
+  return new Date(date).toLocaleDateString('en-CA', { timeZone: APP_TIME_ZONE })
+}
+
+/**
+ * A ride chat's day separator — `Today`, `Yesterday`, or `Sat, 16 Nov`.
+ *
+ * **The design draws no separator at all**, and this is a deliberate addition
+ * rather than a fidelity miss. `Ride - Chat` (`2226:4999`) stamps every bubble
+ * with `HH:mm` and nothing else, which is unambiguous for the single-day
+ * conversation the frame mocks and silently wrong for a ride planned three weeks
+ * out: "08:18" on a message from last Tuesday reads as this morning. Logged in
+ * docs/FIGMA-FIDELITY-TODO.md as an addition to check with the designer, not as
+ * something inferred and passed off as measured.
+ *
+ * The bubble time itself reuses `formatRideTime` rather than getting a
+ * near-identical twin of its own. This file's rule is that a formatter is named
+ * for the screen it serves *because each design draws a different shape* — and
+ * here two ride surfaces genuinely draw the same one, `HH:mm` in `en-GB`. A
+ * second function with the same body would be the rule's letter against its
+ * reason.
+ *
+ * Pinned to `APP_TIME_ZONE` like every other ride surface. A message stamp is an
+ * instant rather than a planned wall-clock, so the viewer's own zone has a real
+ * claim here that it does not have on a departure time — but a chat sits one tap
+ * from the ride plan, and a thread reading `19:22` beside a departure reading
+ * `20:00` in a different zone is the exact two-screen disagreement that deleting
+ * `formatDateTime` fixed. Pinned until the zone column lands and moves all of
+ * them together.
+ */
+export function formatRideMessageDay(date: string, now: Date = new Date()): string {
+  const key = rideZoneDayKey(date)
+  // Uppercased to match `formatRideDate`, which is the branch below and which
+  // the design uppercases on the ride card. Mixing `Today` with `SAT, 16 NOV`
+  // in one column of separators reads as two different components.
+  if (key === rideZoneDayKey(now.toISOString())) return 'TODAY'
+
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  if (key === rideZoneDayKey(yesterday.toISOString())) return 'YESTERDAY'
+
+  return formatRideDate(date)
+}
+
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['year', 365 * 24 * 60 * 60],
   ['month', 30 * 24 * 60 * 60],
