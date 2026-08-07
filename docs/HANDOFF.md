@@ -53,11 +53,23 @@ Two things the run list cannot show you:
 # NOT skipped, and NOT a 15-minute cancelled "Detect what changed" above it.
 ```
 
-**The first real test is the secure-store PR** (`claude/store-submission-prep-lwsurd`) — the
-first code-touching change since the outage began, so it is the first one whose jobs cannot be
-skipped by the denylist. If its `Type Check, Lint & Build` sits pending for 15 minutes and then
-cancels, the outage is live and this is an **owner action**: <https://www.githubstatus.com>,
-then repo Settings → Actions and the account's Actions usage.
+**That test has now run, and it passed.** PR **#82** (`claude/store-submission-prep-lwsurd`) was
+the first code-touching change since the outage began, so it was the first whose jobs could not
+be skipped by the denylist. Run `31134935301`, 2026-08-07:
+
+| Job | Result |
+|---|---|
+| `Detect what changed` | `success` in **7s** (00:31:18 → 00:31:25) — not the 15-minute cancel |
+| `Type Check, Lint & Build` | **`success` in 57s** (00:31:28 → 00:32:25) — a real runner, really assigned |
+| `RLS Policy Tests` | `skipped`, correctly — no `supabase/**` in the diff |
+
+**So runners are being assigned again, and this is the first evidence that actually shows it.**
+State it that narrowly: it is one healthy code run after two failures, and the second failure
+came *after* an apparent recovery. Until a few more land, keep checking **jobs rather than
+runs** — the denylist means a docs-only PR goes green having tested nothing, which is the trap
+that produced the wrong "it is resolved" claim in the first place. If the 15-minute cancel with
+`runner_id: 0` comes back, it is an **owner action**: <https://www.githubstatus.com>, then repo
+Settings → Actions and the account's Actions usage.
 
 **The gap it already left does not heal with the runners.** Between 17:43 and 23:36 every merge
 landed without CI: PRs **#72, #73 and #74**, plus two direct pushes to `development`. Those were
