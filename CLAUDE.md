@@ -1408,6 +1408,13 @@ owner as its creator and nothing is ever assigned to a session. Move it on picku
 end. **It is also the concurrency lock:** if anything sits in `Development (AI)` or `Needs help`,
 another session must not start a second story.
 
+**So never park work there by hand — it is a lock, not a staging area.** On 2026-08-07 four
+issues sat in `Development (AI)` at once (`PD-115`, `PD-116`, `PD-117`, `PD-119`, the Ride chat
+cluster) with **no branch behind any of them** — `git branch -r` showed only `main`,
+`development` and one unrelated feature branch. That froze the hourly Routine completely: it
+checks the lock first and exits, so it changed nothing and said nothing, every hour. Staged work
+belongs in `Todo AI`; `Queued (AI)` releases it; `Development (AI)` means an agent has it *now*.
+
 Labels are the cross-cut: **`Owner only`** is the filter for what no session can do, and
 `App` / `Database` / `Native shell` / `Design` / `Website` say where. `Chore` is the type
 `Bug`/`Feature`/`Improvement` leaves out. The eleven pre-existing labels — `DEV`, `UX/UI`,
@@ -1458,10 +1465,24 @@ built on. Two rules follow, in the order to reach for them:
    when the halves ship **independently** — each mergeable on its own, in either order, neither
    leaving the other half-built. `PD-112` and `PD-113` are a fair split (two unrelated postcard
    surfaces); `PD-104` and `PD-114` are not (one set of coordinate columns, two designs for it).
-2. **When a split really is ordered, only the first half goes in `Queued (AI)`.** Put the rest
-   in `Todo AI` and say in the body what unblocks it. Never express the order by bending
-   priority: raising an issue to High so it goes first also tells the owner it matters more than
-   it does, and from then on the two claims disagree permanently.
+
+   **When a feature genuinely is too big for one issue, split it into sub-issues of one parent
+   — `parentId` is the one issue-to-issue link this MCP can actually read.** It is a `save_issue`
+   parameter *and* a `list_issues` field, so a session can group a cluster without guessing from
+   titles, which is exactly what `blockedBy` cannot do. `PD-115` (Ride chat) is the worked
+   example: five sub-issues hanging off one parent. Note what it still does **not** buy you —
+   siblings have no order between them, so rule 2 applies inside the parent exactly as it does
+   outside it.
+
+   **`PD-115`'s cluster also shows the trap this section exists to name.** Its parts run Urgent,
+   High, Medium, Low, Low — the table before the screen before Realtime before the badge. That is
+   a build order wearing priority's clothes, and it costs twice: `Urgent` now means "the first
+   step of ride chat" rather than "drop everything", and nothing else on the board can outrank a
+   migration for one unshipped feature. Priorities are global; a sequence is local. Never spend
+   the first on the second.
+2. **When a split really is ordered, only the first part goes in `Queued (AI)`.** Every other
+   part waits in `Todo AI` with a line in its body naming what unblocks it, and the owner queues
+   it when that lands. This is the rule the priority paragraph above forbids the shortcut to.
 
 **Write the `blockedBy` relation too — for the human, not for the machine.** `save_issue` takes
 `blocks` and `blockedBy` (append-only; `removeBlocks` / `removeBlockedBy` undo them) and the
@@ -1491,7 +1512,11 @@ What it does, in order — and the order is the design:
 1. **Prove it can see the board.** If the Linear tools are absent, notify and stop. It must fail
    loudly, because *a job that silently does nothing looks exactly like an empty queue*.
 2. **Check the lock.** If **any** issue is in `Development (AI)` or `Needs help`, exit
-   immediately — no changes, no comment, no notification. One story at a time.
+   immediately — no changes, no comment. One story at a time. **The one break in that silence,
+   added 2026-08-07: if the lock has been held 3–4 hours it sends a single notification naming
+   the issue** (`get_issue` → `stateHistory[].startedAt`). Without it a lock nobody is holding
+   freezes the queue for ever while every firing exits quietly — the exact failure step 1 exists
+   to prevent. The window is narrow so it fires roughly once rather than hourly.
 3. **Take the top of `Queued (AI)` by priority**, ties to oldest. Empty queue exits silently.
    Never `Backlog`, never `Todo Human` or `Todo AI`, never `Needs decision`. It does **not**
    check dependencies, and cannot — see §Sequencing: relations are write-only through this MCP,
