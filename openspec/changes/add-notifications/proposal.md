@@ -64,7 +64,7 @@ Plus one **`AFTER DELETE`** trigger on `postcard_likes`, so unliking retracts th
 leaving a notification for an event that has been undone.
 
 The design fans the ride-join row out to *all* attendees; **organizer-only is the quieter start**
-and widening it is a product call (Q3).
+and widening it is a product call (Q1).
 
 ### The surface
 
