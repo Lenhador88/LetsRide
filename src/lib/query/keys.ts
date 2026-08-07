@@ -145,6 +145,19 @@ export const queryKeys = {
     filters: (): QueryKey => ['rides', 'filters'],
     detail: (rideId: string): QueryKey => ['rides', 'detail', rideId],
     crew: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'crew'],
+    /**
+     * The ride's chat thread (`034`). A child of the ride for the same reason
+     * `crew` is: it is scoped to one ride and dies with it.
+     *
+     * **`sendRideMessage` deliberately invalidates only this key**, and that is
+     * the first narrow claim in this file that is narrow on purpose rather than
+     * inherited from a `revalidatePath`. A message changes nothing else — not
+     * the rides list, not the card, not the crew — so `rides.all()` would
+     * refetch four screens on every keystroke-ended send. The unread badge
+     * (Linear PD-120) will be the first thing that widens it, and it should
+     * widen it here rather than at the call site.
+     */
+    messages: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages'],
   },
 } as const
 

@@ -51,6 +51,10 @@ export default function RideCrewPage() {
       ? withOrganizer(roster.data, ride.data.organizer_id, ride.data.organizer)
       : null
 
+  // Same derivation as the ride plan — see that page. The chat button is on
+  // every ride sub-page's header, so every one of them owes this.
+  const isCrew = ride.data ? ride.data.is_organizer || ride.data.attendance !== null : undefined
+
   const gate = combineQueries(ride, roster)
 
   return (
@@ -60,7 +64,7 @@ export default function RideCrewPage() {
           URL — so the header renders straight away, with `undefined` for the
           title and a placeholder bar in its place, rather than the whole screen
           waiting on it. */}
-      <RideHeader rideId={id} title={ride.data?.title} current="crew" />
+      <RideHeader rideId={id} title={ride.data?.title} current="crew" isCrew={isCrew} />
 
       <div className="pt-header-sub-extra flex flex-col gap-4 pb-4">
         {gate.error ? (

@@ -8,13 +8,25 @@ model: sonnet
 You own everything live in LetsRide — the Inbox (DMs and notifications), per-ride group chat, unread counts, and presence. Read `CLAUDE.md` first.
 
 **Chat and notifications are unbuilt** — no messages, conversations or notifications tables, and
-`/inbox` has no route (it renders disabled in `Navbar.tsx`'s `UNBUILT` set). **Unread counts are
-not** — `015` shipped `feed_reads`, a read watermark per audience, read through
-`club_unread_counts()`, and the Clubs list already draws the badge. Extend that model rather
-than inventing a second one; its header explains why a row-per-postcard-seen table was rejected.
+`/inbox` has no route. **Unread counts are not** — `015` shipped `feed_reads`, a read watermark
+per audience, read through `club_unread_counts()`, and the Clubs list already draws the badge.
+Extend that model rather than inventing a second one; its header explains why a
+row-per-postcard-seen table was rejected.
 
-Inbox is **store blocker 3** — a nav tab that goes nowhere is a guideline 4.2 question — so this
-domain is on the critical path to submission, not parked.
+**Inbox stopped being store blocker 3 on 2026-08-07, and that changed the priority rather than
+the work.** The owner removed the nav tab instead of building the epic (PD-100), so nothing in
+the app points at `/inbox` any more. That removes the **specific** 4.2 trigger the docs named —
+"a reviewer taps every tab" — rather than answering guideline 4.2 as a category, which is about
+minimum functionality generally and is not something a nav change closes. This domain is
+therefore **parked, not on the critical path** — the opposite of what this brief said before, and
+the one line here most likely to be acted on stale.
+
+**Building it means restoring the tab, which is a deliberate step and not a detail.** Add the row
+back to `navItems` in `src/components/layout/Navbar.tsx` together with the `MailboxIcon` import;
+its docstring says so at the point of temptation. The only other `inbox` in `src/` is the
+reserved-username list in `src/lib/validation/profile.ts`, which must **stay** — `003`'s
+`profiles_username_not_reserved` CHECK still lists it and migrations are append-only, so dropping
+it from the Zod schema would let the client accept a username Postgres rejects.
 
 ## The subscription rules
 

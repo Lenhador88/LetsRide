@@ -123,3 +123,30 @@ export function parseRideFilter(params: {
  * this leaks nothing new.
  */
 export const rideIdSchema = z.uuid()
+
+/**
+ * Mirrors `ride_messages_body_length` in migration `034`, and the asymmetry is
+ * deliberate there so it must be deliberate here: the **floor is on the trimmed
+ * length** so a message of nothing but spaces is refused, while the **ceiling is
+ * on the raw length** so padding cannot smuggle a longer body past a trimmed
+ * check.
+ *
+ * Zod's `.trim()` transforms before validating, so a naive
+ * `.trim().min(1).max(1000)` would check the ceiling against the *trimmed*
+ * string and disagree with the database. The raw length is checked first —
+ * exactly as `commentBodySchema` does, for exactly the same constraint shape.
+ *
+ * Same 1000 as a comment rather than the 2000 a caption gets. `034` §2 has the
+ * argument: a chat thread holds far more rows than a comment thread, so the
+ * per-row bound should be tighter, not looser.
+ *
+ * Per CLAUDE.md this schema owns the **message**, never the guarantee — `034`'s
+ * CHECK is what a rider cannot decline to run.
+ */
+export const RIDE_MESSAGE_MAX_LENGTH = 1000
+
+export const rideMessageBodySchema = z
+  .string()
+  .max(RIDE_MESSAGE_MAX_LENGTH, `Must be ${RIDE_MESSAGE_MAX_LENGTH} characters or fewer.`)
+  .transform((value) => value.trim())
+  .refine((value) => value.length >= 1, 'Write something first.')

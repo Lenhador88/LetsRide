@@ -404,17 +404,67 @@ radius 8 with its button inset 4px bottom-right, and the RSVP bar 390×96 with p
 16/16/8 and a 358×40 button group. What follows is the design asking for **data the schema
 has not got**, plus deliberate deviations.
 
-**Two sub-pages of four are built.** The switcher lists Ride plan and Crew. That is the
-deviation with the widest blast radius, so it is first:
+**Three sub-pages of four are built** as of 2026-08-07. The switcher lists Ride plan and Crew;
+Chat is the header's chat-bubble button, which is where the design puts it. The remaining
+deviation is first:
 
 - [ ] **Journal is drawn and not built.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`)
       is postcards attached to a ride, and `postcards` has **no `ride_id`**. It needs a
       migration *and* an audience decision, because `club_id` currently **is** the audience
       and a ride-scoped postcard would be a second axis. Omitted from the menu rather than
       offered as a dead row.
-- [ ] **Chat is drawn and not built.** `Ride - Chat`, `- Chat - Options`, `- Chat - Text
-      focus`. No tables at all — this is the Inbox epic and the `realtime` agent. The
-      header's chat button and its `Warning/100` unread dot go with it.
+- [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
+      `Ride - Chat - Text focus` (`2242:11086`) at `/rides/[id]/chat`. **It did not need the
+      Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
+      which existed. Five deviations, each a decision rather than a miss:
+  - [ ] **A day separator was ADDED that the design does not draw.** Every bubble carries
+        `HH:mm` and nothing else, which is unambiguous for the single-day conversation the
+        frame mocks and silently wrong for a ride planned three weeks out — "08:18" on a
+        message from last Tuesday reads as this morning. `formatRideMessageDay` draws `TODAY` /
+        `YESTERDAY` / `SAT, 16 NOV`, uppercased to match `formatRideDate`. **A question for the
+        designer**, and the one thing here that is an addition rather than an omission.
+  - [ ] **The bubble tail is not drawn.** Each `Text Balloon` carries an 8×12 `Corner` vector.
+        Reproducing it needs an SVG per bubble per side, and at 8px it reads as a rounding
+        artifact. Dropped deliberately.
+  - [ ] **Per-rider author-name colours are not drawn, and this one is a designer question.**
+        The frame gives each rider their own **untokenised** fill — `Pedro Abreu` is `#CC4429`,
+        `Julia Windfield` is `#1A804D` — which is a group-chat name-colouring feature rather
+        than a stray. Built in `Grey/100` instead, because `#CC4429` on `Grey/10` measures
+        **3.45:1** and fails AA at 14px semibold, so building it as drawn would ship an
+        unreadable name. Needs either an accessible palette or a decision to drop it.
+  - [ ] **The reply bar is 72px and 60px, not the drawn 80 and 56.** The design's flat 8px
+        bottom padding is replaced by `.pb-safe` (floor `0.75rem`, the real inset on a notched
+        device) because this screen hides the nav bar, so the composer sits at the true bottom
+        of the viewport and owes the home-indicator inset `Navbar` would otherwise have paid.
+        The 20px→8px top padding change on focus IS reproduced.
+  - [ ] **Others' bubble timestamps read `Grey/100`, and the frame's raw value is `#000000`.**
+        Recorded because the *first* build used `Grey/80` from a tree dump — which prints the
+        style name, not the literal fill — and that pairing is 4.17:1 on `Grey/10`, an AA
+        failure this screen would have *added*. `design/frames/rides-view-ride-ride-chat.json`
+        shows no fill style attached at all on those nodes. Read the frame JSON for a colour,
+        not `npm run figma -- tree`.
+  - [ ] **The `Warning/100` unread dot on the chat button is not drawn.** There is no unread
+        model — Linear PD-120 extends `015`'s watermark — and a badge that is always absent is
+        indistinguishable from one that is broken.
+  - [ ] **`Ride - Chat - Options` (`2370:7346`) is not built at all**, so the chat header has no
+        Options button. Its sheet is exactly two rows, `Pin chat` and `Mute chat`, and neither
+        means anything yet: pin orders a chat list that does not exist since PD-100 removed the
+        Inbox tab, and mute suppresses notifications that do not exist. Linear PD-121.
+  - [ ] **The chat button is shown to the crew only**, which is narrower than the frames draw —
+        a mock has no viewer, so it shows one header for everybody. `034` gives the chat to the
+        crew, so a rider who has not RSVP'd would tap through to a screen that can only tell
+        them to join.
+
+      Reproduced faithfully and worth recording because they are easy to get backwards: the
+      **sender's** bubble is `Grey/100` with `White/100` text and everyone else's is `Grey/10`
+      with `Grey/100` — the opposite way round from several popular messaging apps. The author
+      name is `Poppins/14/Semibold` on other riders' bubbles only and only on the first of a
+      run; the time is `Poppins/12/Medium` inside every bubble, `White/50%` on your own. The
+      reply bar collapses on focus with the field going `Grey/5` → `White/100` (heights above).
+      **The frame draws no navigation bar** (120 + 644 + 80 = 844), so `Navbar` returns null on
+      this route — note that is *replacing* the bar, where `RideAttendanceBar` on the ride plan
+      *stacks on top of* it. Which of the two a screen does is a per-screen fact the design
+      states, not a rule about bars.
 - [ ] **The header's Options button is omitted, and this one is a question, not a task.**
       The flow never draws what the sheet contains. Ride overflow is presumably
       edit / cancel / leave, and "No edit or delete UI anywhere" is a standing known issue —
@@ -642,13 +692,18 @@ Deviations that are ours, not the design's:
       same route — is invented. It is the smallest guess available (the fields and their
       validation already exist), but it is a guess, and a designed settings screen may well
       move it.
-- [ ] **The nav bar in this frame shows three tabs**, not five: Home, Clubs, Profile. Rides
-      and Inbox are absent. Counted across frames rather than assumed —
-      `Home - Postcards - All new` draws **5** tiles, this frame **3**, and
-      `Rides - All rides` **0** (it has no bar at all). A value that takes three different
-      shapes in three frames is not a spec, so the built five-tab `Navbar` stands and this is
-      treated as the outlier. Worth confirming with the designer: if the three are deliberate
-      it is a navigation change, not a profile one.
+- [ ] **The nav bar in this frame shows three tabs**: Home, Clubs, Profile. Rides and Inbox are
+      absent. Counted across frames rather than assumed — `Home - Postcards - All new` draws
+      **5** tiles, this frame **3**, and `Rides - All rides` **0** (it has no bar at all). A
+      value that takes three different shapes in three frames is not a spec, so this stays an
+      outlier to confirm with the designer rather than a change to make: if the three are
+      deliberate it is a navigation change, not a profile one.
+
+      **The old reasoning here was "the built five-tab `Navbar` stands", and that no longer
+      resolves anything** — Inbox was removed on 2026-08-07 (PD-100), so the built nav is
+      **four** and now matches *none* of the three frames. The conclusion survives, its
+      premise does not: don't chase the 3-tab frame because a contradicted value is not a
+      spec, not because the code agrees with the majority frame. It doesn't.
 - [ ] **The timeline is unpaginated.** It reuses `getFeed`'s rider filter, so it is bounded at
       `FEED_PAGE_SIZE` (30) — a rider with more postcards than that silently sees their 30
       newest. The design draws no pagination for this list, so the honest fix needs a design
@@ -804,8 +859,10 @@ Poppins/16/Semibold.
       second). Background is `Grey/5` — the page colour, not `bg-surface` — with a **1px top
       border** only. Five tiles, 24px icons, Poppins/10/Semibold labels.
       **Active is `Grey/100` with no background, not the brand green this used to apply**;
-      pressed is the only state with a fill (`Grey/10%`). Inbox renders inert — the design has
-      five tabs and the route does not exist, and a tab that 404s is worse than a disabled one.
+      pressed is the only state with a fill (`Grey/10%`). **The design's five tiles are four in
+      code** — Inbox was dropped 2026-08-07 (PD-100) rather than shipped inert, so this is a
+      deliberate divergence from the frame, not an outstanding fidelity gap. It closes when the
+      Inbox epic restores the route.
       → `src/components/layout/Navbar.tsx`
 - [x] ~~**Header placement**~~ — the header is **per screen**, not part of the shell: each
       design frame gives it its own title, back affordance and variant.
