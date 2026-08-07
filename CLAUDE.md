@@ -1329,7 +1329,7 @@ on why it matters. **A Linear issue that grows a specification is a bug** — th
 proposal, where `openspec/config.yaml`'s rules apply and a missing visibility rule fails loudly
 rather than silently.
 
-### Six statuses, and the board does not mirror the squad
+### Seven statuses, and the board does not mirror the squad
 
 The board was trimmed on 2026-08-07, the day after it was seeded, and the reason is worth
 keeping because it is the same reason the boundary above exists. It briefly carried ten
@@ -1341,46 +1341,64 @@ board mirroring it is an agent narrating its own internals to a column nobody re
 
 **A status is only worth a column when someone changes behaviour based on it.**
 
+**Applied by the product owner 2026-08-07 and read back off the live board the same day** —
+`list_issue_statuses` on team `PD`. Names below are the real ones, and they are *not* the ones
+this file proposed; re-derive rather than trust it, because renaming a status is a two-click
+change nothing in the repo can see:
+
+```bash
+# via the Linear MCP: list_issue_statuses team=Pedro & Dave
+```
+
 | Status | Type | Means | Who moves it |
 |---|---|---|---|
 | `Backlog` | backlog | Captured, not triaged | Either |
 | `Todo` | unstarted | Triaged; owner chores live here | Either |
-| `Human decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
-| **`Ready for DEV (AI)`** | unstarted | **Approved to build. The queue an agent pulls from** | **Owner** |
-| `In progress (AI)` | started | An agent has picked it up | Agent |
+| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
+| **`Queued (AI)`** | started | **Approved to build. The queue an agent pulls from** | **Owner** |
+| `Development (AI)` | started | An agent has picked it up | Agent |
+| `Needs help` | started | An agent stopped and needs the owner before it can go on | Agent |
 | `Done` | completed | Merged. *Committed and pushed is not shipped* | Agent |
 
-`Canceled` stays — every board needs a way to kill something without lying that it shipped.
+`Canceled` and `Duplicate` also survive. The four squad-mirroring statuses are gone —
+`Idea (AI)`, `Testing (AI)`, `Quality control (AI)`, `Review Dev (Human)`.
 
-**`Ready for DEV (AI)` is how the owner chooses what gets built.** Nothing else is a start
-signal — not priority, not the milestone, not a comment. **Take the top of that column by
-priority, and if it is empty, ask rather than choosing for them.** A session that picks its own
-work from `Backlog` has quietly taken the one decision this whole board exists to give the owner.
+**`Queued (AI)` is how the owner chooses what gets built, and it is a *status*, not a label.**
+Nothing else is a start signal — not priority, not the milestone, not a comment, and not the
+`DEV` label. **Take the top of that column by priority, and if it is empty, ask rather than
+choosing for them.** A session that picks its own work from `Backlog` has quietly taken the one
+decision this whole board exists to give the owner.
 
-**`In progress (AI)` survived the trim and the other three did not, for one reason: it is the
-only one the owner reads.** With several issues released at once, it is what says which one is
-being worked *right now* — and no other signal carries that, because agents are not Linear users
-here, so every issue shows the owner as its creator and nothing is ever assigned to a session.
-Move it on pickup, not at the end. The three that went were each an agent telling itself
-something it already knew.
+**`Needs help` is the escape hatch, and using it is not a failure.** An agent that is unsure —
+an ambiguous requirement, a visibility rule nobody wrote down, a migration whose ordering it
+cannot verify — moves the issue there with a comment saying exactly what it needs, and stops.
+That is strictly better than guessing and merging, and this file's own §Working Principles
+already forbids letting an unlabelled guess pass as a known value.
+
+**`Development (AI)` is the one in-progress status, and it exists because the owner reads it.**
+With several issues released at once it is what says which one is being worked *right now* — and
+no other signal carries that, because agents are not Linear users here, so every issue shows the
+owner as its creator and nothing is ever assigned to a session. Move it on pickup, not at the
+end. **It is also the concurrency lock:** if anything sits in `Development (AI)` or `Needs help`,
+another session must not start a second story.
 
 Labels are the cross-cut: **`Owner only`** is the filter for what no session can do, and
 `App` / `Database` / `Native shell` / `Design` / `Website` say where. `Chore` is the type
-`Bug`/`Feature`/`Improvement` leaves out.
+`Bug`/`Feature`/`Improvement` leaves out. The eleven pre-existing labels — `DEV`, `UX/UI`,
+`Paperwork`, `Discuss`, `OnHold`, `Marketing` among them — are still on the team and still
+unused; retiring them is an owner action nobody has needed yet.
 
 **Configuring statuses is an owner action, and the MCP cannot do it.** The Linear MCP exposes
-`list_issue_statuses` and `get_issue_status` and nothing that writes one, so the table above is
-applied by hand in Linear's team settings. Two rules for whoever applies it:
+`list_issue_statuses` and `get_issue_status` and nothing that writes one. Two notes left from
+applying it, because both will recur:
 
-- **Type the two owner columns `unstarted`, not `started`.** Linear counts `started` as
-  work-in-progress, and the seeded board had seven of twelve statuses typed that way — so an
-  issue merely *queued for the owner to look at* inflated every progress bar and cycle chart. The
-  count was never the problem with that board; the types were.
-- **Rename where a status already holds issues, delete the rest.** `Review plan (Human)` →
-  `Human decision` and `Development (AI)` → `In progress (AI)` carry their issues across with no
-  reassignment; the four with nothing in them can just go. This is convenience, not a rule — it
-  was a rule for one day, while the deprecated project was still meant to be untouched, and the
-  weaker reason is worth keeping only because it saves clicks.
+- **`Queued (AI)` is typed `started`, so queued-but-untouched work counts as work-in-progress.**
+  Deliberate or not, it means project progress and cycle charts read high. Retyping it
+  `unstarted` is a two-click fix whenever that starts to matter; nothing depends on it.
+- **A deleted status leaves its issues reporting a status that no longer exists.** `PD-85` still
+  reads `Idea (AI)` after that status was removed. Harmless for one sample issue, and worth
+  knowing before assuming a `list_issues` status string is always one `list_issue_statuses`
+  returns.
 
 ### Do not ask permission to touch Linear
 
