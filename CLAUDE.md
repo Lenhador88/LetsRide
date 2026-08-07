@@ -1401,6 +1401,44 @@ applying it, because both will recur:
   knowing before assuming a `list_issues` status string is always one `list_issue_statuses`
   returns.
 
+### The queue is drained by a scheduled Routine, not by a human starting a session
+
+Created 2026-08-07 at the product owner's request. **`trig_01Gzy8eCiaXUUa1knvJnNpwy`** — spawns a
+**fresh session on every firing**, so its prompt is a complete standalone instruction rather than
+a continuation. `list_triggers` is the live view; this is the contract.
+
+What it does, in order — and the order is the design:
+
+1. **Prove it can see the board.** If the Linear tools are absent, notify and stop. It must fail
+   loudly, because *a job that silently does nothing looks exactly like an empty queue*.
+2. **Check the lock.** If **any** issue is in `Development (AI)` or `Needs help`, exit
+   immediately — no changes, no comment, no notification. One story at a time.
+3. **Take the top of `Queued (AI)` by priority**, ties to oldest. Empty queue exits silently.
+   Never `Backlog`, never `Todo`, never `Needs decision`.
+4. **Move it to `Development (AI)` before starting**, because that status is the lock the next
+   firing reads. Claiming late is how two sessions start the same story.
+5. Build under this file's standing instructions, PR to `development`, drive green, merge, move
+   to `Done`. Uncertain about anything → `Needs help` with a comment saying what it needs.
+
+**It is hourly, not every ten minutes, and that is a server limit rather than a choice.** The ask
+was ten. Measured, not assumed — `create_trigger` rejects it outright:
+`cron expression "*/10 * * * *" fires more frequently than once per hour; minimum interval is 1 hour`.
+The stored expression is `37 * * * *`: an hourly cron at minute 0 gets anchored to its creation
+minute server-side, so Routines spread across the hour instead of stampeding at :00.
+
+**The known gap: the Routine holds no MCP connectors, so its sessions may start without Linear.**
+`create_trigger` refused the `connectors` parameter — *"not available for this organization"* —
+and then warned that connectors on triggers made through that tool are limited to what the
+calling session can pass through, which was nothing. Step 1 exists entirely because of this. The
+fix is **owner-only and lives in the claude.ai Routines UI**, where connectors can be attached to
+an existing Routine; no session can do it. Until then the Routine wakes, cannot read the queue,
+and says so.
+
+**Do not "improve" the guard into a queue drainer.** Draining several issues per firing, or
+skipping past a `Needs help` issue to find workable ones, both defeat the point: `Needs help`
+parks the queue *deliberately*, so that a story needing the owner blocks the ones behind it
+rather than burying itself under three merged PRs.
+
 ### Do not ask permission to touch Linear
 
 Standing grant from the product owner, 2026-08-07, in their words: *"I dont want you to ask for
