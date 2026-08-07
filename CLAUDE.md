@@ -1470,10 +1470,19 @@ properly, including the test or the caller that story needs; it may never start 
 not given. Starting new work still requires this column, and the relatedness test is what keeps
 the distinction enforceable rather than rhetorical.
 
-**One step, two numbers — the list below calls it 5b, and the procedure file calls it STEP 4b.**
-They are the same step. The lists are numbered independently because this file's step 5 bundles
-build-PR-merge into one line where `.claude/commands/queue-pickup.md` splits it across STEP 4,
-4b and 4c. That file is the procedure; this is the summary. **Take the top of that column by priority, and if it is empty, ask rather than
+**The two lists are numbered independently and the numbers do not correspond.** Nothing derives
+one from the other; they were written at different times and each is internally ordered. The
+mapping, so a cross-reference can be followed rather than guessed:
+
+| This file's list, below | `.claude/commands/queue-pickup.md` |
+|---|---|
+| step 5 — build | STEP 4 |
+| step 5b — triage | **STEP 4b** |
+| step 5c — review, PR, merge, `Done` | STEP 4c, then STEP 5 |
+
+**So "step 5" here and "STEP 5" there are different steps**, which is the collision most likely
+to mislead: this file's step 5 is the build, that file's STEP 5 is the wrap-up. That file is the
+procedure and wins on any disagreement; this is the summary. **Take the top of that column by priority, and if it is empty, ask rather than
 choosing for them.** A session that picks its own work from `Backlog` has quietly taken the one
 decision this whole board exists to give the owner.
 
@@ -1679,11 +1688,13 @@ What it does, in order — and the order is the design:
    mean anything.** Changed 2026-08-07 at the product owner's request; the old rule filed every
    follow-up to `Backlog`, so the test a new function needed was future work rather than done.
    **Two questions and the order is the design.** First, relatedness: is this *the story done
-   properly*, or *the next story started early*? Only the first is eligible. Then rate it on
-   §Working Principles' four lines and let the block decide — **Recommendation ≥ 7/10 *and*
-   `This session` Y** → build it now, same branch, same PR, same `reviewer` pass. Anything else
-   → a story: `Todo AI` if a session could build it, `Todo Human` + `Owner only` if not,
-   `Backlog` if you rated it below 4/10. **Never `Queued (AI)`.**
+   properly*, or *the next story started early*? That gates whether something may **travel**,
+   never whether it is worth doing — **everything gets rated either way**, because the filing
+   columns are chosen by rating and an unrated item has nowhere to go. Then rate it on
+   §Working Principles' four lines and let the block decide — travels *and* **Recommendation
+   ≥ 7/10 *and* `This session` Y** → build it now, same branch, same PR, re-reviewed before the
+   merge. Anything else → a story: `Todo AI` if a session could build it, `Todo Human` +
+   `Owner only` if not, `Backlog` if you rated it below 4/10. **Never `Queued (AI)`.**
 
    **Both halves, never either — that is what stops a firing choosing its own work.** 9/10 with
    `This session` **N** is an ordinary pairing here, not a contradiction; the leaked-password

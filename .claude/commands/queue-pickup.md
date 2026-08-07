@@ -214,10 +214,23 @@ git fetch origin "$BR" --quiet 2>/dev/null \
   && git log -1 --format=%ct "origin/$BR"        # epoch seconds; compare against now
 ```
 
-**No such branch on the remote → there is nothing to age, so fall back to the lock's own
-`startedAt`.** That is the `PD-118`/`PD-125` case exactly: issues dragged into
-`Development (AI)` by hand with no branch behind them, which is the state the alarm most needs
-to catch.
+**`gitBranchName` is a guess, not a fact — check the remote for anything carrying the issue
+id before concluding there is no branch.** This repo builds Linear issues on `claude/*` refs
+(PR #103), which is not the name Linear suggests:
+
+```bash
+git ls-remote --heads origin | grep -i "pd-<n>"   # before trusting gitBranchName
+```
+
+**Still nothing → fall back to the lock's own `startedAt`.** Two different states land here and
+the alarm is right in both:
+
+- **An issue parked in `Development (AI)` by hand with no build behind it.** `PD-118` and
+  `PD-125` sat exactly like this on 2026-08-07 with `git branch -r` showing only `main`,
+  `development` and one unrelated branch. This is the state the alarm most needs to catch.
+- **A live build that has not pushed in over three hours.** Not a false positive: STEP 5 treats
+  a pushed branch as how a firing makes its work visible, and three hours of invisible work is
+  worth surfacing whether or not the process behind it is alive.
 
 **Re-anchoring, rather than suppressing, is the point.** The obvious version of this check is
 "tip moved recently → exit silently", and it is wrong in a way that is invisible: a build that
@@ -303,6 +316,11 @@ in the wrong order is expensive in a way a skipped hour is not.
 
 Consider adding the missing `blockedBy` relation while you are there, so the next firing
 catches it at STEP 2b instead.
+
+**If you got far enough into the build to have a STEP 4b triage list, file it before you
+stop** — same rule as §If you get stuck. This exit is named there as one of the two that leave
+without reaching STEP 5, and STEP 4b deliberately creates nothing, so a follow-up rated on the
+way here is lost unless this step writes it out.
 
 ---
 
@@ -448,8 +466,10 @@ exactly the column this change depends on.
 the owner files, and a loose top-level story is the shape that rule exists to prevent.
 
 The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
-the four-line rating block, the relatedness sentence, and the issue or PR it came out of.
-**A story that grows a specification is a bug** — that belongs in a proposal.
+the four-line rating block, **the relatedness verdict** — which for a filed item is the line
+saying why it is *separate* work, not a justification for travel it never claimed — and the
+issue or PR it came out of. **A story that grows a specification is a bug** — that belongs in
+a proposal.
 
 Pass the project id `88f3f224-ecf0-46f0-a032-c86b7a12f81c`, never the name, and **read
 `save_issue`'s response back to confirm the field you set is actually on it.** A dropped

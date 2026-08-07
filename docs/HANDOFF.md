@@ -1050,8 +1050,9 @@ the change just falsified become future work rather than done, leaving the story
 incomplete. **That is the failure the old default invites, not one anyone has watched happen** —
 the new rule was written 2026-08-07 and nothing has run under it yet. Do not let a later revision
 promote it into history: a plausible illustration and an observed event are not the same claim,
-and only the second earns the past tense. (A first draft of these files did exactly that, dating
-a "two-minute fix buried in `Backlog`" that never happened.)
+and only the second earns the past tense. (A first draft of these files did exactly that,
+describing a two-minute fix filed to `Backlog` from a branch that was already open, green and
+under review — an event that never happened.)
 
 STEP 4b is the procedure, and it asks **two questions in a fixed order**:
 
