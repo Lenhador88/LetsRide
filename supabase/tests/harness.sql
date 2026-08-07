@@ -151,6 +151,23 @@ grant execute on function storage.foldername(text) to anon, authenticated;
 -- other migration in this chain.
 grant select, insert, update, delete on storage.objects to anon, authenticated;
 
+-- Supabase ships a `supabase_realtime` publication on every project; plain
+-- Postgres does not. 034 adds ride_messages to it, and membership is what makes
+-- a subscription fire at all — a client subscribing to a table outside the
+-- publication connects, reports SUBSCRIBED, and silently receives nothing.
+--
+-- Stubbed here rather than guarded in the migration, and the difference matters:
+-- a `do $$ if exists (select 1 from pg_publication ...) $$` wrapper would make
+-- the suite pass by *skipping* the line, so a typo'd publication name would sail
+-- through CI and produce a chat that loads and never updates. An empty
+-- publication makes `alter publication ... add table` execute for real here, so
+-- the statement is identical in every environment and rls_test.sql can assert
+-- membership like any other fact.
+--
+-- Created empty and with no `for all tables`, matching a real project: the
+-- hosted publication holds 0 tables before 034 (measured 2026-08-07).
+create publication supabase_realtime;
+
 -- Supabase grants anon and authenticated broad privileges in `public`, including
 -- execute on functions. Reproducing that is what makes a revoke test meaningful:
 -- an explicit grant needs an explicit revoke, and without these lines a test

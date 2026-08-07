@@ -90,10 +90,10 @@ so they are "checked by a human, not by CI" rather than unchecked.
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 5 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 720/720 across 31 files
+npm run test:unit                     # 747/747 across 32 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 7 dynamic routes
-PGPASSWORD=postgres npm test          # 594 assertions, 0 failures
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
+PGPASSWORD=postgres npm test          # 641 assertions, 0 failures
 ```
 
 **Two traps met while doing that, both of which produced a confident wrong answer first:**
@@ -199,17 +199,20 @@ Verify rather than trust, in one line each:
 ```bash
 git grep -L "^'use client'" -- 'src/app/**/page.tsx'   # zero server pages — prints nothing
 ls src/proxy.ts src/lib/supabase/server.ts             # both deleted — prints errors
-node -p "Object.keys(require('./package.json').dependencies).length"   # 7
-npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 7
+node -p "Object.keys(require('./package.json').dependencies).length"   # 9
+npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 8
 ```
 
 **Keep `┌` in that character class.** The route table's first row uses it, so the `├└│`-only
 version under-counts by one the day the first route is ever dynamic. It reads 7 correctly today
 only because `/` sorts first and is static — a filter that is right by luck.
 
-**That count is 7, not the 5 an earlier revision of this file claimed**, and it is the one the
-native epic actually needs: `next build` reports **20 static** and **7 dynamic**
-(`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`, `/rides/[id]`, `/rides/[id]/crew`).
+**That count is 8 as of 2026-08-07, and it was 7 before the ride chat added
+`/rides/[id]/chat`** — it is the one the native epic actually needs, because every dynamic route
+is a route `output: 'export'` refuses without a `generateStaticParams()`. `next build` reports
+**20 static** and **8 dynamic** (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`,
+`/rides/[id]`, `/rides/[id]/crew`, `/rides/[id]/chat`). The static-export blocker below therefore
+grew by one; it did not change shape.
 Do not read the `Generating static pages (21/21)` line as the static route count — it is a
 different quantity, and 21 against 20 is exactly the kind of near-miss that gets copied.
 They are dynamic for their *segment*, not for any data. No `ƒ Proxy (Middleware)` line appears
@@ -427,8 +430,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **594** |
-| Unit tests | `npm run test:unit` — **720 on a clean tree**, measured 2026-08-07 (694 before PD-111's `guard-cache.test.ts`, itself 694 from 674 for the secure store). The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **641** (594 before `034`'s chat section) |
+| Unit tests | `npm run test:unit` — **747 across 32 files on a clean tree**, measured 2026-08-07 after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -505,6 +508,71 @@ giving a club to someone who never joined it.
 archiving replaces a requirement wholesale — so **whichever archives second silently discards
 the first one's edit**. Both delta files now open with a coordination banner carrying the merged
 text they should converge on. Read it before archiving either.
+
+## Ride chat landed 2026-08-07, and `034` is applied to DEV only
+
+Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-120 (the unread
+badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
+Inbox or push exists.
+
+**One inconsistency on DEV, deliberately left and recorded rather than hidden.** `034` was
+applied to DEV, then corrected twice after review — once for the audience conjunction, once for
+the whitespace floor and the DELETE conjunct. The first correction was a clean drop-and-re-apply,
+so the recorded statement matched. The second was applied as a **delta** (`alter constraint`,
+`drop`/`create policy`), so **DEV's schema matches `034` exactly while its recorded
+`supabase_migrations.schema_migrations` text is one revision behind the file.**
+
+That matters to exactly one check — the byte-identity of stored SQL against the files, which was
+verified once on 2026-08-06 and which nothing automates (`npm run db:drift` compares *names*).
+PROD has never had `034` and will receive the file verbatim, so it is DEV-only and self-correcting.
+Reconcile whenever convenient, from a session with the file open:
+
+```sql
+-- then re-run apply_migration with the file's contents
+drop table public.ride_messages cascade;
+drop function private.is_ride_crew(uuid);
+delete from supabase_migrations.schema_migrations where name = 'ride_messages';
+```
+
+**The one outstanding action: apply `034` to PROD after the `development` → `main` promotion.**
+It is additive, so `docs/ENVIRONMENTS.md` §Order of operations sequences it apply-then-deploy and
+puts the PROD half at step 5. Until then `npm run db:drift` reports DEV and PROD disagreeing about
+`034`, and **that is the expected state**, not a fault.
+
+```bash
+# after the promotion merges, via the Supabase MCP against zwprydcyryvudhurbnye
+#   apply_migration name=ride_messages  query=<contents of supabase/migrations/034_ride_messages.sql>
+# then re-run the footer queries in that file — each predicts a number
+```
+
+**Two defects were found and fixed before it landed, both by the `openspec` agent reviewing its
+own proposal against the branch, and both are worth carrying because neither fails loudly:**
+
+- **The audience is an intersection.** `ride_messages` needs `exists(rides …)` **and**
+  `private.is_ride_crew(…)`. The first draft used only the crew helper, reasoning that a chat is
+  narrower than a ride. True, and not the whole rule: the helper is `security definer`, so it
+  steps past the block and private-club arms of the `rides` policy, and a `ride_members` row
+  outlives both. Blocking the organizer left the chat readable after the ride vanished
+  (decision #2 names chat); leaving a private club left its ride chat readable, which is a leak.
+  Reproduced against the suite before the fix, and both are assertions now.
+- **`created_at` was client-writable.** `default now()` applies only when the column is *omitted*,
+  and a table-level INSERT grant lets PostgREST name it. On a screen ordered by that column a
+  forged timestamp pins a message to the end of every crew member's thread with no delete UI to
+  remove it. INSERT is granted per column now (`025`'s precedent). **`postcard_comments` has the
+  identical exposure** and it has never mattered there because a comment thread's order is a
+  convenience — worth knowing before assuming the pattern is safe to copy.
+
+**What is deliberately not built:** no message delete UI (so `034`'s DELETE policy has no caller —
+the design draws no message-level control, and blocking already removes a rider's messages from
+your view), no unread badge, no Pin/Mute, no pagination beyond the newest 200. A day separator
+**was** added that the design does not draw, because `HH:mm` alone is ambiguous on a ride planned
+weeks out — logged in `docs/FIGMA-FIDELITY-TODO.md` as an addition to check with the designer
+rather than passed off as measured.
+
+**Realtime is written and not proven on a device.** The channel, the teardown and the re-join
+refetch are code; nothing in this container can open a websocket to Supabase (see §The walk —
+Chromium cannot reach it at all). The publication membership *is* verified, live and by assertion,
+which is the half that fails silently.
 
 ## Known issues, roughly by cost to fix
 

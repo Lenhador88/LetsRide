@@ -58,9 +58,33 @@ const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
   '/clubs/explore': { label: 'Create club', href: '/clubs/new' },
 }
 
+/**
+ * Screens that replace the bar rather than scrolling under it.
+ *
+ * One so far — the ride chat. `Ride - Chat` (`2226:4999`) draws no navigation
+ * bar at all: header 120 + content 644 + reply 80 = 844, the whole frame. Its
+ * fixed reply bar sits where this one would, so rendering both would stack two
+ * fixed bars and put the composer behind the tabs on the one screen a rider is
+ * typing on.
+ *
+ * Note how this differs from `RideAttendanceBar`, which is *also* a fixed bar on
+ * a ride screen and does **not** belong here: that one is drawn on top of the
+ * navigation bar (y836 against y931 in `2375:8771`) and the ride plan keeps its
+ * tabs. Replacing versus stacking is a per-screen fact the design states, not a
+ * rule about bars.
+ *
+ * A regex rather than a `Record` lookup because the path carries a ride id.
+ * Anchored at both ends for the same reason the tab matcher below uses a `/`
+ * boundary — an unanchored test would also hide the bar on a hypothetical
+ * `/rides/x/chat/settings`, which should decide for itself.
+ */
+const BARLESS = [/^\/rides\/[^/]+\/chat$/]
+
 export function Navbar() {
   const pathname = usePathname()
   const action = STICKY_ACTIONS[pathname]
+
+  if (BARLESS.some((pattern) => pattern.test(pathname))) return null
 
   return (
     <nav className="pb-safe fixed right-0 bottom-0 left-0 z-50 border-t border-border bg-background px-4">

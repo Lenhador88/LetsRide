@@ -66,9 +66,13 @@ first is why it must never be dissolved back into components:
    them into the database as a CHECK, a trigger or a grant, which is what made client-side
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
-   **Say "them", not "every one of them" — the gate is narrower than it reads.** `023` puts
-   `enforce_participation_gate` on eight tables: `postcards`, `clubs`, `rides`, `club_members`,
-   `ride_members`, `postcard_comments`, `postcard_likes`, `postcard_reports`. It is **not** on
+   **Say "them", not "every one of them" — the gate is narrower than it reads.** `023` put
+   `enforce_participation_gate` on eight tables and `034` added a ninth, so it is now
+   `postcards`, `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`,
+   `postcard_likes`, `postcard_reports` and `ride_messages`. Count it rather than read it —
+   `select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not
+   tgisinternal` — because a table added without one looks exactly like this list being right.
+   It is **not** on
    `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads` or any
    `storage.objects` policy — those check the path prefix only. So an account created by calling
    GoTrue's `/auth/v1/signup` directly, never calling `accept_terms()`, can still set a username,
@@ -275,7 +279,7 @@ src/
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── error.tsx       # The app's only error boundary
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
-│   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew
+│   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew, /rides/[id]/chat
 │   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id] (Timeline) + /rides, /members, /about
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
@@ -289,7 +293,7 @@ src/
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout)
-│   ├── rides/              # CreateRideForm, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap
+│   ├── rides/              # CreateRideForm, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap, RideChatThread, RideChatComposer
 │   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
@@ -306,8 +310,9 @@ src/
 │   ├── auth/               # guard.ts (route rules, pure + tested), guard-cache.ts (what it reads, held per page load), recovery.ts (grant + safeNext)
 │   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
+│   ├── realtime/           # useRideMessageStream — the app's only Supabase Realtime subscription
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
-│   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRelativeTime(), getInitials()
+│   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), getInitials()
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
 capacitor.config.ts         # The native shell's config. No ios/ or android/ yet — see docs/HANDOFF.md §The shell
@@ -475,6 +480,7 @@ migration, and CI has no path that would catch it.
 | `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; **`024` dropped it, applied 2026-08-05**. Five query sites embedded `clubs(id, name, avatar_url)`; the three that draw an image could only ever draw initials, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
+| `ride_messages` | Per-ride group chat, added by `034`. **Its audience is an INTERSECTION and neither half alone is it** — riders who can see the ride (an `EXISTS` against `rides` under the caller's RLS) *and* who are on its crew (`private.is_ride_crew`: organizer, or any `ride_members` row of either status). Using the crew helper on its own is the trap this table already fell into once: it is `security definer`, so it steps past the block and private-club arms of the `rides` policy, and a `ride_members` row outlives both — an ex-club-member kept reading a private ride's chat. INSERT is granted **per column** so `created_at` cannot be client-written (a `default` only applies when the column is omitted, and ordering is the product here). No UPDATE policy and no UPDATE grant. In the `supabase_realtime` publication, which is what makes a subscription fire at all. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
@@ -506,10 +512,22 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: `001`–`033`, all of them. Zero drift** — 33 files, 33 rows, both ending
-`033_restore_function_comments`, measured 2026-08-07. (It read `001`–`032` until then, which is
-this paragraph's own warning coming true again: `033` landed and the line did not move. Run the
-two commands below rather than reading either number.) `029`–`032` landed 2026-08-06 as the
+**Applied state: `001`–`034` on DEV, `001`–`033` on PROD.** PROD was measured 2026-08-07 at
+33 files / 33 rows, both ending `033_restore_function_comments`; DEV took `034` (ride chat) the
+same day.
+
+**This line read `001`–`032` while `033` was already applied, and TWO sessions caught it
+independently within an hour** — which is this paragraph's own warning coming true, and the
+reason the fix is a command rather than a better number. Run `list_migrations` against
+`ls supabase/migrations/`; do not read either figure here.
+
+**The DEV/PROD split is deliberate, not drift.** `034` is **additive**, so
+`docs/ENVIRONMENTS.md` §Order of operations puts the PROD apply *after* the `development` →
+`main` promotion — apply-then-deploy for additive, deploy-then-apply for destructive. Until that
+promotion `npm run db:drift` reports the two databases disagreeing about `034`, and that is the
+expected state rather than a fault.
+
+`029`–`032` landed 2026-08-06 as the
 database half of account deletion, and every one is additive — no column, table or grant
 removed, no SELECT policy touched — which is why they could land before the flow exists.
 `028` before them was comment-only, correcting a `003` column comment that still named the
@@ -517,7 +535,7 @@ deleted `proxy.ts` as what gates every app route. (A database comment is the `da
 first read via `list_tables`, so it is the one piece of documentation no edit to this file can
 reach.) The `SKIP_MIGRATIONS` machinery that modelled the once-held-back pair is **gone**,
 along with the three `rls_test_pending_*.sql` files; the full chain applies on every run.
-Suite **594** assertions — re-derive rather than trust it:
+Suite **641** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read 527 for a few hours, from
 a parallel session that folded the same three files independently; the two were reconciled by
 comparing *label sets* rather than counts, which is the only comparison that shows whether an
@@ -1324,7 +1342,7 @@ plus blocking.
 | **Inbox** — DMs, per-ride group chat, notifications | Not built, and **no longer reachable**: the nav tab was removed 2026-08-07 (PD-100), so `/inbox` has no route, no tables and nothing pointing at it. Restoring the tab is part of building the epic — see `.claude/agents/realtime.md` |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. **Account deletion has its database half and no flow** (2026-08-06): `029`–`032` and `supabase/functions/delete-account/` are in, the Edge Function is **written, not deployed and never run**, and nothing in `src/` points at it. `/legal/account-deletion` is public and live. What remains is `openspec/changes/add-account-deletion/` groups 3 and 4 |
-| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan and Crew are built; Journal needs `postcards.ride_id` and Chat needs the Inbox epic.** `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
+| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan, Crew and Chat are built; Journal needs `postcards.ride_id`.** Chat shipped 2026-08-07 (`034`, Linear PD-115) and did **not** need the Inbox epic, which this line asserted for months — a per-ride chat needs a ride and a crew, both of which existed. Inbox owns DMs and notifications and is still parked. The chat is the app's only Realtime subscription, so `.claude/agents/realtime.md`'s rules have a worked example now rather than only a brief. `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
 | **Clubs** — public/private, Overview/Rides/Members/Posts tabs | **Built 2026-08-05**, all of it v2. `/clubs` and `/clubs/explore` are two sub-pages behind the header's dropdown, with `List / Club` rows carrying the type chip, the rider collage, the club images and the unread counter. `/clubs/[id]` is four sub-pages — Timeline, Rides, Members, About — built from the **private club** frames, which are the ones marked Done; both public-club epics are On hold. `/clubs/new` is a client page with an image upload (`016`). Two things remain unbuilt and both are logged: the Timeline's **activity feed** (no table behind joins/leaves) and **member invitations with an Admin role** (drawn on the v1 create frame; `club_members.role` has had `admin` since `001` and nothing writes it). Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. **Create club has no v2 design** — that epic reads To do, so its composition is ours |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,

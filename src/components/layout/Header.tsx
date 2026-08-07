@@ -65,11 +65,11 @@ type HeaderProps = {
  * y56, switcher row centred at y88.
  *
  * The design also puts two 40×40 icon controls at x302/x342 of that header —
- * chat and an overflow menu. Neither is built and neither is stubbed here: an
- * action row with nothing behind it is a worse artifact than an absent one, and
- * the slot is three lines to add once Chat has a route. See
- * `RideHeader` for the full reasoning and docs/FIGMA-FIDELITY-TODO.md §Ride
- * detail for the log.
+ * chat and an overflow menu. **Chat is built as of `034`** and uses the `action`
+ * slot; the overflow menu is still absent, because the flow never draws what its
+ * sheet contains and an action row with nothing behind it is a worse artifact
+ * than an absent one. See `RideHeader` for the full reasoning and
+ * docs/FIGMA-FIDELITY-TODO.md §Ride detail for the log.
  *
  * The design's 48px top padding is the iOS status bar, which the OS draws over the
  * frame. A browser has no status bar there, so reproducing 48px literally would
