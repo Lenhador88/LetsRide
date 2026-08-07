@@ -12,7 +12,7 @@ verified belongs in its migration's own §Verification footer; a settled decisio
 do it* now lives in [Let's ride (AI)](https://linear.app/lets-ride/project/lets-ride-ai-10cb543bcb9d)
 (`PD-86`–`PD-103` were the seeding); *what is true, and the command that proves it* stayed here.
 `CLAUDE.md` §The roadmap lives in Linear carries the boundary and the status pipeline. The one
-thing to internalise: **the owner releases work by dragging it into `Ready for DEV (AI)`** — that
+thing to internalise: **the owner releases work by dragging it into `Queued (AI)`** — that
 column is the start signal, and a session that picks its own work from the backlog has taken the
 decision the board exists to give them.
 
