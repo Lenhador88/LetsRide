@@ -4844,6 +4844,7 @@ select assert_denied('select count(*) from postcard_reports', 'anon cannot read 
 select assert_denied('select count(*) from profile_countries', 'anon cannot read countries');
 select assert_denied('select count(*) from feed_reads', 'anon cannot read watermarks');
 select assert_denied('select count(*) from ride_messages', 'anon cannot read ride chat');
+select assert_denied('select count(*) from notifications', 'anon cannot read notifications');
 reset role;
 
 \echo ''
@@ -4910,6 +4911,1136 @@ select assert_eq(
   0, '035: ... and neither still uses btrim, which strips spaces only');
 
 rollback to savepoint comment_whitespace_035;
+
+\echo ''
+\echo '# Notifications: written only by triggers, readable only by their recipient (036)'
+
+-- ===========================================================================
+-- 036. The audience rule for a table whose rows OUTLIVE the decision that
+-- wrote them.
+-- ===========================================================================
+--
+-- Self-contained fixtures. This section runs last, so hanging it off seed.sql
+-- would inherit whatever the twenty-two sections above left behind — and it
+-- needs three shapes seed.sql cannot provide without moving an existing count:
+-- a club whose OWNER holds no membership row, an `admin`-role member, and an
+-- actor whose only purpose is to have their username nulled.
+--
+-- The riders, and what each one is for:
+--   36a1  author of the postcard, organizer of the rides, owner of three clubs
+--   36b1  the ACTOR — likes, comments, RSVPs, joins, creates a club ride
+--   36c1  a second club member, so a club fan-out has TWO members to be wrong about
+--   36d1  an unrelated third rider, member of nothing
+--   36e1  an `admin`-role member — inserted as the TABLE OWNER, see §7.10 below
+--   36f1  joins clubs and then leaves them, for the eviction assertions
+--   3691  owner of a club holding NO club_members row of their own
+--   3621  a "ghost" actor with exactly one row, so nulling their username
+--         moves a count by exactly one
+savepoint notifications_036;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000360a1', 'n36author@example.com'),
+  ('00000000-0000-0000-0000-0000000360b1', 'n36actor@example.com'),
+  ('00000000-0000-0000-0000-0000000360c1', 'n36other@example.com'),
+  ('00000000-0000-0000-0000-0000000360d1', 'n36outsider@example.com'),
+  ('00000000-0000-0000-0000-0000000360e1', 'n36admin@example.com'),
+  ('00000000-0000-0000-0000-0000000360f1', 'n36leaver@example.com'),
+  ('00000000-0000-0000-0000-000000036091', 'n36ownerless@example.com'),
+  ('00000000-0000-0000-0000-000000036021', 'n36ghost@example.com');
+reset role;
+
+update profiles set username = 'n36author', location = 'Lisbon',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360a1';
+update profiles set username = 'n36actor', location = 'Porto',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360b1';
+update profiles set username = 'n36other', location = 'Faro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360c1';
+update profiles set username = 'n36outsider', location = 'Braga',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360d1';
+update profiles set username = 'n36admin', location = 'Aveiro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360e1';
+update profiles set username = 'n36leaver', location = 'Evora',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360f1';
+update profiles set username = 'n36ownerless', location = 'Coimbra',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000036091';
+update profiles set username = 'n36ghost', location = 'Setubal',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000036021';
+
+-- c01 private, c02 public (carries the admin), c03 private with an OWNERLESS
+-- owner, c04 public (carries a non-public ride, for the two-conjunct case).
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-00000036c001', 'N36 Private MC',   false, '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036c002', 'N36 Public MC',    true,  '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036c003', 'N36 Ownerless MC', false, '00000000-0000-0000-0000-000000036091'),
+  ('00000000-0000-0000-0000-00000036c004', 'N36 PubClub MC',   true,  '00000000-0000-0000-0000-0000000360a1'),
+  -- c005 exists only so the leaver is a RECIPIENT rather than an actor. In c004
+  -- they are the one who joined, so the club_joined row is addressed to the
+  -- OWNER and there is nothing of theirs to keep or lose — an assertion written
+  -- against it tests nothing about the club policy. Making them an admin here
+  -- gives them a row of their own whose subject is a PUBLIC club.
+  ('00000000-0000-0000-0000-00000036c005', 'N36 LeaverAdmin MC', true, '00000000-0000-0000-0000-0000000360a1');
+
+-- ---------------------------------------------------------------------------
+-- 7.11 / 7.4 / 7.9 / 7.10 — the fan-out fires with NO JWT, which is what proves
+--      the actor is read from NEW rather than from auth.uid()
+-- ---------------------------------------------------------------------------
+-- Everything below is inserted as the TABLE OWNER with `test.uid` empty, so
+-- auth.uid() is NULL throughout. If any fan-out had been written
+-- `where recipient <> auth.uid()`, that predicate would evaluate to NULL — not
+-- TRUE — and filter out EVERY recipient, so every count below would be 0 and
+-- every self-suppression assertion would pass vacuously.
+--
+-- ** The admin row is inserted here, as the owner, and that is deliberate. **
+-- No client can create or promote an admin: club_members INSERT admits `member`,
+-- or `owner` for the club's own owner_id, and there is NO UPDATE policy on the
+-- table at all — so `admin` is insertable by nobody and promotable by nobody,
+-- and zero admin rows exist in production (measured 2026-08-07). Omitting the
+-- arm as untestable is not acceptable: it ships the day invitations do, and an
+-- untested arm is how it ships broken.
+select assert_eq(auth.uid(), null::uuid,
+  '036: the fan-out fixtures are written with NO JWT — auth.uid() is NULL');
+
+-- ** ONE STATEMENT PER JOIN, AND THAT IS NOT STYLE. ** An AFTER ROW trigger
+-- fires after the whole STATEMENT completes, not after each row — so a
+-- twelve-row INSERT makes all twelve rows visible to every one of the twelve
+-- trigger invocations, and the owner's own membership row then fans out to an
+-- admin who "already" exists. Measured here, not assumed: batched, the admin
+-- reads 3 rows instead of 2.
+--
+-- That is a real Postgres semantic rather than a bug in the fan-out, and the
+-- app never produces it — `createClub` writes the club and then ONE membership
+-- row, and every later join is one rider's own request. Seeding in one batch
+-- would therefore assert against a shape the product cannot reach, which is
+-- worse than asserting nothing. Split so each fan-out sees exactly the roster
+-- that existed before it, which is what happens in production.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360a1', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360b1', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360c1', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360f1', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c002', '00000000-0000-0000-0000-0000000360a1', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c002', '00000000-0000-0000-0000-0000000360e1', 'admin');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c002', '00000000-0000-0000-0000-0000000360b1', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c002', '00000000-0000-0000-0000-0000000360c1', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c003', '00000000-0000-0000-0000-0000000360b1', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c003', '00000000-0000-0000-0000-0000000360c1', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360a1', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360f1', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c005', '00000000-0000-0000-0000-0000000360a1', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c005', '00000000-0000-0000-0000-0000000360f1', 'admin');
+-- ... and this join is what gives the leaver a row of their own on c005.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c005', '00000000-0000-0000-0000-0000000360c1', 'member');
+
+-- The fan-out really ran with no JWT. Without this the whole section is vacuous.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c001'),
+  3, '036: club_joined fans out with no JWT present — the actor comes from NEW, not auth.uid()');
+
+-- ** The single most visible possible defect. ** club_members INSERT of the
+-- creator's own `owner` row is how every club is created, so a suppression
+-- written inside one arm of the union rather than after it tells every creator
+-- they joined their own club.
+select assert_eq(
+  (select count(*)::int from notifications where user_id = actor_id),
+  0, '036: nobody is ever notified of their own action — creating a club notifies nobody');
+
+-- 7.9: TWO members plus a non-member. One member cannot tell a correct recipient
+-- set apart from private.is_club_member's everybody-or-nobody.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c002'
+      and user_id = '00000000-0000-0000-0000-0000000360a1'),
+  3, '036: the club owner is notified of all three joins');
+-- 7.10: the admin arm. e1 joined first, so is notified of b1 and c1 only.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c002'
+      and user_id = '00000000-0000-0000-0000-0000000360e1'),
+  2, '036: an `admin`-role member is notified too — the arm no client can reach yet');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c002'
+      and user_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: an ORDINARY member is NOT notified of a join');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and user_id = '00000000-0000-0000-0000-0000000360d1'),
+  0, '036: a rider outside the club is notified of nothing');
+
+-- ---------------------------------------------------------------------------
+-- 7.12d — club_joined DOES reach an owner holding no membership row
+-- ---------------------------------------------------------------------------
+-- c03's owner (3691) holds no club_members row. The union is safe for THIS type
+-- because `clubs` SELECT carries an `owner_id = auth.uid()` arm, so the row
+-- resolves for them. Asserted together with 7.12c below: either one alone reads
+-- as an inconsistency rather than as a deliberate asymmetry.
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-00000036c003'
+      and user_id = '00000000-0000-0000-0000-000000036091'),
+  0, '036: the c03 fixture really is an OWNERLESS owner — no membership row');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c003'
+      and user_id = '00000000-0000-0000-0000-000000036091'),
+  2, '036: club_joined reaches an ownerless owner, because clubs SELECT has an owner arm');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000036091', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c003'),
+  2, '036: ... and they can READ both, which is what makes the union safe here');
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 7.12c — ride_created_in_club does NOT, and that asymmetry is the point
+-- ---------------------------------------------------------------------------
+-- `rides` SELECT's only club arm is private.is_club_member(club_id), whose body
+-- has NO owner arm — so a row written to an ownerless owner is one their own
+-- SELECT policy drops on every read, for ever. Writing it would be the exact
+-- defect the whole design exists to prevent: nothing raises, no count moves, no
+-- assertion fails, and it accumulates until its subject is deleted.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000036d001', 'N36 Private Club Run', 'The Bridge',
+   now() + interval '3 days', false, '00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036d002', 'N36 Solo Run', 'The Pier',
+   now() + interval '4 days', true, null, '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036d003', 'N36 Quiet Club Run', 'The Cafe',
+   now() + interval '5 days', false, '00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036d004', 'N36 Ownerless Club Run', 'The Wall',
+   now() + interval '6 days', false, '00000000-0000-0000-0000-00000036c003', '00000000-0000-0000-0000-0000000360b1');
+
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d004'
+      and user_id = '00000000-0000-0000-0000-000000036091'),
+  0, '036: ride_created_in_club does NOT reach an ownerless owner — is_club_member has no owner arm');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d004'
+      and user_id = '00000000-0000-0000-0000-0000000360c1'),
+  1, '036: ... while the club''s actual members are notified');
+
+-- And the narrowing matches what `rides` SELECT already refuses them, which is
+-- why it is a consequence of a pre-existing defect rather than a ruling that
+-- owners do not want the notification.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000036091', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d004'),
+  0, '036: an ownerless owner cannot see their own private club''s ride TODAY — the defect this narrowing tracks');
+reset role;
+select set_config('test.uid', '', false);
+
+-- A ride with no club addresses nobody, and a public ride is not fanned out to
+-- every signed-in rider.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  0, '036: a ride with club_id NULL notifies nobody, and its creation still succeeds');
+
+-- The organizer is excluded by rider id rather than by role.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d001'
+      and user_id = '00000000-0000-0000-0000-0000000360a1'),
+  0, '036: the ride''s organizer is not notified of their own ride');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d001'),
+  3, '036: ... and every other member of that club is');
+
+-- ---------------------------------------------------------------------------
+-- 7.4 / 7.7 — ride_joined is the organizer and nobody else, and an UPDATE is
+--      not an event
+-- ---------------------------------------------------------------------------
+-- ** Every count below is scoped to THIS section's own ride. ** seed.sql's own
+-- RSVPs, likes and comments fire these same triggers when the fixtures load, so
+-- an unscoped `where type = 'ride_joined'` counts rows this section did not
+-- write — which is how an assertion stops testing its own intent. Measured:
+-- unscoped, this first one reads 2 against a perfectly correct fan-out.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-00000036d002', '00000000-0000-0000-0000-0000000360a1', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  0, '036: the organizer RSVPing to their own ride notifies nobody');
+
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-00000036d002', '00000000-0000-0000-0000-0000000360b1', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'
+      and user_id = '00000000-0000-0000-0000-0000000360a1'),
+  1, '036: an RSVP notifies the ride''s organizer');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  1, '036: ... and nobody else on the crew, notwithstanding what the design draws');
+
+update ride_members set status = 'maybe'
+ where ride_id = '00000000-0000-0000-0000-00000036d002'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  1, '036: changing an RSVP going<->maybe writes nothing — the fan-out is on INSERT');
+
+-- Leaving and rejoining does not re-notify: the uniqueness index catches it.
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-00000036d002'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-00000036d002', '00000000-0000-0000-0000-0000000360b1', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  1, '036: leaving and rejoining a ride does not tell the organizer twice');
+
+-- ---------------------------------------------------------------------------
+-- 7.4 / 7.8 / 7.12g — likes, comments, and the retraction
+-- ---------------------------------------------------------------------------
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360a1', null,
+   'postcards/00000000-0000-0000-0000-0000000360a1/aaaaaaaa-0000-4000-8000-00000036e001.jpg',
+   'A postcard the 036 section owns'),
+  ('00000000-0000-0000-0000-00000036e002', '00000000-0000-0000-0000-0000000360a1', null,
+   'postcards/00000000-0000-0000-0000-0000000360a1/aaaaaaaa-0000-4000-8000-00000036e002.jpg',
+   'A second one, for the ghost actor');
+
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360a1');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  0, '036: liking your own postcard notifies nobody');
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360a1';
+
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-00000036cc01', '00000000-0000-0000-0000-00000036e001',
+   '00000000-0000-0000-0000-0000000360a1', 'commenting on my own postcard');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_commented' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  0, '036: commenting on your own postcard notifies nobody');
+
+-- Two actors like the same postcard. This is the pair 7.12g needs: a one-actor
+-- assertion literally cannot fail.
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360b1'),
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360c1');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  2, '036: two riders liking one postcard produce two rows — actor_id is in the key');
+
+-- ** The retraction, scoped by the FULL key. ** Scoped by type + postcard_id
+-- alone, this delete would take c1's row as well — a write one rider can aim at
+-- another rider's row, in the one table no rider may write to at all.
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: unliking retracts the actor''s own notification');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and actor_id = '00000000-0000-0000-0000-0000000360c1'),
+  1, '036: ... and NOT another rider''s row for the same postcard — the full-key scope');
+
+-- 7.8: the assertion that catches a unique index written without NULLS NOT
+-- DISTINCT. Without it the constraint never fires and this reads 2, then 3, ...
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360b1');
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360b1');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  1, '036: like, unlike, like again leaves exactly ONE row (NULLS NOT DISTINCT)');
+select assert_eq(
+  (select indnullsnotdistinct from pg_index
+    where indexrelid = 'notifications_event_key'::regclass),
+  true, '036: ... and the index really is NULLS NOT DISTINCT, not merely behaving');
+
+-- Two comments from one rider produce TWO rows: the subject of a comment
+-- notification is the comment, and the recipient has two things to read.
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-00000036cc02', '00000000-0000-0000-0000-00000036e001',
+   '00000000-0000-0000-0000-0000000360b1', 'first comment'),
+  ('00000000-0000-0000-0000-00000036cc03', '00000000-0000-0000-0000-00000036e001',
+   '00000000-0000-0000-0000-0000000360b1', 'second comment');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_commented' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  2, '036: two comments from one rider produce two notifications — they do not collapse');
+
+-- The ghost's single row, for 7.12f.
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e002', '00000000-0000-0000-0000-000000036021');
+
+-- ---------------------------------------------------------------------------
+-- 7.12b — THE SUBSET RULE: every row the fan-out wrote can be READ BACK by the
+--      rider it was written for
+-- ---------------------------------------------------------------------------
+-- ** This is the assertion that catches the class of bug, and the draft of this
+-- change shipped an instance of it. ** The recipient set and the SELECT policy
+-- are written in different files by different reasoning, and a widening on one
+-- side is invisible from the other. An assertion that only counts rows WRITTEN
+-- cannot see the failure, because the whole failure is a row that exists and is
+-- unreadable — nothing raises, no count moves.
+--
+-- Derived over every row in the table rather than per type by hand, so a sixth
+-- type added later is covered without anyone remembering to extend this.
+--
+-- ** IT MUST RUN BEFORE ANY DELIBERATE EVICTION, AND THAT ORDERING IS PART OF
+-- THE ASSERTION. ** The rule is that a fan-out never writes a row unreadable
+-- AT THE MOMENT IT IS WRITTEN. Every eviction scenario below — leaving a club,
+-- a block, a nulled username — makes a row correctly unreadable later, which is
+-- the feature rather than the bug. Run after them, this reads one short and
+-- points at a perfectly correct row: measured, when the "leaving retracts
+-- nothing" block sat above this one, it flagged n36leaver's c004 ride row after
+-- n36leaver had left c004 on purpose. Anything that evicts belongs below.
+-- ** The truth is captured as the TABLE OWNER and the reading is done as
+-- `authenticated`, and getting that backwards makes the assertion vacuous. **
+-- Run wholly as the owner, RLS does not apply, every iteration counts every row,
+-- and the sum is recipients x total — measured here as 240 against a true 30,
+-- which passes for nothing and fails for the wrong reason. Run wholly as
+-- `authenticated`, the recipient LIST is itself filtered by the policy under
+-- test, so the loop only ever visits riders who can already see something.
+reset role;
+create temp table n036_truth as
+  select (select count(*)::int from public.notifications) as total;
+create temp table n036_recipients as
+  select distinct user_id from public.notifications;
+grant select on n036_truth, n036_recipients to authenticated;
+
+set role authenticated;
+do $$
+declare
+  total    integer;
+  readable integer := 0;
+  n        integer;
+  r        record;
+begin
+  select t.total into total from n036_truth t;
+
+  for r in select rr.user_id from n036_recipients rr loop
+    perform set_config('test.uid', r.user_id::text, false);
+    select count(*)::int into n from public.notifications;
+    readable := readable + n;
+  end loop;
+
+  perform set_config('test.uid', '', false);
+  perform assert_eq(readable, total,
+    '036: every row the fan-out wrote is readable by its recipient — the fan-out set is a SUBSET of the read set');
+end $$;
+reset role;
+select set_config('test.uid', '', false);
+drop table n036_truth;
+drop table n036_recipients;
+
+-- ---------------------------------------------------------------------------
+-- 7.12k — leaving retracts NOTHING, and the absence of a retraction is a
+--      decision rather than a forgotten trigger
+-- ---------------------------------------------------------------------------
+-- The row records an EVENT AT AN INSTANT, not a standing claim about the
+-- present. postcard_unliked is the deliberate exception, on a harassment
+-- argument rather than a truthfulness one.
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-00000036d002'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  1, '036: leaving a ride retracts nothing — no AFTER DELETE trigger on ride_members');
+
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c004'
+   and user_id = '00000000-0000-0000-0000-0000000360f1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c004'),
+  1, '036: leaving a club retracts nothing either — the join really happened');
+
+-- ---------------------------------------------------------------------------
+-- 7.3 — the recipient, and nobody else
+-- ---------------------------------------------------------------------------
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  2, '036: the postcard''s author reads the notifications about it');
+
+-- The ACTOR learns nothing: not that the row exists, not that it was delivered.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360b1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: the actor cannot see a single row their own action caused');
+
+-- A third rider, by any filter including a known row id.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360d1', false);
+select assert_eq(
+  (select count(*)::int from notifications),
+  0, '036: an unrelated rider reads nothing at all');
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  0, '036: ... including by a known subject id');
+
+-- The postcard's author cannot enumerate who ELSE was notified — the count of
+-- riders notified must not be derivable from any read they can issue.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id <> '00000000-0000-0000-0000-0000000360a1'),
+  0, '036: owning the subject grants no read on rows addressed to other riders');
+
+-- ---------------------------------------------------------------------------
+-- 7.2 — the grants, named as a ROLE rather than attempted
+-- ---------------------------------------------------------------------------
+-- ** The suite runs as the TABLE OWNER, for whom neither the grant nor RLS
+-- applies. ** So an attempted insert would SUCCEED and prove the exact opposite
+-- of what it claims. This is 031's lesson and the precise shape of the bug 029
+-- shipped: assert the privilege OF the role, never FROM it.
+reset role;
+select assert_eq(
+  has_table_privilege('authenticated', 'public.notifications', 'insert'),
+  false, '036: `authenticated` holds NO INSERT grant — the absent grant is what makes the trigger the only writer');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.notifications', 'delete'),
+  false, '036: ... and no DELETE grant — a rider cannot delete the evidence they were told something');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.notifications', 'select'),
+  true, '036: ... but does hold SELECT, or the screen renders nothing');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.notifications', 'read_at', 'update'),
+  true, '036: read_at is writable by its own recipient');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.notifications', 'type', 'update'),
+  false, '036: ... and `type` is not — the column grant refuses it before any policy is consulted');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.notifications', 'actor_id', 'update'),
+  false, '036: ... nor actor_id, so a rider cannot re-address a row to another actor');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.notifications', 'created_at', 'update'),
+  false, '036: ... nor created_at, so ordering never depends on a rider');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_name = 'notifications' and grantee = 'anon'),
+  0, '036: anon holds nothing on notifications — decision #1');
+
+-- The fan-out functions are reachable by no client role. Naming the role again,
+-- for the same reason, and including service_role because 031 granted it USAGE
+-- on `private` and every helper there keeps its own revoke.
+select assert_eq(
+  (select count(*)::int from pg_proc p
+    where p.pronamespace = 'private'::regnamespace
+      and (p.proname like 'notify\_%' or p.proname = 'retract_postcard_liked')
+      and (has_function_privilege('authenticated', p.oid, 'execute')
+        or has_function_privilege('anon', p.oid, 'execute')
+        or has_function_privilege('service_role', p.oid, 'execute'))),
+  0, '036: no client role can call any of the six fan-out functions directly');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and (proname like 'notify\_%' or proname = 'retract_postcard_liked')),
+  6, '036: ... and there are six of them, so that assertion is not vacuous');
+
+-- ---------------------------------------------------------------------------
+-- 7.5 — blocking, applied TWICE, with A and B exchanged
+-- ---------------------------------------------------------------------------
+-- The two checks answer different questions and neither implies the other.
+-- Fan-out asks "is this blocked now"; the policy asks it again at a LATER now,
+-- which is the case a fan-out-only design fails silently.
+
+-- (i) A block created AFTER the row hides it. b1 already has rows addressed to
+--     a1; a1 blocks b1.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  6, '036: before the block, a1 reads every row b1 caused — two club joins, a like, two comments and an RSVP');
+
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000360a1', '00000000-0000-0000-0000-0000000360b1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: a block created AFTER the rows hides every one of them');
+-- ... and the count falls with the list, in the same instant, because both read
+-- through the same policy.
+select assert_eq(
+  (select count(*)::int from notifications),
+  (select unread_notification_count()),
+  '036: the unread count falls with the list — same policy, one instant');
+-- Blocking does not retract notifications about THIRD parties, and no gap,
+-- count or marker indicates that anything was removed.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and actor_id = '00000000-0000-0000-0000-0000000360c1'),
+  1, '036: a block retracts nothing about a third rider, on the same postcard');
+
+-- Unblocking RESTORES rather than resurrecting: nothing deleted the rows.
+reset role;
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-0000000360a1'
+   and blocked_id = '00000000-0000-0000-0000-0000000360b1';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  6, '036: unblocking returns the rows — eviction, never deletion');
+
+-- (ii) The SAME thing with A and B exchanged, because the row is directional and
+--      the effect symmetric. This time the ACTOR blocks the RECIPIENT.
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000360b1', '00000000-0000-0000-0000-0000000360a1');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: the block hides them with A and B exchanged — one directional row, symmetric effect');
+reset role;
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-0000000360b1'
+   and blocked_id = '00000000-0000-0000-0000-0000000360a1';
+
+-- (iii) A block existing BEFORE the action writes no row at all, while the
+--       rider's own write still succeeds — the block suppresses the
+--       notification, not the action.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000360d1', '00000000-0000-0000-0000-0000000360a1');
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360d1');
+select assert_eq(
+  (select count(*)::int from postcard_likes
+    where postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and user_id = '00000000-0000-0000-0000-0000000360d1'),
+  1, '036: a blocked rider''s like still succeeds ...');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and actor_id = '00000000-0000-0000-0000-0000000360d1'),
+  0, '036: ... and writes no notification at all — blocking is applied at fan-out too');
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360d1';
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-0000000360d1'
+   and blocked_id = '00000000-0000-0000-0000-0000000360a1';
+
+-- ---------------------------------------------------------------------------
+-- 7.6 — the resolvability conjunct, isolated: PRIVATE evicts, PUBLIC does not
+-- ---------------------------------------------------------------------------
+-- Two separate assertions on purpose. One cannot say WHICH arm of the clubs
+-- policy did the work, and the pair is what proves the conjunct is load-bearing
+-- rather than incidentally satisfied.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and club_id = '00000000-0000-0000-0000-00000036c001'),
+  1, '036: the leaver holds a private club''s ride notification while still a member');
+
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c001'
+   and user_id = '00000000-0000-0000-0000-0000000360f1';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and club_id = '00000000-0000-0000-0000-00000036c001'),
+  0, '036: leaving a PRIVATE club evicts its notifications — the row survives, the read does not');
+
+-- The other arm, asserted separately because a single assertion cannot say
+-- WHICH arm of the clubs policy did the work. Same rider, same action, same
+-- type — only the club's `is_public` differs.
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c005'
+   and user_id = '00000000-0000-0000-0000-0000000360f1';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c005'),
+  1, '036: leaving a PUBLIC club does NOT evict — clubs SELECT admits any signed-in rider');
+
+-- Nothing deleted the evicted row: rejoining brings it back, unchanged.
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360f1', 'member');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and club_id = '00000000-0000-0000-0000-00000036c001'),
+  1, '036: rejoining returns the evicted row — a rider''s history is not destroyed by leaving');
+
+-- ---------------------------------------------------------------------------
+-- 7.12e — the two-conjunct case, which is the leak a one-table-per-type
+--      conjunct would open
+-- ---------------------------------------------------------------------------
+-- A PUBLIC club, a ride whose is_public is false, and a reader who has left the
+-- club. The CLUB resolves and the RIDE does not, so naming only `clubs` for this
+-- type would render "created a ride in <club>" for a ride the rider cannot open.
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360d1', 'member');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000036d005', 'N36 Two Conjunct Run', 'The Gate',
+   now() + interval '7 days', false, '00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360a1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360d1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d005'),
+  1, '036: a member reads the club-ride notification');
+
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c004'
+   and user_id = '00000000-0000-0000-0000-0000000360d1';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360d1', false);
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-00000036c004'),
+  1, '036: after leaving, the PUBLIC club still resolves ...');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d005'),
+  0, '036: ... and the non-public ride does NOT ...');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d005'),
+  0, '036: ... so the row is not returned — both conjuncts are required, not either');
+
+-- ---------------------------------------------------------------------------
+-- 7.12j — an organizer flipping rides.is_public is a SECOND, independent
+--      retraction path
+-- ---------------------------------------------------------------------------
+-- Separate from the club-turned-private case, which reaches the same outcome by
+-- a different column on a different table. d003 sits in a public club and is
+-- already is_public = false; f1 is still a member of c004 having rejoined
+-- nothing, so this asserts the member/leaver split directly.
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360f1', 'member')
+  on conflict do nothing;
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000036d006', 'N36 Public Then Not', 'The Square',
+   now() + interval '8 days', true, '00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360a1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d006'),
+  1, '036: a club member holds the notification for a public club ride');
+
+reset role;
+update rides set is_public = false where id = '00000000-0000-0000-0000-00000036d006';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d006'),
+  1, '036: a member still in the club KEEPS it — the club-member arm never consults is_public');
+
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c004'
+   and user_id = '00000000-0000-0000-0000-0000000360f1';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d006'),
+  0, '036: ... and one who has since LEFT loses it — neither arm of rides SELECT admits them');
+
+-- ---------------------------------------------------------------------------
+-- 7.12i — hiding your own postcard retracts NOTHING
+-- ---------------------------------------------------------------------------
+-- An earlier revision of this scenario was titled the other way round and a
+-- suite written from that title cannot pass. The recipient of these rows is by
+-- construction the postcard's AUTHOR, and `postcards` SELECT's first arm is
+-- `author_id = auth.uid()`, ahead of the hide predicate — so a hide is an input
+-- to the OTHER arm only. It is the ordering of those arms that makes this come
+-- out this way, which is exactly why it is asserted rather than inferred.
+reset role;
+insert into postcard_hides (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360a1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000036e001'),
+  1, '036: the author still sees their own hidden postcard — the own-row arm is first');
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and type in ('postcard_liked', 'postcard_commented')),
+  4, '036: ... and hiding it retracts none of its like or comment notifications');
+reset role;
+delete from postcard_hides
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360a1';
+
+-- ---------------------------------------------------------------------------
+-- 7.12f — the ACTOR conjunct, with NO block anywhere in sight
+-- ---------------------------------------------------------------------------
+-- ** The `profiles` EXISTS is not redundant with the block conjunct. ** Any
+-- rider can null their own username in ONE request — the column grant is live,
+-- the CHECK admits NULL, and enforce_onboarding_completion returns early for an
+-- already-onboarded rider before it reaches the column. That is a second way out
+-- of `profiles` SELECT with nothing to do with blocking, and without the
+-- conjunct the row is counted and cannot be drawn.
+--
+-- Done as the ghost THEMSELVES, through RLS, because the point is that it is
+-- reachable by a rider rather than only by the table owner.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e002'),
+  1, '036: the author holds the ghost''s one notification');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000036021', false);
+update profiles set username = null where id = '00000000-0000-0000-0000-000000036021';
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e002'),
+  0, '036: an actor who nulls their own username evicts the row — no block involved');
+select assert_eq(
+  (select count(*)::int from notifications),
+  (select unread_notification_count()),
+  '036: ... and the count falls with the list, so the badge never outlives the screen');
+
+-- Eviction, not deletion: restoring the username returns the row with its
+-- original created_at and read state. Restored as the table owner, because the
+-- point being made here is about the ROW rather than about who may write the
+-- username — that half is asserted above, through RLS, as the ghost themselves.
+reset role;
+update profiles set username = 'n36ghost' where id = '00000000-0000-0000-0000-000000036021';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e002' and read_at is null),
+  1, '036: restoring the username returns the row, still unread — eviction, never deletion');
+
+-- ---------------------------------------------------------------------------
+-- 7.12h — mark-all-read touches EXACTLY the rows the count reported
+-- ---------------------------------------------------------------------------
+-- ** The UPDATE policy's predicate is the SELECT policy's, and this is what
+-- makes that observable. ** Under a wider UPDATE policy — `user_id = auth.uid()`
+-- alone, so that "mark all read" also clears evicted rows — this statement would
+-- touch rows SELECT hides, and the difference between the two numbers is the
+-- count of hidden rows. The commonest reason a row is hidden is a block, which
+-- must never be disclosed by any gap, count or marker.
+--
+-- Compared against unread_notification_count() taken immediately before, rather
+-- than by inspecting the table as the owner, for whom the policy does not apply.
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000360a1', '00000000-0000-0000-0000-0000000360c1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+create temp table n036_markread as
+  select unread_notification_count() as before_count;
+
+with marked as (
+  update notifications set read_at = now()
+   where read_at is null
+  returning 1
+)
+update n036_markread set before_count = before_count
+  from (select count(*)::int as affected from marked) m;
+
+-- The two numbers have to be captured in one statement or the comparison is
+-- against a moving target, so the affected count is recomputed as "rows now
+-- read that the policy returns" and checked against the count taken before.
+select assert_eq(
+  (select before_count from n036_markread),
+  (select count(*)::int from notifications where read_at is not null),
+  '036: mark-all-read affected exactly the rows the unread count reported — UPDATE is no wider than SELECT');
+select assert_eq(
+  (select unread_notification_count()),
+  0, '036: ... and the badge is clear afterwards');
+
+-- The evicted row was NOT touched, so no arithmetic on the response reveals it.
+reset role;
+-- Written as "every one of them" rather than as a hard number, so it states its
+-- own intent and cannot drift when a fixture is added: whatever the blocked
+-- actor caused, none of it was reachable by the update.
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-0000000360a1'
+      and actor_id = '00000000-0000-0000-0000-0000000360c1'
+      and read_at is null),
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-0000000360a1'
+      and actor_id = '00000000-0000-0000-0000-0000000360c1'),
+  '036: every blocked-actor row is still UNREAD — mark-all-read could reach none of them');
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-0000000360a1'
+   and blocked_id = '00000000-0000-0000-0000-0000000360c1';
+drop table n036_markread;
+
+-- ---------------------------------------------------------------------------
+-- 7.7 — every cascade, including the two-level one and the club_id asymmetry
+-- ---------------------------------------------------------------------------
+-- The retention window IS the cascade window — "as long as the subject exists" —
+-- so these are not incidental hygiene assertions. They are the only evidence the
+-- retention claim has, which is the property a stated number would not have had.
+reset role;
+select set_config('test.uid', '', false);
+
+-- A comment: its own notification goes, and the likes on the same postcard stay.
+select assert_eq(
+  (select count(*)::int from notifications
+    where comment_id = '00000000-0000-0000-0000-00000036cc02'),
+  1, '036: the comment notification exists before its comment is deleted');
+delete from postcard_comments where id = '00000000-0000-0000-0000-00000036cc02';
+select assert_eq(
+  (select count(*)::int from notifications
+    where comment_id = '00000000-0000-0000-0000-00000036cc02'),
+  0, '036: deleting a comment destroys its notification');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  2, '036: ... and leaves the likes on the same postcard alone');
+
+-- A club, which is the asymmetry worth asserting explicitly: rides.club_id is
+-- ON DELETE SET NULL while notifications.club_id is ON DELETE CASCADE, so the
+-- RIDE survives and the notification does not. "Created a ride in <club>" is
+-- unrenderable once the club is gone.
+-- Asserted as "some exist" rather than as a hard number. The exact count is a
+-- function of every join and ride c004 accumulated across the scenarios above,
+-- so a literal here would have to be recomputed by hand every time one of them
+-- gains a fixture — and a number maintained that way is one that eventually gets
+-- "corrected" to whatever the code now produces. What this step needs is only
+-- that the cascade has something to destroy.
+select assert_eq(
+  (select count(*) > 0 from notifications
+    where club_id = '00000000-0000-0000-0000-00000036c004'),
+  true, '036: c004 has notifications to lose before the club is deleted');
+delete from clubs where id = '00000000-0000-0000-0000-00000036c004';
+select assert_eq(
+  (select count(*)::int from notifications
+    where club_id = '00000000-0000-0000-0000-00000036c004'),
+  0, '036: deleting a club destroys its notifications ...');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d005'),
+  1, '036: ... while the ride itself SURVIVES with club_id NULL — the two FKs disagree, deliberately');
+
+-- A postcard: every like and comment notification naming it goes.
+delete from postcards where id = '00000000-0000-0000-0000-00000036e001';
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  0, '036: deleting a postcard destroys every notification naming it');
+
+-- ** The two-level cascade, which is invisible in any single foreign key. **
+-- Deleting an ORGANIZER removes their rides (rides.organizer_id is ON DELETE
+-- CASCADE), and every notification about those rides goes with them — including
+-- rows delivered to riders who are still perfectly active. Stated as a
+-- consequence of the erasure rather than discovered.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d001'),
+  3, '036: other riders hold notifications about a01''s club ride');
+-- As the table owner, matching the 029 sections above: the harness grants
+-- auth_admin only INSERT and SELECT on auth.users, because signup is the only
+-- thing that role does in production. Erasure is the Edge Function's
+-- service-role path, which no local role stands in for.
+delete from auth.users where id = '00000000-0000-0000-0000-0000000360a1';
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d001'),
+  0, '036: deleting the organizer deletes their ride ...');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d001'),
+  0, '036: ... and every other rider''s notification about it goes two levels down with it');
+
+-- The departing rider's own rows, in BOTH directions: to them by the user_id
+-- cascade, about them by the actor_id cascade. No tombstone, no "deleted rider"
+-- byline, matching the ruling already made for comments and ride messages.
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-0000000360a1'
+       or actor_id = '00000000-0000-0000-0000-0000000360a1'),
+  0, '036: a departing rider''s notifications go in BOTH directions — recipient and actor');
+
+-- ---------------------------------------------------------------------------
+-- The shape of the thing, asserted so a later edit cannot quietly change it
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'public.notifications'::regclass),
+  true, '036: row level security is enabled on notifications');
+
+-- Scoped to this table's own policies rather than counting every policy in the
+-- schema: an assertion counting a shared surface stops testing its own intent
+-- the moment a second surface lands there.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'),
+  2, '036: exactly two policies — SELECT and UPDATE');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'
+      and cmd in ('INSERT', 'DELETE')),
+  0, '036: ... and neither is an INSERT or a DELETE policy');
+
+-- ** The UPDATE predicate IS the SELECT predicate, in both USING and WITH
+-- CHECK. ** Written out three times in the migration, so this is what stops a
+-- later edit to one of them drifting: three deparsed expressions, one distinct
+-- value.
+select assert_eq(
+  (select count(distinct e)::int from (
+     select qual as e from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'SELECT'
+     union all
+     select qual from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'UPDATE'
+     union all
+     select with_check from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'UPDATE'
+   ) t),
+  1, '036: UPDATE''s predicate is SELECT''s, in USING and WITH CHECK — no write reaches a row no read returns');
+
+-- ** No `when (current_user = ...)` clause on any of the six. ** 023's clause is
+-- correct on the participation gate and wrong here: a fan-out must fire for
+-- every writer, including the seed this suite runs as. An absent guard is
+-- otherwise indistinguishable from a forgotten one, so it is asserted as a flat
+-- zero across a set whose size is asserted beside it.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where not tgisinternal
+      and (tgname like 'notify\_%' or tgname = 'retract_postcard_liked')),
+  6, '036: six fan-out triggers exist');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where not tgisinternal and tgqual is not null
+      and (tgname like 'notify\_%' or tgname = 'retract_postcard_liked')),
+  0, '036: ... and NOT ONE carries a WHEN clause — 023''s CURRENT_USER guard would never fire here');
+
+-- auth.uid() appears nowhere in a fan-out body, checkable by inspection rather
+-- than inferred from behaviour.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and (proname like 'notify\_%' or proname = 'retract_postcard_liked')
+      and (prosrc ilike '%auth.uid()%' or prosrc ilike '%current_user%')),
+  0, '036: no fan-out body mentions auth.uid() or current_user — the actor comes from NEW');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and (proname like 'notify\_%' or proname = 'retract_postcard_liked')
+      and prosecdef and proconfig @> array['search_path=""']),
+  6, '036: every fan-out is SECURITY DEFINER with search_path pinned empty');
+
+-- The count must be INVOKER. A definer count steps past the block predicate and
+-- every resolvability conjunct, producing a badge the rider can never clear.
+select assert_eq(
+  (select prosecdef from pg_proc where proname = 'unread_notification_count'),
+  false, '036: unread_notification_count is SECURITY INVOKER — the badge cannot disagree with the screen');
+
+-- 7.12l — six FK columns, six usable indexes, DERIVED from pg_index rather than
+-- read off the migration's list. `actor_id` sits third in the uniqueness index,
+-- where it cannot lead a lookup, so without its own index every account deletion
+-- is a sequential scan of every notification in the table.
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.conrelid = 'public.notifications'::regclass and c.contype = 'f'),
+  6, '036: notifications carries six foreign keys');
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.conrelid = 'public.notifications'::regclass and c.contype = 'f'
+      and not exists (select 1 from pg_index i
+                       where i.indrelid = c.conrelid
+                         and i.indkey[0] = c.conkey[1])),
+  0, '036: ... and not one of them lacks a leading-column index — every cascade path is indexed');
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.conrelid = 'public.notifications'::regclass and c.contype = 'f'
+      and c.confdeltype = 'c'),
+  6, '036: ... and every one is ON DELETE CASCADE — the retention window is the cascade window');
+
+-- The subject CHECK refuses a type it does not know about, which is what makes
+-- adding a type without extending it fail at the point of change rather than
+-- admitting a row with no subject.
+select assert_rejected($$
+  insert into notifications (user_id, actor_id, type, postcard_id)
+  values ('00000000-0000-0000-0000-0000000360b1', '00000000-0000-0000-0000-0000000360c1',
+          'ride_joined', '00000000-0000-0000-0000-00000036e002')$$,
+  '23514', '036: a type carrying the wrong subject column is refused by the shape CHECK');
+
+rollback to savepoint notifications_036;
 
 rollback;
 
