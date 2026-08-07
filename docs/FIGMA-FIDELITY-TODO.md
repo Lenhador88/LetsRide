@@ -804,8 +804,10 @@ Poppins/16/Semibold.
       second). Background is `Grey/5` — the page colour, not `bg-surface` — with a **1px top
       border** only. Five tiles, 24px icons, Poppins/10/Semibold labels.
       **Active is `Grey/100` with no background, not the brand green this used to apply**;
-      pressed is the only state with a fill (`Grey/10%`). Inbox renders inert — the design has
-      five tabs and the route does not exist, and a tab that 404s is worse than a disabled one.
+      pressed is the only state with a fill (`Grey/10%`). **The design's five tiles are four in
+      code** — Inbox was dropped 2026-08-07 (PD-100) rather than shipped inert, so this is a
+      deliberate divergence from the frame, not an outstanding fidelity gap. It closes when the
+      Inbox epic restores the route.
       → `src/components/layout/Navbar.tsx`
 - [x] ~~**Header placement**~~ — the header is **per screen**, not part of the shell: each
       design frame gives it its own title, back affordance and variant.

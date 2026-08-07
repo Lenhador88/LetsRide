@@ -317,7 +317,7 @@ build work, the rest are the owner's.
 |---|---|---|
 | 1 | **The shell itself** | **Started 2026-08-07.** `capacitor.config.ts` and the secure store are in; `ios/` and `android/` are not, and cannot be generated here. **Gated on the static-export route decision** — see §The shell, below |
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
-| 3 | **Inbox is a disabled stub** | `UNBUILT` in `src/components/layout/Navbar.tsx`; no route, no tables. Guideline 4.2 risk — a reviewer taps every tab |
+| 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `grep -c "Icon: " src/components/layout/Navbar.tsx` is 4. (Not `href:`, which reads 8: `STICKY_ACTIONS` uses it too.) The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | **No edit or delete UI for rides or clubs** | Create a ride, never cancel or correct it. **Narrower than "anywhere", corrected 2026-08-07** — postcards, comments and profile all have working delete/update UI. For rides and clubs there is no action *at all* (no `deleteRide`, `updateRide`, `deleteClub`, `updateClub`), while all four RLS policies exist live. So it is an empty action layer, not an unwired UI |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON**, measured 2026-08-06 | Not a store blocker after all; the decision #6 text was wrong, not the setting. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below. **Owner** still decides whether DEV wants it off |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
@@ -579,15 +579,26 @@ text they should converge on. Read it before archiving either.
   > function, which is written
   > **Urgency** 3/10 — nothing forces it until a store submission, which needs the shell first
   > **This session** N — needs the function deployed, which is an owner action
-- **Inbox has no route and no tables.** It is one of five nav tabs and it renders **disabled**
-  rather than dead — `UNBUILT` in `Navbar.tsx` gives it `aria-disabled` and a "not built yet"
-  title, so it is not a broken link. Still a guideline 4.2 question. **Store blocker 3.**
+- **Inbox has no route and no tables, and as of 2026-08-07 it has no tab either.** The owner
+  decided PD-100's open question — *build the epic, or hide the tab* — in favour of hiding it,
+  so the nav is **four tabs**: Home, Rides, Clubs, Profile. Verify rather than trust this line,
+  because it is the one that has been wrong twice already:
+  `grep -n "Icon: " src/components/layout/Navbar.tsx`. **Count on `Icon: `, not on `href:`** —
+  the obvious one reads 8, because `STICKY_ACTIONS` maps a route to a button that also has an
+  `href`. Same class of error as the comment trap in `CLAUDE.md`: the grep catches more than the
+  thing being counted. The `UNBUILT` set, the `aria-disabled`
+  span and the `MailboxIcon` import all went with it — there is no disabled-tab machinery left
+  to reuse, which is deliberate.
 
-  A previous revision of this line said *"Inbox and Garage have no routes… a reviewer tapping
-  five tabs finds two dead"*, and both halves were wrong: Garage is not a nav tab at all (the
-  five are Home, Rides, Clubs, Inbox, Profile — `grep -n "href" src/components/layout/Navbar.tsx`),
-  and Inbox is disabled rather than dead. Garage remains unbuilt as a *domain*, per
-  `CLAUDE.md` §Product Scope, which is a different and much smaller claim.
+  **The design still draws five**, so the tab's absence looks like an omission to anyone
+  reading Figma rather than this file. `Navbar.tsx`'s own docstring carries the reason at the
+  point of temptation; that is the copy to keep current, not this one.
+
+  Two earlier revisions of this line were wrong, both worth keeping as the shape of the error:
+  it once said *"Inbox and Garage have no routes… a reviewer tapping five tabs finds two dead"*
+  — Garage is not a nav tab at all — and it then said Inbox *renders* disabled, which was true
+  only until the tab was removed. Garage remains unbuilt as a *domain*, per `CLAUDE.md`
+  §Product Scope, which is a different and much smaller claim.
 - **There is no `clubIdSchema`.** `/postcards/[id]` parses its id before issuing anything, so it
   can read in parallel and 404 a malformed segment; `/clubs/[id]` cannot, so its two content
   reads are serialised behind the club. Adding the schema and parallelising is a small, clear
