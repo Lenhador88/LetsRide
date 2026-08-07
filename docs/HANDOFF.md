@@ -1006,8 +1006,16 @@ did not need:
   mechanism is therefore delegation: gates inline, build in subagents, never a diff or a test log
   in the main thread.
 
-**The one thing this design cannot prove in advance:** whether the connector grants survive a
-container reclaim across an idle hour. It is only observable after the fact. STEP 0 is the
+**The delivery path is tested and the connectors survive it.** `create_trigger` warns *"this
+trigger stores no MCP connectors, so the sessions it fires will run without connector tools"* — a
+false alarm for a self-bound trigger, which spawns no session. Verified 2026-08-07 by firing a real
+trigger into this session and calling one tool per connector from the fired turn: **Linear
+(`list_issue_statuses`), Supabase (`list_migrations`, 35 rows) and GitHub (`list_pull_requests`) all
+succeeded, no prompt, no denial.** Do not rebuild the Routine to chase that warning.
+
+**The one thing this design cannot prove in advance:** that test ran minutes after the session was
+active, so the container was warm. **Whether the grants survive a container reclaim across an idle
+hour is unproven**, and no session can test it — it is only observable after the fact. STEP 0 is the
 detector — a firing that finds Linear missing notifies rather than exiting quietly — and the
 fallback is re-enabling the old Routine.
 

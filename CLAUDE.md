@@ -1684,9 +1684,20 @@ Routines UI. That made every rebuild of it one bad call away from a permanently 
 
 **Firing into an existing session sidesteps the problem rather than solving it.** The session holds
 its own connections, so the firing is just a message arriving in a conversation that can already
-reach Linear. `create_trigger` still emits *"this trigger stores no MCP connectors, so the sessions
-it fires will run without connector tools"* — that warning is written for the spawn case and
-describes a session a self-bound trigger never creates.
+reach Linear.
+
+**`create_trigger` warns anyway, and the warning is a false alarm for this shape — measured, not
+assumed.** It emits *"this trigger stores no MCP connectors, so the sessions it fires will run
+without connector tools"*, which is written for the spawn case and describes a session a self-bound
+trigger never creates. Tested 2026-08-07 by firing a real trigger into this session and calling one
+tool per connector from the fired turn: **Linear, Supabase and GitHub all succeeded, with no prompt
+and no denial.** Do not "fix" that warning by rebuilding the Routine.
+
+**What that test does NOT cover, and nothing in a session can:** it ran minutes after the session
+was last active, so the container was warm. **Whether the grants survive a container reclaim across
+an idle hour is unproven** — the container is reclaimed after a period of inactivity, and a firing
+that lands on a cold one gets a freshly provisioned container. Treat it as an open question rather
+than a settled one; STEP 0 is the detector and the disabled Routine is the fallback.
 
 **`list_triggers` reports the connectors a trigger does hold**, in `job_config.…mcp_connections`,
 keyed by `connector_uuid` — Supabase `d217aba8-…`, Linear `a55a164a-…`, Vercel `8d8457e7-…`, each
