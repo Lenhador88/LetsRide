@@ -22,25 +22,47 @@ has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-la
 
 ---
 
-## The CI outage is over — it recovered on its own
+## ⚠ CI is triggering again, but it is NOT proven healthy — and a green tick still is not a check
 
-**Resolved 2026-08-06 ~23:36 UTC**, with no owner action taken. Checked 2026-08-07: the five
-most recent `ci.yml` runs all triggered normally, on both `push` and `pull_request`, against
-both `development` and `main`. Whatever starved the runners cleared by itself, which fits the
-original diagnosis — a 15-minute cancelled `Detect what changed` job on `ubuntu-latest` reads
-as runners never being assigned, not as a repo misconfiguration.
+**A draft of this section said "the outage is over, resolved ~23:36, it recovered on its own"
+and deleted the warning below. That was wrong, and review caught it.** The mistake is worth
+more than the correction, because it is a trap the next session will walk into the same way:
+**a run's `conclusion: success` says nothing about whether anything was tested.** Runs resumed
+~21:31 on 2026-08-06, and reading the run list alone — which is what the wrong draft did — they
+look fine.
 
-**What this leaves behind is a real gap, and it does not heal with the runners.** Between
-17:43 and 23:36 every merge landed without CI: PRs **#72, #73 and #74**, plus two direct pushes
-to `development`. Those commits have never been checked by the gate. They were gated by hand at
-the time — the full local equivalent below, run against `3c9cc40`, all green — so this is
-"checked by a human, not by CI" rather than "unchecked". Worth knowing before trusting a green
-tick on anything in that window.
+Two things the run list cannot show you:
+
+- **The original failure recurred *after* the apparent recovery.** Run `31128482019`, a push to
+  `development` at **21:41:55Z**, has `Detect what changed` **cancelled** after 15 minutes
+  (21:41:55 → 21:56:57) with `runner_id: 0` and an empty `runner_name` — runners never
+  assigned, the exact signature of the original outage — and both real jobs `skipped` behind it.
+- **The runs that did succeed tested nothing, by design.** Everything from 23:36 onward
+  (#79, #80 and the pushes around them) changed only `.claude/` and `docs/`, which are in
+  `ci.yml`'s denylist. So `Type Check, Lint & Build` and `RLS Policy Tests` were **`skipped`**
+  and the run still reports `success`. Verified on run `31132461220`. That proves the
+  dispatcher works. It does **not** prove a code change can get a runner.
+
+**So: do not read a green PR as a checked PR.** Check the *jobs*, not the run:
 
 ```bash
-# Is it still healthy? (via the GitHub MCP tools — the REST API 403s from this container's shell)
-#   actions_list method=list_workflow_runs resource_id=ci.yml
+# via the GitHub MCP tools — the REST API 403s from this container's shell
+#   actions_list method=list_workflow_runs  resource_id=ci.yml
+#   actions_list method=list_workflow_jobs  resource_id=<run id>
+# A healthy code run has "Type Check, Lint & Build" with conclusion=success,
+# NOT skipped, and NOT a 15-minute cancelled "Detect what changed" above it.
 ```
+
+**The first real test is the secure-store PR** (`claude/store-submission-prep-lwsurd`) — the
+first code-touching change since the outage began, so it is the first one whose jobs cannot be
+skipped by the denylist. If its `Type Check, Lint & Build` sits pending for 15 minutes and then
+cancels, the outage is live and this is an **owner action**: <https://www.githubstatus.com>,
+then repo Settings → Actions and the account's Actions usage.
+
+**The gap it already left does not heal with the runners.** Between 17:43 and 23:36 every merge
+landed without CI: PRs **#72, #73 and #74**, plus two direct pushes to `development`. Those were
+gated by hand at the time — the full local equivalent below, run against `3c9cc40`, all green —
+so they are "checked by a human, not by CI" rather than unchecked.
 
 **The hand-gate, which is still what to run when CI is unavailable:**
 
@@ -48,7 +70,7 @@ tick on anything in that window.
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 5 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 689/689 across 30 files
+npm run test:unit                     # 694/694 across 30 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 7 dynamic routes
 PGPASSWORD=postgres npm test          # 594 assertions, 0 failures
@@ -223,10 +245,32 @@ now carries an optional `keys()`, and any store that can enumerate itself is swe
 assertions in `session-store.test.ts` cover it, including a store that omits `keys()` and one
 whose `keys()` throws.
 
-**What it does not prove:** nothing here has touched a keychain. The tests mock the plugin, so
-they assert the ordering, the overridden defaults and the forwarding — everything *around* the
-plugin call, which is where this module can be wrong — and nothing about iOS or Android
-behaviour. That needs a device.
+**Review found eight things and two were High**, both in the same place and both worth carrying
+because the error was *reasoning where measurement was available*:
+
+- **The module claimed a failure mode it did not have.** Its docstring said "supabase-js reads a
+  storage error as 'no session', so the rider sees a signed-out app". False: `auth-js`'s
+  `__loadSession` is `try/finally` with **no** `catch`, and `RouteGuard` calls `getSession()`
+  from a `.then()` with no `.catch()` — so a rejecting read hangs the splash **forever**, which
+  a rider cannot retry past. `getItem` now resolves to `null` on failure, which makes the
+  original sentence true by construction instead of by assumption.
+- **`configured ??= applyPluginDefaults()` cached a *rejected* promise**, so one transient
+  plugin error would break every read and write for the rest of the app session with no retry.
+  The slot is cleared on failure now.
+
+The other six: the always-loaded `CLAUDE.md` still carried the *read in an effect* claim this
+commit corrected in `native.md` (fixed — they must not drift again), the repo-layout tree was
+missing `src/lib/native/` and `capacitor.config.ts` (fixed), the sweep followed only the
+resolved store so a token left in webview `localStorage` by an earlier build survived sign-out
+on a device (fixed), `keys` was feature-detected by truthiness where `Storage`'s named-property
+getter can make it a string (fixed), and the install-ordering invariant was documented on the
+call site that happens to satisfy it rather than on `resolveSessionStore()` itself (moved
+there). Five new assertions cover the behavioural ones.
+
+**What none of it proves:** nothing here has touched a keychain. The tests mock the plugin, so
+they assert the ordering, the overridden defaults, the failure modes and the forwarding —
+everything *around* the plugin call, which is where this module can be wrong — and nothing about
+iOS or Android behaviour. That needs a device.
 
 **The gate for everything else is the static export.** Measured 2026-08-07: with
 `output: 'export'`, `next build` fails with
@@ -330,7 +374,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **594** |
-| Unit tests | `npm run test:unit` — **689 on a clean tree**, measured 2026-08-07 (674 before the secure store: 13 new assertions plus 2 from the per-file `it.each` below). The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **694 on a clean tree**, measured 2026-08-07 (674 before the secure store: 18 new assertions plus 2 from the per-file `it.each` below). The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |

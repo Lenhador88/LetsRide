@@ -111,8 +111,18 @@ when `window.__letsrideSecureStore` is implemented over a platform keychain.
 
 **The SSR shell is the one piece of the server render still standing.** Next server-renders
 client components on first load, and that goes with the native shell rather than with the
-render model — it is the `native` agent's work. Until it is gone, the *read in an effect* rule
-below is load-bearing rather than stylistic.
+render model — it is the `native` agent's work.
+
+**"Until it is gone" was the wrong framing, and this line carried it.** It read *"Until it is
+gone, the read in an effect rule below is load-bearing rather than stylistic"*, which invites
+the reading that the rule lifts when the shell lands. It does not, and it never will:
+`output: 'export'` — the only fully-static bundle Next 16 offers, and therefore what a
+Capacitor `webDir` is built from — **still runs the same prerender pass, once, at build time**.
+What the bundle removes is the *runtime* server, not the pass. A component body still executes
+somewhere with no `localStorage` and no session, so **the *read in an effect* rule below is
+permanent**, and `resolve.browser.ts`'s tripwire keeps earning its place. Corrected 2026-08-07
+after `.claude/agents/native.md` was corrected on the same point; do not let the two drift
+apart again.
 
 Re-derive the scope rather than trusting a number here — it grows with every epic:
 
@@ -294,11 +304,13 @@ src/
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # guard.ts (route rules, pure + tested), recovery.ts (grant + safeNext)
+│   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRelativeTime(), getInitials()
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
+capacitor.config.ts         # The native shell's config. No ios/ or android/ yet — see docs/HANDOFF.md §The shell
 supabase/
 ├── migrations/             # SQL migrations — append-only, see Supabase Rules
 ├── functions/              # Edge Functions. ONE, and read the rule below before adding another

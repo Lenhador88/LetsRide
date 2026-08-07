@@ -243,6 +243,40 @@ describe('sign-out destroys the session', () => {
     await expect(clearSessionStore()).resolves.toBeUndefined()
   })
 
+  it('sweeps localStorage even when the secure store is the resolved one', async () => {
+    // On a device the keychain wins, but a session written by an *earlier* build
+    // — a browser visit, or anything before the shell shipped — is sitting in
+    // the webview's localStorage, where a sweep that follows only the resolved
+    // store will never look. Sign-out has to reach both.
+    globals.window!.localStorage = fakeLocalStorage({
+      'sb-zwprydcyryvudhurbnye-auth-token': 'left by the browser build',
+      'letsride:last-seen-tip': 'keep me',
+    })
+    const secure = enumerableSecureStore({ 'sb-ref-auth-token': 'the-session' })
+    globals.window!.__letsrideSecureStore = secure.store
+    expect(resolveSessionStore().kind).toBe('secure')
+
+    await clearSessionStore()
+
+    expect([...secure.map.keys()]).toEqual([])
+    expect(storedKeys(globals.window!.localStorage!)).toEqual(['letsride:last-seen-tip'])
+  })
+
+  it('is not disabled by a stored item that happens to be named "keys"', async () => {
+    // `Storage` has a named-property getter, so `localStorage.keys` is the
+    // *string* here, not a method. A truthiness feature-detect would forward it
+    // as `keys`, hand `clearSessionStore` something non-callable, and silently
+    // turn the sweep off for the store that most needs it.
+    globals.window!.localStorage = fakeLocalStorage({
+      keys: 'not a method',
+      'sb-ref-auth-token': 'the-session',
+    })
+    resolveSessionStore()
+
+    await clearSessionStore()
+    expect(storedKeys(globals.window!.localStorage!)).toEqual(['keys'])
+  })
+
   it('clears the secure store too, and survives one that throws', async () => {
     const secure = memorySecureStore()
     globals.window!.__letsrideSecureStore = {

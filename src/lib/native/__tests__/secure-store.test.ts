@@ -149,6 +149,46 @@ describe('the store it installs', () => {
     await expect(store.keys!()).resolves.toEqual(['sb-ref-auth-token'])
   })
 
+  it('resolves a failed read to null rather than throwing', async () => {
+    // The route guard reads the session from a `.then()` with no `.catch()`, and
+    // auth-js's `__loadSession` has no catch either — so a rejecting read does
+    // not sign the rider out, it hangs the splash forever with no way past it.
+    // `null` is what auth-js reads as "no session", which is the intended
+    // failure and the one a draft of this module wrongly assumed it already got.
+    mocks.SecureStorage.getItem.mockRejectedValue(new Error('keychain unavailable'))
+    const store = install()
+
+    await expect(store.getItem('sb-ref-auth-token')).resolves.toBeNull()
+  })
+
+  it('retries configuration after a failure instead of caching the rejection', async () => {
+    // `configured ??= applyPluginDefaults()` caches a *rejected* promise, so one
+    // transient failure would break every read and write for the rest of the app
+    // session with no way back short of a restart.
+    mocks.SecureStorage.setSynchronize.mockRejectedValueOnce(new Error('transient'))
+    const store = install()
+
+    await store.setItem('a', 'b')
+    expect(mocks.SecureStorage.setSynchronize).toHaveBeenCalledTimes(1)
+
+    await store.setItem('c', 'd')
+    expect(mocks.SecureStorage.setSynchronize).toHaveBeenCalledTimes(2)
+    expect(mocks.SecureStorage.setDefaultKeychainAccess).toHaveBeenCalledWith(
+      AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY
+    )
+  })
+
+  it('still stores when the defaults cannot be applied', async () => {
+    // Taking storage down over a keychain *attribute* would be the wrong trade,
+    // and the attribute that changes behaviour cannot fail on its own —
+    // `setSynchronize` assigns `this.sync` before dispatching to the bridge.
+    mocks.SecureStorage.setSynchronize.mockRejectedValue(new Error('nope'))
+    const store = install()
+
+    await expect(store.setItem('sb-ref-auth-token', 'the-session')).resolves.toBeUndefined()
+    expect(mocks.SecureStorage.setItem).toHaveBeenCalledWith('sb-ref-auth-token', 'the-session')
+  })
+
   it('reads and writes through to the plugin', async () => {
     mocks.SecureStorage.getItem.mockResolvedValue('the-session')
     const store = install()

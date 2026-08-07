@@ -109,7 +109,13 @@ function track(store: SessionStore): SessionStore {
     // Forwarded rather than dropped, and conditionally so the wrapper does not
     // advertise an enumerability the wrapped store does not have — `clearSessionStore`
     // branches on the method's presence.
-    ...(store.keys ? { keys: () => store.keys!() } : {}),
+    //
+    // `typeof … === 'function'` rather than a truthiness test, because `Storage`
+    // has a named-property getter: a rider whose `localStorage` happens to hold
+    // an item keyed `keys` makes `localStorage.keys` a *string*, which is truthy.
+    // Forwarding that would hand `clearSessionStore` a non-callable `keys` and
+    // silently disable the sweep for the one store that most needs it.
+    ...(typeof store.keys === 'function' ? { keys: () => store.keys!() } : {}),
   }
 }
 
@@ -122,6 +128,23 @@ export type SessionStoreKind = 'secure' | 'local' | 'memory'
  */
 let resolved: { kind: SessionStoreKind; store: SessionStore } | null = null
 
+/**
+ * **Whoever calls this first decides the store for the whole page load.**
+ *
+ * That is the invariant, and it lives here rather than at the call site that
+ * happens to satisfy it today. `createClient()` installs the native secure store
+ * immediately before calling this, which is currently the only path that reaches
+ * it first — `clearSessionStore()` is the only other resolver-toucher, and
+ * `signOut` awaits a Supabase client before it. But nothing in the type system
+ * enforces that ordering, and `describeSessionStore()` below is exported for
+ * rendering on a screen and has zero callers: the day a screen calls it during
+ * boot, a native device silently pins `local` and every token lands in the
+ * webview's `localStorage` instead of the keychain, with no error anywhere.
+ *
+ * So: if you add a caller that can run before the first `createClient()`, call
+ * `installSecureStore()` from `@/lib/native/secure-store` before it, or move the
+ * install in front of this function.
+ */
 export function resolveSessionStore(): { kind: SessionStoreKind; store: SessionStore } {
   if (resolved) return resolved
 
@@ -195,7 +218,7 @@ export function describeSessionStore(): string {
  * not be the thing that keeps them signed in.
  */
 export async function clearSessionStore(): Promise<void> {
-  const { kind, store } = resolveSessionStore()
+  const { store } = resolveSessionStore()
 
   for (const key of [...written]) {
     try {
@@ -206,10 +229,27 @@ export async function clearSessionStore(): Promise<void> {
   }
   written.clear()
 
-  for (const key of await enumerateKeys(kind, store)) {
+  for (const key of await enumerateKeys(store)) {
     if (!key.startsWith(SUPABASE_KEY_PREFIX)) continue
     try {
       await store.removeItem(key)
+    } catch {
+      /* see above */
+    }
+  }
+
+  // `localStorage` is swept whatever the resolved store is, not only when it
+  // *is* the resolved store. On a device the secure store wins, and every
+  // session written by an earlier build — a browser visit, or any build before
+  // the shell shipped — is sitting in the webview's `localStorage` where the
+  // resolved-store sweep above will never look. Sign-out has to reach it, and
+  // this is a `sb-`-prefixed sweep of a store the rider already has, not a new
+  // dependency on one.
+  if (typeof window !== 'undefined') {
+    try {
+      for (const key of Object.keys(window.localStorage)) {
+        if (key.startsWith(SUPABASE_KEY_PREFIX)) window.localStorage.removeItem(key)
+      }
     } catch {
       /* see above */
     }
@@ -221,24 +261,14 @@ export async function clearSessionStore(): Promise<void> {
  * an unenumerable store degrades to "tracked keys only", which is the behaviour
  * every store had before this existed.
  */
-async function enumerateKeys(kind: SessionStoreKind, store: SessionStore): Promise<string[]> {
-  if (store.keys) {
-    try {
-      return await store.keys()
-    } catch {
-      return []
-    }
-  }
+async function enumerateKeys(store: SessionStore): Promise<string[]> {
+  if (typeof store.keys !== 'function') return []
 
-  if (kind === 'local' && typeof window !== 'undefined') {
-    try {
-      return Object.keys(window.localStorage)
-    } catch {
-      return []
-    }
+  try {
+    return await store.keys()
+  } catch {
+    return []
   }
-
-  return []
 }
 
 /** Test seam. Nothing in the app calls this. */

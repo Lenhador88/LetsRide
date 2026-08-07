@@ -46,25 +46,66 @@ import type { SessionStore } from '@/lib/supabase/session-store'
  *   that a dependency could change in a minor version, and one that would
  *   replicate a refresh token to every device on the rider's Apple ID.
  *
- * A configuration failure rejects the operation that triggered it rather than
- * being swallowed. supabase-js reads a storage error as "no session", so the
- * rider sees a signed-out app — which is the direction to fail in.
+ * ## Failing closed means returning `null`, not throwing
+ *
+ * **A draft of this module claimed that "supabase-js reads a storage error as
+ * 'no session', so the rider sees a signed-out app". That is false**, and review
+ * caught it. `auth-js`'s `__loadSession` is `try/finally` with no `catch`, so a
+ * rejecting read propagates out of `getSession()`; `RouteGuard` calls it from a
+ * `.then()` with no `.catch()`, and its `allowed !== pathname` test then never
+ * flips. The rider gets a splash that never resolves — not a signed-out app, and
+ * not something they can retry past. That is the worst available outcome and it
+ * was reasoned into the design rather than measured.
+ *
+ * So `getItem` **makes the claim true by construction**: a failed read resolves
+ * to `null`, which auth-js does read as "no session", and the rider is asked to
+ * sign in again. Writes and removals still propagate — `clearSessionStore`
+ * already wraps every `removeItem` in its own `try`, and a silently-dropped
+ * write would leave a rider believing they are signed in until the next reload.
+ * The asymmetry is deliberate: only the read sits on the route guard's path.
  */
 
 let configured: Promise<void> | null = null
 
+async function applyPluginDefaults(): Promise<void> {
+  await SecureStorage.setSynchronize(false)
+  await SecureStorage.setDefaultKeychainAccess(KeychainAccess.afterFirstUnlockThisDeviceOnly)
+}
+
+/**
+ * Applies the two overridden defaults once, and **never caches a failure**.
+ *
+ * `configured ??= applyPluginDefaults()` — the first version of this — caches a
+ * *rejected* promise, so a single transient plugin error makes every subsequent
+ * read and write reject for the rest of the app session, with no retry and no
+ * way back short of a restart. Clearing the slot on failure costs one retry per
+ * operation in the broken case and nothing at all in the normal one.
+ *
+ * It resolves even when the defaults could not be applied. The alternative is
+ * taking storage down over a keychain *attribute*, and the attribute that
+ * actually changes behaviour cannot fail on its own: `setDefaultKeychainAccess`
+ * only assigns a local field, and `setSynchronize` assigns `this.sync` before
+ * dispatching to the native bridge — so even a rejected native call leaves the
+ * value that governs every later operation already set to `false`.
+ */
 function configure(): Promise<void> {
-  configured ??= (async () => {
-    await SecureStorage.setSynchronize(false)
-    await SecureStorage.setDefaultKeychainAccess(KeychainAccess.afterFirstUnlockThisDeviceOnly)
-  })()
+  if (!configured) {
+    configured = applyPluginDefaults().catch(() => {
+      configured = null
+    })
+  }
   return configured
 }
 
 const secureStore: SessionStore = {
   async getItem(key) {
-    await configure()
-    return SecureStorage.getItem(key)
+    try {
+      await configure()
+      return await SecureStorage.getItem(key)
+    } catch {
+      // See §Failing closed above — a throw here hangs the route guard forever.
+      return null
+    }
   },
   async setItem(key, value) {
     await configure()
