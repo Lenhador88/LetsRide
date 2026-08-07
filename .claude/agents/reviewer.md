@@ -17,8 +17,13 @@ git diff origin/development...HEAD
 
 **The base is `development`, not `main`.** Feature branches are cut from `development` and PR
 back into it (`CLAUDE.md` §Branching & CI); diffing against `main` silently widens the range by
-everything sitting unreleased in `development`, so you review other people's merged work as if
-the author wrote it.
+everything sitting unreleased in `development` — 62 commits as of 2026-08-07 — so you review
+other people's merged work as if the author wrote it.
+
+**The one exception is the promotion.** A `development` → `main` PR diffed against
+`development` is empty, which reads as "no changes to review" rather than as the wrong base.
+For that one review, `git diff origin/main...HEAD` *is* correct — the release is the diff.
+Check which you are looking at before concluding a diff is empty.
 
 Review the diff, but read enough surrounding code to judge it in context. A diff that looks fine in isolation can still break a caller three files away.
 

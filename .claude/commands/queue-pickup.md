@@ -200,10 +200,18 @@ roughly once rather than every hour. Outside the window, exit silently.
 
 **A lock that is being worked is not a stall, and STEP 4b makes that distinction matter more.**
 Folding work into a story lengthens a run, so a healthy firing can now legitimately hold the
-lock for hours. Before notifying, check whether the claimed issue has a branch whose tip moved
-in the last hour — `git log -1 --format=%cr origin/<branch>`. If it did, something is building:
-exit silently. The alarm is for a condition **nobody is holding**, and a false "the queue is
-stalled" on a working firing teaches the owner to ignore the one alarm that matters.
+lock for hours. **So when the claimed issue has a branch, age the branch tip rather than the
+lock** — `git log -1 --format=%ct origin/<branch>` — and run the same 3–4h window against that.
+
+**Re-anchoring, rather than suppressing, is the point.** The obvious version of this check is
+"tip moved recently → exit silently", and it is wrong in a way that is invisible: a build that
+*dies* at hour 3½ has a fresh tip at the only firing inside the window, exits silently, and by
+the next firing the window has passed — so the alarm is lost for ever, on exactly the abandoned
+branch it exists to catch. Ageing the tip self-heals instead: a live build keeps resetting it
+so the alarm never fires, and a dead one stops resetting it and ages into its own window.
+
+The alarm is for a condition **nobody is holding**, and a false "the queue is stalled" on a
+working firing teaches the owner to ignore the one alarm that matters.
 
 **Send it with the `PushNotification` tool.** A self-bound Routine cannot carry notifications
 of its own — the server rejects that parameter for a trigger bound to a persistent session —
@@ -443,16 +451,19 @@ has a cheap correct answer, and it is the conservative one.
 
 ## STEP 4c — Open the PR and merge it
 
-Only now, with the triage done and anything travelling already committed:
+Only now, with the triage done and anything travelling already committed. **In this order** —
+the review comes before the merge, and putting it after is the same defect STEP 4 documents
+itself as fixing, moved one step later and onto the bullet that decides whether fold-ins ship
+reviewed at all:
 
-- Open a PR against **`development`**, drive CI to green, and merge it. Do not merge red.
-  **Never push to `main` and never open a PR against `main`** — production promotion belongs to
-  the owner.
-- The PR body carries the `## Folded in` section from STEP 4b, or nothing if nothing travelled.
-- **The `reviewer` pass covers the fold-ins too.** That is the entire safety argument for
-  building them unattended, so it is not optional and it is not "the review I already ran" —
-  if something was folded in after `reviewer` looked at the diff, it has not been reviewed.
-  Run it again on the final diff.
+1. **Re-run `reviewer` on the final diff, if anything was folded in after the STEP 4 pass.**
+   That is the entire safety argument for building fold-ins unattended, so it is not optional
+   and it is not "the review I already ran": code added after `reviewer` looked has not been
+   reviewed. Nothing folded in → the STEP 4 pass still stands and this is a no-op.
+2. Open a PR against **`development`**, with the `## Folded in` section from STEP 4b in the
+   body — or nothing there, if nothing travelled.
+3. Drive CI to green and merge. Do not merge red. **Never push to `main` and never open a PR
+   against `main`** — production promotion belongs to the owner.
 
 ---
 

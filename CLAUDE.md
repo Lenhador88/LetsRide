@@ -1689,10 +1689,12 @@ What it does, in order — and the order is the design:
    defines it above** — *on this branch, before this PR merges* — because an unattended run has
    nobody watching to say "not that". `.claude/commands/queue-pickup.md` STEP 4b is the procedure, including the
    breadth cap (at most two, and never larger than the story's own diff).
-5c. PR to `development`, drive green, merge, move to `Done`. Uncertain about anything →
-   `Needs help` with a comment saying what it needs. **File every rated follow-up before
-   stopping, on every exit path** — a follow-up rated and then dropped is worse than one never
-   noticed, because the rating made it look handled.
+5c. **Re-run `reviewer` if anything was folded in after step 5's pass** — code added after the
+   review has not been reviewed, and that review is the whole safety argument for building
+   fold-ins unattended. *Then* PR to `development`, drive green, merge, move to `Done`.
+   Uncertain about anything → `Needs help` with a comment saying what it needs. **File every
+   rated follow-up before stopping, on every exit path** — a follow-up rated and then dropped is
+   worse than one never noticed, because the rating made it look handled.
 
 **It is hourly, not every ten minutes, and that is a server limit rather than a choice.** The ask
 was ten. Measured, not assumed — `create_trigger` rejects it outright:
