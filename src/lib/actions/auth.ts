@@ -1,5 +1,6 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { clearQueryCache } from '@/lib/query'
+import { clearGuardCache } from '@/lib/auth/guard-cache'
 import { clearSessionStore } from '@/lib/supabase/session-store'
 import { RECOVERY_EXPIRED_MESSAGE, consumePasswordResetGrant } from '@/lib/auth/recovery'
 import type { ActionState } from '@/lib/actions/state'
@@ -211,6 +212,10 @@ export async function updatePassword(
  * take the refresh token away from the call that needs it, turning every
  * sign-out into a local-only one.
  *
+ * **`clearGuardCache()` is the third**, and it is the route guard's held state
+ * rather than the query cache's — see `lib/auth/guard-cache.ts` for why it is
+ * cleared here as well as by the `SIGNED_OUT` listener.
+ *
  * **The rider ends up signed out even when the revocation fails**, which is the
  * offline case 4.5 names. `signOut()` defaults to `scope: 'global'` — a network
  * call to revoke every session — and on a dead network that rejects. Falling
@@ -227,6 +232,7 @@ export async function signOut(): Promise<ActionState> {
   if (error) await supabase.auth.signOut({ scope: 'local' })
 
   clearQueryCache()
+  clearGuardCache()
   await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
 }

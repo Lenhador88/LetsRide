@@ -1,16 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { resolveDestination } from '@/lib/auth/guard'
 import {
-  needsOnboardingState,
-  onboardingStateFrom,
-  resolveDestination,
-  type GuardState,
-} from '@/lib/auth/guard'
-import type { OnboardingState } from '@/types'
+  attachGuardAuthListener,
+  ensureGuardState,
+  getGuardSnapshot,
+  getServerGuardSnapshot,
+  guardStateFrom,
+  hasGuardBooted,
+  subscribeGuardCache,
+} from '@/lib/auth/guard-cache'
 
 /**
  * The client route guard — `proxy.ts`'s decisions, applied in the browser
@@ -37,79 +39,89 @@ import type { OnboardingState } from '@/types'
  * design already drew is what fills it — flat `Accent Brand/100`, per
  * CLAUDE.md's note that the splash is the one screen that is not the gradient.
  *
+ * ## The decision is synchronous after the first one (PD-111)
+ *
+ * The state behind it lives in `lib/auth/guard-cache.ts` and is held across
+ * navigations, so a tab tap resolves in the same tick and the splash never
+ * paints again. It used to resolve in an effect keyed on `pathname`, which meant
+ * every navigation drew the full-screen green for a round trip to `eu-west-1`
+ * and unmounted `(app)/layout.tsx` — bottom bar and background included — on the
+ * way. See that module's header for what is cached and who writes it.
+ *
+ * **Boot replaces `children`; a later wait overlays them.** The two are not
+ * stylistic variants. Before the first decision there is nothing on screen to
+ * preserve and nothing vetted to reveal, so the splash stands alone. After it —
+ * a signed-in rider who has only visited public paths, say, navigating somewhere
+ * that needs the stamps — the shell is already mounted and correct, so covering
+ * it with an opaque overlay keeps it mounted rather than tearing it down and
+ * rebuilding it. `children` does mount underneath in that window; it is covered
+ * completely, and RLS answers nothing to a rider who turns out not to belong
+ * there, which is the same guarantee the guard leans on everywhere else.
+ *
+ * **There is deliberately no delay before the splash paints.** PD-111 §4
+ * suggests ~150ms, on the sound reasoning that a splash on screen for 80ms reads
+ * as a flicker rather than as progress. It cannot be had here: the only thing
+ * visible during that delay would be `children`, and the whole reason this
+ * component is waiting is that it does not yet know whether the rider is allowed
+ * to see them. A flicker is the cheaper failure. With the cache in place the
+ * window it would have softened has essentially stopped occurring anyway.
+ *
  * ## The SSR pass
  *
  * Everything under `(app)` is still server-rendered by Next until the shell
  * lands, and in that pass there is no session to read. So the first client
- * render always starts in `deciding` and resolves in an effect — which is the
- * same rule `lib/data/` obeys, for the same reason.
+ * render always starts undecided and resolves in an effect — which is the same
+ * rule `lib/data/` obeys, for the same reason.
  */
 export function RouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [allowed, setAllowed] = useState<string | null>(null)
+
+  const snapshot = useSyncExternalStore(
+    subscribeGuardCache,
+    getGuardSnapshot,
+    getServerGuardSnapshot
+  )
+
+  const state = guardStateFrom(snapshot, pathname)
+  const booted = hasGuardBooted(snapshot)
+
+  // `undefined` while undecided, so it is distinguishable from `null`, which is
+  // the decision "stay here". Conflating them would render the splash forever on
+  // every allowed route.
+  const destination = state === undefined ? undefined : resolveDestination(pathname, state)
 
   useEffect(() => {
-    let cancelled = false
+    attachGuardAuthListener()
+    ensureGuardState(pathname)
+    // `snapshot` so that a cache change which left this path still undecided —
+    // the session landing on a path that also needs the stamps — issues the next
+    // read instead of waiting for a navigation. `ensureGuardState` is a no-op
+    // once the cache can answer, so re-running it costs nothing.
+  }, [pathname, snapshot])
 
-    readGuardState(pathname).then((state) => {
-      if (cancelled) return
-      const destination = resolveDestination(pathname, state)
-      if (destination === null) {
-        setAllowed(pathname)
-        return
-      }
-      // Not `setAllowed` — the rider is leaving, and marking this path allowed
-      // first would render it for one frame before the navigation commits.
-      setAllowed(null)
-      router.replace(destination)
-    })
+  useEffect(() => {
+    if (!destination) return
+    router.replace(destination)
+  }, [destination, router])
 
-    return () => {
-      cancelled = true
-    }
-  }, [pathname, router])
+  // Leaving. Never the children — that is the flash this component exists to
+  // prevent — and never the overlay either, because the screen underneath is the
+  // one the rider is being sent away from.
+  if (destination) return <GuardSplash />
 
-  // Compared against the *current* pathname rather than held as a boolean: a
-  // navigation re-runs the effect, and a boolean would still read `true` from
-  // the previous route while the new one was being decided — which is the flash
-  // this component exists to prevent, reintroduced one route later.
-  if (allowed !== pathname) return <GuardSplash />
+  if (destination === undefined) {
+    return booted ? (
+      <>
+        {children}
+        <GuardSplash overlay />
+      </>
+    ) : (
+      <GuardSplash />
+    )
+  }
 
   return <>{children}</>
-}
-
-/**
- * Reads the two things the decision needs. Everything else about the guard is
- * pure and lives in `lib/auth/guard.ts`.
- *
- * `getSession()`, not `getUser()`. `getUser()` revalidates the token against
- * GoTrue on every call, which would put a network round trip in front of every
- * navigation — and it would buy nothing, because this guard is not a security
- * boundary (RLS is, and it verifies the signature itself on every query). A
- * forged local session reaches a screen where every read returns nothing.
- *
- * The onboarding stamp is read through `my_onboarding_state()` rather than a
- * table select because `025` revokes column SELECT on both stamps — a select
- * naming them answers 403, which the `unavailable` branch would read as a deploy
- * mismatch and bounce every signed-in rider out of every screen. The function
- * returns the three things this needs in one round trip.
- */
-async function readGuardState(pathname: string): Promise<GuardState> {
-  const supabase = createClient()
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  if (!session) return { kind: 'anonymous' }
-
-  if (!needsOnboardingState(pathname)) return { kind: 'session' }
-
-  // The mapping — including the zero-rows case, which must not read as "not
-  // onboarded" — lives in `onboardingStateFrom` so it has a test.
-  return onboardingStateFrom(
-    await supabase.rpc('my_onboarding_state').maybeSingle<OnboardingState>()
-  )
 }
 
 /**
@@ -118,13 +130,18 @@ async function readGuardState(pathname: string): Promise<GuardState> {
  * `role="status"` with a label rather than a visible spinner: on a warm cache
  * this is on screen for a frame or two, and an animation that brief reads as a
  * flicker rather than as progress.
+ *
+ * `overlay` raises it above every other fixed layer in the app — `Banner` at
+ * `z-[80]` is the highest, and a banner showing through a guard that is still
+ * deciding would be the previous screen's. It is opaque either way; the z-index
+ * is the only difference, because the non-overlay case has nothing to cover.
  */
-function GuardSplash() {
+function GuardSplash({ overlay = false }: { overlay?: boolean }) {
   return (
     <div
       role="status"
       aria-label="Loading"
-      className="bg-accent fixed inset-0 flex items-center justify-center"
+      className={`bg-accent fixed inset-0 flex items-center justify-center ${overlay ? 'z-[100]' : ''}`}
     >
       <Image
         src="/brand/logo-splash.png"

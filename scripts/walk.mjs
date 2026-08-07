@@ -216,6 +216,98 @@ for (const path of paths) {
 }
 
 /**
+ * Tapping a bottom tab is a *client-side* navigation, and nothing above walks
+ * one — every route in the loop is a `goto`, which is a cold boot. That gap is
+ * exactly where PD-111 lived: each tap re-read `my_onboarding_state()` from
+ * `eu-west-1` behind the full-screen splash, and because the splash *replaced*
+ * `children` rather than covering them, `(app)/layout.tsx` unmounted with it.
+ * The bottom bar vanished and reappeared on every tap, which read as a reload.
+ *
+ * Three measurements, because the fix is only correct if all three hold:
+ *
+ *   1. **No `my_onboarding_state()` round trip per tap.** One per session, at
+ *      boot. This is the fix itself — the stamps are immutable for a session's
+ *      lifetime, so re-reading them bought nothing.
+ *   2. **The Navbar node survives.** Identity, not presence: a remounted bar is
+ *      a *different* node that looks identical, so this tags the original and
+ *      checks the tag is still on the node that is there at the end.
+ *   3. **The splash never paints.** Watched with a `MutationObserver` rather
+ *      than a poll, because one frame of green is the whole complaint and a poll
+ *      would miss it.
+ *
+ * The splash is matched on `bg-accent` + `inset-0` as well as its label: three
+ * of `Skeleton.tsx`'s regions are also `aria-label="Loading"`, and matching the
+ * label alone reports an ordinary `useQuery` skeleton as a guard splash. That
+ * false positive cost a debugging round on the way in.
+ *
+ * Verified both ways before being committed, per CLAUDE.md's rule about a filter
+ * that has quietly stopped matching: against the fix it reads 0/survived/0, and
+ * against the code before it, 5 calls, 5 splash paints and a Navbar that did not
+ * survive a single tap.
+ */
+const TAB_TAPS = ['/rides', '/clubs', '/profile', '/postcards', '/rides']
+
+async function checkTabNavigation() {
+  console.log('\nclient-side navigation (PD-111):')
+  let bad = 0
+  const report = (ok, label, detail) => {
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  let stampReads = 0
+  const countStampReads = (r) => {
+    if (r.url().includes('my_onboarding_state')) stampReads += 1
+  }
+
+  await page.goto(`${BASE}/postcards`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('nav', { timeout: 20_000 }).catch(() => {})
+  await page.waitForTimeout(600)
+
+  // The dev overlay's portal covers the viewport and swallows every click.
+  await page.addStyleTag({ content: 'nextjs-portal { display: none !important }' })
+
+  await page.evaluate(() => {
+    const nav = document.querySelector('nav')
+    if (nav) nav.dataset.walkTag = 'original'
+    window.__splashPaints = 0
+    new MutationObserver((records) => {
+      for (const r of records)
+        for (const n of r.addedNodes)
+          if (
+            n.nodeType === 1 &&
+            n.getAttribute?.('aria-label') === 'Loading' &&
+            n.className?.includes?.('bg-accent') &&
+            n.className.includes('inset-0')
+          )
+            window.__splashPaints += 1
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+
+  page.on('request', countStampReads)
+  for (const href of TAB_TAPS) {
+    await page.click(`nav a[href="${href}"]`).catch(() => {})
+    await page.waitForURL(`**${href}`, { timeout: 15_000 }).catch(() => {})
+    await page.waitForTimeout(400)
+  }
+  page.off('request', countStampReads)
+
+  const navSurvived = await page.evaluate(
+    () => document.querySelector('nav')?.dataset.walkTag === 'original'
+  )
+  const splashPaints = await page.evaluate(() => window.__splashPaints)
+
+  report(stampReads === 0, `no stamp re-read across ${TAB_TAPS.length} taps`, `${stampReads} calls`)
+  report(navSurvived, 'the shell stayed mounted', 'Navbar remounted')
+  report(splashPaints === 0, 'the splash never painted', `${splashPaints} paints`)
+
+  return bad
+}
+
+/** How many assertions `checkTabNavigation` makes, for the summary line. */
+const TAB_NAV_CHECKS = 3
+
+/**
  * Where the route guard actually sends a rider — run only on a full walk, since
  * a subset invocation is usually someone debugging one screen.
  *
@@ -324,6 +416,10 @@ async function checkSignOut() {
 
 let guardFailures = 0
 if (isFullWalk) {
+  // Before the guard cases, which end on /auth/reset-password, and well before
+  // `checkSignOut` takes the session away.
+  guardFailures += await checkTabNavigation()
+
   guardFailures += await checkGuard(page, GUARD_CASES_SIGNED_IN, 'signed in')
 
   guardFailures += await checkSignOut()
@@ -338,7 +434,11 @@ await browser.close()
 
 console.log(`\n${paths.length - failures}/${paths.length} screens rendered clean`)
 if (isFullWalk) {
-  const total = GUARD_CASES_SIGNED_IN.length + GUARD_CASES_SIGNED_OUT.length + SIGN_OUT_CHECKS
-  console.log(`${total - guardFailures}/${total} guard and sign-out checks correct`)
+  const total =
+    GUARD_CASES_SIGNED_IN.length +
+    GUARD_CASES_SIGNED_OUT.length +
+    SIGN_OUT_CHECKS +
+    TAB_NAV_CHECKS
+  console.log(`${total - guardFailures}/${total} guard, navigation and sign-out checks correct`)
 }
 process.exit(failures || guardFailures ? 1 : 0)
