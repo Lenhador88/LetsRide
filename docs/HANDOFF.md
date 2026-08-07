@@ -813,13 +813,21 @@ wider project rule. A UUID-scoped mirror belongs in `.claude/settings.local.json
 gitignored **because those ids are per-machine** — never commit them. There is no such file in
 this container today (`ls .claude/settings.local.json`).
 
-**For the hourly Routine that drains the queue, the connector setting is not merely the better
-fix — it is the only one that reaches it.** Measured 2026-08-07: its fired sessions carry an
-`allowed_tools` list with **zero `mcp__*` entries** and no `permission_mode`, where every
-interactive session carries `permission_mode: auto` (`list_triggers` against `list_sessions`). A
-`settings.local.json` mirror cannot help, because it is gitignored *and* each firing gets a fresh
-container — the file would never be there to read. `PD-109` is the owner action; `PD-110` is the
-matching one for its model, which `update_trigger` refuses with `model_update_disabled`.
+**The hourly Routine spent 2026-08-07 prompting for Linear on every firing, and the cause was
+none of the above — it had no repository attached.** `session_context.sources` was empty, so
+there was no checkout, so `.claude/settings.json` was never read, so neither `defaultMode: "auto"`
+nor any `permissions.allow` entry existed to match. The connector always-allow was set first and
+changed nothing, because connectors attach per session independently of the repo — Linear's tools
+loaded fine the whole time, which is what made it look like a permission-layer problem.
+
+**The cheap diagnostic, learned the expensive way: a permission dialog offering "Allow once" but
+no "Allow always" means there is no project settings file to persist a grant into — i.e. no
+repo.** Check `session_context.sources` before theorising about permission layers. `PD-109` chased
+the connector and was wrong; `PD-110` (the model, refused by `update_trigger` with
+`model_update_disabled`) still stands. The owner fixed the source in the Routines UI.
+
+**Any UI edit to a Routine re-anchors its cron.** Attaching the repo silently rewrote
+`0 0-23 * * *` to `24 * * * *`, the save minute. Re-read `cron_expression` after every UI edit.
 
 **Never delete and recreate that Routine.** `create_trigger` still refuses the `connectors`
 parameter for this org (re-tested 2026-08-07), so the replacement comes back with no Supabase,
