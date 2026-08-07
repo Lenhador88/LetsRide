@@ -1267,9 +1267,23 @@ busy queue. Always pass `project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`.
 #   -> statuses; anything in Development (AI) or Needs help holds the lock
 ```
 
-**The queue is frozen right now and it needs an owner decision.** As of 2026-08-07 19:36 UTC two
-issues hold the lock together — **`PD-118`** (Notifications; moved to `Development (AI)` at
-19:35, minutes after this session started, by something other than this session) and **`PD-125`**
-(Ride chat unreachable; created 19:26 already in that status). Neither has a branch —
-`git branch -r` shows only `main`, `development` and this session's. Four issues wait behind them
-in `Queued (AI)`. Until one of them is moved back, every firing will correctly exit at STEP 1.
+**The board is empty as of 2026-08-07 22:15 UTC — `Queued (AI)`, `Development (AI)` and
+`Needs help` all have zero issues**, so every firing will exit silently at STEP 1.5 until the
+owner queues something. That is the designed idle state, not a fault. Re-derive rather than trust
+it, because this is the fastest-moving line in the file:
+
+```bash
+# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
+#   -> group by status; Queued (AI) is the queue, the other two are the lock
+```
+
+**The Routine has run for real and the whole path is proven.** Four firings on 2026-08-07: three
+exited on the lock (correctly — `PD-118` held it), and the fourth took **`PD-132`**, a
+deliberately empty test issue, through gates → lock → pick → claim → `Done` → push notification.
+`PD-132` closed with no code change and no PR, because the issue asked for none.
+
+**`PD-133` is open in `Needs decision`** — the owner's question about whether the column's manual
+order should replace the `priority` attribute. Note the thing to check first: no `list_issues`
+response this session carried an ordering field (`sortOrder`, `position`), so the idea may not be
+buildable through this MCP at all. `Needs decision` is typed `unstarted` and does **not** hold the
+lock.
