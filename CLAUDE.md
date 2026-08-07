@@ -1688,21 +1688,36 @@ was created at 19:32 with `0 0-23 * * *`; it stored that **verbatim** and came b
 `next_run_at: 20:05:35`. Rewriting the same expression at 19:53 did **not** clear the offset —
 `20:05:51`, so it is sticky rather than recomputed from the edit.
 
-**The offset belongs to the first run, not to the schedule.** Two data points, same expression:
+**The offset is a per-trigger constant. It survives firing, and it is not the schedule.** Settled
+2026-08-07 by watching the first firing land:
 
-| Routine | Has fired? | `next_run_at` |
-|---|---|---|
-| `trig_01Gzy8eCiaXUUa1knvJnNpwy` | yes, `last_fired_at 16:02:00` | `17:00:00.667` — **exact** |
-| `trig_01WJkMVXGzUVGDcC1njNmaan` | never | `20:05:51` — offset |
+| When | `next_run_at` |
+|---|---|
+| before the first firing | `20:05:51.185148522` |
+| after it (`last_fired_at 20:13:52`) | `21:05:51.**185148522**` |
 
-So a Routine that has fired sits on the exact hour and a fresh one does not. **That is two samples,
-not a proven rule** — check `next_run_at` after the first firing rather than trusting this table.
+**Identical to the sub-second, plus exactly one hour.** So each trigger draws a fixed offset it
+keeps for life: this one drew `+5m51.185s`, and `trig_01Gzy8eCiaXUUa1knvJnNpwy` drew `+0.667s`,
+which is the entire reason the old Routine looked like it fired on the hour and this one does not.
+**Delivery latency is a second, separate thing** — that firing was scheduled 20:05:51 and arrived
+20:13:52, eight minutes later.
 
-**An earlier revision of this paragraph called the offset "scheduler jitter (up to 10% of the
-period)", and that was a guess wearing an explanation's clothes** — the 10% figure is documented
-for the *session-local* `CronCreate` scheduler, a different system, and it was reached for because
-it was the nearest available number. The measured facts are only the four in the table plus the
-sticky rewrite. It is not the minute-anchoring rewrite described above in any case — the tell is
+**Two hypotheses died here, and the second is the instructive one.** The first revision called the
+offset "scheduler jitter, up to 10% of the period" — the 10% figure is documented for the
+*session-local* `CronCreate` scheduler, a different system, and it was reached for because it was
+the nearest available number. The second revision called it a *first-run* property, from two
+Routines where the exact one had fired and the offset one had not. **That reading was consistent
+with every observation available at the time and still wrong**, because the variable it blamed
+(has it fired?) happened to correlate with the one that mattered (which offset did it draw?). One
+more firing separated them. Do not treat a two-sample correlation as a mechanism; wait for the
+event that can falsify it.
+
+**Consequence: you cannot schedule a Routine onto an exact minute from a session.** `0 0-23 * * *`
+is minute 0 and stores verbatim, and the offset is applied on top with no parameter to clear it.
+Rewriting the expression does not re-roll it — measured, `20:05:35` → `20:05:51`, still `:05`. The
+only lever is a new trigger id, which draws a new offset and is therefore a lottery rather than a
+fix. Worth it only for the self-bound Routine, which is disposable; never for the connector-holding
+one. It is not the minute-anchoring rewrite described above in any case — the tell is
 that `cron_expression` still reads `0 0-23`, where an anchored one would read `32 * * * *`. Check
 `cron_expression` to see whether the schedule survived; `next_run_at` will wander by a few minutes
 either way and reading it as the anchoring bug leads to a "fix" that introduces one.

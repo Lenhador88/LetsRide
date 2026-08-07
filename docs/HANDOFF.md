@@ -992,15 +992,21 @@ Four measurements from making the switch, each of which will otherwise be redisc
   by checking the key is *gone*.
 - **The server rejects `notifications` on a self-bound trigger.** Push now comes from the session
   itself via `PushNotification`, at STEP 0 and STEP 5 of the procedure.
-- **`next_run_at` is not the schedule, and a never-fired Routine's is the least trustworthy number
-  here.** `0 0-23 * * *` created at 19:32 stored verbatim and returned `next_run_at: 20:05:35`;
-  rewriting the same expression at 19:53 did not clear it (`20:05:51`), so it is sticky rather than
-  recomputed. The offset looks like a **first-run** property: the old Routine, same expression, had
-  already fired and sat on `17:00:00.667` — exact. Two samples, not a proven rule. Check
-  `cron_expression` for whether the schedule survived, and re-read `next_run_at` after the first
-  firing. (An earlier revision called this "scheduler jitter, up to 10% of the period" — that
-  figure is `CronCreate`'s, a different scheduler, and was a guess wearing an explanation's
-  clothes.)
+- **`next_run_at` carries a per-trigger constant offset, and you cannot schedule onto an exact
+  minute from a session.** `0 0-23 * * *` is minute 0 and stores verbatim; the offset is applied on
+  top. Settled by watching the first firing: `next_run_at` went `20:05:51.185148522` →
+  `21:05:51.185148522` — **identical to the sub-second, plus one hour**. So each trigger draws a
+  fixed offset for life (this one `+5m51.185s`; the old Routine `+0.667s`, which is why that one
+  looked exact). Rewriting the expression does not re-roll it (`20:05:35` → `20:05:51`). Delivery
+  latency is separate and larger: scheduled 20:05:51, arrived 20:13:52. The only lever is a new
+  trigger id — a lottery, not a fix, and worth it only for the disposable self-bound Routine.
+
+  **Two explanations died here and the second is the instructive one.** First "scheduler jitter, up
+  to 10% of the period" — that figure is `CronCreate`'s, a different scheduler. Then a **first-run**
+  property, inferred from two Routines where the exact one had fired and the offset one had not.
+  That reading fit every observation available and was still wrong: the variable it blamed (has it
+  fired?) happened to correlate with the one that mattered (which offset did it draw?). One more
+  firing separated them. **Do not treat a two-sample correlation as a mechanism.**
 - **The "never delete a Routine" rule protects connectors, so it covers `…Gzy8e` and not
   `…WJkMV`.** The self-bound one holds no `mcp_connections` and needs none — they come from the
   session — so recreating it costs one call. The connector-holding one is irreplaceable from a
