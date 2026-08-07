@@ -270,10 +270,14 @@ because the error was *reasoning where measurement was available*:
 
 - **The module claimed a failure mode it did not have.** Its docstring said "supabase-js reads a
   storage error as 'no session', so the rider sees a signed-out app". False: `auth-js`'s
-  `__loadSession` is `try/finally` with **no** `catch`, and `RouteGuard` calls `getSession()`
+  `__loadSession` is `try/finally` with **no** `catch`, and the guard called `getSession()`
   from a `.then()` with no `.catch()` — so a rejecting read hangs the splash **forever**, which
   a rider cannot retry past. `getItem` now resolves to `null` on failure, which makes the
   original sentence true by construction instead of by assumption.
+
+  *(That read left `RouteGuard` with PD-111 and lives in `src/lib/auth/guard-cache.ts` now. It
+  still has no `.catch()`, and the fix above is still what makes that safe — but the hang is no
+  longer permanent: the read is cleared in a `.finally()`, so the next navigation retries it.)*
 - **`configured ??= applyPluginDefaults()` cached a *rejected* promise**, so one transient
   plugin error would break every read and write for the rest of the app session with no retry.
   The slot is cleared on failure now.
@@ -450,10 +454,17 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `15/15 screens rendered clean` and `15/15 guard and sign-out checks correct`.**
-The walk discovers detail routes from the lists, checks eleven route-guard redirects in both
-signed-in and signed-out states, and asserts sign-out leaves no `sb-*` key in `localStorage`, no
-`sb-*` cookie, and no reachable screen.
+**A clean run is `18/18 guard, navigation and sign-out checks correct`.** It was 15/15 until
+PD-111 added the three client-side-navigation checks (2026-08-07). The walk discovers detail
+routes from the lists, checks eleven route-guard redirects in both signed-in and signed-out
+states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no
+reachable screen, and taps five bottom tabs to prove a navigation costs no
+`my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
+
+**The screens figure is data-dependent and is not a pass/fail number** — it is `15/15` against a
+database holding rides and clubs, and `9/9` against DEV, which holds neither, because the four
+detail routes are discovered rather than hardcoded and a list with no rows yields no path. The
+walk says which it skipped. Read the `N/N` for equality, not for the value.
 
 **Network, measured — a blocked host fails as `curl: (56) CONNECT tunnel failed`, not as a
 timeout:**
@@ -636,6 +647,32 @@ owner; `qa-verify`'s is in the git history of this file and should be treated as
 also makes it the credential `npm run walk` uses, since a burned password on a fixture marked
 for deletion is the right thing to hand a smoke test. Pass it in the environment, never on a
 command line that gets logged.
+
+**DEV has its own two, and they are the ones to walk against** — `letsride-dev`
+(`fpmrimzxadewsaiwpsel`) holds `rider-1786033029156@letsride.dev` (consented, **no username, not
+onboarded** — the fixture for walking the wizard) and `rider-1786033088990@letsride.dev`
+(`devrider093453`, fully onboarded — the fixture for walking the app). Walking DEV rather than
+PROD is the better default: the seed guard in `supabase/seeds/development.sql` exists because
+that database is meant to be disposable, and a smoke walk that signs in as a real rider on the
+production project is a habit worth not forming.
+
+**Their passwords are not recorded anywhere, deliberately — set one when you need it.** A
+session has `execute_sql` on DEV under the standing grant, so the credential is *derivable* in
+ten seconds rather than *stored*, which is strictly better than a password living in a file:
+
+```sql
+-- Generate the password locally; never type a memorable one, and never commit it.
+update auth.users
+   set encrypted_password = extensions.crypt('<generated>', extensions.gen_salt('bf')),
+       updated_at = now()
+ where email = 'rider-1786033088990@letsride.dev';
+```
+
+If you walk the wizard with the un-onboarded one, put it back afterwards or the next session
+finds no un-onboarded fixture — `update public.profiles set username = null, location = null,
+onboarding_completed_at = null where id = (select id from auth.users where email = '…')`. The
+`003` and `012` triggers do not block this: both short-circuit on
+`current_user <> 'authenticated'`, and an MCP session is not that role.
 
 **Only having one reachable password is why the shared-device case (task 4.6) is proven by
 mechanism and not by sequence.** The walk asserts that sign-out destroys the session, the query
