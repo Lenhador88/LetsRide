@@ -1321,32 +1321,58 @@ on why it matters. **A Linear issue that grows a specification is a bug** — th
 proposal, where `openspec/config.yaml`'s rules apply and a missing visibility rule fails loudly
 rather than silently.
 
-### The pipeline is the squad, and the statuses already model it
+### Six statuses, and the board does not mirror the squad
 
-The team's statuses map onto §The Agent Squad's order almost exactly. Use them rather than
-inventing labels:
+The board was trimmed on 2026-08-07, the day after it was seeded, and the reason is worth
+keeping because it is the same reason the boundary above exists. It briefly carried ten
+statuses — `Idea (AI)`, `Testing (AI)`, `Quality control (AI)`, `Review Dev (Human)` among
+them — one per stage of §The Agent Squad's order. The product owner's objection settled it:
+*"I dont think i care if they are being developed tested or quality control etc. our squad
+already takes care of that"*. Exactly right. That order is enforced by **this file**, and a
+board mirroring it is an agent narrating its own internals to a column nobody reads.
 
-| Status | Means | Who moves it |
-|---|---|---|
-| `Backlog` | Captured, not triaged | Either |
-| `Todo` | Triaged; owner chores live here | Either |
-| `Idea (AI)` | An agent is drafting the OpenSpec proposal | Agent |
-| `Review plan (Human)` | Waiting on a product decision or a proposal read | **Owner** |
-| **`Ready for DEV (AI)`** | **Approved to build. This is the queue an agent pulls from** | **Owner** |
-| `Development (AI)` | `data` / `design-system` / `feature` / `media` at work | Agent |
-| `Testing (AI)` | `test` agent | Agent |
-| `Quality control (AI)` | `reviewer` agent — never on its own work | Agent |
-| `Review Dev (Human)` | PR open against `development`, waiting on the merge | **Owner** |
-| `Done` | Merged. *Committed and pushed is not shipped* | Agent |
+**A status is only worth a column when someone changes behaviour based on it.**
+
+| Status | Type | Means | Who moves it |
+|---|---|---|---|
+| `Backlog` | backlog | Captured, not triaged | Either |
+| `Todo` | unstarted | Triaged; owner chores live here | Either |
+| `Human decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
+| **`Ready for DEV (AI)`** | unstarted | **Approved to build. The queue an agent pulls from** | **Owner** |
+| `In progress (AI)` | started | An agent has picked it up | Agent |
+| `Done` | completed | Merged. *Committed and pushed is not shipped* | Agent |
+
+`Canceled` stays — every board needs a way to kill something without lying that it shipped.
 
 **`Ready for DEV (AI)` is how the owner chooses what gets built.** Nothing else is a start
 signal — not priority, not the milestone, not a comment. **Take the top of that column by
 priority, and if it is empty, ask rather than choosing for them.** A session that picks its own
 work from `Backlog` has quietly taken the one decision this whole board exists to give the owner.
 
+**`In progress (AI)` survived the trim and the other three did not, for one reason: it is the
+only one the owner reads.** With several issues released at once, it is what says which one is
+being worked *right now* — and no other signal carries that, because agents are not Linear users
+here, so every issue shows the owner as its creator and nothing is ever assigned to a session.
+Move it on pickup, not at the end. The three that went were each an agent telling itself
+something it already knew.
+
 Labels are the cross-cut: **`Owner only`** is the filter for what no session can do, and
 `App` / `Database` / `Native shell` / `Design` / `Website` say where. `Chore` is the type
 `Bug`/`Feature`/`Improvement` leaves out.
+
+**Configuring statuses is an owner action, and the MCP cannot do it.** The Linear MCP exposes
+`list_issue_statuses` and `get_issue_status` and nothing that writes one, so the table above is
+applied by hand in Linear's team settings. Two rules for whoever applies it:
+
+- **Rename rather than delete wherever a status has issues in it.** Statuses are team-level, so
+  they are shared with the older `Let's Ride` project — and deleting one forces every issue
+  sitting in it to move, including issues in the project the owner asked be left alone. A rename
+  carries them silently and changes nothing. `Review plan (Human)` → `Human decision` and
+  `Development (AI)` → `In progress (AI)` are renames for exactly this reason.
+- **Type the two owner columns `unstarted`, not `started`.** Linear counts `started` as
+  work-in-progress, and the seeded board had seven of twelve statuses typed that way — so an
+  issue merely *queued for the owner to look at* inflated every progress bar and cycle chart. The
+  count was never the problem with that board; the types were.
 
 ### Do not ask permission to touch Linear
 
