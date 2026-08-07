@@ -342,10 +342,17 @@ section keeps the *detail*; Linear keeps the *queue*, and the mapping is:
 | 6 | `PD-94` Sweep the orphaned Storage objects | — |
 
 **Two more were found outside this section, which is exactly the failure the tracker fixes.**
-`PD-88` — the Site URL is still `http://localhost:3000` with nothing allowlisted, so every email
-the app sends lands on a dead address (it lived in `CLAUDE.md` decision #6 and
-`docs/ENVIRONMENTS.md`). And `PD-93` — pinning `defaultMode` — which turned out to be **already
-done** by PR #80, while `CLAUDE.md` still described it as outstanding. Closed on sight.
+`PD-88` — the Site URL and redirect allowlist — and `PD-93`, pinning `defaultMode`, which turned
+out to be **already done** by PR #80 while `CLAUDE.md` still described it as outstanding.
+
+**`PD-88` is now done too, and it had been done for a while.** Re-measured 2026-08-07 with the
+credential-free probe in `docs/ENVIRONMENTS.md` §The redirect allowlist: a discarded
+`redirect_to` falls back to `https://letsrideapp.vercel.app/`, and the production origin is
+honoured. Three places in the repo were still calling it "the most urgent thing here" —
+this line, that section's heading, and §Owner setup items 8 and 9. **Two `Owner only` issues in
+a row found already-fixed is a pattern, not a coincidence**: a dashboard setting has no file to
+change, so nothing marks it done except someone re-running the probe. Re-run it before quoting
+any row of that table.
 
 The list below says "six" because that is what it said when written; the count is now Linear's
 job, not this file's. Every one is a dashboard click or a credential a human holds, so **ask for
