@@ -533,13 +533,28 @@ database holding rides and clubs, and `9/9` against a DEV holding neither, becau
 detail routes are discovered rather than hardcoded and a list with no rows yields no path. The
 walk says which it skipped. Read the `N/N` for equality, not for the value.
 
-**So provision what you need to walk, rather than reading a skip as a pass.** `9/9` looks
-exactly like success and means the ride detail was never opened — which is how PD-125 shipped a
-switcher nobody had seen. One insert takes it to 11/11:
+**So the walk provisions what it needs, as of 2026-08-07** — `9/9` looks exactly like success
+and means the ride detail was never opened, which is how PD-125 shipped a switcher nobody had
+seen:
 
-```sql
-insert into rides (organizer_id, title, meeting_point, departure_at, is_public)
-values ('<walk uid>', 'Walk fixture ride', 'Dam Square, Amsterdam', now() + interval '10 days', true);
+```bash
+WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV.supabase.co \
+  WALK_EMAIL=... WALK_PASSWORD=... npm run walk     # 16/16 against a DEV that had 9/9
+```
+
+It creates a ride and a club **through `/rides/new` and `/clubs/new`** rather than by insert,
+which exercises the two create forms end to end — nothing else in this repo submits them. It
+fills **only what is missing**, so it is idempotent and needs no cleanup pass; a second run
+creates nothing and still walks 16/16.
+
+**Writes are off by default and refuse to be aimed vaguely.** `WALK_FIXTURES=1` also requires
+`RELAY_UPSTREAM`, and `fixturesPermitted()` refuses PROD's ref outright — the walk signs in and
+posts as a real rider, and this file's own recipe named PROD until today. Both refusals are
+verified, not assumed:
+
+```
+(fixtures not created — refusing to create fixtures against PROD (zwprydcyryvudhurbnye) — walk DEV)
+(fixtures not created — WALK_FIXTURES=1 needs RELAY_UPSTREAM set, so the target is named rather than assumed)
 ```
 
 **Realtime does not survive the relay, and this is the one gap the walk cannot close.**
@@ -549,6 +564,15 @@ connects. Measured 2026-08-07 while verifying PD-125: a message sent through the
 appears, because the optimistic path draws it and the refetch confirms it — so a green walk
 proves the chat renders and sends, and proves **nothing** about live delivery. Teaching the
 relay to proxy the upgrade is the fix if that ever needs covering.
+
+**The walk suppresses that one console error and says so**, because `/rides/[id]/chat` is on
+the route list now and an always-red gate is a gate nobody reads. The filter is deliberately
+narrow — the relay's own origin and the Realtime path, nothing else — and the count is printed
+rather than swallowed:
+
+```
+  (Realtime NOT exercised — 1 relay WebSocket failure(s) suppressed; the relay does not proxy the upgrade)
+```
 
 **Network, measured — a blocked host fails as `curl: (56) CONNECT tunnel failed`, not as a
 timeout:**

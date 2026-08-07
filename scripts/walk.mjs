@@ -23,10 +23,24 @@
  *
  * ## Running it, and the one thing that will otherwise waste an hour
  *
- *   NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<ref>.supabase.co \
+ *   NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co \
  *     node scripts/supabase-relay.mjs &
  *   NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
  *   WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+ *
+ *   # ...and to provision the rows the detail routes need, on an empty DEV:
+ *   WALK_FIXTURES=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co \
+ *     WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+ *
+ * **Point it at DEV.** This walk signs in, and with `WALK_FIXTURES=1` it posts
+ * as a real rider — against `letsride` that means fixture rides in real riders'
+ * feeds. docs/HANDOFF.md's recipe named PROD's ref until 2026-08-07, so this is
+ * a mistake the documentation actively invited; `fixturesPermitted()` refuses it
+ * rather than trusting anyone to notice.
+ *
+ * **The account needs no stored password.** DEV has `mailer_autoconfirm: true`,
+ * so a signup returns a session with no confirmation step — mint one, stamp
+ * onboarding, walk. docs/HANDOFF.md §The walk has the two commands.
  *
  * **The relay is not optional in this container, and the reason changed with the
  * render migration.** Chromium here cannot reach Supabase at all — measured
@@ -106,8 +120,34 @@ const context = await browser.newContext({ viewport: { width: 390, height: 844 }
 const page = await context.newPage()
 
 const problems = []
+
+/**
+ * The one console error that is the harness's fault rather than the app's.
+ *
+ * `scripts/supabase-relay.mjs` forwards HTTP and drops the `upgrade` header, so
+ * the ride chat's Realtime subscription cannot connect through it and Chromium
+ * logs a failed WebSocket on every load of `/rides/[id]/chat`. Left unfiltered
+ * that makes the walk permanently red on a screen that renders perfectly — and
+ * a gate that is always red is a gate nobody reads.
+ *
+ * **Deliberately narrow: the relay's own origin and the Realtime path.** A
+ * WebSocket failure anywhere else, or to any other host, is still a failure. It
+ * is also counted rather than silently dropped, because a suppressed error that
+ * stops being reported is indistinguishable from one that stopped happening —
+ * the run prints what it did not exercise.
+ */
+let realtimeSuppressed = 0
+const isRelayWebSocketFailure = (text) =>
+  /^WebSocket connection to 'ws:\/\/localhost:3001\/realtime\/v1\/websocket/.test(text)
+
 page.on('console', (m) => {
-  if (m.type() === 'error') problems.push(`console: ${m.text().slice(0, 300)}`)
+  if (m.type() !== 'error') return
+  const text = m.text()
+  if (isRelayWebSocketFailure(text)) {
+    realtimeSuppressed += 1
+    return
+  }
+  problems.push(`console: ${text.slice(0, 300)}`)
 })
 page.on('pageerror', (e) => problems.push(`pageerror: ${String(e).slice(0, 300)}`))
 page.on('response', (r) => {
@@ -145,8 +185,8 @@ if (landed.startsWith('/auth/login')) {
  * A list with no rows yields no path and the route is skipped rather than
  * guessed at, and it says so — a silent skip here reads as a pass.
  */
-async function discoverDetailPaths() {
-  const found = []
+async function discoverDetailPaths({ quiet = false } = {}) {
+  const say = (m) => !quiet && console.log(m)
 
   const firstHref = async (listPath, pattern) => {
     await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
@@ -161,23 +201,114 @@ async function discoverDetailPaths() {
   }
 
   const ride = await firstHref('/rides', '^/rides/[0-9a-f-]{36}$')
-  if (ride) found.push(ride, `${ride}/crew`)
-  else console.log('  (no rides to open — /rides/[id] and its crew unwalked)')
+  if (!ride) say('  (no rides to open — /rides/[id] and its crew unwalked)')
 
   const club = await firstHref('/clubs', '^/clubs/[0-9a-f-]{36}$')
-  if (club) found.push(club, `${club}/rides`, `${club}/members`, `${club}/about`)
-  else console.log('  (no clubs to open — /clubs/[id] and its sub-pages unwalked)')
+  if (!club) say('  (no clubs to open — /clubs/[id] and its sub-pages unwalked)')
 
   const postcard = await firstHref('/postcards', '^/postcards/[0-9a-f-]{36}$')
-  if (postcard) found.push(postcard)
-  else console.log('  (no postcard thread link — /postcards/[id] unwalked)')
+  if (!postcard) say('  (no postcard thread link — /postcards/[id] unwalked)')
 
-  return found
+  const paths = [
+    ...(ride ? [ride, `${ride}/crew`, `${ride}/chat`] : []),
+    ...(club ? [club, `${club}/rides`, `${club}/members`, `${club}/about`] : []),
+    ...(postcard ? [postcard] : []),
+  ]
+  return { ride, club, postcard, paths }
+}
+
+/**
+ * ## Fixtures — because a skip reads exactly like a pass
+ *
+ * `9/9 screens rendered clean` against an empty database is not a green run, it
+ * is four unopened screens and a number that looks like success. That is not
+ * hypothetical: PD-125 shipped a ride sub-page switcher **nobody had ever
+ * seen**, past a green walk, because DEV held no rides and the ride detail was
+ * therefore skipped every time.
+ *
+ * So the walk provisions what it needs — but only what is *missing*, which is
+ * what keeps it idempotent. A DEV that already has a ride gets nothing new, so
+ * repeated runs cannot silt the database up, and no cleanup pass is needed
+ * (there is nothing to distinguish "mine" from "the owner's" afterwards, which
+ * is exactly the kind of deletion nobody should be writing).
+ *
+ * **It creates them through the UI rather than through SQL, and that is the
+ * point rather than a shortcut.** Submitting `/rides/new` and `/clubs/new`
+ * exercises the two create forms end to end — their validation, their actions,
+ * their redirects — which nothing else in this repo does at all. An insert
+ * would produce the same row and prove none of it.
+ *
+ * **Postcards are deliberately not provisioned.** The composer requires an
+ * image, and Storage from this container's Chromium hangs without ever firing
+ * `onload` or `onerror` (docs/HANDOFF.md). A fixture that cannot be created is
+ * better skipped loudly than half-built.
+ */
+const PROD_REF = 'zwprydcyryvudhurbnye'
+
+/**
+ * Writes are **off by default and cannot be turned on vaguely.** Naming the
+ * upstream is required, so enabling fixtures forces the runner to state which
+ * database they are about to write to — and the one answer that is refused is
+ * the one that matters. This walk signs in and posts as a real rider; pointed
+ * at `letsride` it would put fixture rides in real riders' feeds, and until
+ * 2026-08-07 docs/HANDOFF.md's own recipe named PROD's ref.
+ */
+function fixturesPermitted() {
+  if (process.env.WALK_FIXTURES !== '1') return { ok: false, quiet: true }
+
+  const upstream = process.env.RELAY_UPSTREAM ?? ''
+  if (!upstream) {
+    return { ok: false, why: 'WALK_FIXTURES=1 needs RELAY_UPSTREAM set, so the target is named rather than assumed' }
+  }
+  if (upstream.includes(PROD_REF)) {
+    return { ok: false, why: `refusing to create fixtures against PROD (${PROD_REF}) — walk DEV` }
+  }
+  return { ok: true }
+}
+
+async function provision({ ride, club }) {
+  if (!ride) {
+    const departure = new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString().slice(0, 16)
+    await page.goto(`${BASE}/rides/new`, { waitUntil: 'networkidle' })
+    await page.fill('input[name="title"]', 'Walk fixture ride')
+    await page.fill('input[name="meeting_point"]', 'Dam Square, Amsterdam')
+    await page.fill('input[name="departure_at"]', departure)
+    await Promise.all([
+      page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ])
+    await page.waitForTimeout(1200)
+    console.log('  + created a ride through /rides/new')
+  }
+
+  if (!club) {
+    await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
+    await page.fill('input[name="name"]', 'Walk fixture club')
+    await Promise.all([
+      page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ])
+    await page.waitForTimeout(1200)
+    console.log('  + created a club through /clubs/new')
+  }
 }
 
 if (isFullWalk) {
-  const detail = await discoverDetailPaths()
-  paths = [...paths, ...detail]
+  let detail = await discoverDetailPaths()
+
+  if (!detail.ride || !detail.club) {
+    const permit = fixturesPermitted()
+    if (permit.ok) {
+      await provision(detail)
+      // Re-read rather than assuming the writes landed: a refused create must
+      // show up as a still-skipped route, not as a path that 404s later.
+      detail = await discoverDetailPaths({ quiet: true })
+    } else if (permit.why) {
+      console.log(`  (fixtures not created — ${permit.why})`)
+    }
+  }
+
+  paths = [...paths, ...detail.paths]
 }
 
 let failures = 0
@@ -454,6 +585,14 @@ if (isFullWalk) {
 await browser.close()
 
 console.log(`\n${paths.length - failures}/${paths.length} screens rendered clean`)
+if (realtimeSuppressed) {
+  // Named rather than swallowed: this run proved the chat renders and sends,
+  // and proved nothing about live delivery. See isRelayWebSocketFailure.
+  console.log(
+    `  (Realtime NOT exercised — ${realtimeSuppressed} relay WebSocket failure(s) suppressed; ` +
+      'the relay does not proxy the upgrade)'
+  )
+}
 if (isFullWalk) {
   const total =
     GUARD_CASES_SIGNED_IN.length +
