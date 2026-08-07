@@ -850,8 +850,12 @@ create unique index notifications_event_key
 -- ---------------------------------------------------------------------------
 -- Eight in total: the primary key, §8's uniqueness index, the list index below,
 -- and one for each of the five foreign-key columns §8's index does not already
--- lead with. (`proposal.md` §Impact says "seven"; its own enumeration lists
--- eight and the enumeration is the authoritative half.)
+-- lead with. (`proposal.md` §Impact said "seven" while its own enumeration
+-- listed eight; corrected there to eight on 2026-08-07. Edited here before the
+-- PROD apply, which is the only window in which editing an applied migration
+-- is free: DEV had already recorded the previous text, so DEV's stored
+-- statement is one revision behind its file — the same asymmetry `034` carries,
+-- and harmless for the same reason, since PROD gets the file verbatim.)
 --
 -- The list index carries `id desc` as a third column, and it is not decoration:
 -- `created_at` is not a total order, and a single club fan-out writes every one

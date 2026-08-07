@@ -387,8 +387,13 @@ export function formatNotificationStamp(date: string, now: Date = new Date()) {
   const weeks = Math.floor(days / 7)
   if (weeks < 5) return `${weeks}w`
 
-  const months = Math.floor(days / 30)
-  if (months < 12) return `${months}mo`
+  // Gate on `days`, never on the derived `months`. The two units disagree
+  // about where a year starts — `days / 30` reaches 12 on day 360 while
+  // `days / 365` is still 0 until day 365 — so `months < 12` handed days
+  // 360–364 to the years branch, which drew `0y`. Clamping the month count
+  // keeps the sequence monotonic across the seam: 359d and 364d both read
+  // `11mo`, and `1y` starts on day 365.
+  if (days < 365) return `${Math.min(Math.floor(days / 30), 11)}mo`
 
   return `${Math.floor(days / 365)}y`
 }

@@ -207,7 +207,9 @@ select (select count(*) from pg_policies
          where schemaname='public' and tablename='notifications') as policies,   -- 2
        (select count(*) from pg_indexes
          where schemaname='public' and tablename='notifications') as indexes;    -- 8
-``` Nothing is dropped and no existing policy is touched — so
+```
+
+Nothing is dropped and no existing policy is touched — so
 it may be applied **before** the code that reads it deploys. But six of those triggers hang off
 **existing, shipped write paths**: `postcard_likes`, `postcard_comments`, `ride_members`, `rides`
 and `club_members`. From the moment it applies, every like, comment, RSVP, ride creation and club
@@ -217,7 +219,8 @@ lately, and it is why the task list requires DEV first, all five paths exercised
 opposite of `034`, which could go to PROD ahead of the promotion precisely because nothing existing
 executed it.
 
-**Advisors.** Expect the count and identity **unchanged at eight**. The five trigger functions are
+**Advisors.** Expect the count and identity **unchanged at eight**. The six trigger functions —
+five fan-out plus `retract_postcard_liked`, and this line said "five" until 2026-08-07 — are
 `security definer` but live in `private`, which `service_role` holds no USAGE on and PostgREST does
 not publish — the same reason `is_blocked`, `is_club_member`, `is_club_public`, `is_ride_crew` and
 `may_participate` appear in none of the six `authenticated_security_definer_function_executable`

@@ -37,9 +37,19 @@ export async function markNotificationsRead(): Promise<ActionState> {
     return { error: 'Could not mark your notifications read. Try again in a moment.' }
   }
 
-  // `list` and `unread` share the `notifications` prefix (`keys.ts`), so one
-  // call clears the badge and refreshes the list's read state together —
-  // never one without the other.
-  invalidate(queryKeys.notifications.all())
+  // The **count only**, not the `notifications` prefix. `invalidate` matches by
+  // prefix, and the one screen that calls this has `notifications.list()`
+  // mounted with a live fetcher — so invalidating `all()` refetched page one
+  // immediately, on every open, including when zero rows were unread. Two
+  // round trips to `eu-west-1` for a screen whose list this write does not
+  // change: nothing renders a per-row read state, because the design draws
+  // none.
+  //
+  // The count and the list still cannot disagree, and that was never what the
+  // shared prefix bought — they agree because both read the same RLS
+  // predicate, so a row the list cannot return is a row the count cannot
+  // count. Widening the invalidation to keep them honest would be paying a
+  // fetch for an invariant the database already holds.
+  invalidate(queryKeys.notifications.unread())
   return { error: null }
 }

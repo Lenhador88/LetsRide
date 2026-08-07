@@ -155,10 +155,18 @@ export function Header({
         </div>
         {/* Absolute for the same reason the back button is: the title centres on
             the header, so neither control may take part in its flex row.
-            `secondaryAction` sits at `right-10` (40px) — one button-width to
-            the left of `action` at `right-0` — fixed regardless of whether
-            `action` is present, per the docstring above. */}
-        {secondaryAction && <div className="absolute right-10">{secondaryAction}</div>}
+
+            `secondaryAction` sits one button-width left of `action` only when
+            `action` is actually there. x302 exists in the design *because*
+            x342 is occupied — `Ride - Ride plan - Sub pages` draws both — so
+            reserving the gap unconditionally put the lone mailbox 40px inboard
+            on `/postcards`, `/rides` and `/clubs`, with dead space to its
+            right and out of line with every other single-control header in the
+            app. One control belongs at x342, which is where `RideHeader` puts
+            its lone chat button. */}
+        {secondaryAction && (
+          <div className={cn('absolute', action ? 'right-10' : 'right-0')}>{secondaryAction}</div>
+        )}
         {action && <div className="absolute right-0">{action}</div>}
       </div>
       {subRow && <div className="flex h-5 items-center justify-center">{subRow}</div>}

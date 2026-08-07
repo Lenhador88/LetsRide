@@ -166,15 +166,30 @@ export const queryKeys = {
    * file written against the cache contract from the start rather than
    * translated from one.
    *
-   * `list` and `unread` share the `notifications` prefix **deliberately, not
-   * for tidiness**: `client-cache-invalidation`'s new requirement is that a
-   * count and the list it summarises invalidate together, because a nonzero
-   * badge over an empty list is a defect the rider cannot clear. Nesting both
-   * under `all()` means no call site can name one without reaching the other —
-   * `markNotificationsRead` invalidates `notifications.all()` and that is the
-   * only invalidation this table needs; no other action can produce a
-   * notification for its own caller, because a fan-out never addresses the
-   * actor who caused it (`036` §7).
+   * `list` and `unread` share the `notifications` prefix so a future call site
+   * that genuinely needs both can name `all()` and get them — but **the shared
+   * prefix is not what keeps them in agreement, and an earlier revision of this
+   * comment said it was.** It claimed nesting meant "no call site can name one
+   * without reaching the other", and pointed at `markNotificationsRead`
+   * invalidating `all()` as the proof.
+   *
+   * That cost a round trip and bought nothing. `invalidate` matches by prefix,
+   * and the only screen that calls that action has `list` mounted with a live
+   * fetcher — so every open of `/notifications` refetched page one a second
+   * time, including when zero rows were unread. It now invalidates
+   * `unread()` alone.
+   *
+   * What actually satisfies `client-cache-invalidation`'s count-and-list
+   * requirement is the database: the count RPC and the list read the **same RLS
+   * predicate**, byte-identical across the SELECT and UPDATE policies, so a row
+   * the list cannot return is a row the count cannot count. A nonzero badge
+   * over an empty list is unreachable by construction rather than by
+   * invalidation discipline — which is the only version of that guarantee that
+   * survives someone adding a second caller.
+   *
+   * No other action invalidates this table at all: a fan-out never addresses
+   * the actor who caused it (`036` §7), so no write a rider makes can produce
+   * a notification for that same rider.
    *
    * `list` takes no filter segment, unlike `postcards.feed`/`rides.list`: the
    * design draws no per-type or read/unread filter, so there is only ever one

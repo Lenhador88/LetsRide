@@ -7,6 +7,7 @@ import {
   formatRideDateLong,
   formatRideMessageDay,
   formatRideTime,
+  notificationSection,
   rideZoneDayKey,
   wallClockToUtc,
   getInitials,
@@ -203,9 +204,68 @@ describe('formatNotificationStamp', () => {
     expect(ago(365 * 24 * 60 * 60)).toBe('1y')
   })
 
+  // Regression: `days / 30` reaches 12 on day 360 while `days / 365` is still
+  // 0 until day 365, so gating the years branch on the derived month count
+  // drew `0y` for that five-day window. The pair above stepped straight over
+  // it — 35d and 365d are both outside the seam.
+  it('stays monotonic across the month/year seam', () => {
+    const day = 24 * 60 * 60
+    expect(ago(359 * day)).toBe('11mo')
+    expect(ago(360 * day)).toBe('11mo')
+    expect(ago(364 * day)).toBe('11mo')
+    expect(ago(365 * day)).toBe('1y')
+    expect(ago(400 * day)).toBe('1y')
+    expect(ago(730 * day)).toBe('2y')
+  })
+
   it('never produces a negative unit for a future timestamp', () => {
     const future = new Date(now.getTime() + 60_000).toISOString()
     expect(formatNotificationStamp(future, now)).toBe('now')
+  })
+})
+
+// The 7-day rolling "This week" window is inferred rather than drawn — the
+// frame shows the four section names and never says where the third ends —
+// and is logged as such in docs/FIGMA-FIDELITY-TODO.md. These pin the
+// behaviour that was chosen so a later change to it is deliberate.
+//
+// Boundaries resolve through `rideZoneDayKey` in APP_TIME_ZONE, not UTC, which
+// is the thing this repo has got wrong before: vitest.config.ts pins TZ=UTC,
+// so a naive implementation reading the runtime zone would pass a test written
+// in UTC and mis-section a row for a real rider in Amsterdam.
+describe('notificationSection', () => {
+  const day = 24 * 60 * 60 * 1000
+  // 12:00 UTC is 14:00 in Amsterdam — comfortably mid-day in both, so the
+  // arithmetic below cannot straddle a day boundary by accident.
+  const now = new Date('2026-08-07T12:00:00Z')
+  const ago = (ms: number) => notificationSection(new Date(now.getTime() - ms).toISOString(), now)
+
+  it('sections the day it happened as Today', () => {
+    expect(ago(0)).toBe('Today')
+    expect(ago(60 * 1000)).toBe('Today')
+  })
+
+  it('sections the calendar day before as Yesterday', () => {
+    expect(ago(day)).toBe('Yesterday')
+  })
+
+  it('sections the rest of the trailing week as This week', () => {
+    expect(ago(2 * day)).toBe('This week')
+    expect(ago(6 * day)).toBe('This week')
+    expect(ago(7 * day)).toBe('This week')
+  })
+
+  it('sections anything older as All time', () => {
+    expect(ago(8 * day)).toBe('All time')
+    expect(ago(60 * day)).toBe('All time')
+  })
+
+  // Today is a calendar-day comparison, not a 24-hour one: 23:00 Amsterdam
+  // and 00:30 Amsterdam are 90 minutes apart and belong to different sections.
+  it('splits Today from Yesterday on the zone’s calendar boundary, not on elapsed hours', () => {
+    const justAfterMidnight = new Date('2026-08-07T22:30:00Z') // 00:30 Amsterdam, 8 Aug
+    expect(notificationSection('2026-08-07T21:00:00Z', justAfterMidnight)).toBe('Yesterday')
+    expect(notificationSection('2026-08-07T22:15:00Z', justAfterMidnight)).toBe('Today')
   })
 })
 
