@@ -281,6 +281,7 @@ src/
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew, /rides/[id]/chat
 │   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id] (Timeline) + /rides, /members, /about
+│   │   ├── notifications/  # /notifications — PD-118. Becomes /inbox/notifications when the tab returns
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── onboarding/         # /onboarding/terms, /onboarding/username, /onboarding/location — see decision #5
@@ -289,13 +290,14 @@ src/
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
 ├── components/
-│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ErrorState, ExpandableText, FilterTile, Input, ListUser, OfflineState, Pagination, SectionHeader, Skeleton, Textarea
+│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ErrorState, ExpandableText, FilterTile, Input, ListUser, NotificationDot, NotificationRow, OfflineState, Pagination, SectionHeader, Skeleton, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout)
 │   ├── rides/              # CreateRideForm, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap, RideChatThread, RideChatComposer
 │   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
+│   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
@@ -312,7 +314,7 @@ src/
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
 │   ├── realtime/           # useRideMessageStream — the app's only Supabase Realtime subscription
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
-│   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), getInitials()
+│   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
 capacitor.config.ts         # The native shell's config. No ios/ or android/ yet — see docs/HANDOFF.md §The shell
@@ -512,9 +514,21 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: `001`–`035` on BOTH, measured 2026-08-07 — 35 files, 35 rows each, ending
-`035_comment_whitespace_floor`.** `034` (ride chat) and `035` (the comment whitespace floor) both
-landed that day. There is no DEV/PROD split any more.
+**Applied state: 36 files. DEV is at `036`, PROD is at `035`, and the split is DELIBERATE —
+measured 2026-08-07.** DEV (`letsride-dev`) has 36 rows ending `20260807204019 notifications`; PROD
+(`letsride`) has 35 ending `035_comment_whitespace_floor`.
+
+**`036` is the one migration in this repo that must NOT be applied to PROD on sight**, and the
+standing *"Unapplied migrations are drift — apply them before adding another"* rule is exactly what
+would make a session do it. Read `036`'s own header before touching PROD. The short version: it
+hangs six triggers off five **already-shipped** write paths — `postcard_likes`,
+`postcard_comments`, `ride_members`, `rides`, `club_members` — so from the moment it applies, every
+like, comment, RSVP, ride creation and club join runs new code inside the rider's own transaction,
+and **a trigger that raises takes that rider's write down with it.** That is the opposite of `034`,
+which could go to PROD ahead of its code precisely because nothing existing executed it. PROD goes
+after the five paths have been exercised by hand on DEV *and* the code has deployed.
+
+`034` (ride chat) and `035` (the comment whitespace floor) landed on both the same day.
 
 **This line read `001`–`032` while `033` was already applied, and TWO sessions caught it
 independently within an hour** — which is this paragraph's own warning coming true, and the
@@ -544,8 +558,11 @@ deleted `proxy.ts` as what gates every app route. (A database comment is the `da
 first read via `list_tables`, so it is the one piece of documentation no edit to this file can
 reach.) The `SKIP_MIGRATIONS` machinery that modelled the once-held-back pair is **gone**,
 along with the three `rls_test_pending_*.sql` files; the full chain applies on every run.
-Suite **641** assertions — re-derive rather than trust it:
-`PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read 527 for a few hours, from
+Suite **747** assertions — re-derive rather than trust it:
+`PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read **641** here while the true
+figure was **647**, and stayed wrong through several sessions because the command beside it was
+never run — then `036` added 100. A number with its own verification command next to it is still
+a number nobody checked.) (It read 527 for a few hours, from
 a parallel session that folded the same three files independently; the two were reconciled by
 comparing *label sets* rather than counts, which is the only comparison that shows whether an
 assertion was lost.)
@@ -1348,7 +1365,7 @@ plus blocking.
 | Domain | Status in code |
 |---|---|
 | **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **Built and verified against the design** as of 2026-08-04: the swipeable card deck and filter bar at `/postcards`, the composer at `/postcards/new`, one card plus its thread at `/postcards/[id]`. The home screen is a **card stack you swipe**, not a scrolling feed. **Share is a link share** (Web Share API, clipboard fallback) — the reading that needs no schema; a repost is still an open product question. Two design elements are blocked on schema, not design: unread badges and photo location. The hide/block/report menu was listed here as a third and that was wrong twice over — it needed no schema (`009` and `011` built every table) and it shipped 2026-08-05. See `docs/FIGMA-FIDELITY-TODO.md` |
-| **Inbox** — DMs, per-ride group chat, notifications | Not built, and **no longer reachable**: the nav tab was removed 2026-08-07 (PD-100), so `/inbox` has no route, no tables and nothing pointing at it. Restoring the tab is part of building the epic — see `.claude/agents/realtime.md` |
+| **Inbox** — DMs, per-ride group chat, notifications | **Notifications shipped 2026-08-07 (PD-118) and the other two have not.** The tab is still gone (PD-100), so notifications live at their own route, `/notifications`, reached from a `MailboxIcon` + unread dot in the header of the four tab-root screens. `036` adds the `notifications` table, written **only** by six `private` fan-out triggers — `authenticated` holds no INSERT and no DELETE grant. Per-ride group chat shipped separately as `034`. What is left of this epic is **DMs**, and the tab itself: when it returns, `/notifications` becomes `/inbox/notifications` and the header icon becomes the tab. See `.claude/agents/realtime.md` |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. **Account deletion has its database half and no flow** (2026-08-06): `029`–`032` and `supabase/functions/delete-account/` are in, the Edge Function is **written, not deployed and never run**, and nothing in `src/` points at it. `/legal/account-deletion` is public and live. What remains is `openspec/changes/add-account-deletion/` groups 3 and 4 |
 | **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth. **Ride plan, Crew and Chat are built; Journal needs `postcards.ride_id`.** Chat shipped 2026-08-07 (`034`, Linear PD-115) and did **not** need the Inbox epic, which this line asserted for months — a per-ride chat needs a ride and a crew, both of which existed. Inbox owns DMs and notifications and is still parked. **Chat is reached from the switcher *and* the header's chat-bubble icon; the switcher row is a deliberate deviation and both entry points are crew-only** — see `docs/FIGMA-FIDELITY-TODO.md` §Ride detail for the measurement that added it, and `034` for what "crew" means, which is narrower than a `ride_members` row and must be read there rather than restated here. The chat is the app's only Realtime subscription, so `.claude/agents/realtime.md`'s rules have a worked example now rather than only a brief. `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |

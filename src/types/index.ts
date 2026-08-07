@@ -550,5 +550,60 @@ export type Block = {
   blocked?: PublicProfile
 }
 
+export type NotificationType =
+  | 'postcard_liked'
+  | 'postcard_commented'
+  | 'ride_joined'
+  | 'club_joined'
+  | 'ride_created_in_club'
+
+/**
+ * One row from `public.notifications` (`036`), as the notifications screen and
+ * the header's unread control render it.
+ *
+ * **No `title`, `clubName`, `actorUsername`, or any other snapshot field —
+ * that is the point of the table.** `actor` and the three typed subjects below
+ * are live joins, resolved fresh on every read under the *reader's own* RLS,
+ * never a stored copy. `036` §3's SELECT policy already refuses to return a
+ * row whose actor or subject cannot resolve for this viewer, so in practice
+ * these are non-null whenever the row is — but they stay nullable here rather
+ * than asserted, because that guarantee lives in the database, not in this
+ * type, and the render code (`NotificationsListItem`) degrades rather than
+ * crashes if it is ever wrong.
+ *
+ * Exactly one of `postcard`, `ride`, `club` is meaningful per `type` — see
+ * `036`'s `notifications_subject_shape` CHECK for the fixed mapping — but the
+ * type does not encode that as a discriminated union, because nothing here
+ * needs to switch on it besides the one component that renders a row, and a
+ * five-way union would cost more at every other call site than it saves there.
+ */
+export type NotificationRow = {
+  id: string
+  type: NotificationType
+  created_at: string
+  /** `null` is unread. The only column a rider may write, via `markNotificationsRead`. */
+  read_at: string | null
+  actor: PublicProfile | null
+  /** Set for `postcard_liked` and `postcard_commented`. */
+  postcard: { id: string; image_path: string; image_url: string | null } | null
+  /** Set for `ride_joined` and `ride_created_in_club`. No image — `rides` has
+   * no image column, so there is no trailing thumbnail for either type. */
+  ride: { id: string; title: string } | null
+  /** Set for `club_joined`, and for `ride_created_in_club` as *context* — the
+   * copy names the club even though the row's destination is the ride. */
+  club: EmbeddedClub | null
+}
+
+/**
+ * Keyset cursor into the notification list — `(created_at, id)`, matching
+ * `036`'s `(user_id, created_at desc, id desc)` index and the read's own
+ * `.order()`. `created_at` alone is not a total order: a single club fan-out
+ * writes every one of its rows in one statement, so `now()` is identical
+ * across all of them, and a cursor over `created_at` alone would skip or
+ * repeat rows exactly at that boundary — the same reasoning `034` applies to
+ * `ride_messages`.
+ */
+export type NotificationCursor = { createdAt: string; id: string }
+
 // `Friendship` was removed with the table in 013. The product's social graph is
 // clubs plus blocking; the design has no friendship concept anywhere.

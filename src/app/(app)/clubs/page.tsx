@@ -3,6 +3,7 @@
 import { Header } from '@/components/layout/Header'
 import { ClubCard } from '@/components/clubs/ClubCard'
 import { ClubPageMenu } from '@/components/clubs/ClubPageMenu'
+import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getYourClubs } from '@/lib/data/clubs'
@@ -35,7 +36,11 @@ export default function ClubsPage() {
 
   return (
     <>
-      <Header title="Clubs" subRow={<ClubPageMenu current="yours" />} />
+      <Header
+        title="Clubs"
+        subRow={<ClubPageMenu current="yours" />}
+        secondaryAction={<NotificationsHeaderControl />}
+      />
 
       {/* The two placeholder treatments carry their own horizontal padding —
           `SkeletonList` is built at the list's own `px-4` — so they replace the

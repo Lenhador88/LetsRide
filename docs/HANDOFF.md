@@ -93,7 +93,7 @@ npm run lint                          # exit 0 — 5 pre-existing <img> warnings
 npm run test:unit                     # 747/747 across 32 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 647 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 747 assertions, 0 failures
 ```
 
 **Two traps met while doing that, both of which produced a confident wrong answer first:**
@@ -445,7 +445,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **647** (594 before `034`'s chat section and `035`'s) |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **747** (647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s) |
 | Unit tests | `npm run test:unit` — **747 across 32 files on a clean tree**, measured 2026-08-07 after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
@@ -674,14 +674,24 @@ drop function private.is_ride_crew(uuid);
 delete from supabase_migrations.schema_migrations where name = 'ride_messages';
 ```
 
-**`034` and `035` are on BOTH databases as of 2026-08-07 — there is nothing outstanding.**
-Verify rather than trust this line; it is exactly the kind that goes stale:
+**`036` is on DEV and NOT on PROD, deliberately, as of 2026-08-07 — that is the only outstanding
+one, and it must not be cleared on sight.** Verify rather than trust this line; it is exactly the
+kind that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   both should read 35 rows, ending 035_comment_whitespace_floor
-ls supabase/migrations/ | wc -l          # 35
+#   DEV  (fpmrimzxadewsaiwpsel): 36 rows, ending 20260807204019 notifications
+#   PROD (zwprydcyryvudhurbnye): 35 rows, ending 035_comment_whitespace_floor
+ls supabase/migrations/ | wc -l          # 36
 ```
+
+**Do not apply `036` to PROD to "clear the drift".** The standing *unapplied migrations are drift*
+rule is what makes that the obvious move, and it is wrong here — read `036`'s own header first. It
+hangs six fan-out triggers off five **already-shipped** write paths (`postcard_likes`,
+`postcard_comments`, `ride_members`, `rides`, `club_members`), so the instant it applies, every
+like, comment, RSVP, ride creation and club join runs new code inside the rider's own transaction,
+and a trigger that raises takes that write down with it. All five paths were exercised by hand on
+DEV and all five still succeed; PROD goes after the code deploys.
 
 PROD's `034` was applied byte-identical to the file — `md5(statements[1])` equals `md5sum` of
 `supabase/migrations/034_ride_messages.sql`, `4a3e605891b8ab49db1a5d614bcb9a84` — and every
@@ -777,7 +787,12 @@ violations, and all 3 survive.
   > function, which is written
   > **Urgency** 3/10 — nothing forces it until a store submission, which needs the shell first
   > **This session** N — needs the function deployed, which is an owner action
-- **Inbox has no route and no tables, and as of 2026-08-07 it has no tab either.** The owner
+- **Inbox still has no tab, but two thirds of it now exist.** Per-ride group chat shipped as `034`
+  (PD-115) and **notifications shipped 2026-08-07 as `036` (PD-118)** — a `notifications` table
+  written only by six `private` fan-out triggers, and a `/notifications` route reached from a
+  `MailboxIcon` in the header of the four tab-root screens rather than from a tab. What is left of
+  the epic is **DMs** and the tab itself; when the tab returns, `/notifications` becomes
+  `/inbox/notifications`. The owner
   decided PD-100's open question — *build the epic, or hide the tab* — in favour of hiding it,
   so the nav is **four tabs**: Home, Rides, Clubs, Profile. Verify rather than trust this line,
   because it is the one that has been wrong twice already — and **scope the range before you

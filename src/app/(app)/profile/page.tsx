@@ -7,6 +7,7 @@ import { ExpandableText } from '@/components/ui/ExpandableText'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { Header } from '@/components/layout/Header'
+import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { EditProfileForm } from '@/components/profile/EditProfileForm'
 import { ProfileCountries } from '@/components/profile/ProfileCountries'
@@ -76,7 +77,11 @@ export default function ProfilePage() {
 
   return (
     <>
-      <Header title="Profile" action={<ProfileMenu />} />
+      <Header
+        title="Profile"
+        secondaryAction={<NotificationsHeaderControl />}
+        action={<ProfileMenu />}
+      />
 
       {profile.error ? (
         <ErrorState onRetry={profile.refetch} />
