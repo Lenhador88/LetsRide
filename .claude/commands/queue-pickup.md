@@ -46,7 +46,7 @@ idle by construction. This one is not. The firing message is queued behind whate
 session is already doing and lands the moment that finishes — which may be the middle of a
 conversation with the owner, or the middle of a build.
 
-> **Gather the answers here; do NOT exit here.** Every reason to stop — this step's four and
+> **Gather the answers here; do NOT exit here.** Every reason to stop — this step's five and
 > STEP 1's lock — is collected first and acted on together in **STEP 1.5**, which owns the
 > only exit path. That ordering is load-bearing and it is not how this file was first
 > written: an unconditional silent exit at STEP 0.5 sat *in front of* STEP 1's stall
@@ -74,19 +74,6 @@ conversation with the owner, or the middle of a build.
    concurrent sessions are normal here. A repo-wide check hands any other session a
    permanent veto over the queue. Checks (2) and (3) already cover local in-flight work, so
    this one only has to catch the case where the tree is clean because the work is pushed.
-
-```bash
-git status --porcelain                                   # (2) must be empty
-BRANCH=$(git rev-parse --abbrev-ref HEAD)                # (3) expect development
-git fetch origin development --quiet
-git log --oneline origin/development..HEAD               # (3) must be empty
-echo "$BRANCH"                                           # (4) match PR head to THIS
-```
-
-```
-mcp__github__list_pull_requests  owner=Lenhador88 repo=letsride state=open
-  -> keep only those whose head ref == $BRANCH
-```
 
 5. **Claude usage headroom is low.** Asked for by the product owner 2026-08-07 as *"if any
    Claude usage limit is above 80%, skip the run"*. **The 80% cannot be evaluated, and this
@@ -124,6 +111,21 @@ mcp__github__list_pull_requests  owner=Lenhador88 repo=letsride state=open
 
    Reading it back: a **disabled** trigger's `list_triggers` row has no `enabled` key at all
    rather than `"enabled": false`.
+
+The commands for (2) (3) (4):
+
+```bash
+git status --porcelain                                   # (2) must be empty
+BRANCH=$(git rev-parse --abbrev-ref HEAD)                # (3) expect development
+git fetch origin development --quiet
+git log --oneline origin/development..HEAD               # (3) must be empty
+echo "$BRANCH"                                           # (4) match PR head to THIS
+```
+
+```
+mcp__github__list_pull_requests  owner=Lenhador88 repo=letsride state=open
+  -> keep only those whose head ref == $BRANCH
+```
 
 **Only (1) and (5) need judgement, and (1) is the one that matters most.** The other three
 are the backstop that catches what judgement misses — a session that died mid-build leaves a
