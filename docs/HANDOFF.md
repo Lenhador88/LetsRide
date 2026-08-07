@@ -109,16 +109,23 @@ PGPASSWORD=postgres npm test          # 647 assertions, 0 failures
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` and `development` are level at `903dffb`**, promoted via #100 as a merge commit with
-  the fast-forward back-merge done. Production is `READY` on that sha — `target: production`,
-  ref `main`, a real rebuild rather than a promoted preview. Verify rather than trust the sha:
+- **`main` is at `903dffb`** — promoted via #100 as a merge commit, back-merged by fast-forward,
+  production `READY` on that sha as a real rebuild (`target: production`, ref `main`) rather than
+  a promoted preview. That promotion carried **19 commits**: ride chat, the guard cache, the Inbox
+  removal and the native shell's first half.
+
+  **`development` is normally AHEAD of `main`, and that is the steady state rather than drift.**
+  An earlier revision of this line said the two were "level" and gave a command expecting
+  `git rev-parse` to print identical shas — true for about four minutes, until the very next docs
+  merge, at which point the file asserted an equality its own command disproved. A §Branching line
+  that only holds in the minutes after a promotion is worse than a stale one, because the next
+  session reads it as an invariant. What *is* invariant: `main` moves only by promotion, and
+  everything else lands on `development` first.
 
   ```bash
-  git fetch origin main development && git rev-parse origin/main origin/development   # identical
+  git fetch origin main development
+  git log --oneline origin/main..origin/development   # what is waiting for the next promotion
   ```
-
-  That promotion carried **19 commits** and is the one that put ride chat, the guard cache, the
-  Inbox removal and the native shell's first half in front of riders.
 - **Getting there went wrong once, and the correction is worth knowing.** `main` was *renamed*
   to `Development` rather than the default *pointer* being moved to the existing `development`.
   That left two branches differing only in case, no `main` at all, a Vercel Production Branch
