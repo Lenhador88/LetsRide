@@ -90,7 +90,7 @@ so they are "checked by a human, not by CI" rather than unchecked.
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 5 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 721/721 across 31 files
+npm run test:unit                     # 747/747 across 32 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
 PGPASSWORD=postgres npm test          # 641 assertions, 0 failures
@@ -273,10 +273,18 @@ because the error was *reasoning where measurement was available*:
 
 - **The module claimed a failure mode it did not have.** Its docstring said "supabase-js reads a
   storage error as 'no session', so the rider sees a signed-out app". False: `auth-js`'s
-  `__loadSession` is `try/finally` with **no** `catch`, and `RouteGuard` calls `getSession()`
+  `__loadSession` is `try/finally` with **no** `catch`, and the guard called `getSession()`
   from a `.then()` with no `.catch()` — so a rejecting read hangs the splash **forever**, which
   a rider cannot retry past. `getItem` now resolves to `null` on failure, which makes the
   original sentence true by construction instead of by assumption.
+
+  *(That read left `RouteGuard` with PD-111 and lives in `src/lib/auth/guard-cache.ts` now. It
+  still has no `.catch()`, and the fix above is still what makes that safe. **A draft of this
+  line said the hang is no longer permanent, "so the next navigation retries it". Review caught
+  it and it was wrong in the way that matters:** the `.finally()` does clear the in-flight slot,
+  so a navigation would genuinely retry — but a rejected read notifies nothing, so nothing
+  re-renders, and the rider is looking at a full-screen splash with nothing to tap. There is no
+  navigation to be had. The hang is as permanent as it was; only a reload escapes it.)*
 - **`configured ??= applyPluginDefaults()` cached a *rejected* promise**, so one transient
   plugin error would break every read and write for the rest of the app session with no retry.
   The slot is cleared on failure now.
@@ -320,7 +328,7 @@ build work, the rest are the owner's.
 |---|---|---|
 | 1 | **The shell itself** | **Started 2026-08-07.** `capacitor.config.ts` and the secure store are in; `ios/` and `android/` are not, and cannot be generated here. **Gated on the static-export route decision** — see §The shell, below |
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
-| 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `grep -c "Icon: " src/components/layout/Navbar.tsx` is 4. (Not `href:`, which reads 8: `STICKY_ACTIONS` uses it too.) The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
+| 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | **No edit or delete UI for rides or clubs** | Create a ride, never cancel or correct it. **Narrower than "anywhere", corrected 2026-08-07** — postcards, comments and profile all have working delete/update UI. For rides and clubs there is no action *at all* (no `deleteRide`, `updateRide`, `deleteClub`, `updateClub`), while all four RLS policies exist live. So it is an empty action layer, not an unwired UI |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON**, measured 2026-08-06 | Not a store blocker after all; the decision #6 text was wrong, not the setting. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below. **Owner** still decides whether DEV wants it off |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
@@ -422,8 +430,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **641** (was 594; `034`'s chat section added 47) |
-| Unit tests | `npm run test:unit` — **721 across 31 files on a clean tree**, measured 2026-08-07 after the ride chat (694 before it; 674 before the secure store). **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so the count moves whenever a *source* file is added — the chat added 6 source files and 17 real assertions, which is most of the +26. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **641** (594 before `034`'s chat section) |
+| Unit tests | `npm run test:unit` — **747 across 32 files on a clean tree**, measured 2026-08-07 after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -453,10 +461,17 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `15/15 screens rendered clean` and `15/15 guard and sign-out checks correct`.**
-The walk discovers detail routes from the lists, checks eleven route-guard redirects in both
-signed-in and signed-out states, and asserts sign-out leaves no `sb-*` key in `localStorage`, no
-`sb-*` cookie, and no reachable screen.
+**A clean run is `18/18 guard, navigation and sign-out checks correct`.** It was 15/15 until
+PD-111 added the three client-side-navigation checks (2026-08-07). The walk discovers detail
+routes from the lists, checks eleven route-guard redirects in both signed-in and signed-out
+states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no
+reachable screen, and taps five bottom tabs to prove a navigation costs no
+`my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
+
+**The screens figure is data-dependent and is not a pass/fail number** — it is `15/15` against a
+database holding rides and clubs, and `9/9` against DEV, which holds neither, because the four
+detail routes are discovered rather than hardcoded and a list with no rows yields no path. The
+walk says which it skipped. Read the `N/N` for equality, not for the value.
 
 **Network, measured — a blocked host fails as `curl: (56) CONNECT tunnel failed`, not as a
 timeout:**
@@ -650,11 +665,18 @@ which is the half that fails silently.
 - **Inbox has no route and no tables, and as of 2026-08-07 it has no tab either.** The owner
   decided PD-100's open question — *build the epic, or hide the tab* — in favour of hiding it,
   so the nav is **four tabs**: Home, Rides, Clubs, Profile. Verify rather than trust this line,
-  because it is the one that has been wrong twice already:
-  `grep -n "Icon: " src/components/layout/Navbar.tsx`. **Count on `Icon: `, not on `href:`** —
-  the obvious one reads 8, because `STICKY_ACTIONS` maps a route to a button that also has an
-  `href`. Same class of error as the comment trap in `CLAUDE.md`: the grep catches more than the
-  thing being counted. The `UNBUILT` set, the `aria-disabled`
+  because it is the one that has been wrong twice already — and **scope the range before you
+  count**:
+
+  ```bash
+  sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep -c "href:"
+  ```
+
+  A bare `grep -c "href:"` on that file reads **9**, not 4: four nav rows, four `STICKY_ACTIONS`
+  entries, and the `href: string` inside the `Record` type annotation. **This note shipped
+  on 2026-08-07 claiming 8**, because its author measured `href: '` — with the quote — and then
+  wrote the unquoted form into the docs. A warning about miscounting, off by one, for the same
+  reason it was warning about. The `UNBUILT` set, the `aria-disabled`
   span and the `MailboxIcon` import all went with it — there is no disabled-tab machinery left
   to reuse, which is deliberate.
 
@@ -704,6 +726,32 @@ owner; `qa-verify`'s is in the git history of this file and should be treated as
 also makes it the credential `npm run walk` uses, since a burned password on a fixture marked
 for deletion is the right thing to hand a smoke test. Pass it in the environment, never on a
 command line that gets logged.
+
+**DEV has its own two, and they are the ones to walk against** — `letsride-dev`
+(`fpmrimzxadewsaiwpsel`) holds `rider-1786033029156@letsride.dev` (consented, **no username, not
+onboarded** — the fixture for walking the wizard) and `rider-1786033088990@letsride.dev`
+(`devrider093453`, fully onboarded — the fixture for walking the app). Walking DEV rather than
+PROD is the better default: the seed guard in `supabase/seeds/development.sql` exists because
+that database is meant to be disposable, and a smoke walk that signs in as a real rider on the
+production project is a habit worth not forming.
+
+**Their passwords are not recorded anywhere, deliberately — set one when you need it.** A
+session has `execute_sql` on DEV under the standing grant, so the credential is *derivable* in
+ten seconds rather than *stored*, which is strictly better than a password living in a file:
+
+```sql
+-- Generate the password locally; never type a memorable one, and never commit it.
+update auth.users
+   set encrypted_password = extensions.crypt('<generated>', extensions.gen_salt('bf')),
+       updated_at = now()
+ where email = 'rider-1786033088990@letsride.dev';
+```
+
+If you walk the wizard with the un-onboarded one, put it back afterwards or the next session
+finds no un-onboarded fixture — `update public.profiles set username = null, location = null,
+onboarding_completed_at = null where id = (select id from auth.users where email = '…')`. The
+`003` and `012` triggers do not block this: both short-circuit on
+`current_user <> 'authenticated'`, and an MCP session is not that role.
 
 **Only having one reachable password is why the shared-device case (task 4.6) is proven by
 mechanism and not by sequence.** The walk asserts that sign-out destroys the session, the query

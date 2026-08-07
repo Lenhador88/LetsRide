@@ -692,13 +692,18 @@ Deviations that are ours, not the design's:
       same route — is invented. It is the smallest guess available (the fields and their
       validation already exist), but it is a guess, and a designed settings screen may well
       move it.
-- [ ] **The nav bar in this frame shows three tabs**, not five: Home, Clubs, Profile. Rides
-      and Inbox are absent. Counted across frames rather than assumed —
-      `Home - Postcards - All new` draws **5** tiles, this frame **3**, and
-      `Rides - All rides` **0** (it has no bar at all). A value that takes three different
-      shapes in three frames is not a spec, so the built five-tab `Navbar` stands and this is
-      treated as the outlier. Worth confirming with the designer: if the three are deliberate
-      it is a navigation change, not a profile one.
+- [ ] **The nav bar in this frame shows three tabs**: Home, Clubs, Profile. Rides and Inbox are
+      absent. Counted across frames rather than assumed — `Home - Postcards - All new` draws
+      **5** tiles, this frame **3**, and `Rides - All rides` **0** (it has no bar at all). A
+      value that takes three different shapes in three frames is not a spec, so this stays an
+      outlier to confirm with the designer rather than a change to make: if the three are
+      deliberate it is a navigation change, not a profile one.
+
+      **The old reasoning here was "the built five-tab `Navbar` stands", and that no longer
+      resolves anything** — Inbox was removed on 2026-08-07 (PD-100), so the built nav is
+      **four** and now matches *none* of the three frames. The conclusion survives, its
+      premise does not: don't chase the 3-tab frame because a contradicted value is not a
+      spec, not because the code agrees with the majority frame. It doesn't.
 - [ ] **The timeline is unpaginated.** It reuses `getFeed`'s rider filter, so it is bounded at
       `FEED_PAGE_SIZE` (30) — a rider with more postcards than that silently sees their 30
       newest. The design draws no pagination for this list, so the honest fix needs a design

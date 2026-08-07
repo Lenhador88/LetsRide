@@ -216,6 +216,119 @@ for (const path of paths) {
 }
 
 /**
+ * Tapping a bottom tab is a *client-side* navigation, and nothing above walks
+ * one — every route in the loop is a `goto`, which is a cold boot. That gap is
+ * exactly where PD-111 lived: each tap re-read `my_onboarding_state()` from
+ * `eu-west-1` behind the full-screen splash, and because the splash *replaced*
+ * `children` rather than covering them, `(app)/layout.tsx` unmounted with it.
+ * The bottom bar vanished and reappeared on every tap, which read as a reload.
+ *
+ * Three measurements, because the fix is only correct if all three hold:
+ *
+ *   1. **No `my_onboarding_state()` round trip per tap.** One per session, at
+ *      boot. This is the fix itself — the stamps are immutable for a session's
+ *      lifetime, so re-reading them bought nothing.
+ *   2. **The Navbar node survives.** Identity, not presence: a remounted bar is
+ *      a *different* node that looks identical, so this tags the original and
+ *      checks the tag is still on the node that is there at the end.
+ *   3. **The splash never paints.** Watched with a `MutationObserver` rather
+ *      than a poll, because one frame of green is the whole complaint and a poll
+ *      would miss it.
+ *
+ * The splash is matched on `bg-accent` + `inset-0` as well as its label, and
+ * that is not belt-and-braces: `Skeleton.tsx`'s profile region is
+ * `aria-label="Loading"` too — exactly, not by prefix; its three siblings are
+ * `Loading postcards`, `Loading list` and `Loading form`, which a label match
+ * would not catch. So the collision is one component, and one is enough: an
+ * earlier pass of this check matched on the label alone and reported that
+ * screen's ordinary `useQuery` skeleton as a guard splash, on `/profile`.
+ *
+ * Verified both ways before being committed, per CLAUDE.md's rule about a filter
+ * that has quietly stopped matching: against the fix it reads 0/survived/0, and
+ * against the code before it, 5 calls, 5 splash paints and a Navbar that did not
+ * survive a single tap.
+ */
+const TAB_TAPS = ['/rides', '/clubs', '/profile', '/postcards', '/rides']
+
+async function checkTabNavigation() {
+  console.log('\nclient-side navigation (PD-111):')
+  let bad = 0
+  const report = (ok, label, detail) => {
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  let stampReads = 0
+  const countStampReads = (r) => {
+    if (r.url().includes('my_onboarding_state')) stampReads += 1
+  }
+
+  await page.goto(`${BASE}/postcards`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('nav', { timeout: 20_000 }).catch(() => {})
+  await page.waitForTimeout(600)
+
+  // The dev overlay's portal covers the viewport and swallows every click.
+  await page.addStyleTag({ content: 'nextjs-portal { display: none !important }' })
+
+  await page.evaluate(() => {
+    const nav = document.querySelector('nav')
+    if (nav) nav.dataset.walkTag = 'original'
+    window.__splashPaints = 0
+    new MutationObserver((records) => {
+      for (const r of records)
+        for (const n of r.addedNodes)
+          if (
+            n.nodeType === 1 &&
+            n.getAttribute?.('aria-label') === 'Loading' &&
+            n.className?.includes?.('bg-accent') &&
+            n.className.includes('inset-0')
+          )
+            window.__splashPaints += 1
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+
+  // **Every failure here has to be counted, not swallowed.** The three
+  // measurements below are all *absence* checks — no re-read, no remount, no
+  // splash — and absence is exactly what a tap that never happened produces. A
+  // `.catch(() => {})` on the click would turn a broken selector into a clean
+  // pass, which is the one way this phase could report the bug fixed while it
+  // was live. So the landing path is asserted per tap and counted.
+  page.on('request', countStampReads)
+  let navigated = 0
+  for (const href of TAB_TAPS) {
+    try {
+      await page.click(`nav a[href="${href}"]`, { timeout: 10_000 })
+      await page.waitForURL(`**${href}`, { timeout: 15_000 })
+      if (new URL(page.url()).pathname === href) navigated += 1
+    } catch (e) {
+      console.log(`    ! tap ${href} did not navigate: ${String(e).split('\n')[0].slice(0, 120)}`)
+    }
+    await page.waitForTimeout(400)
+  }
+  page.off('request', countStampReads)
+
+  const navSurvived = await page.evaluate(
+    () => document.querySelector('nav')?.dataset.walkTag === 'original'
+  )
+  const splashPaints = await page.evaluate(() => window.__splashPaints)
+
+  // First, because the other three mean nothing without it.
+  report(
+    navigated === TAB_TAPS.length,
+    `all ${TAB_TAPS.length} taps navigated`,
+    `only ${navigated} did — the checks below are vacuous`
+  )
+  report(stampReads === 0, `no stamp re-read across ${TAB_TAPS.length} taps`, `${stampReads} calls`)
+  report(navSurvived, 'the shell stayed mounted', 'Navbar remounted')
+  report(splashPaints === 0, 'the splash never painted', `${splashPaints} paints`)
+
+  return bad
+}
+
+/** How many assertions `checkTabNavigation` makes, for the summary line. */
+const TAB_NAV_CHECKS = 4
+
+/**
  * Where the route guard actually sends a rider — run only on a full walk, since
  * a subset invocation is usually someone debugging one screen.
  *
@@ -324,6 +437,10 @@ async function checkSignOut() {
 
 let guardFailures = 0
 if (isFullWalk) {
+  // Before the guard cases, which end on /auth/reset-password, and well before
+  // `checkSignOut` takes the session away.
+  guardFailures += await checkTabNavigation()
+
   guardFailures += await checkGuard(page, GUARD_CASES_SIGNED_IN, 'signed in')
 
   guardFailures += await checkSignOut()
@@ -338,7 +455,11 @@ await browser.close()
 
 console.log(`\n${paths.length - failures}/${paths.length} screens rendered clean`)
 if (isFullWalk) {
-  const total = GUARD_CASES_SIGNED_IN.length + GUARD_CASES_SIGNED_OUT.length + SIGN_OUT_CHECKS
-  console.log(`${total - guardFailures}/${total} guard and sign-out checks correct`)
+  const total =
+    GUARD_CASES_SIGNED_IN.length +
+    GUARD_CASES_SIGNED_OUT.length +
+    SIGN_OUT_CHECKS +
+    TAB_NAV_CHECKS
+  console.log(`${total - guardFailures}/${total} guard, navigation and sign-out checks correct`)
 }
 process.exit(failures || guardFailures ? 1 : 0)
