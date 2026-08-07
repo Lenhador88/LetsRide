@@ -303,7 +303,7 @@ src/
 │   ├── actions/            # Write functions — the only place that mutates
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
-│   ├── auth/               # guard.ts (route rules, pure + tested), recovery.ts (grant + safeNext)
+│   ├── auth/               # guard.ts (route rules, pure + tested), guard-cache.ts (what it reads, held per page load), recovery.ts (grant + safeNext)
 │   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
@@ -361,13 +361,29 @@ and was wrong within a day of each edit; check rather than read it —
 framework detail is still true and the file may come back for something else. If it ever does,
 the exported function must be named `proxy`, and do not add a `middleware.ts`.
 
-Routing decisions now live in two places, split so the decision can be tested:
+Routing decisions now live in **three** places, split so the decision can be tested. It said two
+until 2026-08-07, when PD-111 split the *reading* out of the component:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
   `null` means stay; a string is where to go. 36 cases in `__tests__/guard.test.ts`.
-- **`src/components/auth/RouteGuard.tsx`** — reads the session and the onboarding stamp, applies
-  the decision, and renders the splash rather than the page while it decides. Mounted in the
+- **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
+  stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
+  the single writer for the session half. This is where the reads live now, and the reason it
+  exists is that fetching them per navigation cost a round trip to `eu-west-1` behind a
+  full-screen splash on every tab tap. Both stamps are immutable for a session's lifetime.
+- **`src/components/auth/RouteGuard.tsx`** — applies the decision, **synchronously after the
+  first one**, and renders the splash only while it genuinely cannot answer. Mounted in the
   **root** layout, because three of its rules concern paths outside `(app)`.
+
+**The splash overlays the page once booted; it replaces it only before the first decision.**
+Replacing it on every navigation is what unmounted `(app)/layout.tsx` — bottom bar and
+background gradient included — and made a tab tap read as a page reload.
+
+**Any new writer of a stamp the decision reads must invalidate the cache.** There are four
+(`signUp`, `setUsername`, `acceptTerms`, `setLocation`), and each calls
+`invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`. Miss one and the rider
+finishes a step and is sent straight back into it. `npm run walk` has a phase that measures this
+— see `docs/HANDOFF.md` §The walk.
 
 **It is not a security boundary and must never be treated as one.** RLS is. Every rule the
 guard enforces has a database counterpart — `023` refuses content writes without a consent
@@ -490,7 +506,10 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: `001`–`032`, all of them. Zero drift.** `029`–`032` landed 2026-08-06 as the
+**Applied state: `001`–`033`, all of them. Zero drift** — 33 files, 33 rows, both ending
+`033_restore_function_comments`, measured 2026-08-07. (It read `001`–`032` until then, which is
+this paragraph's own warning coming true again: `033` landed and the line did not move. Run the
+two commands below rather than reading either number.) `029`–`032` landed 2026-08-06 as the
 database half of account deletion, and every one is additive — no column, table or grant
 removed, no SELECT policy touched — which is why they could land before the flow exists.
 `028` before them was comment-only, correcting a `003` column comment that still named the

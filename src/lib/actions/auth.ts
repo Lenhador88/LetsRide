@@ -1,6 +1,6 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { clearQueryCache } from '@/lib/query'
-import { clearGuardCache } from '@/lib/auth/guard-cache'
+import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { clearSessionStore } from '@/lib/supabase/session-store'
 import { RECOVERY_EXPIRED_MESSAGE, consumePasswordResetGrant } from '@/lib/auth/recovery'
 import type { ActionState } from '@/lib/actions/state'
@@ -120,6 +120,17 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
   if (consentError || !consent) {
     return { error: 'Your account was created but we could not record your consent. Sign in to continue.' }
   }
+
+  // The fourth writer of a stamp the route guard caches, and the one that is
+  // easy to miss because the other three are in `onboarding.ts`. `signUp`
+  // establishes the session before it stamps consent, so the guard — which is
+  // sitting on `/auth/signup`, a path that needs the stamps — can read
+  // `terms_accepted_at` as NULL in the window between the two. Cached, that
+  // sends the rider who just ticked the box to the consent prompt.
+  //
+  // Only reachable with email confirmation off; with it on this branch is never
+  // taken, because there is no session to run `accept_terms()` with.
+  invalidateOnboardingState()
 
   return { error: null, redirectTo: '/onboarding/username' }
 }

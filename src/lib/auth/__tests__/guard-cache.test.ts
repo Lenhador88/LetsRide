@@ -293,7 +293,28 @@ describe('the auth listener', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('makes no Supabase call of its own — the auth lock is held while it runs', () => {
+  it('a new session clears a failed read, so signing in again can recover', async () => {
+    rpc.mockReturnValue(stamps(null, { code: 'PGRST202' }))
+    ensureGuardState('/postcards')
+    await settle()
+    expect(peek('/postcards')).toEqual({ kind: 'unavailable' })
+
+    // The rider is parked on the one path `resolveDestination` answers `null`
+    // for in this state, so no navigation is available to trigger the retry —
+    // the latch has to be released by the event, or signing in fixes nothing.
+    ensureGuardState('/auth/login')
+    await settle()
+    rpc.mockReset()
+    rpc.mockReturnValue(stamps(ONBOARDED))
+
+    emitAuth('SIGNED_IN', { id: 'rider-1' })
+    ensureGuardState('/auth/login')
+    await settle()
+
+    expect(peek('/postcards')).toEqual({ kind: 'rider', ...ONBOARDED })
+  })
+
+  it('makes no Supabase call of its own — the emitter awaits this callback', () => {
     getSession.mockClear()
     rpc.mockClear()
 
@@ -351,5 +372,28 @@ describe('the server pass', () => {
 
     expect(() => ensureGuardState('/postcards')).toThrow(/server render/)
     expect(getSession).not.toHaveBeenCalled()
+  })
+
+  it('refuses every other write too, so the property holds by construction', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+    const before = getGuardSnapshot()
+
+    delete globals.document
+
+    // Both are reachable only from a submit handler today. The point is that
+    // the safety property stops depending on that staying true.
+    invalidateOnboardingState()
+    clearGuardCache()
+
+    expect(getGuardSnapshot()).toBe(before)
+  })
+
+  it('subscribing is a no-op without a document, rather than a half-installed writer', () => {
+    delete globals.document
+
+    attachGuardAuthListener()
+
+    expect(onAuthStateChange).not.toHaveBeenCalled()
   })
 })

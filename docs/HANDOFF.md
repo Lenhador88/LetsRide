@@ -90,7 +90,7 @@ so they are "checked by a human, not by CI" rather than unchecked.
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 5 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 694/694 across 30 files
+npm run test:unit                     # 720/720 across 31 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 7 dynamic routes
 PGPASSWORD=postgres npm test          # 594 assertions, 0 failures
@@ -276,8 +276,12 @@ because the error was *reasoning where measurement was available*:
   original sentence true by construction instead of by assumption.
 
   *(That read left `RouteGuard` with PD-111 and lives in `src/lib/auth/guard-cache.ts` now. It
-  still has no `.catch()`, and the fix above is still what makes that safe — but the hang is no
-  longer permanent: the read is cleared in a `.finally()`, so the next navigation retries it.)*
+  still has no `.catch()`, and the fix above is still what makes that safe. **A draft of this
+  line said the hang is no longer permanent, "so the next navigation retries it". Review caught
+  it and it was wrong in the way that matters:** the `.finally()` does clear the in-flight slot,
+  so a navigation would genuinely retry — but a rejected read notifies nothing, so nothing
+  re-renders, and the rider is looking at a full-screen splash with nothing to tap. There is no
+  navigation to be had. The hang is as permanent as it was; only a reload escapes it.)*
 - **`configured ??= applyPluginDefaults()` cached a *rejected* promise**, so one transient
   plugin error would break every read and write for the rest of the app session with no retry.
   The slot is cleared on failure now.
@@ -424,7 +428,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **594** |
-| Unit tests | `npm run test:unit` — **694 on a clean tree**, measured 2026-08-07 (674 before the secure store: 18 new assertions plus 2 from the per-file `it.each` below). The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **720 on a clean tree**, measured 2026-08-07 (694 before PD-111's `guard-cache.test.ts`, itself 694 from 674 for the secure store). The jump from 481 is one file: `no-service-role-key.test.ts` runs `it.each` over every scanned source file, so this number moves whenever a file is added — **including an untracked scratch script**. A session that leaves `scripts/.tmp-probe.mjs` lying around reads 675 and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |

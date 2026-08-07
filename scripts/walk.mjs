@@ -235,10 +235,13 @@ for (const path of paths) {
  *      than a poll, because one frame of green is the whole complaint and a poll
  *      would miss it.
  *
- * The splash is matched on `bg-accent` + `inset-0` as well as its label: three
- * of `Skeleton.tsx`'s regions are also `aria-label="Loading"`, and matching the
- * label alone reports an ordinary `useQuery` skeleton as a guard splash. That
- * false positive cost a debugging round on the way in.
+ * The splash is matched on `bg-accent` + `inset-0` as well as its label, and
+ * that is not belt-and-braces: `Skeleton.tsx`'s profile region is
+ * `aria-label="Loading"` too — exactly, not by prefix; its three siblings are
+ * `Loading postcards`, `Loading list` and `Loading form`, which a label match
+ * would not catch. So the collision is one component, and one is enough: an
+ * earlier pass of this check matched on the label alone and reported that
+ * screen's ordinary `useQuery` skeleton as a guard splash, on `/profile`.
  *
  * Verified both ways before being committed, per CLAUDE.md's rule about a filter
  * that has quietly stopped matching: against the fix it reads 0/survived/0, and
@@ -284,10 +287,22 @@ async function checkTabNavigation() {
     }).observe(document.body, { childList: true, subtree: true })
   })
 
+  // **Every failure here has to be counted, not swallowed.** The three
+  // measurements below are all *absence* checks — no re-read, no remount, no
+  // splash — and absence is exactly what a tap that never happened produces. A
+  // `.catch(() => {})` on the click would turn a broken selector into a clean
+  // pass, which is the one way this phase could report the bug fixed while it
+  // was live. So the landing path is asserted per tap and counted.
   page.on('request', countStampReads)
+  let navigated = 0
   for (const href of TAB_TAPS) {
-    await page.click(`nav a[href="${href}"]`).catch(() => {})
-    await page.waitForURL(`**${href}`, { timeout: 15_000 }).catch(() => {})
+    try {
+      await page.click(`nav a[href="${href}"]`, { timeout: 10_000 })
+      await page.waitForURL(`**${href}`, { timeout: 15_000 })
+      if (new URL(page.url()).pathname === href) navigated += 1
+    } catch (e) {
+      console.log(`    ! tap ${href} did not navigate: ${String(e).split('\n')[0].slice(0, 120)}`)
+    }
     await page.waitForTimeout(400)
   }
   page.off('request', countStampReads)
@@ -297,6 +312,12 @@ async function checkTabNavigation() {
   )
   const splashPaints = await page.evaluate(() => window.__splashPaints)
 
+  // First, because the other three mean nothing without it.
+  report(
+    navigated === TAB_TAPS.length,
+    `all ${TAB_TAPS.length} taps navigated`,
+    `only ${navigated} did — the checks below are vacuous`
+  )
   report(stampReads === 0, `no stamp re-read across ${TAB_TAPS.length} taps`, `${stampReads} calls`)
   report(navSurvived, 'the shell stayed mounted', 'Navbar remounted')
   report(splashPaints === 0, 'the splash never painted', `${splashPaints} paints`)
@@ -305,7 +326,7 @@ async function checkTabNavigation() {
 }
 
 /** How many assertions `checkTabNavigation` makes, for the summary line. */
-const TAB_NAV_CHECKS = 3
+const TAB_NAV_CHECKS = 4
 
 /**
  * Where the route guard actually sends a rider — run only on a full walk, since

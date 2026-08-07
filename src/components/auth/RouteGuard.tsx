@@ -58,6 +58,16 @@ import {
  * completely, and RLS answers nothing to a rider who turns out not to belong
  * there, which is the same guarantee the guard leans on everywhere else.
  *
+ * **That guarantee covers reads, and a mounting screen can also write.**
+ * `MarkFeedSeen` and `MarkClubSeen` upsert `feed_reads` from an effect, so a
+ * screen mounted under the overlay and then navigated away from could in
+ * principle stamp a watermark the rider never saw. It cannot today: both are
+ * rendered behind loaded data, which is a round trip further away than the
+ * decision this is waiting on, so the guard always wins the race. That is a
+ * property of those two components rather than of this one — **a future
+ * mount-time write with no data gate would not be covered by the RLS argument
+ * above**, because RLS asks who you are, not whether you meant it.
+ *
  * **There is deliberately no delay before the splash paints.** PD-111 §4
  * suggests ~150ms, on the sound reasoning that a splash on screen for 80ms reads
  * as a flicker rather than as progress. It cannot be had here: the only thing

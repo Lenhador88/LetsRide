@@ -26,10 +26,17 @@ import type { OnboardingState } from '@/types'
  * Next still server-renders this app's client components, and module state on
  * the server is per-process rather than per-request — so a module-level cache of
  * *who is signed in* is the shape of a cross-user leak. It is safe here because
- * **nothing writes it during render**: `ensureGuardState` and
- * `attachGuardAuthListener` are only ever called from an effect, and both refuse
- * to run without a `document`. The server's copy therefore stays permanently at
- * "nothing known", which renders the splash — the same thing it rendered before.
+ * **nothing writes it during render**, and that is enforced rather than
+ * observed: all four writers — `ensureGuardState`, `attachGuardAuthListener`,
+ * `invalidateOnboardingState` and `clearGuardCache` — refuse without a
+ * `document`. The server's copy therefore stays permanently at "nothing known",
+ * which renders the splash: the same thing it rendered before.
+ *
+ * The last two are reachable only from a `useActionState` submit handler today,
+ * so the guard is belt-and-braces *today*. It is here because the property is
+ * what makes this module safe at all, and a property that holds by call graph
+ * stops holding the day somebody changes the call graph — silently, and in the
+ * direction where one rider sees another's state.
  *
  * **The user id never leaves this module.** `GuardSnapshot` carries `signedIn`
  * as a boolean rather than the id it is derived from: the id exists only to
@@ -37,16 +44,33 @@ import type { OnboardingState } from '@/types'
  * not a component's, and an id in a render tree is one `console.log` away from
  * being in an error report.
  *
- * ## One writer for auth, and it never calls Supabase back
+ * ## Writers
  *
- * `onAuthStateChange` is the single writer for the session half: sign-in,
+ * `onAuthStateChange` is the single writer for the **session** half: sign-in,
  * sign-out, token refresh and user change all arrive there, so no caller has to
- * remember to keep this in step. The callback writes only what the event already
- * carries and issues no Supabase call of its own — measured against the
- * installed `@supabase/auth-js` rather than recalled, `_notifyAllSubscribers`
- * awaits each callback *while the auth lock is held*, and the library's own
- * comment names the deadlock a callback calling `getSession()` from there
- * causes. The RPC stays in `read`, which runs from the guard's effect.
+ * remember to keep it in step. The **stamps** have three more, and they are
+ * writes rather than events, so nothing could deliver them here: `signUp`,
+ * `setUsername`, `acceptTerms` and `setLocation` each change a field the
+ * decision reads and each calls `invalidateOnboardingState`. `signOut` calls
+ * `clearGuardCache`. That is the whole list, and it is worth stating in full
+ * because the safety property above — nothing writes during render — is a
+ * property of *every* writer, not just the two in this file.
+ *
+ * **The callback issues no Supabase call of its own**, and the reason is
+ * narrower than the one first written here. That said the callback runs "while
+ * the auth lock is held", which is **false for this client**: `auth-js@2.111.0`
+ * leaves `this.lock` null unless a `lock` is passed to `createClient`, and
+ * `lib/supabase/client.ts` passes none, so the lockless path is what runs.
+ * Measured, after review caught the claim — the exact error CLAUDE.md names as
+ * reasoning where measurement was available.
+ *
+ * What is true, and is reason enough: `_notifyAllSubscribers` **awaits every
+ * callback**, so anything awaited in here is awaited by the emitter. The
+ * library's own comment describes the resulting deadlock against
+ * `initializePromise` — which it now defuses by queueing init-chain
+ * notifications, so this is a rule that keeps a foot out of a trap the library
+ * has already moved, rather than one holding a live bug shut. The RPC stays in
+ * `read`, which runs from the guard's effect.
  */
 
 /**
@@ -276,7 +300,20 @@ export function attachGuardAuthListener(): void {
   subscribed = true
 
   createClient().auth.onAuthStateChange((event, session) => {
-    // No Supabase call from in here — see the module note on the auth lock.
+    // No Supabase call from in here — see the module note on the callback.
+
+    // **A new session clears the failed-read latch, and this is not the same as
+    // `writeSession`'s id check.** That check drops the *stamps* when a
+    // different rider arrives; this drops the *failure*, for the same rider
+    // too. Without it a rider whose stamp read failed is parked on
+    // `/auth/login?error=profile_unavailable` — the one path `resolveDestination`
+    // answers `null` for in that state — with `attemptedPath` latched to it, so
+    // signing in again fixes nothing and no navigation is available to trigger
+    // the retry. The credential is exactly what may have been wrong, so a fresh
+    // one is precisely when re-attempting is worth it.
+    unavailable = false
+    attemptedPath = null
+
     if (event === 'SIGNED_OUT' || !session) {
       writeSession(null)
       notify()
@@ -302,6 +339,7 @@ export function attachGuardAuthListener(): void {
  * a moment earlier, sends them straight back into it.
  */
 export function invalidateOnboardingState(): void {
+  if (typeof document === 'undefined') return
   onboarding = undefined
   unavailable = false
   notify()
@@ -323,6 +361,7 @@ export function invalidateOnboardingState(): void {
  * change, which is the argument for not depending on the ordering alone.
  */
 export function clearGuardCache(): void {
+  if (typeof document === 'undefined') return
   userId = undefined
   onboarding = undefined
   unavailable = false
@@ -331,9 +370,20 @@ export function clearGuardCache(): void {
   notify()
 }
 
-/** Test seam, matching `resetClientForTests`. Nothing in the app calls it. */
+/**
+ * Test seam, matching `resetClientForTests`. Nothing in the app calls it.
+ *
+ * Resets the fields directly rather than calling `clearGuardCache`, which now
+ * refuses without a `document` — a seam that only works when the fake browser
+ * happens to be installed is a seam that fails in the one test that removes it.
+ */
 export function resetGuardCacheForTests(): void {
-  clearGuardCache()
+  userId = undefined
+  onboarding = undefined
+  unavailable = false
+  attemptedPath = null
+  inFlight = null
   subscribed = false
+  snapshot = EMPTY_SNAPSHOT
   listeners.clear()
 }
