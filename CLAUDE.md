@@ -1079,38 +1079,34 @@ Two rules that follow:
   verified to compile and not verified to work" is a lower-fidelity artifact and needs an
   explicit ask. Only the second kind is escalated, or the signal drowns.
 
-**Under `AUTO` permissions, run the SQL. Do not stop to ask.** Standing grant from the product
-owner, 2026-08-06: when the session's permission mode is `AUTO`, `execute_sql` and
-`apply_migration` are pre-authorized — DDL, DML, and against production. Encoded as
-`permissions.autoMode.allow` in `.claude/settings.json`, because `AUTO` is a *classifier*, not a
-static allowlist: the twelve `mcp__Supabase__*` names sitting in `permissions.allow` had been
-there for a month and did not stop the prompts, since the classifier reads intent rather than
-that list. The rule it needed was prose telling it this project has already decided.
+**Run the SQL. Do not stop to ask.** Standing grant from the product owner, 2026-08-06:
+`execute_sql` and `apply_migration` are pre-authorized — DDL, DML, and against production.
 
-**The grant was conditional on a mode that was not pinned, and the owner pinned it — PR #80,
-2026-08-07.** `"defaultMode": "auto"` is now in `.claude/settings.json` §permissions, so every
-session starts in the mode where the grant applies. Check rather than trust this line:
-`jq -r '.permissions.defaultMode' .claude/settings.json`.
+**The grant now lives in the Supabase connector, not in this repo — moved by the owner on
+2026-08-07, and that is why nothing here grants it any more.** The project's copy came out in the
+same change: the twelve `mcp__Supabase__*` names in `permissions.allow` and the two
+`autoMode.allow` prose rules that said the same thing are **deleted from
+`.claude/settings.json`**. The decision is unchanged; only where it is expressed moved. This
+paragraph exists so the deletion does not read as an oversight — `settings.json` carries a rule
+saying the absence is deliberate, because the obvious "helpful" repair is to put it back.
 
-The reasoning is kept because it explains why that one line matters, and because the same trap
-waits for every future grant written into `autoMode.allow`. The classifier reads
-`permissions.autoMode.allow` **only while the session is in `AUTO`**. A session starting in
-`default` mode falls back to the literal `mcp__Supabase__*` names in `permissions.allow`, and the
-paragraph above already records that those did not stop the prompts. So the owner's experience of
-being asked anyway was never a stale memory and never a misconfigured grant — it was the grant
-evaporating in any session that did not start in `AUTO`. **Anything added to `autoMode.allow`
-from now on inherits that dependency**, which is the durable half of this note.
+**Two mechanisms for one grant is how one of them goes stale.** Same lesson §The Agent Squad
+records for the two specification systems, and the reason the project copy was deleted rather
+than kept as belt-and-braces. It also retires the connector-rename hazard for Supabase outright:
+a setting attached to the connector cannot stop matching when the connector's tool ids rotate,
+which is exactly what the `mcp__Supabase__*` rules did (`docs/HANDOFF.md` §Constraints).
 
-**No agent could write that line, and that is still true of the next one.** The classifier blocks
-a session editing its own permission mode, and blocks writing a `PreToolUse` hook that returns
-`permissionDecision: allow`, which is the other route to the same end. Both refusals are correct —
-an agent widening its own envelope is exactly what that boundary is for — so **do not attempt
-either, and do not route around them via Bash.** Report it and let the owner decide.
+**The connector setting is the owner's, and no session can read or change it.** So if a Supabase
+call prompts anyway, the answer is to **report it** — not to re-add a project rule, not to edit
+the permission mode, and not to write a `PreToolUse` hook returning `permissionDecision: allow`.
+The harness refuses those last two on purpose: an agent widening its own envelope is exactly what
+that boundary is for. Do not route around them via Bash either.
 
-**This paragraph claimed the fix was outstanding for a day after it shipped**, because PR #80 set
-the line and added this prose in the *same commit*, describing the problem it had just fixed. It
-was caught on 2026-08-07 by the Linear seeding, which checked each owner action against reality
-before writing it down — which is the argument for §The roadmap lives in Linear in one sentence.
+**What is left in `.claude/settings.json` is the restrictions plus the non-Supabase grants**, and
+those still depend on the mode: `permissions.autoMode.allow` is read **only while the session is
+in `AUTO`**, which `"defaultMode": "auto"` pins — `jq -r '.permissions.defaultMode'
+.claude/settings.json`. **Anything added there inherits that dependency**, which is the durable
+half of a note that used to be about Supabase.
 
 **The review gate for schema change here is the migration file, not the execution.** That is
 what makes the grant safe rather than lax, and it is the reason to keep writing the file first:
@@ -1119,6 +1115,11 @@ verifying the result against the live database afterwards. A confirmation prompt
 two caught nothing. The `deny` list is untouched and still wins — pausing, restoring or creating
 a project, and deploying an Edge Function, all remain blocked — and the service-role key is in
 `autoMode.hard_deny`, which is the one boundary no amount of user intent clears.
+
+**Whether a connector-level always-allow leaves that `deny` list standing is untested, and no
+session can test it.** Assume it does, act as if those four are blocked under any connector name
+— and if one of them ever executes without a prompt, stop and tell the owner rather than reading
+the absence of a prompt as permission.
 
 **Notify when the work is done and the owner may not be watching.** Standing request from the
 product owner, 2026-08-05, restated and tightened 2026-08-06: send a push notification when a
