@@ -26,6 +26,11 @@ import { Skeleton } from '@/components/ui/Skeleton'
  * would tap through to a screen that can only tell them to join. Better to not
  * offer it: the design's own principle, applied to a state it does not draw.
  *
+ * **It is no longer the only way in, and it never should have been.** `isCrew`
+ * is passed on to `RidePageMenu` as well, which lists Chat as a labelled row on
+ * the same predicate — because in practice nobody found the icon. See that
+ * component for the measurement.
+ *
  * `Ride - Ride plan - Sub pages` (`2375:9114`) also puts a 16×16 `Warning/100`
  * notification dot on this button. **Not drawn** — there is no unread model yet
  * (Linear PD-120 extends `015`'s watermark) and a badge that is always absent is
@@ -83,7 +88,7 @@ export function RideHeader({
             </span>
           )
         ) : (
-          <RidePageMenu rideId={rideId} current={current} />
+          <RidePageMenu rideId={rideId} current={current} isCrew={isCrew} />
         )
       }
       action={

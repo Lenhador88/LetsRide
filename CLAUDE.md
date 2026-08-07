@@ -209,7 +209,7 @@ Formik; the forms in this app are one to three fields.
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
 | Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (36 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
-| Smoke walk | `npm run walk` — playwright-core against the real project | **The only gate that renders anything.** Signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load |
+| Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite — the walk makes no assertions about behaviour, only about whether a screen rendered |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
@@ -876,7 +876,7 @@ PROD_DATABASE_URL=postgresql://... DEV_DATABASE_URL=postgresql://... npm run db:
 PGPASSWORD=postgres npm run db:seed:check   # does the DEV seed still apply, and still refuse?
 
 # The only gate that renders anything — see supabase-relay.mjs's header first
-NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<ref>.supabase.co node scripts/supabase-relay.mjs &
+NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co node scripts/supabase-relay.mjs &
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
 WALK_EMAIL=... WALK_PASSWORD=... npm run walk
 ```
@@ -936,7 +936,7 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | `media` | Photo upload, Supabase Storage, compression, **EXIF stripping** |
 | `rider-ux` | Offline, geolocation, push UX, static map + deeplink, glove targets |
 | `native` | The shell — Capacitor, plugins, permission strings, deep links, signing, store upload, store guidelines |
-| `test` | Vitest/Playwright infra and tests |
+| `test` | Vitest/Playwright infra and tests, **and running the app against DEV** — the walk, its fixtures, anything needing a real browser |
 | `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit + documentation-claims audit |
 
 **Standard order for a feature:**
@@ -1351,7 +1351,7 @@ plus blocking.
 | **Inbox** — DMs, per-ride group chat, notifications | Not built, and **no longer reachable**: the nav tab was removed 2026-08-07 (PD-100), so `/inbox` has no route, no tables and nothing pointing at it. Restoring the tab is part of building the epic — see `.claude/agents/realtime.md` |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. **Account deletion has its database half and no flow** (2026-08-06): `029`–`032` and `supabase/functions/delete-account/` are in, the Edge Function is **written, not deployed and never run**, and nothing in `src/` points at it. `/legal/account-deletion` is public and live. What remains is `openspec/changes/add-account-deletion/` groups 3 and 4 |
-| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan, Crew and Chat are built; Journal needs `postcards.ride_id`.** Chat shipped 2026-08-07 (`034`, Linear PD-115) and did **not** need the Inbox epic, which this line asserted for months — a per-ride chat needs a ride and a crew, both of which existed. Inbox owns DMs and notifications and is still parked. The chat is the app's only Realtime subscription, so `.claude/agents/realtime.md`'s rules have a worked example now rather than only a brief. `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
+| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth. **Ride plan, Crew and Chat are built; Journal needs `postcards.ride_id`.** Chat shipped 2026-08-07 (`034`, Linear PD-115) and did **not** need the Inbox epic, which this line asserted for months — a per-ride chat needs a ride and a crew, both of which existed. Inbox owns DMs and notifications and is still parked. **Chat is reached from the switcher *and* the header's chat-bubble icon; the switcher row is a deliberate deviation and both entry points are crew-only** — see `docs/FIGMA-FIDELITY-TODO.md` §Ride detail for the measurement that added it, and `034` for what "crew" means, which is narrower than a `ride_members` row and must be read there rather than restated here. The chat is the app's only Realtime subscription, so `.claude/agents/realtime.md`'s rules have a worked example now rather than only a brief. `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
 | **Clubs** — public/private, Overview/Rides/Members/Posts tabs | **Built 2026-08-05**, all of it v2. `/clubs` and `/clubs/explore` are two sub-pages behind the header's dropdown, with `List / Club` rows carrying the type chip, the rider collage, the club images and the unread counter. `/clubs/[id]` is four sub-pages — Timeline, Rides, Members, About — built from the **private club** frames, which are the ones marked Done; both public-club epics are On hold. `/clubs/new` is a client page with an image upload (`016`). Two things remain unbuilt and both are logged: the Timeline's **activity feed** (no table behind joins/leaves) and **member invitations with an Admin role** (drawn on the v1 create frame; `club_members.role` has had `admin` since `001` and nothing writes it). Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. **Create club has no v2 design** — that epic reads To do, so its composition is ours |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
@@ -1462,7 +1462,27 @@ only start signal, and an issue sitting in `Todo AI` is triaged, not released.
 
 **`Queued (AI)` is how the owner chooses what gets built, and it is a *status*, not a label.**
 Nothing else is a start signal — not priority, not the milestone, not a comment, and not the
-`DEV` label. **Take the top of that column by priority, and if it is empty, ask rather than
+`DEV` label.
+
+**The fold-in qualifies this sentence and does not weaken it** — noted here because an
+unannotated absolute is how the two drift apart. A firing may finish the story it was *given*
+properly, including the test or the caller that story needs; it may never start a story it was
+not given. Starting new work still requires this column, and the relatedness test is what keeps
+the distinction enforceable rather than rhetorical.
+
+**The two lists are numbered independently and the numbers do not correspond.** Nothing derives
+one from the other; they were written at different times and each is internally ordered. The
+mapping, so a cross-reference can be followed rather than guessed:
+
+| This file's list, below | `.claude/commands/queue-pickup.md` |
+|---|---|
+| step 5 — build | STEP 4 |
+| step 5b — triage | **STEP 4b** |
+| step 5c — review, PR, merge, `Done` | STEP 4c, then STEP 5 |
+
+**So "step 5" here and "STEP 5" there are different steps**, which is the collision most likely
+to mislead: this file's step 5 is the build, that file's STEP 5 is the wrap-up. That file is the
+procedure and wins on any disagreement; this is the summary. **Take the top of that column by priority, and if it is empty, ask rather than
 choosing for them.** A session that picks its own work from `Backlog` has quietly taken the one
 decision this whole board exists to give the owner.
 
@@ -1590,20 +1610,66 @@ Two things follow, and the second is the general one:
 
 ### The queue is drained by a scheduled Routine, not by a human starting a session
 
-Created 2026-08-07 at the product owner's request. **`trig_01Gzy8eCiaXUUa1knvJnNpwy`** — spawns a
-**fresh session on every firing**, so its prompt is a complete standalone instruction rather than
-a continuation. `list_triggers` is the live view; this is the contract.
+Created 2026-08-07 at the product owner's request. **`trig_01WJkMVXGzUVGDcC1njNmaan`** — and as of
+later the same day it **fires into one long-lived session rather than spawning a fresh one**. That
+session is `session_01B2mxc642tG8vZ15wysQpqM`, **the Development session**, and the reuse is the
+whole point: connectors attach to a *session*, so a firing that lands in a session which already
+holds Linear cannot lose Linear. `list_triggers` is the live view; this is the contract.
+
+**Its prompt is a pointer, not the procedure.** The procedure lives in
+**`.claude/commands/queue-pickup.md`** and the trigger says little more than *read that file and
+follow it*. Two reasons, and the second is the one that only matters once the session is reused: a
+prompt is re-injected into the conversation on **every** firing where a file is read once and can
+be skipped, and a file can be reviewed in a PR where a trigger prompt cannot. Read that file for
+the steps; what follows here is why it is shaped the way it is.
 
 What it does, in order — and the order is the design:
 
+0.5. **Is the session idle? Gather, do not exit.** New with the reuse, and the cost it pays for.
+   A fresh session was idle by construction; this one is not. The firing message queues behind
+   whatever the session is doing and lands the moment that finishes — possibly mid-conversation
+   with the owner. Four checks: an unfinished owner request in the conversation, a dirty tree, a
+   branch with commits not on `development`, and an open PR **whose head is the current branch**.
+   **The first is judgement and it is the one that matters**; the other three are the backstop
+   that catches a session which died mid-build. **The owner's work always wins** — the queue
+   waits an hour, which costs nothing.
+
+   Two traps, both found by `reviewer` before this merged, and both of the shape this file keeps
+   warning about — a guard that fails silently and therefore looks like success:
+
+   - **Scope the PR check to the current branch, never repo-wide.** `list_pull_requests` returns
+     every open PR in the repo, including other sessions' — `#101` and `#102` came from a
+     different session — so a repo-wide check hands any concurrent session a permanent veto.
+   - **Nothing exits at 0.5.** Every reason to stop is collected and acted on at **1.5**. An
+     early return here sits in front of the stall notification at 1.5 and makes the one alarm
+     that detects a frozen queue unreachable — self-reinforcingly, because the `Needs help` path
+     deliberately leaves an open PR behind, which would trip 0.5 for ever.
+0.6. **Reduce the session before doing anything expensive.** Also new, and also a cost of the
+   reuse: every firing that reads files and reviews diffs *in the main thread* leaves that behind
+   for every later firing. **No tool available to a session clears its own context** — `/clear`
+   and `/compact` are CLI commands the owner types — so the mechanism is delegation, not a
+   command. Gates and decisions inline; the build in subagents; never a full diff, test log or
+   file pasted into the main thread. If the conversation is already long, run the whole pickup
+   inside one subagent.
 1. **Prove it can see the board.** If the Linear tools are absent, notify and stop. It must fail
    loudly, because *a job that silently does nothing looks exactly like an empty queue*.
 2. **Check the lock.** If **any** issue is in `Development (AI)` or `Needs help`, exit
-   immediately — no changes, no comment. One story at a time. **The one break in that silence,
-   added 2026-08-07: if the lock has been held 3–4 hours it sends a single notification naming
-   the issue** (`get_issue` → `stateHistory[].startedAt`). Without it a lock nobody is holding
-   freezes the queue for ever while every firing exits quietly — the exact failure step 1 exists
-   to prevent. The window is narrow so it fires roughly once rather than hourly.
+   immediately — no changes, no comment. One story at a time. **Scope the query to the project,
+   never to the team**: measured 2026-08-07, a team-scoped `list_issues` on `Development (AI)`
+   also returns `PD-82`, `PD-83` and `PD-41` — 2022–2025 issues, two in the deprecated `Let's
+   Ride` project and one with no project at all, which have sat in that status for years. A
+   team-scoped lock is held **permanently**, and looks exactly like a healthy job behind a busy
+   queue. Carry the answer to 1.5 rather than exiting here.
+1.5. **The only exit, and the stall alarm.** If nothing blocks, go to 2. Otherwise check how long
+   the *oldest blocking reason* has been true — the lock (`get_issue` →
+   `stateHistory[].startedAt`), the in-flight branch's tip, the open PR's `createdAt` — and **if
+   it is 3–4 hours old, send one push notification naming it**, then stop. Outside that window,
+   exit silently. The owner's unfinished request is excluded: it is a live human, not a stuck job.
+   Without this a condition nobody is holding freezes the queue for ever while every firing exits
+   quietly — the exact failure step 1 exists to prevent. The window is narrow so it fires roughly
+   once rather than hourly. **The alarm covers every blocking reason, not just the lock**, and
+   the exit is funnelled through one step, because scattering it across the gates is what let an
+   early return bury it.
 3. **Take the top of `Queued (AI)` by priority**, ties to oldest. Empty queue exits silently.
    Never `Backlog`, never `Todo Human` or `Todo AI`, never `Needs decision`. **A parent issue is
    skipped**: an epic outranks its own children on priority, so a container in the column would
@@ -1616,8 +1682,34 @@ What it does, in order — and the order is the design:
    pick, and what keeps the order right is still that nothing blocked is in the column.
 4. **Move it to `Development (AI)` before starting**, because that status is the lock the next
    firing reads. Claiming late is how two sessions start the same story.
-5. Build under this file's standing instructions, PR to `development`, drive green, merge, move
-   to `Done`. Uncertain about anything → `Needs help` with a comment saying what it needs.
+5. Build under this file's standing instructions, in subagents per STEP 0.6, with the
+   non-negotiable `reviewer` pass on the diff.
+5b. **Triage what the build turned up — *before* the PR opens, which is what makes "the same PR"
+   mean anything.** Changed 2026-08-07 at the product owner's request; the old rule filed every
+   follow-up to `Backlog`, so the test a new function needed was future work rather than done.
+   **Two questions and the order is the design.** First, relatedness: is this *the story done
+   properly*, or *the next story started early*? That gates whether something may **travel**,
+   never whether it is worth doing — **everything gets rated either way**, because the filing
+   columns are chosen by rating and an unrated item has nowhere to go. Then rate it on
+   §Working Principles' four lines and let the block decide — travels *and* **Recommendation
+   ≥ 7/10 *and* `This session` Y** → build it now, same branch, same PR, re-reviewed before the
+   merge. Anything else → a story: `Todo AI` if a session could build it, `Todo Human` +
+   `Owner only` if not, `Backlog` if you rated it below 4/10. **Never `Queued (AI)`.**
+
+   **Both halves, never either — that is what stops a firing choosing its own work.** 9/10 with
+   `This session` **N** is an ordinary pairing here, not a contradiction; the leaked-password
+   toggle is exactly that. Four things force **N** however good the idea is: real domain rules,
+   an order-sensitive migration, an owner decision, or a diff bigger than one review can
+   honestly cover. **`This session` is read more narrowly in a firing than §Working Principles
+   defines it above** — *on this branch, before this PR merges* — because an unattended run has
+   nobody watching to say "not that". `.claude/commands/queue-pickup.md` STEP 4b is the procedure, including the
+   breadth cap (at most two, and never larger than the story's own diff).
+5c. **Re-run `reviewer` if anything was folded in after step 5's pass** — code added after the
+   review has not been reviewed, and that review is the whole safety argument for building
+   fold-ins unattended. *Then* PR to `development`, drive green, merge, move to `Done`.
+   Uncertain about anything → `Needs help` with a comment saying what it needs. **File every
+   rated follow-up before stopping, on every exit path** — a follow-up rated and then dropped is
+   worse than one never noticed, because the rating made it look handled.
 
 **It is hourly, not every ten minutes, and that is a server limit rather than a choice.** The ask
 was ten. Measured, not assumed — `create_trigger` rejects it outright:
@@ -1636,43 +1728,140 @@ Two things follow. **Read the response back** — `update_trigger` returns the s
 successful one. And **the spreading is deliberate**: :00 is the busiest minute on the platform, so
 an on-the-hour Routine is the owner's call to make, not a default to reach for.
 
-**Its connectors were attached by the owner, and no session could have done it.** The Routine was
-created holding none: `create_trigger` refused the `connectors` parameter outright — *"not
-available for this organization"* — and `update_trigger` has no such field either, so neither
-creating nor editing reaches it from a session. The owner attached them by hand in the claude.ai
-Routines UI on 2026-08-07. **Re-tested the same day and still refused**, so this is a standing
-limit rather than a moment in time.
+**Read the two fields for different things, though — `next_run_at` is not the schedule, and a
+never-fired Routine's `next_run_at` is the least trustworthy number here.** The replacement Routine
+was created at 19:32 with `0 0-23 * * *`; it stored that **verbatim** and came back
+`next_run_at: 20:05:35`. Rewriting the same expression at 19:53 did **not** clear the offset —
+`20:05:51`, so it is sticky rather than recomputed from the edit.
 
-**`list_triggers` does report them, and this file said it did not.** They are in
-`job_config.…mcp_connections`, keyed by `connector_uuid` — Supabase `d217aba8-…`, Linear
-`a55a164a-…`, Vercel `8d8457e7-…`, each matching the `installedServerId` that `ListConnectors`
-returns. So check rather than assume, with the command rather than this sentence:
+**The offset is a per-trigger constant. It survives firing, and it is not the schedule.** Settled
+2026-08-07 by watching the first firing land:
+
+| When | `next_run_at` |
+|---|---|
+| before the first firing | `20:05:51.185148522` |
+| after it (`last_fired_at 20:13:52`) | `21:05:51.**185148522**` |
+
+**Identical to the sub-second, plus exactly one hour.** So each trigger draws a fixed offset it
+keeps for life: this one drew `+5m51.185s`, and `trig_01Gzy8eCiaXUUa1knvJnNpwy` drew `+0.667s`,
+which is the entire reason the old Routine looked like it fired on the hour and this one does not.
+**Delivery latency is a second, separate thing** — that firing was scheduled 20:05:51 and arrived
+20:13:52, eight minutes later.
+
+**Two hypotheses died here, and the second is the instructive one.** The first revision called the
+offset "scheduler jitter, up to 10% of the period" — the 10% figure is documented for the
+*session-local* `CronCreate` scheduler, a different system, and it was reached for because it was
+the nearest available number. The second revision called it a *first-run* property, from two
+Routines where the exact one had fired and the offset one had not. **That reading was consistent
+with every observation available at the time and still wrong**, because the variable it blamed
+(has it fired?) happened to correlate with the one that mattered (which offset did it draw?). One
+more firing separated them. Do not treat a two-sample correlation as a mechanism; wait for the
+event that can falsify it.
+
+**Consequence: you cannot schedule a Routine onto an exact minute from a session.** `0 0-23 * * *`
+is minute 0 and stores verbatim, and the offset is applied on top with no parameter to clear it.
+Rewriting the expression does not re-roll it — measured, `20:05:35` → `20:05:51`, still `:05`. The
+only lever is a new trigger id, which draws a new offset and is therefore a lottery rather than a
+fix. Worth it only for the self-bound Routine, which is disposable; never for the connector-holding
+one. It is not the minute-anchoring rewrite described above in any case — the tell is
+that `cron_expression` still reads `0 0-23`, where an anchored one would read `32 * * * *`. Check
+`cron_expression` to see whether the schedule survived; `next_run_at` will wander by a few minutes
+either way and reading it as the anchoring bug leads to a "fix" that introduces one.
+
+### Why the reuse — connectors attach to sessions, not to work
+
+**A trigger cannot be given connectors from a session, and that is what drove the whole design.**
+`create_trigger` refuses the `connectors` parameter for this organization — *"not available for
+this organization"*, measured 2026-08-07 and re-tested the same day — and `update_trigger` has no
+such field either, so neither creating nor editing reaches it. The **fresh-session** Routine only
+ever had Supabase, Linear and Vercel because the owner attached them by hand in the claude.ai
+Routines UI. That made every rebuild of it one bad call away from a permanently connector-less job.
+
+**Firing into an existing session sidesteps the problem rather than solving it.** The session holds
+its own connections, so the firing is just a message arriving in a conversation that can already
+reach Linear.
+
+**`create_trigger` warns anyway, and the warning is a false alarm for this shape — measured, not
+assumed.** It emits *"this trigger stores no MCP connectors, so the sessions it fires will run
+without connector tools"*, which is written for the spawn case and describes a session a self-bound
+trigger never creates. Tested 2026-08-07 by firing a real trigger into this session and calling one
+tool per connector from the fired turn: **Linear, Supabase and GitHub all succeeded, with no prompt
+and no denial.** Do not "fix" that warning by rebuilding the Routine.
+
+**What that test does NOT cover, and nothing in a session can:** it ran minutes after the session
+was last active, so the container was warm. **Whether the grants survive a container reclaim across
+an idle hour is unproven.** The reclaim itself is documented — the environment reclaims a
+container after a period of inactivity — but *what a firing lands on afterwards*, and whether the
+connectors come back with it, is inferred rather than observed. Treat it as an open question rather
+than a settled one; STEP 0 is the detector and the disabled Routine is the fallback.
+
+**`list_triggers` reports the connectors a trigger does hold**, in `job_config.…mcp_connections`,
+keyed by `connector_uuid` — Supabase `d217aba8-…`, Linear `a55a164a-…`, Vercel `8d8457e7-…`, each
+matching the `installedServerId` that `ListConnectors` returns. Check rather than assume:
 
 ```bash
 # via the CCR MCP: list_triggers -> job_config.ccr… mcp_connections[].name
+#   and:          list_triggers -> persistent_session_id   (absent = spawns fresh)
 ```
 
-**Therefore: never delete and recreate this Routine.** It is the one edit that cannot be undone
-from a session — `create_trigger` still refuses `connectors`, so the replacement comes back with
-none, and only the owner can re-attach them. Whatever the recreation was meant to buy, it costs a
-working Routine. Use `update_trigger` (name, cron, prompt, enabled) or leave it alone.
+**Never DELETE a Routine — disable it.** The rule used to read "never delete and recreate" and the
+reason has got stronger rather than weaker. `update_trigger` has **no `persistent_session_id`
+parameter**, so rebinding a Routine to a session is impossible in place: the switch had to be a new
+trigger. The old one is therefore *disabled*, not deleted, and it is the fallback — it still holds
+the three hand-attached connectors, and `update_trigger enabled: true` restores it whole in one
+call. Delete it and only the owner can rebuild it.
 
-Step 0 of the prompt survives that fix and should stay: it proves the session can see the board
-before it does anything, and notifies if it cannot. A scheduled job that silently does nothing is
+**The rule protects connectors, so it does not cover the self-bound Routine — that one is
+disposable.** `trig_01WJkMVXGzUVGDcC1njNmaan` holds no `mcp_connections` and needs none, because
+they come from the session it fires into. Deleting and recreating it costs one `create_trigger`
+call and nothing else, so it is a fair move when there is a reason — a stuck `next_run_at`, say.
+Keep the distinction straight: **`…Gzy8e` is irreplaceable, `…WJkMV` is cheap.** Reading "never
+delete a Routine" as covering both is how the cheap one becomes untouchable for no reason, and
+reading it as covering neither is how the irreplaceable one gets destroyed.
+
+**`enabled: false` serialises as an ABSENT field, not `"enabled": false`.** Measured on exactly
+this change: the disabled Routine's `list_triggers` row has no `enabled` key at all while both live
+ones carry `"enabled":true`. So read the disable back by checking the field is **gone** — looking
+for `false` finds nothing and reads as "the disable did not apply".
+
+**A self-bound Routine cannot carry push notifications.** The server rejects the `notifications`
+parameter for any trigger bound to a persistent session; only `create_new_session_on_fire: true`
+Routines may set it. The fresh-session Routine had `notifications.channel.push` — the replacement
+cannot, so **the session sends its own** with the `PushNotification` tool, at STEP 0 (cannot reach
+Linear) and STEP 5 (done). Nothing else changes, but a firing that forgets is silent where the old
+one was not.
+
+STEP 0 survives all of this and should stay: it proves the session can see the board before it does
+anything, and notifies if it cannot. A scheduled job that silently does nothing is
 indistinguishable from an empty queue, and connectors are exactly the kind of setting that can be
-revoked without anything here noticing.
+revoked without anything here noticing — which is more true, not less, now that they come from a
+session that has been resumed across an idle hour.
 
 **Do not "improve" the guard into a queue drainer.** Draining several issues per firing, or
 skipping past a `Needs help` issue to find workable ones, both defeat the point: `Needs help`
 parks the queue *deliberately*, so that a story needing the owner blocks the ones behind it
 rather than burying itself under three merged PRs.
 
-**A fired session is not configured like an interactive one, and both gaps are owner-only.**
+**A *spawned* session is not configured like an interactive one, and the reuse is what retires
+that whole class of problem.** This is history now rather than a live constraint, and it is kept
+because it is the argument for the reuse and because it comes straight back if anyone switches the
+Routine to `create_new_session_on_fire`.
+
 Measured 2026-08-07 by diffing `list_triggers` against `list_sessions`. Every interactive session
 on this project carries `model: claude-opus-5`, `effort_level: xhigh`, `permission_mode: auto`.
 The Routine's `session_context` carried **none of the three** — just an `allowed_tools` list
-holding **zero `mcp__*` entries** — and, the one that mattered, **no `sources` either**. Compare
-the two before assuming a fired session is configured like the session you are reading this in:
+holding **zero `mcp__*` entries** — and, the one that mattered, **no `sources` either**.
+
+**A session that is resumed rather than spawned keeps all four for free**, because they are
+properties of the session and nothing re-derives them per firing. That is what makes the reuse
+worth its two new costs (STEPs 0.5 and 0.6) rather than a lateral move: it fixes the model gap,
+the effort gap, the permission-mode gap, the repo gap and the connector gap in one stroke, and
+none of those five had a fix a session could apply. **`PD-110` — set the Routine's model, refused
+by `update_trigger` with `model_update_disabled` — is moot while the Routine stays self-bound**,
+since the session's own `claude-opus-5` is what runs.
+
+Compare the two before assuming a fired session is configured like the session you are reading
+this in:
 
 ```bash
 # via the CCR MCP: list_triggers -> job_config.ccr.session_context
@@ -1680,11 +1869,12 @@ the two before assuming a fired session is configured like the session you are r
 # Look for: sources (the repo), permission_mode, model, effort_level
 ```
 
-Two consequences, and a session can fix neither:
+Two consequences, neither of which a session could fix — **which is exactly why the fix was to
+stop spawning sessions rather than to keep configuring them**:
 
 - **The model cannot be set from a session.** `update_trigger` with a `model` fails
   `model_update_disabled`, and `create_trigger` has no model parameter. Owner action in the
-  claude.ai Routines UI — `PD-110`.
+  claude.ai Routines UI — `PD-110`, now moot per above.
 - **Connector tools prompted on every firing, and a scheduled session has nobody to answer.**
   **Root cause: the Routine had no repository attached** — `session_context.sources` was empty.
   Found by the product owner on 2026-08-07 and fixed in the Routines UI; `PD-109` chased the
@@ -1713,6 +1903,31 @@ rather than merely noisy.
 `0 0-23 * * *` to `24 * * * *` — the save minute, exactly the anchoring described above. So after
 *any* UI edit, re-read `cron_expression` and set it back. The workaround does not survive on its
 own.
+
+### The Development session is infrastructure — do not archive it
+
+`session_01B2mxc642tG8vZ15wysQpqM`. The hourly Routine delivers into it, so **archiving or
+abandoning it stops the queue**, silently and with no error anywhere. There is no self-healing
+path: `update_trigger` cannot re-point a Routine at a different session, so recovering means
+creating a *third* trigger bound to a new session and disabling this one — the same dance
+documented above, and one only worth doing deliberately.
+
+Two things follow for any session that is *not* it:
+
+- **A firing you receive is only yours if you are that session.** Check the id before acting on a
+  queue-pickup message: `list_sessions` (or the session URL). A pickup prompt arriving anywhere
+  else is a misrouted message, not a work order.
+- **Its context is a shared resource.** Anything that bloats it — a pasted diff, a full test log,
+  a large file read into the main thread — is paid for by every later firing, not just by the turn
+  that did it. `.claude/commands/queue-pickup.md` STEP 0.6 is the discipline; it applies to
+  interactive work in that session too.
+
+**Its container is reclaimed after a period of inactivity**, so an hourly firing is also what keeps
+it warm. A resumed session gets a fresh container, and whether the connector grants survive that
+resume is the one thing about this design that no session can prove in advance — it can only be
+observed after an idle hour. STEP 0 is the detector: if a firing finds Linear missing, it says so
+rather than exiting quietly, and the fallback is one `update_trigger enabled: true` on
+`trig_01Gzy8eCiaXUUa1knvJnNpwy`.
 
 ### Do not ask permission to touch Linear
 

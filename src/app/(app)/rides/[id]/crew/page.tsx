@@ -51,9 +51,10 @@ export default function RideCrewPage() {
       ? withOrganizer(roster.data, ride.data.organizer_id, ride.data.organizer)
       : null
 
-  // Same derivation as the ride plan — see that page. The chat button is on
-  // every ride sub-page's header, so every one of them owes this.
-  const isCrew = ride.data ? ride.data.is_organizer || ride.data.attendance !== null : undefined
+  // Every ride sub-page's header carries the chat entry points, so every one of
+  // them owes this — read from `getRide` rather than re-derived here. See the
+  // ride plan page.
+  const isCrew = ride.data?.is_crew
 
   const gate = combineQueries(ride, roster)
 

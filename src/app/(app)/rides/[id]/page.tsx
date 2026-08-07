@@ -68,15 +68,15 @@ export default function RidePage() {
   const canRsvp = !!ride.data && ride.data.is_upcoming && !ride.data.is_organizer
 
   /**
-   * Whether this rider is on the ride, which is what gates the header's chat
-   * button. Exactly `private.is_ride_crew`'s predicate (034), derived from data
-   * this screen already holds rather than asked for again — an organizer is on
-   * their own ride by construction, and any RSVP of either status is crew.
+   * What gates the header's chat button and the switcher's Chat row.
    *
-   * `undefined` until the ride lands, so the button appears a moment late
-   * rather than being drawn and then withdrawn.
+   * `undefined` until the ride lands, so both appear a moment late rather than
+   * being drawn and then withdrawn. **Read, not re-derived** — this screen, the
+   * crew page and the chat page each spelled out `private.is_ride_crew`'s two
+   * arms by hand until 2026-08-07, and three copies of one database rule is
+   * three places to miss when it narrows. `getRide` owns it now.
    */
-  const isCrew = ride.data ? ride.data.is_organizer || ride.data.attendance !== null : undefined
+  const isCrew = ride.data?.is_crew
 
   return (
     <>

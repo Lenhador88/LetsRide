@@ -28,11 +28,10 @@ import type { RideChatMessage } from '@/types'
  * The consequence is a state the design does not draw and the screen must:
  * a rider who can open this URL but is not on the ride. RLS answers them with an
  * empty list, which is indistinguishable from a chat nobody has written in — so
- * the *thread* cannot tell them apart and the *ride* can. `getRide` already
- * returns `attendance` and `is_organizer`, and "crew" is exactly
- * `attendance !== null || is_organizer` — the same predicate
- * `private.is_ride_crew` evaluates in Postgres, derived here from data this
- * screen reads anyway.
+ * the *thread* cannot tell them apart and the *ride* can. `getRide` answers it
+ * as `is_crew`, the client's mirror of `private.is_ride_crew`, derived there
+ * once rather than in each of the three screens that need it — see that
+ * function and the field on `RideDetail`.
  *
  * **That is a UX affordance, not the enforcement**, the same way the route guard
  * is not a security boundary. A rider who defeats it reaches a thread whose every
@@ -76,7 +75,7 @@ export default function RideChatPage() {
   // load.
   if (ride.data === null) notFound()
 
-  const isCrew = ride.data ? ride.data.is_organizer || ride.data.attendance !== null : undefined
+  const isCrew = ride.data?.is_crew
   const crew = ride.data && roster.data
     ? withOrganizer(roster.data, ride.data.organizer_id, ride.data.organizer)
     : null

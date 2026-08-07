@@ -104,13 +104,28 @@ PGPASSWORD=postgres npm test          # 647 assertions, 0 failures
   command did. Capture the exit code from the command itself, never from the end of a pipe.
   This reported a passing type check on a tree with no dependencies installed.
 
-## Branching, as of 2026-08-06 21:00 UTC
+## Branching, as of 2026-08-07 16:42 UTC
 
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` and `development` are level at `f5c12c6`**, promoted via #74 as a merge commit with
-  the fast-forward back-merge done. Production is `READY` on that sha.
+- **`main` is at `903dffb`** — promoted via #100 as a merge commit, back-merged by fast-forward,
+  production `READY` on that sha as a real rebuild (`target: production`, ref `main`) rather than
+  a promoted preview. That promotion carried **19 commits**: ride chat, the guard cache, the Inbox
+  removal and the native shell's first half.
+
+  **`development` is normally AHEAD of `main`, and that is the steady state rather than drift.**
+  An earlier revision of this line said the two were "level" and gave a command expecting
+  `git rev-parse` to print identical shas — true for about four minutes, until the very next docs
+  merge, at which point the file asserted an equality its own command disproved. A §Branching line
+  that only holds in the minutes after a promotion is worse than a stale one, because the next
+  session reads it as an invariant. What *is* invariant: `main` moves only by promotion, and
+  everything else lands on `development` first.
+
+  ```bash
+  git fetch origin main development
+  git log --oneline origin/main..origin/development   # what is waiting for the next promotion
+  ```
 - **Getting there went wrong once, and the correction is worth knowing.** `main` was *renamed*
   to `Development` rather than the default *pointer* being moved to the existing `development`.
   That left two branches differing only in case, no `main` at all, a Vercel Production Branch
@@ -438,12 +453,53 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 
 ### The walk, and the relay it now needs
 
+**Point it at DEV, and note that this block used to name PROD's ref.** Corrected 2026-08-07:
+the walk signs in and writes, so aiming it at `letsride` means a real session against real
+riders' data. `Letsride-dev` is `fpmrimzxadewsaiwpsel`; both refs ship in the client bundle
+and neither is a secret.
+
 ```bash
-NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://zwprydcyryvudhurbnye.supabase.co \
-  node scripts/supabase-relay.mjs &
-NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
+DEV=fpmrimzxadewsaiwpsel
+KEY=$(...)   # the DEV publishable key — mcp__Supabase__get_publishable_keys, or Vercel's Preview env
+
+NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://$DEV.supabase.co node scripts/supabase-relay.mjs &
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NEXT_PUBLIC_SUPABASE_ANON_KEY=$KEY \
+  NODE_USE_ENV_PROXY=1 npm run dev
 WALK_EMAIL=... WALK_PASSWORD=... npm run walk
 ```
+
+#### The credentials are not a blocker any more, and no secret needs committing
+
+**DEV has email confirmation OFF, so a session can mint its own account in one call.** Measured
+2026-08-07 — `GET /auth/v1/settings` reports `"mailer_autoconfirm": true` on `Letsride-dev` and
+`false` on `letsride`. That is the per-environment split CLAUDE.md decision #6 says is wanted;
+what that decision still *says* is that there is one project and therefore no answer yet, which
+stopped being true on 2026-08-06.
+
+This is why several sessions reported the walk as blocked on credentials it could have created:
+
+```bash
+curl -sS -X POST "https://$DEV.supabase.co/auth/v1/signup" -H "apikey: $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"walk-<something>@letsride.dev","password":"<generate one>"}'
+# returns access_token immediately — no confirmation step on DEV
+```
+
+Then stamp onboarding, or the walk lands in the wizard rather than on `/postcards`:
+
+```sql
+update profiles set username = '...', location = '...',
+  terms_accepted_at = now(), onboarding_completed_at = now() where id = '<uid>';
+```
+
+**Use an `@letsride.dev` address.** `supabase/seeds/development.sql` refuses to run while any
+account outside that domain exists, so a walk account on any other domain quietly blocks the
+seed. (It is blocked today regardless: `pedro88email@gmail.com` is a real DEV account.)
+
+`walk@letsride.dev` / username `walkrider` exists as of 2026-08-07, onboarded, owning one ride
+and one message. **Its password is deliberately not written down anywhere** — per CLAUDE.md,
+test-account credentials are never committed, and the recipe above makes a stored one
+unnecessary. Make a fresh account rather than hunting for this one's password.
 
 **Chromium in this container cannot reach Supabase at all.** Measured 2026-08-06, and it is not
 a flake or a flag: `curl -x $HTTPS_PROXY .../auth/v1/health` returns 401 — tunnel open, host
@@ -461,17 +517,85 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `18/18 guard, navigation and sign-out checks correct`.** It was 15/15 until
-PD-111 added the three client-side-navigation checks (2026-08-07). The walk discovers detail
+**A clean run is `19/19 guard, navigation and sign-out checks correct`.** It was 15/15 until
+PD-111, which added **four** client-side-navigation checks, not three — this line said 18/18
+and was corrected 2026-08-07 by reading a real run, which is the only way to get it right.
+Count them from the output rather than from here: `all N taps navigated`, `no stamp re-read`,
+`the shell stayed mounted`, `the splash never painted`, then 6 signed-in guard rules, 4
+sign-out assertions and 5 signed-out guard rules. The walk discovers detail
 routes from the lists, checks eleven route-guard redirects in both signed-in and signed-out
 states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no
 reachable screen, and taps five bottom tabs to prove a navigation costs no
 `my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
 
-**The screens figure is data-dependent and is not a pass/fail number** — it is `15/15` against a
-database holding rides and clubs, and `9/9` against DEV, which holds neither, because the four
-detail routes are discovered rather than hardcoded and a list with no rows yields no path. The
-walk says which it skipped. Read the `N/N` for equality, not for the value.
+**The screens figure is data-dependent and is not a pass/fail number.** The detail routes are
+discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
+`13/13` against a DEV with a club but no ride, `16/16` once the ride is there. **Read the `N/N`
+for equality, not for the value**, and read the skip notices above it for what was not covered.
+Deliberately no canonical number here: every value this line has ever carried went stale within
+a day, and `19/19` below is the pass/fail one.
+
+**So the walk provisions what it needs, as of 2026-08-07** — a shrunken figure looks exactly
+like success while meaning the ride detail was never opened, which is how PD-125 shipped a
+switcher nobody had seen:
+
+```bash
+WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV.supabase.co \
+  WALK_EMAIL=... WALK_PASSWORD=... npm run walk     # 16/16 on a DEV that reported 13/13 without it
+```
+
+It creates a ride and a club **through `/rides/new` and `/clubs/new`** rather than by insert,
+which exercises the two create forms end to end — nothing else in this repo submits them. It
+fills **only what is missing**, so it is idempotent and needs no cleanup pass; a second run
+creates nothing and still walks the same routes. The ride is dated a year out on purpose:
+`getRides` filters `.gte('departure_at', now)`, so a short-dated fixture ages off `/rides` and
+the next run creates another that nothing lists and nothing removes — idempotence with an
+expiry date is not idempotence.
+
+**A fixture that was asked for and did not arrive fails the run.** The report comes from the
+re-read, never from the attempt: an earlier draft printed `+ created a ride` straight after the
+click and silenced the re-read's skip notice, so an RLS or validation refusal would have read
+`(no rides to open)` → `+ created a ride` → green → exit 0. That is the skip-reads-as-pass
+failure this whole section exists to close, reintroduced inside the fix for it.
+
+**Writes are off by default, and the guard reads the session rather than an env var.** The walk
+signs in and, with fixtures on, posts as a real rider — and this file's own recipe named PROD
+until today, so aiming it wrong is a mistake the documentation invited.
+
+**The first version of that guard was worth nothing, and the reason generalises.** It required
+`RELAY_UPSTREAM` and refused PROD's ref in it — but that variable configures the *relay*, a
+sibling process, and nothing tied it to what the app under test was pointed at. With PROD in
+`.env.local` and a plain `npm run dev`, the documented
+`WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV...` command passed the guard and would have created
+public fixture rides in real riders' feeds. **A check on a value describing a different process
+is not a check.**
+
+`authenticatedProjectRef()` reads the `iss` claim of the session the browser is actually
+holding — `https://<ref>.supabase.co/auth/v1`, minted by GoTrue from its own configuration, so
+it names the real project even when every byte arrived via `http://localhost:3001`. `letsride`
+is not on an allowlist, and an unreadable ref refuses too, so it fails closed:
+
+```
+(fixtures not created — refusing to create fixtures against "zwprydcyryvudhurbnye" — only fpmrimzxadewsaiwpsel is writable)
+(fixtures not created — could not read which project the browser signed in to — refusing to write rather than guessing)
+```
+
+**Realtime does not survive the relay, and this is the one gap the walk cannot close.**
+`scripts/supabase-relay.mjs` forwards HTTP and drops the `upgrade` header, so
+`ws://localhost:3001/realtime/v1/websocket` fails and the ride chat's subscription never
+connects. Measured 2026-08-07 while verifying PD-125: a message sent through the composer still
+appears, because the optimistic path draws it and the refetch confirms it — so a green walk
+proves the chat renders and sends, and proves **nothing** about live delivery. Teaching the
+relay to proxy the upgrade is the fix if that ever needs covering.
+
+**The walk suppresses that one console error and says so**, because `/rides/[id]/chat` is on
+the route list now and an always-red gate is a gate nobody reads. The filter is deliberately
+narrow — the relay's own origin and the Realtime path, nothing else — and the count is printed
+rather than swallowed:
+
+```
+  (Realtime NOT exercised — 1 relay WebSocket failure(s) suppressed; the relay does not proxy the upgrade)
+```
 
 **Network, measured — a blocked host fails as `curl: (56) CONNECT tunnel failed`, not as a
 timeout:**
@@ -509,7 +633,21 @@ archiving replaces a requirement wholesale — so **whichever archives second si
 the first one's edit**. Both delta files now open with a coordination banner carrying the merged
 text they should converge on. Read it before archiving either.
 
-## Ride chat landed 2026-08-07, and `034` is applied to DEV only
+## Ride chat landed 2026-08-07 and is live in production
+
+**Shipped to riders via #100 (`903dffb`), and here is the honest limit on that.** The screen is
+verified by CI, the RLS suite and live schema checks against PROD. **Nobody has loaded it against
+the production database** — this container cannot: Chromium here cannot reach `supabase.co` at all
+(§The walk), and Vercel's MCP fetch authenticates as the account owner, so a 200 from it is not
+evidence a rider can reach anything. The first real proof is the owner opening a ride they have
+RSVP'd to and sending a message.
+
+Two things that would only show up on that first real load, so check them before assuming a bug is
+elsewhere: whether the Realtime socket actually delivers on the production project (the publication
+membership is asserted, the *delivery* is not), and whether the composer's `crypto.randomUUID`
+path is on a secure origin — it is over HTTPS, and the fallback exists for `http://<lan-ip>` device
+testing.
+
 
 Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-120 (the unread
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
@@ -524,8 +662,10 @@ so the recorded statement matched. The second was applied as a **delta** (`alter
 
 That matters to exactly one check — the byte-identity of stored SQL against the files, which was
 verified once on 2026-08-06 and which nothing automates (`npm run db:drift` compares *names*).
-PROD has never had `034` and will receive the file verbatim, so it is DEV-only and self-correcting.
-Reconcile whenever convenient, from a session with the file open:
+**PROD did receive the file verbatim** — `md5(statements[1])` there equals `md5sum` of
+`supabase/migrations/034_ride_messages.sql`, `4a3e605891b8ab49db1a5d614bcb9a84` — so the canonical
+record is correct and only the disposable database is out. Reconcile whenever convenient, from a
+session with the file open:
 
 ```sql
 -- then re-run apply_migration with the file's contents
@@ -925,12 +1065,178 @@ loaded fine the whole time, which is what made it look like a permission-layer p
 **The cheap diagnostic, learned the expensive way: a permission dialog offering "Allow once" but
 no "Allow always" means there is no project settings file to persist a grant into — i.e. no
 repo.** Check `session_context.sources` before theorising about permission layers. `PD-109` chased
-the connector and was wrong; `PD-110` (the model, refused by `update_trigger` with
-`model_update_disabled`) still stands. The owner fixed the source in the Routines UI.
+the connector and was wrong. The owner fixed the source in the Routines UI.
+
+**`PD-110` (set the Routine's model, refused by `update_trigger` with `model_update_disabled`) is
+moot while the Routine stays self-bound** — a resumed session runs on its own `claude-opus-5`, so
+there is no per-firing model to set. It comes back the moment anyone switches the Routine to
+`create_new_session_on_fire`. This line said "still stands" until the switch landed.
 
 **Any UI edit to a Routine re-anchors its cron.** Attaching the repo silently rewrote
 `0 0-23 * * *` to `24 * * * *`, the save minute. Re-read `cron_expression` after every UI edit.
 
-**Never delete and recreate that Routine.** `create_trigger` still refuses the `connectors`
-parameter for this org (re-tested 2026-08-07), so the replacement comes back with no Supabase,
+**Never delete a Routine — disable it.** `create_trigger` still refuses the `connectors`
+parameter for this org (re-tested 2026-08-07), so a replacement comes back with no Supabase,
 Linear or Vercel, and only the owner can re-attach them by hand.
+
+**The Routine now fires into a reused session instead of spawning one — 2026-08-07.** The queue is
+drained by **`trig_01WJkMVXGzUVGDcC1njNmaan`**, hourly, delivering into
+**`session_01B2mxc642tG8vZ15wysQpqM` — the Development session**. Connectors attach to sessions, so
+a firing that lands in a session already holding Linear cannot lose it; that is the whole reason.
+The old fresh-session Routine `trig_01Gzy8eCiaXUUa1knvJnNpwy` is **disabled, not deleted**, and is
+the fallback — it still holds its three hand-attached connectors and one `update_trigger
+enabled: true` restores it.
+
+```bash
+# via the CCR MCP: list_triggers
+#   -> trig_01WJkMVXGzUVGDcC1njNmaan  enabled:true  persistent_session_id: session_01B2mxc…
+#   -> trig_01Gzy8eCiaXUUa1knvJnNpwy  no `enabled` key at all  = disabled
+```
+
+Four measurements from making the switch, each of which will otherwise be rediscovered:
+
+- **`update_trigger` has no `persistent_session_id`**, so rebinding is impossible in place. The
+  switch had to be create-new-then-disable-old, which is also why "never delete" now matters more.
+- **`enabled: false` serialises as an absent field**, not `"enabled": false`. Read the disable back
+  by checking the key is *gone*.
+- **The server rejects `notifications` on a self-bound trigger.** Push now comes from the session
+  itself via `PushNotification`, at STEP 0 and STEP 5 of the procedure.
+- **`next_run_at` carries a per-trigger constant offset, and you cannot schedule onto an exact
+  minute from a session.** `0 0-23 * * *` is minute 0 and stores verbatim; the offset is applied on
+  top. Settled by watching the first firing: `next_run_at` went `20:05:51.185148522` →
+  `21:05:51.185148522` — **identical to the sub-second, plus one hour**. So each trigger draws a
+  fixed offset for life (this one `+5m51.185s`; the old Routine `+0.667s`, which is why that one
+  looked exact). Rewriting the expression does not re-roll it (`20:05:35` → `20:05:51`). Delivery
+  latency is separate and larger: scheduled 20:05:51, arrived 20:13:52. The only lever is a new
+  trigger id — a lottery, not a fix, and worth it only for the disposable self-bound Routine.
+
+  **Two explanations died here and the second is the instructive one.** First "scheduler jitter, up
+  to 10% of the period" — that figure is `CronCreate`'s, a different scheduler. Then a **first-run**
+  property, inferred from two Routines where the exact one had fired and the offset one had not.
+  That reading fit every observation available and was still wrong: the variable it blamed (has it
+  fired?) happened to correlate with the one that mattered (which offset did it draw?). One more
+  firing separated them. **Do not treat a two-sample correlation as a mechanism.**
+- **The "never delete a Routine" rule protects connectors, so it covers `…Gzy8e` and not
+  `…WJkMV`.** The self-bound one holds no `mcp_connections` and needs none — they come from the
+  session — so recreating it costs one call. The connector-holding one is irreplaceable from a
+  session. Keep the two straight in both directions.
+
+**The procedure moved out of the trigger prompt and into
+[`.claude/commands/queue-pickup.md`](../.claude/commands/queue-pickup.md)** — the trigger now says
+little more than *read that file and follow it*. A prompt is re-injected on every firing where a
+file is read once, and a file can be reviewed in a PR. It gained two steps the fresh-session design
+did not need:
+
+- **STEP 0.5, the idle gate.** A fresh session was idle by construction; this one is not, and a
+  firing can land mid-conversation with the owner. Four checks — unfinished owner request, dirty
+  tree, branch ahead of `development`, and an open PR **whose head is the current branch**. The
+  owner's work wins. **It gathers; it does not exit** — every reason to stop is acted on at STEP
+  1.5, which owns the only exit and runs the stall alarm across all of them.
+
+  Both halves of that are `reviewer` findings on this very change, and both are the repo's
+  signature failure — a guard that fails silently and so looks like success. The PR check was
+  repo-wide, which hands any concurrent session a permanent veto (`#101`/`#102` came from a
+  different session). And STEP 0.5 exited early, in front of the 3–4h stall notification, so the
+  one alarm that detects a frozen queue could never fire — self-reinforcingly, since the
+  `Needs help` path deliberately leaves an open PR behind. **Never reintroduce an early return
+  above STEP 1.5**, including the tempting "cheap checks first, skip the Linear round trip".
+- **STEP 0.6, reduce the session.** Context accumulates across firings and **no tool available to a
+  session clears its own context**; `/clear` and `/compact` are CLI commands the owner types. The
+  mechanism is therefore delegation: gates inline, build in subagents, never a diff or a test log
+  in the main thread.
+
+  **Where the split falls is forced, not chosen.** No agent in `.claude/agents/` holds a single
+  `mcp__Linear__*` tool, none holds `create_pull_request` or `merge_pull_request`, and `gh` is not
+  installed in this container — so the Linear moves, the PR and the merge must stay in the main
+  thread, and only the building delegates. An earlier draft told the firing to run the whole
+  pickup in one subagent; it could not have worked. `general-purpose` and `claude` inherit every
+  tool and could in principle, but **whether an inherited MCP grant survives into a subagent here
+  is untested** — do not find that out mid-firing, after the issue is already claimed.
+
+  ```bash
+  grep -l "mcp__Linear__\|create_pull_request\|merge_pull_request" .claude/agents/*.md # expect none
+  command -v gh                                                                        # expect none
+  ```
+
+**A firing now folds strong follow-ups into the same PR instead of filing all of them — 2026-08-07,
+at the product owner's request.** The old §Scope discipline sent adjacent improvements to `Backlog`
+"or note them in the PR", which in practice means the test a new function needs and the doc line
+the change just falsified become future work rather than done, leaving the story merged and
+incomplete. **That is the failure the old default invites, not one anyone has watched happen** —
+the new rule was written 2026-08-07 and nothing has run under it yet. Do not let a later revision
+promote it into history: a plausible illustration and an observed event are not the same claim,
+and only the second earns the past tense. (A first draft of these files did exactly that,
+describing a two-minute fix filed to `Backlog` from a branch that was already open, green and
+under review — an event that never happened.)
+
+STEP 4b is the procedure, and it asks **two questions in a fixed order**:
+
+1. **Relatedness** — is this *the story done properly* or *the next story started early*? Only the
+   first is eligible to be rated at all, and a one-line justification goes in the PR body. The
+   first draft had no such test: the ≥7/Y bar encodes nothing about what you are building, so it
+   would have licensed any sufficiently good idea. `reviewer` caught that.
+2. **The rating block** — ≥ 7/10 *and* `This session` **Y** builds now, same branch, same PR, same
+   `reviewer` pass. Anything else is a story: `Todo AI`, `Todo Human` + `Owner only`, or `Backlog`
+   below 4/10.
+
+What carries the risk, and each is the point rather than a caveat:
+
+- **Both halves are required.** 9/10 with `This session` **N** is a story — the ordinary pairing
+  `CLAUDE.md` illustrates with the leaked-password toggle. Reading a high recommendation alone as
+  licence is how a firing starts choosing its own work.
+- **`This session` is read more narrowly in a firing** — *on this branch, before this PR merges* —
+  than §Working Principles defines it, where the canonical **Y** is a 3/10 two-minute fix. The
+  divergence is deliberate and the cost is real: a trivial related fix gets filed rather than made,
+  because an unattended run has nobody watching to say "not that".
+- **Four things force N** however good the idea is: real domain rules, an order-sensitive migration
+  (`021`/`025`), anything owner-only, and a diff larger than one `reviewer` pass can cover.
+- **A breadth cap, because "one level deep" bounds recursion and not width.** Five items each rated
+  8/Y pass every other gate. At most two, together smaller than the story's own diff; over either,
+  file them all and build none.
+
+**The safety argument is `reviewer`, so `reviewer` was told about it.** `.claude/agents/reviewer.md`
+gained a mandatory scope pass — check each fold-in against its relatedness sentence, check the
+ratings were applied rather than decorated, check the breadth cap — because the brief had zero
+mentions of scope and CI checks that a diff compiles, not that it was asked for. It also had
+`git diff main...HEAD` as its starting command, which widens every review by whatever sits
+unreleased in `development`; that is now `origin/development...HEAD`.
+
+**The failure mode to watch is a follow-up that gets rated and then never filed** — it looks
+handled precisely because it was rated. STEP 5 files the stories *before* it writes the `Done`
+comment that links them, and §If you get stuck now says every exit path owes the same, since
+`Needs help` and STEP 2c both leave without reaching STEP 5.
+
+**The delivery path is tested and the connectors survive it.** `create_trigger` warns *"this
+trigger stores no MCP connectors, so the sessions it fires will run without connector tools"* — a
+false alarm for a self-bound trigger, which spawns no session. Verified 2026-08-07 by firing a real
+trigger into this session and calling one tool per connector from the fired turn: **Linear
+(`list_issue_statuses`), Supabase (`list_migrations`, 35 rows) and GitHub (`list_pull_requests`) all
+succeeded, no prompt, no denial.** Do not rebuild the Routine to chase that warning.
+
+**The one thing this design cannot prove in advance:** that test ran minutes after the session was
+active, so the container was warm. **Whether the grants survive a container reclaim across an idle
+hour is unproven**, and no session can test it — it is only observable after the fact. STEP 0 is the
+detector — a firing that finds Linear missing notifies rather than exiting quietly — and the
+fallback is re-enabling the old Routine.
+
+**Do not archive `session_01B2mxc642tG8vZ15wysQpqM`.** Archiving it stops the queue with no error
+anywhere, and `update_trigger` cannot re-point the Routine at a replacement.
+
+**The lock check must be scoped to the project, and a team-scoped one is held for ever.** Found
+while making the switch, 2026-08-07: `list_issues` filtered by *team* and `Development (AI)` also
+returns `PD-82`, `PD-83` and `PD-41` — issues from 2022–2025, two in the deprecated `Let's Ride`
+project and one with no project at all, parked in that status for years. A firing that checks the
+lock team-wide exits silently every time, which is indistinguishable from a healthy job behind a
+busy queue. Always pass `project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`.
+
+```bash
+# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
+#   -> statuses; anything in Development (AI) or Needs help holds the lock
+```
+
+**The queue is frozen right now and it needs an owner decision.** As of 2026-08-07 19:36 UTC two
+issues hold the lock together — **`PD-118`** (Notifications; moved to `Development (AI)` at
+19:35, minutes after this session started, by something other than this session) and **`PD-125`**
+(Ride chat unreachable; created 19:26 already in that status). Neither has a branch —
+`git branch -r` shows only `main`, `development` and this session's. Four issues wait behind them
+in `Queued (AI)`. Until one of them is moved back, every firing will correctly exit at STEP 1.

@@ -23,10 +23,26 @@
  *
  * ## Running it, and the one thing that will otherwise waste an hour
  *
- *   NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<ref>.supabase.co \
+ *   NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co \
  *     node scripts/supabase-relay.mjs &
  *   NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
  *   WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+ *
+ *   # ...and to provision the rows the detail routes need, on an empty DEV:
+ *   WALK_FIXTURES=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co \
+ *     WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+ *
+ * **Point it at DEV.** This walk signs in, and with `WALK_FIXTURES=1` it posts
+ * as a real rider — against `letsride` that means fixture rides in real riders'
+ * feeds. docs/HANDOFF.md's recipe named PROD's ref until 2026-08-07, so this is
+ * a mistake the documentation actively invited. `fixturesPermitted()` refuses
+ * it, and it establishes the project from the **session the browser is holding**
+ * rather than from `RELAY_UPSTREAM` — see `authenticatedProjectRef()` for why
+ * the env-var version of that check was worth nothing.
+ *
+ * **The account needs no stored password.** DEV has `mailer_autoconfirm: true`,
+ * so a signup returns a session with no confirmation step — mint one, stamp
+ * onboarding, walk. docs/HANDOFF.md §The walk has the two commands.
  *
  * **The relay is not optional in this container, and the reason changed with the
  * render migration.** Chromium here cannot reach Supabase at all — measured
@@ -106,8 +122,35 @@ const context = await browser.newContext({ viewport: { width: 390, height: 844 }
 const page = await context.newPage()
 
 const problems = []
+
+/**
+ * The one console error that is the harness's fault rather than the app's.
+ *
+ * `scripts/supabase-relay.mjs` forwards HTTP and drops the `upgrade` header, so
+ * the ride chat's Realtime subscription cannot connect through it and Chromium
+ * logs a failed WebSocket on every load of `/rides/[id]/chat`. Left unfiltered
+ * that makes the walk permanently red on a screen that renders perfectly — and
+ * a gate that is always red is a gate nobody reads.
+ *
+ * **Deliberately narrow: the relay's own origin and the Realtime path.** A
+ * WebSocket failure anywhere else, or to any other host, is still a failure. It
+ * is also counted rather than silently dropped, because a suppressed error that
+ * stops being reported is indistinguishable from one that stopped happening —
+ * the run prints what it did not exercise.
+ */
+let realtimeSuppressed = 0
+const RELAY_ORIGIN = `ws://localhost:${process.env.RELAY_PORT ?? 3001}/realtime/v1/websocket`
+const isRelayWebSocketFailure = (text) =>
+  text.startsWith(`WebSocket connection to '${RELAY_ORIGIN}`)
+
 page.on('console', (m) => {
-  if (m.type() === 'error') problems.push(`console: ${m.text().slice(0, 300)}`)
+  if (m.type() !== 'error') return
+  const text = m.text()
+  if (isRelayWebSocketFailure(text)) {
+    realtimeSuppressed += 1
+    return
+  }
+  problems.push(`console: ${text.slice(0, 300)}`)
 })
 page.on('pageerror', (e) => problems.push(`pageerror: ${String(e).slice(0, 300)}`))
 page.on('response', (r) => {
@@ -145,8 +188,8 @@ if (landed.startsWith('/auth/login')) {
  * A list with no rows yields no path and the route is skipped rather than
  * guessed at, and it says so — a silent skip here reads as a pass.
  */
-async function discoverDetailPaths() {
-  const found = []
+async function discoverDetailPaths({ quiet = false } = {}) {
+  const say = (m) => !quiet && console.log(m)
 
   const firstHref = async (listPath, pattern) => {
     await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
@@ -161,23 +204,190 @@ async function discoverDetailPaths() {
   }
 
   const ride = await firstHref('/rides', '^/rides/[0-9a-f-]{36}$')
-  if (ride) found.push(ride, `${ride}/crew`)
-  else console.log('  (no rides to open — /rides/[id] and its crew unwalked)')
+  if (!ride) say('  (no rides to open — /rides/[id] and its crew unwalked)')
 
   const club = await firstHref('/clubs', '^/clubs/[0-9a-f-]{36}$')
-  if (club) found.push(club, `${club}/rides`, `${club}/members`, `${club}/about`)
-  else console.log('  (no clubs to open — /clubs/[id] and its sub-pages unwalked)')
+  if (!club) say('  (no clubs to open — /clubs/[id] and its sub-pages unwalked)')
 
   const postcard = await firstHref('/postcards', '^/postcards/[0-9a-f-]{36}$')
-  if (postcard) found.push(postcard)
-  else console.log('  (no postcard thread link — /postcards/[id] unwalked)')
+  if (!postcard) say('  (no postcard thread link — /postcards/[id] unwalked)')
 
-  return found
+  const paths = [
+    ...(ride ? [ride, `${ride}/crew`, `${ride}/chat`] : []),
+    ...(club ? [club, `${club}/rides`, `${club}/members`, `${club}/about`] : []),
+    ...(postcard ? [postcard] : []),
+  ]
+  return { ride, club, postcard, paths }
 }
 
+/**
+ * ## Fixtures — because a skip reads exactly like a pass
+ *
+ * `9/9 screens rendered clean` against an empty database is not a green run, it
+ * is four unopened screens and a number that looks like success. That is not
+ * hypothetical: PD-125 shipped a ride sub-page switcher **nobody had ever
+ * seen**, past a green walk, because DEV held no rides and the ride detail was
+ * therefore skipped every time.
+ *
+ * So the walk provisions what it needs — but only what is *missing*, which is
+ * what keeps it idempotent. A DEV that already has a ride gets nothing new, so
+ * repeated runs cannot silt the database up, and no cleanup pass is needed
+ * (there is nothing to distinguish "mine" from "the owner's" afterwards, which
+ * is exactly the kind of deletion nobody should be writing).
+ *
+ * **It creates them through the UI rather than through SQL, and that is the
+ * point rather than a shortcut.** Submitting `/rides/new` and `/clubs/new`
+ * exercises the two create forms end to end — their validation, their actions,
+ * their redirects — which nothing else in this repo does at all. An insert
+ * would produce the same row and prove none of it.
+ *
+ * **Postcards are deliberately not provisioned.** The composer requires an
+ * image, and Storage from this container's Chromium hangs without ever firing
+ * `onload` or `onerror` (docs/HANDOFF.md). A fixture that cannot be created is
+ * better skipped loudly than half-built.
+ */
+/**
+ * The projects this walk may write to. **An allowlist, so an unrecognised
+ * project fails closed** — a denylist of PROD's ref would wave through a
+ * second production project the day one exists.
+ */
+const WRITABLE_REFS = new Set(['fpmrimzxadewsaiwpsel']) // Letsride-dev
+
+/**
+ * Which Supabase project the browser **actually** authenticated against, read
+ * from the `iss` claim of the session it is holding.
+ *
+ * **The first version of this guard read `RELAY_UPSTREAM` from the walk's own
+ * environment, and review was right that it was theatre.** That variable
+ * configures a *sibling process*; nothing tied it to what the app under test
+ * was pointed at. With PROD in `.env.local` and a plain `npm run dev`, the
+ * documented `WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV...` command passed
+ * the guard and would have created public fixture rides in real riders' feeds.
+ *
+ * `iss` cannot be laundered the same way: GoTrue mints it from its own
+ * configuration, so it names the real project even when every byte reached the
+ * browser through `http://localhost:3001`. It is the only value here that
+ * describes the database the writes will actually land in.
+ */
+async function authenticatedProjectRef() {
+  const token = await page
+    .evaluate(() => {
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith('sb-')) continue
+        const raw = localStorage.getItem(key)
+        if (!raw) continue
+        try {
+          const parsed = JSON.parse(raw)
+          if (parsed?.access_token) return parsed.access_token
+        } catch {
+          // Not the session entry — PKCE verifier keys are bare strings.
+        }
+      }
+      return null
+    })
+    .catch(() => null)
+
+  if (!token) return null
+  try {
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+    // `https://<ref>.supabase.co/auth/v1`
+    return new URL(claims.iss).hostname.split('.')[0]
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Writes are off by default, and turning them on is not enough on its own — the
+ * project has to be one this walk is allowed to write to, established from the
+ * session rather than from anything the runner typed.
+ */
+function fixturesPermitted(ref) {
+  if (process.env.WALK_FIXTURES !== '1') return { ok: false, quiet: true }
+  if (!ref) {
+    return {
+      ok: false,
+      why: 'could not read which project the browser signed in to — refusing to write rather than guessing',
+    }
+  }
+  if (!WRITABLE_REFS.has(ref)) {
+    return {
+      ok: false,
+      why: `refusing to create fixtures against "${ref}" — only ${[...WRITABLE_REFS].join(', ')} is writable`,
+    }
+  }
+  return { ok: true }
+}
+
+async function provision({ ride, club }) {
+  if (!ride) {
+    // A year out, not ten days. `getRides` filters `.gte('departure_at', now)`,
+    // so a short-dated fixture ages off /rides and the next run creates another
+    // that nothing lists and nothing cleans up — idempotence with an expiry
+    // date is not idempotence.
+    const departure = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 16)
+    await page.goto(`${BASE}/rides/new`, { waitUntil: 'networkidle' })
+    await page.fill('input[name="title"]', 'Walk fixture ride')
+    await page.fill('input[name="meeting_point"]', 'Dam Square, Amsterdam')
+    await page.fill('input[name="departure_at"]', departure)
+    await Promise.all([
+      page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ])
+    await page.waitForTimeout(1200)
+  }
+
+  if (!club) {
+    await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
+    await page.fill('input[name="name"]', 'Walk fixture club')
+    await Promise.all([
+      page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ])
+    await page.waitForTimeout(1200)
+  }
+}
+
+let fixtureFailures = 0
+
 if (isFullWalk) {
-  const detail = await discoverDetailPaths()
-  paths = [...paths, ...detail]
+  let detail = await discoverDetailPaths()
+
+  if (!detail.ride || !detail.club) {
+    const permit = fixturesPermitted(await authenticatedProjectRef())
+    if (permit.ok) {
+      const wanted = { ride: !detail.ride, club: !detail.club }
+      await provision(detail)
+
+      /**
+       * **Report what landed, never what was attempted.** The first version
+       * printed `+ created a ride` unconditionally, straight after the click,
+       * and re-read the lists with the skip notices silenced. A create refused
+       * by validation or RLS therefore produced
+       * `(no rides to open)` → `+ created a ride` → `9/9 screens rendered
+       * clean` → exit 0 — the precise skip-reads-as-pass failure this whole
+       * change exists to close, reintroduced inside the fix for it.
+       *
+       * So the re-read is loud, the report comes from it, and a fixture that
+       * was asked for and did not arrive fails the run. Silence about a
+       * missing fixture is the bug.
+       */
+      detail = await discoverDetailPaths()
+      for (const kind of ['ride', 'club']) {
+        if (!wanted[kind]) continue
+        if (detail[kind]) {
+          console.log(`  + created a ${kind} through /${kind}s/new`)
+        } else {
+          console.log(`  ! FIXTURE FAILED — asked for a ${kind} and none appeared`)
+          fixtureFailures += 1
+        }
+      }
+    } else if (permit.why) {
+      console.log(`  (fixtures not created — ${permit.why})`)
+    }
+  }
+
+  paths = [...paths, ...detail.paths]
 }
 
 let failures = 0
@@ -454,6 +664,14 @@ if (isFullWalk) {
 await browser.close()
 
 console.log(`\n${paths.length - failures}/${paths.length} screens rendered clean`)
+if (realtimeSuppressed) {
+  // Named rather than swallowed: this run proved the chat renders and sends,
+  // and proved nothing about live delivery. See isRelayWebSocketFailure.
+  console.log(
+    `  (Realtime NOT exercised — ${realtimeSuppressed} relay WebSocket failure(s) suppressed; ` +
+      'the relay does not proxy the upgrade)'
+  )
+}
 if (isFullWalk) {
   const total =
     GUARD_CASES_SIGNED_IN.length +
@@ -462,4 +680,4 @@ if (isFullWalk) {
     TAB_NAV_CHECKS
   console.log(`${total - guardFailures}/${total} guard, navigation and sign-out checks correct`)
 }
-process.exit(failures || guardFailures ? 1 : 0)
+process.exit(failures || guardFailures || fixtureFailures ? 1 : 0)
