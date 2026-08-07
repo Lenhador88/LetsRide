@@ -1440,8 +1440,19 @@ What it does, in order — and the order is the design:
 **It is hourly, not every ten minutes, and that is a server limit rather than a choice.** The ask
 was ten. Measured, not assumed — `create_trigger` rejects it outright:
 `cron expression "*/10 * * * *" fires more frequently than once per hour; minimum interval is 1 hour`.
-The stored expression is `37 * * * *`: an hourly cron at minute 0 gets anchored to its creation
-minute server-side, so Routines spread across the hour instead of stampeding at :00.
+**It fires on the hour, and getting there took a workaround worth keeping.** The stored expression
+is **`0 0-23 * * *`**, set 2026-08-07 at the product owner's request — 12:00, 13:00, 14:00.
+
+The obvious `0 * * * *` does not work: an hourly cron at minute 0 is **rewritten server-side to the
+minute you submitted it**, so Routines spread across the hour instead of stampeding at :00. That is
+where the original `37 * * * *` came from — nobody chose 37. Submitting `0 * * * *` at 11:14 stored
+`14 * * * *`, measured, not recalled. `0 0-23 * * *` is semantically identical and is stored
+**verbatim**, because the anchoring matches the `* ` hour field rather than the schedule's meaning.
+
+Two things follow. **Read the response back** — `update_trigger` returns the stored
+`cron_expression` and `next_run_at`, and a silently rewritten schedule looks exactly like a
+successful one. And **the spreading is deliberate**: :00 is the busiest minute on the platform, so
+an on-the-hour Routine is the owner's call to make, not a default to reach for.
 
 **Its connectors were attached by the owner, and no session could have done it.** The Routine was
 created holding none: `create_trigger` refused the `connectors` parameter outright — *"not
