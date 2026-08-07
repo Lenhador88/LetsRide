@@ -15,15 +15,18 @@ row-per-postcard-seen table was rejected.
 
 **Inbox stopped being store blocker 3 on 2026-08-07, and that changed the priority rather than
 the work.** The owner removed the nav tab instead of building the epic (PD-100), so nothing in
-the app points at `/inbox` any more and the guideline 4.2 question is answered. This domain is
+the app points at `/inbox` any more. That removes the **specific** 4.2 trigger the docs named —
+"a reviewer taps every tab" — rather than answering guideline 4.2 as a category, which is about
+minimum functionality generally and is not something a nav change closes. This domain is
 therefore **parked, not on the critical path** — the opposite of what this brief said before, and
 the one line here most likely to be acted on stale.
 
 **Building it means restoring the tab, which is a deliberate step and not a detail.** Add the row
 back to `navItems` in `src/components/layout/Navbar.tsx` together with the `MailboxIcon` import;
-its docstring says so at the point of temptation. Nothing else in `src/` references Inbox — the
-reserved-username list in `src/lib/validation/profile.ts` and `003` still hold `inbox`, which is
-correct and unrelated.
+its docstring says so at the point of temptation. The only other `inbox` in `src/` is the
+reserved-username list in `src/lib/validation/profile.ts`, which must **stay** — `003`'s
+`profiles_username_not_reserved` CHECK still lists it and migrations are append-only, so dropping
+it from the Zod schema would let the client accept a username Postgres rejects.
 
 ## The subscription rules
 

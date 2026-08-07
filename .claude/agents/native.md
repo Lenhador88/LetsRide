@@ -88,8 +88,13 @@ without confirming it still says what the file claims.
    *rule* outlives the instance: a reviewer taps every tab, and a tab that goes nowhere is a
    guideline 4.2 "minimum functionality" problem. Do not restore it from the design — Figma
    still draws five.
-3. **No edit or delete UI anywhere.** A rider can create a ride and never cancel or correct it.
-   The `update`/`delete` policies exist and are tested — nothing calls them.
+3. **No edit or delete UI for rides or clubs.** A rider can create a ride and never cancel or
+   correct it. The `update`/`delete` policies exist live for all four — nothing calls them, so
+   it is an empty action layer rather than an unwired UI (no `deleteRide`, `updateRide`,
+   `deleteClub`, `updateClub`). **Narrower than "anywhere"**, which this line said until
+   2026-08-07: postcards, comments and profile all have working delete/update UI.
+   `docs/HANDOFF.md` §Store readiness row 4 corrected the same wording on 2026-08-07 and this
+   copy was missed.
 4. **Permission strings.** Every iOS `NS*UsageDescription` must say *why* in the rider's terms,
    not the developer's. Background location is the one that gets scrutinised: it needs
    `UIBackgroundModes`, an Android foreground service, and a written justification at review.
