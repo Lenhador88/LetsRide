@@ -159,6 +159,35 @@ export const queryKeys = {
      */
     messages: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages'],
   },
+
+  /**
+   * `036` / PD-118. No `revalidatePath` predecessor — this table postdates the
+   * render migration, so `list` and `unread` are the first two keys in this
+   * file written against the cache contract from the start rather than
+   * translated from one.
+   *
+   * `list` and `unread` share the `notifications` prefix **deliberately, not
+   * for tidiness**: `client-cache-invalidation`'s new requirement is that a
+   * count and the list it summarises invalidate together, because a nonzero
+   * badge over an empty list is a defect the rider cannot clear. Nesting both
+   * under `all()` means no call site can name one without reaching the other —
+   * `markNotificationsRead` invalidates `notifications.all()` and that is the
+   * only invalidation this table needs; no other action can produce a
+   * notification for its own caller, because a fan-out never addresses the
+   * actor who caused it (`036` §7).
+   *
+   * `list` takes no filter segment, unlike `postcards.feed`/`rides.list`: the
+   * design draws no per-type or read/unread filter, so there is only ever one
+   * list to cache. It caches the **first page only** — `getNotificationsPage`'s
+   * cursor pages beyond that are fetched directly by the screen and held in
+   * component state, the same way an unbounded list with no cache-worthy
+   * "page 2" would be handled anywhere else in this file.
+   */
+  notifications: {
+    all: (): QueryKey => ['notifications'],
+    list: (): QueryKey => ['notifications', 'list'],
+    unread: (): QueryKey => ['notifications', 'unread'],
+  },
 } as const
 
 /**

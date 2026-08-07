@@ -393,6 +393,44 @@ export function formatNotificationStamp(date: string, now: Date = new Date()) {
   return `${Math.floor(days / 365)}y`
 }
 
+/**
+ * Which of `Inbox - Notifications`'s four sections a row's `created_at` falls
+ * into — `Today` / `Yesterday` / `This week` / `All time`.
+ *
+ * Boundaries resolve in `APP_TIME_ZONE` via `rideZoneDayKey`, matching every
+ * other day boundary in the app and for the same interim reason: the
+ * prerender pass runs on Vercel, so a boundary computed in the runtime's own
+ * zone would render one section into the HTML and another on hydration.
+ *
+ * `key` strings are `YYYY-MM-DD`, so lexicographic comparison is chronological
+ * comparison — no arithmetic on the offset needed once the zone conversion is
+ * done.
+ *
+ * **"This week" is a 7-day rolling window, not a calendar week**, and that is
+ * inferred rather than measured: the design draws no boundary at all, only
+ * four labelled sections with mocked rows that happen to span `2m` through
+ * `2w`. A calendar week would move a Monday notification into `All time` on
+ * Tuesday with nothing about the notification having changed, which is a
+ * worse property than an arbitrary-looking rolling window. Logged in
+ * `docs/FIGMA-FIDELITY-TODO.md` rather than passed off as read from the frame.
+ */
+export function notificationSection(
+  date: string,
+  now: Date = new Date()
+): 'Today' | 'Yesterday' | 'This week' | 'All time' {
+  const key = rideZoneDayKey(date)
+  const todayKey = rideZoneDayKey(now.toISOString())
+  if (key === todayKey) return 'Today'
+
+  const yesterdayKey = rideZoneDayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())
+  if (key === yesterdayKey) return 'Yesterday'
+
+  const weekAgoKey = rideZoneDayKey(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString())
+  if (key >= weekAgoKey) return 'This week'
+
+  return 'All time'
+}
+
 // Tolerates null: a rider mid-onboarding has no username yet, and every call
 // site reaches this through `username ?? 'Rider'` — but the fallback is one
 // edit away from being dropped, and .split on undefined throws.

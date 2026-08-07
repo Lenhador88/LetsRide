@@ -914,6 +914,47 @@ add-notifications/tasks.md` §4.1–§4.7 — the row, the dot, `Header`'s secon
       older than two weeks. Not `formatRelativeTime`, which produces prose for a different
       screen's byline — see that function's own docstring.
 
+### Notifications — screen and header entry point, built 2026-08-07 (PD-118 §5–§6)
+
+`/notifications` (`src/app/(app)/notifications/page.tsx`), `src/lib/data/notifications.ts`,
+`src/lib/actions/notifications.ts` and `src/components/notifications/`. The frame draws the
+row and the section shape only — every interaction affordance on the screen itself is either
+absent from the mock or a product decision this pass had to make without one:
+
+- [ ] **The "This week" section boundary is a 7-day rolling window, not a calendar week.**
+      `Inbox - Notifications` draws no boundary at all, only four labelled sections whose mocked
+      rows happen to span `2m`–`2w`. `notificationSection` (`src/lib/utils.ts`) picks the rolling
+      window because a calendar-week boundary would move a notification into `All time` on
+      Tuesday with nothing about it having changed.
+- [ ] **There is no "Load more" affordance in the design, and one is built anyway.** `036`'s
+      retention window is "as long as the subject exists", i.e. unbounded, so the list needed a
+      real second page — `getNotificationsPage`'s keyset cursor — and the screen needed some
+      control to reach it. A plain secondary `Button` labelled "Load more" is invented rather
+      than an infinite-scroll trigger, matching this app's other bounded-list screens, none of
+      which auto-load either.
+- [ ] **Opening the screen marks everything read, and nothing in the design draws that
+      either.** `Inbox - Notifications` has no per-row dismiss and no "mark all read" control
+      anywhere on it, so `MarkNotificationsRead` fires on mount, the same shape
+      `MarkClubSeen`/`MarkFeedSeen` already use for their own watermarks. If the product wants a
+      manual affordance instead, that needs a frame before it needs a different mechanism.
+- [ ] **The empty-state copy ("You have no notifications yet.") is invented**, matching the
+      voice of the other three tab-root empty states (`"You have no clubs, yet!"`, `"There are
+      no rides, yet!"`) rather than read from a frame — the design draws no empty variant of this
+      screen at all.
+- [ ] **`ride_joined` and `ride_created_in_club` rows render no trailing thumbnail.** The frame
+      shows a 56×56 "Image Container" with a `Location Filled` pin overlay for both, but `rides`
+      has no image or coordinate column to source one from — the same gap
+      `docs/FIGMA-FIDELITY-TODO.md` §Rides list already logs for ride cover images and map
+      thumbnails. `NotificationsListItem` omits the slot rather than drawing a placeholder.
+- [ ] **The `ride_joined` copy is rewritten from the drawn string.** `Inbox - Notifications`
+      draws "joined a ride you also joined." — written for an attendee — but this build's
+      recipient is the organizer alone (`design.md` Q1's default), so the copy is Q2b's default,
+      "joined your ride." Reverts to the drawn string the day Q1 is answered the other way.
+- [ ] **The header title reads "Notifications", not the design's two-tier "Inbox" ›
+      "Notifications".** The frame nests this screen inside the dropped Inbox tab, with "Inbox"
+      as the page name and "Notifications" as the sub-page. With no Inbox wrapper to nest under,
+      the single collapsed title is this pass's own composition rather than a measured value.
+
 ### Navigation
 
 - [x] ~~**Tab bar**~~ — **measured**, and the guess was wrong in the way that mattered.

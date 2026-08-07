@@ -3,6 +3,7 @@
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
+import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { RideCard } from '@/components/rides/RideCard'
 import { RideFilterBar } from '@/components/rides/RideFilterBar'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -41,7 +42,7 @@ import type { RideFilter } from '@/types'
 export default function RidesPage() {
   return (
     <>
-      <Header title="Rides" />
+      <Header title="Rides" secondaryAction={<NotificationsHeaderControl />} />
       {/* The shell reserves the 88px nav bar; this screen's bar is the 152px
           variant, so it owes the sticky action's own height. The number lives
           in globals.css beside the other two, not here. */}
