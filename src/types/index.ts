@@ -176,6 +176,24 @@ export type RideDetail = {
   attendance: RideAttendance
   is_organizer: boolean
   is_upcoming: boolean
+  /**
+   * Whether this viewer is on the ride's crew — the client's mirror of
+   * `private.is_ride_crew` (`034`), and what gates both entry points to the
+   * chat.
+   *
+   * **Derived in `getRide`, exactly once, and that is the point.** Three screens
+   * spelled `is_organizer || attendance !== null` out by hand until 2026-08-07,
+   * which is three copies of a rule that lives in Postgres and can narrow there
+   * — `maybe` losing chat access, or the organizer arm going with
+   * `enforce-creator-membership`. Two updated call sites and one missed leaves a
+   * screen offering a chat that dead-ends, with `tsc` green and no component
+   * test to catch it.
+   *
+   * **It is a UX affordance and never the enforcement.** `034` decides who may
+   * actually read a message; a rider who defeats this reaches a thread whose
+   * every query returns nothing.
+   */
+  is_crew: boolean
 }
 
 /**

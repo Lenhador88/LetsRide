@@ -293,7 +293,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
   ])
 
   const row = unwrap(rideResult, 'this ride') as unknown as
-    | Omit<RideDetail, 'attendance' | 'is_organizer' | 'is_upcoming'>
+    | Omit<RideDetail, 'attendance' | 'is_organizer' | 'is_upcoming' | 'is_crew'>
     | null
 
   if (!row) return null
@@ -320,7 +320,40 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     attendance: ownRow?.status ?? (isOrganizer ? 'going' : null),
     is_organizer: isOrganizer,
     is_upcoming: new Date(row.departure_at).getTime() >= Date.now(),
+    is_crew: isRideCrew(isOrganizer, ownRow?.status ?? null),
   }
+}
+
+/**
+ * `private.is_ride_crew`'s two arms — organizer, or a `ride_members` row of
+ * **either** status — as one named, tested expression.
+ *
+ * Pure and exported for the same reason `toRideListItem` and `withOrganizer`
+ * are: it is a rule rather than a query, so it is the part worth asserting. It
+ * mirrors a predicate that lives in Postgres and can narrow there — `maybe`
+ * losing chat access, or the organizer arm going with
+ * `enforce-creator-membership` — and until 2026-08-07 it was spelled out by
+ * hand in three page files, where a narrowing would have been applied to two of
+ * them with `tsc` green either way.
+ *
+ * Takes the raw RSVP rather than `RideDetail['attendance']`, which already
+ * folds the organizer in: reading the folded field would make one arm redundant
+ * by coincidence, and one edit to that fallback would silently change what this
+ * means.
+ *
+ * **Sound only after the rides policy has been passed.** `034`'s SELECT is
+ * `EXISTS(rides under the caller's RLS) AND is_ride_crew(...)`, and `getRide`
+ * returns null for a ride this viewer may not see, so the caller has already
+ * cleared the first half. Membership alone is the trap `034`'s header names —
+ * a `ride_members` row outlives a club membership, so an ex-member's row would
+ * otherwise reopen a private club ride's chat. Never call this without that
+ * check in front of it.
+ *
+ * **A UX affordance, never the enforcement.** A rider who defeats it reaches a
+ * thread whose every query returns nothing and whose every send is refused.
+ */
+export function isRideCrew(isOrganizer: boolean, attendance: RideAttendance): boolean {
+  return isOrganizer || attendance !== null
 }
 
 /**
