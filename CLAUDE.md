@@ -1426,6 +1426,60 @@ applying it, because both will recur:
   knowing before assuming a `list_issues` status string is always one `list_issue_statuses`
   returns.
 
+### Sequencing — the queue order is not the order you dragged them in
+
+**`Queued (AI)` is a set, not a list**, and that is the trap. The Routine takes the highest
+priority and breaks ties by **oldest `createdAt`** — so within a priority band the queue order is
+*when the issue was filed*, which the board does not display and which dragging it into the
+column does not change. Queue `PD-114` ahead of `PD-104` and `PD-104` still goes first, because
+it was filed 51 minutes earlier. Measured 2026-08-07 on exactly those two, which is also what
+prompted this section.
+
+**Linear has five priority buckets — `0` None, `1` Urgent, `2` High, `3` Medium, `4` Low — and
+they mean importance, not order.** Four issues at Medium have no expressible order between them
+at all beyond their filing times, so priority cannot carry a build sequence and must not be bent
+into one: raising an issue to High so it goes first also tells the owner it matters more than it
+does, and from then on the two claims disagree with each other permanently.
+
+**So the sequencing mechanism is the *column*, not anything inside it:**
+
+> **Only queue what is buildable now.** `Queued (AI)` means *eligible today*, not *approved
+> eventually* — so everything in it is order-independent by construction and the weak ordering
+> above stops mattering. Work that must wait for another issue waits in `Todo AI`, and the owner
+> queues it when its blocker reaches `Done`.
+
+That is the only mechanism a session can both write **and** read: status is what
+`list_issues` returns, and it is already the signal the Routine and the concurrency lock are
+built on. Two rules follow, in the order to reach for them:
+
+1. **One issue per feature.** The product owner's rule, 2026-08-07, and the one that prevents
+   the problem instead of managing it. A feature split across several issues has to be
+   re-sequenced every time any of them moves, using the weakest signal on the board. Split only
+   when the halves ship **independently** — each mergeable on its own, in either order, neither
+   leaving the other half-built. `PD-112` and `PD-113` are a fair split (two unrelated postcard
+   surfaces); `PD-104` and `PD-114` are not (one set of coordinate columns, two designs for it).
+2. **When a split really is ordered, only the first half goes in `Queued (AI)`.** Put the rest
+   in `Todo AI` and say in the body what unblocks it. Never express the order by bending
+   priority: raising an issue to High so it goes first also tells the owner it matters more than
+   it does, and from then on the two claims disagree permanently.
+
+**Write the `blockedBy` relation too — for the human, not for the machine.** `save_issue` takes
+`blocks` and `blockedBy` (append-only; `removeBlocks` / `removeBlockedBy` undo them) and the
+Linear UI draws them, which is where the owner reads the board. **But measured 2026-08-07: it is
+write-only through this MCP.** Setting `PD-104` `blockedBy: ["PD-114"]` moved both `updatedAt`
+stamps, so it landed — and `get_issue` on *either* side returns no relations field at all, nor
+does `list_issues` offer one. `parentId` is the only issue-to-issue link that is readable.
+
+Two things follow, and the second is the general one:
+
+- **Never build automation on a blocking relation here.** A Routine cannot skip what it cannot
+  read, so a "skip blocked issues" rule would be decorative — which is the exact failure
+  §The Agent Squad records for the two specification systems. Hence the column rule above.
+- **A field that writes without erroring is not a field you can verify.** §Do not ask permission
+  already says to read `save_issue`'s result back; this is the case where reading it back is
+  *impossible*, and the honest response is to pick a different mechanism rather than to trust the
+  write. Same class as the `project` field that silently went missing, one step worse.
+
 ### The queue is drained by a scheduled Routine, not by a human starting a session
 
 Created 2026-08-07 at the product owner's request. **`trig_01Gzy8eCiaXUUa1knvJnNpwy`** — spawns a
@@ -1439,7 +1493,9 @@ What it does, in order — and the order is the design:
 2. **Check the lock.** If **any** issue is in `Development (AI)` or `Needs help`, exit
    immediately — no changes, no comment, no notification. One story at a time.
 3. **Take the top of `Queued (AI)` by priority**, ties to oldest. Empty queue exits silently.
-   Never `Backlog`, never `Todo`, never `Needs decision`.
+   Never `Backlog`, never `Todo Human` or `Todo AI`, never `Needs decision`. It does **not**
+   check dependencies, and cannot — see §Sequencing: relations are write-only through this MCP,
+   so what keeps the order right is that nothing blocked is in the column in the first place.
 4. **Move it to `Development (AI)` before starting**, because that status is the lock the next
    firing reads. Claiming late is how two sessions start the same story.
 5. Build under this file's standing instructions, PR to `development`, drive green, merge, move
