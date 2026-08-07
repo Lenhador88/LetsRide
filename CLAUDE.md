@@ -1261,15 +1261,23 @@ first zero and then one.)
 
 ## Product Scope (from Figma)
 
-The built app covers a fraction of the design. Five nav tabs — **Home, Rides, Clubs,
-Inbox, Profile**. There is no "Friends" tab: `013` dropped the `friendships` table on
-2026-08-04, and the route and components went earlier. The social graph is clubs plus
-blocking.
+The built app covers a fraction of the design. **Four nav tabs — Home, Rides, Clubs,
+Profile** — against the design's five: **Inbox was removed on 2026-08-07** (PD-100) rather
+than shipped as the disabled stub it had been, because a tab that goes nowhere is an App
+Store guideline 4.2 question and a disabled one still reads as broken. It returns with the
+Inbox epic. This line said "Five nav tabs" and named Inbox among them, which is the reading
+to be careful of: **the design is not the code here, deliberately** — check with
+`grep -c "Icon: " src/components/layout/Navbar.tsx` rather than with Figma. Count on `Icon: `
+rather than the obvious `href:`, which reads 8 because `STICKY_ACTIONS` carries one per screen.
+
+There is no "Friends" tab either, for a different reason: `013` dropped the `friendships`
+table on 2026-08-04, and the route and components went earlier. The social graph is clubs
+plus blocking.
 
 | Domain | Status in code |
 |---|---|
 | **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **Built and verified against the design** as of 2026-08-04: the swipeable card deck and filter bar at `/postcards`, the composer at `/postcards/new`, one card plus its thread at `/postcards/[id]`. The home screen is a **card stack you swipe**, not a scrolling feed. **Share is a link share** (Web Share API, clipboard fallback) — the reading that needs no schema; a repost is still an open product question. Two design elements are blocked on schema, not design: unread badges and photo location. The hide/block/report menu was listed here as a third and that was wrong twice over — it needed no schema (`009` and `011` built every table) and it shipped 2026-08-05. See `docs/FIGMA-FIDELITY-TODO.md` |
-| **Inbox** — DMs, per-ride group chat, notifications | Not built |
+| **Inbox** — DMs, per-ride group chat, notifications | Not built, and **no longer reachable**: the nav tab was removed 2026-08-07 (PD-100), so `/inbox` has no route, no tables and nothing pointing at it. Restoring the tab is part of building the epic — see `.claude/agents/realtime.md` |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. **Account deletion has its database half and no flow** (2026-08-06): `029`–`032` and `supabase/functions/delete-account/` are in, the Edge Function is **written, not deployed and never run**, and nothing in `src/` points at it. `/legal/account-deletion` is public and live. What remains is `openspec/changes/add-account-deletion/` groups 3 and 4 |
 | **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth reached from the header. **Ride plan and Crew are built; Journal needs `postcards.ride_id` and Chat needs the Inbox epic.** `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |

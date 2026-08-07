@@ -83,9 +83,11 @@ without confirming it still says what the file claims.
    exists at `openspec/changes/add-account-deletion/` — read it rather than starting over. It
    needs an Edge Function (deletion needs elevated rights, so it cannot be a client write) and
    a public `/legal/account-deletion` page.
-2. **Dead navigation.** Inbox is a disabled stub in `src/components/layout/Navbar.tsx`
-   (the `UNBUILT` set) with no route and no tables. A reviewer taps every tab; a tab that goes
-   nowhere is a guideline 4.2 "minimum functionality" problem.
+2. ~~**Dead navigation.**~~ **Resolved 2026-08-07** — the Inbox tab was removed rather than
+   built (PD-100), so the bar draws four tabs and every one has a route. Kept here because the
+   *rule* outlives the instance: a reviewer taps every tab, and a tab that goes nowhere is a
+   guideline 4.2 "minimum functionality" problem. Do not restore it from the design — Figma
+   still draws five.
 3. **No edit or delete UI anywhere.** A rider can create a ride and never cancel or correct it.
    The `update`/`delete` policies exist and are tested — nothing calls them.
 4. **Permission strings.** Every iOS `NS*UsageDescription` must say *why* in the rider's terms,

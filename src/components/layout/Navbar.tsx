@@ -6,7 +6,6 @@ import {
   BikeIcon,
   ClubsIcon,
   HomeIcon,
-  MailboxIcon,
   ProfileIcon,
 } from '@/components/icons/generated'
 import { Button } from '@/components/ui/Button'
@@ -26,18 +25,21 @@ import { cn } from '@/lib/utils'
  * to apply; green is an accent and never the active-tab colour. Pressed is the
  * only state with a fill (Grey/10%). Read off `Navigation / Bar / Tile`'s three
  * State variants.
+ *
+ * **Four tabs, and the design's fifth is deliberately absent.** Figma draws Inbox
+ * between Clubs and Profile; it has no route and no tables, so it shipped as an
+ * `aria-disabled` stub until 2026-08-07, when the product owner chose to drop it
+ * rather than build the epic before store submission (PD-100). A visible tab that
+ * goes nowhere is an App Store guideline 4.2 rejection, and a disabled one still
+ * reads as broken. It comes back with the Inbox epic — restore the row and the
+ * `MailboxIcon` import together, and do not re-add it from the design alone.
  */
 const navItems = [
   { href: '/postcards', label: 'Home', Icon: HomeIcon },
   { href: '/rides', label: 'Rides', Icon: BikeIcon },
   { href: '/clubs', label: 'Clubs', Icon: ClubsIcon },
-  { href: '/inbox', label: 'Inbox', Icon: MailboxIcon },
   { href: '/profile', label: 'Profile', Icon: ProfileIcon },
 ] as const
-
-/** Inbox has no route yet; the tab is drawn because the design has five, but a
- *  link to a 404 is worse than a disabled tab, so it renders inert until built. */
-const UNBUILT = new Set<string>(['/inbox'])
 
 /**
  * The sticky action belongs to the screen, but it renders *inside* the bar —
@@ -76,33 +78,19 @@ export function Navbar() {
           // startsWith would light up Clubs for a hypothetical `/clubsomething`,
           // the same trap `src/lib/auth/guard.ts` documents for `/legal`.
           const active = pathname === href || pathname.startsWith(`${href}/`)
-          const unbuilt = UNBUILT.has(href)
 
-          const content = (
-            <>
-              <Icon className="h-6 w-6" />
-              {label}
-            </>
-          )
-
-          const className = cn(
-            'flex flex-1 flex-col items-center gap-1 rounded-xl pt-2 pb-1 text-2xs font-semibold transition-colors',
-            active ? 'text-foreground' : 'text-muted',
-            unbuilt ? 'cursor-not-allowed opacity-40' : 'active:bg-border'
-          )
-
-          return unbuilt ? (
-            <span key={href} aria-disabled className={className} title={`${label} is not built yet`}>
-              {content}
-            </span>
-          ) : (
+          return (
             <Link
               key={href}
               href={href}
               aria-current={active ? 'page' : undefined}
-              className={className}
+              className={cn(
+                'flex flex-1 flex-col items-center gap-1 rounded-xl pt-2 pb-1 text-2xs font-semibold transition-colors active:bg-border',
+                active ? 'text-foreground' : 'text-muted'
+              )}
             >
-              {content}
+              <Icon className="h-6 w-6" />
+              {label}
             </Link>
           )
         })}
