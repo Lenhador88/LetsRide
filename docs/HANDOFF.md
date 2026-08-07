@@ -956,8 +956,12 @@ loaded fine the whole time, which is what made it look like a permission-layer p
 **The cheap diagnostic, learned the expensive way: a permission dialog offering "Allow once" but
 no "Allow always" means there is no project settings file to persist a grant into — i.e. no
 repo.** Check `session_context.sources` before theorising about permission layers. `PD-109` chased
-the connector and was wrong; `PD-110` (the model, refused by `update_trigger` with
-`model_update_disabled`) still stands. The owner fixed the source in the Routines UI.
+the connector and was wrong. The owner fixed the source in the Routines UI.
+
+**`PD-110` (set the Routine's model, refused by `update_trigger` with `model_update_disabled`) is
+moot while the Routine stays self-bound** — a resumed session runs on its own `claude-opus-5`, so
+there is no per-firing model to set. It comes back the moment anyone switches the Routine to
+`create_new_session_on_fire`. This line said "still stands" until the switch landed.
 
 **Any UI edit to a Routine re-anchors its cron.** Attaching the repo silently rewrote
 `0 0-23 * * *` to `24 * * * *`, the save minute. Re-read `cron_expression` after every UI edit.
@@ -1000,11 +1004,34 @@ did not need:
 
 - **STEP 0.5, the idle gate.** A fresh session was idle by construction; this one is not, and a
   firing can land mid-conversation with the owner. Four checks — unfinished owner request, dirty
-  tree, branch ahead of `development`, open PR — any one exits silently. The owner's work wins.
+  tree, branch ahead of `development`, and an open PR **whose head is the current branch**. The
+  owner's work wins. **It gathers; it does not exit** — every reason to stop is acted on at STEP
+  1.5, which owns the only exit and runs the stall alarm across all of them.
+
+  Both halves of that are `reviewer` findings on this very change, and both are the repo's
+  signature failure — a guard that fails silently and so looks like success. The PR check was
+  repo-wide, which hands any concurrent session a permanent veto (`#101`/`#102` came from a
+  different session). And STEP 0.5 exited early, in front of the 3–4h stall notification, so the
+  one alarm that detects a frozen queue could never fire — self-reinforcingly, since the
+  `Needs help` path deliberately leaves an open PR behind. **Never reintroduce an early return
+  above STEP 1.5**, including the tempting "cheap checks first, skip the Linear round trip".
 - **STEP 0.6, reduce the session.** Context accumulates across firings and **no tool available to a
   session clears its own context**; `/clear` and `/compact` are CLI commands the owner types. The
   mechanism is therefore delegation: gates inline, build in subagents, never a diff or a test log
   in the main thread.
+
+  **Where the split falls is forced, not chosen.** No agent in `.claude/agents/` holds a single
+  `mcp__Linear__*` tool, none holds `create_pull_request` or `merge_pull_request`, and `gh` is not
+  installed in this container — so the Linear moves, the PR and the merge must stay in the main
+  thread, and only the building delegates. An earlier draft told the firing to run the whole
+  pickup in one subagent; it could not have worked. `general-purpose` and `claude` inherit every
+  tool and could in principle, but **whether an inherited MCP grant survives into a subagent here
+  is untested** — do not find that out mid-firing, after the issue is already claimed.
+
+  ```bash
+  grep -l "mcp__Linear__\|create_pull_request\|merge_pull_request" .claude/agents/*.md # expect none
+  command -v gh                                                                        # expect none
+  ```
 
 **The delivery path is tested and the connectors survive it.** `create_trigger` warns *"this
 trigger stores no MCP connectors, so the sessions it fires will run without connector tools"* — a

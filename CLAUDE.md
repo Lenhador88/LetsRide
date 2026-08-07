@@ -1605,14 +1605,25 @@ the steps; what follows here is why it is shaped the way it is.
 
 What it does, in order — and the order is the design:
 
-0.5. **Is the session idle? If not, exit.** New with the reuse, and the cost it pays for. A fresh
-   session was idle by construction; this one is not. The firing message queues behind whatever
-   the session is doing and lands the moment that finishes — possibly mid-conversation with the
-   owner. Four checks: an unfinished owner request in the conversation, a dirty tree, a branch
-   with commits not on `development`, an open PR. Any one → exit silently.
+0.5. **Is the session idle? Gather, do not exit.** New with the reuse, and the cost it pays for.
+   A fresh session was idle by construction; this one is not. The firing message queues behind
+   whatever the session is doing and lands the moment that finishes — possibly mid-conversation
+   with the owner. Four checks: an unfinished owner request in the conversation, a dirty tree, a
+   branch with commits not on `development`, and an open PR **whose head is the current branch**.
    **The first is judgement and it is the one that matters**; the other three are the backstop
    that catches a session which died mid-build. **The owner's work always wins** — the queue
    waits an hour, which costs nothing.
+
+   Two traps, both found by `reviewer` before this merged, and both of the shape this file keeps
+   warning about — a guard that fails silently and therefore looks like success:
+
+   - **Scope the PR check to the current branch, never repo-wide.** `list_pull_requests` returns
+     every open PR in the repo, including other sessions' — `#101` and `#102` came from a
+     different session — so a repo-wide check hands any concurrent session a permanent veto.
+   - **Nothing exits at 0.5.** Every reason to stop is collected and acted on at **1.5**. An
+     early return here sits in front of the stall notification at 1.5 and makes the one alarm
+     that detects a frozen queue unreachable — self-reinforcingly, because the `Needs help` path
+     deliberately leaves an open PR behind, which would trip 0.5 for ever.
 0.6. **Reduce the session before doing anything expensive.** Also new, and also a cost of the
    reuse: every firing that reads files and reviews diffs *in the main thread* leaves that behind
    for every later firing. **No tool available to a session clears its own context** — `/clear`
@@ -1628,11 +1639,17 @@ What it does, in order — and the order is the design:
    also returns `PD-82`, `PD-83` and `PD-41` — 2022–2025 issues, two in the deprecated `Let's
    Ride` project and one with no project at all, which have sat in that status for years. A
    team-scoped lock is held **permanently**, and looks exactly like a healthy job behind a busy
-   queue. **The one break in that silence,
-   added 2026-08-07: if the lock has been held 3–4 hours it sends a single notification naming
-   the issue** (`get_issue` → `stateHistory[].startedAt`). Without it a lock nobody is holding
-   freezes the queue for ever while every firing exits quietly — the exact failure step 1 exists
-   to prevent. The window is narrow so it fires roughly once rather than hourly.
+   queue. Carry the answer to 1.5 rather than exiting here.
+1.5. **The only exit, and the stall alarm.** If nothing blocks, go to 2. Otherwise check how long
+   the *oldest blocking reason* has been true — the lock (`get_issue` →
+   `stateHistory[].startedAt`), the in-flight branch's tip, the open PR's `createdAt` — and **if
+   it is 3–4 hours old, send one push notification naming it**, then stop. Outside that window,
+   exit silently. The owner's unfinished request is excluded: it is a live human, not a stuck job.
+   Without this a condition nobody is holding freezes the queue for ever while every firing exits
+   quietly — the exact failure step 1 exists to prevent. The window is narrow so it fires roughly
+   once rather than hourly. **The alarm covers every blocking reason, not just the lock**, and
+   the exit is funnelled through one step, because scattering it across the gates is what let an
+   early return bury it.
 3. **Take the top of `Queued (AI)` by priority**, ties to oldest. Empty queue exits silently.
    Never `Backlog`, never `Todo Human` or `Todo AI`, never `Needs decision`. **A parent issue is
    skipped**: an epic outranks its own children on priority, so a container in the column would
@@ -1667,9 +1684,12 @@ an on-the-hour Routine is the owner's call to make, not a default to reach for.
 
 **Read the two fields for different things, though — `next_run_at` is not the schedule.** The
 replacement Routine was created at 19:32 with `0 0-23 * * *`; it stored that **verbatim** and came
-back `next_run_at: 20:05:35`. That :05 is *scheduler jitter* (a recurring task fires up to 10% of
-its period late), not the minute-anchoring rewrite described above — the tell is that the stored
-expression still reads `0 0-23`, where an anchored one would read `32 * * * *`. Check
+back `next_run_at: 20:05:35`. **What is measured is that the expression stored verbatim and the
+next run came back at :05** — the tell is that `cron_expression` still reads `0 0-23`, where an
+anchored one would read `32 * * * *`. **The explanation is inferred, not measured**: "up to 10% of
+the period late" is the jitter rule documented for the *session-local* `CronCreate` scheduler, and
+whether the CCR trigger scheduler uses the same figure is untested — 33 minutes would falsify it.
+It is not the minute-anchoring rewrite described above either way. Check
 `cron_expression` to see whether the schedule survived; `next_run_at` will wander by a few minutes
 either way and reading it as the anchoring bug leads to a "fix" that introduces one.
 
@@ -1695,8 +1715,9 @@ and no denial.** Do not "fix" that warning by rebuilding the Routine.
 
 **What that test does NOT cover, and nothing in a session can:** it ran minutes after the session
 was last active, so the container was warm. **Whether the grants survive a container reclaim across
-an idle hour is unproven** — the container is reclaimed after a period of inactivity, and a firing
-that lands on a cold one gets a freshly provisioned container. Treat it as an open question rather
+an idle hour is unproven.** The reclaim itself is documented — the environment reclaims a
+container after a period of inactivity — but *what a firing lands on afterwards*, and whether the
+connectors come back with it, is inferred rather than observed. Treat it as an open question rather
 than a settled one; STEP 0 is the detector and the disabled Routine is the fallback.
 
 **`list_triggers` reports the connectors a trigger does hold**, in `job_config.…mcp_connections`,
