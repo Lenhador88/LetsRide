@@ -192,10 +192,22 @@ anyone picks it up. Numbering is first-come; the loser renumbers before writing 
 `grep -rn "0[0-9][0-9]_[a-z_]*\.sql" openspec/changes/*/` across the unarchived proposals.
 
 **It is additive in schema and NOT inert, and that distinction is the sequencing note.** One new
-table, one new `public` RPC, five `private` trigger functions, six triggers, **three** policies
-(SELECT and UPDATE; no INSERT, no DELETE), **seven** indexes — the primary key, the
+table, one new `public` RPC, six `private` trigger functions, six triggers, **two** policies
+(SELECT and UPDATE; no INSERT, no DELETE), **eight** indexes — the primary key, the
 `NULLS NOT DISTINCT` uniqueness index, `(user_id, created_at desc)`, `actor_id`, and a partial index
-on each of the four subject columns, per `design.md` §D11 — grants to `authenticated` only. Nothing is dropped and no existing policy is touched — so
+on each of the four subject columns, per `design.md` §D11 — grants to `authenticated` only.
+
+**Both counts in that sentence were wrong before `036` was applied, in the direction that flatters
+the change** — it read "three policies" while enumerating two, and "seven indexes" while
+enumerating eight. Corrected 2026-08-07 against the applied DEV schema rather than by recounting
+the prose, which is what produced them:
+
+```sql
+select (select count(*) from pg_policies
+         where schemaname='public' and tablename='notifications') as policies,   -- 2
+       (select count(*) from pg_indexes
+         where schemaname='public' and tablename='notifications') as indexes;    -- 8
+``` Nothing is dropped and no existing policy is touched — so
 it may be applied **before** the code that reads it deploys. But six of those triggers hang off
 **existing, shipped write paths**: `postcard_likes`, `postcard_comments`, `ride_members`, `rides`
 and `club_members`. From the moment it applies, every like, comment, RSVP, ride creation and club
