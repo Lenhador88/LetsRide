@@ -44,6 +44,20 @@ export type SessionStore = {
   getItem(key: string): string | null | Promise<string | null>
   setItem(key: string, value: string): void | Promise<void>
   removeItem(key: string): void | Promise<void>
+  /**
+   * Every key the store currently holds, when it can say.
+   *
+   * **Optional in the type, load-bearing in practice.** `clearSessionStore`
+   * cannot prove it cleared a session written before a reload unless the store
+   * can be enumerated — the tracked-key set is per-page-load and the store is
+   * not. `localStorage` is enumerable through `Object.keys`, which is why the
+   * browser fallback was chosen over something opaque; a secure store has to
+   * offer the same thing explicitly or sign-out silently leaves the keychain
+   * entry behind. A store that omits this still clears what this page load
+   * wrote, which is strictly weaker and is why the sweep is not optional
+   * anywhere it can be had.
+   */
+  keys?(): string[] | Promise<string[]>
 }
 
 declare global {
@@ -77,6 +91,7 @@ function createMemoryStore(): SessionStore {
     getItem: (key) => map.get(key) ?? null,
     setItem: (key, value) => void map.set(key, value),
     removeItem: (key) => void map.delete(key),
+    keys: () => [...map.keys()],
   }
 }
 
@@ -91,6 +106,10 @@ function track(store: SessionStore): SessionStore {
       written.delete(key)
       return store.removeItem(key)
     },
+    // Forwarded rather than dropped, and conditionally so the wrapper does not
+    // advertise an enumerability the wrapped store does not have — `clearSessionStore`
+    // branches on the method's presence.
+    ...(store.keys ? { keys: () => store.keys!() } : {}),
   }
 }
 
@@ -161,6 +180,16 @@ export function describeSessionStore(): string {
  * than something unenumerable: a store you cannot enumerate is a store you
  * cannot prove you cleared.
  *
+ * **The sweep is not `localStorage`-only, and reading it that way was a real
+ * hole.** It was written when the secure store was a seam with no implementation,
+ * so `kind === 'local'` was the only branch that could sweep anything and the
+ * restriction cost nothing. The moment a shell provides a keychain, that same
+ * code signs a rider out of a *tracked* session and leaves yesterday's — the
+ * exact case the paragraph above says the sweep exists for, in the store where
+ * a leftover credential matters most. Any store that can enumerate itself is
+ * now swept; `localStorage` is enumerated through `Object.keys` because it has
+ * no `keys()` of its own.
+ *
  * Errors are swallowed deliberately. Sign-out must land the rider signed out
  * even when the revocation call fails offline (4.5), so a storage exception must
  * not be the thing that keeps them signed in.
@@ -177,16 +206,39 @@ export async function clearSessionStore(): Promise<void> {
   }
   written.clear()
 
-  if (kind === 'local' && typeof window !== 'undefined') {
+  for (const key of await enumerateKeys(kind, store)) {
+    if (!key.startsWith(SUPABASE_KEY_PREFIX)) continue
     try {
-      const stale = Object.keys(window.localStorage).filter((k) =>
-        k.startsWith(SUPABASE_KEY_PREFIX)
-      )
-      for (const key of stale) window.localStorage.removeItem(key)
+      await store.removeItem(key)
     } catch {
       /* see above */
     }
   }
+}
+
+/**
+ * Every key the store holds, or an empty list when it cannot say. Never throws —
+ * an unenumerable store degrades to "tracked keys only", which is the behaviour
+ * every store had before this existed.
+ */
+async function enumerateKeys(kind: SessionStoreKind, store: SessionStore): Promise<string[]> {
+  if (store.keys) {
+    try {
+      return await store.keys()
+    } catch {
+      return []
+    }
+  }
+
+  if (kind === 'local' && typeof window !== 'undefined') {
+    try {
+      return Object.keys(window.localStorage)
+    } catch {
+      return []
+    }
+  }
+
+  return []
 }
 
 /** Test seam. Nothing in the app calls this. */

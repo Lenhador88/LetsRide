@@ -27,11 +27,27 @@ LetsRide is a mobile-first app for motorcycle riders to organise rides, join clu
 otherwise get answered differently in every epic. Drafted 2026-08-02; edit freely, but edit
 here rather than deciding again inside a PR.
 
-**Dependencies are added deliberately.** **Seven** runtime dependencies today, and that is a
+**Dependencies are added deliberately.** **Nine** runtime dependencies today, and that is a
 feature — `lucide-react` came out with the last v1 page rather than lingering unused, and
 `@supabase/ssr` came out with the server render. Count rather than trust that number:
 `node -p "Object.keys(require('./package.json').dependencies).length"`. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
+
+**It read seven until 2026-08-07, and the two that moved it are the native shell's**, both
+runtime by necessity rather than by preference — app code imports them at runtime, so neither
+can be a devDependency:
+
+- **`@capacitor/core`** — the shell. Nothing reaches a native API without it.
+- **`@aparajita/capacitor-secure-storage`** — the keychain/keystore behind
+  `window.__letsrideSecureStore`. Capacitor's own team ships no keychain plugin, and
+  `@capacitor/preferences` is `UserDefaults`/`SharedPreferences`, which is explicitly *not*
+  secure storage and is the wrong place for a refresh token. This was the only way to reach
+  the platform keychain at all.
+
+`@capacitor/cli`, `@capacitor/ios` and `@capacitor/android` are devDependencies. The rule that
+**native plugins count** is in `.claude/agents/native.md` and still holds: each one is a
+permission prompt, a review question and a supply-chain surface, and each needs a
+one-sentence justification like the two above.
 
 **Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
 functions — `getRide(id)`, `getClubMembers(clubId)` — that own their query shape. Server
@@ -201,6 +217,15 @@ the framework or auth depends on: `next`, `eslint-config-next`, `react`, `react-
 Supabase is on that list because a minor bump that changes **session storage or the auth flow
 type** breaks sessions silently — the same hazard the old note gave for cookie handling, moved
 to where it now lives. `@supabase/ssr` is off the list because it is uninstalled.
+
+**Every Capacitor package is pinned exact too, added 2026-08-07, and the rule that put them
+there is the Supabase one rather than a new one.** `@aparajita/capacitor-secure-storage` **is**
+session storage — it holds the refresh token — so "a minor bump that changes session storage
+breaks sessions silently" names it exactly; a changed key prefix or a changed default keychain
+access class would strand every signed-in rider with no error to read. The other four
+(`@capacitor/core`, `cli`, `ios`, `android`) are pinned because Capacitor requires its packages
+to move together, so a caret on one is a version skew waiting for whichever `npm install` runs
+first. Caret on any of them would also silently change what a `cap add` generates.
 
 **Dates: `Intl` only, no date library.** All in `src/lib/utils.ts`, and every formatter is
 **named for the screen it serves** — `formatPostcardDate`, `formatRideDate`,

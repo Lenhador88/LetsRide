@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
+import { installSecureStore } from '@/lib/native/secure-store'
 import { resolveSessionStore } from '@/lib/supabase/session-store'
 
 /**
@@ -92,6 +93,13 @@ function requireEnv(name: string, value: string | undefined): string {
 
 export function createClient(): SupabaseClient {
   if (client) return client
+
+  // Before `resolveSessionStore()`, and deliberately here rather than in a
+  // layout or an effect: the store resolves once per page load and never
+  // re-resolves, so anything that installs later loses to whichever client was
+  // constructed first — silently, with the session in `localStorage`. This is
+  // the only call site that cannot be beaten to it. A no-op off-native.
+  installSecureStore()
 
   client = createSupabaseClient(
     requireEnv('NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL),
