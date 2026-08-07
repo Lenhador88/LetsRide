@@ -404,17 +404,50 @@ radius 8 with its button inset 4px bottom-right, and the RSVP bar 390×96 with p
 16/16/8 and a 358×40 button group. What follows is the design asking for **data the schema
 has not got**, plus deliberate deviations.
 
-**Two sub-pages of four are built.** The switcher lists Ride plan and Crew. That is the
-deviation with the widest blast radius, so it is first:
+**Three sub-pages of four are built** as of 2026-08-07. The switcher lists Ride plan and Crew;
+Chat is the header's chat-bubble button, which is where the design puts it. The remaining
+deviation is first:
 
 - [ ] **Journal is drawn and not built.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`)
       is postcards attached to a ride, and `postcards` has **no `ride_id`**. It needs a
       migration *and* an audience decision, because `club_id` currently **is** the audience
       and a ride-scoped postcard would be a second axis. Omitted from the menu rather than
       offered as a dead row.
-- [ ] **Chat is drawn and not built.** `Ride - Chat`, `- Chat - Options`, `- Chat - Text
-      focus`. No tables at all — this is the Inbox epic and the `realtime` agent. The
-      header's chat button and its `Warning/100` unread dot go with it.
+- [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
+      `Ride - Chat - Text focus` (`2242:11086`) at `/rides/[id]/chat`. **It did not need the
+      Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
+      which existed. Five deviations, each a decision rather than a miss:
+  - [ ] **A day separator was ADDED that the design does not draw.** Every bubble carries
+        `HH:mm` and nothing else, which is unambiguous for the single-day conversation the
+        frame mocks and silently wrong for a ride planned three weeks out — "08:18" on a
+        message from last Tuesday reads as this morning. `formatRideMessageDay` draws `TODAY` /
+        `YESTERDAY` / `SAT, 16 NOV`, uppercased to match `formatRideDate`. **A question for the
+        designer**, and the one thing here that is an addition rather than an omission.
+  - [ ] **The bubble tail is not drawn.** Each `Text Balloon` carries an 8×12 `Corner` vector.
+        Reproducing it needs an SVG per bubble per side, and at 8px it reads as a rounding
+        artifact. Dropped deliberately.
+  - [ ] **The `Warning/100` unread dot on the chat button is not drawn.** There is no unread
+        model — Linear PD-120 extends `015`'s watermark — and a badge that is always absent is
+        indistinguishable from one that is broken.
+  - [ ] **`Ride - Chat - Options` (`2370:7346`) is not built at all**, so the chat header has no
+        Options button. Its sheet is exactly two rows, `Pin chat` and `Mute chat`, and neither
+        means anything yet: pin orders a chat list that does not exist since PD-100 removed the
+        Inbox tab, and mute suppresses notifications that do not exist. Linear PD-121.
+  - [ ] **The chat button is shown to the crew only**, which is narrower than the frames draw —
+        a mock has no viewer, so it shows one header for everybody. `034` gives the chat to the
+        crew, so a rider who has not RSVP'd would tap through to a screen that can only tell
+        them to join.
+
+      Reproduced faithfully and worth recording because they are easy to get backwards: the
+      **sender's** bubble is `Grey/100` with `White/100` text and everyone else's is `Grey/10`
+      with `Grey/100` — the opposite way round from several popular messaging apps. The author
+      name is `Poppins/14/Semibold` on other riders' bubbles only and only on the first of a
+      run; the time is `Poppins/12/Medium` inside every bubble, `White/50%` on your own. The
+      reply bar is 80px and collapses to 56 on focus with the field going `Grey/5` → `White/100`.
+      **The frame draws no navigation bar** (120 + 644 + 80 = 844), so `Navbar` returns null on
+      this route — note that is *replacing* the bar, where `RideAttendanceBar` on the ride plan
+      *stacks on top of* it. Which of the two a screen does is a per-screen fact the design
+      states, not a rule about bars.
 - [ ] **The header's Options button is omitted, and this one is a question, not a task.**
       The flow never draws what the sheet contains. Ride overflow is presumably
       edit / cancel / leave, and "No edit or delete UI anywhere" is a standing known issue —
