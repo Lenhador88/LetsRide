@@ -1298,9 +1298,17 @@ Adopted 2026-08-07. The workspace is **`lets-ride`**, the team is **Pedro & Dave
 the project is **[Let's ride (AI)](https://linear.app/lets-ride/project/lets-ride-ai-10cb543bcb9d)**.
 `PD-86`–`PD-103` were the first seeding.
 
-**There is a second project called `Let's Ride`, and it is history — do not write to it.** 27
-issues from 2024–2025 describing a Thunkable/Firebase build that no longer exists. The product
-owner asked on 2026-08-07 that it be left entirely alone. Read it if you like; change nothing.
+**There is a second project called `Let's Ride`, and it is deprecated.** 27 issues from 2024–2025
+describing a Thunkable/Firebase build that no longer exists — `Connect Thunkable to Firebase`,
+`Decide on database engine and services`, both marked Done against a stack this repo replaced.
+Nothing in it describes the current app, so **it is not a source of truth and no work is planned
+there**. Read it for history if you like.
+
+The product owner's first instruction was to leave it entirely alone; that was **relaxed on
+2026-08-07 to "deprecated, don't worry about it"**, which is a weaker claim and changes exactly
+one thing — it no longer constrains team-level settings that happen to touch it. Recorded because
+the earlier wording was load-bearing for a day: it is why the status trim was first planned as
+renames rather than deletes.
 
 ### Why this does not become the fifth planning system
 
@@ -1364,15 +1372,15 @@ Labels are the cross-cut: **`Owner only`** is the filter for what no session can
 `list_issue_statuses` and `get_issue_status` and nothing that writes one, so the table above is
 applied by hand in Linear's team settings. Two rules for whoever applies it:
 
-- **Rename rather than delete wherever a status has issues in it.** Statuses are team-level, so
-  they are shared with the older `Let's Ride` project — and deleting one forces every issue
-  sitting in it to move, including issues in the project the owner asked be left alone. A rename
-  carries them silently and changes nothing. `Review plan (Human)` → `Human decision` and
-  `Development (AI)` → `In progress (AI)` are renames for exactly this reason.
 - **Type the two owner columns `unstarted`, not `started`.** Linear counts `started` as
   work-in-progress, and the seeded board had seven of twelve statuses typed that way — so an
   issue merely *queued for the owner to look at* inflated every progress bar and cycle chart. The
   count was never the problem with that board; the types were.
+- **Rename where a status already holds issues, delete the rest.** `Review plan (Human)` →
+  `Human decision` and `Development (AI)` → `In progress (AI)` carry their issues across with no
+  reassignment; the four with nothing in them can just go. This is convenience, not a rule — it
+  was a rule for one day, while the deprecated project was still meant to be untouched, and the
+  weaker reason is worth keeping only because it saves clicks.
 
 ### Do not ask permission to touch Linear
 
@@ -1383,8 +1391,10 @@ between statuses are all pre-authorized, encoded in `.claude/settings.json` unde
 §Working Principles: the `autoMode` half applies only while the session is in `AUTO`, which
 `defaultMode` now pins.
 
-Two things it does **not** cover: deleting anything a human authored, and the old `Let's Ride`
-project.
+One thing it does **not** cover: deleting anything a human authored — an issue, a comment, a
+document, or a label that is in use. Ask first. (The old `Let's Ride` project was a second
+carve-out until it was deprecated on 2026-08-07; it needs no permission rule now, because nothing
+is planned there and nothing there is read as true.)
 
 ### Keep it current, or it rots like the docs did
 
