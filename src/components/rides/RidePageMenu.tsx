@@ -51,12 +51,25 @@ export function RidePageMenu({
   const [open, setOpen] = useState(false)
 
   const pages = [
+    /**
+     * **First, and that is a layout constraint rather than a ranking.** Reading
+     * order wants it last — the design's own row order puts the ride's own
+     * record first, and Chat is the one destination that is not a view of it.
+     * But `ContextMenu` is `fixed inset-x-0 bottom-0`, so the sheet grows
+     * *upward*: a row appended last takes the screen position the previous last
+     * row held, and pushes every other row up 56px.
+     *
+     * That reflow lands mid-interaction, because this trigger renders before
+     * the ride read does — deliberately, so back and the switcher work while
+     * the plan is still arriving. A rider on a slow connection opens the sheet,
+     * aims at `Crew` as the bottom row, `isCrew` resolves, and the tap they
+     * already started lands on Chat. Prepended, the conditional row appears
+     * above rows that never move, so the arrival cannot move a target out from
+     * under a finger.
+     */
+    ...(isCrew ? [{ key: 'chat' as const, label: 'Chat', href: `/rides/${rideId}/chat` }] : []),
     { key: 'plan' as const, label: 'Ride plan', href: `/rides/${rideId}` },
     { key: 'crew' as const, label: 'Crew', href: `/rides/${rideId}/crew` },
-    // Ordered last because it is the one destination that is not a view of the
-    // ride's own record, and because the design's own row order (plan, journal,
-    // crew) puts the ride's data first.
-    ...(isCrew ? [{ key: 'chat' as const, label: 'Chat', href: `/rides/${rideId}/chat` }] : []),
   ]
   const label = pages.find((page) => page.key === current)?.label ?? 'Ride plan'
 

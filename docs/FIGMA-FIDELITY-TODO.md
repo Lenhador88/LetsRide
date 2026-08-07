@@ -415,7 +415,14 @@ for the crew only — Chat. The remaining deviation is first:
 - [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
       `Ride - Chat - Text focus` (`2242:11086`) at `/rides/[id]/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
-      which existed. Six deviations, each a decision rather than a miss:
+      which existed. Every sub-item below is a deviation, and each is a decision rather than a
+      miss. **Count them rather than read a number here** — this line said "Five" while the list
+      held eight, and was then edited to "Six" while it held nine, which is CLAUDE.md's
+      hand-typed-count trap inside the file that logs traps:
+      `sed -n '/Chat is built/,/^- \[/p' docs/FIGMA-FIDELITY-TODO.md | grep -c '^  - \['`
+      (9 today. Note both anchors: an unanchored range end matches prose mid-paragraph and
+      returns 0, and ending at `^### ` instead of `^- \[` counts every other bullet's
+      sub-items in §Ride detail too — it happens to agree today, which is the worse failure.)
   - [ ] **A `Chat` row was ADDED to the sub-page switcher, which the design does not list
         there.** `Ride - Ride plan - Sub pages` (`2375:9114`) draws exactly three rows — Ride
         plan, Journal, Crew — and puts chat in the header's action row as a bare 24×24 chat

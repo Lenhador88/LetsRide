@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   RIDE_AVATAR_LIMIT,
+  isRideCrew,
   toRideListItem,
   withOrganizer,
   type RideRow,
@@ -148,6 +149,27 @@ describe('toRideListItem', () => {
 })
 
 const crewMember = (n: number) => ({ user_id: `rider-${n}`, profile: rider(n) })
+
+/**
+ * The client's mirror of `private.is_ride_crew` (034), which gates both entry
+ * points to the ride chat. Asserted rather than assumed because it restates a
+ * database predicate: if 034 narrows, one of these cases starts failing, which
+ * is the signal that three screens need looking at.
+ */
+describe('isRideCrew', () => {
+  it('is true for the organizer with no RSVP row of their own', () => {
+    expect(isRideCrew(true, null)).toBe(true)
+  })
+
+  it('is true for maybe, not only going — 034 gives the chat to both', () => {
+    expect(isRideCrew(false, 'maybe')).toBe(true)
+    expect(isRideCrew(false, 'going')).toBe(true)
+  })
+
+  it('is false for a rider who has not answered', () => {
+    expect(isRideCrew(false, null)).toBe(false)
+  })
+})
 
 describe('withOrganizer', () => {
   it('puts the organizer at the head of going and marks them host', () => {

@@ -85,8 +85,15 @@ correctness waits on another proposal is a chat that ships broken.
 - **`REPLICA IDENTITY` stays at its default (primary key), and the client subscribes to
   `INSERT` only.** Both halves are security decisions, not tuning; see `design.md` §D5.
 - **One new screen** at `/rides/[id]/chat`, reached from the chat-bubble button `RideHeader`
-  currently omits. Not a row in `RidePageMenu` — that component's doc comment already records
-  that *"Chat is not one of them: it is the chat-bubble button in the header's action row"*.
+  currently omits. ~~Not a row in `RidePageMenu`~~ — **superseded 2026-08-07 (Linear PD-125),
+  and recorded here rather than edited away because the reasoning failed rather than changed.**
+  This bullet cited `RidePageMenu`'s own doc comment saying *"Chat is not one of them: it is the
+  chat-bubble button in the header's action row"*, which is what the design draws. Shipped that
+  way, the product owner — organizer and `going` on every ride in the database — could not reach
+  the chat at all and went looking in this very sheet. An unlabelled 24×24 icon was the only
+  route to a whole screen. `RidePageMenu` now lists Chat as well, on the same crew gate as the
+  icon. Do not "restore" the design by deleting that row; see
+  `docs/FIGMA-FIDELITY-TODO.md` §Ride detail.
 - **New cache keys** under `keys.ts`'s existing `rides.detail(rideId)` nesting, and the first
   entry in that file that is fed by a subscription rather than only by `invalidate`.
 
