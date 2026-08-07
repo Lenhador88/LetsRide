@@ -209,7 +209,7 @@ Formik; the forms in this app are one to three fields.
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
 | Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (36 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
-| Smoke walk | `npm run walk` — playwright-core against the real project | **The only gate that renders anything.** Signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load |
+| Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite — the walk makes no assertions about behaviour, only about whether a screen rendered |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
@@ -876,7 +876,7 @@ PROD_DATABASE_URL=postgresql://... DEV_DATABASE_URL=postgresql://... npm run db:
 PGPASSWORD=postgres npm run db:seed:check   # does the DEV seed still apply, and still refuse?
 
 # The only gate that renders anything — see supabase-relay.mjs's header first
-NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<ref>.supabase.co node scripts/supabase-relay.mjs &
+NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co node scripts/supabase-relay.mjs &
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
 WALK_EMAIL=... WALK_PASSWORD=... npm run walk
 ```
@@ -936,7 +936,7 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | `media` | Photo upload, Supabase Storage, compression, **EXIF stripping** |
 | `rider-ux` | Offline, geolocation, push UX, static map + deeplink, glove targets |
 | `native` | The shell — Capacitor, plugins, permission strings, deep links, signing, store upload, store guidelines |
-| `test` | Vitest/Playwright infra and tests |
+| `test` | Vitest/Playwright infra and tests, **and running the app against DEV** — the walk, its fixtures, anything needing a real browser |
 | `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit + documentation-claims audit |
 
 **Standard order for a feature:**

@@ -528,18 +528,56 @@ states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cooki
 reachable screen, and taps five bottom tabs to prove a navigation costs no
 `my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
 
-**The screens figure is data-dependent and is not a pass/fail number** — it is `15/15` against a
-database holding rides and clubs, and `9/9` against a DEV holding neither, because the four
-detail routes are discovered rather than hardcoded and a list with no rows yields no path. The
-walk says which it skipped. Read the `N/N` for equality, not for the value.
+**The screens figure is data-dependent and is not a pass/fail number.** The detail routes are
+discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
+`13/13` against a DEV with a club but no ride, `16/16` once the ride is there. **Read the `N/N`
+for equality, not for the value**, and read the skip notices above it for what was not covered.
+Deliberately no canonical number here: every value this line has ever carried went stale within
+a day, and `19/19` below is the pass/fail one.
 
-**So provision what you need to walk, rather than reading a skip as a pass.** `9/9` looks
-exactly like success and means the ride detail was never opened — which is how PD-125 shipped a
-switcher nobody had seen. One insert takes it to 11/11:
+**So the walk provisions what it needs, as of 2026-08-07** — a shrunken figure looks exactly
+like success while meaning the ride detail was never opened, which is how PD-125 shipped a
+switcher nobody had seen:
 
-```sql
-insert into rides (organizer_id, title, meeting_point, departure_at, is_public)
-values ('<walk uid>', 'Walk fixture ride', 'Dam Square, Amsterdam', now() + interval '10 days', true);
+```bash
+WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV.supabase.co \
+  WALK_EMAIL=... WALK_PASSWORD=... npm run walk     # 16/16 on a DEV that reported 13/13 without it
+```
+
+It creates a ride and a club **through `/rides/new` and `/clubs/new`** rather than by insert,
+which exercises the two create forms end to end — nothing else in this repo submits them. It
+fills **only what is missing**, so it is idempotent and needs no cleanup pass; a second run
+creates nothing and still walks the same routes. The ride is dated a year out on purpose:
+`getRides` filters `.gte('departure_at', now)`, so a short-dated fixture ages off `/rides` and
+the next run creates another that nothing lists and nothing removes — idempotence with an
+expiry date is not idempotence.
+
+**A fixture that was asked for and did not arrive fails the run.** The report comes from the
+re-read, never from the attempt: an earlier draft printed `+ created a ride` straight after the
+click and silenced the re-read's skip notice, so an RLS or validation refusal would have read
+`(no rides to open)` → `+ created a ride` → green → exit 0. That is the skip-reads-as-pass
+failure this whole section exists to close, reintroduced inside the fix for it.
+
+**Writes are off by default, and the guard reads the session rather than an env var.** The walk
+signs in and, with fixtures on, posts as a real rider — and this file's own recipe named PROD
+until today, so aiming it wrong is a mistake the documentation invited.
+
+**The first version of that guard was worth nothing, and the reason generalises.** It required
+`RELAY_UPSTREAM` and refused PROD's ref in it — but that variable configures the *relay*, a
+sibling process, and nothing tied it to what the app under test was pointed at. With PROD in
+`.env.local` and a plain `npm run dev`, the documented
+`WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV...` command passed the guard and would have created
+public fixture rides in real riders' feeds. **A check on a value describing a different process
+is not a check.**
+
+`authenticatedProjectRef()` reads the `iss` claim of the session the browser is actually
+holding — `https://<ref>.supabase.co/auth/v1`, minted by GoTrue from its own configuration, so
+it names the real project even when every byte arrived via `http://localhost:3001`. `letsride`
+is not on an allowlist, and an unreadable ref refuses too, so it fails closed:
+
+```
+(fixtures not created — refusing to create fixtures against "zwprydcyryvudhurbnye" — only fpmrimzxadewsaiwpsel is writable)
+(fixtures not created — could not read which project the browser signed in to — refusing to write rather than guessing)
 ```
 
 **Realtime does not survive the relay, and this is the one gap the walk cannot close.**
@@ -549,6 +587,15 @@ connects. Measured 2026-08-07 while verifying PD-125: a message sent through the
 appears, because the optimistic path draws it and the refetch confirms it — so a green walk
 proves the chat renders and sends, and proves **nothing** about live delivery. Teaching the
 relay to proxy the upgrade is the fix if that ever needs covering.
+
+**The walk suppresses that one console error and says so**, because `/rides/[id]/chat` is on
+the route list now and an always-red gate is a gate nobody reads. The filter is deliberately
+narrow — the relay's own origin and the Realtime path, nothing else — and the count is printed
+rather than swallowed:
+
+```
+  (Realtime NOT exercised — 1 relay WebSocket failure(s) suppressed; the relay does not proxy the upgrade)
+```
 
 **Network, measured — a blocked host fails as `curl: (56) CONNECT tunnel failed`, not as a
 timeout:**
