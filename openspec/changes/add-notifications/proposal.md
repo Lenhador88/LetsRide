@@ -54,8 +54,8 @@ about its correctness at read time*.
 
 | Event | Recipients | Copy |
 |---|---|---|
-| `rides` INSERT with `club_id` | every other member of that club, plus its owner | `created a ride in ‹club›.` |
-| `ride_members` INSERT | the ride's organizer | `joined a ride you also joined.` |
+| `rides` INSERT with `club_id` | every other **`club_members` row** for that club — **not** the club's owner as such; see below | `created a ride in ‹club›.` |
+| `ride_members` INSERT | the ride's organizer | `joined your ride.` (Q2b) |
 | `postcard_likes` INSERT | the postcard's author | `liked your postcard.` |
 | `postcard_comments` INSERT | the postcard's author | `commented on your postcard.` |
 | `club_members` INSERT | the club's owner and its admins | `joined club ‹club›.` |
@@ -64,7 +64,17 @@ Plus one **`AFTER DELETE`** trigger on `postcard_likes`, so unliking retracts th
 leaving a notification for an event that has been undone.
 
 The design fans the ride-join row out to *all* attendees; **organizer-only is the quieter start**
-and widening it is a product call (Q1).
+and widening it is a product call (Q1). The design's own string for it — *"joined a ride you also
+joined."* — is written for an attendee and does not fit an organizer, which is a **copy** question
+Q1 and Q2 both missed and Q2b now owns.
+
+**The owner union is on `club_joined` and NOT on `ride_created_in_club`, and the asymmetry is the
+single most important line in this proposal.** `clubs` SELECT carries an `owner_id = auth.uid()`
+arm, so a `club_joined` row resolves for an owner holding no membership row. `rides` SELECT does
+not: its only club arm is `private.is_club_member(club_id)`, whose body queries `club_members` with
+**no owner arm** — so writing that owner a `ride_created_in_club` row produces a row their own SELECT
+policy drops on every read, for ever, for exactly the rider the union was added for. `design.md` §D4
+has the full reasoning and the pre-existing bug it rests on.
 
 ### The surface
 
@@ -125,18 +135,32 @@ and widening it is a product call (Q1).
   category the enumeration cannot express. A standing spec asserting a stale enumeration is worse
   than one asserting nothing. Three requirements are ADDED.
 
-> **⚠ COORDINATION — both modified requirements are contested, and OpenSpec will not warn you.**
-> `Onboarding completion SHALL gate participation, not only navigation` already carries deltas
-> from **`add-account-deletion`** and **`add-ride-chat`**; archiving folds a delta in by replacing
-> the requirement **wholesale**, so whichever change archives last silently discards every earlier
-> edit. `Counts SHALL stay per-viewer` is contested by **`add-ride-chat`**'s sibling requirement
-> in the same file.
+> **⚠ COORDINATION — both modified requirements are contested by the SAME requirement in another
+> change, and OpenSpec will not warn you.** Archiving folds a delta in by replacing the requirement
+> **wholesale**, so whichever change archives last silently discards every earlier edit.
 >
-> This is now the **third** requirement in this repo with three claimants, after
-> `Club membership role SHALL NOT be self-assignable` and `Stale data SHALL be bounded and
-> visible`. **Before archiving this change: re-read `openspec/specs/…/spec.md` as the previous
-> archive left it and rewrite the delta against *that* text**, not against the version drafted
-> here. The merged text this delta should converge on is at the top of each delta file.
+> | Requirement this change modifies | Also modified by | Claimants |
+> |---|---|---|
+> | `Onboarding completion SHALL gate participation, not only navigation` | `add-account-deletion`, `add-ride-chat` | **3** |
+> | `Counts SHALL stay per-viewer and SHALL NOT be cached across viewers` | **`add-account-deletion`** | **2** |
+>
+> **The `Counts` row is the correction.** An earlier revision named `add-ride-chat` here, whose
+> delta in that file is against a **sibling** requirement (`Stale data SHALL be bounded and
+> visible`) — two changes editing two different requirements in one file merge cleanly, so that is
+> the harmless case. `add-account-deletion` carries a `## MODIFIED` block against
+> `Counts SHALL stay per-viewer` **itself**, which is the collision. All three header lines are
+> byte-for-byte identical (`md5` `43bc3f4e404c4955e3297746090c6c1b`), verified 2026-08-07.
+>
+> **`Onboarding completion` is the ONLY requirement in this repo with three claimants** — not the
+> third to reach three. The earlier "third, after `Club membership role` and `Stale data`" reached
+> three on those two only by counting the archived `2026-08-06-migrate-to-client-rendered-shell`,
+> which is where they came from and is already folded into `openspec/specs/`; counting it counts the
+> standing text twice. Both have two. Re-derive rather than trust either version:
+> `grep -rn "^### Requirement: <text>" openspec/`, discarding `changes/archive/`.
+>
+> **Before archiving this change: re-read `openspec/specs/…/spec.md` as the previous archive left
+> it and rewrite the delta against *that* text**, not against the version drafted here. The merged
+> text each delta should converge on is at the top of each delta file.
 
 ### Read and NOT modified — a claim, not an omission
 
@@ -160,9 +184,18 @@ highest file and is applied — **verified 2026-08-07 by `list_migrations` again
 rather than trusting this paragraph; it is the exact line `CLAUDE.md` warns has been wrong in both
 directions.
 
+**`036` is free against both databases and reserved against nothing else.** A database query cannot
+see a sibling proposal, and `enforce-creator-membership` needs **two** migration files whose stated
+numbers (`029`, `030`) were both taken on 2026-08-06 — so it re-derives into `036`/`037` the moment
+anyone picks it up. Numbering is first-come; the loser renumbers before writing SQL. Check both:
+`list_migrations` against `ls supabase/migrations/`, **and**
+`grep -rn "0[0-9][0-9]_[a-z_]*\.sql" openspec/changes/*/` across the unarchived proposals.
+
 **It is additive in schema and NOT inert, and that distinction is the sequencing note.** One new
-table, one new `public` RPC, five `private` trigger functions, six triggers, four policies, three
-indexes, grants to `authenticated` only. Nothing is dropped and no existing policy is touched — so
+table, one new `public` RPC, five `private` trigger functions, six triggers, **three** policies
+(SELECT and UPDATE; no INSERT, no DELETE), **seven** indexes — the primary key, the
+`NULLS NOT DISTINCT` uniqueness index, `(user_id, created_at desc)`, `actor_id`, and a partial index
+on each of the four subject columns, per `design.md` §D11 — grants to `authenticated` only. Nothing is dropped and no existing policy is touched — so
 it may be applied **before** the code that reads it deploys. But six of those triggers hang off
 **existing, shipped write paths**: `postcard_likes`, `postcard_comments`, `ride_members`, `rides`
 and `club_members`. From the moment it applies, every like, comment, RSVP, ride creation and club
@@ -183,9 +216,11 @@ function landed in `public` or a `revoke` did not.**
 **Code.** New: `src/app/(app)/notifications/page.tsx`, `src/components/notifications/*`,
 `src/lib/data/notifications.ts`, `src/lib/actions/notifications.ts`, one `NotificationRow` shape in
 `src/types/index.ts`. Changed: `keys.ts` gains a `notifications` group and a row in its header
-table; the four tab-root pages gain the header control; **`Header` gains a second action slot or
-its `action` slot starts taking a fragment** — `/profile` already passes `<ProfileMenu />` there
-and the design draws two 40×40 controls at x302/x342, so exactly one screen needs both today.
+table; the four tab-root pages gain the header control; **`Header` gains a second named slot** for
+the x302 control, alongside the existing `action` at x342. That last one is **the only change in
+this proposal touching code outside the notifications directories**, and `Header` is a primitive
+every screen renders — so it is taken as an architecture decision in `design.md` §D9, with the
+rejected alternative (an `action` that accepts a fragment) and its reasons, rather than delegated.
 `ListUser` is a 48px single-line row and the design's notification row is a 72px two-line row with
 a trailing 56×56 thumbnail; that is a `design-system` decision, not a reuse.
 
@@ -209,8 +244,12 @@ MCP, so these are true counts and not per-viewer ones:**
 | `club_members.role` CHECK | `owner`, `admin`, `member` | The recipient set for `club_joined` names three roles |
 | `club_members` rows by role | `owner` **2**, `member` **1**, `admin` **0** | See §The admin arm below |
 | `private.is_blocked(a uuid, b uuid)` | exists, `security definer`, `stable`, `search_path=''` | **Takes both parties explicitly**, so it is usable at fan-out |
-| `private.is_club_member(target_club_id uuid)` | reads `auth.uid()` **internally** | **Not usable at fan-out** — see below |
+| `private.is_club_member(target_club_id uuid)` | reads `auth.uid()` **internally**; body is `exists (select 1 from club_members where club_id = target and user_id = auth.uid())` — **no owner arm** | **Not usable at fan-out**, and its missing owner arm is what forces the `ride_created_in_club` recipient set to be `club_members` alone |
 | `private.is_ride_crew(ride uuid)` | reads `auth.uid()` internally | Same |
+| `club_members` DELETE policy | `(auth.uid() = user_id)` — **no owner carve-out** | An owner can leave their own club and keep ownership in one request, so an ownerless owner needs no failed write to exist |
+| `profiles` `username` UPDATE grant | `has_column_privilege('authenticated', …, 'UPDATE')` = **true**; CHECK is `username IS NULL OR username ~ '^[a-z0-9_]{3,20}$'` | Any rider can null their username in one request and vanish from `profiles` SELECT — so an unresolvable **actor** is reachable, and `profiles` must be a conjunct on every row |
+| `enforce_onboarding_completion` | guards `terms_accepted_at` / `onboarding_completed_at` only; for an already-onboarded rider it pins completion and **returns early** | `username` is never reached on that path, which is why the CHECK is the only thing left and it admits NULL |
+| FKs referencing `profiles` | 14, **all** with a leading index (`029` added the last four) | `036` adds two more; the standing rule in `add-account-deletion` applies to both |
 | `rides` SELECT policy | `(organizer_id = auth.uid()) OR (NOT is_blocked(auth.uid(), organizer_id) AND ((is_public AND (club_id IS NULL OR is_club_public(club_id))) OR (club_id IS NOT NULL AND is_club_member(club_id))))` | The private-club negative case is stated against this text |
 | `clubs` SELECT policy | `is_public OR owner_id = auth.uid() OR is_club_member(id)` | **No block arm** — deliberate (decision recorded in `database-enforced-integrity`) |
 | `rides.club_id` FK | `ON DELETE SET NULL` | A deleted club leaves the ride, so the notification's `club_id` cascade and its `ride_id` cascade disagree |
@@ -233,18 +272,50 @@ detail and is not:**
   promote one. Zero exist. The spec still names admins, because the role is in the CHECK and
   invitations will ship it; the assertion for that arm must insert the row as the table owner and
   say why, rather than being quietly omitted as untestable.
-- **A club's owner may hold no `club_members` row.** `createClub` writes two rows with no
-  transaction, and `openspec/changes/enforce-creator-membership/` exists because the second can
-  fail. So the recipient set for `club_joined` and `ride_created_in_club` is
-  `clubs.owner_id` **∪** `club_members`, not the membership table alone — the same lesson `034`
-  learned when a membership-only crew predicate would have locked a host out of their own chat.
+- **A club's owner may hold no `club_members` row — and it takes one request, not a failed pair.**
+  `createClub` writes two rows with no transaction and `openspec/changes/enforce-creator-membership/`
+  exists because the second can fail, but `club_members` DELETE is also a bare
+  `(auth.uid() = user_id)` with **no owner carve-out**, so any owner can leave their own club and
+  keep ownership deliberately. The recipient set is therefore `clubs.owner_id` ∪ `club_members` for
+  **`club_joined` only**, where `clubs` SELECT's owner arm makes the row resolve. For
+  `ride_created_in_club` it is `club_members` alone, because `rides` SELECT has no owner arm and the
+  union would write a permanently unreadable row. Two sets, not one — `design.md` §D4.
+- **`private.is_club_member` has no owner arm, and that is a live bug this change does not own.** An
+  ownerless owner cannot see their own private club's rides *today*, with or without notifications,
+  and `rides` INSERT's `with check` refuses them a ride in their own club as well. Filed rather than
+  fixed here; `enforce-creator-membership` closes it from the other end and **neither change is
+  sequenced on the other**.
 
 ## Known gaps this change records rather than closes
 
-- **No retention sweep.** Rows die with their subject and with their author's account, and nothing
-  else deletes them. There is no `pg_cron` and no scheduled Edge Function in this project, so a
-  window cannot be *enforced* by this change — only stated. The design's `All time` section argues
-  against capping the read. Q6 carries the default and the owner owns the answer.
+- **No retention sweep, and the window is the cascade window.** Rows die with their subject, their
+  actor and their recipient, and nothing else deletes them — **that is the stated retention window,
+  in those words**, and it goes in the migration header. There is no `pg_cron` and no scheduled Edge
+  Function, so a time-based window cannot be enforced by this change and therefore is not claimed by
+  it: Q6 previously defaulted to "90 days as intent" while the spec said "as long as the subject
+  exists", which is two windows in two files and a number nothing implements. The sweep is a **filed
+  follow-up**, not an open question.
+
+**Three defects this change found, does not own, and files rather than works around.** Each is
+pre-existing, reachable today, and named here because a proposal that silently designs around a hole
+is how the hole gets inherited as covered:
+
+- **`private.is_club_member` has no owner arm.** A club owner holding no `club_members` row cannot
+  see their own private club's rides, and `rides` INSERT refuses them a ride in their own club.
+  Reachable in one request, because `club_members` DELETE is a bare `(auth.uid() = user_id)` with no
+  owner carve-out. `enforce-creator-membership` closes it from the other end by seeding the row and
+  guarding the delete — but states the *creation* consequence and not the *visibility* one. This
+  change narrows the `ride_created_in_club` recipient set to match reality rather than papering over
+  it, and **is not sequenced on that change landing**.
+- **Any rider can null their own `username` and vanish from every other rider's `profiles` read.**
+  `has_column_privilege('authenticated','public.profiles','username','UPDATE')` is true, the CHECK
+  admits NULL, and `enforce_onboarding_completion` returns early for an already-onboarded rider
+  before reaching the column. Not this change's to fix — a column-privilege change on `profiles` is
+  not this blast radius — so the contract is written to behave correctly whether it is open or shut:
+  `profiles` is a resolvability conjunct on every row, so the notification is evicted with the
+  profile and the count falls with the list.
+- **`postcard_reports` is still write-only with no triage**, unchanged from `011`'s KNOWN GAP.
+  Notifications give a rider more to be bothered by and no more recourse.
 - **No notification for anything scheduled.** "Ride upcoming!" is drawn and is unbuildable for the
   same reason.
 - **No triage, no delivery receipt, no per-type preference.** A rider cannot turn a type off, and

@@ -4,9 +4,26 @@
 `Onboarding completion SHALL gate participation, not only navigation` now has THREE claimants:
 `add-account-deletion`, `add-ride-chat` and this change. Archiving folds a delta in by replacing
 the requirement **WHOLESALE**, so whichever archives last silently discards every earlier edit,
-and OpenSpec will not warn you. This is the third requirement in this repo to reach three
-claimants, after `Club membership role SHALL NOT be self-assignable` and `Stale data SHALL be
-bounded and visible`.
+and OpenSpec will not warn you.
+
+**It is the ONLY requirement in this repo with three claimants** — not the third to reach three.
+An earlier revision said *"the third requirement in this repo to reach three claimants, after
+`Club membership role SHALL NOT be self-assignable` and `Stale data SHALL be bounded and
+visible`"*, which reached three on those two only by counting the archived
+`2026-08-06-migrate-to-client-rendered-shell`. That change is where these requirements came FROM;
+its deltas are already folded into `openspec/specs/`, so counting it is counting the standing text
+twice. Re-derive rather than trust either version — `grep -rn "^### Requirement: <text>" openspec/`,
+then discard `changes/archive/`:
+
+| Requirement | Unarchived claimants |
+|---|---|
+| **`Onboarding completion SHALL gate participation …`** | **3** — `add-account-deletion`, `add-ride-chat`, `add-notifications` |
+| `Counts SHALL stay per-viewer …` | 2 — `add-account-deletion`, `add-notifications` |
+| `Stale data SHALL be bounded and visible` | 2 — `add-ride-chat`, `add-account-deletion` |
+| `Club membership role SHALL NOT be self-assignable` | 2 — `enforce-creator-membership`, `add-account-deletion` |
+
+Understating this one as "one of three such requirements" is what makes it read as routine. It is
+the worst case on the board and the only one where a two-way merge is not enough.
 
 **Before archiving: re-read `openspec/specs/database-enforced-integrity/spec.md` as the previous
 archive actually left it, and rewrite the MODIFIED block below against THAT text** rather than

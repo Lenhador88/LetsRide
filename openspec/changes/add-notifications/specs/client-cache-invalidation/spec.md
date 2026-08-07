@@ -1,20 +1,43 @@
 <!--
 ⚠ COORDINATION — READ BEFORE ARCHIVING THIS CHANGE.
 
-`Counts SHALL stay per-viewer and SHALL NOT be cached across viewers` is contested. Archiving
-folds a delta in by replacing the requirement **WHOLESALE**, so whichever change archives last
-silently discards every earlier edit, and OpenSpec will not warn you. `add-ride-chat` carries a
-delta against a sibling requirement in this same file (`Stale data SHALL be bounded and
-visible`), which `add-account-deletion` also modifies — three claimants across this one file.
+**`add-account-deletion` carries a `## MODIFIED` block against `Counts SHALL stay per-viewer and
+SHALL NOT be cached across viewers` — the SAME requirement this file modifies.** That is the
+collision, and it is a direct one: archiving folds a delta in by replacing the requirement
+**WHOLESALE**, so whichever of the two archives last silently discards the other's edit, and
+OpenSpec will not warn you. Verified 2026-08-07: the three `### Requirement:` header lines — the
+standing one, `add-account-deletion`'s and this one — are byte-for-byte identical
+(`md5` `43bc3f4e404c4955e3297746090c6c1b` on each).
+
+An earlier revision of this note pointed at `add-ride-chat` instead, whose delta in this file is
+against a **sibling** requirement (`Stale data SHALL be bounded and visible`). A sibling is not a
+collision — two changes editing two different requirements in one file merge cleanly. Naming the
+sibling and not the direct claimant described the harmless case and hid the real one.
+
+Claimant counts, re-derived rather than recalled — `grep -rn "^### Requirement: <text>" openspec/`,
+counting **unarchived** changes only, because the archived `2026-08-06-migrate-to-client-rendered-shell`
+is where these requirements came FROM and is already folded into `openspec/specs/`:
+
+| Requirement | Unarchived claimants |
+|---|---|
+| `Counts SHALL stay per-viewer …` | **2** — `add-account-deletion`, `add-notifications` |
+| `Stale data SHALL be bounded and visible` | 2 — `add-ride-chat`, `add-account-deletion` |
+| `Club membership role SHALL NOT be self-assignable` | 2 — `enforce-creator-membership`, `add-account-deletion` |
+| `Onboarding completion SHALL gate participation …` | **3** — `add-account-deletion`, `add-ride-chat`, `add-notifications` |
+
+So exactly **one** requirement in this repo has three claimants and it is the onboarding one, in
+the other delta file. This one has two.
 
 **Before archiving: re-read `openspec/specs/client-cache-invalidation/spec.md` as the previous
 archive actually left it, and rewrite the MODIFIED block below against THAT text** rather than
 against the version transcribed here on 2026-08-07.
 
 The merged text this delta should converge on: the standing requirement's three original
-scenarios, unchanged, plus the fourth scenario added below naming the second unread count. The
-edit is purely additive in substance — nothing in the original is contradicted — so a merge that
-keeps all four scenarios is correct.
+scenarios, **plus `add-account-deletion`'s widened opening sentence and its three added scenarios**,
+plus the fourth scenario added below naming the second unread count. Every edit on both sides is
+additive in substance — neither contradicts the original or the other — so the correct merge keeps
+all of them. A merge that keeps only one change's scenarios is the failure this note exists to
+prevent.
 -->
 
 ## MODIFIED Requirements
@@ -88,6 +111,16 @@ already avoids the first by being `security invoker`; nothing yet states it as a
 - **WHEN** the count and the list are both fresh
 - **THEN** a nonzero count SHALL imply at least one row in the list
 - **AND** the reverse SHALL hold for zero
+
+#### Scenario: Agreement is a property of the predicate, not of a filter the renderer applies
+- **WHEN** a row is counted but cannot be rendered — its actor or its subject does not resolve for
+  the reader
+- **THEN** the repair SHALL be to add the missing conjunct to the **predicate both reads share**, so
+  the row is in neither
+- **AND** dropping it in the component SHALL NOT be the repair, because that produces a nonzero
+  count over a shorter list, which is precisely what this requirement forbids
+- **AND** "render nothing for that row" SHALL be recognised as the same defect written as an
+  instruction: a list of ten that draws nine is a list of nine with a wrong badge
 
 #### Scenario: A failed count shows nothing rather than a stale value
 - **WHEN** a count read fails

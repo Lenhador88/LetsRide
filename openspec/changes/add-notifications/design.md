@@ -74,8 +74,21 @@ gone. `specs/notifications` asserts it explicitly for exactly that reason.
 
 ### D2 — The SELECT policy carries a subject-resolvability conjunct, and the read is not filtered in the client
 
-**Chosen.** `user_id = auth.uid()` **AND** `not private.is_blocked(auth.uid(), actor_id)` **AND**
-an `EXISTS` against the subject table, per `type`, evaluated under the caller's own RLS.
+**Chosen.** `user_id = auth.uid()` **AND** `not private.is_blocked(auth.uid(), actor_id)` **AND** an
+`EXISTS` against `profiles` for the actor **AND** an `EXISTS` per resource the row's copy renders,
+per `type`, all conjoined, all evaluated under the caller's own RLS.
+
+**Two conjuncts were missing from the first draft and both were leaks rather than omissions.**
+
+- **The actor.** Every row's copy begins with the actor's username, so `profiles` is a rendered
+  resource on every type — and a rider can null their own `username` in one request
+  (`has_column_privilege('authenticated','public.profiles','username','UPDATE')` is **true**, the
+  CHECK admits NULL, and `enforce_onboarding_completion` returns early for an already-onboarded
+  rider before it ever reaches the column — all measured 2026-08-07). Without the conjunct the row
+  is counted and cannot be drawn.
+- **The second subject.** `ride_created_in_club` renders two resources and the draft named one table
+  per type. Picking `clubs` leaks a public club's private ride; picking `rides` leaves the club name
+  unrenderable. It is a conjunction.
 
 The third conjunct is the one that will be argued away, so the reasoning is written down. A
 fan-out-time check answers *"is this visible now"*, and the row is read at a later now. A rider who
@@ -99,12 +112,20 @@ rather than restating the club predicate, applied once per typed subject column.
 **Why it composes cleanly, checked against each type** — the own-row arm of each parent policy is
 what makes it work:
 
-| Type | Recipient | Resolves because |
-|---|---|---|
-| `postcard_liked` / `postcard_commented` | the author | `postcards` SELECT's first arm is `author_id = auth.uid()`, ahead of hides and blocks |
-| `ride_joined` | the organizer | `rides` SELECT's first arm is `organizer_id = auth.uid()` |
-| `club_joined` | owner / admin | `clubs` SELECT admits owner and members — and a *public* club admits everyone, which is why leaving a public club keeps the row and leaving a private one does not |
-| `ride_created_in_club` | other members | `rides` SELECT's club-member arm, which is exactly the set that was fanned out to |
+| Type | Recipient | Conjuncts | Resolves because |
+|---|---|---|---|
+| `postcard_liked` | the author | `profiles`, `postcards` | `postcards` SELECT's first arm is `author_id = auth.uid()`, ahead of hides and blocks |
+| `postcard_commented` | the author | `profiles`, `postcards`, `postcard_comments` | same, and `postcard_comments` SELECT inherits it by `EXISTS` |
+| `ride_joined` | the organizer | `profiles`, `rides` | `rides` SELECT's first arm is `organizer_id = auth.uid()` |
+| `club_joined` | owner **∪** admins | `profiles`, `clubs` | `clubs` SELECT admits owner **and** members — `is_public OR owner_id = auth.uid() OR is_club_member(id)`. The owner arm is what makes the owner union safe here |
+| `ride_created_in_club` | `club_members` **only** | `profiles`, `rides`, `clubs` | `rides` SELECT's club-member arm — `club_id IS NOT NULL AND private.is_club_member(club_id)`, which has **no owner arm**, which is why the owner union is *not* safe here. See §D4 |
+
+**The `club_joined` / `ride_created_in_club` asymmetry is the one thing in this table to read
+twice.** The two recipient sets look interchangeable and are not, and what differs is the *subject's*
+policy rather than anything about the club: `clubs` SELECT has an `owner_id = auth.uid()` arm and
+`private.is_club_member` does not. Fanning the same union out to both types writes the club owner a
+`ride_created_in_club` row their own SELECT policy drops on every read, for ever — the exact defect
+this whole decision exists to prevent, produced by the decision meant to prevent it.
 
 ### D3 — The fan-out is a `SECURITY DEFINER` trigger in `private`, with no `current_user` guard
 
@@ -166,16 +187,48 @@ becomes either everybody or nobody. It looks correct in a one-member test, which
 possible failure profile. Only `is_blocked(a, b)` and `is_club_public(club)` take their subject as
 an argument and may be used.
 
-**The recipient set is `clubs.owner_id` ∪ `club_members`, minus the actor.** A club's owner may hold
-no membership row: `createClub` does two inserts with no transaction and
-`openspec/changes/enforce-creator-membership/` exists because the second can fail. A
-membership-only set silently drops the one rider who most needs the notification. This is the same
-lesson `034` learned when a membership-only crew predicate would have locked a host out of their own
-ride's chat — and the same reason its organizer arm stays in place even if that other change makes
-it redundant.
+**The recipient set is per type, and the owner union applies to `club_joined` only.**
+
+| Type | Recipient set |
+|---|---|
+| `club_joined` | `clubs.owner_id` **∪** `club_members` where `role in ('owner','admin')`, minus the actor |
+| `ride_created_in_club` | `club_members` for that club **alone**, minus the actor |
+
+**The draft applied the union to both and that was a defect, not a preference.** The reasoning that
+produced it is sound and stops one step short: a club's owner may hold no membership row —
+`createClub` does two inserts with no transaction, and (measured 2026-08-07, and worse than the draft
+assumed) `club_members` DELETE is a bare `(auth.uid() = user_id)` with **no owner carve-out**, so any
+owner can leave their own club and keep ownership in a single request. A membership-only set does
+drop them.
+
+What the reasoning missed is that dropping them is the *correct* behaviour for the ride type, because
+**the read policy drops them too.** `rides` SELECT's only club arm is
+`club_id IS NOT NULL AND private.is_club_member(club_id)`, and `private.is_club_member` is
+`exists (select 1 from club_members where club_id = target and user_id = auth.uid())` — no owner arm,
+verified against the live function body. So the union writes a row that is invisible on every read,
+for ever, to exactly the rider it was added for. A row nobody can read is worse than no row: nothing
+raises, no count moves, no assertion fails, and it accumulates until its subject is deleted.
+
+**There is a real pre-existing bug underneath, and this change names it rather than depending on it.**
+An ownerless owner cannot see their own private club's rides *today*, notifications or not — and
+`rides` INSERT's `with check` is `(auth.uid() = organizer_id) AND (club_id IS NULL OR
+private.is_club_member(club_id))`, so they cannot create one either. `enforce-creator-membership`
+closes it from the other end, by seeding the row and guarding the delete; when it lands, every owner
+holds a membership row, the two sets coincide, and this narrowing becomes invisible. **Neither change
+is sequenced on the other.** Filed separately — see `proposal.md` §Known gaps.
+
+**Rejected: keep the union and widen the resolvability conjunct to admit the owner.** It would make
+the notification resolve while the ride's own screen still refuses them — a row that renders and a
+destination that returns not-found. A notification must never be the one surface that can see further
+than the app.
 
 Blocking is applied at fan-out with `private.is_blocked(actor, candidate)`, which is symmetric, so
 one call covers both directions.
+
+**The general rule this produced** is in `event-fanout-integrity`: *a fan-out SHALL NOT write a row
+that the read policy can never return to its recipient*, with the per-type mapping checked whenever
+either side changes. The recipient set and the SELECT policy are written in different files by
+different reasoning, and nothing but that rule connects them.
 
 ### D5 — The unread count is a `SECURITY INVOKER` function, and the badge is a dot
 
@@ -211,9 +264,27 @@ declined because it buys **no** security — the rider may already write their o
 policy scopes it — while adding a seventh `authenticated_security_definer_function_executable`
 advisor. `034`'s per-column INSERT grant on `ride_messages` is the precedent for the mechanism.
 
-The UPDATE policy is deliberately `user_id = auth.uid()` **only**, without the resolvability
-conjunct, so that "mark all read" genuinely clears everything including rows currently evicted.
-Marking a row the rider cannot see is inert.
+**The UPDATE policy's predicate is identical to the SELECT policy's** — recipient, block and every
+resolvability conjunct, in both `using` and `with check`. **Reversed from the draft**, which made
+UPDATE `user_id = auth.uid()` alone so that "mark all read" would clear evicted rows too.
+
+That widening was a disclosure channel. `update notifications set read_at = now() where read_at is
+null` under the wider policy touches rows SELECT hides, and the affected-row count is a number the
+rider can compare against the list they were just shown. The difference is the count of hidden rows,
+and the commonest reason a row is hidden is a block — which this change elsewhere requires must never
+be revealed by *"any gap, count or marker"*. A policy that is wider on write than on read **is** that
+marker.
+
+Its justification does not survive inspection either: an evicted row is in neither the count nor the
+list, so leaving it unread has no observable effect, and if the eviction is later reversed the row
+returning **unread** is the right answer, because the rider never saw it. "Marking a row the rider
+cannot see is inert" is true — which is an argument that the widening buys nothing, not an argument
+for it.
+
+Whether PostgREST surfaces the affected-row count on a `PATCH` is unverified and deliberately not
+load-bearing. A write reaching a row a read cannot is a contract defect whether or not today's client
+library happens to expose the number, and building on the library's current behaviour is how the
+defect returns with the next `@supabase/supabase-js` minor.
 
 ### D6 — Ids only; no denormalised text, ever
 
@@ -257,19 +328,49 @@ in a fan-out takes down likes, comments, RSVPs, ride creation and club joining *
 This is the trade-off, not an oversight — the alternative is a feature that silently does not work
 and looks like it does.
 
-### D9 — Header control on four screens; `Header` needs a second slot or a fragment
+### D9 — `Header` gains a second named slot. This is an architecture decision, not a styling one
 
-`Header` has exactly **one** `action` slot today. The design draws two 40×40 controls at x302/x342.
-Of the four tab-root screens, only `/profile` currently passes an action (`<ProfileMenu />`), so
-exactly one screen needs both today — but the notification icon must not be nested inside
-`ProfileMenu`, moved, or hidden behind it. Either a second slot or an `action` that accepts a
-fragment is acceptable; this is `design-system`'s call and the requirement is only that both
-controls remain reachable.
+**Chosen.** `Header` gains a second named prop for the x302 control, alongside the existing `action`
+at x342.
+
+**This was labelled "`design-system`'s call" in the draft and that was the wrong classification.**
+`Header` is a primitive **every screen in this app renders**; its `action` slot is already consumed
+by two call sites (`/profile`'s `<ProfileMenu />` and `RideHeader`'s chat control); and this is the
+**only** part of this proposal that touches code outside the notifications directories. A change to
+the API of an app-wide primitive is decided here, before `§4` starts, because both call sites have to
+be written against whichever shape wins.
+
+**Rejected: `action` starts accepting a fragment.** It is the smaller diff and it is worse in three
+ways. The prop's name and its docstring both say "the right-hand 40×40 control in the title row —
+the design's overflow menu at x342"; a fragment makes position implicit in child order, so the
+notification icon lands at x342 and the menu at x302, reversing the design with nothing to catch it.
+Every existing caller keeps compiling, so the change is invisible at the call sites that now mean
+something different. And it gives `Header` no way to draw the two positions differently, which it
+must, because they are two absolutely-positioned slots and not a flex row.
+
+A second named slot costs one prop and one docstring, makes position explicit, and leaves both
+existing callers untouched.
 
 `ListUser` is a 48px single-line row (avatar, name, optional trailing note). The design's
 notification row is 72px with a two-line text block — name and relative time on line one, copy on
 line two — and an optional trailing 56×56 thumbnail. **That is a new component, not a `ListUser`
 prop**, and pretending otherwise is how a 48px row grows three conditional branches.
+
+**Its type tokens, measured 2026-08-07 from the committed snapshot** (`npm run figma -- text "Inbox
+- Notifications"`), because the draft specified the row's geometry and named a token for neither of
+its text lines — which is the one decision geometry cannot supply:
+
+| Element | Token |
+|---|---|
+| Line one — actor username | `Poppins/16/Semibold` (16/24, w600) |
+| Line one — relative stamp | `Poppins/14/Regular` (14/20, w400) |
+| Line two — the copy | `Poppins/14/Regular` (14/20, w400) |
+| Section title | `Poppins/20/Semibold` (20/30, w600) — which `SectionHeader`'s `text-xl font-semibold` already is, checked in its source rather than assumed |
+
+**The unread dot's contrast is computed and passes: 4.22:1**, `Warning/100` `#D92140` on `Grey/5`
+`#F2ECE6`, against the **3:1** bar that applies to a non-text component. Recorded here so nobody
+re-estimates it; the 4.5:1 text bar does not apply, because `v2 / Component / Notification` has no
+text child.
 
 Day sections resolve in `APP_TIME_ZONE`, matching every other date in the app and for the same
 documented interim reason — the prerender pass runs on Vercel, so an unpinned boundary renders one
@@ -295,6 +396,40 @@ action invalidates its own caller's notifications. `blockRider` / `unblockRider`
 `EVERYTHING`, which covers the block case for free. The badge otherwise refreshes on navigation and
 foreground, per the standing revalidation rule.
 
+### D11 — Six FKs, six indexes, four of them partial
+
+**Chosen.** `(user_id, created_at desc)` for the list and the count; a plain index on `actor_id`; and
+a **partial** index on each of `postcard_id`, `comment_id`, `ride_id`, `club_id`, each
+`where <column> is not null`.
+
+**Two requirements collided here and neither named the other.** `add-account-deletion` carries
+*"Every foreign key referencing `public.profiles` SHALL have an index Postgres can use"* and *"WHEN a
+future migration adds a table referencing `profiles` THEN it SHALL add the index in the same file"*.
+`036` is the first table that rule applies to, and it adds two such keys. The draft indexed one of
+them: `actor_id` sits **third** in the uniqueness index, where it cannot lead a lookup. Meanwhile
+`event-fanout-integrity` said *"no additional index SHALL be added speculatively for a query no
+screen issues"*, which as written forbade the fix.
+
+The reconciliation is that the prohibition means what it says — *no index for a **read query** nobody
+issues* — and a cascade is not that. It is a delete path with a standing requirement behind it. Both
+specs now say so, and each names the other.
+
+**Rejected: plain (non-partial) subject indexes.** Most rows leave most subject columns NULL, so four
+plain indexes would enter every row into all four. A partial index enters only the rows that use it,
+which holds the fan-out's write amplification at four index entries per row (PK, unique, list,
+`actor_id`) plus one subject entry — two for `ride_created_in_club`, which sets both `ride_id` and
+`club_id` — instead of eight. `015`'s `rides (club_id, created_at desc) where club_id is not null` is
+the precedent already in this schema.
+
+**Rejected: no subject indexes, on the grounds that only `profiles` keys are mandated.** True to the
+letter and wrong on the reason: deleting a rider cascades to their postcards and rides, and each of
+those cascades here. The unindexed path is reached one level further down, which is the same
+two-level erasure this change's own spec makes a requirement of. Taken as this change's decision for
+that requirement's reason, rather than claimed as compliance with its text.
+
+The retraction delete is served for free: `(user_id, type, actor_id, postcard_id)` is a prefix of the
+uniqueness index.
+
 ## Risks / Trade-offs
 
 | Risk | Mitigation |
@@ -302,10 +437,14 @@ foreground, per the standing revalidation rule.
 | **A fan-out bug takes down five shipped write paths at once** (§D8) | DEV first, all five paths exercised by hand, then PROD. Stated in the migration header, because "purely additive" is the reading a reviewer will default to and it is wrong here |
 | An implementer copies `023`'s `WHEN (CURRENT_USER = 'authenticated')` clause and the fan-out never fires for privileged writes | Stated as a requirement in two specs, and asserted by a test that inserts as the table owner and expects a row |
 | An implementer reaches for `private.is_club_member` in a fan-out; the set becomes everybody or nobody and passes a one-member test | Named in `event-fanout-integrity` as a prohibition rather than a caution. The assertion needs **two** members plus a non-member, or it cannot fail |
+| **The recipient set and the SELECT policy are widened independently and stop agreeing.** The draft shipped an instance: the owner union wrote `ride_created_in_club` rows the policy drops for ever | The per-type mapping table in `event-fanout-integrity`, plus an assertion **per type** that every recipient the fan-out wrote for can read the row back under their own session. An assertion that only counts rows written cannot see this |
+| A retraction scoped by subject alone lets one rider's unlike delete another rider's row — a forged write with the grant model intact | The retraction is scoped by the full key, and asserted with **two** actors. A one-actor assertion cannot fail |
+| The UPDATE policy is left wider than SELECT and the affected-row count discloses a block | UPDATE's predicate is SELECT's, asserted by comparing the affected count against `unread_notification_count()` taken immediately before |
 | A reviewer removes the resolvability conjunct as redundant with the fan-out check | Policy comment at the site, and at least two assertions that fail without it |
+| The actor's `profiles` conjunct is dropped as redundant with the block conjunct | It is not: a rider can null their own `username` in one request, which is a second way out of `profiles` SELECT that has nothing to do with blocking. Asserted with a NULL username and no block |
 | The uniqueness index is written without `NULLS NOT DISTINCT` and silently never fires | An assertion that likes, unlikes and likes again, then counts **1** |
 | 500-row fan-out inside the organizer's transaction | Accepted at this size and recorded as a measured expectation. One `INSERT … SELECT`, index-served recipient query. Revisit at four figures per club |
-| Notifications accumulate with no retention sweep | Recorded as a known gap with an open question and an owner (Q6). Rows still die with their subject, actor and recipient |
+| Notifications accumulate with no time-based retention sweep | The stated window **is** the cascade window — *as long as the subject exists* — written in those words in the migration header, and verifiable by deleting a subject and counting. The sweep is a filed follow-up carrying no number, because a number nothing implements becomes a fact nobody rechecks |
 | The RLS suite runs as the table owner, so a "cannot insert" assertion written as an attempted insert **succeeds and proves nothing** | Every grant assertion names the role — `has_table_privilege('authenticated', …)`, `has_function_privilege(…)`. This is `031`'s lesson and the exact shape of the bug `029` shipped |
 
 ## Migration Plan
@@ -313,6 +452,21 @@ foreground, per the standing revalidation rule.
 `036_notifications.sql`. `035_comment_whitespace_floor` is the highest file and is applied — 35
 files, 35 rows, both databases, verified 2026-08-07. Re-derive with `list_migrations` against
 `ls supabase/migrations/` rather than trusting this line.
+
+**`036` is free against both databases and reserved against nothing else, which is a real hazard
+rather than a formality.** A database query cannot see a sibling proposal, and two unarchived
+changes carry migration work: `enforce-creator-membership` needs **two** files and names them
+`029_creator_membership.sql` and `030_club_member_owner_arm.sql` — **both numbers were taken on
+2026-08-06**, by `029_account_deletion_cascade_support` and `030_terms_version`, so it will
+re-derive into `036`/`037` the moment anyone picks it up. `add-account-deletion`'s remaining groups
+3 and 4 add no migration. `add-ride-chat`'s `034` is applied.
+
+So the collision is with exactly one change, it is live, and whichever is written first takes `036`.
+The check is therefore two commands and not one: `list_migrations` against
+`ls supabase/migrations/` **and** `grep -rn "0[0-9][0-9]_[a-z_]*\.sql" openspec/changes/*/` across
+the unarchived proposals. Numbering is first-come; the loser renumbers before writing a line of SQL,
+because filename order equals apply order and a file whose local order differs from its hosted order
+is a trap this repo has already sprung.
 
 **The order is deliberately the opposite of `034`'s**, and the reason is the only thing about this
 plan worth reading. `034` could go to PROD ahead of its code because nothing existing executed it:
@@ -337,13 +491,25 @@ functions reference a missing relation, which turns every like into an error. Dr
 
 ## Open Questions
 
-Each has a recommended default so the build can proceed and be corrected later. **Q1, Q3, Q4 and Q6
-are the product owner's**; Q2 and Q5 can be settled by `data` and `design-system` respectively.
+Each has a recommended default so the build can proceed and be corrected later.
+
+**Owners.** **Q1, Q2b, Q3, Q4 and Q7 are the product owner's alone** — every one is a product or
+privacy judgement no session can make. Q2 may be settled by `data`/`feature` with the owner able to
+override. Q5 is `design-system`'s. **Q6 is settled and is no longer a question.**
+
+**Two things that were on this list and should not have been.** Q6 carried a number nothing
+implements, which is a decision disguised as a default — now settled as the cascade window. And the
+`Header` two-slot question was delegated in §D9 as "`design-system`'s call" while being an API
+change to a primitive every screen renders; it is an architecture decision, is taken in §D9, and
+never belonged here.
 
 **Q1 — Should `ride_joined` notify the whole crew rather than only the organizer?** *(blocking for
 copy, non-blocking for schema — product owner)*
 The design's own copy is "joined a ride you also joined.", which is written for an attendee, not a
-host. Organizer-only is the quieter start and is what is specced.
+host. Organizer-only is the quieter start and is what is specced. **The copy that follows from that
+choice is Q2b's, not this one's** — this question is about the recipient set and answering it
+"organizer" leaves the drawn string contradicting the answer, which is how that string ended up
+owned by neither question.
 **Default: organizer only.** Widening is a recipient-set change with no schema impact, so it can
 land later without a migration.
 
@@ -353,6 +519,16 @@ settle, owner may override)*
 strings are invented by the issue.
 **Default: use the issue's strings verbatim**, rendered in the same two-line shape as the drawn
 rows.
+
+**Q2b — `ride_joined`'s copy, which is drawn and is wrong for the recipient we chose.** *(blocking
+for copy only, non-blocking for schema — product owner; **this is the owner of the string**)*
+This fell between Q1 and Q2 and nobody held it. Q1 asks *who receives* `ride_joined` and answers
+"the organizer"; Q2 covers only the two **undrawn** types. But the drawn string is *"joined a ride
+you also joined."* — written for an **attendee**, not a host — so accepting Q1's default leaves the
+one type that has a design showing copy that contradicts it. Nothing in either question notices.
+**Default: `joined your ride.`** — the minimal rewrite that matches the organizer-only recipient
+set, in the same two-line shape, and the string reverts to the drawn one on the day Q1 is answered
+the other way. It is a string change with no schema impact either way.
 
 **Q3 — Is a notification a read receipt the actor may learn about?** *(non-blocking — product
 owner)*
@@ -369,15 +545,26 @@ Specced as eviction: the row survives and returns if the block is lifted.
 The design shows the screen inside the Inbox tab, where the question does not arise.
 **Default: no.** The screen is its own destination; the four tab-root screens carry the control.
 
-**Q6 — What is the retention window for notifications, and who builds the sweep?** *(blocking for
-the privacy answer, non-blocking for the build — product owner)*
+**Q6 — SETTLED, not open. The retention window is *as long as the subject exists*.**
 Nothing in this schema has a stated window, and this is the first table whose whole content is a
 record of who interacted with whom and when. There is no `pg_cron` and no scheduled Edge Function,
 so this change can state a window but cannot enforce one. The design's fourth section is literally
 `All time`, which argues against capping the read.
-**Default: state 90 days as the intent, cap nothing, and file the sweep as a follow-up that lands
-with the first scheduled job this project acquires.** A row still dies with its subject, its actor
-and its recipient.
+
+**The window is the cascade window: a row dies with its subject, its actor and its recipient, and
+with nothing else.** That goes in the migration header, in `specs/notifications` and here, in the
+same words.
+
+This question previously defaulted to *"state 90 days as the intent, cap nothing"* while
+`specs/notifications` said *"as long as the subject exists"* — **two different windows in two files,
+and a migration header cannot carry both**. The number is the half that had to go, and not because
+90 days is a bad answer: nothing implements it, so writing it would put an unlabelled guess into the
+one artifact a future session reads as authoritative, which is the failure `CLAUDE.md` §Working
+Principles exists to prevent. The cascade window is true, enforced and verifiable by deleting a
+subject and counting.
+
+A time-based sweep is a **filed follow-up**, landing with the first scheduled job this project
+acquires — an issue, not an open question with a number in it.
 
 **Q7 — Does the badge need a number before the Inbox epic?** *(non-blocking — product owner)*
 `v2 / Component / Notification` is a dot with no text child. The count RPC returns a capped integer

@@ -52,9 +52,47 @@ audience.
 
 ### Requirement: A notification SHALL be dropped by the database when its subject is no longer visible to its recipient, not filtered by a screen
 
-The SELECT policy SHALL require, in addition to `user_id = auth.uid()`, that the row's subject is
-still returned to the caller under the caller's **own** row security — expressed as an `EXISTS`
-against `postcards`, `postcard_comments`, `rides` or `clubs` according to the row's `type`.
+The SELECT policy SHALL require, in addition to `user_id = auth.uid()`, that **every** resource the
+row's copy renders is still returned to the caller under the caller's **own** row security —
+expressed as an `EXISTS` per resource, evaluated under the caller's RLS, and **conjoined** where a
+type renders more than one.
+
+**A type is not limited to one subject table, and stating it as one is how a leak gets specified.**
+`ride_created_in_club` sets both `ride_id` and `club_id`, and renders both — the club's name in the
+copy, the ride as the destination. Naming one table per type forces a choice and both choices are
+wrong: `clubs` alone leaks a public club's private ride (the row renders "created a ride in ‹club›"
+for a ride the rider cannot open), and `rides` alone leaves the club name renderable when the club
+is not. The conjunct set is therefore fixed per type and stated here rather than derived:
+
+| Type | Subject columns | `EXISTS` conjuncts, all required |
+|---|---|---|
+| *(every type)* | `actor_id` | `profiles` — see the actor requirement below |
+| `postcard_liked` | `postcard_id` | `postcards` |
+| `postcard_commented` | `postcard_id`, `comment_id` | `postcards` **AND** `postcard_comments` |
+| `ride_joined` | `ride_id` | `rides` |
+| `club_joined` | `club_id` | `clubs` |
+| `ride_created_in_club` | `ride_id`, `club_id` | `rides` **AND** `clubs` |
+
+**The actor is a rendered resource and therefore a conjunct on every row, not a special case.** Every
+row's copy begins with the actor's username. A row whose actor does not resolve renders nothing, so
+it must not be returned — and an earlier revision of this spec left `profiles` out of the conjunct
+set and pushed the case to the screen, which is the client-side visibility filter this same
+requirement forbids two paragraphs above.
+
+**Ride-implies-club is a derivation from today's policy text and SHALL NOT be relied on to collapse
+the last row to one conjunct.** It holds against `rides` SELECT as measured on 2026-08-07, but that
+policy has already been rewritten twice — by `017` and by `022` — and nothing in this spec or any
+other constrains it to keep the property. The conjunction is cheap and does not go stale; the
+derivation does.
+
+#### Scenario: A type rendering two resources requires both to resolve
+- **WHEN** a `ride_created_in_club` notification is read
+- **THEN** it SHALL be returned only if **both** the ride and the club resolve for the reader
+- **AND** the leak this closes SHALL be asserted directly: a **public** club, a ride whose
+  `is_public` is false, and a reader who has left that club — the club resolves, the ride does not,
+  and the row SHALL NOT be returned
+- **AND** the assertion SHALL NOT be replaced by one relying on ride-visibility implying
+  club-visibility, because that is a property of the current `rides` policy and not of this contract
 
 **This is the whole reason the change stores ids rather than a text snapshot, and it is the
 requirement most likely to be dropped as "we can just filter in the client".** A fan-out-time
@@ -95,10 +133,39 @@ them disagree by construction, and the disagreement is visible as a badge that n
 - **AND** this SHALL hold even if they have hidden their own postcard, because `postcard_hides` is
   an input to the *other* arm of that policy only
 
-#### Scenario: Hiding the postcard a comment sits on retracts the comment notification
-- **WHEN** the recipient can no longer read the comment named in a `postcard_commented` row —
-  because the comment was deleted, or its author was blocked
-- **THEN** the notification SHALL NOT be returned
+#### Scenario: A comment notification stops being returned by three different mechanisms, and they SHALL NOT be conflated
+- **WHEN** a `postcard_commented` notification stops reaching its recipient
+- **THEN** the cause SHALL be one of exactly three, each asserted separately because each is a
+  different mechanism and a single assertion cannot say which fired:
+- **AND** the comment being **deleted** SHALL remove the row outright, by the `comment_id`
+  `ON DELETE CASCADE` — a deletion, not an eviction, so unblocking or restoring nothing brings it
+  back
+- **AND** the commenter being **blocked** SHALL evict it by the `not private.is_blocked(auth.uid(),
+  actor_id)` conjunct on `notifications` itself — not by the `postcard_comments` policy, whose own
+  block arm names the same pair and is therefore redundant here rather than load-bearing
+- **AND** the **postcard** being deleted SHALL remove it by the `postcard_id` cascade, taking the
+  comment with it
+- **AND** an earlier revision of this scenario was titled *"Hiding the postcard a comment sits on
+  retracts the comment notification"*, which asserted the **opposite** of the own-resource scenario
+  above and is false: the recipient of a `postcard_commented` row is by construction the postcard's
+  author, whose own-row arm on `postcards` sits ahead of the hide predicate. A hide retracts nothing
+
+#### Scenario: Hiding your own postcard retracts nothing, which is the deliberate reading
+- **WHEN** the postcard's author hides their own postcard and then reads their notifications
+- **THEN** every `postcard_liked` and `postcard_commented` row naming it SHALL still be returned
+- **AND** this SHALL be asserted rather than inferred, because `postcard_hides` is an input to the
+  `postcards` SELECT policy and it is only the *ordering* of that policy's arms that makes the answer
+  come out this way
+
+#### Scenario: An organizer flipping a ride's own `is_public` is a second, independent retraction path
+- **WHEN** the organizer of a club ride sets `rides.is_public` to false directly, rather than the
+  club being turned private
+- **THEN** riders who received `ride_created_in_club` and have **since left** that club SHALL stop
+  reading it, because neither arm of `rides` SELECT admits them any more
+- **AND** riders who are still members SHALL keep reading it, because the club-member arm does not
+  consult `is_public` at all
+- **AND** both paths SHALL be asserted, because the spec previously named only the club turning
+  private and an organizer can reach the same outcome through a column on their own row
 
 #### Scenario: The resolvability conjunct is not simplified away
 - **WHEN** the SELECT policy is reviewed, refactored or replaced
@@ -185,17 +252,59 @@ correct to any reviewer, because the value in it was true when it was written.
 - **WHEN** a notification names a ride the reader can no longer see
 - **THEN** the title SHALL not be fetchable and the row SHALL not be returned
 
-#### Scenario: The actor's username follows the profiles policy
-- **WHEN** the actor's profile is not returned to the reader — blocked, or `username` NULL
-- **THEN** the row SHALL NOT be rendered with a placeholder name, an id, or "someone"
-- **AND** the block case SHALL already have been excluded by the policy, so a row reaching the
-  screen with an unresolvable actor SHALL be treated as a defect rather than designed around
+#### Scenario: An unresolvable actor evicts the row in the database, because that state is reachable
+- **WHEN** the actor's profile is not returned to the reader — blocked, **or `username` NULL**
+- **THEN** the row SHALL NOT be returned by the SELECT policy, by the same `EXISTS` mechanism the
+  subject uses, so the unread count falls with the list in the same instant
+- **AND** the row SHALL NOT be rendered with a placeholder name, an id, or "someone"
+- **AND** no component SHALL drop it after the fact, which is what an earlier revision of this
+  contract prescribed — *"render nothing for a row whose actor does not resolve"* — and which is
+  simultaneously a nonzero count over an empty list and a component-level visibility filter, both
+  forbidden by this change's own `client-cache-invalidation` delta
+
+#### Scenario: The NULL-username state is reachable today and the contract SHALL NOT assume it closed
+- **WHEN** the reachability of an unresolvable actor is assessed
+- **THEN** it SHALL be recorded as **reachable in one request by any rider**, verified against
+  `zwprydcyryvudhurbnye` on 2026-08-07, and not as a defect that cannot occur:
+  `has_column_privilege('authenticated','public.profiles','username','UPDATE')` is **true**; the
+  CHECK is `username IS NULL OR username ~ '^[a-z0-9_]{3,20}$'`, which NULL passes; and
+  `enforce_onboarding_completion` guards only `terms_accepted_at` and `onboarding_completed_at` —
+  for an already-onboarded rider it pins completion and **returns early**, so `username` is never
+  reached
+- **AND** the consequence SHALL be stated: `profiles` SELECT is
+  `(auth.uid() = id) OR (username IS NOT NULL AND NOT is_blocked(…))`, so a rider who nulls their
+  username vanishes from every other rider's read of them while their notification rows survive
+- **AND** the eviction SHALL be an eviction rather than a deletion — restoring the username SHALL
+  return every row, with its original `created_at` and read state — because the underlying hole is
+  somebody else's to close and this change SHALL behave correctly whether it is open or shut
+- **AND** the hole itself SHALL be filed as its own issue rather than fixed here, because a
+  column-privilege change on `profiles` is not this change's blast radius
 
 ### Requirement: A rider SHALL NOT be able to write, forge, retitle or dismiss a notification
 
 `authenticated` SHALL hold **no INSERT grant** on `notifications` and the table SHALL carry **no
 INSERT policy**. `authenticated` SHALL hold **no DELETE grant** and no DELETE policy. UPDATE SHALL
-be confined to `read_at`, on the caller's own rows only.
+be confined to `read_at`, on the caller's own rows only, and **the UPDATE policy's predicate SHALL
+be identical to the SELECT policy's** — the same recipient, block and resolvability conjuncts, in
+both `using` and `with check`.
+
+**No write path SHALL reach a row no read path returns**, and this is the specific rule rather than a
+general instinct. An UPDATE policy of `user_id = auth.uid()` alone is *wider* than SELECT, so `update
+notifications set read_at = now() where read_at is null` touches rows the rider cannot see, and the
+affected-row count PostgREST reports is a number they can compare against the list they were shown.
+The difference is the count of hidden rows, and the commonest reason a row is hidden is a block —
+which this change elsewhere requires SHALL never be disclosed by *"any gap, count or marker"*. A
+wider UPDATE policy is that marker.
+
+An earlier revision made the widening deliberate, so that "mark all read" would clear evicted rows
+too. That justification does not survive inspection: an evicted row is in neither the count nor the
+list, so leaving it unread has no observable effect, and if the eviction is later reversed — the
+block lifted, the club rejoined, the username restored — the row returning **unread** is the correct
+answer, because the rider never saw it.
+
+Whether PostgREST surfaces the affected-row count on a `PATCH` is not the load-bearing question and
+SHALL NOT be treated as one: a write reaching a row a read cannot is a contract defect whether or not
+today's client library happens to expose the number.
 
 The client owns the mutation path. A client that can insert a notification can forge one — "Zola
 liked your postcard" from a rider who did not — and can decline to write the ones it should. The
@@ -228,6 +337,23 @@ delete the evidence that they were told something.
 #### Scenario: A rider cannot mark somebody else's notification read
 - **WHEN** a rider updates `read_at` on a row whose `user_id` is not their own
 - **THEN** the statement SHALL match zero rows and change nothing
+
+#### Scenario: Mark-all-read touches exactly the rows the list shows
+- **WHEN** the recipient holds unread notifications of which some are evicted — by a block, by an
+  unresolvable subject, or by an unresolvable actor — and they mark all read
+- **THEN** the number of rows affected SHALL equal the number the unread count reported, exactly
+- **AND** the evicted rows SHALL be untouched, so no arithmetic on the response can reveal that any
+  exist
+- **AND** this SHALL be asserted by comparing the affected count against
+  `unread_notification_count()` taken immediately before, rather than by inspecting the table as the
+  owner, because the owner sees the rows the policy hides
+
+#### Scenario: An eviction that is reversed returns the row unread
+- **WHEN** a block is lifted, a club rejoined, or an actor's username restored after the recipient
+  marked everything read
+- **THEN** the returning row SHALL still be unread if it was unread when it was evicted
+- **AND** that SHALL be the intended behaviour rather than a leak, because the rider genuinely has
+  not seen it
 
 #### Scenario: `created_at` is server-owned
 - **WHEN** a notification is written
@@ -273,6 +399,21 @@ clubs and postcards.
 - **AND** the recipient's unread count SHALL fall if it was unread, which SHALL be accepted rather
   than compensated for
 
+#### Scenario: Leaving a club or a ride retracts nothing, and that SHALL be stated rather than left silent
+- **WHEN** the actor of a `club_joined` row deletes their `club_members` row, or the actor of a
+  `ride_joined` row deletes their `ride_members` row
+- **THEN** the notification SHALL survive, unchanged, for as long as its subject and both parties do
+- **AND** the recipient SHALL keep reading "joined club ‹club›" about a rider who has since left,
+  which is correct because the row records an **event at an instant** — `created_at` is that instant
+  — and not a standing claim about the present
+- **AND** `postcard_unliked` SHALL be understood as the **exception** rather than the pattern it
+  generalises: a like is a one-tap toggle, so without a retraction it is an unbounded notification
+  generator aimed at another rider, which is a harassment argument and not a truthfulness one
+- **AND** no `AFTER DELETE` trigger SHALL be added on `club_members` or `ride_members`, because a
+  retraction hanging off a DELETE the **actor** controls is a rider-aimed delete of another rider's
+  row in a table no rider may write — the hazard `event-fanout-integrity`'s retraction-scoping
+  requirement exists to bound, accepted once for likes and not a second time
+
 #### Scenario: Deleting the ride destroys its notifications
 - **WHEN** a ride is deleted
 - **THEN** every `ride_joined` and `ride_created_in_club` notification naming it SHALL be removed
@@ -305,6 +446,59 @@ clubs and postcards.
   `private.transfer_owned_clubs`
 - **THEN** notifications naming that club SHALL survive, because the club survives
 - **AND** only rows whose `actor_id` was the departing rider SHALL be removed
+
+### Requirement: Every cascade path into `notifications` SHALL be indexed
+
+Each of the six foreign keys on `notifications` SHALL have an index Postgres can use to find the
+referencing rows, so that every delete that reaches this table is an index scan rather than a
+sequential scan holding locks.
+
+**`add-account-deletion` already carries this as a standing rule and this change is the first table
+it applies to**: *"Every foreign key referencing `public.profiles` SHALL have an index Postgres can
+use"*, and *"WHEN a future migration adds a table referencing `profiles` THEN it SHALL add the index
+in the same file"*. `036` adds two such keys — `user_id` and `actor_id`. Only `user_id` is served by
+the list index; `actor_id` sits **third** in the uniqueness index and so cannot lead a lookup. That
+requirement is therefore unmet by the draft, and an unindexed `actor_id` is a sequential scan of
+every notification in the table for every account deletion.
+
+The four subject keys are not covered by that requirement's literal text — they reference
+`postcards`, `postcard_comments`, `rides` and `clubs`, not `profiles` — but they sit on the **same
+cascade**, one level further down: deleting a rider cascades to their postcards and rides, and each
+of those cascades here. Indexing them is therefore this change's own decision, taken for the
+requirement's reason rather than under its letter, and it is recorded as such rather than claimed as
+compliance.
+
+**The subject indexes SHALL be partial** — `where <column> is not null` — because most rows leave
+most subject columns NULL. A partial index enters only the rows that use it, so a `postcard_liked`
+row costs one subject-index entry rather than four, and the fan-out's write amplification stays at
+four index entries per row rather than eight. `015`'s `rides (club_id, created_at desc) where club_id
+is not null` is the precedent in this schema.
+
+#### Scenario: `actor_id` leads an index of its own
+- **WHEN** the migration is written
+- **THEN** `actor_id` SHALL have an index leading with it
+- **AND** its position in the uniqueness index SHALL NOT be offered as covering it, because a
+  non-leading column cannot serve the lookup
+
+#### Scenario: The four subject keys are indexed, partially
+- **WHEN** the migration is written
+- **THEN** `postcard_id`, `comment_id`, `ride_id` and `club_id` SHALL each have an index
+- **AND** each SHALL be partial on its own column being non-NULL
+
+#### Scenario: The check is derived, not remembered
+- **WHEN** this change or any later one adds a foreign key to `notifications`
+- **THEN** the index set SHALL be verified by querying `pg_index` for FK columns lacking a
+  leading-column index, matching the derivation `add-account-deletion` requires
+- **AND** the count SHALL be **six FK columns, six usable indexes**, verified against the live
+  database after apply rather than asserted from the file
+
+#### Scenario: These indexes are not the speculative ones the fan-out spec forbids
+- **WHEN** the prohibition in `event-fanout-integrity` — *"no additional index SHALL be added
+  speculatively for a query no screen issues"* — is applied to this set
+- **THEN** it SHALL NOT forbid them, because a cascade is a delete path with a standing requirement
+  behind it and not a read query anyone chose to issue
+- **AND** the two requirements SHALL each name the other, because as first drafted they contradicted
+  each other and neither mentioned it
 
 ### Requirement: The unread count and the notification list SHALL agree by construction
 
@@ -439,24 +633,77 @@ row lands between pages, which here happens while the rider is reading.
 - **THEN** read and unread notifications SHALL appear in the same chronological list
 - **AND** there SHALL be no separate "unread" tab or filter, because the design draws none
 
+### Requirement: Every string and mark on the row SHALL name the token it renders
+
+The notification row's own text SHALL be built from named v2 type tokens read from the committed
+snapshot, and the unread mark's contrast SHALL be recorded rather than re-estimated.
+
+An earlier revision specified the row's geometry — 72px, a two-line block, a trailing 56×56
+thumbnail — and named a token for **neither** of its two text lines, which leaves the one decision a
+`design-system` agent cannot make from geometry alone.
+
+Measured 2026-08-07 from `design/`, offline, via `npm run figma -- text "Inbox - Notifications"`:
+
+| Element | Token |
+|---|---|
+| Line one — actor username | `Poppins/16/Semibold` (16/24, w600) |
+| Line one — relative stamp (`2m`, `1d`, `2w`) | `Poppins/14/Regular` (14/20, w400) |
+| Line two — the copy | `Poppins/14/Regular` (14/20, w400) |
+| Section title — Today / Yesterday / This week / All time | `Poppins/20/Semibold` (20/30, w600) |
+
+#### Scenario: The row's two lines render the measured tokens
+- **WHEN** the notification row is built
+- **THEN** each of its text nodes SHALL render the token named above
+- **AND** none SHALL be inferred from a nearby component, because the design draws the actor's name
+  one step heavier and larger than the copy beneath it and a single-token row loses that
+
+#### Scenario: `SectionHeader` already carries the section token
+- **WHEN** the day sections are rendered
+- **THEN** the existing `SectionHeader` SHALL be used unchanged, because its `text-xl
+  font-semibold` is `Poppins/20/Semibold` — checked, not assumed
+- **AND** a new section component SHALL NOT be built
+
+#### Scenario: The unread mark's contrast is recorded, not re-estimated
+- **WHEN** the unread dot is built from `v2 / Component / Notification`
+- **THEN** its contrast SHALL be recorded as **4.22:1** — `Warning/100` `#D92140` on `Grey/5`
+  `#F2ECE6`, computed 2026-08-07 — against the 3:1 bar that applies to a non-text component
+- **AND** it SHALL be recorded as **passing**, so that a later pass does not re-derive it
+- **AND** the 4.5:1 text bar SHALL NOT be applied to it, because it carries no text child
+
 ### Requirement: Notifications SHALL have a stated retention, and its absence SHALL be a decision
 
-Notifications SHALL be removed with their subject, their actor and their recipient. Any further
-retention rule SHALL be stated rather than left unstated, and the absence of a sweep SHALL be
-recorded as an open question with an owner.
+**The retention window for `notifications` is: as long as its subject exists.** Rows are removed with
+their subject, their actor and their recipient, by cascade, and by nothing else. That is the whole
+window and it SHALL be written into the migration header in those words.
+
+**It is one window, stated once.** An earlier revision of this change stated two — this requirement
+said *"as long as the subject exists"* while `design.md` defaulted to *"state 90 days as the intent,
+cap nothing"* — and a migration header cannot carry both. The number is the one that had to go:
+nothing implements it, no `pg_cron` and no scheduled Edge Function exist in this project, so a
+90-day claim would be an unlabelled guess promoted to a fact in the one artifact a future session
+reads as authoritative. The cascade window is true, enforced, and verifiable by deleting a subject
+and counting.
 
 A notification is personal data about a relationship: it records that a named rider interacted with
 another named rider's content at a named instant, and it accumulates one row per interaction for
 ever. It is more disclosive in aggregate than any single row it points at. The brief's standing
 rule is that anything holding personal data needs a stated window **at creation**.
 
-#### Scenario: There is no automatic expiry, and that is recorded rather than assumed
+#### Scenario: The stated window is the cascade window, and no number is written beside it
 - **WHEN** this change ships
-- **THEN** no scheduled deletion SHALL exist, because this project has no `pg_cron` and no
-  scheduled Edge Function
-- **AND** retention SHALL therefore be understood as *as long as the subject exists*
-- **AND** this SHALL be an open question owned by the product owner with a stated default, not an
-  omission
+- **THEN** the retention window SHALL be recorded as *as long as the subject exists*, in the
+  migration header, in this spec and in `design.md`, in the same words
+- **AND** no time-based figure — 90 days or any other — SHALL appear as the window, because nothing
+  implements one and a number nothing implements becomes a fact nobody rechecks
+- **AND** a time-based sweep SHALL be filed as a **follow-up issue**, landing with the first
+  scheduled job this project acquires, rather than left as an open question whose default is a number
+
+#### Scenario: The window is verifiable rather than declared
+- **WHEN** the window is checked
+- **THEN** deleting a postcard, a comment, a ride, a club, an actor or a recipient SHALL be shown to
+  remove the matching rows
+- **AND** that SHALL be the evidence for the retention claim, which is the property a stated number
+  would not have had
 
 #### Scenario: The read is not capped, and that follows the design
 - **WHEN** the list is paged to its end
@@ -504,6 +751,17 @@ applies to the buttons it omits.
   action — `/profile` and its `ProfileMenu` is the only one today
 - **THEN** both controls SHALL be present, matching the design's two 40×40 controls at x302/x342
 - **AND** neither SHALL be removed, hidden behind the other, or moved into the other's menu
+
+#### Scenario: How `Header` carries two controls is an architecture decision, not a styling one
+- **WHEN** the mechanism is chosen — a second named slot, or an `action` that accepts a fragment
+- **THEN** it SHALL be recorded as an **architecture decision in `design.md`**, with the option not
+  taken and why, rather than delegated as "`design-system`'s call"
+- **AND** the reason SHALL be that `Header` is a primitive every screen in the app renders, its
+  `action` slot is already consumed by `/profile` and `RideHeader`, and this is the **only** change
+  in this proposal that touches code outside `src/**/notifications/` — so its blast radius is the
+  whole app rather than one screen
+- **AND** the decision SHALL be taken before `§4` starts, because both call sites have to be written
+  against whichever shape is chosen
 
 #### Scenario: Detail screens get no notification control
 - **WHEN** a detail screen renders its header

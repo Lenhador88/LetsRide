@@ -165,13 +165,39 @@ everybody or nobody, and it looks correct in a one-member test. `private.is_bloc
 `private.is_club_public(club)` take their subject as an argument and are the only two a fan-out may
 use.
 
-#### Scenario: Club recipients include the owner even with no membership row
-- **WHEN** a club's `owner_id` holds no `club_members` row — which `createClub`'s two
-  non-transactional inserts make reachable, and which `enforce-creator-membership` exists to fix
-- **THEN** the owner SHALL still be in the recipient set for `club_joined` and
-  `ride_created_in_club`
-- **AND** the set SHALL be `clubs.owner_id` **∪** `club_members`, matching the organizer-arm
-  reasoning `034` applied to ride crew
+#### Scenario: The owner union applies to `club_joined` and NOT to `ride_created_in_club`
+- **WHEN** a club's `owner_id` holds no `club_members` row
+- **THEN** the `club_joined` recipient set SHALL be `clubs.owner_id` **∪** `club_members`, because
+  `clubs` SELECT carries an `owner_id = auth.uid()` arm and the row therefore resolves for them
+- **AND** the `ride_created_in_club` recipient set SHALL be `club_members` **alone**, because the
+  only arm of `rides` SELECT admitting a club's members is
+  `club_id IS NOT NULL AND private.is_club_member(club_id)`, and `private.is_club_member` queries
+  `club_members` with **no owner arm** — so a row written to an ownerless owner is one the SELECT
+  policy drops on every read, permanently
+- **AND** the asymmetry SHALL be recorded at both sites, because the two sets read as
+  interchangeable and are not: what differs is the **subject's** policy, not the club
+
+#### Scenario: The ownerless-owner state is reachable in one request, not only by a failed pair
+- **WHEN** the reachability of an ownerless owner is assessed
+- **THEN** it SHALL be recorded that `club_members` DELETE is a bare `(auth.uid() = user_id)` with
+  **no owner carve-out** — verified 2026-08-07 — so any owner may leave their own club and keep
+  ownership in a single request
+- **AND** `createClub`'s two non-transactional inserts SHALL be recorded as a *second* route to the
+  same state rather than as the only one, because a design that assumes the failure is rare
+  under-weights a state a rider can reach deliberately
+
+#### Scenario: The narrowing is a consequence of a defect and SHALL NOT be defended as a preference
+- **WHEN** the `ride_created_in_club` recipient set is reviewed
+- **THEN** its reason SHALL be recorded as a pre-existing defect rather than as a decision that
+  owners do not want the notification: an ownerless owner **cannot see their own private club's
+  rides at all today**, and `rides` INSERT's own `with check` — `club_id IS NULL OR
+  private.is_club_member(club_id)` — refuses them a ride in their own club
+- **AND** a notification SHALL NOT be the one surface that pretends otherwise, because a row that
+  renders "created a ride in ‹club›" for a ride whose detail screen returns not-found is worse than
+  no row
+- **AND** when `enforce-creator-membership` lands, every owner SHALL hold a membership row, the two
+  sets SHALL coincide, and this narrowing SHALL become invisible rather than needing reversal
+- **AND** this change SHALL NOT depend on that change landing first, in either order
 
 #### Scenario: Club recipients are exactly that club's members
 - **WHEN** a ride is created in a club, or a rider joins a club
@@ -215,6 +241,88 @@ use.
   be unreachable through the client, which SHALL be recorded rather than defended against
 - **AND** the row SHALL survive that rider later leaving the club, because the organizer's own arm
   of the `rides` policy keeps the subject resolvable for them
+
+### Requirement: A fan-out SHALL NOT write a row that the read policy can never return to its recipient
+
+For every type, the recipient set SHALL be a **subset** of the set to which the `notifications`
+SELECT policy will return that row. A row that the policy drops on every read from the instant it is
+written SHALL be treated as a defect in the fan-out, not as a row awaiting a policy change.
+
+**This is the rule that catches the class of bug, and this change shipped an instance of it in
+draft.** The recipient set and the resolvability conjunct are written in different places, by
+different reasoning, and a widening on one side is invisible from the other. The failure has no
+symptom: nothing raises, no count moves, no assertion fails, and the row accumulates until its
+subject is deleted. It is the write-side mirror of the read-side rule that a notification's
+correctness at write time says nothing about its correctness at read time.
+
+The mapping SHALL be stated per type and checked whenever **either** side changes:
+
+| Type | Recipient set | The policy arm that returns it |
+|---|---|---|
+| `postcard_liked` | `postcards.author_id` | `postcards` SELECT `author_id = auth.uid()` |
+| `postcard_commented` | `postcards.author_id` | `postcards` SELECT `author_id = auth.uid()`, and `postcard_comments` SELECT, which inherits it by `EXISTS` |
+| `ride_joined` | `rides.organizer_id` | `rides` SELECT `organizer_id = auth.uid()` |
+| `club_joined` | `clubs.owner_id` ∪ `club_members` | `clubs` SELECT `owner_id = auth.uid() OR private.is_club_member(id)` — both arms present, so the union is safe |
+| `ride_created_in_club` | `club_members` **only** | `rides` SELECT `club_id IS NOT NULL AND private.is_club_member(club_id)` — **no owner arm**, which is why the union is not safe here — **and** `clubs` SELECT, which the club-member arm satisfies |
+
+#### Scenario: Every type's recipient set is checked against its resolving policy arm
+- **WHEN** a type is added, or a recipient set or a subject policy is changed
+- **THEN** the table above SHALL be re-derived from the live policy text rather than recalled
+- **AND** a recipient set that is not a subset of the resolving set SHALL fail review
+
+#### Scenario: A row nobody can ever read is a defect, not a latent feature
+- **WHEN** a fan-out would write a row whose recipient the SELECT policy cannot return it to
+- **THEN** the row SHALL NOT be written
+- **AND** widening the SELECT policy to admit it SHALL NOT be the repair, because that would let a
+  notification resolve for a subject whose own screen still refuses the rider — the row would render
+  and its destination would not open
+
+#### Scenario: The check is asserted, not only reviewed
+- **WHEN** the RLS suite exercises a fan-out
+- **THEN** each type SHALL assert that every recipient the fan-out wrote for can **read** the row
+  back under their own session
+- **AND** an assertion that only counts rows written SHALL NOT be accepted as covering this, because
+  the whole failure is a row that exists and is unreadable
+
+### Requirement: A retraction SHALL delete exactly the row its matching fan-out would have written
+
+The `AFTER DELETE` retraction on `postcard_likes` SHALL scope its delete by the **full** key the
+insert would have used — `user_id`, `type`, `actor_id` and `postcard_id` together — and SHALL NOT
+match on any subset of it.
+
+**A retraction scoped by `type + postcard_id` alone is a write one rider can aim at another
+rider's row**, in the one table in this schema whose entire premise is that no rider can write to it.
+Rider A unliking a postcard would delete rider B's `postcard_liked` notification for the same
+postcard: A holds no grant on `notifications`, but the trigger does, and the trigger is running on A's
+delete. That is a forged write with the grant model intact, and it is reachable with one tap by any
+rider who can see the postcard. `actor_id` is what makes it A's own row and nobody else's;
+`user_id` is what stops a future type that notifies more than one recipient from being cleared
+wholesale.
+
+The scope is index-served for free: the uniqueness index leads `(user_id, type, actor_id,
+postcard_id, …)`, so the four-column predicate is a prefix of it.
+
+#### Scenario: One rider's unlike does not clear another rider's notification
+- **WHEN** riders A and B have both liked the same postcard, and A unlikes it
+- **THEN** A's `postcard_liked` notification SHALL be removed and B's SHALL survive
+- **AND** this SHALL be asserted with two actors, because a single-actor assertion cannot fail
+
+#### Scenario: The retraction cannot reach another recipient's row
+- **WHEN** the retraction runs
+- **THEN** it SHALL match on `user_id` as well as on the actor and the subject
+- **AND** no retraction SHALL be written as a delete over a subject alone
+
+#### Scenario: The retraction fires on a cascaded delete and that is bounded rather than ignored
+- **WHEN** `postcard_likes` rows are removed by a cascade — a postcard being deleted, or an account
+  deletion reaching them through `postcard_likes.user_id → profiles` — rather than by a rider's tap
+- **THEN** the row-level `AFTER DELETE` trigger SHALL fire once per cascaded row, inside the
+  deletion's own transaction, which SHALL be recorded rather than discovered
+- **AND** the work SHALL be bounded by the retraction being an index-prefix delete rather than a scan
+- **AND** the result SHALL be harmless because the same rows are removed by
+  `notifications.postcard_id`'s and `notifications.actor_id`'s own cascades, so the retraction is at
+  worst redundant and never wrong
+- **AND** the redundancy SHALL NOT be removed by adding a `pg_trigger_depth()` or `TG_OP` guard,
+  because a guard that skips the cascade case is one refactor away from skipping the rider case
 
 ### Requirement: An event SHALL produce at most one live notification per recipient, and repeating it SHALL NOT stack
 
@@ -309,8 +417,18 @@ expectation rather than an assumption.
 - **WHEN** the recipient set is computed
 - **THEN** it SHALL be served by an existing index on `club_members` rather than a sequential scan
 
-#### Scenario: The list index serves the write as well as the read
+#### Scenario: The write's index cost is stated, and a cascade index is not a speculative one
 - **WHEN** 500 rows land for 500 recipients
-- **THEN** the `(user_id, created_at desc)` index SHALL be the only one the insert maintains beyond
-  the primary key and the uniqueness constraint
-- **AND** no additional index SHALL be added speculatively for a query no screen issues
+- **THEN** the indexes the insert maintains SHALL be the primary key, the uniqueness constraint, the
+  `(user_id, created_at desc)` list index, the `actor_id` cascade index, and **only those partial
+  subject indexes whose column is non-NULL on the row** — two for a `ride_created_in_club` row, one
+  for the other four types
+- **AND** no additional index SHALL be added for a **read query no screen issues**, which is the
+  prohibition this scenario carries and the whole of it
+- **AND** an index on a **cascade path** SHALL NOT be read as caught by that prohibition, because a
+  cascade is a delete path with a standing requirement behind it rather than a query anyone chose to
+  write — see `specs/notifications` §*Every cascade path into `notifications` SHALL be indexed*
+- **AND** an earlier revision of this scenario said "the `(user_id, created_at desc)` index SHALL be
+  the only one the insert maintains", which forbade exactly the indexes
+  `add-account-deletion`'s `The cascade SHALL be indexed on every path it walks` requires; the two
+  requirements collided and neither named the other
