@@ -317,7 +317,7 @@ build work, the rest are the owner's.
 |---|---|---|
 | 1 | **The shell itself** | **Started 2026-08-07.** `capacitor.config.ts` and the secure store are in; `ios/` and `android/` are not, and cannot be generated here. **Gated on the static-export route decision** — see §The shell, below |
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
-| 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `grep -c "Icon: " src/components/layout/Navbar.tsx` is 4. (Not `href:`, which reads 8: `STICKY_ACTIONS` uses it too.) The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
+| 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | **No edit or delete UI for rides or clubs** | Create a ride, never cancel or correct it. **Narrower than "anywhere", corrected 2026-08-07** — postcards, comments and profile all have working delete/update UI. For rides and clubs there is no action *at all* (no `deleteRide`, `updateRide`, `deleteClub`, `updateClub`), while all four RLS policies exist live. So it is an empty action layer, not an unwired UI |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON**, measured 2026-08-06 | Not a store blocker after all; the decision #6 text was wrong, not the setting. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below. **Owner** still decides whether DEV wants it off |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
@@ -582,11 +582,18 @@ text they should converge on. Read it before archiving either.
 - **Inbox has no route and no tables, and as of 2026-08-07 it has no tab either.** The owner
   decided PD-100's open question — *build the epic, or hide the tab* — in favour of hiding it,
   so the nav is **four tabs**: Home, Rides, Clubs, Profile. Verify rather than trust this line,
-  because it is the one that has been wrong twice already:
-  `grep -n "Icon: " src/components/layout/Navbar.tsx`. **Count on `Icon: `, not on `href:`** —
-  the obvious one reads 8, because `STICKY_ACTIONS` maps a route to a button that also has an
-  `href`. Same class of error as the comment trap in `CLAUDE.md`: the grep catches more than the
-  thing being counted. The `UNBUILT` set, the `aria-disabled`
+  because it is the one that has been wrong twice already — and **scope the range before you
+  count**:
+
+  ```bash
+  sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep -c "href:"
+  ```
+
+  A bare `grep -c "href:"` on that file reads **9**, not 4: four nav rows, four `STICKY_ACTIONS`
+  entries, and the `href: string` inside the `Record` type annotation. **This note shipped
+  on 2026-08-07 claiming 8**, because its author measured `href: '` — with the quote — and then
+  wrote the unquoted form into the docs. A warning about miscounting, off by one, for the same
+  reason it was warning about. The `UNBUILT` set, the `aria-disabled`
   span and the `MailboxIcon` import all went with it — there is no disabled-tab machinery left
   to reuse, which is deliberate.
 
