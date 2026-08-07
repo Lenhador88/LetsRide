@@ -42,6 +42,33 @@ type HeaderProps = {
    */
   action?: React.ReactNode
   /**
+   * A second 40×40 control, immediately to the left of `action` at x302 —
+   * `design.md` §D9's decision, taken for `add-notifications` (PD-118) and
+   * implemented here rather than left to a per-screen workaround, because
+   * `Header` is a primitive every screen renders and `action` already has two
+   * call sites. **A second named slot, not `action` accepting a fragment**:
+   * the rejected alternative made position implicit in child order, so the
+   * notification icon would land at x342 and the menu at x302 with nothing to
+   * catch the swap, and it silently changes what every existing `action`
+   * caller means without touching their code. `secondaryAction` costs one prop
+   * and leaves both of today's `action` callers (`/profile`'s `<ProfileMenu
+   * />`, `RideHeader`'s chat button) untouched.
+   *
+   * Fixed at x302 regardless of whether `action` is present — measured off
+   * `Ride - Ride plan - Sub pages` (`2375:9114`), where Chat sits at x302 and
+   * Options at x342, two adjacent 40px buttons with no gap between them. The
+   * two slots are absolutely positioned, like `action` and `backHref`, and
+   * deliberately do not renegotiate around each other: on `/profile`, where
+   * both are passed at once, the notification control lands at x302 whether
+   * or not `ProfileMenu` is there. Nothing in the design draws this exact
+   * pairing on a tab-root screen — the four tab roots (`/postcards`, `/rides`,
+   * `/clubs`, `/profile`) get a notifications entry point only because PD-118
+   * added one on top of a v2 design that still had its own Inbox tab; logged
+   * as inferred-by-extension in `docs/FIGMA-FIDELITY-TODO.md` rather than
+   * claimed as measured for that composition.
+   */
+  secondaryAction?: React.ReactNode
+  /**
    * Rendered immediately before the title, inside the same centred group — the
    * 28px avatar `v2 / Component / Header` draws in its `Type=Club` and
    * `Type=User` shapes. This file used to say that title was "still not built";
@@ -65,11 +92,15 @@ type HeaderProps = {
  * y56, switcher row centred at y88.
  *
  * The design also puts two 40×40 icon controls at x302/x342 of that header —
- * chat and an overflow menu. **Chat is built as of `034`** and uses the `action`
- * slot; the overflow menu is still absent, because the flow never draws what its
- * sheet contains and an action row with nothing behind it is a worse artifact
- * than an absent one. See `RideHeader` for the full reasoning and
- * docs/FIGMA-FIDELITY-TODO.md §Ride detail for the log.
+ * on the ride screen, chat and an overflow menu. **Chat is built as of `034`**
+ * and uses the `action` slot (x342); the ride's overflow menu is still absent,
+ * because the flow never draws what its sheet contains and an action row with
+ * nothing behind it is a worse artifact than an absent one. See `RideHeader`
+ * for the full reasoning and docs/FIGMA-FIDELITY-TODO.md §Ride detail for the
+ * log. **The x302 slot itself is now a named prop, `secondaryAction`** — see
+ * its own docstring above for why it is a second slot rather than `action`
+ * taking a fragment, and note `RideHeader` does not use it: its one button
+ * still renders through `action`, at x342, unchanged.
  *
  * The design's 48px top padding is the iOS status bar, which the OS draws over the
  * frame. A browser has no status bar there, so reproducing 48px literally would
@@ -80,7 +111,15 @@ type HeaderProps = {
  * The avatar-and-name title of `Type=User` / `Type=Club` is `titleLeading`,
  * built for the club detail. The profile screen does not use it yet.
  */
-export function Header({ title, backHref, subRow, action, titleLeading, className }: HeaderProps) {
+export function Header({
+  title,
+  backHref,
+  subRow,
+  action,
+  secondaryAction,
+  titleLeading,
+  className,
+}: HeaderProps) {
   return (
     <header
       className={cn(
@@ -115,7 +154,11 @@ export function Header({ title, backHref, subRow, action, titleLeading, classNam
           )}
         </div>
         {/* Absolute for the same reason the back button is: the title centres on
-            the header, so neither control may take part in its flex row. */}
+            the header, so neither control may take part in its flex row.
+            `secondaryAction` sits at `right-10` (40px) — one button-width to
+            the left of `action` at `right-0` — fixed regardless of whether
+            `action` is present, per the docstring above. */}
+        {secondaryAction && <div className="absolute right-10">{secondaryAction}</div>}
         {action && <div className="absolute right-0">{action}</div>}
       </div>
       {subRow && <div className="flex h-5 items-center justify-center">{subRow}</div>}

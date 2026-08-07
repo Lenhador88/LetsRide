@@ -851,6 +851,69 @@ Poppins/16/Semibold.
       the design to undo them from, so this needs a frame before it needs code — but a rider
       who blocks someone by mistake currently cannot reverse it in the app.
 
+### Notifications — design-system pieces built 2026-08-07 (PD-118 §4)
+
+Source: `Inbox - Notifications` (`2322:8395`) and `v2 / Component / Notification` (`2370:7297`),
+both measured (`npm run figma -- tree "Inbox - Notifications"` /
+`npm run figma -- text "Inbox - Notifications"`). Scope was exactly `openspec/changes/
+add-notifications/tasks.md` §4.1–§4.7 — the row, the dot, `Header`'s second slot and
+`MailboxIcon`; the route, page, data functions and actions are a separate pass.
+
+- [x] **`NotificationRow`** (`src/components/ui/NotificationRow.tsx`) — 72px, two-line text
+      block (`Poppins/16/Semibold` name + `Poppins/14/Regular` stamp on line one,
+      `Poppins/14/Regular` copy on line two), optional trailing 56×56 thumbnail. A new
+      component, not a `ListUser` prop, per `design.md` §D9.
+- [ ] **The composite double-avatar leading treatment is not reproduced.** Two of the drawn
+      types (`ride_joined`, `ride_created_in_club`) show two overlapping 36px avatars inside
+      the 56px leading frame rather than one — the mock does not name whose second avatar it
+      is (the organizer's? the viewer's own?), and guessing would be exactly the kind of
+      unlabelled inference `CLAUDE.md` §Working Principles forbids. `NotificationRow` renders
+      a single leading avatar for every type. Needs a designer answer before it is built.
+- [ ] **The trailing thumbnail's corner radius is applied uniformly (`radius 4`, clipped),
+      not per subject.** The drawn frame actually varies it — square for a postcard photo,
+      `radius 4` for a ride's map thumbnail with its `Location Filled` pin overlay, and an
+      `Avatar`-shaped (more rounded) trailing image for `club_joined`. `NotificationRow`
+      exposes `trailing` as a plain `ReactNode` in a single fixed 56×56 rounded, clipped
+      container; a caller wanting the postcard's square treatment or the pin overlay composes
+      it inside that slot, or this component grows a `trailingVariant` prop once a real screen
+      needs the distinction to be different in practice, not just in the mock.
+- [x] **`NotificationDot`** (`src/components/ui/NotificationDot.tsx`) — `v2 / Component /
+      Notification`, 16×16, `Warning/100` fill with a 3px `Grey/5` inside ring, no text child.
+      **Contrast independently computed** (not copied from `design.md`): `#D92140` on
+      `#F2ECE6` is **4.22:1**, against the WCAG **3:1** non-text bar (no text child, so 4.5:1
+      does not apply). Passes.
+- [ ] **No per-row unread state.** The drawn frame shows every row identically — there is no
+      read/unread visual difference on an individual row anywhere in the design, only on the
+      header control that opens the screen. `NotificationRow` therefore carries no `unread`
+      prop. If the product wants a per-row treatment later, it needs a design decision first,
+      not an invented one here.
+- [x] **`Header` gains `secondaryAction`** (`src/components/layout/Header.tsx`) — a second
+      40×40 slot at `right-10` (x302), alongside the existing `action` at `right-0` (x342).
+      Per `design.md` §D9, taken as an architecture decision rather than reopened here. Both
+      existing `action` callers (`/profile`'s `<ProfileMenu />`, `RideHeader`'s chat button)
+      are unchanged — verified by `next build` still producing the same route list and by
+      `npx tsc --noEmit` / `npm run lint` / `npm run test:unit` staying green.
+- [ ] **The x302/x342 geometry is measured off `Ride - Ride plan - Sub pages` (`2375:9114`),
+      not off a tab-root header carrying a mailbox icon.** No frame in the snapshot draws the
+      notifications entry point on `/postcards`, `/rides`, `/clubs` or `/profile`'s header,
+      because the v2 design still has its own Inbox tab — PD-118 adds the header control on
+      top of that, in code the design never drew. The two-adjacent-40px-buttons geometry
+      itself is real and reused correctly; its application to these four specific headers is
+      inferred by extension, not read from a matching frame.
+- [x] **`MailboxIcon`** — already in `src/components/icons/generated.tsx` (`Element / Icon /
+      Mailbox`, used today by `Navbar`'s Inbox tile). No new icon generated; settled by the
+      product owner this session that there is no bell in the 53-icon set and none should be
+      substituted or hand-drawn.
+- [ ] **Section titles (`Today` / `Yesterday` / `This week` / `All time`) and the loading
+      skeleton are §6's (the screen), not §4's** — `SectionHeader` needs no change
+      (`text-xl font-semibold` is already `Poppins/20/Semibold`, checked in its own source).
+- [ ] **The compact per-row stamp formatter, `formatNotificationStamp`
+      (`src/lib/utils.ts`), extends past what the frame draws.** `2m` through `2w` are
+      measured; the `mo`/`y` branches beyond that are inferred from the same one-unit-per-
+      magnitude pattern the frame establishes, because nothing in "All time"'s mocked data is
+      older than two weeks. Not `formatRelativeTime`, which produces prose for a different
+      screen's byline — see that function's own docstring.
+
 ### Navigation
 
 - [x] ~~**Tab bar**~~ — **measured**, and the guess was wrong in the way that mattered.

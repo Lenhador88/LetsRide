@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatNotificationStamp,
   formatPostcardDate,
   formatRelativeTime,
   formatRideDate,
@@ -158,6 +159,53 @@ describe('formatRelativeTime', () => {
 
   it('defaults `now` to the current time', () => {
     expect(formatRelativeTime(new Date().toISOString())).toBe('just now')
+  })
+})
+
+// Every value below is drawn straight from `Inbox - Notifications`
+// (`npm run figma -- text "Inbox - Notifications"`) except the `mo`/`y`
+// boundaries, which the frame never reaches — those are the inferred
+// extension `formatNotificationStamp`'s own docstring flags.
+describe('formatNotificationStamp', () => {
+  const now = new Date('2026-08-07T12:00:00Z')
+  const ago = (seconds: number) =>
+    formatNotificationStamp(new Date(now.getTime() - seconds * 1000).toISOString(), now)
+
+  it('reads "now" under a minute', () => {
+    expect(ago(0)).toBe('now')
+    expect(ago(59)).toBe('now')
+  })
+
+  it('matches the drawn stamps exactly', () => {
+    expect(ago(2 * 60)).toBe('2m')
+    expect(ago(23 * 60)).toBe('23m')
+    expect(ago(1 * 24 * 60 * 60)).toBe('1d')
+    expect(ago(2 * 24 * 60 * 60)).toBe('2d')
+    expect(ago(3 * 24 * 60 * 60)).toBe('3d')
+    expect(ago(5 * 24 * 60 * 60)).toBe('5d')
+    expect(ago(2 * 7 * 24 * 60 * 60)).toBe('2w')
+  })
+
+  it('floors rather than rounds, so it does not jump a unit early', () => {
+    expect(ago(23 * 60 + 59)).toBe('23m') // 23m59s reads 23m, not 24m
+    expect(ago(6 * 24 * 60 * 60 + 60 * 60 * 23)).toBe('6d') // just under a week
+  })
+
+  it('switches units at the boundary', () => {
+    expect(ago(60)).toBe('1m')
+    expect(ago(60 * 60)).toBe('1h')
+    expect(ago(24 * 60 * 60)).toBe('1d')
+    expect(ago(7 * 24 * 60 * 60)).toBe('1w')
+  })
+
+  it('extends to months and years beyond the drawn 5-week ceiling', () => {
+    expect(ago(35 * 24 * 60 * 60)).toBe('1mo')
+    expect(ago(365 * 24 * 60 * 60)).toBe('1y')
+  })
+
+  it('never produces a negative unit for a future timestamp', () => {
+    const future = new Date(now.getTime() + 60_000).toISOString()
+    expect(formatNotificationStamp(future, now)).toBe('now')
   })
 })
 

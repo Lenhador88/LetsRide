@@ -350,6 +350,49 @@ export function formatRelativeTime(date: string, now: Date = new Date()) {
   return 'just now'
 }
 
+/**
+ * `2m` / `23m` / `1d` / `2w` — the compact stamp on line one of a notification
+ * row (`Inbox - Notifications`, measured 2026-08-07). **Not `formatRelativeTime`**:
+ * that formatter produces prose ("2 minutes ago") for the postcard byline it was
+ * named for, and per this file's own rule a formatter is named for the screen
+ * it serves rather than shared, because each design draws a genuinely different
+ * shape. This is that screen's own.
+ *
+ * Needs no zone, like `formatRelativeTime` — it measures the distance between
+ * two instants, and that distance is the same number of seconds everywhere.
+ *
+ * Floors rather than rounds (`23m` reads as "at least 23, not yet 24" rather
+ * than "closest to 23"), which is the usual convention for a compact stamp and
+ * keeps it monotonic as time passes rather than jumping a unit early.
+ *
+ * The design draws `2m` through `2w` and nothing older — `Inbox - Notifications`'s
+ * own "All time" section only reaches two weeks in its mocked data. Months and
+ * years are **not measured**, only extended from the same table by the same
+ * rule the design already establishes (a fixed unit per order of magnitude);
+ * logged in `docs/FIGMA-FIDELITY-TODO.md` as inferred rather than read.
+ */
+export function formatNotificationStamp(date: string, now: Date = new Date()) {
+  const seconds = Math.max(0, Math.round((now.getTime() - new Date(date).getTime()) / 1000))
+  if (seconds < 60) return 'now'
+
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d`
+
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return `${weeks}w`
+
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo`
+
+  return `${Math.floor(days / 365)}y`
+}
+
 // Tolerates null: a rider mid-onboarding has no username yet, and every call
 // site reaches this through `username ?? 'Rider'` — but the fallback is one
 // edit away from being dropped, and .split on undefined throws.
