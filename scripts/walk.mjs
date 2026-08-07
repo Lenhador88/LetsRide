@@ -35,8 +35,10 @@
  * **Point it at DEV.** This walk signs in, and with `WALK_FIXTURES=1` it posts
  * as a real rider — against `letsride` that means fixture rides in real riders'
  * feeds. docs/HANDOFF.md's recipe named PROD's ref until 2026-08-07, so this is
- * a mistake the documentation actively invited; `fixturesPermitted()` refuses it
- * rather than trusting anyone to notice.
+ * a mistake the documentation actively invited. `fixturesPermitted()` refuses
+ * it, and it establishes the project from the **session the browser is holding**
+ * rather than from `RELAY_UPSTREAM` — see `authenticatedProjectRef()` for why
+ * the env-var version of that check was worth nothing.
  *
  * **The account needs no stored password.** DEV has `mailer_autoconfirm: true`,
  * so a signup returns a session with no confirmation step — mint one, stamp
@@ -137,8 +139,9 @@ const problems = []
  * the run prints what it did not exercise.
  */
 let realtimeSuppressed = 0
+const RELAY_ORIGIN = `ws://localhost:${process.env.RELAY_PORT ?? 3001}/realtime/v1/websocket`
 const isRelayWebSocketFailure = (text) =>
-  /^WebSocket connection to 'ws:\/\/localhost:3001\/realtime\/v1\/websocket/.test(text)
+  text.startsWith(`WebSocket connection to '${RELAY_ORIGIN}`)
 
 page.on('console', (m) => {
   if (m.type() !== 'error') return
@@ -243,32 +246,86 @@ async function discoverDetailPaths({ quiet = false } = {}) {
  * `onload` or `onerror` (docs/HANDOFF.md). A fixture that cannot be created is
  * better skipped loudly than half-built.
  */
-const PROD_REF = 'zwprydcyryvudhurbnye'
+/**
+ * The projects this walk may write to. **An allowlist, so an unrecognised
+ * project fails closed** — a denylist of PROD's ref would wave through a
+ * second production project the day one exists.
+ */
+const WRITABLE_REFS = new Set(['fpmrimzxadewsaiwpsel']) // Letsride-dev
 
 /**
- * Writes are **off by default and cannot be turned on vaguely.** Naming the
- * upstream is required, so enabling fixtures forces the runner to state which
- * database they are about to write to — and the one answer that is refused is
- * the one that matters. This walk signs in and posts as a real rider; pointed
- * at `letsride` it would put fixture rides in real riders' feeds, and until
- * 2026-08-07 docs/HANDOFF.md's own recipe named PROD's ref.
+ * Which Supabase project the browser **actually** authenticated against, read
+ * from the `iss` claim of the session it is holding.
+ *
+ * **The first version of this guard read `RELAY_UPSTREAM` from the walk's own
+ * environment, and review was right that it was theatre.** That variable
+ * configures a *sibling process*; nothing tied it to what the app under test
+ * was pointed at. With PROD in `.env.local` and a plain `npm run dev`, the
+ * documented `WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV...` command passed
+ * the guard and would have created public fixture rides in real riders' feeds.
+ *
+ * `iss` cannot be laundered the same way: GoTrue mints it from its own
+ * configuration, so it names the real project even when every byte reached the
+ * browser through `http://localhost:3001`. It is the only value here that
+ * describes the database the writes will actually land in.
  */
-function fixturesPermitted() {
-  if (process.env.WALK_FIXTURES !== '1') return { ok: false, quiet: true }
+async function authenticatedProjectRef() {
+  const token = await page
+    .evaluate(() => {
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith('sb-')) continue
+        const raw = localStorage.getItem(key)
+        if (!raw) continue
+        try {
+          const parsed = JSON.parse(raw)
+          if (parsed?.access_token) return parsed.access_token
+        } catch {
+          // Not the session entry — PKCE verifier keys are bare strings.
+        }
+      }
+      return null
+    })
+    .catch(() => null)
 
-  const upstream = process.env.RELAY_UPSTREAM ?? ''
-  if (!upstream) {
-    return { ok: false, why: 'WALK_FIXTURES=1 needs RELAY_UPSTREAM set, so the target is named rather than assumed' }
+  if (!token) return null
+  try {
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+    // `https://<ref>.supabase.co/auth/v1`
+    return new URL(claims.iss).hostname.split('.')[0]
+  } catch {
+    return null
   }
-  if (upstream.includes(PROD_REF)) {
-    return { ok: false, why: `refusing to create fixtures against PROD (${PROD_REF}) — walk DEV` }
+}
+
+/**
+ * Writes are off by default, and turning them on is not enough on its own — the
+ * project has to be one this walk is allowed to write to, established from the
+ * session rather than from anything the runner typed.
+ */
+function fixturesPermitted(ref) {
+  if (process.env.WALK_FIXTURES !== '1') return { ok: false, quiet: true }
+  if (!ref) {
+    return {
+      ok: false,
+      why: 'could not read which project the browser signed in to — refusing to write rather than guessing',
+    }
+  }
+  if (!WRITABLE_REFS.has(ref)) {
+    return {
+      ok: false,
+      why: `refusing to create fixtures against "${ref}" — only ${[...WRITABLE_REFS].join(', ')} is writable`,
+    }
   }
   return { ok: true }
 }
 
 async function provision({ ride, club }) {
   if (!ride) {
-    const departure = new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString().slice(0, 16)
+    // A year out, not ten days. `getRides` filters `.gte('departure_at', now)`,
+    // so a short-dated fixture ages off /rides and the next run creates another
+    // that nothing lists and nothing cleans up — idempotence with an expiry
+    // date is not idempotence.
+    const departure = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 16)
     await page.goto(`${BASE}/rides/new`, { waitUntil: 'networkidle' })
     await page.fill('input[name="title"]', 'Walk fixture ride')
     await page.fill('input[name="meeting_point"]', 'Dam Square, Amsterdam')
@@ -278,7 +335,6 @@ async function provision({ ride, club }) {
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
-    console.log('  + created a ride through /rides/new')
   }
 
   if (!club) {
@@ -289,20 +345,43 @@ async function provision({ ride, club }) {
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
-    console.log('  + created a club through /clubs/new')
   }
 }
+
+let fixtureFailures = 0
 
 if (isFullWalk) {
   let detail = await discoverDetailPaths()
 
   if (!detail.ride || !detail.club) {
-    const permit = fixturesPermitted()
+    const permit = fixturesPermitted(await authenticatedProjectRef())
     if (permit.ok) {
+      const wanted = { ride: !detail.ride, club: !detail.club }
       await provision(detail)
-      // Re-read rather than assuming the writes landed: a refused create must
-      // show up as a still-skipped route, not as a path that 404s later.
-      detail = await discoverDetailPaths({ quiet: true })
+
+      /**
+       * **Report what landed, never what was attempted.** The first version
+       * printed `+ created a ride` unconditionally, straight after the click,
+       * and re-read the lists with the skip notices silenced. A create refused
+       * by validation or RLS therefore produced
+       * `(no rides to open)` → `+ created a ride` → `9/9 screens rendered
+       * clean` → exit 0 — the precise skip-reads-as-pass failure this whole
+       * change exists to close, reintroduced inside the fix for it.
+       *
+       * So the re-read is loud, the report comes from it, and a fixture that
+       * was asked for and did not arrive fails the run. Silence about a
+       * missing fixture is the bug.
+       */
+      detail = await discoverDetailPaths()
+      for (const kind of ['ride', 'club']) {
+        if (!wanted[kind]) continue
+        if (detail[kind]) {
+          console.log(`  + created a ${kind} through /${kind}s/new`)
+        } else {
+          console.log(`  ! FIXTURE FAILED — asked for a ${kind} and none appeared`)
+          fixtureFailures += 1
+        }
+      }
     } else if (permit.why) {
       console.log(`  (fixtures not created — ${permit.why})`)
     }
@@ -601,4 +680,4 @@ if (isFullWalk) {
     TAB_NAV_CHECKS
   console.log(`${total - guardFailures}/${total} guard, navigation and sign-out checks correct`)
 }
-process.exit(failures || guardFailures ? 1 : 0)
+process.exit(failures || guardFailures || fixtureFailures ? 1 : 0)

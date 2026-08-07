@@ -99,8 +99,9 @@ Finished 2026-08-06. The app is a client-rendered bundle; there are no server pa
 **This section exists because of PD-125, and it is worth reading as a case rather than a rule.**
 A whole feature — the ride chat — shipped *completely unreachable*: its only entry point was an
 unlabelled 24×24 icon in a header corner, and the product owner could not find it. Every gate
-was green throughout. `tsc`, ESLint, 750 unit tests, `next build`, 641 RLS assertions. Not one
-of them can fail on "nobody can get to this screen", because they all check the code against
+was green throughout — `tsc`, ESLint, `next build`, and both suites in full (count them with the
+commands above rather than from here; a number typed into this file is the thing §Measure the
+current state exists to forbid). Not one of them can fail on "nobody can get to this screen", because they all check the code against
 itself and none checks the app against a person.
 
 So **running the app is a first-class deliverable of this agent, not a nicety** — and the old
@@ -108,19 +109,21 @@ version of this brief said the opposite ("do not use for exploratory manual veri
 which is part of why nobody did.
 
 **A skip reads exactly like a pass, and that is the trap.** The walk discovers detail routes
-from the lists, so against a database with no rides it prints `9/9 screens rendered clean` and
-has silently not opened the four most complex screens in the app. That is precisely how PD-125
-got through. Provision what you need:
+from the lists, so against a database with no rides it prints a *smaller* `N/N screens rendered
+clean` and has silently not opened the four most complex screens in the app. That is precisely
+how PD-125 got through. Provision what you need:
 
 ```bash
-WALK_FIXTURES=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co \
-  WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+WALK_FIXTURES=1 WALK_EMAIL=... WALK_PASSWORD=... npm run walk
 ```
 
 Fixtures create a ride and a club **through `/rides/new` and `/clubs/new`**, which is the point
 rather than a shortcut — it exercises the two create forms end to end, which nothing else does.
-They fill only what is missing, so runs are idempotent and need no cleanup. Postcards are not
-provisioned: the composer needs an image, and Storage from this container's Chromium hangs.
+They fill only what is missing, so runs are idempotent and need no cleanup. **A fixture asked
+for and not delivered fails the run** — the report comes from re-reading the lists, never from
+the create attempt, because printing "created" after a click that was refused is the same
+skip-reads-as-pass bug wearing a different hat. Postcards are not provisioned: the composer
+needs an image, and Storage from this container's Chromium hangs.
 
 **Credentials are not a blocker and must never be reported as one.** DEV has
 `mailer_autoconfirm: true`, so a signup returns a session with no confirmation step — mint an
@@ -129,8 +132,10 @@ provisioned: the composer needs an image, and Storage from this container's Chro
 
 **Realtime does not survive the relay.** It forwards HTTP and drops the `upgrade` header, so
 the ride chat's subscription cannot connect; the walk suppresses that one failure narrowly and
-*prints what it did not exercise*. A green walk proves the chat renders and sends, and proves
-nothing about live delivery. Never report it as covering Realtime.
+*prints what it did not exercise*. A green walk proves the chat **route renders** — nothing types into
+the composer, and if the walk account is not on the discovered ride's crew what rendered was
+the non-crew empty state. It proves nothing about sending and nothing about live delivery.
+Never report it as covering Realtime.
 
 ## Rules
 
@@ -145,8 +150,12 @@ nothing about live delivery. Never report it as covering Realtime.
   identifiably, create only what is missing, and never write a bulk delete —
   `supabase/seeds/development.sql` already refuses to run while any non-`@letsride.dev`
   account exists, which is the same instinct.
-- Tests must be deterministic. No wall-clock reliance, no existing seed rows, no dependence on
-  execution order. Create what you need, clean up after.
+- **Written tests must be deterministic** — no wall-clock reliance, no existing seed rows, no
+  dependence on execution order; create what you need and clean up after. **Live DEV fixtures
+  are the deliberate exception to every clause of that**, and the exception is the safer
+  behaviour rather than a relaxation: they are shared, so they are created only when missing,
+  never cleaned up, and never bulk-deleted. Do not "fix" the walk to tidy up after itself —
+  on a shared database it cannot tell its own rows from the owner's.
 - **A test that cannot fail is worse than no test.** After writing one, break the code and
   confirm it goes red. The RLS suite has a documented case of a positive assertion that passed
   while proving nothing, because the identity GUC it set was read by nothing — only the
