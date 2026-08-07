@@ -1488,26 +1488,49 @@ rather than burying itself under three merged PRs.
 **A fired session is not configured like an interactive one, and both gaps are owner-only.**
 Measured 2026-08-07 by diffing `list_triggers` against `list_sessions`. Every interactive session
 on this project carries `model: claude-opus-5`, `effort_level: xhigh`, `permission_mode: auto`.
-The Routine's `session_context` carries **none of the three** — just an `allowed_tools` list, and
-that list holds **zero `mcp__*` entries**. So a fired session runs on defaults and has no
-pre-approval for any connector tool.
+The Routine's `session_context` carried **none of the three** — just an `allowed_tools` list
+holding **zero `mcp__*` entries** — and, the one that mattered, **no `sources` either**. Compare
+the two before assuming a fired session is configured like the session you are reading this in:
+
+```bash
+# via the CCR MCP: list_triggers -> job_config.ccr.session_context
+#   vs list_sessions -> session_context
+# Look for: sources (the repo), permission_mode, model, effort_level
+```
 
 Two consequences, and a session can fix neither:
 
 - **The model cannot be set from a session.** `update_trigger` with a `model` fails
   `model_update_disabled`, and `create_trigger` has no model parameter. Owner action in the
   claude.ai Routines UI — `PD-110`.
-- **Connector tools prompt, and a scheduled session has nobody to answer.** The fix is the
-  connector's own always-allow, exactly as the owner did for Supabase — `PD-109`. Not a wider
-  project rule: `.claude/settings.json`'s `mcp__Linear__*` entries are name-matched and rotate out
-  from under themselves, and a UUID-scoped mirror lives in `.claude/settings.local.json`, which is
-  gitignored **and** per-container — a Routine gets a fresh container every firing, so that file
-  can never exist there. The connector setting is the only mechanism that reaches a firing at all.
+- **Connector tools prompted on every firing, and a scheduled session has nobody to answer.**
+  **Root cause: the Routine had no repository attached** — `session_context.sources` was empty.
+  Found by the product owner on 2026-08-07 and fixed in the Routines UI; `PD-109` chased the
+  connector instead and was wrong.
 
-**Attaching a connector is not granting its tools.** The Routine has held Linear since 2026-08-07
-and still prompts on it; `mcp_connections` decides which servers load, the permission layer
-decides which calls run without asking. Reading a populated `mcp_connections` as "Linear works
-here" is the specific mistake this paragraph exists to stop.
+**A Routine with no `sources` is not "a session missing its repo" — it is a session with no
+project at all**, and that is the shape of this bug worth carrying. Every symptom pointed
+somewhere else:
+
+| Symptom | What it looked like | What it actually was |
+|---|---|---|
+| Linear tools loaded fine | connectors are healthy, so permissions must be the issue | true, and irrelevant — connectors attach per session, independent of the repo |
+| `mcp__Linear__*` in `permissions.allow` did nothing | the connector ids must have rotated | `.claude/settings.json` was never read; there was no checkout |
+| `defaultMode: "auto"` did nothing | the pin does not apply to fired sessions | same — the file holding it did not exist |
+| The prompt offered "Allow once" but **never "Allow always"** | a quirk of the unattended UI | **the actual tell** — "always" needs a project settings file to write to |
+
+That last row is the cheapest diagnostic in the whole story. **A permission dialog with no
+"always" option means there is no project settings file**, which means no repo. Check
+`session_context.sources` before theorising about permission layers.
+
+And the damage was never only permissions: this Routine's prompt opens with *"Read `CLAUDE.md`
+fully before acting"*. With no checkout that instruction is unfollowable, so the job was inert
+rather than merely noisy.
+
+**Editing the Routine in the UI re-anchors its cron.** Adding the repo silently rewrote
+`0 0-23 * * *` to `24 * * * *` — the save minute, exactly the anchoring described above. So after
+*any* UI edit, re-read `cron_expression` and set it back. The workaround does not survive on its
+own.
 
 ### Do not ask permission to touch Linear
 
