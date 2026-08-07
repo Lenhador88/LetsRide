@@ -3923,15 +3923,25 @@ select assert_eq(
 -- standing between "we added a table" and "we quietly stopped deleting all of a
 -- rider's data" is a count somebody has to change on purpose. The derived
 -- assertion above passed on the same run, so 034's author_id index is real.
+--
+-- **16 since 036 added notifications.user_id AND notifications.actor_id**, and
+-- the pair is the point rather than the arithmetic. A notification is personal
+-- data about BOTH riders — it records that a named rider interacted with another
+-- named rider's content at a named instant — so erasure has to reach it from
+-- both ends: `user_id` takes every notification TO the departing rider, and
+-- `actor_id` takes every notification ABOUT them out of every OTHER rider's
+-- list. One key without the other leaves half the record standing, and neither
+-- direction is visible in the other's constraint. This is the count changed on
+-- purpose, which is what the paragraph above asks for.
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  14, '029: fourteen FKs reference public.profiles');
+  16, '029: sixteen FKs reference public.profiles');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  14, '029: ... and every one of them is ON DELETE CASCADE');
+  16, '029: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
