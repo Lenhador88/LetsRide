@@ -453,12 +453,53 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 
 ### The walk, and the relay it now needs
 
+**Point it at DEV, and note that this block used to name PROD's ref.** Corrected 2026-08-07:
+the walk signs in and writes, so aiming it at `letsride` means a real session against real
+riders' data. `Letsride-dev` is `fpmrimzxadewsaiwpsel`; both refs ship in the client bundle
+and neither is a secret.
+
 ```bash
-NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://zwprydcyryvudhurbnye.supabase.co \
-  node scripts/supabase-relay.mjs &
-NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
+DEV=fpmrimzxadewsaiwpsel
+KEY=$(...)   # the DEV publishable key — mcp__Supabase__get_publishable_keys, or Vercel's Preview env
+
+NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://$DEV.supabase.co node scripts/supabase-relay.mjs &
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NEXT_PUBLIC_SUPABASE_ANON_KEY=$KEY \
+  NODE_USE_ENV_PROXY=1 npm run dev
 WALK_EMAIL=... WALK_PASSWORD=... npm run walk
 ```
+
+#### The credentials are not a blocker any more, and no secret needs committing
+
+**DEV has email confirmation OFF, so a session can mint its own account in one call.** Measured
+2026-08-07 — `GET /auth/v1/settings` reports `"mailer_autoconfirm": true` on `Letsride-dev` and
+`false` on `letsride`. That is the per-environment split CLAUDE.md decision #6 says is wanted;
+what that decision still *says* is that there is one project and therefore no answer yet, which
+stopped being true on 2026-08-06.
+
+This is why several sessions reported the walk as blocked on credentials it could have created:
+
+```bash
+curl -sS -X POST "https://$DEV.supabase.co/auth/v1/signup" -H "apikey: $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"walk-<something>@letsride.dev","password":"<generate one>"}'
+# returns access_token immediately — no confirmation step on DEV
+```
+
+Then stamp onboarding, or the walk lands in the wizard rather than on `/postcards`:
+
+```sql
+update profiles set username = '...', location = '...',
+  terms_accepted_at = now(), onboarding_completed_at = now() where id = '<uid>';
+```
+
+**Use an `@letsride.dev` address.** `supabase/seeds/development.sql` refuses to run while any
+account outside that domain exists, so a walk account on any other domain quietly blocks the
+seed. (It is blocked today regardless: `pedro88email@gmail.com` is a real DEV account.)
+
+`walk@letsride.dev` / username `walkrider` exists as of 2026-08-07, onboarded, owning one ride
+and one message. **Its password is deliberately not written down anywhere** — per CLAUDE.md,
+test-account credentials are never committed, and the recipe above makes a stored one
+unnecessary. Make a fresh account rather than hunting for this one's password.
 
 **Chromium in this container cannot reach Supabase at all.** Measured 2026-08-06, and it is not
 a flake or a flag: `curl -x $HTTPS_PROXY .../auth/v1/health` returns 401 — tunnel open, host
@@ -476,17 +517,38 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `18/18 guard, navigation and sign-out checks correct`.** It was 15/15 until
-PD-111 added the three client-side-navigation checks (2026-08-07). The walk discovers detail
+**A clean run is `19/19 guard, navigation and sign-out checks correct`.** It was 15/15 until
+PD-111, which added **four** client-side-navigation checks, not three — this line said 18/18
+and was corrected 2026-08-07 by reading a real run, which is the only way to get it right.
+Count them from the output rather than from here: `all N taps navigated`, `no stamp re-read`,
+`the shell stayed mounted`, `the splash never painted`, then 6 signed-in guard rules, 4
+sign-out assertions and 5 signed-out guard rules. The walk discovers detail
 routes from the lists, checks eleven route-guard redirects in both signed-in and signed-out
 states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no
 reachable screen, and taps five bottom tabs to prove a navigation costs no
 `my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
 
 **The screens figure is data-dependent and is not a pass/fail number** — it is `15/15` against a
-database holding rides and clubs, and `9/9` against DEV, which holds neither, because the four
+database holding rides and clubs, and `9/9` against a DEV holding neither, because the four
 detail routes are discovered rather than hardcoded and a list with no rows yields no path. The
 walk says which it skipped. Read the `N/N` for equality, not for the value.
+
+**So provision what you need to walk, rather than reading a skip as a pass.** `9/9` looks
+exactly like success and means the ride detail was never opened — which is how PD-125 shipped a
+switcher nobody had seen. One insert takes it to 11/11:
+
+```sql
+insert into rides (organizer_id, title, meeting_point, departure_at, is_public)
+values ('<walk uid>', 'Walk fixture ride', 'Dam Square, Amsterdam', now() + interval '10 days', true);
+```
+
+**Realtime does not survive the relay, and this is the one gap the walk cannot close.**
+`scripts/supabase-relay.mjs` forwards HTTP and drops the `upgrade` header, so
+`ws://localhost:3001/realtime/v1/websocket` fails and the ride chat's subscription never
+connects. Measured 2026-08-07 while verifying PD-125: a message sent through the composer still
+appears, because the optimistic path draws it and the refetch confirms it — so a green walk
+proves the chat renders and sends, and proves **nothing** about live delivery. Teaching the
+relay to proxy the upgrade is the fix if that ever needs covering.
 
 **Network, measured — a blocked host fails as `curl: (56) CONNECT tunnel failed`, not as a
 timeout:**
