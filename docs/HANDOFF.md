@@ -784,11 +784,24 @@ is not in the environment config. Only `figma:pull` and `figma:icons` need it.
 **Vercel's MCP fetch tool authenticates as the account owner**, so a 200 from it is not evidence
 that a URL is publicly reachable.
 
-**MCP connector names are not stable, and permission rules are matched on them.** A session has
-watched the Supabase server arrive as `Supabase` and later reconnect as
+**MCP connector names are not stable, and name-matched permission rules break silently when they
+rotate.** A session has watched the Supabase server arrive as `Supabase` and later reconnect as
 `mcp__d217aba8-…__execute_sql`; Vercel and Figma did the same. Every `mcp__Supabase__*` rule in
 `.claude/settings.json` silently stopped matching at that moment, so long-approved tools started
-prompting again. The UUID-scoped mirror lives in `.claude/settings.local.json`, which is
-gitignored **because those ids are per-machine** — never commit them, and expect to re-add them
-if the ids rotate again. The symptom is a permission prompt for something the project already
-allows; the fix is not to widen the project rules.
+prompting again.
+
+**For Supabase that is over as of 2026-08-07 — the owner moved the grant to the connector's own
+always-allow setting**, which is what the prompts were coming from all along, and the project's
+twelve `mcp__Supabase__*` entries plus the two `autoMode.allow` prose rules were deleted with it.
+A setting attached to the connector cannot stop matching when the connector's tool ids change.
+`.claude/settings.json` carries a rule saying that absence is deliberate — **do not restore
+them**, because two mechanisms for one grant is how one of them goes stale. `CLAUDE.md`
+§Working Principles has the reasoning, and the one thing nobody in a session can test: whether a
+connector-level always-allow leaves the four-entry `deny` list standing.
+
+The hazard still applies to every rule still matched by name — those four `deny` entries, and the
+Vercel, GitHub and Linear entries in `permissions.allow`. The symptom is a permission prompt for
+something the project already allows; the fix is a connector setting or an owner decision, not a
+wider project rule. A UUID-scoped mirror belongs in `.claude/settings.local.json`, which is
+gitignored **because those ids are per-machine** — never commit them. There is no such file in
+this container today (`ls .claude/settings.local.json`).
