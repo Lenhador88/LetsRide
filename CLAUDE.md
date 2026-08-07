@@ -1426,13 +1426,17 @@ was ten. Measured, not assumed — `create_trigger` rejects it outright:
 The stored expression is `37 * * * *`: an hourly cron at minute 0 gets anchored to its creation
 minute server-side, so Routines spread across the hour instead of stampeding at :00.
 
-**The known gap: the Routine holds no MCP connectors, so its sessions may start without Linear.**
-`create_trigger` refused the `connectors` parameter — *"not available for this organization"* —
-and then warned that connectors on triggers made through that tool are limited to what the
-calling session can pass through, which was nothing. Step 1 exists entirely because of this. The
-fix is **owner-only and lives in the claude.ai Routines UI**, where connectors can be attached to
-an existing Routine; no session can do it. Until then the Routine wakes, cannot read the queue,
-and says so.
+**Its connectors were attached by the owner, and no session could have done it.** The Routine was
+created holding none: `create_trigger` refused the `connectors` parameter outright — *"not
+available for this organization"* — and `update_trigger` has no such field either, so neither
+creating nor editing reaches it from a session. The owner attached them by hand in the claude.ai
+Routines UI on 2026-08-07. **Check rather than assume they are still there**, because nothing in
+this repo or in `list_triggers` reports them.
+
+Step 0 of the prompt survives that fix and should stay: it proves the session can see the board
+before it does anything, and notifies if it cannot. A scheduled job that silently does nothing is
+indistinguishable from an empty queue, and connectors are exactly the kind of setting that can be
+revoked without anything here noticing.
 
 **Do not "improve" the guard into a queue drainer.** Draining several issues per firing, or
 skipping past a `Needs help` issue to find workable ones, both defeat the point: `Needs help`
