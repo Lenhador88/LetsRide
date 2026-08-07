@@ -8,6 +8,14 @@ is only the *current position* — the things that will be stale in a week.
 verified belongs in its migration's own §Verification footer; a settled decision belongs in
 `CLAUDE.md`. What stays here is what is still true and still undone.
 
+**The queue moved to Linear on 2026-08-07 — this file kept the facts.** *What is next and who can
+do it* now lives in [Let's ride (AI)](https://linear.app/lets-ride/project/lets-ride-ai-10cb543bcb9d)
+(`PD-86`–`PD-103` were the seeding); *what is true, and the command that proves it* stayed here.
+`CLAUDE.md` §The roadmap lives in Linear carries the boundary and the status pipeline. The one
+thing to internalise: **the owner releases work by dragging it into `Ready for DEV (AI)`** — that
+column is the start signal, and a session that picks its own work from the backlog has taken the
+decision the board exists to give them.
+
 ## Before you trust this file
 
 Every claim below is about state that moves without this file moving with it:
@@ -320,10 +328,29 @@ will not.
 
 ## Owner actions — nobody in a session can do these
 
-Six now, and four of them also appear in the store table above; this is where the detail lives.
-Every one is a dashboard click or a credential a human holds, so **ask for them rather than
-working around them** — the working principle in `CLAUDE.md` exists because a session once
-reported a block five times without once requesting the fix.
+**Tracked in Linear as of 2026-08-07** — label `Owner only`, assigned, so they surface without
+anyone reading this far into a 767-line file. That is the whole reason the tracker exists. This
+section keeps the *detail*; Linear keeps the *queue*, and the mapping is:
+
+| | Linear | Verified against the live system 2026-08-07 |
+|---|---|---|
+| 1 | `PD-91` Exercise signup end to end | — |
+| 2 | `PD-90` Enable `UpdatePasswordRequireCurrentPassword` | dashboard-only, not checkable via MCP |
+| 3 | `PD-89` Enable leaked-password protection | **still outstanding** — advisor present |
+| 4 | `PD-87` Move Supabase off the free tier | **still outstanding** — org plan reads `free` |
+| 5 | `PD-86` Deploy `delete-account` + `PD-92` T&C version string | **still outstanding** — `list_edge_functions` returns `[]` |
+| 6 | `PD-94` Sweep the orphaned Storage objects | — |
+
+**Two more were found outside this section, which is exactly the failure the tracker fixes.**
+`PD-88` — the Site URL is still `http://localhost:3000` with nothing allowlisted, so every email
+the app sends lands on a dead address (it lived in `CLAUDE.md` decision #6 and
+`docs/ENVIRONMENTS.md`). And `PD-93` — pinning `defaultMode` — which turned out to be **already
+done** by PR #80, while `CLAUDE.md` still described it as outstanding. Closed on sight.
+
+The list below says "six" because that is what it said when written; the count is now Linear's
+job, not this file's. Every one is a dashboard click or a credential a human holds, so **ask for
+them rather than working around them** — the working principle in `CLAUDE.md` exists because a
+session once reported a block five times without once requesting the fix.
 
 1. **Exercise signup end to end.** Still never done on this database, and it is now the one
    remaining unproven path — `npm run walk` covers everything after it. The owner's account
