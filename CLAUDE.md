@@ -512,20 +512,29 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: `001`–`034` on DEV, `001`–`033` on PROD.** PROD was measured 2026-08-07 at
-33 files / 33 rows, both ending `033_restore_function_comments`; DEV took `034` (ride chat) the
-same day.
+**Applied state: `001`–`035` on BOTH, measured 2026-08-07 — 35 files, 35 rows each, ending
+`035_comment_whitespace_floor`.** `034` (ride chat) and `035` (the comment whitespace floor) both
+landed that day. There is no DEV/PROD split any more.
 
 **This line read `001`–`032` while `033` was already applied, and TWO sessions caught it
 independently within an hour** — which is this paragraph's own warning coming true, and the
 reason the fix is a command rather than a better number. Run `list_migrations` against
 `ls supabase/migrations/`; do not read either figure here.
 
-**The DEV/PROD split is deliberate, not drift.** `034` is **additive**, so
-`docs/ENVIRONMENTS.md` §Order of operations puts the PROD apply *after* the `development` →
-`main` promotion — apply-then-deploy for additive, deploy-then-apply for destructive. Until that
-promotion `npm run db:drift` reports the two databases disagreeing about `034`, and that is the
-expected state rather than a fault.
+**`034` went to PROD ahead of the promotion, and that IS the documented order rather than an
+exception to it.** It is purely additive — a new function, a new table with its policies, and a
+publication entry for that new table; the only touch on anything pre-existing is a
+`comment on function`. `docs/ENVIRONMENTS.md` §Order of operations is apply-then-deploy for
+additive, so a table sitting unused until `main` carries the code is exactly right, and the
+five-step sequence's "PROD at step 5" describes the common case rather than forbidding this one.
+Deploy-then-apply remains the rule for anything destructive.
+
+**One asymmetry survives and is DEV's, not PROD's.** `034` was corrected twice after review; the
+second correction went onto DEV as a delta (`alter constraint`, `drop`/`create policy`) rather
+than a re-apply, so **DEV's schema matches the file while its recorded statement is one revision
+behind.** PROD got the file verbatim — `md5(statements[1])` there equals `md5sum` of the file,
+`4a3e605891b8ab49db1a5d614bcb9a84` — so the canonical record is correct and DEV is the disposable
+one. `docs/HANDOFF.md` carries the reconciliation SQL.
 
 `029`–`032` landed 2026-08-06 as the
 database half of account deletion, and every one is additive — no column, table or grant
@@ -1528,10 +1537,26 @@ built on. Two rules follow, in the order to reach for them:
    leaving the other half-built. `PD-112` and `PD-113` are a fair split (two unrelated postcard
    surfaces); `PD-104` and `PD-114` are not (one set of coordinate columns, two designs for it).
 
-   **When a feature genuinely is too big for one issue, split it into sub-issues of one parent
-   — `parentId` is the one issue-to-issue link this MCP can actually read.** It is a `save_issue`
-   parameter *and* a `list_issues` field, so a session can group a cluster without guessing from
-   titles, which is exactly what `blockedBy` cannot do. `PD-115` (Ride chat) is the worked
+   **When a feature genuinely is too big for one issue, split it into sub-issues of one parent.**
+   `parentId` is a `save_issue` parameter *and* a `list_issues` field, so a session can group a
+   cluster without guessing from titles.
+
+   **`blockedBy` IS readable, and this paragraph said it was not.** Measured 2026-08-07:
+   `get_issue` takes an **`includeRelations: true`** flag, off by default, and returns
+   `relations.blockedBy` / `.blocks` / `.relatedTo` — verified on `PD-120`, which came back
+   naming `PD-116` and `PD-117`. The claim was true of the *default* response and was written
+   from it. Check rather than trust either version:
+
+   ```bash
+   # via the Linear MCP: get_issue id=PD-120 includeRelations=true  ->  .relations.blockedBy
+   ```
+
+   That does **not** demote the column rule above, and it must not be read as licence to queue
+   blocked work. `list_issues` still cannot filter or return relations, so the queue as a *set*
+   is only order-independent because the owner keeps it that way; relations are a per-issue
+   lookup you can only do once you have already picked something. They are a **backstop that
+   catches a mistake**, not a mechanism that makes the mistake safe — which is why the Routine
+   now checks them after picking rather than sequencing from them. `PD-115` (Ride chat) is the worked
    example: five sub-issues hanging off one parent. Note what it still does **not** buy you —
    siblings have no order between them, so rule 2 applies inside the parent exactly as it does
    outside it.
@@ -1580,9 +1605,15 @@ What it does, in order — and the order is the design:
    freezes the queue for ever while every firing exits quietly — the exact failure step 1 exists
    to prevent. The window is narrow so it fires roughly once rather than hourly.
 3. **Take the top of `Queued (AI)` by priority**, ties to oldest. Empty queue exits silently.
-   Never `Backlog`, never `Todo Human` or `Todo AI`, never `Needs decision`. It does **not**
-   check dependencies, and cannot — see §Sequencing: relations are write-only through this MCP,
-   so what keeps the order right is that nothing blocked is in the column in the first place.
+   Never `Backlog`, never `Todo Human` or `Todo AI`, never `Needs decision`. **A parent issue is
+   skipped**: an epic outranks its own children on priority, so a container in the column would
+   be picked before any of the work under it.
+3b. **Check `blockedBy` on what it picked** — `get_issue` with `includeRelations: true` — and if
+   any blocker is not `Done` or `Canceled`, comment and take the next candidate. This line used
+   to read "It does **not** check dependencies, and cannot"; that was written from the default
+   `get_issue` response and is wrong (§Sequencing has the measurement). It is a **backstop**, not
+   the mechanism: `list_issues` still cannot filter on relations, so the check only runs after a
+   pick, and what keeps the order right is still that nothing blocked is in the column.
 4. **Move it to `Development (AI)` before starting**, because that status is the lock the next
    firing reads. Claiming late is how two sessions start the same story.
 5. Build under this file's standing instructions, PR to `development`, drive green, merge, move

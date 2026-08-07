@@ -93,7 +93,7 @@ npm run lint                          # exit 0 — 5 pre-existing <img> warnings
 npm run test:unit                     # 747/747 across 32 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 641 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 647 assertions, 0 failures
 ```
 
 **Two traps met while doing that, both of which produced a confident wrong answer first:**
@@ -430,7 +430,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **641** (594 before `034`'s chat section) |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **647** (594 before `034`'s chat section and `035`'s) |
 | Unit tests | `npm run test:unit` — **747 across 32 files on a clean tree**, measured 2026-08-07 after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
@@ -534,45 +534,20 @@ drop function private.is_ride_crew(uuid);
 delete from supabase_migrations.schema_migrations where name = 'ride_messages';
 ```
 
-**The one outstanding action: apply `034` to PROD after the `development` → `main` promotion.**
-It is additive, so `docs/ENVIRONMENTS.md` §Order of operations sequences it apply-then-deploy and
-puts the PROD half at step 5. Until then `npm run db:drift` reports DEV and PROD disagreeing about
-`034`, and **that is the expected state**, not a fault.
+**`034` and `035` are on BOTH databases as of 2026-08-07 — there is nothing outstanding.**
+Verify rather than trust this line; it is exactly the kind that goes stale:
 
 ```bash
-# after the promotion merges, via the Supabase MCP against zwprydcyryvudhurbnye
-#   apply_migration name=ride_messages  query=<contents of supabase/migrations/034_ride_messages.sql>
-# then re-run the footer queries in that file — each predicts a number
+# via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
+#   both should read 35 rows, ending 035_comment_whitespace_floor
+ls supabase/migrations/ | wc -l          # 35
 ```
 
-**Two defects were found and fixed before it landed, both by the `openspec` agent reviewing its
-own proposal against the branch, and both are worth carrying because neither fails loudly:**
-
-- **The audience is an intersection.** `ride_messages` needs `exists(rides …)` **and**
-  `private.is_ride_crew(…)`. The first draft used only the crew helper, reasoning that a chat is
-  narrower than a ride. True, and not the whole rule: the helper is `security definer`, so it
-  steps past the block and private-club arms of the `rides` policy, and a `ride_members` row
-  outlives both. Blocking the organizer left the chat readable after the ride vanished
-  (decision #2 names chat); leaving a private club left its ride chat readable, which is a leak.
-  Reproduced against the suite before the fix, and both are assertions now.
-- **`created_at` was client-writable.** `default now()` applies only when the column is *omitted*,
-  and a table-level INSERT grant lets PostgREST name it. On a screen ordered by that column a
-  forged timestamp pins a message to the end of every crew member's thread with no delete UI to
-  remove it. INSERT is granted per column now (`025`'s precedent). **`postcard_comments` has the
-  identical exposure** and it has never mattered there because a comment thread's order is a
-  convenience — worth knowing before assuming the pattern is safe to copy.
-
-**What is deliberately not built:** no message delete UI (so `034`'s DELETE policy has no caller —
-the design draws no message-level control, and blocking already removes a rider's messages from
-your view), no unread badge, no Pin/Mute, no pagination beyond the newest 200. A day separator
-**was** added that the design does not draw, because `HH:mm` alone is ambiguous on a ride planned
-weeks out — logged in `docs/FIGMA-FIDELITY-TODO.md` as an addition to check with the designer
-rather than passed off as measured.
-
-**Realtime is written and not proven on a device.** The channel, the teardown and the re-join
-refetch are code; nothing in this container can open a websocket to Supabase (see §The walk —
-Chromium cannot reach it at all). The publication membership *is* verified, live and by assertion,
-which is the half that fails silently.
+PROD's `034` was applied byte-identical to the file — `md5(statements[1])` equals `md5sum` of
+`supabase/migrations/034_ride_messages.sql`, `4a3e605891b8ab49db1a5d614bcb9a84` — and every
+number that file's footer predicts was confirmed live, with advisors still at the documented
+eight. `035` tightened the `postcard_comments` floor on both; pre-flight was 3 comments and 0
+violations, and all 3 survive.
 
 ## Known issues, roughly by cost to fix
 

@@ -4836,6 +4836,71 @@ select assert_denied('select count(*) from feed_reads', 'anon cannot read waterm
 select assert_denied('select count(*) from ride_messages', 'anon cannot read ride chat');
 reset role;
 
+\echo ''
+\echo '# A comment is empty if it has no non-whitespace character, not just no spaces (035)'
+
+-- 011's floor was `length(btrim(body)) >= 1`, and its own comment claimed that
+-- refused "a comment of nothing but spaces". It did — spaces, and only spaces:
+-- btrim(text) with no second argument strips U+0020 alone. So a body of newlines
+-- satisfied it while commentBodySchema's JS .trim() refused one, leaving the
+-- CLIENT stricter than the database on a rule the database is supposed to own.
+--
+-- 034 hit the identical trap and named this table as carrying it. These are the
+-- assertions that stop it coming back on either.
+-- This section owns its fixture. seed.sql's `...00e1` is deleted FOR REAL by the
+-- 011 cascade block above — outside any savepoint, to prove comments and hides
+-- go with their postcard — so reaching for it here fails at RLS with 42501
+-- before the CHECK is ever evaluated, and the assertion would report a
+-- constraint problem that is really a missing row. Same reason the 023 section
+-- seeds its own.
+savepoint comment_whitespace_035;
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-000000035e01', '00000000-0000-0000-0000-00000000000a',
+   null, 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-000000035e01.jpg',
+   'A postcard the 035 section owns');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000035e01',
+          '00000000-0000-0000-0000-00000000000b', '   ')$$,
+  '23514', '035: a comment of nothing but spaces is refused');
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000035e01',
+          '00000000-0000-0000-0000-00000000000b', E'\n\n\n')$$,
+  '23514', '035: ... and newlines, which the btrim form accepted');
+select assert_rejected($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000035e01',
+          '00000000-0000-0000-0000-00000000000b', E'\t\t')$$,
+  '23514', '035: ... and tabs');
+select assert_allowed($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-000000035e01',
+          '00000000-0000-0000-0000-00000000000b', E'\n real words \n')$$,
+  '035: but whitespace around real text is content');
+
+-- Both tables answer "is this empty" the same way now. Asserted as a pair
+-- rather than one each, because the failure mode is exactly one of them being
+-- corrected and the other inheriting the old form from a copied migration.
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conname in ('postcard_comments_body_length', 'ride_messages_body_length')
+      and pg_get_constraintdef(oid) like '%~ ''\\S''%'),
+  2, '035: both body constraints use the non-whitespace floor, not btrim');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conname in ('postcard_comments_body_length', 'ride_messages_body_length')
+      and pg_get_constraintdef(oid) like '%btrim%'),
+  0, '035: ... and neither still uses btrim, which strips spaces only');
+
+rollback to savepoint comment_whitespace_035;
+
 rollback;
 
 \echo ''
