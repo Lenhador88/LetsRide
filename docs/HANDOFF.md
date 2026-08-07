@@ -805,3 +805,15 @@ something the project already allows; the fix is a connector setting or an owner
 wider project rule. A UUID-scoped mirror belongs in `.claude/settings.local.json`, which is
 gitignored **because those ids are per-machine** — never commit them. There is no such file in
 this container today (`ls .claude/settings.local.json`).
+
+**For the hourly Routine that drains the queue, the connector setting is not merely the better
+fix — it is the only one that reaches it.** Measured 2026-08-07: its fired sessions carry an
+`allowed_tools` list with **zero `mcp__*` entries** and no `permission_mode`, where every
+interactive session carries `permission_mode: auto` (`list_triggers` against `list_sessions`). A
+`settings.local.json` mirror cannot help, because it is gitignored *and* each firing gets a fresh
+container — the file would never be there to read. `PD-109` is the owner action; `PD-110` is the
+matching one for its model, which `update_trigger` refuses with `model_update_disabled`.
+
+**Never delete and recreate that Routine.** `create_trigger` still refuses the `connectors`
+parameter for this org (re-tested 2026-08-07), so the replacement comes back with no Supabase,
+Linear or Vercel, and only the owner can re-attach them by hand.

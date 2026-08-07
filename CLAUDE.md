@@ -1354,7 +1354,8 @@ change nothing in the repo can see:
 | Status | Type | Means | Who moves it |
 |---|---|---|---|
 | `Backlog` | backlog | Captured, not triaged | Either |
-| `Todo` | unstarted | Triaged; owner chores live here | Either |
+| `Todo AI` | unstarted | Triaged, an agent's to do — but **not** a start signal | Either |
+| `Todo Human` | unstarted | Triaged; owner chores live here | Either |
 | `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
 | **`Queued (AI)`** | started | **Approved to build. The queue an agent pulls from** | **Owner** |
 | `Development (AI)` | started | An agent has picked it up | Agent |
@@ -1363,6 +1364,13 @@ change nothing in the repo can see:
 
 `Canceled` and `Duplicate` also survive. The four squad-mirroring statuses are gone —
 `Idea (AI)`, `Testing (AI)`, `Quality control (AI)`, `Review Dev (Human)`.
+
+**`Todo` became `Todo AI` and `Todo Human` on 2026-08-07**, and this table said `Todo` for the few
+hours in between — which is the hazard the paragraph above already warns about, caught by running
+`list_issue_statuses` rather than reading this file. Eight, not seven, so the heading undercounts
+by one; it is left alone because the *shape* is what it names. Neither is a start signal —
+`Queued (AI)` still is, and `Todo AI` in particular is the one that reads like permission to
+begin and is not.
 
 **`Queued (AI)` is how the owner chooses what gets built, and it is a *status*, not a label.**
 Nothing else is a start signal — not priority, not the milestone, not a comment, and not the
@@ -1430,8 +1438,22 @@ minute server-side, so Routines spread across the hour instead of stampeding at 
 created holding none: `create_trigger` refused the `connectors` parameter outright — *"not
 available for this organization"* — and `update_trigger` has no such field either, so neither
 creating nor editing reaches it from a session. The owner attached them by hand in the claude.ai
-Routines UI on 2026-08-07. **Check rather than assume they are still there**, because nothing in
-this repo or in `list_triggers` reports them.
+Routines UI on 2026-08-07. **Re-tested the same day and still refused**, so this is a standing
+limit rather than a moment in time.
+
+**`list_triggers` does report them, and this file said it did not.** They are in
+`job_config.…mcp_connections`, keyed by `connector_uuid` — Supabase `d217aba8-…`, Linear
+`a55a164a-…`, Vercel `8d8457e7-…`, each matching the `installedServerId` that `ListConnectors`
+returns. So check rather than assume, with the command rather than this sentence:
+
+```bash
+# via the CCR MCP: list_triggers -> job_config.ccr… mcp_connections[].name
+```
+
+**Therefore: never delete and recreate this Routine.** It is the one edit that cannot be undone
+from a session — `create_trigger` still refuses `connectors`, so the replacement comes back with
+none, and only the owner can re-attach them. Whatever the recreation was meant to buy, it costs a
+working Routine. Use `update_trigger` (name, cron, prompt, enabled) or leave it alone.
 
 Step 0 of the prompt survives that fix and should stay: it proves the session can see the board
 before it does anything, and notifies if it cannot. A scheduled job that silently does nothing is
@@ -1442,6 +1464,30 @@ revoked without anything here noticing.
 skipping past a `Needs help` issue to find workable ones, both defeat the point: `Needs help`
 parks the queue *deliberately*, so that a story needing the owner blocks the ones behind it
 rather than burying itself under three merged PRs.
+
+**A fired session is not configured like an interactive one, and both gaps are owner-only.**
+Measured 2026-08-07 by diffing `list_triggers` against `list_sessions`. Every interactive session
+on this project carries `model: claude-opus-5`, `effort_level: xhigh`, `permission_mode: auto`.
+The Routine's `session_context` carries **none of the three** — just an `allowed_tools` list, and
+that list holds **zero `mcp__*` entries**. So a fired session runs on defaults and has no
+pre-approval for any connector tool.
+
+Two consequences, and a session can fix neither:
+
+- **The model cannot be set from a session.** `update_trigger` with a `model` fails
+  `model_update_disabled`, and `create_trigger` has no model parameter. Owner action in the
+  claude.ai Routines UI — `PD-110`.
+- **Connector tools prompt, and a scheduled session has nobody to answer.** The fix is the
+  connector's own always-allow, exactly as the owner did for Supabase — `PD-109`. Not a wider
+  project rule: `.claude/settings.json`'s `mcp__Linear__*` entries are name-matched and rotate out
+  from under themselves, and a UUID-scoped mirror lives in `.claude/settings.local.json`, which is
+  gitignored **and** per-container — a Routine gets a fresh container every firing, so that file
+  can never exist there. The connector setting is the only mechanism that reaches a firing at all.
+
+**Attaching a connector is not granting its tools.** The Routine has held Linear since 2026-08-07
+and still prompts on it; `mcp_connections` decides which servers load, the permission layer
+decides which calls run without asking. Reading a populated `mcp_connections` as "Linear works
+here" is the specific mistake this paragraph exists to stop.
 
 ### Do not ask permission to touch Linear
 
