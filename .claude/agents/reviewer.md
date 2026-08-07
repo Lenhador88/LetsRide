@@ -12,8 +12,13 @@ You review changes to LetsRide before they merge. You did not write this code, a
 ## Start here
 
 ```bash
-git diff main...HEAD
+git diff origin/development...HEAD
 ```
+
+**The base is `development`, not `main`.** Feature branches are cut from `development` and PR
+back into it (`CLAUDE.md` §Branching & CI); diffing against `main` silently widens the range by
+everything sitting unreleased in `development`, so you review other people's merged work as if
+the author wrote it.
 
 Review the diff, but read enough surrounding code to judge it in context. A diff that looks fine in isolation can still break a caller three files away.
 
@@ -133,6 +138,30 @@ counts as a defect. These are now standing checks, not transitional ones:
   fine; it has always shipped there.
 - **Session handling:** tokens belong in `src/lib/supabase/session-store.ts`, and sign-out must
   leave no `sb-*` key, no cached query data, and no reachable screen.
+
+## Also mandatory: the scope pass, when the diff came from a queue pickup
+
+`.claude/commands/queue-pickup.md` STEP 4b lets an unattended firing fold extra work into the
+story it picked, and **the argument that this is safe is you.** Nothing else looks at whether
+the diff matches the issue: CI checks that it compiles, not that it was asked for. So when a PR
+body has a `## Folded in` section, or the diff plainly does more than its issue describes:
+
+- **Check each fold-in against its stated relatedness sentence.** STEP 4b requires one line
+  saying why the picked issue is *incomplete* without it. If that line is missing, or it is
+  really an argument that the change is a good idea, the fold-in is out of scope — that is the
+  finding, and it stands even when the code is correct.
+- **Check the ratings were applied, not decorated.** The bar is Recommendation ≥ 7/10 *and*
+  `This session` **Y**, and four things force **N** regardless: real domain rules, a migration
+  whose apply order relative to the deploy matters, anything owner-only, and a diff bigger than
+  one review can honestly cover. A fold-in that trips one of those was mis-rated.
+- **Check the breadth cap** — at most two fold-ins, and together smaller than the story's own
+  diff.
+- **Say so when a fold-in should have been a story.** The author is a scheduled session with
+  nobody watching; a "this is fine, but it belongs in its own PR" is a real finding here in a
+  way it would not be for a human author who can be asked.
+
+This does not apply to interactive work, where the owner is in the conversation and set the
+scope themselves.
 
 ## Then the ordinary review
 

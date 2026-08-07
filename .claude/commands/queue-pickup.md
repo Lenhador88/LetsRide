@@ -120,7 +120,9 @@ grep -l "mcp__Linear__\|create_pull_request\|merge_pull_request" .claude/agents/
 command -v gh                                                                          # expect nothing
 ```
 
-- **Main thread, always:** STEPs 0–3, the Linear status moves, the PR open/merge, and STEP 5.
+- **Main thread, always:** STEPs 0–3, STEP 4b's triage decision, the Linear status moves, the
+  PR open/merge (STEP 4c), and STEP 5. The triage is a decision, so it stays here; the work it
+  decides to do goes to a subagent like any other build.
 - **Subagents, always:** the actual building — `feature`, `data`, `design-system`, `media`,
   `realtime`, `test`, and the non-negotiable `reviewer` pass. Every one of those holds
   Read/Write/Edit/Bash, which is all a build needs. A subagent's file reads, greps and test
@@ -196,6 +198,13 @@ oldest blocking condition has been true:
 it and saying the queue is stalled, then stop.** The window is narrow on purpose: it fires
 roughly once rather than every hour. Outside the window, exit silently.
 
+**A lock that is being worked is not a stall, and STEP 4b makes that distinction matter more.**
+Folding work into a story lengthens a run, so a healthy firing can now legitimately hold the
+lock for hours. Before notifying, check whether the claimed issue has a branch whose tip moved
+in the last hour — `git log -1 --format=%cr origin/<branch>`. If it did, something is building:
+exit silently. The alarm is for a condition **nobody is holding**, and a false "the queue is
+stalled" on a working firing teaches the owner to ignore the one alarm that matters.
+
 **Send it with the `PushNotification` tool.** A self-bound Routine cannot carry notifications
 of its own — the server rejects that parameter for a trigger bound to a persistent session —
 so this is the only way the message reaches anyone.
@@ -221,6 +230,11 @@ Only if the gates passed. List issues with status **`Queued (AI)`**.
 `Queued (AI)` is the only start signal — it is how the owner chooses what gets built, and
 picking from anywhere else takes that decision away from them. `Todo AI` is the one to be
 careful with: the name reads like permission and it is not one.
+
+**STEP 4b qualifies that sentence in exactly one direction:** a firing may finish the story it
+was given, including work that story is incomplete without. It may never *start* one it was not
+given. If you find yourself reaching for 4b to justify building something in another column,
+that is the failure 4b's relatedness test exists to catch — the answer is a story.
 
 **An epic or parent issue is not work.** If the issue you picked has sub-issues, it is a
 container: the buildable thing is one of its children. Leave the parent where it is, comment
@@ -290,90 +304,155 @@ Follow `CLAUDE.md` exactly. In particular:
 - Verify locally: `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
   Run `PGPASSWORD=postgres npm test` if anything under `supabase/**` changed.
 - A migration that changes a policy must add an assertion.
-- Open a PR against **`development`**, drive CI to green, and merge it. Do not merge red.
-  **Never push to `main` and never open a PR against `main`** — production promotion belongs
-  to the owner.
 - Update `docs/HANDOFF.md` as part of landing the work, not as a separate task.
 
+**This step stops short of the PR on purpose.** STEP 4b decides whether anything else is
+travelling in it, and that decision has to be made while the branch is still open — so opening
+and merging is STEP 4c, after the triage. An earlier draft put the triage after the merge and
+still told it to use "the same PR", which is not executable in order; `reviewer` caught it
+before this file shipped.
+
 Per STEP 0.6, prefer a subagent for anything that reads widely. The main thread should end
-this step holding a PR number and a one-line result, not a diff.
+this step holding a branch and a one-line result, not a diff.
 
 ---
 
-## STEP 4b — Triage what the build turned up
+## STEP 4b — Triage what the build turned up, before the PR opens
 
-A build always surfaces more than it was asked for. **Rate each one with `CLAUDE.md`
-§Working Principles' four-line block, then let the block decide.** The vocabulary already
-exists and two of its four lines are exactly this question, so nothing new has to be invented:
+A build always surfaces more than it was asked for. **Two questions, and the order is the whole
+design — relatedness first, rating second.** Skipping straight to the rating is how a firing
+talks itself into a second story, because nothing in a rating block asks what you are building.
+
+### First: is this the story done properly, or the next story started early?
+
+**Only the first is eligible to be rated at all.** The test is not "is it good" or "is the
+branch open" — it is whether the picked issue is genuinely unfinished without it:
+
+- **Travels** — the test the new code needs, the caller the new function has to have, the type
+  it must be added to, the doc line this change just made false, the obvious bug found *in the
+  code this story touched*.
+- **Filed** — anything else, however good, however cheap, however open the branch is. A defect
+  in a neighbouring file, an improvement you noticed in passing, a refactor the story merely
+  made visible. These are *new work*, and `Queued (AI)` is where the owner releases new work.
+
+If you cannot say in one line why the picked issue is incomplete without it, it does not
+travel. **That sentence goes in the PR body**, so the claim is on the record rather than in
+your head.
+
+### Second: rate it, and let the block decide
+
+**Rate it with `CLAUDE.md` §Working Principles' four-line block** — the vocabulary already
+exists and two of its four lines are this question:
 
 | Rating | What happens |
 |---|---|
 | **Recommendation ≥ 7/10 *and* This session = Y** | **Build it now** — same branch, same PR, same `reviewer` pass |
 | Anything else | **File a story** and move on |
 
-**Both halves, never either.** A 9/10 recommendation with `This session` **N** is a story, not
-a build, and that pairing is ordinary rather than contradictory — `CLAUDE.md` says so in as
-many words, using the leaked-password toggle as the example: 9/10 and **N**, because nobody in
-a session can click it. Reading a high recommendation *alone* as licence to build is how a
-firing quietly starts choosing its own work, which is the one decision `Queued (AI)` exists to
-give the owner.
+**Read `This session` narrowly here, and note that this IS narrower than `CLAUDE.md`'s
+definition.** There it answers "should *this* session pick it up **next**", judged partly on
+what context is already loaded — and its worked **Y** example is a 3/10 two-minute fix. In a
+firing it means something tighter: *on this branch, in this PR, before it merges.* The two
+readings are compatible but not identical, and the difference is deliberate. An interactive
+session with the owner watching can take a cheap 3/10 on an open branch; an unattended one
+cannot, because nobody is there to say "not that".
 
-**Answer `This session` N whenever any of these is true, however good the idea is.** These are
-the cases an unattended firing cannot honestly answer Y to:
+**That is a real cost, and it is stated rather than hidden:** a genuinely trivial, genuinely
+related 3/10 fix gets filed instead of made. The owner asked for *strong* recommendations to be
+built straight away, and the threshold is what makes "strong" mean something a firing cannot
+argue with at 3am.
+
+**Both halves, never either.** A 9/10 recommendation with `This session` **N** is a story, not a
+build — an ordinary pairing here rather than a contradiction, and `CLAUDE.md` illustrates it
+with the leaked-password toggle: 9/10 and **N**, because nobody in a session can click it.
+Reading a high recommendation *alone* as licence is how a firing starts choosing its own work.
+
+**Answer `This session` N whenever any of these is true, however good the idea is:**
 
 - **It has real domain rules** — visibility, membership, permissions. That is `openspec`'s, and
-  a proposal gets reviewed before it is built. §The Agent Squad: a proposal is the only artifact
-  in this pipeline with no automated gate.
+  §The Agent Squad is explicit that a proposal is the only artifact in this pipeline with *no*
+  automated gate.
 - **It needs a migration whose apply order relative to the deploy matters.** `021`/`025` is the
-  worked example and getting it wrong is an instant outage, not a bug.
+  worked example and getting that backwards is an instant outage, not a bug.
 - **It is the owner's** — a dashboard toggle, a product decision, a design frame that does not
-  exist, a credential. File it `Todo Human` with the `Owner only` label.
-- **It would grow the diff past what one `reviewer` pass can honestly cover.** That review is
-  the gate that makes unattended merging safe at all; work that outgrows it is two PRs.
+  exist, a credential. `Todo Human`, with the `Owner only` label.
+- **It would grow the diff past what one `reviewer` pass can honestly cover.**
 
-**Why the fold-in is bounded to the same PR, and what that buys:** the extra work goes through
-the *same* `reviewer` pass, the same CI and the same merge, so there is no path here that ships
-anything unreviewed. If it cannot travel with the story — its own branch, its own migration,
-its own review — that alone answers `This session` **N**.
+### The breadth cap — because "one level deep" does not bound how wide
+
+Recursion and breadth are different problems and the first draft only closed one. Five items
+each rated 8/Y pass every gate above individually while collectively tripling the diff.
+
+- **At most two fold-ins per story.** A third means the story was under-specified; file them
+  all and say so in the PR.
+- **The fold-ins together must stay smaller than the story's own diff.** If the extras are the
+  larger half, the PR is no longer the story you were asked to build.
+- **Anything the folded-in work itself turns up is a story, always**, whatever it rates. One
+  level deep, no chaining.
+
+Over either bound, **file everything and build none of it.** Do not pick the best two — the
+count is the signal that the triage has gone wrong, not a quota to spend.
 
 ### Filing the story
 
-Never `Backlog`, which is untriaged by definition and where the old rule buried everything.
-Never `Queued (AI)`, which is the owner's column and the only start signal.
+Never `Queued (AI)` — that is the owner's column and the only start signal.
 
-- **`Todo AI`** — a session could build it.
-- **`Todo Human`** plus the `Owner only` label — nobody in a session can.
+| Where | When |
+|---|---|
+| **`Todo AI`** | A session could build it, and you would recommend building it (≥ 4/10) |
+| **`Todo Human`** + `Owner only` | Nobody in a session can do it |
+| **`Backlog`** | You rated it below 4/10 — a real thought, not a triaged one |
 
-The body is a pointer and a reason, per `CLAUDE.md` §The roadmap lives in Linear: one line on
-what and why, the four-line rating block, and the issue or PR it came out of. **A story that
-grows a specification is a bug** — that belongs in a proposal.
+**`Backlog` is not banned, and an earlier draft of this file banned it wrongly.** `Todo AI`
+means *triaged*, and the owner reads it to choose work; filling it with 2/10 ideas devalues
+exactly the column this change depends on.
+
+**Use `parentId` when the follow-up belongs to the same feature as the story it came out of.**
+§Sequencing's "one issue per feature" applies to work a firing files just as much as to work
+the owner files, and a loose top-level story is the shape that rule exists to prevent.
+
+The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
+the four-line rating block, the relatedness sentence, and the issue or PR it came out of.
+**A story that grows a specification is a bug** — that belongs in a proposal.
 
 Pass the project id `88f3f224-ecf0-46f0-a032-c86b7a12f81c`, never the name, and **read
-`save_issue`'s response back to confirm the field you set is on it.** A dropped `project`
-returns a perfectly successful-looking payload; that has already happened four times in one
-batch.
-
-### One level deep — never recurse
-
-Anything the folded-in work *itself* turns up is a **story, always**, whatever it rates.
-Otherwise one firing chains build onto build and the PR never closes, which is scope creep
-wearing a rating block.
+`save_issue`'s response back to confirm the field you set is actually on it.** A dropped
+`project` returns a perfectly successful-looking payload; that has already happened four times
+in one batch.
 
 ### Say it out loud, in both places
 
 The owner did not get to make this call, so the call has to be visible without opening a diff:
 
-- **The PR body** gets a `## Folded in` section — one heading per item with its ratings, in the
-  shape §Working Principles specifies: the letter and description *outside* the bar, the four
-  ratings *inside* it.
+- **The PR body** gets a `## Folded in` section — one heading per item with its relatedness
+  sentence and its ratings, in the shape §Working Principles specifies: the letter and
+  description *outside* the bar, the four ratings *inside* it.
 - **The STEP 5 Linear comment** names what was folded in and links every story filed.
 
 An unrated fold-in reads as advocacy and cannot be cheaply declined, which is the entire reason
 the block exists.
 
-**Still unsure whether to fold something in? That is `Needs help`, not "build it and find
-out."** `CLAUDE.md` forbids letting an unlabelled guess pass as a known value, and a scheduled
-unattended session is the worst place in this repo to guess.
+**Unsure whether something should travel? Then it does not — file it.** That is the resolution,
+*not* `Needs help`. An earlier draft sent this uncertainty to `Needs help`, which was wrong in
+two ways: it parks a story that is built and green, and by this point it would hold the
+concurrency lock over finished work. `Needs help` is for uncertainty about **the picked story**
+— an ambiguous requirement, a visibility rule nobody wrote down. Uncertainty about an *extra*
+has a cheap correct answer, and it is the conservative one.
+
+---
+
+## STEP 4c — Open the PR and merge it
+
+Only now, with the triage done and anything travelling already committed:
+
+- Open a PR against **`development`**, drive CI to green, and merge it. Do not merge red.
+  **Never push to `main` and never open a PR against `main`** — production promotion belongs to
+  the owner.
+- The PR body carries the `## Folded in` section from STEP 4b, or nothing if nothing travelled.
+- **The `reviewer` pass covers the fold-ins too.** That is the entire safety argument for
+  building them unattended, so it is not optional and it is not "the review I already ran" —
+  if something was folded in after `reviewer` looked at the diff, it has not been reviewed.
+  Run it again on the final diff.
 
 ---
 
@@ -383,10 +462,13 @@ unattended session is the worst place in this repo to guess.
 separate task, and STEP 4b's stories are part of it — a follow-up that was rated and then never
 filed is worse than one that was never noticed, because the rating made it look handled.
 
-- Merged → move the issue to **`Done`** and comment with the PR link and one line on what
-  landed.
-- **File every STEP 4b story that did not get built**, and name them in that same comment. Do
-  this before the notification, so the notification is true when it is sent.
+**The order of the first two bullets is load-bearing.** A draft of this step wrote the `Done`
+comment first and told it to name the stories, which cannot be done before they exist:
+
+- **File every STEP 4b follow-up that did not get built.** First, because the next bullet links
+  them.
+- Merged → move the issue to **`Done`** and comment with the PR link, one line on what landed,
+  what was folded in, and a link to each story just filed.
 - Send one push notification with the `PushNotification` tool: `Done ; ) <issue id> <short
   title>`.
 - **Leave the session idle**: branch back on `development`, clean tree, nothing in flight —
@@ -405,6 +487,12 @@ git checkout development && git pull origin development && git status --porcelai
 
 Move the issue to **`Needs help`**, comment with *exactly* what you need from the owner, and
 stop. Leave the branch and any PR open and say so in the comment.
+
+**File any follow-up you already rated before you stop — every exit path owes that, not just
+STEP 5's.** This path, STEP 2c and STEP 4b's "file it instead" all leave without reaching
+STEP 5, so a follow-up rated on the way to a `Needs help` would otherwise be lost precisely
+when the story is parked longest. Rating something and then dropping it is worse than never
+noticing it, because the rating is what made it look handled.
 
 Use it whenever you would otherwise guess: an ambiguous requirement, a visibility rule
 nobody wrote down, a migration whose ordering you cannot verify, a design frame that does not
@@ -432,24 +520,34 @@ the Linear round trip".
 
 ## Scope discipline
 
-**This changed on 2026-08-07, and the old rule is the one you probably remember.** It read
-*"Build the issue in front of you. Do not fold in adjacent improvements you notice, however
-tempting — raise them as new Linear issues in `Backlog` instead."* Everything became a
-`Backlog` issue, including the two-minute fix on a branch that was already open, already green
-and already under review.
+**This changed on 2026-08-07 at the product owner's request, and the old rule is the one you
+probably remember.** In full, so the change is judged against what it actually said:
+
+> Build the issue in front of you. Do not fold in adjacent improvements you notice, however
+> tempting — raise them as new Linear issues in `Backlog` instead, or note them in the PR. A
+> scheduled session is the worst possible place for scope creep.
+
+Its instinct was right and its default was too blunt: **`Backlog` for everything** means the
+test a new function needs, and the doc line the change just falsified, get filed as future work
+rather than done — leaving the story merged and incomplete.
+
+**Written as a failure the old default invites, not one anyone has watched happen.** The new
+rule was written 2026-08-07 and nothing has run under it. Do not let a later revision promote
+either half of this paragraph into history; an illustrative example wearing history's clothes
+is a documented failure mode in this repo, corrected as recently as PR #105.
 
 The rule now has two halves, and **STEP 4b is where they are applied**:
 
-- **Work that makes the picked story right travels with it** — when it rates ≥ 7/10 with
-  `This session` **Y**. Same branch, same PR, same `reviewer` pass.
-- **Everything else becomes a story** in `Todo AI` or `Todo Human`, and the owner decides when
-  it gets built.
+- **Work that makes the picked story right travels with it** — when it passes the relatedness
+  test *and* rates ≥ 7/10 with `This session` **Y**. Same branch, same PR, same `reviewer` pass.
+- **Everything else becomes a story** in `Todo AI`, `Todo Human` or `Backlog`, and the owner
+  decides when it gets built.
 
-**What did NOT change: the story in front of you is still the scope.** The fold-in is for work
-that finishes *that* story properly — the test it needs, the caller the new function has to
-have, the doc line the change just made false. An improvement you merely noticed along the way
-is a story however good it is and however open the branch is, because it is a *new* piece of
-work, and `Queued (AI)` is where the owner releases those.
+**What did NOT change: the story in front of you is still the scope**, and the old rule's last
+sentence still stands unedited — *a scheduled session is the worst possible place for scope
+creep*. The fold-in is for work that finishes *that* story properly. An improvement you merely
+noticed along the way is a story however good it is and however open the branch is, because it
+is a *new* piece of work, and `Queued (AI)` is where the owner releases those.
 
 The boundary is worth being able to say in one line, because everything above is downstream of
 it: is this **the story, done properly** — or **the next story, started early?** The first

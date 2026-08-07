@@ -1462,7 +1462,14 @@ only start signal, and an issue sitting in `Todo AI` is triaged, not released.
 
 **`Queued (AI)` is how the owner chooses what gets built, and it is a *status*, not a label.**
 Nothing else is a start signal — not priority, not the milestone, not a comment, and not the
-`DEV` label. **Take the top of that column by priority, and if it is empty, ask rather than
+`DEV` label.
+
+**Step 5b's fold-in qualifies this sentence and does not weaken it** — noted here because an
+unannotated absolute is how the two drift apart. A firing may finish the story it was *given*
+properly, including the test or the caller that story needs; it may never start a story it was
+not given. Starting new work still requires this column, and the relatedness test in
+`.claude/commands/queue-pickup.md` STEP 4b is what keeps the distinction enforceable rather
+than rhetorical. **Take the top of that column by priority, and if it is empty, ask rather than
 choosing for them.** A session that picks its own work from `Backlog` has quietly taken the one
 decision this whole board exists to give the owner.
 
@@ -1662,23 +1669,30 @@ What it does, in order — and the order is the design:
    pick, and what keeps the order right is still that nothing blocked is in the column.
 4. **Move it to `Development (AI)` before starting**, because that status is the lock the next
    firing reads. Claiming late is how two sessions start the same story.
-5. Build under this file's standing instructions, PR to `development`, drive green, merge, move
-   to `Done`. Uncertain about anything → `Needs help` with a comment saying what it needs.
-5b. **Triage what the build turned up, using the rating block rather than judgement.** Changed
-   2026-08-07 at the product owner's request; the old rule sent every follow-up to `Backlog`,
-   including the two-minute fix on a branch that was already open and already under review.
-   Rate each one on §Working Principles' four lines, then let the block decide: **Recommendation
-   ≥ 7/10 *and* `This session` Y** → build it now, in the same branch and the same PR, through
-   the same `reviewer` pass. Anything else → **a story in `Todo AI`**, or `Todo Human` +
-   `Owner only` when no session can do it. Never `Backlog`, and never `Queued (AI)`.
+5. Build under this file's standing instructions, in subagents per STEP 0.6, with the
+   non-negotiable `reviewer` pass on the diff.
+5b. **Triage what the build turned up — *before* the PR opens, which is what makes "the same PR"
+   mean anything.** Changed 2026-08-07 at the product owner's request; the old rule filed every
+   follow-up to `Backlog`, so the test a new function needed was future work rather than done.
+   **Two questions and the order is the design.** First, relatedness: is this *the story done
+   properly*, or *the next story started early*? Only the first is eligible. Then rate it on
+   §Working Principles' four lines and let the block decide — **Recommendation ≥ 7/10 *and*
+   `This session` Y** → build it now, same branch, same PR, same `reviewer` pass. Anything else
+   → a story: `Todo AI` if a session could build it, `Todo Human` + `Owner only` if not,
+   `Backlog` if you rated it below 4/10. **Never `Queued (AI)`.**
 
-   **Both halves, never either — that is what keeps this from becoming a session choosing its
-   own work.** 9/10 with `This session` **N** is an ordinary pairing here, not a contradiction:
-   the leaked-password toggle is exactly that. And the fold-in is bounded to *the story done
-   properly*, never *the next story started early* — real domain rules, an order-sensitive
-   migration, an owner decision, or a diff bigger than one review can honestly cover all force
-   **N** regardless of how good the idea is. `.claude/commands/queue-pickup.md` STEP 4b is the
-   procedure; filing the stories is part of the wrap-up, not after it.
+   **Both halves, never either — that is what stops a firing choosing its own work.** 9/10 with
+   `This session` **N** is an ordinary pairing here, not a contradiction; the leaked-password
+   toggle is exactly that. Four things force **N** however good the idea is: real domain rules,
+   an order-sensitive migration, an owner decision, or a diff bigger than one review can
+   honestly cover. **`This session` is read more narrowly in a firing than §Working Principles
+   defines it above** — *on this branch, before this PR merges* — because an unattended run has
+   nobody watching to say "not that". `.claude/commands/queue-pickup.md` STEP 4b is the procedure, including the
+   breadth cap (at most two, and never larger than the story's own diff).
+5c. PR to `development`, drive green, merge, move to `Done`. Uncertain about anything →
+   `Needs help` with a comment saying what it needs. **File every rated follow-up before
+   stopping, on every exit path** — a follow-up rated and then dropped is worse than one never
+   noticed, because the rating made it look handled.
 
 **It is hourly, not every ten minutes, and that is a server limit rather than a choice.** The ask
 was ten. Measured, not assumed — `create_trigger` rejects it outright:

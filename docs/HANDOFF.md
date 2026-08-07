@@ -1044,27 +1044,50 @@ did not need:
   ```
 
 **A firing now folds strong follow-ups into the same PR instead of filing all of them — 2026-08-07,
-at the product owner's request.** The old §Scope discipline sent *every* adjacent improvement to
-`Backlog`, including the two-minute fix on a branch that was already open, green and under review.
-STEP 4b replaces the judgement call with the rating block that already existed: **Recommendation
-≥ 7/10 *and* `This session` Y** builds now, in the same branch and PR and through the same
-`reviewer` pass; anything else becomes a story in **`Todo AI`** (or `Todo Human` + `Owner only`).
+at the product owner's request.** The old §Scope discipline sent adjacent improvements to `Backlog`
+"or note them in the PR", which in practice means the test a new function needs and the doc line
+the change just falsified become future work rather than done, leaving the story merged and
+incomplete. **That is the failure the old default invites, not one anyone has watched happen** —
+the new rule was written 2026-08-07 and nothing has run under it yet. Do not let a later revision
+promote it into history; an illustrative claim wearing history's clothes is the exact error #105
+corrected.
 
-Two things carry the risk, and both are the point rather than caveats:
+STEP 4b is the procedure, and it asks **two questions in a fixed order**:
 
-- **Both halves are required.** A 9/10 recommendation with `This session` **N** is a story — the
-  ordinary pairing `CLAUDE.md` already illustrates with the leaked-password toggle. Reading a high
-  recommendation alone as licence is how a firing starts choosing its own work, and `Queued (AI)`
-  is the one decision the board exists to give the owner.
-- **Four things force `This session` N** however good the idea is: real domain rules (`openspec`'s,
-  and a proposal has no automated gate), an order-sensitive migration (the `021`/`025` class, where
-  wrong order is an outage), anything owner-only, and a diff larger than one `reviewer` pass can
-  honestly cover — that review being what makes unattended merging safe at all.
+1. **Relatedness** — is this *the story done properly* or *the next story started early*? Only the
+   first is eligible to be rated at all, and a one-line justification goes in the PR body. The
+   first draft had no such test: the ≥7/Y bar encodes nothing about what you are building, so it
+   would have licensed any sufficiently good idea. `reviewer` caught that.
+2. **The rating block** — ≥ 7/10 *and* `This session` **Y** builds now, same branch, same PR, same
+   `reviewer` pass. Anything else is a story: `Todo AI`, `Todo Human` + `Owner only`, or `Backlog`
+   below 4/10.
 
-Nothing here ships unreviewed: the fold-in rides the same review, the same CI and the same merge.
-Whether the filed-story half stays honest is the thing to watch — the failure mode is a follow-up
-that gets rated and then never filed, which looks handled precisely because it was rated. STEP 5
-puts the filing *before* the push notification for that reason.
+What carries the risk, and each is the point rather than a caveat:
+
+- **Both halves are required.** 9/10 with `This session` **N** is a story — the ordinary pairing
+  `CLAUDE.md` illustrates with the leaked-password toggle. Reading a high recommendation alone as
+  licence is how a firing starts choosing its own work.
+- **`This session` is read more narrowly in a firing** — *on this branch, before this PR merges* —
+  than §Working Principles defines it, where the canonical **Y** is a 3/10 two-minute fix. The
+  divergence is deliberate and the cost is real: a trivial related fix gets filed rather than made,
+  because an unattended run has nobody watching to say "not that".
+- **Four things force N** however good the idea is: real domain rules, an order-sensitive migration
+  (`021`/`025`), anything owner-only, and a diff larger than one `reviewer` pass can cover.
+- **A breadth cap, because "one level deep" bounds recursion and not width.** Five items each rated
+  8/Y pass every other gate. At most two, together smaller than the story's own diff; over either,
+  file them all and build none.
+
+**The safety argument is `reviewer`, so `reviewer` was told about it.** `.claude/agents/reviewer.md`
+gained a mandatory scope pass — check each fold-in against its relatedness sentence, check the
+ratings were applied rather than decorated, check the breadth cap — because the brief had zero
+mentions of scope and CI checks that a diff compiles, not that it was asked for. It also had
+`git diff main...HEAD` as its starting command, which widens every review by whatever sits
+unreleased in `development`; that is now `origin/development...HEAD`.
+
+**The failure mode to watch is a follow-up that gets rated and then never filed** — it looks
+handled precisely because it was rated. STEP 5 files the stories *before* it writes the `Done`
+comment that links them, and §If you get stuck now says every exit path owes the same, since
+`Needs help` and STEP 2c both leave without reaching STEP 5.
 
 **The delivery path is tested and the connectors survive it.** `create_trigger` warns *"this
 trigger stores no MCP connectors, so the sessions it fires will run without connector tools"* — a
