@@ -1087,23 +1087,30 @@ static allowlist: the twelve `mcp__Supabase__*` names sitting in `permissions.al
 there for a month and did not stop the prompts, since the classifier reads intent rather than
 that list. The rule it needed was prose telling it this project has already decided.
 
-**The grant is real and it is conditional, and the condition is not set — measured 2026-08-06.**
-`execute_sql` against production runs with no prompt in this session, verified rather than
-recalled. But `permissions.defaultMode` is **UNSET** in `.claude/settings.json`, so the mode is
-whatever a session happens to launch with, and every word of the grant lives under
-`permissions.autoMode.allow` — which the classifier reads *only while the session is in `AUTO`*.
-A session that starts in `default` mode falls back to the literal `mcp__Supabase__*` names in
-`permissions.allow`, and the paragraph above already records that those did not stop the prompts.
-So the owner's experience of being asked anyway is not a stale memory and not a misconfigured
-grant: it is the grant evaporating in any session that did not start in `AUTO`.
+**The grant was conditional on a mode that was not pinned, and the owner pinned it — PR #80,
+2026-08-07.** `"defaultMode": "auto"` is now in `.claude/settings.json` §permissions, so every
+session starts in the mode where the grant applies. Check rather than trust this line:
+`jq -r '.permissions.defaultMode' .claude/settings.json`.
 
-**The one-line fix is an owner action, deliberately.** `"defaultMode": "auto"` in
-`.claude/settings.json` §permissions pins every session into the mode where the grant applies.
-No agent can write that line: the classifier blocks a session editing its own permission mode,
-and blocks writing a `PreToolUse` hook that returns `permissionDecision: allow`, which is the
-other route to the same end. Both refusals are correct — an agent widening its own envelope is
-exactly what that boundary is for — so **do not attempt either, and do not route around them via
-Bash.** Report it and let the owner decide; the ask is two words in a settings file.
+The reasoning is kept because it explains why that one line matters, and because the same trap
+waits for every future grant written into `autoMode.allow`. The classifier reads
+`permissions.autoMode.allow` **only while the session is in `AUTO`**. A session starting in
+`default` mode falls back to the literal `mcp__Supabase__*` names in `permissions.allow`, and the
+paragraph above already records that those did not stop the prompts. So the owner's experience of
+being asked anyway was never a stale memory and never a misconfigured grant — it was the grant
+evaporating in any session that did not start in `AUTO`. **Anything added to `autoMode.allow`
+from now on inherits that dependency**, which is the durable half of this note.
+
+**No agent could write that line, and that is still true of the next one.** The classifier blocks
+a session editing its own permission mode, and blocks writing a `PreToolUse` hook that returns
+`permissionDecision: allow`, which is the other route to the same end. Both refusals are correct —
+an agent widening its own envelope is exactly what that boundary is for — so **do not attempt
+either, and do not route around them via Bash.** Report it and let the owner decide.
+
+**This paragraph claimed the fix was outstanding for a day after it shipped**, because PR #80 set
+the line and added this prose in the *same commit*, describing the problem it had just fixed. It
+was caught on 2026-08-07 by the Linear seeding, which checked each owner action against reality
+before writing it down — which is the argument for §The roadmap lives in Linear in one sentence.
 
 **The review gate for schema change here is the migration file, not the execution.** That is
 what makes the grant safe rather than lax, and it is the reason to keep writing the file first:
@@ -1284,6 +1291,86 @@ not need a proposal; requiring one for everything is how process gets ignored.
 Proposals must state the **negative** cases, not just the positive ones: who
 must *not* see or do this. Every access-control bug this project has had came
 from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
+
+## The roadmap lives in Linear
+
+Adopted 2026-08-07. The workspace is **`lets-ride`**, the team is **Pedro & Dave (`PD`)**, and
+the project is **[Let's ride (AI)](https://linear.app/lets-ride/project/lets-ride-ai-10cb543bcb9d)**.
+`PD-86`–`PD-103` were the first seeding.
+
+**There is a second project called `Let's Ride`, and it is history — do not write to it.** 27
+issues from 2024–2025 describing a Thunkable/Firebase build that no longer exists. The product
+owner asked on 2026-08-07 that it be left entirely alone. Read it if you like; change nothing.
+
+### Why this does not become the fifth planning system
+
+That is the actual risk, and this repo has already lost that bet once — §The Agent Squad records
+that *"two specification systems meant neither was used"* when OpenSpec sat beside `spec`. So the
+boundary is a rule rather than a preference, and it is one line:
+
+> **Linear holds order, owner and status. The repo holds everything else, and Linear points at it.**
+
+| Layer | Owns | Never holds |
+|---|---|---|
+| **Linear** | What is next, who can do it, what is blocked on what | Specs, negative cases, measured facts, commands |
+| **`openspec/`** | The contract — every state and every negative case | Scheduling, priority, assignment |
+| **`docs/HANDOFF.md`** | Current position, each claim beside the command that verifies it | The queue |
+
+An issue body is a pointer and a reason: `docs/HANDOFF.md` §Owner actions 3, plus one sentence
+on why it matters. **A Linear issue that grows a specification is a bug** — that belongs in a
+proposal, where `openspec/config.yaml`'s rules apply and a missing visibility rule fails loudly
+rather than silently.
+
+### The pipeline is the squad, and the statuses already model it
+
+The team's statuses map onto §The Agent Squad's order almost exactly. Use them rather than
+inventing labels:
+
+| Status | Means | Who moves it |
+|---|---|---|
+| `Backlog` | Captured, not triaged | Either |
+| `Todo` | Triaged; owner chores live here | Either |
+| `Idea (AI)` | An agent is drafting the OpenSpec proposal | Agent |
+| `Review plan (Human)` | Waiting on a product decision or a proposal read | **Owner** |
+| **`Ready for DEV (AI)`** | **Approved to build. This is the queue an agent pulls from** | **Owner** |
+| `Development (AI)` | `data` / `design-system` / `feature` / `media` at work | Agent |
+| `Testing (AI)` | `test` agent | Agent |
+| `Quality control (AI)` | `reviewer` agent — never on its own work | Agent |
+| `Review Dev (Human)` | PR open against `development`, waiting on the merge | **Owner** |
+| `Done` | Merged. *Committed and pushed is not shipped* | Agent |
+
+**`Ready for DEV (AI)` is how the owner chooses what gets built.** Nothing else is a start
+signal — not priority, not the milestone, not a comment. **Take the top of that column by
+priority, and if it is empty, ask rather than choosing for them.** A session that picks its own
+work from `Backlog` has quietly taken the one decision this whole board exists to give the owner.
+
+Labels are the cross-cut: **`Owner only`** is the filter for what no session can do, and
+`App` / `Database` / `Native shell` / `Design` / `Website` say where. `Chore` is the type
+`Bug`/`Feature`/`Improvement` leaves out.
+
+### Do not ask permission to touch Linear
+
+Standing grant from the product owner, 2026-08-07, in their words: *"I dont want you to ask for
+my permission to interact with linear"*. Reading, creating, updating, labelling and moving issues
+between statuses are all pre-authorized, encoded in `.claude/settings.json` under both
+`permissions.allow` and `permissions.autoMode.allow` — and note the dependency recorded in
+§Working Principles: the `autoMode` half applies only while the session is in `AUTO`, which
+`defaultMode` now pins.
+
+Two things it does **not** cover: deleting anything a human authored, and the old `Let's Ride`
+project.
+
+### Keep it current, or it rots like the docs did
+
+- **Moving an issue is part of doing the work, not paperwork after it.** Move to
+  `Development (AI)` when you start and `Done` when the PR merges — in the same session.
+- **Verify before you write.** The first seeding checked each claim against the live system and
+  found `PD-93` already fixed by PR #80 and its CLAUDE.md prose still saying otherwise. Same rule
+  as *a claim about state needs the command that checks it*: an issue asserting a stale fact is
+  worse than no issue, because a tracker reads as current by construction.
+- **A new owner action goes in Linear the moment it is found**, labelled `Owner only`. Two —
+  the Site URL and `defaultMode` — sat outside `docs/HANDOFF.md` §Owner actions because they were
+  discovered elsewhere and written down where they were discovered. That is the gap this fixes.
 
 ## Testing
 
