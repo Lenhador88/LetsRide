@@ -1608,11 +1608,25 @@ What it does, in order — and the order is the design:
 0.5. **Is the session idle? Gather, do not exit.** New with the reuse, and the cost it pays for.
    A fresh session was idle by construction; this one is not. The firing message queues behind
    whatever the session is doing and lands the moment that finishes — possibly mid-conversation
-   with the owner. Four checks: an unfinished owner request in the conversation, a dirty tree, a
-   branch with commits not on `development`, and an open PR **whose head is the current branch**.
-   **The first is judgement and it is the one that matters**; the other three are the backstop
+   with the owner. Five checks: an unfinished owner request in the conversation, a dirty tree, a
+   branch with commits not on `development`, an open PR **whose head is the current branch**, and
+   **low Claude usage headroom**.
+   **The first is judgement and it is the one that matters**; three of the rest are the backstop
    that catches a session which died mid-build. **The owner's work always wins** — the queue
    waits an hour, which costs nothing.
+
+   **The usage check is deliberately weaker than what was asked for, and that is the honest
+   shape rather than a shortfall to be fixed.** The request (2026-08-07) was *"if any Claude
+   usage limit is above 80%, skip the run"*. **There is no number a session can read**: `claude`
+   has no `usage` subcommand (`/usage` is interactive only), nothing under `~/.claude` carries
+   it, no env var does, and no MCP tool exposes it — all checked. So the gate is *"exit if a
+   usage warning is visible in this session"*, which the reuse actually helps with, since a
+   warning from an earlier turn is still in the conversation. **Writing it as a numeric
+   threshold would produce a gate that can never fire** — the same silently-failing shape as the
+   team-scoped lock and the buried stall alarm, and this file's third instance of it. Reaching
+   for the OAuth credential to query an undocumented endpoint is worse, not better: it would
+   break silently and *look* like it worked. The lever that works is the owner's —
+   `update_trigger enabled: false` pauses the Routine in one call.
 
    Two traps, both found by `reviewer` before this merged, and both of the shape this file keeps
    warning about — a guard that fails silently and therefore looks like success:

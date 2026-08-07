@@ -1093,6 +1093,24 @@ did not need:
   one alarm that detects a frozen queue could never fire — self-reinforcingly, since the
   `Needs help` path deliberately leaves an open PR behind. **Never reintroduce an early return
   above STEP 1.5**, including the tempting "cheap checks first, skip the Linear round trip".
+- **The usage-headroom check is weaker than it was asked to be, and cannot be strengthened from a
+  session.** Asked for 2026-08-07 as *"if any Claude usage limit is above 80%, skip the run"*.
+  **No number is readable**: `claude` has no `usage` subcommand (`/usage` is interactive only),
+  nothing under `~/.claude` carries it, no env var does, and no MCP tool exposes it — all checked
+  that day. So STEP 0.5 check (5) is *"exit if a usage warning is visible in this session"*, which
+  the reuse helps with because a warning from an earlier turn is still in the conversation.
+
+  Writing it as a numeric threshold would be a gate that can never fire — the third instance of
+  that shape in this one file, after the team-scoped lock and the buried stall alarm. Querying an
+  undocumented endpoint with the session's OAuth credential is worse: it breaks silently and
+  *looks* like it works. **The lever that works is the owner's** —
+  `update_trigger trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan enabled=false` pauses it in one call,
+  and a disabled trigger's row has **no `enabled` key at all** rather than `"enabled": false`.
+
+  ```bash
+  claude --help | sed -n '/^Commands:/,$p'   # no `usage` subcommand
+  ls ~/.claude; env | grep -iE 'usage|limit|quota'   # nothing
+  ```
 - **STEP 0.6, reduce the session.** Context accumulates across firings and **no tool available to a
   session clears its own context**; `/clear` and `/compact` are CLI commands the owner types. The
   mechanism is therefore delegation: gates inline, build in subagents, never a diff or a test log

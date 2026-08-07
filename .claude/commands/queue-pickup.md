@@ -88,9 +88,46 @@ mcp__github__list_pull_requests  owner=Lenhador88 repo=letsride state=open
   -> keep only those whose head ref == $BRANCH
 ```
 
-**Only (1) needs judgement, and it is the one that matters most.** The other three are the
-backstop that catches what judgement misses — a session that died mid-build leaves a dirty
-tree behind, and that is exactly the state where picking up a second story does damage.
+5. **Claude usage headroom is low.** Asked for by the product owner 2026-08-07 as *"if any
+   Claude usage limit is above 80%, skip the run"*. **The 80% cannot be evaluated, and this
+   check is deliberately weaker than the request.** Read the limits below before relying on
+   it.
+
+   **Exit if a usage signal is visible in this session** — a system warning that a limit is
+   approaching or reached, an overage notice, or a rate-limit message, whether it arrived
+   this firing or earlier in the conversation. A build is by far the most expensive thing
+   this Routine does, and it is the one worth not starting.
+
+   **What was checked, 2026-08-07, so nobody re-derives it:**
+
+   ```bash
+   claude --help | sed -n '/^Commands:/,$p'   # no `usage` subcommand — /usage is interactive only
+   ls ~/.claude                               # no usage/stats/limit file
+   env | grep -iE 'usage|limit|quota'         # nothing
+   ```
+
+   No MCP tool exposes it either. **So there is no number to compare against 80%**, and a
+   check written as if there were would be a gate that can never fire — the same
+   silently-failing shape as the team-scoped lock and the buried stall alarm. Do not "fix"
+   this by inventing a threshold.
+
+   **Do not reach for the OAuth credential to query an internal endpoint.** It would be
+   undocumented, fragile, and would break silently the day it changed — which is worse than
+   this honest gap, because it would *look* like a working gate.
+
+   **The lever that does work is the owner's, and it is one call:**
+
+   ```
+   update_trigger  trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan  enabled=false   # pause
+   update_trigger  trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan  enabled=true    # resume
+   ```
+
+   Reading it back: a **disabled** trigger's `list_triggers` row has no `enabled` key at all
+   rather than `"enabled": false`.
+
+**Only (1) and (5) need judgement, and (1) is the one that matters most.** The other three
+are the backstop that catches what judgement misses — a session that died mid-build leaves a
+dirty tree behind, and that is exactly the state where picking up a second story does damage.
 
 **Do not "help" by finishing the in-flight work.** It was not queued to you, you do not know
 whether the owner is still deciding something about it, and a scheduled unattended session
@@ -191,6 +228,10 @@ oldest blocking condition has been true:
 - **An open PR on the current branch** — its `createdAt`.
 - **The owner's unfinished request** — never stalls. It is a live human, not a stuck job.
   Exclude it; notifying someone about their own open conversation is noise.
+- **Low usage headroom** — never stalls either, and for the same reason: it is a live
+  external condition the owner already knows about and can see better than this session can.
+  A push saying "the queue is stalled because your usage is high" tells them nothing they do
+  not know and spends the very budget it is reporting on. Exclude it.
 
 **If the oldest is more than 3 hours old but less than 4, send ONE push notification naming
 it and saying the queue is stalled, then stop.** The window is narrow on purpose: it fires
