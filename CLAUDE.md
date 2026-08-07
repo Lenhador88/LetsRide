@@ -1464,12 +1464,16 @@ only start signal, and an issue sitting in `Todo AI` is triaged, not released.
 Nothing else is a start signal — not priority, not the milestone, not a comment, and not the
 `DEV` label.
 
-**Step 5b's fold-in qualifies this sentence and does not weaken it** — noted here because an
+**The fold-in qualifies this sentence and does not weaken it** — noted here because an
 unannotated absolute is how the two drift apart. A firing may finish the story it was *given*
 properly, including the test or the caller that story needs; it may never start a story it was
-not given. Starting new work still requires this column, and the relatedness test in
-`.claude/commands/queue-pickup.md` STEP 4b is what keeps the distinction enforceable rather
-than rhetorical. **Take the top of that column by priority, and if it is empty, ask rather than
+not given. Starting new work still requires this column, and the relatedness test is what keeps
+the distinction enforceable rather than rhetorical.
+
+**One step, two numbers — the list below calls it 5b, and the procedure file calls it STEP 4b.**
+They are the same step. The lists are numbered independently because this file's step 5 bundles
+build-PR-merge into one line where `.claude/commands/queue-pickup.md` splits it across STEP 4,
+4b and 4c. That file is the procedure; this is the summary. **Take the top of that column by priority, and if it is empty, ask rather than
 choosing for them.** A session that picks its own work from `Backlog` has quietly taken the one
 decision this whole board exists to give the owner.
 

@@ -1049,8 +1049,9 @@ at the product owner's request.** The old §Scope discipline sent adjacent impro
 the change just falsified become future work rather than done, leaving the story merged and
 incomplete. **That is the failure the old default invites, not one anyone has watched happen** —
 the new rule was written 2026-08-07 and nothing has run under it yet. Do not let a later revision
-promote it into history; an illustrative claim wearing history's clothes is the exact error #105
-corrected.
+promote it into history: a plausible illustration and an observed event are not the same claim,
+and only the second earns the past tense. (A first draft of these files did exactly that, dating
+a "two-minute fix buried in `Backlog`" that never happened.)
 
 STEP 4b is the procedure, and it asks **two questions in a fixed order**:
 

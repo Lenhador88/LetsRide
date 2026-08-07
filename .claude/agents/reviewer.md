@@ -148,8 +148,18 @@ counts as a defect. These are now standing checks, not transitional ones:
 
 `.claude/commands/queue-pickup.md` STEP 4b lets an unattended firing fold extra work into the
 story it picked, and **the argument that this is safe is you.** Nothing else looks at whether
-the diff matches the issue: CI checks that it compiles, not that it was asked for. So when a PR
-body has a `## Folded in` section, or the diff plainly does more than its issue describes:
+the diff matches the issue: CI checks that it compiles, not that it was asked for.
+
+**You usually run before the PR exists, so you cannot read a PR body — the caller has to hand
+you the material.** STEP 4c requires the prompt that invokes you to carry the issue being
+built, each fold-in with its one-line relatedness justification and its four ratings, and the
+commit range that is the story itself as opposed to the fold-ins. **If a prompt mentions
+fold-ins but does not supply those, say so as a finding and review what you can** — an
+unverifiable scope claim is exactly the thing this pass exists to surface, and guessing the
+boundary from the diff alone would launder it.
+
+Given that material, or a PR body that has a `## Folded in` section, or a diff that plainly
+does more than its issue describes:
 
 - **Check each fold-in against its stated relatedness sentence.** STEP 4b requires one line
   saying why the picked issue is *incomplete* without it. If that line is missing, or it is
@@ -160,7 +170,8 @@ body has a `## Folded in` section, or the diff plainly does more than its issue 
   whose apply order relative to the deploy matters, anything owner-only, and a diff bigger than
   one review can honestly cover. A fold-in that trips one of those was mis-rated.
 - **Check the breadth cap** — at most two fold-ins, and together smaller than the story's own
-  diff.
+  diff. That comparison needs the two commit ranges from the caller; a single combined diff
+  cannot tell you which lines were the story. Missing ranges is itself the finding.
 - **Say so when a fold-in should have been a story.** The author is a scheduled session with
   nobody watching; a "this is fine, but it belongs in its own PR" is a real finding here in a
   way it would not be for a human author who can be asked.

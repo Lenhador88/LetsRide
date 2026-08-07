@@ -200,8 +200,24 @@ roughly once rather than every hour. Outside the window, exit silently.
 
 **A lock that is being worked is not a stall, and STEP 4b makes that distinction matter more.**
 Folding work into a story lengthens a run, so a healthy firing can now legitimately hold the
-lock for hours. **So when the claimed issue has a branch, age the branch tip rather than the
-lock** — `git log -1 --format=%ct origin/<branch>` — and run the same 3–4h window against that.
+lock for hours. **So when the locked issue has a branch, age that branch's tip in place of the
+lock's own `startedAt`** — it is the same "how long has this been true" question asked of a
+better clock, not a fifth entry in the list above and not an exemption from it.
+
+The branch name is the locked issue's `gitBranchName` (STEP 4 uses it to branch), and it has to
+be fetched before it can be aged — a stale remote ref reads as an ancient tip and fires the
+alarm on a healthy build:
+
+```bash
+BR=$(...)                                        # the locked issue's gitBranchName
+git fetch origin "$BR" --quiet 2>/dev/null \
+  && git log -1 --format=%ct "origin/$BR"        # epoch seconds; compare against now
+```
+
+**No such branch on the remote → there is nothing to age, so fall back to the lock's own
+`startedAt`.** That is the `PD-118`/`PD-125` case exactly: issues dragged into
+`Development (AI)` by hand with no branch behind them, which is the state the alarm most needs
+to catch.
 
 **Re-anchoring, rather than suppressing, is the point.** The obvious version of this check is
 "tip moved recently → exit silently", and it is wrong in a way that is invisible: a build that
@@ -333,8 +349,11 @@ talks itself into a second story, because nothing in a rating block asks what yo
 
 ### First: is this the story done properly, or the next story started early?
 
-**Only the first is eligible to be rated at all.** The test is not "is it good" or "is the
-branch open" — it is whether the picked issue is genuinely unfinished without it:
+**Only the first is eligible to travel.** Note what this gate does and does not decide: it
+decides whether something *can be built now*, never whether it is worth doing. **Everything
+gets rated** — a failed relatedness test sends an item straight to the filing table below,
+which routes by rating, so an unrated item has nowhere to go. The test is not "is it good" or
+"is the branch open"; it is whether the picked issue is genuinely unfinished without it:
 
 - **Travels** — the test the new code needs, the caller the new function has to have, the type
   it must be added to, the doc line this change just made false, the obvious bug found *in the
@@ -352,10 +371,11 @@ your head.
 **Rate it with `CLAUDE.md` §Working Principles' four-line block** — the vocabulary already
 exists and two of its four lines are this question:
 
-| Rating | What happens |
-|---|---|
-| **Recommendation ≥ 7/10 *and* This session = Y** | **Build it now** — same branch, same PR, same `reviewer` pass |
-| Anything else | **File a story** and move on |
+| Relatedness | Rating | What happens |
+|---|---|---|
+| Travels | **Recommendation ≥ 7/10 *and* This session = Y** | **Build it now** — same branch, same PR, re-reviewed at STEP 4c |
+| Travels | Anything else | Record it for filing |
+| Filed | *(rate it anyway — the filing table routes by rating)* | Record it for filing |
 
 **Read `This session` narrowly here, and note that this IS narrower than `CLAUDE.md`'s
 definition.** There it answers "should *this* session pick it up **next**", judged partly on
@@ -401,7 +421,15 @@ each rated 8/Y pass every gate above individually while collectively tripling th
 Over either bound, **file everything and build none of it.** Do not pick the best two — the
 count is the signal that the triage has gone wrong, not a quota to spend.
 
-### Filing the story
+### Where each one gets filed — decided here, written at STEP 5
+
+**This step decides; it does not create issues.** Filing happens once, at STEP 5, or at
+whichever exit path you take if you never reach it (§If you get stuck, STEP 2c). Creating them
+here *and* at STEP 5 is how the same follow-up gets filed twice, which is worse than not filing
+it: a duplicate in `Todo AI` reads as two pieces of work to the owner.
+
+So end this step holding a short list — for each item, its relatedness verdict, its four
+ratings, and the column below it belongs in. Carry that list to STEP 5.
 
 Never `Queued (AI)` — that is the owner's column and the only start signal.
 
@@ -460,6 +488,13 @@ reviewed at all:
    That is the entire safety argument for building fold-ins unattended, so it is not optional
    and it is not "the review I already ran": code added after `reviewer` looked has not been
    reviewed. Nothing folded in → the STEP 4 pass still stands and this is a no-op.
+
+   **Its prompt must carry the scope material, because it runs before the PR exists and so
+   cannot read the PR body.** Pass: the issue being built, each fold-in with its one-line
+   relatedness justification and its four ratings, and the two commit ranges — the story's own
+   commits versus the fold-ins'. Without those, `reviewer.md`'s scope pass cannot check the
+   breadth cap at all, and is briefed to report that rather than guess the boundary from the
+   diff.
 2. Open a PR against **`development`**, with the `## Folded in` section from STEP 4b in the
    body — or nothing there, if nothing travelled.
 3. Drive CI to green and merge. Do not merge red. **Never push to `main` and never open a PR
@@ -500,8 +535,9 @@ Move the issue to **`Needs help`**, comment with *exactly* what you need from th
 stop. Leave the branch and any PR open and say so in the comment.
 
 **File any follow-up you already rated before you stop — every exit path owes that, not just
-STEP 5's.** This path, STEP 2c and STEP 4b's "file it instead" all leave without reaching
-STEP 5, so a follow-up rated on the way to a `Needs help` would otherwise be lost precisely
+STEP 5's.** STEP 4b decides where each one goes but deliberately creates nothing, so this path
+and STEP 2c are the two that leave with a triage list and no STEP 5 to write it out. A
+follow-up rated on the way to a `Needs help` would otherwise be lost precisely
 when the story is parked longest. Rating something and then dropping it is worse than never
 noticing it, because the rating is what made it look handled.
 
@@ -544,8 +580,8 @@ rather than done — leaving the story merged and incomplete.
 
 **Written as a failure the old default invites, not one anyone has watched happen.** The new
 rule was written 2026-08-07 and nothing has run under it. Do not let a later revision promote
-either half of this paragraph into history; an illustrative example wearing history's clothes
-is a documented failure mode in this repo, corrected as recently as PR #105.
+either half of this paragraph into history — a plausible illustration and an observed event are
+not the same claim, and only the second earns the past tense.
 
 The rule now has two halves, and **STEP 4b is where they are applied**:
 
