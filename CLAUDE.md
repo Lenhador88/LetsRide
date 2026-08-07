@@ -1682,14 +1682,28 @@ Two things follow. **Read the response back** — `update_trigger` returns the s
 successful one. And **the spreading is deliberate**: :00 is the busiest minute on the platform, so
 an on-the-hour Routine is the owner's call to make, not a default to reach for.
 
-**Read the two fields for different things, though — `next_run_at` is not the schedule.** The
-replacement Routine was created at 19:32 with `0 0-23 * * *`; it stored that **verbatim** and came
-back `next_run_at: 20:05:35`. **What is measured is that the expression stored verbatim and the
-next run came back at :05** — the tell is that `cron_expression` still reads `0 0-23`, where an
-anchored one would read `32 * * * *`. **The explanation is inferred, not measured**: "up to 10% of
-the period late" is the jitter rule documented for the *session-local* `CronCreate` scheduler, and
-whether the CCR trigger scheduler uses the same figure is untested — 33 minutes would falsify it.
-It is not the minute-anchoring rewrite described above either way. Check
+**Read the two fields for different things, though — `next_run_at` is not the schedule, and a
+never-fired Routine's `next_run_at` is the least trustworthy number here.** The replacement Routine
+was created at 19:32 with `0 0-23 * * *`; it stored that **verbatim** and came back
+`next_run_at: 20:05:35`. Rewriting the same expression at 19:53 did **not** clear the offset —
+`20:05:51`, so it is sticky rather than recomputed from the edit.
+
+**The offset belongs to the first run, not to the schedule.** Two data points, same expression:
+
+| Routine | Has fired? | `next_run_at` |
+|---|---|---|
+| `trig_01Gzy8eCiaXUUa1knvJnNpwy` | yes, `last_fired_at 16:02:00` | `17:00:00.667` — **exact** |
+| `trig_01WJkMVXGzUVGDcC1njNmaan` | never | `20:05:51` — offset |
+
+So a Routine that has fired sits on the exact hour and a fresh one does not. **That is two samples,
+not a proven rule** — check `next_run_at` after the first firing rather than trusting this table.
+
+**An earlier revision of this paragraph called the offset "scheduler jitter (up to 10% of the
+period)", and that was a guess wearing an explanation's clothes** — the 10% figure is documented
+for the *session-local* `CronCreate` scheduler, a different system, and it was reached for because
+it was the nearest available number. The measured facts are only the four in the table plus the
+sticky rewrite. It is not the minute-anchoring rewrite described above in any case — the tell is
+that `cron_expression` still reads `0 0-23`, where an anchored one would read `32 * * * *`. Check
 `cron_expression` to see whether the schedule survived; `next_run_at` will wander by a few minutes
 either way and reading it as the anchoring bug leads to a "fix" that introduces one.
 
@@ -1735,6 +1749,14 @@ parameter**, so rebinding a Routine to a session is impossible in place: the swi
 trigger. The old one is therefore *disabled*, not deleted, and it is the fallback — it still holds
 the three hand-attached connectors, and `update_trigger enabled: true` restores it whole in one
 call. Delete it and only the owner can rebuild it.
+
+**The rule protects connectors, so it does not cover the self-bound Routine — that one is
+disposable.** `trig_01WJkMVXGzUVGDcC1njNmaan` holds no `mcp_connections` and needs none, because
+they come from the session it fires into. Deleting and recreating it costs one `create_trigger`
+call and nothing else, so it is a fair move when there is a reason — a stuck `next_run_at`, say.
+Keep the distinction straight: **`…Gzy8e` is irreplaceable, `…WJkMV` is cheap.** Reading "never
+delete a Routine" as covering both is how the cheap one becomes untouchable for no reason, and
+reading it as covering neither is how the irreplaceable one gets destroyed.
 
 **`enabled: false` serialises as an ABSENT field, not `"enabled": false`.** Measured on exactly
 this change: the disabled Routine's `list_triggers` row has no `enabled` key at all while both live
