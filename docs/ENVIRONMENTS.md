@@ -12,6 +12,12 @@ things that are *not* in the repo and therefore drift silently.
 > production database*. Measured, not assumed: `NEXT_PUBLIC_SUPABASE_URL` is scoped
 > "Production and Preview" with the PROD value. That is now the single most important line in
 > this file, and it is §Owner setup items 3 and 3a.
+>
+> **2026-08-07: `letsride.social` was bought, and nothing is attached to it yet.** The intended
+> map — app on `app.letsride.social`, DEV on `app-dev.letsride.social`, website on the apex in a
+> *separate* Vercel project — plus the step order and the one step that must not run early, are
+> in §Domains. The auth URLs that §Owner setup items 8 and 9 called an outage were **repaired
+> before the domain arrived**; re-measured 2026-08-07 and struck through there.
 
 ---
 
@@ -21,7 +27,8 @@ things that are *not* in the repo and therefore drift silently.
 |---|---|---|
 | Git branch | `development` | `main` |
 | Vercel target | Preview | Production |
-| URL | `letsrideapp-git-development-pedro-projects1.vercel.app` | `letsrideapp.vercel.app` |
+| URL (intended) | `app-dev.letsride.social` | `app.letsride.social` |
+| URL (Vercel-assigned, always works) | `letsrideapp-git-development-pedro-projects1.vercel.app` | `letsrideapp.vercel.app` |
 | Supabase project | `Letsride-dev` / `fpmrimzxadewsaiwpsel` — **created 2026-08-06, chain applied, schema verified identical to PROD** | `letsride` / `zwprydcyryvudhurbnye` |
 | Who can reach it | Owner only (Vercel SSO on Preview) | Anyone with the link |
 | Test accounts | `@letsride.dev`, seeded | None. Real riders only |
@@ -145,6 +152,109 @@ base explicitly** — and it is still a merge commit, never a squash (§Promote 
 
 ---
 
+## Domains
+
+`letsride.social` was bought by the product owner on 2026-08-07. **Nothing is attached yet** —
+this section is the target and the order, not a description of what resolves today. The
+Vercel-assigned `*.vercel.app` URLs above keep working throughout and are the fallback if any
+step stalls; nothing here is a cutover with a window.
+
+| Host | Serves | Vercel project | Target / branch |
+|---|---|---|---|
+| `app.letsride.social` | **The app, production** | `letsrideapp` | Production (`main`) |
+| `app-dev.letsride.social` | The app, DEV | `letsrideapp` | Preview, **git branch `development`** |
+| `letsride.social` + `www` | The marketing website | **a second project — not this repo** | its own Production |
+
+**The apex belongs to a different Vercel project, and that is the load-bearing part of the
+split.** Putting the website in this repo would drag it through this repo's CI, this repo's
+`output: 'export'` constraint (`capacitor.config.ts` — seven routes cannot satisfy it today) and
+this repo's release train, so a copy tweak on the marketing page would wait behind a migration.
+A separate project also means the apex can never accidentally serve the app: there is no route
+in `letsrideapp` that answers for a domain it does not hold.
+
+### Order of operations, and the one step that must not run early
+
+1. **Attach `app.letsride.social`** to `letsrideapp` (Settings → Domains) and let it serve
+   Production. **Attach `app-dev.letsride.social` and set its Git Branch to `development`** —
+   the field exists on the domain row, and the REST equivalent is `gitBranch` on
+   `POST /v10/projects/{idOrName}/domains`.
+2. **Add the DNS records Vercel prints for *these* domains.** It shows the exact values on the
+   domain row and `vercel domains inspect` prints them. Do not copy a CNAME target or an apex A
+   record out of a document — Vercel's own docs label the familiar `cname.vercel-dns-0.com` and
+   `76.76.21.21` as *general* values and tell you to inspect the domain for the specific ones.
+   (Pointing the registrar's nameservers at Vercel instead is the other route, and it is the
+   simpler one if nothing else uses this domain's DNS yet. It is not the simpler one once email
+   records live there — see §Email below.)
+3. **Wait for the certificate and confirm both hosts actually serve the app in a browser.**
+4. **Only then** change Supabase's Site URL. Step 4 before step 3 replaces one dead address with
+   a different dead address, and the failure is silent in exactly the way §The redirect
+   allowlist is broken documents.
+
+### What changes in Supabase, and what does not
+
+**The redirect allowlist is additive; the Site URL is not.** Add the new origins to the
+allowlist *first* and leave the `*.vercel.app` entries on it — an allowlist holding both costs
+nothing and keeps every existing preview link working. The Site URL is a single value **and it
+is the silent fallback**: an unlisted `redirect_to` is discarded and replaced by it, with no
+error to anyone, which is the whole mechanism behind the outage in §The redirect allowlist is
+broken. So it is the one field where being early is worse than being late.
+
+| Project | Site URL | Redirect allowlist |
+|---|---|---|
+| `letsride` (PROD) | `https://app.letsride.social` | `https://app.letsride.social/**`, plus the existing `https://letsrideapp.vercel.app/**` |
+| `Letsride-dev` | `https://app-dev.letsride.social` | `https://app-dev.letsride.social/**`, `http://localhost:3000/**`, `https://letsrideapp-*-pedro-projects1.vercel.app/**` |
+
+`http://localhost:3000/**` stays on DEV and stays **off** PROD.
+
+**Nothing in `src/` needs to change for any of this.** `ShareButton`, `signUp` and
+`requestPasswordReset` all build their URLs from `window.location.origin`, so the app follows
+whichever host served it. Verify rather than trust — it is one grep, and a hardcoded origin
+added later is exactly the kind of thing that only breaks in email:
+
+```bash
+grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/    # expect: nothing
+```
+
+### `app-dev` inherits Vercel SSO, which is intended but has one sharp edge
+
+Deployment protection on `letsrideapp` is `ssoProtection: { enabled: true, deploymentType:
+"preview" }` — measured 2026-08-07 via `get_project_deployment_protection`. DEV is owner-only by
+design and that should stay.
+
+**The edge: a DEV signup-confirmation link opens `app-dev.letsride.social` in whatever browser
+the mail app hands it to, and that browser hits the SSO wall before it ever reaches
+`/auth/callback`.** On a phone, signed out of Vercel, the rider sees a Vercel login page instead
+of the app. That does not break PROD and it does not break the walk, but it means *DEV signup
+cannot be exercised on a device* until either the branch domain is exempted from protection or
+the test is run in a browser already authenticated to Vercel. Whether a branch-assigned custom
+domain can be exempted at all on this plan is **not measured** — check it once, after attaching,
+rather than planning around either answer.
+
+### The apex before the website exists
+
+A bought domain that serves nothing is worse than one that forwards, so a redirect from
+`letsride.social` to `app.letsride.social` is reasonable as an interim. **Make it a 307, never a
+301.** A permanent redirect is cached by the browser itself, so every visitor who loads the apex
+once keeps being sent to the app for as long as that cache lives — including after the marketing
+site ships. There is no way to reach into those caches, and the people affected are exactly the
+early visitors you most want to land on the website.
+
+### Email
+
+Auth mail currently leaves Supabase's shared SMTP, from a Supabase-owned sender. That is
+rate-limited and documented as unsuitable for production volume, and it is unrelated to owning a
+domain — buying `letsride.social` did not change what sends the mail, only what could.
+
+Sending from `noreply@letsride.social` needs a real SMTP provider plus SPF, DKIM and DMARC
+records on the apex. **That is what makes the nameserver decision in step 2 matter**: if DNS
+moves to Vercel, the mail records move with it.
+
+Worth doing even while nothing sends mail: publish an SPF record with `-all` and a DMARC record
+with `p=reject`. A domain with no mail policy can be spoofed by anyone, and a young brand's
+first experience of that is usually a phishing run at its own signups.
+
+---
+
 ## Migrations
 
 The chain is the source of truth and it reproduces a database from zero — including Storage,
@@ -264,9 +374,9 @@ Check these on both projects whenever either changes:
 
 | Setting | DEV | PROD (intended) | **PROD, measured 2026-08-06** |
 |---|---|---|---|
-| Email confirmation | off | **on** before launch (decision #6) | **ON** — `mailer_autoconfirm: false` |
-| Site URL | the DEV preview alias | `https://letsrideapp.vercel.app` | ❌ **`http://localhost:3000`** |
-| Redirect allowlist | `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | the production origin **only** | ❌ **`http://localhost:3000` only** — neither the production origin nor the preview alias is on it |
+| Email confirmation | off | **on** before launch (decision #6) | **ON** — `mailer_autoconfirm: false`, re-measured 2026-08-07 |
+| Site URL | the DEV preview alias | `https://app.letsride.social` once it serves (§Domains) | ✅ **`https://letsrideapp.vercel.app`** — repaired, re-measured 2026-08-07 |
+| Redirect allowlist | `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | add `https://app.letsride.social/**`; keep the `*.vercel.app` entry | ✅ `https://letsrideapp.vercel.app/**` honoured. ⚠️ `http://localhost:3000/**` also honoured, and should be DEV-only |
 | Leaked-password protection | on | on | **off** — the one outstanding security advisor |
 | `UpdatePasswordRequireCurrentPassword` | on | on | **not measured** — no read-only probe found for it |
 
@@ -274,36 +384,56 @@ Check these on both projects whenever either changes:
 the first revision of this table left four blank while stating one measured row — which is how
 the two rows below went another day unnoticed.
 
-### The redirect allowlist is broken on production right now
+### The redirect allowlist — fixed on production, and here is the probe that proves it
 
-Not a hazard to design against — measured, and it breaks every emailed link the app sends.
-`GET /auth/v1/verify` with a bogus token reports where GoTrue *would* have sent the rider:
+**This section read "broken on production right now" until 2026-08-07, and it was stale.** The
+owner repaired it and three places in this repo went on asserting the outage: this heading, the
+two table rows above, and §Owner setup items 8 and 9. Keeping the probe is the point of the
+section — the claim moves, the command does not.
+
+`GET /auth/v1/verify` with a bogus token reports where GoTrue *would* have sent the rider,
+needs no credentials beyond the publishable key, and changes nothing:
 
 ```bash
+K="<publishable key>"   # mcp__Supabase__get_publishable_keys
 B="https://zwprydcyryvudhurbnye.supabase.co/auth/v1/verify?token=bogus&type=signup&redirect_to="
-for t in https://letsrideapp.vercel.app/auth/callback http://localhost:3000/auth/callback; do
-  curl -s -o /dev/null -D - "$B$t" -H "apikey: <publishable>" | grep -i '^location:'
+for t in https://app.letsride.social/auth/callback https://letsrideapp.vercel.app/auth/callback; do
+  curl -s -o /dev/null -D - "$B$t" -H "apikey: $K" | grep -i '^location:'
 done
-# production origin -> http://localhost:3000#error=...   (discarded, fell back to Site URL)
-# localhost         -> http://localhost:3000/auth/callback#error=...   (honoured)
 ```
 
-An unlisted `redirect_to` is **discarded silently** and replaced by the Site URL — which is
-itself `http://localhost:3000`. So a rider who signs up or requests a password reset on
-`letsrideapp.vercel.app` gets an email whose link confirms their address and then sends their
-phone to a dead local address. The account works; the rider cannot tell, and has no way back.
+**Measured 2026-08-07**, and read it as two separate facts:
 
-**The live database already records this.** The one account created through the real signup flow
-has `email_confirmed_at` set 13 seconds after `created_at` and `last_sign_in_at` NULL. That row
-was read as proof of the consent bug (§Auth configuration above); it is equally proof of this
-one, and only the consent half has been fixed in code. The other half is two dashboard clicks —
-§Owner setup, items 8 and 9.
+| `redirect_to` sent | GoTrue's `location:` | Means |
+|---|---|---|
+| `https://letsrideapp.vercel.app/auth/callback` | the same URL | ✅ **allowlisted and honoured** |
+| `http://localhost:3000/auth/callback` | the same URL | honoured — DEV-only in intent, still on PROD |
+| `https://app.letsride.social/auth/callback` | `https://letsrideapp.vercel.app/` | discarded → **the Site URL is now the production origin**, not `localhost` |
+
+That third row is how you read the Site URL without a dashboard: **whatever a discarded
+`redirect_to` falls back to *is* the Site URL.** It is also the check to re-run after §Domains
+step 4, where the expected fallback becomes `https://app.letsride.social`.
+
+An unlisted `redirect_to` is **discarded silently** and replaced by the Site URL. That mechanism
+is unchanged and is what made the original outage invisible — while the Site URL was
+`http://localhost:3000`, a rider who signed up got an email that confirmed their address and
+then sent their phone to a dead local address, with the account working and no way to tell.
+**It is also why §Domains orders the domain attach before the Site URL change**: pointing the
+Site URL at a host that does not resolve yet rebuilds that exact failure with a new hostname.
+
+**The live database still records the outage, and that row is now history rather than a
+finding.** The one account created through the real signup flow has `email_confirmed_at` set 13
+seconds after `created_at` and `last_sign_in_at` NULL. It was read as proof of the consent bug
+(§Auth configuration above) and is equally proof of this one. Both halves are now fixed — the
+consent write in `signUp`, the URLs in the dashboard — so the row proves what *was* broken, and
+nothing about the present state. **Signup end to end has still never been exercised on this
+database** (`PD-91`), so "the dashboard is right" and "signup works" remain two different claims.
 
 `requestPasswordReset` builds its link from `window.location.origin`
 (`src/lib/actions/auth.ts`, the `origin` const — line number deliberately omitted, it has moved
 once already), and Vercel preview URLs are per deployment, so the wildcard is what makes
-recovery work from a preview at all. This section used to say only that, and never checked
-whether *production itself* was on the list. It is not.
+recovery work from a preview at all. That is also why §Domains needs no code change: the origin
+follows the host that served the page, on every one of these hostnames.
 
 Adopting `config.toml` is what fixes this properly, and the first Edge Function deploy forces
 that decision anyway — see below.
@@ -376,21 +506,22 @@ Nobody in a session can do these.
    Until this is done, every agent session reads `CLAUDE.md` and `.claude/` from `main`, so any
    instruction merged to `development` is written but not in force.
 
-**8 and 9 are new, measured, and the most urgent things on this list** — they are the only two
-items here that are breaking production *today* rather than preparing for DEV. Both are on
-`letsride` → Authentication → URL Configuration:
+8. ~~**Set Site URL to `https://letsrideapp.vercel.app`.**~~ **Done** — re-measured 2026-08-07,
+   a discarded `redirect_to` now falls back to `https://letsrideapp.vercel.app/` rather than
+   `http://localhost:3000`. This was the most urgent item in the repo for two days *after it
+   had already been fixed*, in three places at once, which is the strongest argument this file
+   has for §The redirect allowlist's rule: **keep the probe, not the verdict.**
+9. ~~**Add the production origin to the redirect allowlist.**~~ **Done and verified** by the
+   same probe. One residue worth a click, not urgent: `http://localhost:3000/**` is still
+   honoured on **PROD**, where §Auth configuration intends it DEV-only. It is not an outage —
+   nothing in production ever asks for it, because `requestPasswordReset` builds its
+   `redirect_to` from `window.location.origin` — but it is a permanently open redirect target
+   on a production auth server, and it costs nothing to remove.
 
-8. **Set Site URL to `https://letsrideapp.vercel.app`.** It is `http://localhost:3000`.
-9. **Add `https://letsrideapp.vercel.app/**` and
-   `https://letsrideapp-*-pedro-projects1.vercel.app/**` to the redirect allowlist.** Only
-   `http://localhost:3000` is on it, so both the production origin and every preview URL are
-   discarded and replaced by the Site URL.
-
-Until both are done, **every emailed link the app sends — signup confirmation and password
-recovery alike — lands a rider's phone on `http://localhost:3000`.** No error is shown to
-anyone; the deploy is green and the account is real. This is not the DEV split, it predates it,
-and item 4's "narrow PROD's redirect allowlist" was written on the assumption that the list was
-too *wide*. It is empty of anything usable.
+**The domain replaces both with one new item, and it is in §Domains rather than here** because
+its ordering matters more than its content: attach `app.letsride.social`, confirm it serves,
+**then** move the Site URL. Doing it in the other order recreates items 8 and 9 exactly, with a
+hostname that looks right.
 
 Then, in a session: apply the chain to DEV, run `npm run db:drift` to prove the three agree,
 seed it, and move the two `@letsride.test` fixtures off production.

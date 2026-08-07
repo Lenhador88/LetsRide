@@ -1354,8 +1354,8 @@ change nothing in the repo can see:
 | Status | Type | Means | Who moves it |
 |---|---|---|---|
 | `Backlog` | backlog | Captured, not triaged | Either |
-| `Todo AI` | unstarted | Triaged, an agent's to do — but **not** a start signal | Either |
-| `Todo Human` | unstarted | Triaged; owner chores live here | Either |
+| `Todo Human` | unstarted | Triaged; **owner chores live here** | Either |
+| `Todo AI` | unstarted | Triaged, and a session could do it — but see below, it is *not* a start signal | Either |
 | `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
 | **`Queued (AI)`** | started | **Approved to build. The queue an agent pulls from** | **Owner** |
 | `Development (AI)` | started | An agent has picked it up | Agent |
@@ -1365,12 +1365,21 @@ change nothing in the repo can see:
 `Canceled` and `Duplicate` also survive. The four squad-mirroring statuses are gone —
 `Idea (AI)`, `Testing (AI)`, `Quality control (AI)`, `Review Dev (Human)`.
 
-**`Todo` became `Todo AI` and `Todo Human` on 2026-08-07**, and this table said `Todo` for the few
-hours in between — which is the hazard the paragraph above already warns about, caught by running
-`list_issue_statuses` rather than reading this file. Eight, not seven, so the heading undercounts
-by one; it is left alone because the *shape* is what it names. Neither is a start signal —
-`Queued (AI)` still is, and `Todo AI` in particular is the one that reads like permission to
-begin and is not.
+**This table said `Todo` — one row — until 2026-08-07, when `list_issue_statuses` returned
+`Todo Human` and `Todo AI` instead.** Which is the paragraph above proving itself: renaming or
+splitting a status is a two-click change nothing in the repo can see. **`Todo AI` is the row to
+be careful with** — the name reads like permission and it is not one. `Queued (AI)` is still the
+only start signal, and an issue sitting in `Todo AI` is triaged, not released.
+
+**Two live traps when writing to the board through the MCP, both hit on 2026-08-07:**
+
+- **The active project's name contains a curly apostrophe — `Let’s ride (AI)`, not `Let's`.**
+  Passing the straight-quote version does not fail; it fuzzy-matches the *deprecated* `Let's
+  Ride` project, or silently drops the field and creates the issue with no project at all. Both
+  happened in one batch. **Pass the project id — `88f3f224-ecf0-46f0-a032-c86b7a12f81c`.**
+- **`save_issue` reports the result, so read it back.** Every one of those four returned a
+  perfectly successful-looking payload with `project` simply absent. Check the field you set is
+  in the response rather than checking the call did not error.
 
 **`Queued (AI)` is how the owner chooses what gets built, and it is a *status*, not a label.**
 Nothing else is a start signal — not priority, not the milestone, not a comment, and not the
@@ -1533,6 +1542,15 @@ chain to a scratch database and asserts what each role can reach.
 - **`main` = production, `development` = DEV.** Both auto-deploy to Vercel; `main` builds the
   Production target against the `letsride` project, `development` builds a Preview against
   `letsride-dev`. Feature branches are Previews too, so they also point at DEV.
+- **The domain is `letsride.social`, bought 2026-08-07, and the app does not live at its apex.**
+  `app.letsride.social` is production, `app-dev.letsride.social` is `development`, and the apex
+  is the marketing website in a **separate Vercel project that is not this repo**. Nothing is
+  attached yet and the `*.vercel.app` URLs still work; `docs/ENVIRONMENTS.md` §Domains is the
+  contract, including the one ordering rule (attach and confirm the host *before* moving
+  Supabase's Site URL) and why the apex redirect must be a 307 rather than a 301. **No code
+  changes with the domain** — `ShareButton`, `signUp` and `requestPasswordReset` all build URLs
+  from `window.location.origin`, so a hardcoded origin anywhere in `src/` is a bug that would
+  only surface in email: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0.
 - **Branch off `development`, and open PRs against `development` — not `main`.** This line said
   `main` until 2026-08-06 and it is the one an agent will get wrong by habit. `main` receives
   exactly one kind of PR: the promotion from `development`, which is what ships to riders.
