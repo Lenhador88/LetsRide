@@ -1664,6 +1664,21 @@ What it does, in order — and the order is the design:
    firing reads. Claiming late is how two sessions start the same story.
 5. Build under this file's standing instructions, PR to `development`, drive green, merge, move
    to `Done`. Uncertain about anything → `Needs help` with a comment saying what it needs.
+5b. **Triage what the build turned up, using the rating block rather than judgement.** Changed
+   2026-08-07 at the product owner's request; the old rule sent every follow-up to `Backlog`,
+   including the two-minute fix on a branch that was already open and already under review.
+   Rate each one on §Working Principles' four lines, then let the block decide: **Recommendation
+   ≥ 7/10 *and* `This session` Y** → build it now, in the same branch and the same PR, through
+   the same `reviewer` pass. Anything else → **a story in `Todo AI`**, or `Todo Human` +
+   `Owner only` when no session can do it. Never `Backlog`, and never `Queued (AI)`.
+
+   **Both halves, never either — that is what keeps this from becoming a session choosing its
+   own work.** 9/10 with `This session` **N** is an ordinary pairing here, not a contradiction:
+   the leaked-password toggle is exactly that. And the fold-in is bounded to *the story done
+   properly*, never *the next story started early* — real domain rules, an order-sensitive
+   migration, an owner decision, or a diff bigger than one review can honestly cover all force
+   **N** regardless of how good the idea is. `.claude/commands/queue-pickup.md` STEP 4b is the
+   procedure; filing the stories is part of the wrap-up, not after it.
 
 **It is hourly, not every ten minutes, and that is a server limit rather than a choice.** The ask
 was ten. Measured, not assumed — `create_trigger` rejects it outright:

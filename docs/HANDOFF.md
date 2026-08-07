@@ -1043,6 +1043,29 @@ did not need:
   command -v gh                                                                        # expect none
   ```
 
+**A firing now folds strong follow-ups into the same PR instead of filing all of them — 2026-08-07,
+at the product owner's request.** The old §Scope discipline sent *every* adjacent improvement to
+`Backlog`, including the two-minute fix on a branch that was already open, green and under review.
+STEP 4b replaces the judgement call with the rating block that already existed: **Recommendation
+≥ 7/10 *and* `This session` Y** builds now, in the same branch and PR and through the same
+`reviewer` pass; anything else becomes a story in **`Todo AI`** (or `Todo Human` + `Owner only`).
+
+Two things carry the risk, and both are the point rather than caveats:
+
+- **Both halves are required.** A 9/10 recommendation with `This session` **N** is a story — the
+  ordinary pairing `CLAUDE.md` already illustrates with the leaked-password toggle. Reading a high
+  recommendation alone as licence is how a firing starts choosing its own work, and `Queued (AI)`
+  is the one decision the board exists to give the owner.
+- **Four things force `This session` N** however good the idea is: real domain rules (`openspec`'s,
+  and a proposal has no automated gate), an order-sensitive migration (the `021`/`025` class, where
+  wrong order is an outage), anything owner-only, and a diff larger than one `reviewer` pass can
+  honestly cover — that review being what makes unattended merging safe at all.
+
+Nothing here ships unreviewed: the fold-in rides the same review, the same CI and the same merge.
+Whether the filed-story half stays honest is the thing to watch — the failure mode is a follow-up
+that gets rated and then never filed, which looks handled precisely because it was rated. STEP 5
+puts the filing *before* the push notification for that reason.
+
 **The delivery path is tested and the connectors survive it.** `create_trigger` warns *"this
 trigger stores no MCP connectors, so the sessions it fires will run without connector tools"* — a
 false alarm for a self-bound trigger, which spawns no session. Verified 2026-08-07 by firing a real

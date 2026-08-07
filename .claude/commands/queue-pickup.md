@@ -300,10 +300,93 @@ this step holding a PR number and a one-line result, not a diff.
 
 ---
 
-## STEP 5 — Close the loop
+## STEP 4b — Triage what the build turned up
+
+A build always surfaces more than it was asked for. **Rate each one with `CLAUDE.md`
+§Working Principles' four-line block, then let the block decide.** The vocabulary already
+exists and two of its four lines are exactly this question, so nothing new has to be invented:
+
+| Rating | What happens |
+|---|---|
+| **Recommendation ≥ 7/10 *and* This session = Y** | **Build it now** — same branch, same PR, same `reviewer` pass |
+| Anything else | **File a story** and move on |
+
+**Both halves, never either.** A 9/10 recommendation with `This session` **N** is a story, not
+a build, and that pairing is ordinary rather than contradictory — `CLAUDE.md` says so in as
+many words, using the leaked-password toggle as the example: 9/10 and **N**, because nobody in
+a session can click it. Reading a high recommendation *alone* as licence to build is how a
+firing quietly starts choosing its own work, which is the one decision `Queued (AI)` exists to
+give the owner.
+
+**Answer `This session` N whenever any of these is true, however good the idea is.** These are
+the cases an unattended firing cannot honestly answer Y to:
+
+- **It has real domain rules** — visibility, membership, permissions. That is `openspec`'s, and
+  a proposal gets reviewed before it is built. §The Agent Squad: a proposal is the only artifact
+  in this pipeline with no automated gate.
+- **It needs a migration whose apply order relative to the deploy matters.** `021`/`025` is the
+  worked example and getting it wrong is an instant outage, not a bug.
+- **It is the owner's** — a dashboard toggle, a product decision, a design frame that does not
+  exist, a credential. File it `Todo Human` with the `Owner only` label.
+- **It would grow the diff past what one `reviewer` pass can honestly cover.** That review is
+  the gate that makes unattended merging safe at all; work that outgrows it is two PRs.
+
+**Why the fold-in is bounded to the same PR, and what that buys:** the extra work goes through
+the *same* `reviewer` pass, the same CI and the same merge, so there is no path here that ships
+anything unreviewed. If it cannot travel with the story — its own branch, its own migration,
+its own review — that alone answers `This session` **N**.
+
+### Filing the story
+
+Never `Backlog`, which is untriaged by definition and where the old rule buried everything.
+Never `Queued (AI)`, which is the owner's column and the only start signal.
+
+- **`Todo AI`** — a session could build it.
+- **`Todo Human`** plus the `Owner only` label — nobody in a session can.
+
+The body is a pointer and a reason, per `CLAUDE.md` §The roadmap lives in Linear: one line on
+what and why, the four-line rating block, and the issue or PR it came out of. **A story that
+grows a specification is a bug** — that belongs in a proposal.
+
+Pass the project id `88f3f224-ecf0-46f0-a032-c86b7a12f81c`, never the name, and **read
+`save_issue`'s response back to confirm the field you set is on it.** A dropped `project`
+returns a perfectly successful-looking payload; that has already happened four times in one
+batch.
+
+### One level deep — never recurse
+
+Anything the folded-in work *itself* turns up is a **story, always**, whatever it rates.
+Otherwise one firing chains build onto build and the PR never closes, which is scope creep
+wearing a rating block.
+
+### Say it out loud, in both places
+
+The owner did not get to make this call, so the call has to be visible without opening a diff:
+
+- **The PR body** gets a `## Folded in` section — one heading per item with its ratings, in the
+  shape §Working Principles specifies: the letter and description *outside* the bar, the four
+  ratings *inside* it.
+- **The STEP 5 Linear comment** names what was folded in and links every story filed.
+
+An unrated fold-in reads as advocacy and cannot be cheaply declined, which is the entire reason
+the block exists.
+
+**Still unsure whether to fold something in? That is `Needs help`, not "build it and find
+out."** `CLAUDE.md` forbids letting an unlabelled guess pass as a known value, and a scheduled
+unattended session is the worst place in this repo to guess.
+
+---
+
+## STEP 5 — Close the loop, and wrap the session up
+
+**The run is not over when the PR merges.** Wrap-up is the last step of the work, not a
+separate task, and STEP 4b's stories are part of it — a follow-up that was rated and then never
+filed is worse than one that was never noticed, because the rating made it look handled.
 
 - Merged → move the issue to **`Done`** and comment with the PR link and one line on what
   landed.
+- **File every STEP 4b story that did not get built**, and name them in that same comment. Do
+  this before the notification, so the notification is true when it is sent.
 - Send one push notification with the `PushNotification` tool: `Done ; ) <issue id> <short
   title>`.
 - **Leave the session idle**: branch back on `development`, clean tree, nothing in flight —
@@ -349,9 +432,28 @@ the Linear round trip".
 
 ## Scope discipline
 
-Build the issue in front of you. Do not fold in adjacent improvements you notice, however
-tempting — raise them as new Linear issues in `Backlog` instead, or note them in the PR. A
-scheduled session is the worst possible place for scope creep.
+**This changed on 2026-08-07, and the old rule is the one you probably remember.** It read
+*"Build the issue in front of you. Do not fold in adjacent improvements you notice, however
+tempting — raise them as new Linear issues in `Backlog` instead."* Everything became a
+`Backlog` issue, including the two-minute fix on a branch that was already open, already green
+and already under review.
+
+The rule now has two halves, and **STEP 4b is where they are applied**:
+
+- **Work that makes the picked story right travels with it** — when it rates ≥ 7/10 with
+  `This session` **Y**. Same branch, same PR, same `reviewer` pass.
+- **Everything else becomes a story** in `Todo AI` or `Todo Human`, and the owner decides when
+  it gets built.
+
+**What did NOT change: the story in front of you is still the scope.** The fold-in is for work
+that finishes *that* story properly — the test it needs, the caller the new function has to
+have, the doc line the change just made false. An improvement you merely noticed along the way
+is a story however good it is and however open the branch is, because it is a *new* piece of
+work, and `Queued (AI)` is where the owner releases those.
+
+The boundary is worth being able to say in one line, because everything above is downstream of
+it: is this **the story, done properly** — or **the next story, started early?** The first
+travels. The second is filed.
 
 ---
 
