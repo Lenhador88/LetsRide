@@ -404,9 +404,8 @@ radius 8 with its button inset 4px bottom-right, and the RSVP bar 390×96 with p
 16/16/8 and a 358×40 button group. What follows is the design asking for **data the schema
 has not got**, plus deliberate deviations.
 
-**Three sub-pages of four are built** as of 2026-08-07. The switcher lists Ride plan and Crew;
-Chat is the header's chat-bubble button, which is where the design puts it. The remaining
-deviation is first:
+**Three sub-pages of four are built** as of 2026-08-07. The switcher lists Ride plan, Crew and —
+for the crew only — Chat. The remaining deviation is first:
 
 - [ ] **Journal is drawn and not built.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`)
       is postcards attached to a ride, and `postcards` has **no `ride_id`**. It needs a
@@ -416,7 +415,17 @@ deviation is first:
 - [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
       `Ride - Chat - Text focus` (`2242:11086`) at `/rides/[id]/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
-      which existed. Five deviations, each a decision rather than a miss:
+      which existed. Six deviations, each a decision rather than a miss:
+  - [ ] **A `Chat` row was ADDED to the sub-page switcher, which the design does not list
+        there.** `Ride - Ride plan - Sub pages` (`2375:9114`) draws exactly three rows — Ride
+        plan, Journal, Crew — and puts chat in the header's action row as a bare 24×24 chat
+        bubble instead. Built as drawn on 2026-08-07, and **measured against a real rider the
+        same day: the product owner, organizer and `going` on all five rides in the database,
+        could not reach the chat at all and opened this sheet looking for it.** So the icon
+        stays (it is drawn, and it is one tap) and a labelled row is added beside it, gated on
+        the same crew predicate so the two entry points cannot disagree. **A question for the
+        designer**: an unlabelled icon is the design's only route to a whole screen, and it did
+        not survive first contact.
   - [ ] **A day separator was ADDED that the design does not draw.** Every bubble carries
         `HH:mm` and nothing else, which is unambiguous for the single-day conversation the
         frame mocks and silently wrong for a ride planned three weeks out — "08:18" on a
