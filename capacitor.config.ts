@@ -34,12 +34,26 @@ const config: CapacitorConfig = {
   /**
    * **Owner decision, and it is permanent.** A bundle id cannot be changed after
    * the first App Store or Play submission — a new one is a new app, with a new
-   * listing and no reviews or installs carried over. `com.letsride.app` is a
-   * placeholder chosen to be valid, not chosen by anyone who owns the domain.
-   * Confirm it before the first `cap add`, because both native projects bake it
-   * into their manifests, signing identities and keychain access groups.
+   * listing and no reviews or installs carried over. Both native projects bake it
+   * into their manifests, signing identities and keychain access groups, so it
+   * has to be right before the first `cap add`, not before the first submission.
+   *
+   * `com.letsride.app` was a placeholder "chosen to be valid, not chosen by
+   * anyone who owns the domain". `letsride.social` was bought 2026-08-07, so the
+   * convention now has an answer: a bundle id is the owned domain reversed, which
+   * makes this `social.letsride.app`. That is a real claim of ownership rather
+   * than a squat on a `com.letsride` nobody holds — and Apple checks it, because
+   * the same domain has to serve
+   * `https://app.letsride.social/.well-known/apple-app-site-association` before
+   * any universal link resolves (docs/ENVIRONMENTS.md §Domains).
+   *
+   * **Still a placeholder until the owner confirms it**, for one reason worth
+   * writing down: the App Store Connect and Play Console records are created
+   * from it, and neither can be renamed afterwards. Changing this line today
+   * costs nothing — `cap add` has never run (see the header) — and changing it
+   * after the first submission costs the listing.
    */
-  appId: 'com.letsride.app',
+  appId: 'social.letsride.app',
   appName: 'LetsRide',
   webDir: 'out',
 
