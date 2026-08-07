@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
 import { locationSchema, usernameSchema } from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
@@ -51,6 +52,12 @@ export async function setUsername(_prev: ActionState, formData: FormData): Promi
   }
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
+  // `has_username` is one of the three fields the route guard's decision reads,
+  // and it now holds the answer from before this write. Left stale, the guard
+  // sees step 1 as unfinished and bounces the rider straight back to it from
+  // the step 2 this redirect is about to send them to.
+  invalidateOnboardingState()
+
   return { error: null, redirectTo: '/onboarding/location' }
 }
 
@@ -82,6 +89,10 @@ export async function acceptTerms(
 
   const { data: accepted, error } = await supabase.rpc('accept_terms')
   if (error || !accepted) return { error: 'Could not record that. Try again.' }
+
+  // Same reason as `setUsername` — the stamp the guard cached says NULL, which
+  // is what sent the rider to this screen in the first place.
+  invalidateOnboardingState()
 
   // The route guard decides the real destination, the same way signIn leaves
   // it to. Most riders who reach this screen are already fully onboarded — the prompt
@@ -122,6 +133,11 @@ export async function setLocation(_prev: ActionState, formData: FormData): Promi
     return { error: 'Could not save that. Try again.' }
   }
   if (!completed) return { error: 'Your profile could not be found. Sign in again.' }
+
+  // Same reason again, and this is the one that would be most visible: without
+  // it the guard reads a NULL completion stamp and returns the rider to the
+  // wizard they have just finished.
+  invalidateOnboardingState()
 
   return { error: null, redirectTo: '/postcards' }
 }
