@@ -1590,16 +1590,45 @@ Two things follow, and the second is the general one:
 
 ### The queue is drained by a scheduled Routine, not by a human starting a session
 
-Created 2026-08-07 at the product owner's request. **`trig_01Gzy8eCiaXUUa1knvJnNpwy`** — spawns a
-**fresh session on every firing**, so its prompt is a complete standalone instruction rather than
-a continuation. `list_triggers` is the live view; this is the contract.
+Created 2026-08-07 at the product owner's request. **`trig_01WJkMVXGzUVGDcC1njNmaan`** — and as of
+later the same day it **fires into one long-lived session rather than spawning a fresh one**. That
+session is `session_01B2mxc642tG8vZ15wysQpqM`, **the Development session**, and the reuse is the
+whole point: connectors attach to a *session*, so a firing that lands in a session which already
+holds Linear cannot lose Linear. `list_triggers` is the live view; this is the contract.
+
+**Its prompt is a pointer, not the procedure.** The procedure lives in
+**`.claude/commands/queue-pickup.md`** and the trigger says little more than *read that file and
+follow it*. Two reasons, and the second is the one that only matters once the session is reused: a
+prompt is re-injected into the conversation on **every** firing where a file is read once and can
+be skipped, and a file can be reviewed in a PR where a trigger prompt cannot. Read that file for
+the steps; what follows here is why it is shaped the way it is.
 
 What it does, in order — and the order is the design:
 
+0.5. **Is the session idle? If not, exit.** New with the reuse, and the cost it pays for. A fresh
+   session was idle by construction; this one is not. The firing message queues behind whatever
+   the session is doing and lands the moment that finishes — possibly mid-conversation with the
+   owner. Four checks: an unfinished owner request in the conversation, a dirty tree, a branch
+   with commits not on `development`, an open PR. Any one → exit silently.
+   **The first is judgement and it is the one that matters**; the other three are the backstop
+   that catches a session which died mid-build. **The owner's work always wins** — the queue
+   waits an hour, which costs nothing.
+0.6. **Reduce the session before doing anything expensive.** Also new, and also a cost of the
+   reuse: every firing that reads files and reviews diffs *in the main thread* leaves that behind
+   for every later firing. **No tool available to a session clears its own context** — `/clear`
+   and `/compact` are CLI commands the owner types — so the mechanism is delegation, not a
+   command. Gates and decisions inline; the build in subagents; never a full diff, test log or
+   file pasted into the main thread. If the conversation is already long, run the whole pickup
+   inside one subagent.
 1. **Prove it can see the board.** If the Linear tools are absent, notify and stop. It must fail
    loudly, because *a job that silently does nothing looks exactly like an empty queue*.
 2. **Check the lock.** If **any** issue is in `Development (AI)` or `Needs help`, exit
-   immediately — no changes, no comment. One story at a time. **The one break in that silence,
+   immediately — no changes, no comment. One story at a time. **Scope the query to the project,
+   never to the team**: measured 2026-08-07, a team-scoped `list_issues` on `Development (AI)`
+   also returns `PD-82`, `PD-83` and `PD-41` — 2022–2025 issues, two in the deprecated `Let's
+   Ride` project and one with no project at all, which have sat in that status for years. A
+   team-scoped lock is held **permanently**, and looks exactly like a healthy job behind a busy
+   queue. **The one break in that silence,
    added 2026-08-07: if the lock has been held 3–4 hours it sends a single notification naming
    the issue** (`get_issue` → `stateHistory[].startedAt`). Without it a lock nobody is holding
    freezes the queue for ever while every firing exits quietly — the exact failure step 1 exists
@@ -1636,43 +1665,88 @@ Two things follow. **Read the response back** — `update_trigger` returns the s
 successful one. And **the spreading is deliberate**: :00 is the busiest minute on the platform, so
 an on-the-hour Routine is the owner's call to make, not a default to reach for.
 
-**Its connectors were attached by the owner, and no session could have done it.** The Routine was
-created holding none: `create_trigger` refused the `connectors` parameter outright — *"not
-available for this organization"* — and `update_trigger` has no such field either, so neither
-creating nor editing reaches it from a session. The owner attached them by hand in the claude.ai
-Routines UI on 2026-08-07. **Re-tested the same day and still refused**, so this is a standing
-limit rather than a moment in time.
+**Read the two fields for different things, though — `next_run_at` is not the schedule.** The
+replacement Routine was created at 19:32 with `0 0-23 * * *`; it stored that **verbatim** and came
+back `next_run_at: 20:05:35`. That :05 is *scheduler jitter* (a recurring task fires up to 10% of
+its period late), not the minute-anchoring rewrite described above — the tell is that the stored
+expression still reads `0 0-23`, where an anchored one would read `32 * * * *`. Check
+`cron_expression` to see whether the schedule survived; `next_run_at` will wander by a few minutes
+either way and reading it as the anchoring bug leads to a "fix" that introduces one.
 
-**`list_triggers` does report them, and this file said it did not.** They are in
-`job_config.…mcp_connections`, keyed by `connector_uuid` — Supabase `d217aba8-…`, Linear
-`a55a164a-…`, Vercel `8d8457e7-…`, each matching the `installedServerId` that `ListConnectors`
-returns. So check rather than assume, with the command rather than this sentence:
+### Why the reuse — connectors attach to sessions, not to work
+
+**A trigger cannot be given connectors from a session, and that is what drove the whole design.**
+`create_trigger` refuses the `connectors` parameter for this organization — *"not available for
+this organization"*, measured 2026-08-07 and re-tested the same day — and `update_trigger` has no
+such field either, so neither creating nor editing reaches it. The **fresh-session** Routine only
+ever had Supabase, Linear and Vercel because the owner attached them by hand in the claude.ai
+Routines UI. That made every rebuild of it one bad call away from a permanently connector-less job.
+
+**Firing into an existing session sidesteps the problem rather than solving it.** The session holds
+its own connections, so the firing is just a message arriving in a conversation that can already
+reach Linear. `create_trigger` still emits *"this trigger stores no MCP connectors, so the sessions
+it fires will run without connector tools"* — that warning is written for the spawn case and
+describes a session a self-bound trigger never creates.
+
+**`list_triggers` reports the connectors a trigger does hold**, in `job_config.…mcp_connections`,
+keyed by `connector_uuid` — Supabase `d217aba8-…`, Linear `a55a164a-…`, Vercel `8d8457e7-…`, each
+matching the `installedServerId` that `ListConnectors` returns. Check rather than assume:
 
 ```bash
 # via the CCR MCP: list_triggers -> job_config.ccr… mcp_connections[].name
+#   and:          list_triggers -> persistent_session_id   (absent = spawns fresh)
 ```
 
-**Therefore: never delete and recreate this Routine.** It is the one edit that cannot be undone
-from a session — `create_trigger` still refuses `connectors`, so the replacement comes back with
-none, and only the owner can re-attach them. Whatever the recreation was meant to buy, it costs a
-working Routine. Use `update_trigger` (name, cron, prompt, enabled) or leave it alone.
+**Never DELETE a Routine — disable it.** The rule used to read "never delete and recreate" and the
+reason has got stronger rather than weaker. `update_trigger` has **no `persistent_session_id`
+parameter**, so rebinding a Routine to a session is impossible in place: the switch had to be a new
+trigger. The old one is therefore *disabled*, not deleted, and it is the fallback — it still holds
+the three hand-attached connectors, and `update_trigger enabled: true` restores it whole in one
+call. Delete it and only the owner can rebuild it.
 
-Step 0 of the prompt survives that fix and should stay: it proves the session can see the board
-before it does anything, and notifies if it cannot. A scheduled job that silently does nothing is
+**`enabled: false` serialises as an ABSENT field, not `"enabled": false`.** Measured on exactly
+this change: the disabled Routine's `list_triggers` row has no `enabled` key at all while both live
+ones carry `"enabled":true`. So read the disable back by checking the field is **gone** — looking
+for `false` finds nothing and reads as "the disable did not apply".
+
+**A self-bound Routine cannot carry push notifications.** The server rejects the `notifications`
+parameter for any trigger bound to a persistent session; only `create_new_session_on_fire: true`
+Routines may set it. The fresh-session Routine had `notifications.channel.push` — the replacement
+cannot, so **the session sends its own** with the `PushNotification` tool, at STEP 0 (cannot reach
+Linear) and STEP 5 (done). Nothing else changes, but a firing that forgets is silent where the old
+one was not.
+
+STEP 0 survives all of this and should stay: it proves the session can see the board before it does
+anything, and notifies if it cannot. A scheduled job that silently does nothing is
 indistinguishable from an empty queue, and connectors are exactly the kind of setting that can be
-revoked without anything here noticing.
+revoked without anything here noticing — which is more true, not less, now that they come from a
+session that has been resumed across an idle hour.
 
 **Do not "improve" the guard into a queue drainer.** Draining several issues per firing, or
 skipping past a `Needs help` issue to find workable ones, both defeat the point: `Needs help`
 parks the queue *deliberately*, so that a story needing the owner blocks the ones behind it
 rather than burying itself under three merged PRs.
 
-**A fired session is not configured like an interactive one, and both gaps are owner-only.**
+**A *spawned* session is not configured like an interactive one, and the reuse is what retires
+that whole class of problem.** This is history now rather than a live constraint, and it is kept
+because it is the argument for the reuse and because it comes straight back if anyone switches the
+Routine to `create_new_session_on_fire`.
+
 Measured 2026-08-07 by diffing `list_triggers` against `list_sessions`. Every interactive session
 on this project carries `model: claude-opus-5`, `effort_level: xhigh`, `permission_mode: auto`.
 The Routine's `session_context` carried **none of the three** — just an `allowed_tools` list
-holding **zero `mcp__*` entries** — and, the one that mattered, **no `sources` either**. Compare
-the two before assuming a fired session is configured like the session you are reading this in:
+holding **zero `mcp__*` entries** — and, the one that mattered, **no `sources` either**.
+
+**A session that is resumed rather than spawned keeps all four for free**, because they are
+properties of the session and nothing re-derives them per firing. That is what makes the reuse
+worth its two new costs (STEPs 0.5 and 0.6) rather than a lateral move: it fixes the model gap,
+the effort gap, the permission-mode gap, the repo gap and the connector gap in one stroke, and
+none of those five had a fix a session could apply. **`PD-110` — set the Routine's model, refused
+by `update_trigger` with `model_update_disabled` — is moot while the Routine stays self-bound**,
+since the session's own `claude-opus-5` is what runs.
+
+Compare the two before assuming a fired session is configured like the session you are reading
+this in:
 
 ```bash
 # via the CCR MCP: list_triggers -> job_config.ccr.session_context
@@ -1680,11 +1754,12 @@ the two before assuming a fired session is configured like the session you are r
 # Look for: sources (the repo), permission_mode, model, effort_level
 ```
 
-Two consequences, and a session can fix neither:
+Two consequences, neither of which a session could fix — **which is exactly why the fix was to
+stop spawning sessions rather than to keep configuring them**:
 
 - **The model cannot be set from a session.** `update_trigger` with a `model` fails
   `model_update_disabled`, and `create_trigger` has no model parameter. Owner action in the
-  claude.ai Routines UI — `PD-110`.
+  claude.ai Routines UI — `PD-110`, now moot per above.
 - **Connector tools prompted on every firing, and a scheduled session has nobody to answer.**
   **Root cause: the Routine had no repository attached** — `session_context.sources` was empty.
   Found by the product owner on 2026-08-07 and fixed in the Routines UI; `PD-109` chased the
@@ -1713,6 +1788,31 @@ rather than merely noisy.
 `0 0-23 * * *` to `24 * * * *` — the save minute, exactly the anchoring described above. So after
 *any* UI edit, re-read `cron_expression` and set it back. The workaround does not survive on its
 own.
+
+### The Development session is infrastructure — do not archive it
+
+`session_01B2mxc642tG8vZ15wysQpqM`. The hourly Routine delivers into it, so **archiving or
+abandoning it stops the queue**, silently and with no error anywhere. There is no self-healing
+path: `update_trigger` cannot re-point a Routine at a different session, so recovering means
+creating a *third* trigger bound to a new session and disabling this one — the same dance
+documented above, and one only worth doing deliberately.
+
+Two things follow for any session that is *not* it:
+
+- **A firing you receive is only yours if you are that session.** Check the id before acting on a
+  queue-pickup message: `list_sessions` (or the session URL). A pickup prompt arriving anywhere
+  else is a misrouted message, not a work order.
+- **Its context is a shared resource.** Anything that bloats it — a pasted diff, a full test log,
+  a large file read into the main thread — is paid for by every later firing, not just by the turn
+  that did it. `.claude/commands/queue-pickup.md` STEP 0.6 is the discipline; it applies to
+  interactive work in that session too.
+
+**Its container is reclaimed after a period of inactivity**, so an hourly firing is also what keeps
+it warm. A resumed session gets a fresh container, and whether the connector grants survive that
+resume is the one thing about this design that no session can prove in advance — it can only be
+observed after an idle hour. STEP 0 is the detector: if a firing finds Linear missing, it says so
+rather than exiting quietly, and the fallback is one `update_trigger enabled: true` on
+`trig_01Gzy8eCiaXUUa1knvJnNpwy`.
 
 ### Do not ask permission to touch Linear
 

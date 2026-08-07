@@ -962,6 +962,73 @@ the connector and was wrong; `PD-110` (the model, refused by `update_trigger` wi
 **Any UI edit to a Routine re-anchors its cron.** Attaching the repo silently rewrote
 `0 0-23 * * *` to `24 * * * *`, the save minute. Re-read `cron_expression` after every UI edit.
 
-**Never delete and recreate that Routine.** `create_trigger` still refuses the `connectors`
-parameter for this org (re-tested 2026-08-07), so the replacement comes back with no Supabase,
+**Never delete a Routine — disable it.** `create_trigger` still refuses the `connectors`
+parameter for this org (re-tested 2026-08-07), so a replacement comes back with no Supabase,
 Linear or Vercel, and only the owner can re-attach them by hand.
+
+**The Routine now fires into a reused session instead of spawning one — 2026-08-07.** The queue is
+drained by **`trig_01WJkMVXGzUVGDcC1njNmaan`**, hourly, delivering into
+**`session_01B2mxc642tG8vZ15wysQpqM` — the Development session**. Connectors attach to sessions, so
+a firing that lands in a session already holding Linear cannot lose it; that is the whole reason.
+The old fresh-session Routine `trig_01Gzy8eCiaXUUa1knvJnNpwy` is **disabled, not deleted**, and is
+the fallback — it still holds its three hand-attached connectors and one `update_trigger
+enabled: true` restores it.
+
+```bash
+# via the CCR MCP: list_triggers
+#   -> trig_01WJkMVXGzUVGDcC1njNmaan  enabled:true  persistent_session_id: session_01B2mxc…
+#   -> trig_01Gzy8eCiaXUUa1knvJnNpwy  no `enabled` key at all  = disabled
+```
+
+Four measurements from making the switch, each of which will otherwise be rediscovered:
+
+- **`update_trigger` has no `persistent_session_id`**, so rebinding is impossible in place. The
+  switch had to be create-new-then-disable-old, which is also why "never delete" now matters more.
+- **`enabled: false` serialises as an absent field**, not `"enabled": false`. Read the disable back
+  by checking the key is *gone*.
+- **The server rejects `notifications` on a self-bound trigger.** Push now comes from the session
+  itself via `PushNotification`, at STEP 0 and STEP 5 of the procedure.
+- **`next_run_at` carries scheduler jitter and is not the schedule.** `0 0-23 * * *` created at
+  19:32 stored verbatim and returned `next_run_at: 20:05:35`. Check `cron_expression` for whether
+  the schedule survived; :05 is jitter, not the minute-anchoring rewrite.
+
+**The procedure moved out of the trigger prompt and into
+[`.claude/commands/queue-pickup.md`](../.claude/commands/queue-pickup.md)** — the trigger now says
+little more than *read that file and follow it*. A prompt is re-injected on every firing where a
+file is read once, and a file can be reviewed in a PR. It gained two steps the fresh-session design
+did not need:
+
+- **STEP 0.5, the idle gate.** A fresh session was idle by construction; this one is not, and a
+  firing can land mid-conversation with the owner. Four checks — unfinished owner request, dirty
+  tree, branch ahead of `development`, open PR — any one exits silently. The owner's work wins.
+- **STEP 0.6, reduce the session.** Context accumulates across firings and **no tool available to a
+  session clears its own context**; `/clear` and `/compact` are CLI commands the owner types. The
+  mechanism is therefore delegation: gates inline, build in subagents, never a diff or a test log
+  in the main thread.
+
+**The one thing this design cannot prove in advance:** whether the connector grants survive a
+container reclaim across an idle hour. It is only observable after the fact. STEP 0 is the
+detector — a firing that finds Linear missing notifies rather than exiting quietly — and the
+fallback is re-enabling the old Routine.
+
+**Do not archive `session_01B2mxc642tG8vZ15wysQpqM`.** Archiving it stops the queue with no error
+anywhere, and `update_trigger` cannot re-point the Routine at a replacement.
+
+**The lock check must be scoped to the project, and a team-scoped one is held for ever.** Found
+while making the switch, 2026-08-07: `list_issues` filtered by *team* and `Development (AI)` also
+returns `PD-82`, `PD-83` and `PD-41` — issues from 2022–2025, two in the deprecated `Let's Ride`
+project and one with no project at all, parked in that status for years. A firing that checks the
+lock team-wide exits silently every time, which is indistinguishable from a healthy job behind a
+busy queue. Always pass `project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`.
+
+```bash
+# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
+#   -> statuses; anything in Development (AI) or Needs help holds the lock
+```
+
+**The queue is frozen right now and it needs an owner decision.** As of 2026-08-07 19:36 UTC two
+issues hold the lock together — **`PD-118`** (Notifications; moved to `Development (AI)` at
+19:35, minutes after this session started, by something other than this session) and **`PD-125`**
+(Ride chat unreachable; created 19:26 already in that status). Neither has a branch —
+`git branch -r` shows only `main`, `development` and this session's. Four issues wait behind them
+in `Queued (AI)`. Until one of them is moved back, every firing will correctly exit at STEP 1.
