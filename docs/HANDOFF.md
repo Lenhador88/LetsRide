@@ -104,13 +104,21 @@ PGPASSWORD=postgres npm test          # 647 assertions, 0 failures
   command did. Capture the exit code from the command itself, never from the end of a pipe.
   This reported a passing type check on a tree with no dependencies installed.
 
-## Branching, as of 2026-08-06 21:00 UTC
+## Branching, as of 2026-08-07 16:42 UTC
 
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` and `development` are level at `f5c12c6`**, promoted via #74 as a merge commit with
-  the fast-forward back-merge done. Production is `READY` on that sha.
+- **`main` and `development` are level at `903dffb`**, promoted via #100 as a merge commit with
+  the fast-forward back-merge done. Production is `READY` on that sha — `target: production`,
+  ref `main`, a real rebuild rather than a promoted preview. Verify rather than trust the sha:
+
+  ```bash
+  git fetch origin main development && git rev-parse origin/main origin/development   # identical
+  ```
+
+  That promotion carried **19 commits** and is the one that put ride chat, the guard cache, the
+  Inbox removal and the native shell's first half in front of riders.
 - **Getting there went wrong once, and the correction is worth knowing.** `main` was *renamed*
   to `Development` rather than the default *pointer* being moved to the existing `development`.
   That left two branches differing only in case, no `main` at all, a Vercel Production Branch
@@ -509,7 +517,21 @@ archiving replaces a requirement wholesale — so **whichever archives second si
 the first one's edit**. Both delta files now open with a coordination banner carrying the merged
 text they should converge on. Read it before archiving either.
 
-## Ride chat landed 2026-08-07, and `034` is applied to DEV only
+## Ride chat landed 2026-08-07 and is live in production
+
+**Shipped to riders via #100 (`903dffb`), and here is the honest limit on that.** The screen is
+verified by CI, the RLS suite and live schema checks against PROD. **Nobody has loaded it against
+the production database** — this container cannot: Chromium here cannot reach `supabase.co` at all
+(§The walk), and Vercel's MCP fetch authenticates as the account owner, so a 200 from it is not
+evidence a rider can reach anything. The first real proof is the owner opening a ride they have
+RSVP'd to and sending a message.
+
+Two things that would only show up on that first real load, so check them before assuming a bug is
+elsewhere: whether the Realtime socket actually delivers on the production project (the publication
+membership is asserted, the *delivery* is not), and whether the composer's `crypto.randomUUID`
+path is on a secure origin — it is over HTTPS, and the fallback exists for `http://<lan-ip>` device
+testing.
+
 
 Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-120 (the unread
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
@@ -524,8 +546,10 @@ so the recorded statement matched. The second was applied as a **delta** (`alter
 
 That matters to exactly one check — the byte-identity of stored SQL against the files, which was
 verified once on 2026-08-06 and which nothing automates (`npm run db:drift` compares *names*).
-PROD has never had `034` and will receive the file verbatim, so it is DEV-only and self-correcting.
-Reconcile whenever convenient, from a session with the file open:
+**PROD did receive the file verbatim** — `md5(statements[1])` there equals `md5sum` of
+`supabase/migrations/034_ride_messages.sql`, `4a3e605891b8ab49db1a5d614bcb9a84` — so the canonical
+record is correct and only the disposable database is out. Reconcile whenever convenient, from a
+session with the file open:
 
 ```sql
 -- then re-run apply_migration with the file's contents
