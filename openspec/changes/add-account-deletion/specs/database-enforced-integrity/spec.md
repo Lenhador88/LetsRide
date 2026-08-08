@@ -182,10 +182,33 @@ was the *only* thing holding decision #5 — no policy prevented a rider whose
 joining anything, because `003`'s trigger guards the *stamp*, not the participation. Demoting
 the route guard to a client component would have removed the only thing holding it.
 
-**The gate is narrower than the requirement above reads**, and that is worth carrying: `023`
-puts it on eight tables — `postcards`, `clubs`, `rides`, `club_members`, `ride_members`,
-`postcard_comments`, `postcard_likes`, `postcard_reports` — and **not** on `profiles` UPDATE,
-`profile_countries`, `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy.
+> **Coordination note — read before archiving this change.** This block is a `MODIFIED`
+> requirement, so archiving replaces the standing text **wholesale**. Three changes have now
+> modified this same requirement; `add-ride-chat`, `add-notifications` and
+> `forbid-username-removal` archived on 2026-08-08, and **this change is the sole remaining
+> claimant**. The prose and the last two scenarios below were re-synced against the standing
+> spec on that date. If the standing text has moved again since, re-sync before archiving —
+> `openspec archive` refuses rather than silently dropping a scenario, which is exactly what it
+> did to `add-notifications`, but only for scenarios, not for prose.
+
+**The gate is narrower than the requirement above reads, and its scope SHALL be counted rather
+than enumerated.** Earlier revisions listed the gated tables by name and asserted "thirteen
+tables carry an INSERT policy and this gate names eight of them". Both numbers went stale within
+a day — `034` added `ride_messages` as a ninth gated table, and `036` added `notifications` as a
+table carrying **no INSERT policy at all**, a third category the enumeration cannot express. A
+standing spec asserting a stale count is worse than one asserting nothing, because a table added
+without a gate looks exactly like the list being right. The scope is therefore a rule plus the
+command that measures it:
+
+```sql
+select count(*) from pg_trigger
+ where tgname = 'enforce_participation_gate' and not tgisinternal;
+```
+
+The rule, which does not go stale: **every table into which a rider inserts content another
+rider can see carries the gate.** Per-viewer tables that produce nothing anyone else can see do
+not — `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads`, and every
+`storage.objects` policy, which check the path prefix only.
 
 An un-onboarded rider also has a NULL `username`, which the `profiles` SELECT policy uses to
 hide them from other riders — so their content would appear to everyone else with an
@@ -213,8 +236,7 @@ assumption.
   `profile_countries` or their own `profiles` row
 - **THEN** the write SHALL succeed, because none of these produces content another rider can
   see and `profiles` is the row the wizard itself writes
-- **AND** the exclusion SHALL be stated in the migration rather than left as silence: thirteen
-  tables carry an INSERT policy and this gate names eight of them
+- **AND** the exclusion SHALL be stated in the migration rather than left as silence
 
 #### Scenario: An un-onboarded rider cannot file moderation records
 - **WHEN** a rider who has not completed onboarding reports a postcard
@@ -236,7 +258,22 @@ assumption.
 - **THEN** the existing policies SHALL apply unchanged, so this requirement adds no new read
   restriction and cannot strand a rider mid-wizard
 
-#### Scenario: A caller with no profile row is refused by the gate on all eight tables
+#### Scenario: A table with no INSERT grant is a third category and carries no gate
+- **WHEN** a table exists that no client role may insert into at all — `notifications`, written
+  only by `private` fan-out triggers
+- **THEN** it SHALL carry no participation gate, because the gate constrains *who may write* and
+  there is nobody to constrain
+- **AND** its absence from the gate SHALL NOT be read as an omission
+
+#### Scenario: A revoked consent stops a sitting crew member writing
+- **WHEN** `private.may_participate()` is extended to require the current terms version, and a
+  rider who is already on a ride's crew has consented only to an earlier one
+- **THEN** their next message insert SHALL be refused with `check_violation`
+- **AND** their read of the thread SHALL be unaffected, because the gate is on writes only
+- **AND** this is the case in which the gate on `ride_messages` stops being defence in depth,
+  which is why the trigger ships before the case exists
+
+#### Scenario: A caller with no profile row is refused by the gate on every gated table
 - **WHEN** a caller holding a valid access token whose `profiles` row has been deleted inserts
   into any of the eight gated tables
 - **THEN** the write SHALL be refused with `check_violation`

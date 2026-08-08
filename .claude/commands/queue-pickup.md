@@ -698,8 +698,15 @@ Follow `CLAUDE.md` exactly. In particular:
   provably incomplete the moment STEP 4b builds anything — which is why STEP 4c already carried
   a conditional re-review. Two passes where the earlier one is superseded is not defence in
   depth; it is the same diff read twice, minus the fold-ins, at full cost. Running once at the
-  end makes "code added after `reviewer` looked" **impossible by construction** rather than
-  prevented by a rule someone has to remember.
+  end removes the **structural** gap — the one this file created itself, by placing a pass
+  before a step that commits.
+
+  **It does not remove every gap, and an earlier draft of this bullet claimed it did.** It said
+  "impossible by construction", which `reviewer` falsified on this very change: STEP 4c bullet 3
+  drives CI to green, and fixing `reviewer`'s own findings commits too — both land *after* the
+  only pass. The honest bound is narrower and worth stating exactly, because an overclaim here
+  is what stops the next reader looking: **one pass covers everything committed up to it, and
+  nothing after.** STEP 4c bullet 1 carries the rule for what comes after.
 
   **The proposal pass is a different gate and it stays.** When `openspec` runs, `reviewer` reads
   the *proposal* — that is the first of `CLAUDE.md` §The Agent Squad's two, and the only artifact
@@ -762,7 +769,7 @@ exists and two of its four lines are this question:
 
 | Relatedness | Rating | What happens |
 |---|---|---|
-| Travels | **Recommendation ≥ 7/10 *and* This session = Y** | **Build it now** — same branch, same PR, re-reviewed at STEP 4c |
+| Travels | **Recommendation ≥ 7/10 *and* This session = Y** | **Build it now** — same branch, same PR, reviewed at STEP 4c |
 | Travels | Anything else | Record it for filing |
 | Filed | *(rate it anyway — the filing table routes by rating)* | Record it for filing |
 
@@ -908,6 +915,15 @@ live RLS hole letting any signed-in rider post a ride into any club.
 
    Because it now always sees the whole branch, it is also the pass that reviews the fold-ins —
    which is the entire safety argument for building them unattended.
+
+   **A commit made AFTER this pass is not covered by it, and two are routine here:** a CI fix
+   at bullet 3, and any fix for `reviewer`'s own findings. The bound is *one pass covers
+   everything up to it*, so — **re-run `reviewer` on the delta alone** (`git diff <reviewed
+   sha>...HEAD`) when what you added after it is non-trivial: anything touching `src/`,
+   `supabase/`, a policy, a guard or a permission. A lockfile bump, a typo, a formatting fix or
+   a reworded comment does not need one. **When in doubt, re-run on the delta** — it is a small
+   diff by definition, so the cheap call is the safe one, which is the opposite of the
+   trade-off that justified collapsing the two full passes.
 
    **Its prompt must carry the scope material, because it runs before the PR exists and so
    cannot read the PR body.** Pass: the issue being built, each fold-in with its one-line

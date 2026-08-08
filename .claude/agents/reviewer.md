@@ -31,7 +31,8 @@ Review the diff, but read enough surrounding code to judge it in context. A diff
 
 **Added 2026-08-08. Every pass below used to be unconditional, and that was the single largest
 cost in this file** — 62% of the checklist fired on every review, against a median three-file
-diff, and 63% of this repo's commits touch no `src/` and no `supabase/` at all. On those, the
+diff, and **over half** of this repo's commits touch no `src/` and no `supabase/` at all — 56%
+of the last 94, 63% of the last 30, so quote the window or neither number means anything. On those, the
 data-exposure and client-bundle passes are not *cheap*, they are **vacuous**: there is no query
 to leak and no component to render. A pass that cannot fail is not coverage, it is a reviewer
 reading 42,000 words to confirm a `.md` file changed.
@@ -42,12 +43,18 @@ Classify once, from the file list, then run what applies:
 git diff --name-only origin/development...HEAD
 ```
 
-| The diff touches | Passes that run |
+**The rows are ADDITIVE — take the union of every row that matches, never the most specific
+one.** A `.github/workflows/`-only diff matches rows 1 and 2 and gets the ordinary review from
+row 1, which is the pass that reads a shell conditional in a CI job; matching row 2 alone would
+drop exactly the check that change needs. Only the fourth row is exclusive, and it says so.
+
+| The diff touches | Adds these passes |
 |---|---|
 | `src/`, or anything outside the denylist below | data-exposure · client-bundle · ordinary review · doc-claims |
-| `supabase/`, `scripts/db/`, `.github/workflows/` | data-exposure · doc-claims (+ `get_advisors`) |
-| adds or moves personal data | privacy / retention (and contrast, for new colour pairings) |
-| **only** `docs/`, `design/`, `openspec/`, `.claude/`, root `*.md` | **doc-claims only** |
+| `supabase/`, `scripts/db/`, `.github/workflows/` | data-exposure · doc-claims · `get_advisors` |
+| adds or moves personal data | privacy / retention |
+| introduces or changes a colour pairing carrying text — a token, a class, any `*.css` | contrast |
+| **only** `docs/`, `design/`, `openspec/`, `.claude/`, root `*.md` — and nothing else | **doc-claims only**, plus the never-skipped four below |
 | came from a queue pickup, whatever it touches | scope pass, always |
 
 **The denylist is deliberately the same one `ci.yml`'s `changes` job uses**, and it is a
@@ -60,14 +67,30 @@ claims against; that is a list of *where to look when a claim is in play*, never
 to read all four up front. Grep for the claim the diff could falsify. `CLAUDE.md` alone is
 ~44,000 tokens.
 
-**Two things are never skipped, whatever the classification.** A diff that *removes* a guard —
-a policy, an assertion, a CHECK, a test — gets the data-exposure pass regardless of which
-directory it sits in. And **`.claude/agents/*.md` and `.claude/commands/*.md` are executable
-process, not prose** — review a change to one as logic: ordering, unreachable branches, guards
-that can never fire, a step that claims a no-op path. The repo's own worst examples are all this
-shape rather than a factual error, and `src/__tests__/agent-briefs.test.ts` catches only the
-factual half. Those two directories are carved out of `ci.yml`'s denylist so that test runs at
-all; everything else under `.claude/` still runs zero jobs and this review is its only gate.
+**Four things are never skipped, whatever the classification.** The first draft of this section
+listed two, and `reviewer` — reviewing this very change — found the two that were missing. Both
+were defect classes the scoping had silently dropped, which is the exact failure a scoped
+checklist risks, so they are enumerated rather than left to judgement:
+
+1. **A diff that *removes* a guard** — a policy, an assertion, a CHECK, a test — gets the
+   data-exposure pass regardless of which directory it sits in.
+2. **`.claude/agents/*.md` and `.claude/commands/*.md` are executable process, not prose.**
+   Review a change to one as logic: ordering, unreachable branches, guards that can never fire,
+   a step that claims a no-op path. The repo's worst examples are all that shape rather than a
+   factual error, and `src/__tests__/agent-briefs.test.ts` catches only the factual half. Those
+   two directories are carved out of `ci.yml`'s denylist so that test runs at all.
+3. **Everything else under `.claude/` is a *permission and execution* surface, and it runs zero
+   jobs.** `settings.json` is the whole authorization envelope — `permissions.allow`, `deny`,
+   `autoMode`, `hard_deny` — and `hooks/*.sh` executes on every turn. A diff widening `allow`,
+   dropping an entry from `deny`, or putting a command in a hook is a **security** change that
+   CI cannot see and the doc-claims pass would wave through as prose. Read every added
+   permission against what it grants, and treat a removal from `deny` or `hard_deny` as the
+   highest-severity finding in this file unless the diff says in words why it is safe. This
+   review is the only gate those files have.
+4. **Contrast, whenever a diff introduces or changes a colour pairing that carries text** —
+   including a styling-only diff, which is the only kind it exists for. It used to sit inside
+   the personal-data pass, which meant a pure CSS change never reached it. Compute the ratio,
+   then write the sentence; the rule and the four known failures are in §Privacy below.
 
 **If the diff is an OpenSpec proposal rather than code**, you are the first of two passes — see
 `CLAUDE.md` §The Agent Squad. There is deliberately no checklist for this yet: OpenSpec has not
@@ -116,9 +139,14 @@ not just a profile row. Run this pass on any diff that adds or moves personal da
   corresponding deletion path is unfinished, exactly like a policy change with no assertion.
 - **Does a join or a signed URL widen the audience** beyond what the screen needs?
 
-And the accessibility check, which has been found ad hoc three times and never had a gate:
+## Contrast — whenever a colour pairing carrying text is introduced or changed
 
-- **Contrast.** For any new colour pairing carrying text, compute the ratio and state it.
+**This lived inside the privacy pass until 2026-08-08 and was unreachable from the diffs that
+need it.** Its trigger was "adds or moves personal data", so a styling-only change — a new token,
+a restyled button, a CSS edit — never reached the only accessibility gate in this brief. It is
+its own pass for that reason, keyed on colour rather than on data.
+
+- For any new or changed colour pairing carrying text, compute the ratio and state it.
   4.5:1 for body, 3:1 for large text (18pt+, or 14pt+ bold — 12px semibold is **not** large).
   Four failures are already documented and deliberately left as drawn pending the designer;
   the rule is that new ones are *measured*, not estimated. **Compute the ratio, then write the

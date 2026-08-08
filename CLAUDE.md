@@ -1102,12 +1102,30 @@ touched** — it gates a different artifact, and it is the one with no automated
 
 **Each pass is also scoped to what the diff touches now**, mirroring `ci.yml`'s denylist: the
 data-exposure and client-bundle passes cannot fire on a diff confined to `docs/`, `design/`,
-`openspec/`, `.claude/` or a root `*.md`, and 63% of this repo's commits are exactly that. The
-documentation-claims pass does *not* narrow — a docs-only diff is entirely claims — and neither
-does the scope pass on anything from a queue pickup. Two things override the scoping: a diff that
-**removes** a guard gets the data-exposure pass wherever it lives, and `.claude/agents/*.md` and
-`.claude/commands/*.md` are reviewed as **logic**, because CI never runs on them and this review
-is their only gate.
+`openspec/`, `.claude/` or a root `*.md`. **Half of this repo's commits are exactly that** —
+re-derive rather than trust it, and note the two predicates are different and give different
+answers, which is how the first draft of this line quoted 63% for the narrower one:
+
+```bash
+# commits touching NO src/ and NO supabase/ — reviewer.md's "no code to review"
+#   56% of the last 94, 63% of the last 30. Quote the window; the two differ by 7 points.
+# commits confined ENTIRELY to the denylist — this sentence's predicate: 47/94 = 50%
+#   (swap the grep for: grep -qvE '^(docs/|design/|openspec/|\.claude/|[^/]*\.md$)')
+git rev-list --no-merges -n 94 origin/development | while read c; do
+  git show --name-only --format= "$c" | grep -qvE '^(docs/|design/|openspec/|\.claude/|[^/]*\.md$)' || echo "$c"
+done | wc -l
+```
+
+The documentation-claims pass does *not* narrow — a docs-only diff is entirely claims — and
+neither does the scope pass on anything from a queue pickup. **Four things override the scoping
+entirely** and `.claude/agents/reviewer.md` §classify is the list: a diff that **removes** a
+guard, the two `.claude/` cases below, and contrast on any new colour pairing.
+
+`.claude/agents/*.md` and `.claude/commands/*.md` are reviewed as **logic** rather than prose —
+those two are carved out of `ci.yml`'s denylist so `src/__tests__/agent-briefs.test.ts` runs on
+them. **The rest of `.claude/` still runs zero jobs**, and `settings.json` and `hooks/*.sh` are
+the permission and execution surface, so a diff touching them is a **security** review with no
+other gate behind it.
 
 Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
 Requiring a proposal for everything is how process gets ignored, and skipping `openspec` skips
@@ -1943,7 +1961,7 @@ What it does, in order — and the order is the design:
    never whether it is worth doing — **everything gets rated either way**, because the filing
    columns are chosen by rating and an unrated item has nowhere to go. Then rate it on
    §Working Principles' four lines and let the block decide — travels *and* **Recommendation
-   ≥ 7/10 *and* `This session` Y** → build it now, same branch, same PR, re-reviewed before the
+   ≥ 7/10 *and* `This session` Y** → build it now, same branch, same PR, reviewed before the
    merge. Anything else → a story: `Todo AI` if a session could build it, `Todo Human` +
    `Owner only` if not, `Backlog AI` if you rated it below 4/10. **Never `Queued (AI)`.**
    **Search the board before filing** — where an issue already covers it, update that one with a
