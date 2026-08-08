@@ -558,7 +558,7 @@ migration, and CI has no path that would catch it.
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone — `024`, applied 2026-08-05** after the code repair deployed. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. The name survives in `src/` as a *field on what `lib/data/` returns*, holding the signed URL — never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. **`username` is durable: once it holds a value, `authenticated` cannot return it to NULL** — `038` coerces the write back inside `enforce_onboarding_completion`, silently rather than raising, matching `012`'s treatment of the consent stamp. Not a CHECK, deliberately: the operator escape hatch (`current_user <> 'authenticated'`) has to survive, so `service_role`, `postgres` and the dashboard still can. **The rule is "once set, never unset", not "once onboarded"**, so a rider mid-wizard cannot free a taken name either. A rename is still permitted — unbuilt and unsurfaced rather than decided. |
+| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone — `024`, applied 2026-08-05** after the code repair deployed. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. The name survives in `src/` as a *field on what `lib/data/` returns*, holding the signed URL — never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. **`username` is durable: once it holds a value, `authenticated` cannot return it to NULL** (`038`). The rule is **"once set, never unset", not "once onboarded"**, so a rider mid-wizard cannot free a taken name either; a rename is still permitted, unbuilt and unsurfaced rather than decided. |
 | `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. The organizer FK is `ON DELETE CASCADE`, so **a ride is cancelled by its organizer's account deletion** — deliberate (a ride is one person's plan), and the crew is not notified because there is nothing to notify them with. `club_id` is `ON DELETE SET NULL`, which `029` treats as a trap rather than a default: a private club's ride left with `club_id` NULL and `is_public` false is visible only to its organizer while its `ride_members` rows survive, so the transfer function deletes a club's rides with the club instead. |
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
 | `clubs` | Clubs with `owner_id → profiles`. **A club outlives its owner as of `029`.** The FK is `ON DELETE CASCADE` and `postcards.club_id → clubs` cascades behind it, so deleting an owner would destroy every postcard every *other* member ever posted there — `009` reasoned that link out correctly for a club deleted *by* its owner and never considered it arriving as a side effect of a third party's erasure. `private.transfer_owned_clubs` hands the club to its longest-tenured remaining admin, else member, and only deletes it when nobody is left. Reached through `031`'s `service_role`-only wrapper, never by a client. |
@@ -607,7 +607,7 @@ A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was n
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
 **Applied state: 38 files. DEV is at `038`, PROD is at `035`, so the gap is now THREE and no two
-halves of it are outstanding for the same reason — measured 2026-08-08.** DEV (`letsride-dev`) has
+of them are outstanding for the same reason — measured 2026-08-08.** DEV (`letsride-dev`) has
 38 rows ending `username_is_not_removable`; PROD (`letsride`) has 35 ending
 `035_comment_whitespace_floor`.
 
@@ -676,7 +676,7 @@ never run — then `036` added 100, `037` added 61 and `038` moved it by 35. A n
 verification command next to it is still a number nobody checked.) **`038`'s 35 is +36 new and −1
 relabelled, which is exactly why a count is the wrong comparison** — it renamed a `036` assertion
 whose *setup* used the very defect `038` closes, so the label set moved in both directions while
-the count moved once. Compare label sets, never totals. (It read 527 for a few hours, from
+the count moved once. (It read 527 for a few hours, from
 a parallel session that folded the same three files independently; the two were reconciled by
 comparing *label sets* rather than counts, which is the only comparison that shows whether an
 assertion was lost.)

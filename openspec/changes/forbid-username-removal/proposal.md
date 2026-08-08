@@ -185,7 +185,7 @@ destructive `039` with a deploy between them, for a rule the trigger can carry i
 **The sequencing question this change *does* raise is PROD's queue, and it is the owner's.**
 Measured 2026-08-08 with `list_migrations` against `ls supabase/migrations/`:
 
-- **DEV is at `037`** (`20260808075952 places_index`).
+- **DEV is at `038`** (`20260808095414 username_is_not_removable`) — this change applied it.
 - **PROD is at `035`** (`035_comment_whitespace_floor`). Both `036` and `037` are unapplied there.
 - **They are unapplied for opposite reasons, and `docs/HANDOFF.md` §Two migrations says so in
   terms: "conflating them is how the wrong one gets applied".** `036_notifications` is held back
