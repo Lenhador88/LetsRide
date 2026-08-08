@@ -5750,15 +5750,23 @@ delete from postcard_hides
 -- ---------------------------------------------------------------------------
 -- 7.12f — the ACTOR conjunct, with NO block anywhere in sight
 -- ---------------------------------------------------------------------------
--- ** The `profiles` EXISTS is not redundant with the block conjunct. ** Any
--- rider can null their own username in ONE request — the column grant is live,
--- the CHECK admits NULL, and enforce_onboarding_completion returns early for an
--- already-onboarded rider before it reaches the column. That is a second way out
--- of `profiles` SELECT with nothing to do with blocking, and without the
--- conjunct the row is counted and cannot be drawn.
+-- ** The `profiles` EXISTS is not redundant with the block conjunct. ** A NULL
+-- username drops a row out of `profiles` SELECT on its own, with nothing to do
+-- with blocking, and without the conjunct the notification is counted and cannot
+-- be drawn.
 --
--- Done as the ghost THEMSELVES, through RLS, because the point is that it is
--- reachable by a rider rather than only by the table owner.
+-- ** This used to be done as the ghost THEMSELVES, through RLS, and 038 closed
+-- that route. ** The comment here read "any rider can null their own username in
+-- ONE request — the column grant is live, the CHECK admits NULL, and
+-- enforce_onboarding_completion returns early for an already-onboarded rider
+-- before it reaches the column", which was true and was the live defect PD-127
+-- fixed. The rider's attempt is kept below and is now asserted to be COERCED,
+-- because deleting it would lose the one place this suite shows 038's rule
+-- reaching a surface other than `profiles` itself. The eviction the notifications
+-- policy is really being tested for is then produced as the table owner, which
+-- the trigger's `current_user <> 'authenticated'` gate deliberately still
+-- permits — so what changed is who can reach the state, never whether the
+-- conjunct works.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
 select assert_eq(
@@ -5768,12 +5776,23 @@ select assert_eq(
 
 select set_config('test.uid', '00000000-0000-0000-0000-000000036021', false);
 update profiles set username = null where id = '00000000-0000-0000-0000-000000036021';
+select assert_eq((select username from profiles where id = auth.uid()),
+  'n36ghost', '036/038: the ghost can no longer null their own username — the row stays in profiles');
 
 select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
 select assert_eq(
   (select count(*)::int from notifications
     where postcard_id = '00000000-0000-0000-0000-00000036e002'),
-  0, '036: an actor who nulls their own username evicts the row — no block involved');
+  1, '036/038: ... so the notification survives an attempt that used to evict it');
+
+reset role;
+update profiles set username = null where id = '00000000-0000-0000-0000-000000036021';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e002'),
+  0, '036: an actor whose username is NULL evicts the row — no block involved');
 select assert_eq(
   (select count(*)::int from notifications),
   (select unread_notification_count()),
@@ -6489,6 +6508,313 @@ select assert_denied($$select count(*) from search_places('Zeldzaamplek', 52.09,
 reset role;
 
 rollback to savepoint places_037;
+
+\echo ''
+\echo '# A username cannot be removed once it is set (038)'
+
+-- ===========================================================================
+-- 038. "Once set, never unset."
+-- ===========================================================================
+--
+-- The defect: `authenticated` holds column UPDATE on `username`, both CHECKs
+-- admit NULL by construction, and enforce_onboarding_completion returned early
+-- for an already-onboarded rider before reaching any username logic. So
+-- `PATCH /rest/v1/profiles?id=eq.<me>` with `{"username": null}` removed the row
+-- from every other rider's read — the `profiles` SELECT policy is
+-- `(auth.uid() = id) OR (username IS NOT NULL AND NOT private.is_blocked(...))`.
+--
+-- ** The new rule is asserted as STORED STATE, never as an error code. ** 038
+-- coerces rather than raises, matching 012's treatment of `terms_accepted_at` in
+-- the same function, so the write returns 200 with the old value intact. An
+-- assertion written as assert_rejected(..., '23514', ...) would FAIL against a
+-- correct implementation. The assertions below that do name a SQLSTATE are each
+-- pinning a refusal that PREDATES this change — the unique index (23505), the
+-- format CHECK (23514) and complete_onboarding's own guard.
+--
+-- ** The load-bearing fixture is an ONBOARDED one. ** A guard placed below the
+-- `old.onboarding_completed_at ... return new` early return is dead code for
+-- exactly the population it protects, and would still pass a suite that only
+-- tested a mid-wizard rider. 3801 is that fixture; 3802 is the mid-wizard case,
+-- which is a real second rule rather than a weaker restatement of the first.
+--
+-- The arms 038 carried forward from 003, 012 and 023 are not re-asserted here —
+-- the sections above already cover every one of them (the consent re-pin, the
+-- INSERT arms, the completion guard), and they run against the replaced body.
+--
+-- Self-contained fixtures, like 036 and 037 above: this section runs last and
+-- must not depend on what twenty-three sections left behind. The block pair from
+-- seed.sql (1a/1b) is reused for the two block assertions, because the block row
+-- itself is the fixture and re-seeding it would be a second copy of the same
+-- relationship.
+--   3801  onboarded, has a username           -- the population the rule protects
+--   3802  mid-wizard, has a username          -- "once set", before completion
+--   3803  no username, no stamps              -- onboarding step 1 must still work
+--   3804  onboarded, someone else's row       -- the cross-rider case
+--   3805  consent + username, not completed   -- complete_onboarding must still stamp
+--   3806  consent, NO username                -- ... and must still refuse
+savepoint username_038;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000038001', 'u38onboarded@example.com'),
+  ('00000000-0000-0000-0000-000000038002', 'u38halfway@example.com'),
+  ('00000000-0000-0000-0000-000000038003', 'u38fresh@example.com'),
+  ('00000000-0000-0000-0000-000000038004', 'u38other@example.com'),
+  ('00000000-0000-0000-0000-000000038005', 'u38qualified@example.com'),
+  ('00000000-0000-0000-0000-000000038006', 'u38noname@example.com');
+reset role;
+
+update profiles set username = 'u38onboarded', location = 'Lisbon', bio = 'before',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038001';
+update profiles set username = 'u38halfway', bio = 'before',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038002';
+update profiles set username = 'u38other', location = 'Faro', bio = 'before',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038004';
+update profiles set username = 'u38qualified', location = 'Aveiro',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038005';
+update profiles set terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038006';
+-- 3803 is left exactly as handle_new_user made it: no username, no stamps.
+
+-- ---------------------------------------------------------------------------
+-- 038.1 — the onboarded rider, which is the whole point
+-- ---------------------------------------------------------------------------
+-- Each of these writes a SECOND column in the same statement and reads it back.
+-- An UPDATE filtered to zero rows by RLS does not error, so "the username is
+-- unchanged" on its own would pass against a policy that permitted nothing at
+-- all — the trap the comment on assert_allowed records. The bio landing is what
+-- proves the statement ran and only the username was coerced.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000038001', false);
+
+update profiles set username = null, bio = 'after' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38onboarded',
+  '038: an ONBOARDED rider cannot null their own username — the arm sits above the completion early return');
+select assert_eq((select bio from profiles where id = auth.uid()),
+  'after',
+  '038: ... and the same statement''s other column DID land, so the write was coerced rather than filtered to zero rows');
+
+-- A rename is untouched: the guard is `coalesce`, so it only ever fires on NULL.
+-- Q1 (may a rider rename?) is deliberately left as it was, and this is the
+-- assertion that fails if someone later tightens the rule without deciding it.
+update profiles set username = 'u38renamed' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38renamed', '038: a rename to another valid name still succeeds — the guard is NULL-only, and Q1 stays open');
+update profiles set username = 'u38onboarded' where id = auth.uid();
+
+-- ---------------------------------------------------------------------------
+-- 038.2 — the mid-wizard rider, which is a second rule and not a weaker one
+-- ---------------------------------------------------------------------------
+-- Keyed on `old.username` rather than on `old.onboarding_completed_at`, so a
+-- rider who chose a name at step 1 and is sitting on step 2 is covered too. That
+-- is the route by which a taken name could otherwise be freed and re-taken.
+select set_config('test.uid', '00000000-0000-0000-0000-000000038002', false);
+
+update profiles set username = null, bio = 'after' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38halfway',
+  '038: a rider MID-WIZARD cannot null a username they have already chosen — the rule keys on old.username, not on completion');
+select assert_eq((select bio from profiles where id = auth.uid()),
+  'after', '038: ... and that write landed too');
+
+-- The consequence, and it is asserted against the INDEX rather than against the
+-- availability check. `isUsernameTaken` reads under the block-aware SELECT
+-- policy, so "reads as taken to every other rider" is not a true statement about
+-- this database — see 038.3 immediately below.
+select set_config('test.uid', '00000000-0000-0000-0000-000000038003', false);
+select assert_rejected($$update profiles set username = 'u38halfway'
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23505',
+  '038: the name the mid-wizard rider kept still cannot be taken by anyone else — profiles_username_lower_key, not the availability check');
+
+-- ---------------------------------------------------------------------------
+-- 038.3 — the pre-existing asymmetry, pinned so neither half can be "fixed" alone
+-- ---------------------------------------------------------------------------
+-- 1a blocked 1b. To 1b, 1a's name reads FREE (the SELECT policy hides the row)
+-- while taking it is refused by the index. That predates this change and is
+-- unaltered by it; 038.2's wording depends on knowing it, so it is asserted
+-- rather than described.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq((select count(*)::int from profiles where lower(username) = 'blocker'),
+  0, '038: a rider blocked by the holder of a name reads that name as FREE — the availability check runs under the block-aware policy');
+select assert_rejected($$update profiles set username = 'blocker'
+  where id = '00000000-0000-0000-0000-00000000001b'$$,
+  '23505',
+  '038: ... while taking it is still refused 23505 — an inference channel that predates 038 and is neither opened nor closed by it');
+
+-- ---------------------------------------------------------------------------
+-- 038.4 — the regression this change most plausibly causes
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000038003', false);
+savepoint first_username_038;
+update profiles set username = 'u38fresh' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38fresh', '038: a rider whose username is NULL can still set one — onboarding step 1 is unbroken');
+update profiles set username = null where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38fresh', '038: ... and from that moment on they cannot remove it — the rule engages on the value, not on a stamp');
+rollback to savepoint first_username_038;
+
+-- ---------------------------------------------------------------------------
+-- 038.5 — complete_onboarding is security definer, so it never sees this arm
+-- ---------------------------------------------------------------------------
+-- Inside a security definer function `current_user` is the owner, so the
+-- trigger's first gate returns early and the function's own restatement of 003's
+-- rule is the enforcement. Both arms, to prove the new code disturbed neither.
+select set_config('test.uid', '00000000-0000-0000-0000-000000038005', false);
+savepoint complete_038;
+select assert_eq(public.complete_onboarding('Nijmegen') is not null,
+  true, '038: complete_onboarding() still stamps for a rider who has a username');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Nijmegen', '038: ... and still applies the location in the same statement');
+rollback to savepoint complete_038;
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000038006', false);
+select assert_rejected($$select public.complete_onboarding('Tilburg')$$,
+  '23514', '038: ... and still refuses one who does not — that guard lives in the function, not in the trigger');
+
+-- ---------------------------------------------------------------------------
+-- 038.6 — the operator escape hatch, which is why this is not a CHECK
+-- ---------------------------------------------------------------------------
+-- The trigger's `current_user <> 'authenticated'` gate is preserved rather than
+-- narrowed, so the table owner, service_role, the seed and the signup trigger
+-- still write NULL freely. ** This is the assertion that fails if someone later
+-- "tightens" 038 into a CHECK constraint **, which no role can pass and which
+-- would leave a rider stranded by any future defect unrepairable.
+reset role;
+savepoint operator_038;
+update profiles set username = null where id = '00000000-0000-0000-0000-000000038001';
+select assert_eq((select username from profiles where id = '00000000-0000-0000-0000-000000038001'),
+  null::text, '038: the table owner can still null a username — the operator escape hatch survives');
+rollback to savepoint operator_038;
+
+-- ---------------------------------------------------------------------------
+-- 038.7 — NULL really was the only hole
+-- ---------------------------------------------------------------------------
+-- Verified against the live constraint rather than assumed: '' does not match
+-- '^[a-z0-9_]{3,20}$', and neither does a value carrying a newline — Postgres's
+-- `~` is not anchored to the whole string across newlines unless it is written
+-- this way, so the newline case is the one worth stating.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000038003', false);
+select assert_rejected($$update profiles set username = ''
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23514', '038: an empty username is refused 23514 — 003''s CHECK, unchanged');
+select assert_rejected($$update profiles set username = '   '
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23514', '038: ... and a whitespace-only one');
+select assert_rejected($$update profiles set username = 'ab'
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23514', '038: ... and a two-character one');
+select assert_rejected($$update profiles set username = E'ok\nname'
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23514', '038: ... and one carrying a newline');
+
+-- ---------------------------------------------------------------------------
+-- 038.8 — deleting the row is the OTHER way to vanish, and it is left as it is
+-- ---------------------------------------------------------------------------
+-- Asserted rather than assumed, and both halves: the grant is live and the
+-- refusal rests entirely on the absence of a DELETE policy. The pair is what
+-- detects a future permissive policy reopening this by another route. The revoke
+-- is a follow-up of its own, deliberately not bundled into a trigger change.
+select set_config('test.uid', '00000000-0000-0000-0000-000000038001', false);
+savepoint own_delete_038;
+delete from profiles where id = auth.uid();
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000038001'),
+  1, '038: a rider deleting their OWN profiles row affects zero rows');
+rollback to savepoint own_delete_038;
+
+reset role;
+select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'delete'),
+  true, '038: ... and authenticated DOES hold the table-level DELETE grant, so the refusal is the policy''s absence');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'profiles' and cmd = 'DELETE'),
+  0, '038: ... and there is no DELETE policy on profiles for that grant to use');
+
+-- ---------------------------------------------------------------------------
+-- 038.9 — another rider's row, and the upsert route into your own
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000038001', false);
+update profiles set username = null, bio = 'intruder'
+  where id = '00000000-0000-0000-0000-000000038004';
+select assert_eq((select username from profiles where id = '00000000-0000-0000-0000-000000038004'),
+  'u38other', '038: a rider cannot null ANOTHER rider''s username');
+select assert_eq((select bio from profiles where id = '00000000-0000-0000-0000-000000038004'),
+  'before',
+  '038: ... and nothing else on that row moved either — zero rows affected by the UPDATE policy, not a coerced write');
+
+-- The statement supabase-js sends for `Prefer: resolution=merge-duplicates`.
+-- `authenticated` holds INSERT on `username` and an INSERT policy exists, so this
+-- is a genuine second client route into the column; that the BEFORE UPDATE
+-- trigger fires for the DO UPDATE arm is a two-step derivation nothing else
+-- pins. Same class as the `ignoreDuplicates` bug src/lib/actions/profile.ts
+-- records, where the suite issued a different statement than production and
+-- shipped green.
+insert into profiles (id, username, bio)
+values ('00000000-0000-0000-0000-000000038001', null, 'upserted')
+on conflict (id) do update set username = excluded.username, bio = excluded.bio;
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38onboarded',
+  '038: the PostgREST upsert is not a second way in — INSERT ... ON CONFLICT DO UPDATE is coerced the same way');
+select assert_eq((select bio from profiles where id = auth.uid()),
+  'upserted', '038: ... and the upsert itself landed, so that is a coercion and not a refusal');
+
+-- ---------------------------------------------------------------------------
+-- 038.10 — this change opens no new channel, and reaches no new role
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-00000000001a'),
+  0, '038: a blocked rider still reads zero rows of the blocker''s profile');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-00000000001b'),
+  0, '038: ... and the blocker still reads zero of theirs — symmetric, unchanged');
+
+reset role;
+set role anon;
+select assert_denied($$select count(*) from profiles$$,
+  '038: anon still reaches nothing on profiles — the function was replaced, so decision #1 is re-proved');
+select assert_denied($$update profiles set username = 'anonymous'
+  where id = '00000000-0000-0000-0000-000000038001'$$,
+  '038: ... and cannot write a username either');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 038.11 — the body itself, named rather than only inferred from behaviour
+-- ---------------------------------------------------------------------------
+-- A position comparison, not a presence one: "the arm exists" passes just as
+-- well when it is dead code below the early return, which is the single most
+-- likely way to ship a green useless fix. 038.1 is the behavioural proof; this
+-- is the one that says why it failed when it fails.
+select assert_eq(
+  (select prosrc like '%coalesce(new.username, old.username)%'
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  true, '038: the coercion is in the function body');
+select assert_eq(
+  (select strpos(prosrc, 'coalesce(new.username, old.username)')
+        < strpos(prosrc, 'new.onboarding_completed_at := old.onboarding_completed_at')
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  true, '038: ... and it sits ABOVE the completion early return, where it is not dead code for an onboarded rider');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  false, '038: the function is still security invoker — as definer its own current_user gate would never fire for anyone');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.profiles'::regclass and not tgisinternal and tgattr <> ''),
+  0, '038: and neither trigger is column-scoped — one scoped OF username would never fire for a rename');
+
+rollback to savepoint username_038;
 
 rollback;
 

@@ -32,10 +32,20 @@ major version.
 
 ### There is one suite and one mode, and nothing is skipped
 
-**The suite models the database that actually runs.** As of 2026-08-06 that is
-the whole chain: `list_migrations` reads 27 rows against 27 files, so
-`SKIP_ALL_PENDING` in `run.sh` is empty and every migration applies here exactly
-as it applies on the hosted project. Check that rather than trust this line —
+**The suite models the database that actually runs.** It is the whole chain:
+`SKIP_ALL_PENDING` in `run.sh` is empty, so every migration applies here exactly
+as it applies on the hosted project. **Derive the pair rather than reading one
+here** — this line carried `27 rows against 27 files` from 2026-08-06 until
+2026-08-08, false from about `028` onward, and a fresh number restarts that
+clock:
+
+```bash
+ls supabase/migrations/*.sql | wc -l     # files
+# vs list_migrations against the hosted project — DEV, then PROD
+```
+
+Note the two hosted projects disagree by design; `docs/ENVIRONMENTS.md` is the
+contract. Check that rather than trust this line —
 `list_migrations` against `ls ../migrations/`.
 
 **There used to be three extra modes and three extra suite files**, and the
