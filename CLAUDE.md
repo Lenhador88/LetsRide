@@ -1437,12 +1437,19 @@ blockquote. Both defeat the grouping. The earlier version of this rule put the l
 description inside the bar as well; blocks written that way survive in `docs/HANDOFF.md`'s
 history and in archived proposals — the shape above is the one to write.
 
-**Committed and pushed is not shipped.** Work only counts when it is on `main`. A branch that
-is green, pushed and reviewed still changes nothing until it merges — and the gap between
-"I opened the PR" and "it landed" is where things get dropped, because every other signal
-(clean tree, pushed branch, green CI) already looks finished. Before ending a session, merge
-it or say plainly that it is open and why. This is not hypothetical: a handoff rewrite sat in
-an unmerged PR while `main` told the next session a shipped epic was half-finished.
+**Committed and pushed is not shipped.** A branch that is green, pushed and reviewed still
+changes nothing until it merges — and the gap between "I opened the PR" and "it landed" is where
+things get dropped, because every other signal (clean tree, pushed branch, green CI) already
+looks finished. Before ending a session, merge it or say plainly that it is open and why. This
+is not hypothetical: a handoff rewrite sat in an unmerged PR while `main` told the next session
+a shipped epic was half-finished.
+
+**"Counts" has two thresholds, and this line said only the second until 2026-08-08.** It read
+*"Work only counts when it is on `main`"*, which no session can satisfy — production promotion
+is manual and the owner's. **A session's unit of done is a merged PR on `development`**, which
+is where a queue firing ends (`Deployed to DEV`). Reaching riders is the owner's promotion to
+`main`, and `Done (in production)` is the status that asserts it. Both thresholds are real; only
+the first is yours.
 
 **A claim about state needs the command that checks it.** `docs/HANDOFF.md` describes things
 that move on their own — what is deployed, what is applied, how many tests there are. Write
@@ -1546,7 +1553,7 @@ on why it matters. **A Linear issue that grows a specification is a bug** — th
 proposal, where `openspec/config.yaml`'s rules apply and a missing visibility rule fails loudly
 rather than silently.
 
-### Seven statuses, and the board does not mirror the squad
+### The statuses, and why the board does not mirror the squad
 
 The board was trimmed on 2026-08-07, the day after it was seeded, and the reason is worth
 keeping because it is the same reason the boundary above exists. It briefly carried ten
@@ -1569,14 +1576,15 @@ change nothing in the repo can see:
 
 | Status | Type | Means | Who moves it |
 |---|---|---|---|
-| `Backlog` | backlog | Captured, not triaged | Either |
+| `Backlog AI` | backlog | Captured, not triaged | Either |
 | `Todo Human` | unstarted | Triaged; **owner chores live here** | Either |
 | `Todo AI` | unstarted | Triaged, and a session could do it — but see below, it is *not* a start signal | Either |
 | `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
 | **`Queued (AI)`** | started | **Approved to build. The queue an agent pulls from** | **Owner** |
 | `Development (AI)` | started | An agent has picked it up | Agent |
 | `Needs help` | started | An agent stopped and needs the owner before it can go on | Agent |
-| `Done` | completed | Merged. *Committed and pushed is not shipped* | Agent |
+| **`Deployed to DEV`** | started | **Merged to `development`, green, live on DEV. Where a firing ends** | Agent |
+| `Done (in production)` | completed | Promoted to `main` and live for riders | **Owner** |
 
 `Canceled` and `Duplicate` also survive. The four squad-mirroring statuses are gone —
 `Idea (AI)`, `Testing (AI)`, `Quality control (AI)`, `Review Dev (Human)`.
@@ -1586,6 +1594,42 @@ change nothing in the repo can see:
 splitting a status is a two-click change nothing in the repo can see. **`Todo AI` is the row to
 be careful with** — the name reads like permission and it is not one. `Queued (AI)` is still the
 only start signal, and an issue sitting in `Todo AI` is triaged, not released.
+
+**Then it happened again on 2026-08-08, to three rows at once**, which is why the command above
+the table is the answer and the table is the liability: `Backlog` became **`Backlog AI`**, `Done`
+became **`Done (in production)`**, and **`Deployed to DEV` was added**. Nothing failed; a
+`save_issue` naming a status that no longer exists comes back looking successful with the field
+dropped, exactly like the `project` trap below.
+
+**Five files went stale, not three, and the blast radius is the part to re-derive.** The obvious
+three are `CLAUDE.md`, `.claude/commands/queue-pickup.md` and `docs/HANDOFF.md` — but
+**`openspec/changes/*/tasks.md` carried dead status names in unchecked, executable tasks**, in
+changes that had merged and never been archived. A first draft of this very sentence listed only
+the three. Grep the tree rather than trusting any list:
+
+```bash
+grep -rn '`Backlog`\|`Done`' --include="*.md" . | grep -v node_modules   # then read each hit
+```
+
+**The split of `Done` into two is a workflow change, not a rename, and it is the one to
+internalise.** A firing's unit of done is a **merged PR on `development`**, which is
+`Deployed to DEV`. **Promotion to production is manual and the owner's**, done in a separate
+session at their own timing (2026-08-08), so **no session ever sets `Done (in production)`** —
+that status asserts riders have the feature, and only the promotion makes it true.
+
+**Two traps hide in the `Type` column, and both fail silently:**
+
+- **`Deployed to DEV` is typed `started`, and so is `Queued (AI)`.** The concurrency lock is
+  therefore **two names — `Development (AI)` and `Needs help`** — and must never be rewritten as
+  "any `started` issue". That version is held by every queued and every shipped story, freezing
+  the queue permanently while looking like a healthy job behind a busy column. Same recurring
+  shape as the team-scoped lock and the buried stall alarm: a guard that can never pass,
+  indistinguishable from success. **Do not number these** — a count that mixes observed failures
+  with hypothetical ones ends up with two different "third instance"s, which has already
+  happened here.
+- **A blocker counts as cleared at `Deployed to DEV`**, not at `Done (in production)`. Firings
+  branch off `development`, so work merged there is already available to build on; requiring the
+  promotion would block every dependent story behind a manual step on the owner's schedule.
 
 **Two live traps when writing to the board through the MCP, both hit on 2026-08-07:**
 
@@ -1615,13 +1659,13 @@ mapping, so a cross-reference can be followed rather than guessed:
 |---|---|
 | step 5 — build | STEP 4 |
 | step 5b — triage | **STEP 4b** |
-| step 5c — review, PR, merge, `Done` | STEP 4c, then STEP 5 |
+| step 5c — review, PR, merge, `Deployed to DEV` | STEP 4c, then STEP 5 |
 
 **So "step 5" here and "STEP 5" there are different steps**, which is the collision most likely
 to mislead: this file's step 5 is the build, that file's STEP 5 is the wrap-up. That file is the
 procedure and wins on any disagreement; this is the summary. **Take the top of that column by priority, and if it is empty, ask rather than
-choosing for them.** A session that picks its own work from `Backlog` has quietly taken the one
-decision this whole board exists to give the owner.
+choosing for them.** A session that picks its own work from `Backlog AI` has quietly taken the
+one decision this whole board exists to give the owner.
 
 **`Needs help` is the escape hatch, and using it is not a failure.** An agent that is unsure —
 an ambiguous requirement, a visibility rule nobody wrote down, a migration whose ordering it
@@ -1681,7 +1725,7 @@ does, and from then on the two claims disagree with each other permanently.
 > **Only queue what is buildable now.** `Queued (AI)` means *eligible today*, not *approved
 > eventually* — so everything in it is order-independent by construction and the weak ordering
 > above stops mattering. Work that must wait for another issue waits in `Todo AI`, and the owner
-> queues it when its blocker reaches `Done`.
+> queues it when its blocker reaches `Deployed to DEV`.
 
 That is the only mechanism a session can both write **and** read: status is what
 `list_issues` returns, and it is already the signal the Routine and the concurrency lock are
@@ -1765,12 +1809,23 @@ What it does, in order — and the order is the design:
 0.5. **Is the session idle? Gather, do not exit.** New with the reuse, and the cost it pays for.
    A fresh session was idle by construction; this one is not. The firing message queues behind
    whatever the session is doing and lands the moment that finishes — possibly mid-conversation
-   with the owner. Five checks: an unfinished owner request in the conversation, a dirty tree, a
-   branch with commits not on `development`, an open PR **whose head is the current branch**, and
-   **low Claude usage headroom**.
-   **The first is judgement and it is the one that matters**; three of the rest are the backstop
-   that catches a session which died mid-build. **The owner's work always wins** — the queue
-   waits an hour, which costs nothing.
+   with the owner. Seven checks: an unfinished owner request in the conversation, a dirty tree, a
+   branch with commits not on `development`, an open PR **whose head is the current branch**,
+   **low Claude usage headroom**, **any other Claude Code session currently RUNNING**, and
+   **the owner having touched any session in the last 15 minutes**.
+   **(1) and (5) need judgement and (1) is the one that matters**; (2), (3), (4), (6) and (7) are
+   mechanical — a `git` command or one `list_sessions` call. (2), (3) and (4) are the backstop
+   that catches a session which died mid-build; (6) and (7) detect something *live* instead.
+   **The owner's work always wins** — the queue waits an hour, which costs nothing.
+
+   **The last two are the product owner's, 2026-08-08:** pick up a story only *"IF there are no
+   other sessions active / doing work in claude code And I'm AFK for >15 mins."* Both come from
+   one `list_sessions mine=true` call — `session_status` for the first, `max(updated_at)` for the
+   second — and **both must exclude the calling session's own id**, or the firing holds its own
+   gate and the queue never runs. The AFK half is explicitly a **proxy**: it sees Claude Code
+   activity and nothing else, so an owner reading the app or sitting in Linear reads as away.
+   It also slows the effective cadence well below hourly, which is the intent rather than a
+   fault.
 
    **The usage check is deliberately weaker than what was asked for, and that is the honest
    shape rather than a shortfall to be fixed.** The request (2026-08-07) was *"if any Claude
@@ -1780,7 +1835,8 @@ What it does, in order — and the order is the design:
    usage warning is visible in this session"*, which the reuse actually helps with, since a
    warning from an earlier turn is still in the conversation. **Writing it as a numeric
    threshold would produce a gate that can never fire** — the same silently-failing shape as the
-   team-scoped lock and the buried stall alarm, and this file's third instance of it. Reaching
+   team-scoped lock and the buried stall alarm — the same recurring shape, which this file
+   deliberately does not number. Reaching
    for the OAuth credential to query an undocumented endpoint is worse, not better: it would
    break silently and *look* like it worked. The lever that works is the owner's —
    `update_trigger enabled: false` pauses the Routine in one call.
@@ -1795,13 +1851,22 @@ What it does, in order — and the order is the design:
      early return here sits in front of the stall notification at 1.5 and makes the one alarm
      that detects a frozen queue unreachable — self-reinforcingly, because the `Needs help` path
      deliberately leaves an open PR behind, which would trip 0.5 for ever.
-0.6. **Reduce the session before doing anything expensive.** Also new, and also a cost of the
-   reuse: every firing that reads files and reviews diffs *in the main thread* leaves that behind
-   for every later firing. **No tool available to a session clears its own context** — `/clear`
-   and `/compact` are CLI commands the owner types — so the mechanism is delegation, not a
-   command. Gates and decisions inline; the build in subagents; never a full diff, test log or
-   file pasted into the main thread. If the conversation is already long, run the whole pickup
-   inside one subagent.
+0.6. **Start each story in a clean context.** Product owner, 2026-08-08: *"everytime a new story
+   is about to be picked up, session should be compacted or cleared if possible before starting
+   to build a new story."* **It is not possible from inside a session, and that is measured
+   rather than assumed** — no tool compacts or clears the caller's own context, no hook
+   *initiates* a compact (`PreCompact`/`PostCompact` are reactive only), `/clear` and `/compact`
+   are built-in **CLI commands the owner types** and explicitly are not skills, `--autocompact`
+   sets a startup threshold that cannot fire mid-session, and no env var or `settings.json` key
+   exposes it.
+
+   **So the substitute is a fresh subagent per story**, which does start empty: its file reads,
+   greps, diffs and test logs never enter this conversation. Gates, the triage decision, the
+   Linear writes and the PR stay inline — they are a dozen cheap calls carrying no file content;
+   **the build is one subagent**, `reviewer` a separate one. Never a full diff, test log or file
+   in the main thread. The owner is told when a `/clear` is safe, in the STEP 5 push
+   notification. `.claude/commands/queue-pickup.md` STEP 0.6 carries the evidence table and the
+   subagent-grant probe.
 1. **Prove it can see the board.** If the Linear tools are absent, notify and stop. It must fail
    loudly, because *a job that silently does nothing looks exactly like an empty queue*.
 2. **Check the lock.** If **any** issue is in `Development (AI)` or `Needs help`, exit
@@ -1813,20 +1878,30 @@ What it does, in order — and the order is the design:
    queue. Carry the answer to 1.5 rather than exiting here.
 1.5. **The only exit, and the stall alarm.** If nothing blocks, go to 2. Otherwise check how long
    the *oldest blocking reason* has been true — the lock (`get_issue` →
-   `stateHistory[].startedAt`), the in-flight branch's tip, the open PR's `createdAt` — and **if
-   it is 3–4 hours old, send one push notification naming it**, then stop. Outside that window,
-   exit silently. The owner's unfinished request is excluded: it is a live human, not a stuck job.
+   `stateHistory[].startedAt`), a dirty tree's newest file mtime, the in-flight branch's tip, the
+   open PR's `createdAt`, **and the two session gates: another session left `RUNNING`, or an
+   `updated_at` that keeps refreshing so the AFK gate never opens** — and **if it is 3–4 hours old,
+   send one push notification naming it**, then stop. Outside that window, exit silently. Only
+   the owner's unfinished request and low usage headroom are excluded: both are live conditions
+   the owner can already see.
+   **The RUNNING-session entry is the one most likely to freeze the queue silently from now on**,
+   because unlike a lock or a branch there is nothing on the board pointing at it — so the
+   notification has to name the session's title. `.claude/commands/queue-pickup.md` STEP 1.5 is
+   the procedure and it wins; this summary has already been the stale half once.
    Without this a condition nobody is holding freezes the queue for ever while every firing exits
    quietly — the exact failure step 1 exists to prevent. The window is narrow so it fires roughly
    once rather than hourly. **The alarm covers every blocking reason, not just the lock**, and
    the exit is funnelled through one step, because scattering it across the gates is what let an
    early return bury it.
 3. **Take the top of `Queued (AI)` by priority**, ties to oldest. Empty queue exits silently.
-   Never `Backlog`, never `Todo Human` or `Todo AI`, never `Needs decision`. **A parent issue is
-   skipped**: an epic outranks its own children on priority, so a container in the column would
-   be picked before any of the work under it.
+   Never `Backlog AI`, never `Todo Human` or `Todo AI`, never `Needs decision`. **A parent issue
+   is skipped**: an epic outranks its own children on priority, so a container in the column
+   would be picked before any of the work under it.
 3b. **Check `blockedBy` on what it picked** — `get_issue` with `includeRelations: true` — and if
-   any blocker is not `Done` or `Canceled`, comment and take the next candidate. This line used
+   any blocker is not `Deployed to DEV`, `Done (in production)`, `Canceled` or `Duplicate`,
+   comment and take the next candidate. `Duplicate` belongs in that set for the same reason
+   `Canceled` does — a blocker closed as a duplicate will never reach any other status, so
+   omitting it parks the dependent story for ever. This line used
    to read "It does **not** check dependencies, and cannot"; that was written from the default
    `get_issue` response and is wrong (§Sequencing has the measurement). It is a **backstop**, not
    the mechanism: `list_issues` still cannot filter on relations, so the check only runs after a
@@ -1845,7 +1920,10 @@ What it does, in order — and the order is the design:
    §Working Principles' four lines and let the block decide — travels *and* **Recommendation
    ≥ 7/10 *and* `This session` Y** → build it now, same branch, same PR, re-reviewed before the
    merge. Anything else → a story: `Todo AI` if a session could build it, `Todo Human` +
-   `Owner only` if not, `Backlog` if you rated it below 4/10. **Never `Queued (AI)`.**
+   `Owner only` if not, `Backlog AI` if you rated it below 4/10. **Never `Queued (AI)`.**
+   **Search the board before filing** — where an issue already covers it, update that one with a
+   comment and the ratings rather than opening a second (product owner, 2026-08-08: issues
+   *"created or updated"*). A duplicate reads to the owner as two pieces of work.
 
    **Both halves, never either — that is what stops a firing choosing its own work.** 9/10 with
    `This session` **N** is an ordinary pairing here, not a contradiction; the leaked-password
@@ -1857,10 +1935,11 @@ What it does, in order — and the order is the design:
    breadth cap (at most two, and never larger than the story's own diff).
 5c. **Re-run `reviewer` if anything was folded in after step 5's pass** — code added after the
    review has not been reviewed, and that review is the whole safety argument for building
-   fold-ins unattended. *Then* PR to `development`, drive green, merge, move to `Done`.
-   Uncertain about anything → `Needs help` with a comment saying what it needs. **File every
-   rated follow-up before stopping, on every exit path** — a follow-up rated and then dropped is
-   worse than one never noticed, because the rating made it look handled.
+   fold-ins unattended. *Then* PR to `development`, drive green, merge, move to
+   **`Deployed to DEV`** — never to `Done (in production)`, which is the owner's and means
+   promoted to `main`. Uncertain about anything → `Needs help` with a comment saying what it
+   needs. **File every rated follow-up before stopping, on every exit path** — a follow-up rated
+   and then dropped is worse than one never noticed, because the rating made it look handled.
 
 **It is hourly, not every ten minutes, and that is a server limit rather than a choice.** The ask
 was ten. Measured, not assumed — `create_trigger` rejects it outright:
@@ -2097,7 +2176,8 @@ is planned there and nothing there is read as true.)
 ### Keep it current, or it rots like the docs did
 
 - **Moving an issue is part of doing the work, not paperwork after it.** Move to
-  `Development (AI)` when you start and `Done` when the PR merges — in the same session.
+  `Development (AI)` when you start and `Deployed to DEV` when the PR merges — in the same
+  session. `Done (in production)` is the owner's, and it follows their manual promotion.
 - **Verify before you write.** The first seeding checked each claim against the live system and
   found `PD-93` already fixed by PR #80 and its CLAUDE.md prose still saying otherwise. Same rule
   as *a claim about state needs the command that checks it*: an issue asserting a stale fact is

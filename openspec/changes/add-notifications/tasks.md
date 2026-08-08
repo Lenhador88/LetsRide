@@ -321,7 +321,8 @@ number. Q1, Q2b, Q3, Q4 and Q7 are the **product owner's alone**; do not settle 
 - [ ] 8.4 PR to **`development`**, not `main`. Drive it to merged in the same session.
 - [ ] 8.5 Update `CLAUDE.md` §Product Scope's Inbox row — notifications now exist without the tab —
       and `docs/HANDOFF.md`, each claim beside the command that verifies it.
-- [ ] 8.6 Move **PD-118** to `Done`, and file the open questions the owner still has to answer as
+- [ ] 8.6 Move **PD-118** to `Deployed to DEV` (renamed 2026-08-08; `Done (in production)` is the
+      owner's, after their manual promotion), and file the open questions the owner must answer as
       their own issues labelled `Owner only` — **Q1, Q2b, Q3, Q4 and Q7**. Q2 is `data`/`feature`'s,
       Q5 is `design-system`'s, and Q6 is settled and needs no issue.
 - [ ] 8.6b File the **three pre-existing defects** this change found and did not fix, each with the
