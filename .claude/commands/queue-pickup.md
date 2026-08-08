@@ -462,8 +462,14 @@ oldest blocking condition has been true:
   `ls-files` emits **paths only**, so there is no prefix to strip and no quoting to unpick;
   `--cached` adds staged-only files, which `-m` misses when the working copy matches the index.
   Duplicates between the two are harmless — the answer is a maximum. Deleted paths fail `stat`
-  and drop out, which is why `2>/dev/null` is there; **the pipeline therefore exits non-zero on a
-  tree with deletions, so do not run it under `set -e` or `pipefail`.**
+  and drop out, which is why `2>/dev/null` is there.
+
+  **`xargs` exits non-zero when that happens — the *pipeline* does not.** Measured: plain shell
+  gives **0**, because `head` is the last stage and its status is the pipeline's;
+  `set -o pipefail` gives **123**. So the advice is *do not run this under `pipefail`* — and
+  **never branch on its exit status**, which is the trap: a guard written as "non-zero means the
+  tree had deletions" can never fire on the default shell. Read the **output** instead, and treat
+  empty as unknown age.
 
   **The direction of these errors is the opposite of harmless.** Dropping entries can only
   *lower* a maximum, so every failure mode makes the tree read **older** than it is — pushing the
@@ -483,8 +489,8 @@ oldest blocking condition has been true:
   an alarm whose only question is "has this been true for hours". **But if the command returns
   nothing at all, do not fall back to the lock's own clock** — the scenario this entry exists for
   is a dirty tree on `development` with no lock, no branch and no PR, so there is nothing to fall
-  back to. Treat an empty result as *unknown age* and say so in the firing, the same as the other
-  two unmeasurable exits below.
+  back to. Treat an empty result as *unknown age* and **send a `PushNotification`**, the same as
+  the two clockless `list_sessions` exits in STEP 0.5.
 - **A branch in flight (0.5 gate 3)** — `git log -1 --format=%cr` on its tip.
 - **An open PR on the current branch (0.5 gate 4)** — its `createdAt`.
 - **The owner's unfinished request** — never stalls. It is a live human, not a stuck job.
@@ -901,9 +907,15 @@ reviewed at all:
    when there is nothing new.
 
    ```bash
-   git push -u origin "$BRANCH"
-   git log --oneline origin/"$BRANCH"..HEAD    # must be empty before opening the PR
+   git push -u origin HEAD
+   git log --oneline "origin/$(git rev-parse --abbrev-ref HEAD)..HEAD"   # must be empty
    ```
+
+   **`HEAD`, not `$BRANCH`.** The only `BRANCH` variable in this file is assigned at STEP 0.5
+   check (3), where it is *expected to be `development`* — so reusing it here pushes the story
+   branch's commits straight onto `development`, which `CLAUDE.md` forbids outright, and then the
+   must-be-empty guard fails and stalls the firing with no PR open. Unset, it is worse in the
+   honest direction: `fatal: invalid refspec ''`.
 3. Drive CI to green and merge. Do not merge red. **Never push to `main` and never open a PR
    against `main`** — production promotion belongs to the owner.
 
