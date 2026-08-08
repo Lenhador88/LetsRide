@@ -48,6 +48,25 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 }
 
 /**
+ * The free-text onboarding `location` alone — for `resolveRiderLocation`'s
+ * profile fallback (`src/lib/location/`), which needs nothing else
+ * `getCurrentProfile` reads: no avatar signing pass, no cover URL, for a
+ * caller that only wants a city name to geocode.
+ */
+export async function getMyLocationText(): Promise<string | null> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const row = unwrap(
+    await supabase.from('profiles').select('location').eq('id', user.id).maybeSingle(),
+    'your onboarding location',
+  ) as { location: string | null } | null
+
+  return row?.location ?? null
+}
+
+/**
  * Stored usernames are always lowercase — 003's CHECK constraint enforces the
  * charset — so an exact match against the normalised input is equivalent to the
  * case-insensitive uniqueness the unique index provides.

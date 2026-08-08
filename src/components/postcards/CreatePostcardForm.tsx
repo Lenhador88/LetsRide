@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useRef, useState } from 'react'
+import { ImageIcon } from '@/components/icons/generated'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
 import { createPostcard } from '@/lib/actions/postcards'
@@ -10,6 +11,7 @@ import { createPostcard } from '@/lib/actions/postcards'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { uploadPostcardImage, validateImageFile } from '@/lib/media'
+import { cn } from '@/lib/utils'
 import { POSTCARD_CAPTION_MAX_LENGTH } from '@/lib/validation/postcards'
 import type { Club } from '@/types'
 
@@ -30,10 +32,26 @@ type Upload =
  * time this form submits, the image is in Storage and only its path travels
  * with the FormData — which is exactly the contract createPostcard expects.
  *
- * Layout is inferred. The create flow is one of the frames the Figma rate
- * limit kept shut, so the order of picker → preview → caption → audience, and
- * the progress treatment, are defensible guesses rather than measurements.
- * See docs/FIGMA-FIDELITY-TODO.md §Create postcard.
+ * The photo box is measured against the composer's own frame — `Home /
+ * Create postcard` → `Home - Postcards - All new` [1918:16843] (390×844,
+ * design/frames/home-create-postcard-home-postcards-all-new.json) — not only
+ * the named `v2 / Component / Input / Image` set. The frame is fully
+ * readable; it was missed the first time only because this exact screen name
+ * repeats across six frames total, two of them inside this same flow
+ * (CLAUDE.md §Development Workflow's screen-name trap), so qualify with the
+ * flow to find it. It draws a 358×224 box, radius 8, `White/100` fill, 1px
+ * solid `Grey/20%` stroke, and centred content — the 24×24 `Image` icon in
+ * `Grey/60` above "Add photo" set as an `Accent Brand/100` 14/Semibold link
+ * button, drawn only in the Empty state and sized to the button, not the
+ * box. Making the whole box tappable is ours, logged as a deviation below.
+ *
+ * The rest of the frame is also now readable and differs on purpose from
+ * what ships below: field order is box → Club → caption, and Post is a
+ * small primary button in the header beside Cancel rather than inline at
+ * the bottom. That reorder is separate follow-up work, not done here.
+ * Box geometry, tap target, colours and label type are logged as deliberate
+ * deviations rather than adopted — see docs/FIGMA-FIDELITY-TODO.md
+ * §Create postcard for the full list.
  */
 export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
   const [state, formAction, pending] = useActionState(createPostcard, emptyActionState)
@@ -54,6 +72,12 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
   async function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
+
+    // Cleared immediately, not only on a successful upload — the browser
+    // fires no `change` event on re-picking the same file otherwise, and the
+    // photo itself is now the only retry affordance (a validation failure or
+    // a failed upload both leave the rider retrying the same file).
+    event.target.value = ''
 
     // Checked here as well as inside uploadPostcardImage so an oversized or
     // wrong-typed file is refused before it is compressed.
@@ -89,35 +113,34 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
       {ready && <input type="hidden" name="imagePath" value={upload.path} />}
 
       <div className="flex flex-col gap-3">
-        {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a blob: object URL, not a remote asset next/image can optimise
-          <img
-            src={preview}
-            alt="The photo you selected"
-            className="aspect-4/5 w-full rounded-xl bg-background object-cover"
-          />
-        ) : (
-          <div className="flex aspect-4/5 w-full items-center justify-center rounded-xl border-2 border-dashed border-border-strong bg-surface px-6 text-center text-sm text-muted">
-            Choose a photo from your last ride.
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={upload.status === 'uploading'}
+          aria-label={preview ? 'Choose a different photo' : undefined}
+          className={cn(
+            'flex aspect-4/5 w-full items-center justify-center overflow-hidden rounded-xl bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50',
+            !preview && 'border-2 border-dashed border-border-strong',
+          )}
+        >
+          {preview ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a blob: object URL, not a remote asset next/image can optimise
+            <img src={preview} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex flex-col items-center gap-1 px-6 text-center text-xs text-muted">
+              <ImageIcon className="h-6 w-6" aria-hidden="true" />
+              Add photo
+            </span>
+          )}
+        </button>
 
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
           onChange={onFileChange}
-          className="sr-only"
+          className="hidden"
         />
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          onClick={() => inputRef.current?.click()}
-          disabled={upload.status === 'uploading'}
-        >
-          {preview ? 'Choose a different photo' : 'Choose a photo'}
-        </Button>
 
         {upload.status === 'uploading' && (
           <div className="flex flex-col gap-1.5">

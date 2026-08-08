@@ -159,6 +159,73 @@ export const queryKeys = {
      */
     messages: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages'],
   },
+
+  /**
+   * `036` / PD-118. No `revalidatePath` predecessor — this table postdates the
+   * render migration, so `list` and `unread` are the first two keys in this
+   * file written against the cache contract from the start rather than
+   * translated from one.
+   *
+   * `list` and `unread` share the `notifications` prefix so a future call site
+   * that genuinely needs both can name `all()` and get them — but **the shared
+   * prefix is not what keeps them in agreement, and an earlier revision of this
+   * comment said it was.** It claimed nesting meant "no call site can name one
+   * without reaching the other", and pointed at `markNotificationsRead`
+   * invalidating `all()` as the proof.
+   *
+   * That cost a round trip and bought nothing. `invalidate` matches by prefix,
+   * and the only screen that calls that action has `list` mounted with a live
+   * fetcher — so every open of `/notifications` refetched page one a second
+   * time, including when zero rows were unread. It now invalidates
+   * `unread()` alone.
+   *
+   * What actually satisfies `client-cache-invalidation`'s count-and-list
+   * requirement is the database: the count RPC and the list read the **same RLS
+   * predicate**, byte-identical across the SELECT and UPDATE policies, so a row
+   * the list cannot return is a row the count cannot count. A nonzero badge
+   * over an empty list is unreachable by construction rather than by
+   * invalidation discipline — which is the only version of that guarantee that
+   * survives someone adding a second caller.
+   *
+   * No other action invalidates this table at all: a fan-out never addresses
+   * the actor who caused it (`036` §7), so no write a rider makes can produce
+   * a notification for that same rider.
+   *
+   * `list` takes no filter segment, unlike `postcards.feed`/`rides.list`: the
+   * design draws no per-type or read/unread filter, so there is only ever one
+   * list to cache. It caches the **first page only** — `getNotificationsPage`'s
+   * cursor pages beyond that are fetched directly by the screen and held in
+   * component state, the same way an unbounded list with no cache-worthy
+   * "page 2" would be handled anywhere else in this file.
+   */
+  notifications: {
+    all: (): QueryKey => ['notifications'],
+    list: (): QueryKey => ['notifications', 'list'],
+    unread: (): QueryKey => ['notifications', 'unread'],
+  },
+
+  /**
+   * `search_places()` (`037`/`039`), read through `searchPlaces` in
+   * `lib/data/places.ts`. No `revalidatePath` predecessor, like
+   * `notifications` — `places` is reference data with no writer in this app
+   * at all, so this key was designed against the cache contract from the
+   * start rather than translated from a route claim.
+   *
+   * `near` is folded into the key rather than dropped, because a biased and
+   * an unbiased search for the same term are different *questions* with
+   * different answers — `Jumbo` from a rider in Utrecht and `Jumbo` with no
+   * location can legitimately return different top hits (`PlaceSearchResult`'s
+   * doc block), and caching them under one key would show whichever answered
+   * first to both.
+   */
+  places: {
+    search: (term: string, near: { lat: number; lon: number } | null): QueryKey => [
+      'places',
+      'search',
+      term,
+      near ? `${near.lat},${near.lon}` : null,
+    ],
+  },
 } as const
 
 /**

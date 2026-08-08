@@ -151,6 +151,27 @@ grant execute on function storage.foldername(text) to anon, authenticated;
 -- other migration in this chain.
 grant select, insert, update, delete on storage.objects to anon, authenticated;
 
+-- Supabase ships an `extensions` schema on every project and installs contrib
+-- modules into it rather than into `public`; plain Postgres does not. 037
+-- installs pg_trgm there and schema-qualifies `extensions.gin_trgm_ops` and
+-- `extensions.similarity`, so without this the migration cannot apply here.
+--
+-- Stubbed rather than created by the migration, for the same reason as the
+-- publication below: a `create schema if not exists extensions` inside 037 would
+-- run against the hosted projects too, where the schema is Supabase's and
+-- already carries these grants. Reproducing the artifact keeps the migration
+-- statement identical in every environment.
+--
+-- The grants match a real project, measured on letsride-dev 2026-08-08:
+-- nspacl `{postgres=UC/postgres, anon=U/postgres, authenticated=U/postgres,
+-- service_role=U/postgres, dashboard_user=UC/postgres}`. `authenticated` needs
+-- USAGE because search_places is SECURITY INVOKER and calls
+-- extensions.similarity as the caller — grant it here and a missing grant in
+-- production would still be caught by the role assertions in rls_test.sql,
+-- withhold it and the suite fails for a reason production does not have.
+create schema if not exists extensions;
+grant usage on schema extensions to anon, authenticated, service_role;
+
 -- Supabase ships a `supabase_realtime` publication on every project; plain
 -- Postgres does not. 034 adds ride_messages to it, and membership is what makes
 -- a subscription fire at all — a client subscribing to a table outside the

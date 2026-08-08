@@ -1,0 +1,230 @@
+# The self-hosted places index
+
+The location provider for ride meeting points (PD-140, unblocking PD-114). **Not a
+third-party geocoder** — a table in our own Postgres, built from
+[Overture Maps](https://overturemaps.org) open data.
+
+## Why this is not a geocoding API
+
+The provider comparison is in PD-114's comments. Two clauses decided it:
+
+- **Google** — Places API §14.3 requires lat/lng to be deleted after 30 days, and
+  §3.2.3(c)(iv) bans point-in-polygon on Places coordinates, which kills the
+  eventual `rides` timezone column by name.
+- **Mapbox** — geocoding responses may only be used *"in conjunction with a Mapbox
+  map"*, and POI results specifically must be shown on one. Decision #3's Google
+  Maps deeplink and the tile-less surfaces (`RideCard`, the chat header,
+  notification rows) all sit outside that.
+
+What self-hosting does buy, and these three are not in doubt: no keystroke leaves
+our infrastructure, there is no key to hide in a Capacitor bundle, and there is no
+per-request bill.
+
+**It does not cover map tiles.** Overture is data, not rendered imagery — PD-104
+still needs a tile provider.
+
+## Attribution is an OPEN question — do not render a result until it is settled
+
+**This section previously said the opposite, and it was wrong.** It asserted that
+Overture is "ODbL where OSM-derived" and that any screen showing a result must
+credit "© OpenStreetMap contributors". That was inferred from the theme's general
+description rather than measured, and the measurement contradicts it.
+
+A census of the `sources` column across 28 of the 84 NL row groups in release
+`2026-07-22.0` — **527,725 rows** — attributes them as:
+
+| Source | Rows |
+|---|---|
+| Overture | 527,725 |
+| meta | 405,612 |
+| Foursquare | 58,733 |
+| Microsoft | 53,432 |
+| AllThePlaces | 6,338 |
+| PinMeTo | 3,093 |
+| DAC | 505 |
+| Krick | 12 |
+| **OpenStreetMap** | **0** |
+
+So crediting OpenStreetMap would credit a contributor that supplied nothing, while
+the sources that did supply the rows go unnamed.
+
+**What is still unknown is the part that matters.** The census says which sources
+are *present*; it does not say what their terms *require*. Foursquare, Microsoft,
+PinMeTo and Krick are commercial datasets, and that is exactly where a
+redistribution or attribution obligation would live. Their terms could not be read
+from any container — `overturemaps.org`, `docs.overturemaps.org`,
+`opendatacommons.org` and `cdla.dev` all return `000` through the egress proxy,
+while the S3 bucket and GitHub return `200`, so this is host-specific policy and
+not a broken client.
+
+**Owner action: read Overture's terms and settle the credit string before the
+search sheet ships.** `sources` is not currently extracted, so provenance cannot be
+recovered from `public.places` — add it to `COLUMNS` if per-row attribution turns
+out to be required.
+
+## Extracting
+
+```bash
+python3 -m pip install "fsspec[http]" aiohttp pyarrow
+python3 scripts/places/extract-nl.py --out nl-places.csv
+```
+
+Measured on release `2026-07-22.0`, 2026-08-08:
+
+| | |
+|---|---|
+| Theme size | 10.5 GB across 16 parquet parts |
+| Row groups intersecting NL | **84 of 5,120**, in 2 of the 16 parts |
+| Fetched | ~476 MB |
+| Candidate rows scanned | 1,585,587 |
+| **NL places written** | **736,538** |
+| CSV size | 99 MB |
+| Dropped | 656,712 other-country, 0 missing-country |
+
+Data quality on that run: 483 Shell-branded gas stations, 95% carrying a street
+address, and the top brands are the Dutch chains you would expect — Albert Heijn,
+Jumbo, HEMA, Gall & Gall, Allego.
+
+**Why it fetches 476 MB and not 10.5 GB.** The places theme has no useful
+partitioning, but rows are spatially sorted and every row group carries `bbox`
+statistics. Reading only the parquet footers identifies the row groups that can
+contain a Dutch place; the rest are never requested.
+
+**The bbox is a prune, not the filter.** The rectangle reaches into Belgium and
+Germany — the first smoke run came back full of Zwevegem — so membership is
+decided by `addresses[0].country`, and `--countries` is what to change when
+expanding beyond NL.
+
+## Loading
+
+**No session can do this step.** Bulk-loading 736k rows needs a direct Postgres
+connection, and the build container holds no database credentials — the Supabase
+MCP is fine for DDL but not for a load of this size.
+
+```bash
+psql "$DEV_DATABASE_URL" \
+  -c "\copy public.places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) FROM 'nl-places.csv' WITH (FORMAT csv, HEADER true)" \
+  -c "analyze public.places"
+```
+
+**The explicit column list is required** — a bare `\copy public.places FROM …`
+demands every column in table order instead.
+
+**So is the `analyze`.** A bulk-loaded table carries no statistics, and the
+planner picks between the trigram bitmap and a sequential scan from them. Skip it
+and the first searches after a load can be an order of magnitude slower,
+intermittently — about the hardest thing to diagnose after the fact.
+
+The load runs as the table owner, which is how it bypasses RLS and the absent
+INSERT grant. That asymmetry is deliberate: the operator can write, and nothing
+reachable through PostgREST can.
+
+**The table is empty until someone runs this, and an empty index is
+indistinguishable from a working search that finds nothing.** `037` creates the
+schema; it cannot create the rows.
+
+**Loading is also what arms the open cost in §Searching.** Linear **PD-150** —
+~5.9 s of database CPU per request from a 49-character term — is 0 ms today only
+because there is nothing to scan. Land it before this load reaches PROD.
+
+## Refreshing
+
+Overture releases monthly, so the index goes stale on its own. **A refresh that
+silently stops looks exactly like working search**, which is the same failure
+class this repo already treats as drift for unapplied migrations — so the refresh
+needs a *detector*, not just a schedule: assert the row count is within a sane
+band of the previous run, and that a known landmark still resolves.
+
+CI is the natural runner, since GitHub Actions already holds DEV credentials and
+the extract needs only Python.
+
+**Load into a fresh table and swap it in** — never `truncate` and reload. A
+truncate leaves search returning nothing for the length of a 99 MB `\copy`, which
+riders experience as the feature being broken.
+
+## Searching
+
+Go through `public.search_places(q, near_lat, near_lon)`, never an ad-hoc
+`ILIKE`. The function carries the guard that keeps a query off a 736k-row
+sequential scan, and two contracts the UI has to honour:
+
+- **Under three consecutive alphanumerics it returns zero rows by refusal, not by
+  "no matches".** Gate the input; do not render an empty state. The guard is
+  `term ~ '[[:alnum:]]{3}'` rather than a length check, because
+  `char_length(term) >= 3` accepts `'%%%%'` — which escapes to a pattern with no
+  extractable trigram and measured **1,443 ms of sequential scan**, under the 8 s
+  statement timeout and therefore silent.
+- **Matching is substring, per token, ANDed — over `name`, `brand`, `street` and
+  `locality`.** The term is split on whitespace and every token must appear
+  somewhere in the row's searchable text, so `Jumbo Maastricht` finds a Jumbo
+  whose *locality* is Maastricht, and adding a word always narrows. Not fuzzy:
+  `pg_trgm`'s default `word_similarity_threshold` of 0.6 does not catch typos
+  anyway — `word_similarity('jubmo', 'Jumbo Utrecht')` is 0.33 — while widening a
+  selective query from 9 rows to 9,529.
+
+  **This section said the opposite until 2026-08-08 and it was true when written.**
+  It read *"`street`, `locality` and `postcode` are display-only and are **not**
+  searchable, so 'Kerkstraat Amsterdam' finds nothing today"*. `039` (PD-141) made
+  street and locality searchable; `Kerkstraat` returns rows now. **`postcode` is
+  still excluded** — a Dutch postcode is two tokens and its digits collide with
+  house numbers already inside `street` (`039` §2).
+
+- **Ranking: a place the query NAMES beats a place it merely LOCATES.** Widening
+  means `Amsterdam` matches thousands of rows whose only connection to the word is
+  their address, so the function tiers them — every token in `name`/`brand` first,
+  address-only matches after. Name matches are then ordered by trigram similarity,
+  address matches by distance. Proximity still outranks both, per `037` §5b.
+
+- **The result set is capped at five and the local pass short-circuits the
+  national one.** Unchanged by `039`, and now more likely to bite because more
+  rows match: a distant place can be crowded out by five nearby ones. The escape
+  hatch is to type the town — which is exactly what `039` made possible.
+
+- **Debounce the input — required, not advisable.** Cost is roughly linear in
+  matched rows (8–11 µs each), and **the broadest tokens are street-type
+  suffixes, not city names**. On a 750k-row *synthetic* bench (`039` §5c — not
+  the real table, which is empty), national pass, best of five:
+
+  | term | rows matched | national | with a location |
+  |---|---|---|---|
+  | `Kerkstraat` | 17,876 | 171 ms | 37 ms |
+  | `Maastricht` | 45,029 | 497 ms | 51 ms |
+  | `weg` | 89,200 | 740 ms | 44 ms |
+  | `sta` | 101,524 | **996 ms** | 54 ms |
+  | `straat` | 391,586 | **2,957 ms** | 152 ms |
+
+  **`sta` is the case to design around**: three characters, so it is the *first*
+  query the typeahead fires the moment the guard stops refusing — someone typing
+  "Stationsweg". `straat` matches **52% of the table**; the biggest city matches
+  6%. Fire on a pause, not a keystroke, and **always pass `near_lat`/`near_lon`
+  when you have them** — the bbox is what keeps every row above under 152 ms.
+
+  **This is a cost class `037` did not have and `039` creates.** Those tokens
+  used to be matched against `name`/`brand`, where `straat` appears in a handful
+  of business names; they are now matched against every row's street line.
+
+  Nothing exceeds the 8 s statement timeout, so no rider sees an error — which is
+  the hazard as much as the reassurance.
+
+- **A long multi-token term is an OPEN cost — gate it, do not just debounce it.**
+  Per-candidate work is linear in the *number of distinct patterns*, so a term
+  that holds many patterns matching the same rows multiplies the whole query.
+  `039` §5d closes one half of this and leaves the other open, and the README
+  said the opposite for one revision:
+
+  | payload | chars | before `lower()` | after |
+  |---|---|---|---|
+  | `straat` ×14, one casing | 97 | 2,899 ms | 2,838 ms |
+  | `straat` ×14, **14 casings** | 97 | 7,149 ms | **2,806 ms** — closed |
+  | **10 distinct substrings** of one word | 49 | 5,835 ms | **5,914 ms** — open |
+
+  Case-insensitively repeated tokens are collapsed (`group by lower(s.tok)`),
+  because `ILIKE` is case-insensitive and byte-equality dedup misses exactly the
+  vector someone would choose deliberately. **Distinct co-extensive substrings
+  are not collapsed by anything** — nothing is duplicated — so the worst measured
+  term costs ~5.9 s from 49 characters, half the cap. A function-level
+  `statement_timeout` does *not* bound it: measured on PG 16.13, the timer is
+  armed before the function is entered, so the setting is applied and inert.
+
+  Until a cap lands, **the client is the only bound**: reject or truncate terms
+  with more than a handful of tokens before calling the RPC.
