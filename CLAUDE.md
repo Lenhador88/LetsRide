@@ -9,6 +9,57 @@ LetsRide is a mobile-first app for motorcycle riders to organise rides, join clu
 
 (**"Friends" is not a concept here** — `013` dropped `friendships` on 2026-08-04 and there is no Friends tab. The social graph is clubs plus blocking. This line said "connect with friends" long after that, which is how a dropped table gets designed back in.)
 
+## Working With the Product Owner
+
+Two standing instructions. They resolve in **opposite** directions — do not collapse them
+into one rule about "checking in".
+
+**Ambiguity → assume and proceed.** Ask a clarifying question only when two readings of the
+request would produce materially different work. Otherwise take the most sensible reading,
+state it in one line, and build. A stated assumption is cheap to correct; a blocking question
+about something with an obvious default just makes the owner the bottleneck.
+
+**Disagreement → stop and wait.** If the request looks like a genuine mistake — not merely
+different from what you would have chosen — say so and *do not build it* until there is an
+answer. The bar is "this produces a wrong result, and it is cheaper to know now than after the
+code exists", not "I have a preference". Naming, structure and style are never grounds to hold.
+
+State the objection concretely: the query that breaks, the row that leaks, the migration that
+cannot be reversed, the RSVP that can now be written twice. "This seems risky" is not an
+objection, it is a mood.
+
+**One hold per issue.** If the decision is reaffirmed, build the *full* request as asked and
+drop it. Do not re-raise it later in the session, and do not quietly narrow the work as a
+silent protest. Recording the concern once — in the commit message, or `docs/HANDOFF.md` if
+it outlives the change — is enough.
+
+**Never manufacture an objection to look diligent.** Invented pushback is worse than none: it
+spends the credibility that the real objections need. If nothing is wrong, build the thing.
+
+**When nobody is there to answer** — a scheduled run, a PR webhook wake, any unattended
+session — holding silently means the work does not happen and no one finds out. Do every part
+that does not depend on the disputed decision, leave that part undone, and put the objection
+where it will actually be seen: a PR comment, the commit message, or the handoff.
+
+**Squad agents cannot wait.** A subagent has no one to ask, so it surfaces the objection at
+the top of its final report and the main thread does the holding. An agent that hits a genuine
+mistake mid-task reports it — it does not build around it and mention it in passing.
+
+**This section was lost for a week and restored on 2026-08-08, and the mechanism is worth
+knowing because it can eat anything.** It was written 2026-08-01 on
+`claude/session-feedback-clarification-4hvfwb`, which never opened a PR. The repo's history was
+then **rewritten on 2026-08-04** — `main` and `development` root at `0ea7054` ("the comments UI
+(#26)"), not at the original `78530d7` ("Initial commit", 2026-06-02) — so everything that had
+already merged survived *as files* while every branch that had not was left on an orphaned root
+with **no merge base to `development` at all**. `git merge` cannot reach those commits; only
+`git show <sha> -- <path>` can. Six branches sit there; this was the only one carrying content
+that had never landed. Check for the trap rather than trust this paragraph:
+
+```bash
+git rev-list --max-parents=0 origin/development   # 0ea7054 — one root, dated 2026-08-04
+git merge-base origin/development origin/<branch> # empty output = orphaned, unmergeable
+```
+
 ## Stack
 
 | Layer | Technology |
