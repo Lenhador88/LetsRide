@@ -3,6 +3,7 @@
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
+import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { PostcardDeck } from '@/components/postcards/PostcardDeck'
 import { PostcardFilterBar } from '@/components/postcards/PostcardFilterBar'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -33,7 +34,7 @@ import { filterSegment, queryKeys } from '@/lib/query/keys'
 export default function PostcardsPage() {
   return (
     <>
-      <Header title="Home" />
+      <Header title="Home" secondaryAction={<NotificationsHeaderControl />} />
       <div className="pb-navbar-action pt-header fixed inset-0 flex flex-col">
         <Suspense fallback={<SkeletonDeck />}>
           <PostcardsScreen />

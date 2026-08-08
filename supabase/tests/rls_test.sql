@@ -3923,15 +3923,25 @@ select assert_eq(
 -- standing between "we added a table" and "we quietly stopped deleting all of a
 -- rider's data" is a count somebody has to change on purpose. The derived
 -- assertion above passed on the same run, so 034's author_id index is real.
+--
+-- **16 since 036 added notifications.user_id AND notifications.actor_id**, and
+-- the pair is the point rather than the arithmetic. A notification is personal
+-- data about BOTH riders — it records that a named rider interacted with another
+-- named rider's content at a named instant — so erasure has to reach it from
+-- both ends: `user_id` takes every notification TO the departing rider, and
+-- `actor_id` takes every notification ABOUT them out of every OTHER rider's
+-- list. One key without the other leaves half the record standing, and neither
+-- direction is visible in the other's constraint. This is the count changed on
+-- purpose, which is what the paragraph above asks for.
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  14, '029: fourteen FKs reference public.profiles');
+  16, '029: sixteen FKs reference public.profiles');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  14, '029: ... and every one of them is ON DELETE CASCADE');
+  16, '029: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -4834,6 +4844,7 @@ select assert_denied('select count(*) from postcard_reports', 'anon cannot read 
 select assert_denied('select count(*) from profile_countries', 'anon cannot read countries');
 select assert_denied('select count(*) from feed_reads', 'anon cannot read watermarks');
 select assert_denied('select count(*) from ride_messages', 'anon cannot read ride chat');
+select assert_denied('select count(*) from notifications', 'anon cannot read notifications');
 reset role;
 
 \echo ''
@@ -4900,6 +4911,3001 @@ select assert_eq(
   0, '035: ... and neither still uses btrim, which strips spaces only');
 
 rollback to savepoint comment_whitespace_035;
+
+\echo ''
+\echo '# Notifications: written only by triggers, readable only by their recipient (036)'
+
+-- ===========================================================================
+-- 036. The audience rule for a table whose rows OUTLIVE the decision that
+-- wrote them.
+-- ===========================================================================
+--
+-- Self-contained fixtures. This section runs last, so hanging it off seed.sql
+-- would inherit whatever the twenty-two sections above left behind — and it
+-- needs three shapes seed.sql cannot provide without moving an existing count:
+-- a club whose OWNER holds no membership row, an `admin`-role member, and an
+-- actor whose only purpose is to have their username nulled.
+--
+-- The riders, and what each one is for:
+--   36a1  author of the postcard, organizer of the rides, owner of three clubs
+--   36b1  the ACTOR — likes, comments, RSVPs, joins, creates a club ride
+--   36c1  a second club member, so a club fan-out has TWO members to be wrong about
+--   36d1  an unrelated third rider, member of nothing
+--   36e1  an `admin`-role member — inserted as the TABLE OWNER, see §7.10 below
+--   36f1  joins clubs and then leaves them, for the eviction assertions
+--   3691  owner of a club holding NO club_members row of their own
+--   3621  a "ghost" actor with exactly one row, so nulling their username
+--         moves a count by exactly one
+savepoint notifications_036;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000360a1', 'n36author@example.com'),
+  ('00000000-0000-0000-0000-0000000360b1', 'n36actor@example.com'),
+  ('00000000-0000-0000-0000-0000000360c1', 'n36other@example.com'),
+  ('00000000-0000-0000-0000-0000000360d1', 'n36outsider@example.com'),
+  ('00000000-0000-0000-0000-0000000360e1', 'n36admin@example.com'),
+  ('00000000-0000-0000-0000-0000000360f1', 'n36leaver@example.com'),
+  ('00000000-0000-0000-0000-000000036091', 'n36ownerless@example.com'),
+  ('00000000-0000-0000-0000-000000036021', 'n36ghost@example.com');
+reset role;
+
+update profiles set username = 'n36author', location = 'Lisbon',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360a1';
+update profiles set username = 'n36actor', location = 'Porto',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360b1';
+update profiles set username = 'n36other', location = 'Faro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360c1';
+update profiles set username = 'n36outsider', location = 'Braga',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360d1';
+update profiles set username = 'n36admin', location = 'Aveiro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360e1';
+update profiles set username = 'n36leaver', location = 'Evora',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-0000000360f1';
+update profiles set username = 'n36ownerless', location = 'Coimbra',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000036091';
+update profiles set username = 'n36ghost', location = 'Setubal',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000036021';
+
+-- c01 private, c02 public (carries the admin), c03 private with an OWNERLESS
+-- owner, c04 public (carries a non-public ride, for the two-conjunct case).
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-00000036c001', 'N36 Private MC',   false, '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036c002', 'N36 Public MC',    true,  '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036c003', 'N36 Ownerless MC', false, '00000000-0000-0000-0000-000000036091'),
+  ('00000000-0000-0000-0000-00000036c004', 'N36 PubClub MC',   true,  '00000000-0000-0000-0000-0000000360a1'),
+  -- c005 exists only so the leaver is a RECIPIENT rather than an actor. In c004
+  -- they are the one who joined, so the club_joined row is addressed to the
+  -- OWNER and there is nothing of theirs to keep or lose — an assertion written
+  -- against it tests nothing about the club policy. Making them an admin here
+  -- gives them a row of their own whose subject is a PUBLIC club.
+  ('00000000-0000-0000-0000-00000036c005', 'N36 LeaverAdmin MC', true, '00000000-0000-0000-0000-0000000360a1');
+
+-- ---------------------------------------------------------------------------
+-- 7.11 / 7.4 / 7.9 / 7.10 — the fan-out fires with NO JWT, which is what proves
+--      the actor is read from NEW rather than from auth.uid()
+-- ---------------------------------------------------------------------------
+-- Everything below is inserted as the TABLE OWNER with `test.uid` empty, so
+-- auth.uid() is NULL throughout. If any fan-out had been written
+-- `where recipient <> auth.uid()`, that predicate would evaluate to NULL — not
+-- TRUE — and filter out EVERY recipient, so every count below would be 0 and
+-- every self-suppression assertion would pass vacuously.
+--
+-- ** The admin row is inserted here, as the owner, and that is deliberate. **
+-- No client can create or promote an admin: club_members INSERT admits `member`,
+-- or `owner` for the club's own owner_id, and there is NO UPDATE policy on the
+-- table at all — so `admin` is insertable by nobody and promotable by nobody,
+-- and zero admin rows exist in production (measured 2026-08-07). Omitting the
+-- arm as untestable is not acceptable: it ships the day invitations do, and an
+-- untested arm is how it ships broken.
+select assert_eq(auth.uid(), null::uuid,
+  '036: the fan-out fixtures are written with NO JWT — auth.uid() is NULL');
+
+-- ** ONE STATEMENT PER JOIN, AND THAT IS NOT STYLE. ** An AFTER ROW trigger
+-- fires after the whole STATEMENT completes, not after each row — so a
+-- twelve-row INSERT makes all twelve rows visible to every one of the twelve
+-- trigger invocations, and the owner's own membership row then fans out to an
+-- admin who "already" exists. Measured here, not assumed: batched, the admin
+-- reads 3 rows instead of 2.
+--
+-- That is a real Postgres semantic rather than a bug in the fan-out, and the
+-- app never produces it — `createClub` writes the club and then ONE membership
+-- row, and every later join is one rider's own request. Seeding in one batch
+-- would therefore assert against a shape the product cannot reach, which is
+-- worse than asserting nothing. Split so each fan-out sees exactly the roster
+-- that existed before it, which is what happens in production.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360a1', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360b1', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360c1', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360f1', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c002', '00000000-0000-0000-0000-0000000360a1', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c002', '00000000-0000-0000-0000-0000000360e1', 'admin');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c002', '00000000-0000-0000-0000-0000000360b1', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c002', '00000000-0000-0000-0000-0000000360c1', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c003', '00000000-0000-0000-0000-0000000360b1', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c003', '00000000-0000-0000-0000-0000000360c1', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360a1', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360f1', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c005', '00000000-0000-0000-0000-0000000360a1', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c005', '00000000-0000-0000-0000-0000000360f1', 'admin');
+-- ... and this join is what gives the leaver a row of their own on c005.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c005', '00000000-0000-0000-0000-0000000360c1', 'member');
+
+-- The fan-out really ran with no JWT. Without this the whole section is vacuous.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c001'),
+  3, '036: club_joined fans out with no JWT present — the actor comes from NEW, not auth.uid()');
+
+-- ** The single most visible possible defect. ** club_members INSERT of the
+-- creator's own `owner` row is how every club is created, so a suppression
+-- written inside one arm of the union rather than after it tells every creator
+-- they joined their own club.
+select assert_eq(
+  (select count(*)::int from notifications where user_id = actor_id),
+  0, '036: nobody is ever notified of their own action — creating a club notifies nobody');
+
+-- 7.9: TWO members plus a non-member. One member cannot tell a correct recipient
+-- set apart from private.is_club_member's everybody-or-nobody.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c002'
+      and user_id = '00000000-0000-0000-0000-0000000360a1'),
+  3, '036: the club owner is notified of all three joins');
+-- 7.10: the admin arm. e1 joined first, so is notified of b1 and c1 only.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c002'
+      and user_id = '00000000-0000-0000-0000-0000000360e1'),
+  2, '036: an `admin`-role member is notified too — the arm no client can reach yet');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c002'
+      and user_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: an ORDINARY member is NOT notified of a join');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and user_id = '00000000-0000-0000-0000-0000000360d1'),
+  0, '036: a rider outside the club is notified of nothing');
+
+-- ---------------------------------------------------------------------------
+-- 7.12d — club_joined DOES reach an owner holding no membership row
+-- ---------------------------------------------------------------------------
+-- c03's owner (3691) holds no club_members row. The union is safe for THIS type
+-- because `clubs` SELECT carries an `owner_id = auth.uid()` arm, so the row
+-- resolves for them. Asserted together with 7.12c below: either one alone reads
+-- as an inconsistency rather than as a deliberate asymmetry.
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-00000036c003'
+      and user_id = '00000000-0000-0000-0000-000000036091'),
+  0, '036: the c03 fixture really is an OWNERLESS owner — no membership row');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c003'
+      and user_id = '00000000-0000-0000-0000-000000036091'),
+  2, '036: club_joined reaches an ownerless owner, because clubs SELECT has an owner arm');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000036091', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c003'),
+  2, '036: ... and they can READ both, which is what makes the union safe here');
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 7.12c — ride_created_in_club does NOT, and that asymmetry is the point
+-- ---------------------------------------------------------------------------
+-- `rides` SELECT's only club arm is private.is_club_member(club_id), whose body
+-- has NO owner arm — so a row written to an ownerless owner is one their own
+-- SELECT policy drops on every read, for ever. Writing it would be the exact
+-- defect the whole design exists to prevent: nothing raises, no count moves, no
+-- assertion fails, and it accumulates until its subject is deleted.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000036d001', 'N36 Private Club Run', 'The Bridge',
+   now() + interval '3 days', false, '00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036d002', 'N36 Solo Run', 'The Pier',
+   now() + interval '4 days', true, null, '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036d003', 'N36 Quiet Club Run', 'The Cafe',
+   now() + interval '5 days', false, '00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360a1'),
+  ('00000000-0000-0000-0000-00000036d004', 'N36 Ownerless Club Run', 'The Wall',
+   now() + interval '6 days', false, '00000000-0000-0000-0000-00000036c003', '00000000-0000-0000-0000-0000000360b1');
+
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d004'
+      and user_id = '00000000-0000-0000-0000-000000036091'),
+  0, '036: ride_created_in_club does NOT reach an ownerless owner — is_club_member has no owner arm');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d004'
+      and user_id = '00000000-0000-0000-0000-0000000360c1'),
+  1, '036: ... while the club''s actual members are notified');
+
+-- And the narrowing matches what `rides` SELECT already refuses them, which is
+-- why it is a consequence of a pre-existing defect rather than a ruling that
+-- owners do not want the notification.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000036091', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d004'),
+  0, '036: an ownerless owner cannot see their own private club''s ride TODAY — the defect this narrowing tracks');
+reset role;
+select set_config('test.uid', '', false);
+
+-- A ride with no club addresses nobody, and a public ride is not fanned out to
+-- every signed-in rider.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  0, '036: a ride with club_id NULL notifies nobody, and its creation still succeeds');
+
+-- The organizer is excluded by rider id rather than by role.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d001'
+      and user_id = '00000000-0000-0000-0000-0000000360a1'),
+  0, '036: the ride''s organizer is not notified of their own ride');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d001'),
+  3, '036: ... and every other member of that club is');
+
+-- ---------------------------------------------------------------------------
+-- 7.4 / 7.7 — ride_joined is the organizer and nobody else, and an UPDATE is
+--      not an event
+-- ---------------------------------------------------------------------------
+-- ** Every count below is scoped to THIS section's own ride. ** seed.sql's own
+-- RSVPs, likes and comments fire these same triggers when the fixtures load, so
+-- an unscoped `where type = 'ride_joined'` counts rows this section did not
+-- write — which is how an assertion stops testing its own intent. Measured:
+-- unscoped, this first one reads 2 against a perfectly correct fan-out.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-00000036d002', '00000000-0000-0000-0000-0000000360a1', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  0, '036: the organizer RSVPing to their own ride notifies nobody');
+
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-00000036d002', '00000000-0000-0000-0000-0000000360b1', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'
+      and user_id = '00000000-0000-0000-0000-0000000360a1'),
+  1, '036: an RSVP notifies the ride''s organizer');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  1, '036: ... and nobody else on the crew, notwithstanding what the design draws');
+
+update ride_members set status = 'maybe'
+ where ride_id = '00000000-0000-0000-0000-00000036d002'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  1, '036: changing an RSVP going<->maybe writes nothing — the fan-out is on INSERT');
+
+-- Leaving and rejoining does not re-notify: the uniqueness index catches it.
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-00000036d002'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-00000036d002', '00000000-0000-0000-0000-0000000360b1', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  1, '036: leaving and rejoining a ride does not tell the organizer twice');
+
+-- ---------------------------------------------------------------------------
+-- 7.4 / 7.8 / 7.12g — likes, comments, and the retraction
+-- ---------------------------------------------------------------------------
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360a1', null,
+   'postcards/00000000-0000-0000-0000-0000000360a1/aaaaaaaa-0000-4000-8000-00000036e001.jpg',
+   'A postcard the 036 section owns'),
+  ('00000000-0000-0000-0000-00000036e002', '00000000-0000-0000-0000-0000000360a1', null,
+   'postcards/00000000-0000-0000-0000-0000000360a1/aaaaaaaa-0000-4000-8000-00000036e002.jpg',
+   'A second one, for the ghost actor');
+
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360a1');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  0, '036: liking your own postcard notifies nobody');
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360a1';
+
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-00000036cc01', '00000000-0000-0000-0000-00000036e001',
+   '00000000-0000-0000-0000-0000000360a1', 'commenting on my own postcard');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_commented' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  0, '036: commenting on your own postcard notifies nobody');
+
+-- Two actors like the same postcard. This is the pair 7.12g needs: a one-actor
+-- assertion literally cannot fail.
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360b1'),
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360c1');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  2, '036: two riders liking one postcard produce two rows — actor_id is in the key');
+
+-- ** The retraction, scoped by the FULL key. ** Scoped by type + postcard_id
+-- alone, this delete would take c1's row as well — a write one rider can aim at
+-- another rider's row, in the one table no rider may write to at all.
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: unliking retracts the actor''s own notification');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and actor_id = '00000000-0000-0000-0000-0000000360c1'),
+  1, '036: ... and NOT another rider''s row for the same postcard — the full-key scope');
+
+-- 7.8: the assertion that catches a unique index written without NULLS NOT
+-- DISTINCT. Without it the constraint never fires and this reads 2, then 3, ...
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360b1');
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360b1');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  1, '036: like, unlike, like again leaves exactly ONE row (NULLS NOT DISTINCT)');
+select assert_eq(
+  (select indnullsnotdistinct from pg_index
+    where indexrelid = 'notifications_event_key'::regclass),
+  true, '036: ... and the index really is NULLS NOT DISTINCT, not merely behaving');
+
+-- Two comments from one rider produce TWO rows: the subject of a comment
+-- notification is the comment, and the recipient has two things to read.
+insert into postcard_comments (id, postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-00000036cc02', '00000000-0000-0000-0000-00000036e001',
+   '00000000-0000-0000-0000-0000000360b1', 'first comment'),
+  ('00000000-0000-0000-0000-00000036cc03', '00000000-0000-0000-0000-00000036e001',
+   '00000000-0000-0000-0000-0000000360b1', 'second comment');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_commented' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  2, '036: two comments from one rider produce two notifications — they do not collapse');
+
+-- The ghost's single row, for 7.12f.
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e002', '00000000-0000-0000-0000-000000036021');
+
+-- ---------------------------------------------------------------------------
+-- 7.12b — THE SUBSET RULE: every row the fan-out wrote can be READ BACK by the
+--      rider it was written for
+-- ---------------------------------------------------------------------------
+-- ** This is the assertion that catches the class of bug, and the draft of this
+-- change shipped an instance of it. ** The recipient set and the SELECT policy
+-- are written in different files by different reasoning, and a widening on one
+-- side is invisible from the other. An assertion that only counts rows WRITTEN
+-- cannot see the failure, because the whole failure is a row that exists and is
+-- unreadable — nothing raises, no count moves.
+--
+-- Derived over every row in the table rather than per type by hand, so a sixth
+-- type added later is covered without anyone remembering to extend this.
+--
+-- ** IT MUST RUN BEFORE ANY DELIBERATE EVICTION, AND THAT ORDERING IS PART OF
+-- THE ASSERTION. ** The rule is that a fan-out never writes a row unreadable
+-- AT THE MOMENT IT IS WRITTEN. Every eviction scenario below — leaving a club,
+-- a block, a nulled username — makes a row correctly unreadable later, which is
+-- the feature rather than the bug. Run after them, this reads one short and
+-- points at a perfectly correct row: measured, when the "leaving retracts
+-- nothing" block sat above this one, it flagged n36leaver's c004 ride row after
+-- n36leaver had left c004 on purpose. Anything that evicts belongs below.
+-- ** The truth is captured as the TABLE OWNER and the reading is done as
+-- `authenticated`, and getting that backwards makes the assertion vacuous. **
+-- Run wholly as the owner, RLS does not apply, every iteration counts every row,
+-- and the sum is recipients x total — measured here as 240 against a true 30,
+-- which passes for nothing and fails for the wrong reason. Run wholly as
+-- `authenticated`, the recipient LIST is itself filtered by the policy under
+-- test, so the loop only ever visits riders who can already see something.
+reset role;
+create temp table n036_truth as
+  select (select count(*)::int from public.notifications) as total;
+create temp table n036_recipients as
+  select distinct user_id from public.notifications;
+grant select on n036_truth, n036_recipients to authenticated;
+
+set role authenticated;
+do $$
+declare
+  total    integer;
+  readable integer := 0;
+  n        integer;
+  r        record;
+begin
+  select t.total into total from n036_truth t;
+
+  for r in select rr.user_id from n036_recipients rr loop
+    perform set_config('test.uid', r.user_id::text, false);
+    select count(*)::int into n from public.notifications;
+    readable := readable + n;
+  end loop;
+
+  perform set_config('test.uid', '', false);
+  perform assert_eq(readable, total,
+    '036: every row the fan-out wrote is readable by its recipient — the fan-out set is a SUBSET of the read set');
+end $$;
+reset role;
+select set_config('test.uid', '', false);
+drop table n036_truth;
+drop table n036_recipients;
+
+-- ---------------------------------------------------------------------------
+-- 7.12k — leaving retracts NOTHING, and the absence of a retraction is a
+--      decision rather than a forgotten trigger
+-- ---------------------------------------------------------------------------
+-- The row records an EVENT AT AN INSTANT, not a standing claim about the
+-- present. postcard_unliked is the deliberate exception, on a harassment
+-- argument rather than a truthfulness one.
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-00000036d002'
+   and user_id = '00000000-0000-0000-0000-0000000360b1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
+  1, '036: leaving a ride retracts nothing — no AFTER DELETE trigger on ride_members');
+
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c004'
+   and user_id = '00000000-0000-0000-0000-0000000360f1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c004'),
+  1, '036: leaving a club retracts nothing either — the join really happened');
+
+-- ---------------------------------------------------------------------------
+-- 7.3 — the recipient, and nobody else
+-- ---------------------------------------------------------------------------
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  2, '036: the postcard''s author reads the notifications about it');
+
+-- The ACTOR learns nothing: not that the row exists, not that it was delivered.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360b1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: the actor cannot see a single row their own action caused');
+
+-- A third rider, by any filter including a known row id.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360d1', false);
+select assert_eq(
+  (select count(*)::int from notifications),
+  0, '036: an unrelated rider reads nothing at all');
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  0, '036: ... including by a known subject id');
+
+-- The postcard's author cannot enumerate who ELSE was notified — the count of
+-- riders notified must not be derivable from any read they can issue.
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id <> '00000000-0000-0000-0000-0000000360a1'),
+  0, '036: owning the subject grants no read on rows addressed to other riders');
+
+-- ---------------------------------------------------------------------------
+-- 7.2 — the grants, named as a ROLE rather than attempted
+-- ---------------------------------------------------------------------------
+-- ** The suite runs as the TABLE OWNER, for whom neither the grant nor RLS
+-- applies. ** So an attempted insert would SUCCEED and prove the exact opposite
+-- of what it claims. This is 031's lesson and the precise shape of the bug 029
+-- shipped: assert the privilege OF the role, never FROM it.
+reset role;
+select assert_eq(
+  has_table_privilege('authenticated', 'public.notifications', 'insert'),
+  false, '036: `authenticated` holds NO INSERT grant — the absent grant is what makes the trigger the only writer');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.notifications', 'delete'),
+  false, '036: ... and no DELETE grant — a rider cannot delete the evidence they were told something');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.notifications', 'select'),
+  true, '036: ... but does hold SELECT, or the screen renders nothing');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.notifications', 'read_at', 'update'),
+  true, '036: read_at is writable by its own recipient');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.notifications', 'type', 'update'),
+  false, '036: ... and `type` is not — the column grant refuses it before any policy is consulted');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.notifications', 'actor_id', 'update'),
+  false, '036: ... nor actor_id, so a rider cannot re-address a row to another actor');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.notifications', 'created_at', 'update'),
+  false, '036: ... nor created_at, so ordering never depends on a rider');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_name = 'notifications' and grantee = 'anon'),
+  0, '036: anon holds nothing on notifications — decision #1');
+
+-- The fan-out functions are reachable by no client role. Naming the role again,
+-- for the same reason, and including service_role because 031 granted it USAGE
+-- on `private` and every helper there keeps its own revoke.
+select assert_eq(
+  (select count(*)::int from pg_proc p
+    where p.pronamespace = 'private'::regnamespace
+      and (p.proname like 'notify\_%' or p.proname = 'retract_postcard_liked')
+      and (has_function_privilege('authenticated', p.oid, 'execute')
+        or has_function_privilege('anon', p.oid, 'execute')
+        or has_function_privilege('service_role', p.oid, 'execute'))),
+  0, '036: no client role can call any of the six fan-out functions directly');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and (proname like 'notify\_%' or proname = 'retract_postcard_liked')),
+  6, '036: ... and there are six of them, so that assertion is not vacuous');
+
+-- ---------------------------------------------------------------------------
+-- 7.5 — blocking, applied TWICE, with A and B exchanged
+-- ---------------------------------------------------------------------------
+-- The two checks answer different questions and neither implies the other.
+-- Fan-out asks "is this blocked now"; the policy asks it again at a LATER now,
+-- which is the case a fan-out-only design fails silently.
+
+-- (i) A block created AFTER the row hides it. b1 already has rows addressed to
+--     a1; a1 blocks b1.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  6, '036: before the block, a1 reads every row b1 caused — two club joins, a like, two comments and an RSVP');
+
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000360a1', '00000000-0000-0000-0000-0000000360b1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: a block created AFTER the rows hides every one of them');
+-- ... and the count falls with the list, in the same instant, because both read
+-- through the same policy.
+select assert_eq(
+  (select count(*)::int from notifications),
+  (select unread_notification_count()),
+  '036: the unread count falls with the list — same policy, one instant');
+-- Blocking does not retract notifications about THIRD parties, and no gap,
+-- count or marker indicates that anything was removed.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and actor_id = '00000000-0000-0000-0000-0000000360c1'),
+  1, '036: a block retracts nothing about a third rider, on the same postcard');
+
+-- Unblocking RESTORES rather than resurrecting: nothing deleted the rows.
+reset role;
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-0000000360a1'
+   and blocked_id = '00000000-0000-0000-0000-0000000360b1';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  6, '036: unblocking returns the rows — eviction, never deletion');
+
+-- (ii) The SAME thing with A and B exchanged, because the row is directional and
+--      the effect symmetric. This time the ACTOR blocks the RECIPIENT.
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000360b1', '00000000-0000-0000-0000-0000000360a1');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications where actor_id = '00000000-0000-0000-0000-0000000360b1'),
+  0, '036: the block hides them with A and B exchanged — one directional row, symmetric effect');
+reset role;
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-0000000360b1'
+   and blocked_id = '00000000-0000-0000-0000-0000000360a1';
+
+-- (iii) A block existing BEFORE the action writes no row at all, while the
+--       rider's own write still succeeds — the block suppresses the
+--       notification, not the action.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000360d1', '00000000-0000-0000-0000-0000000360a1');
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360d1');
+select assert_eq(
+  (select count(*)::int from postcard_likes
+    where postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and user_id = '00000000-0000-0000-0000-0000000360d1'),
+  1, '036: a blocked rider''s like still succeeds ...');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and actor_id = '00000000-0000-0000-0000-0000000360d1'),
+  0, '036: ... and writes no notification at all — blocking is applied at fan-out too');
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360d1';
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-0000000360d1'
+   and blocked_id = '00000000-0000-0000-0000-0000000360a1';
+
+-- ---------------------------------------------------------------------------
+-- 7.6 — the resolvability conjunct, isolated: PRIVATE evicts, PUBLIC does not
+-- ---------------------------------------------------------------------------
+-- Two separate assertions on purpose. One cannot say WHICH arm of the clubs
+-- policy did the work, and the pair is what proves the conjunct is load-bearing
+-- rather than incidentally satisfied.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and club_id = '00000000-0000-0000-0000-00000036c001'),
+  1, '036: the leaver holds a private club''s ride notification while still a member');
+
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c001'
+   and user_id = '00000000-0000-0000-0000-0000000360f1';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and club_id = '00000000-0000-0000-0000-00000036c001'),
+  0, '036: leaving a PRIVATE club evicts its notifications — the row survives, the read does not');
+
+-- The other arm, asserted separately because a single assertion cannot say
+-- WHICH arm of the clubs policy did the work. Same rider, same action, same
+-- type — only the club's `is_public` differs.
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c005'
+   and user_id = '00000000-0000-0000-0000-0000000360f1';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c005'),
+  1, '036: leaving a PUBLIC club does NOT evict — clubs SELECT admits any signed-in rider');
+
+-- Nothing deleted the evicted row: rejoining brings it back, unchanged.
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360f1', 'member');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and club_id = '00000000-0000-0000-0000-00000036c001'),
+  1, '036: rejoining returns the evicted row — a rider''s history is not destroyed by leaving');
+
+-- ---------------------------------------------------------------------------
+-- 7.12e — the two-conjunct case, which is the leak a one-table-per-type
+--      conjunct would open
+-- ---------------------------------------------------------------------------
+-- A PUBLIC club, a ride whose is_public is false, and a reader who has left the
+-- club. The CLUB resolves and the RIDE does not, so naming only `clubs` for this
+-- type would render "created a ride in <club>" for a ride the rider cannot open.
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360d1', 'member');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000036d005', 'N36 Two Conjunct Run', 'The Gate',
+   now() + interval '7 days', false, '00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360a1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360d1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d005'),
+  1, '036: a member reads the club-ride notification');
+
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c004'
+   and user_id = '00000000-0000-0000-0000-0000000360d1';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360d1', false);
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-00000036c004'),
+  1, '036: after leaving, the PUBLIC club still resolves ...');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d005'),
+  0, '036: ... and the non-public ride does NOT ...');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d005'),
+  0, '036: ... so the row is not returned — both conjuncts are required, not either');
+
+-- ---------------------------------------------------------------------------
+-- 7.12j — an organizer flipping rides.is_public is a SECOND, independent
+--      retraction path
+-- ---------------------------------------------------------------------------
+-- Separate from the club-turned-private case, which reaches the same outcome by
+-- a different column on a different table. d003 sits in a public club and is
+-- already is_public = false; f1 is still a member of c004 having rejoined
+-- nothing, so this asserts the member/leaver split directly.
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360f1', 'member')
+  on conflict do nothing;
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000036d006', 'N36 Public Then Not', 'The Square',
+   now() + interval '8 days', true, '00000000-0000-0000-0000-00000036c004', '00000000-0000-0000-0000-0000000360a1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d006'),
+  1, '036: a club member holds the notification for a public club ride');
+
+reset role;
+update rides set is_public = false where id = '00000000-0000-0000-0000-00000036d006';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d006'),
+  1, '036: a member still in the club KEEPS it — the club-member arm never consults is_public');
+
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000036c004'
+   and user_id = '00000000-0000-0000-0000-0000000360f1';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360f1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d006'),
+  0, '036: ... and one who has since LEFT loses it — neither arm of rides SELECT admits them');
+
+-- ---------------------------------------------------------------------------
+-- 7.12i — hiding your own postcard retracts NOTHING
+-- ---------------------------------------------------------------------------
+-- An earlier revision of this scenario was titled the other way round and a
+-- suite written from that title cannot pass. The recipient of these rows is by
+-- construction the postcard's AUTHOR, and `postcards` SELECT's first arm is
+-- `author_id = auth.uid()`, ahead of the hide predicate — so a hide is an input
+-- to the OTHER arm only. It is the ordering of those arms that makes this come
+-- out this way, which is exactly why it is asserted rather than inferred.
+reset role;
+insert into postcard_hides (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000036e001', '00000000-0000-0000-0000-0000000360a1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000036e001'),
+  1, '036: the author still sees their own hidden postcard — the own-row arm is first');
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e001'
+      and type in ('postcard_liked', 'postcard_commented')),
+  4, '036: ... and hiding it retracts none of its like or comment notifications');
+reset role;
+delete from postcard_hides
+ where postcard_id = '00000000-0000-0000-0000-00000036e001'
+   and user_id = '00000000-0000-0000-0000-0000000360a1';
+
+-- ---------------------------------------------------------------------------
+-- 7.12f — the ACTOR conjunct, with NO block anywhere in sight
+-- ---------------------------------------------------------------------------
+-- ** The `profiles` EXISTS is not redundant with the block conjunct. ** A NULL
+-- username drops a row out of `profiles` SELECT on its own, with nothing to do
+-- with blocking, and without the conjunct the notification is counted and cannot
+-- be drawn.
+--
+-- ** This used to be done as the ghost THEMSELVES, through RLS, and 038 closed
+-- that route. ** The comment here read "any rider can null their own username in
+-- ONE request — the column grant is live, the CHECK admits NULL, and
+-- enforce_onboarding_completion returns early for an already-onboarded rider
+-- before it reaches the column", which was true and was the live defect PD-127
+-- fixed. The rider's attempt is kept below and is now asserted to be COERCED,
+-- because deleting it would lose the one place this suite shows 038's rule
+-- reaching a surface other than `profiles` itself. The eviction the notifications
+-- policy is really being tested for is then produced as the table owner, which
+-- the trigger's `current_user <> 'authenticated'` gate deliberately still
+-- permits — so what changed is who can reach the state, never whether the
+-- conjunct works.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e002'),
+  1, '036: the author holds the ghost''s one notification');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000036021', false);
+update profiles set username = null where id = '00000000-0000-0000-0000-000000036021';
+select assert_eq((select username from profiles where id = auth.uid()),
+  'n36ghost', '036/038: the ghost can no longer null their own username — the row stays in profiles');
+
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e002'),
+  1, '036/038: ... so the notification survives an attempt that used to evict it');
+
+reset role;
+update profiles set username = null where id = '00000000-0000-0000-0000-000000036021';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e002'),
+  0, '036: an actor whose username is NULL evicts the row — no block involved');
+select assert_eq(
+  (select count(*)::int from notifications),
+  (select unread_notification_count()),
+  '036: ... and the count falls with the list, so the badge never outlives the screen');
+
+-- Eviction, not deletion: restoring the username returns the row with its
+-- original created_at and read state. Restored as the table owner, because the
+-- point being made here is about the ROW rather than about who may write the
+-- username — that half is asserted above, through RLS, as the ghost themselves.
+reset role;
+update profiles set username = 'n36ghost' where id = '00000000-0000-0000-0000-000000036021';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e002' and read_at is null),
+  1, '036: restoring the username returns the row, still unread — eviction, never deletion');
+
+-- ---------------------------------------------------------------------------
+-- 7.12h — mark-all-read touches EXACTLY the rows the count reported
+-- ---------------------------------------------------------------------------
+-- ** The UPDATE policy's predicate is the SELECT policy's, and this is what
+-- makes that observable. ** Under a wider UPDATE policy — `user_id = auth.uid()`
+-- alone, so that "mark all read" also clears evicted rows — this statement would
+-- touch rows SELECT hides, and the difference between the two numbers is the
+-- count of hidden rows. The commonest reason a row is hidden is a block, which
+-- must never be disclosed by any gap, count or marker.
+--
+-- Compared against unread_notification_count() taken immediately before, rather
+-- than by inspecting the table as the owner, for whom the policy does not apply.
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-0000000360a1', '00000000-0000-0000-0000-0000000360c1');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-0000000360a1', false);
+create temp table n036_markread as
+  select unread_notification_count() as before_count;
+
+with marked as (
+  update notifications set read_at = now()
+   where read_at is null
+  returning 1
+)
+update n036_markread set before_count = before_count
+  from (select count(*)::int as affected from marked) m;
+
+-- The two numbers have to be captured in one statement or the comparison is
+-- against a moving target, so the affected count is recomputed as "rows now
+-- read that the policy returns" and checked against the count taken before.
+select assert_eq(
+  (select before_count from n036_markread),
+  (select count(*)::int from notifications where read_at is not null),
+  '036: mark-all-read affected exactly the rows the unread count reported — UPDATE is no wider than SELECT');
+select assert_eq(
+  (select unread_notification_count()),
+  0, '036: ... and the badge is clear afterwards');
+
+-- The evicted row was NOT touched, so no arithmetic on the response reveals it.
+reset role;
+-- Written as "every one of them" rather than as a hard number, so it states its
+-- own intent and cannot drift when a fixture is added: whatever the blocked
+-- actor caused, none of it was reachable by the update.
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-0000000360a1'
+      and actor_id = '00000000-0000-0000-0000-0000000360c1'
+      and read_at is null),
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-0000000360a1'
+      and actor_id = '00000000-0000-0000-0000-0000000360c1'),
+  '036: every blocked-actor row is still UNREAD — mark-all-read could reach none of them');
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-0000000360a1'
+   and blocked_id = '00000000-0000-0000-0000-0000000360c1';
+drop table n036_markread;
+
+-- ---------------------------------------------------------------------------
+-- 7.7 — every cascade, including the two-level one and the club_id asymmetry
+-- ---------------------------------------------------------------------------
+-- The retention window IS the cascade window — "as long as the subject exists" —
+-- so these are not incidental hygiene assertions. They are the only evidence the
+-- retention claim has, which is the property a stated number would not have had.
+reset role;
+select set_config('test.uid', '', false);
+
+-- A comment: its own notification goes, and the likes on the same postcard stay.
+select assert_eq(
+  (select count(*)::int from notifications
+    where comment_id = '00000000-0000-0000-0000-00000036cc02'),
+  1, '036: the comment notification exists before its comment is deleted');
+delete from postcard_comments where id = '00000000-0000-0000-0000-00000036cc02';
+select assert_eq(
+  (select count(*)::int from notifications
+    where comment_id = '00000000-0000-0000-0000-00000036cc02'),
+  0, '036: deleting a comment destroys its notification');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'postcard_liked' and postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  2, '036: ... and leaves the likes on the same postcard alone');
+
+-- A club, which is the asymmetry worth asserting explicitly: rides.club_id is
+-- ON DELETE SET NULL while notifications.club_id is ON DELETE CASCADE, so the
+-- RIDE survives and the notification does not. "Created a ride in <club>" is
+-- unrenderable once the club is gone.
+-- Asserted as "some exist" rather than as a hard number. The exact count is a
+-- function of every join and ride c004 accumulated across the scenarios above,
+-- so a literal here would have to be recomputed by hand every time one of them
+-- gains a fixture — and a number maintained that way is one that eventually gets
+-- "corrected" to whatever the code now produces. What this step needs is only
+-- that the cascade has something to destroy.
+select assert_eq(
+  (select count(*) > 0 from notifications
+    where club_id = '00000000-0000-0000-0000-00000036c004'),
+  true, '036: c004 has notifications to lose before the club is deleted');
+delete from clubs where id = '00000000-0000-0000-0000-00000036c004';
+select assert_eq(
+  (select count(*)::int from notifications
+    where club_id = '00000000-0000-0000-0000-00000036c004'),
+  0, '036: deleting a club destroys its notifications ...');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d005'),
+  1, '036: ... while the ride itself SURVIVES with club_id NULL — the two FKs disagree, deliberately');
+
+-- A postcard: every like and comment notification naming it goes.
+delete from postcards where id = '00000000-0000-0000-0000-00000036e001';
+select assert_eq(
+  (select count(*)::int from notifications
+    where postcard_id = '00000000-0000-0000-0000-00000036e001'),
+  0, '036: deleting a postcard destroys every notification naming it');
+
+-- ** The two-level cascade, which is invisible in any single foreign key. **
+-- Deleting an ORGANIZER removes their rides (rides.organizer_id is ON DELETE
+-- CASCADE), and every notification about those rides goes with them — including
+-- rows delivered to riders who are still perfectly active. Stated as a
+-- consequence of the erasure rather than discovered.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d001'),
+  3, '036: other riders hold notifications about a01''s club ride');
+-- As the table owner, matching the 029 sections above: the harness grants
+-- auth_admin only INSERT and SELECT on auth.users, because signup is the only
+-- thing that role does in production. Erasure is the Edge Function's
+-- service-role path, which no local role stands in for.
+delete from auth.users where id = '00000000-0000-0000-0000-0000000360a1';
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d001'),
+  0, '036: deleting the organizer deletes their ride ...');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d001'),
+  0, '036: ... and every other rider''s notification about it goes two levels down with it');
+
+-- The departing rider's own rows, in BOTH directions: to them by the user_id
+-- cascade, about them by the actor_id cascade. No tombstone, no "deleted rider"
+-- byline, matching the ruling already made for comments and ride messages.
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-0000000360a1'
+       or actor_id = '00000000-0000-0000-0000-0000000360a1'),
+  0, '036: a departing rider''s notifications go in BOTH directions — recipient and actor');
+
+-- ---------------------------------------------------------------------------
+-- The shape of the thing, asserted so a later edit cannot quietly change it
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'public.notifications'::regclass),
+  true, '036: row level security is enabled on notifications');
+
+-- Scoped to this table's own policies rather than counting every policy in the
+-- schema: an assertion counting a shared surface stops testing its own intent
+-- the moment a second surface lands there.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'),
+  2, '036: exactly two policies — SELECT and UPDATE');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'
+      and cmd in ('INSERT', 'DELETE')),
+  0, '036: ... and neither is an INSERT or a DELETE policy');
+
+-- ** The UPDATE predicate IS the SELECT predicate, in both USING and WITH
+-- CHECK. ** Written out three times in the migration, so this is what stops a
+-- later edit to one of them drifting: three deparsed expressions, one distinct
+-- value.
+select assert_eq(
+  (select count(distinct e)::int from (
+     select qual as e from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'SELECT'
+     union all
+     select qual from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'UPDATE'
+     union all
+     select with_check from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'UPDATE'
+   ) t),
+  1, '036: UPDATE''s predicate is SELECT''s, in USING and WITH CHECK — no write reaches a row no read returns');
+
+-- ** No `when (current_user = ...)` clause on any of the six. ** 023's clause is
+-- correct on the participation gate and wrong here: a fan-out must fire for
+-- every writer, including the seed this suite runs as. An absent guard is
+-- otherwise indistinguishable from a forgotten one, so it is asserted as a flat
+-- zero across a set whose size is asserted beside it.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where not tgisinternal
+      and (tgname like 'notify\_%' or tgname = 'retract_postcard_liked')),
+  6, '036: six fan-out triggers exist');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where not tgisinternal and tgqual is not null
+      and (tgname like 'notify\_%' or tgname = 'retract_postcard_liked')),
+  0, '036: ... and NOT ONE carries a WHEN clause — 023''s CURRENT_USER guard would never fire here');
+
+-- auth.uid() appears nowhere in a fan-out body, checkable by inspection rather
+-- than inferred from behaviour.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and (proname like 'notify\_%' or proname = 'retract_postcard_liked')
+      and (prosrc ilike '%auth.uid()%' or prosrc ilike '%current_user%')),
+  0, '036: no fan-out body mentions auth.uid() or current_user — the actor comes from NEW');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and (proname like 'notify\_%' or proname = 'retract_postcard_liked')
+      and prosecdef and proconfig @> array['search_path=""']),
+  6, '036: every fan-out is SECURITY DEFINER with search_path pinned empty');
+
+-- The count must be INVOKER. A definer count steps past the block predicate and
+-- every resolvability conjunct, producing a badge the rider can never clear.
+select assert_eq(
+  (select prosecdef from pg_proc where proname = 'unread_notification_count'),
+  false, '036: unread_notification_count is SECURITY INVOKER — the badge cannot disagree with the screen');
+
+-- 7.12l — six FK columns, six usable indexes, DERIVED from pg_index rather than
+-- read off the migration's list. `actor_id` sits third in the uniqueness index,
+-- where it cannot lead a lookup, so without its own index every account deletion
+-- is a sequential scan of every notification in the table.
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.conrelid = 'public.notifications'::regclass and c.contype = 'f'),
+  6, '036: notifications carries six foreign keys');
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.conrelid = 'public.notifications'::regclass and c.contype = 'f'
+      and not exists (select 1 from pg_index i
+                       where i.indrelid = c.conrelid
+                         and i.indkey[0] = c.conkey[1])),
+  0, '036: ... and not one of them lacks a leading-column index — every cascade path is indexed');
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.conrelid = 'public.notifications'::regclass and c.contype = 'f'
+      and c.confdeltype = 'c'),
+  6, '036: ... and every one is ON DELETE CASCADE — the retention window is the cascade window');
+
+-- The subject CHECK refuses a type it does not know about, which is what makes
+-- adding a type without extending it fail at the point of change rather than
+-- admitting a row with no subject.
+select assert_rejected($$
+  insert into notifications (user_id, actor_id, type, postcard_id)
+  values ('00000000-0000-0000-0000-0000000360b1', '00000000-0000-0000-0000-0000000360c1',
+          'ride_joined', '00000000-0000-0000-0000-00000036e002')$$,
+  '23514', '036: a type carrying the wrong subject column is refused by the shape CHECK');
+
+rollback to savepoint notifications_036;
+
+\echo ''
+\echo '# Places: reference data — every signed-in rider reads it, nobody writes it (037)'
+
+-- ===========================================================================
+-- 037. The first table in this schema with NO owner column, and the first
+-- function whose whole job is a query plan.
+-- ===========================================================================
+--
+-- Two things are being asserted and they fail in different ways.
+--
+-- The ACCESS half is the ordinary one, with one twist: `using (true)` is the
+-- entire policy, so the thing that keeps this table off the internet is the
+-- `to authenticated` scoping and the absent grants — not a predicate. Absence is
+-- the enforcement, which is exactly what a well-meaning `grant all` restores
+-- without turning anything red. Every privilege below is therefore asserted
+-- BY ROLE with has_table_privilege / has_function_privilege rather than by
+-- trying it as the owner, per 031's lesson: this suite runs as the table owner,
+-- for whom no grant barrier exists at all.
+--
+-- The BEHAVIOURAL half covers the two rules that live in search_places' body
+-- rather than in a policy, because neither is visible in pg_policies and both
+-- are one careless edit from silently reverting: the alphanumeric-run guard that
+-- keeps the function off a sequential scan, and the LIKE escaping that stops a
+-- typed `%` matching the country.
+--
+-- Fixtures are self-contained. seed.sql has no places and should not grow any:
+-- these rows exist to pin an ORDERING (near before far) and a CAP (five), so
+-- they need coordinates chosen against a known probe point rather than whatever
+-- a shared fixture happens to hold.
+--
+--   Utrecht probe   52.09 / 5.11   — 2 'Zeldzaamplek' rows within the ~28 km box
+--   Maastricht      50.85 / 5.69   — 4 more, ~180 km away, outside every box
+savepoint places_037;
+
+reset role;
+select set_config('test.uid', '', false);
+
+insert into places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) values
+  -- The Zeldzaamplek family. Coordinates and ids are chosen so that DISTANCE
+  -- and ID ORDER DISAGREE inside the box, and so that the best TEXT match sits
+  -- outside it. Both are deliberate: they are what make 037.7 able to fail.
+  --
+  --   near-near  1.3 km from the probe, but sorts SECOND by id
+  --   near-far   2.6 km from the probe, but sorts FIRST by id
+  --   far-exact  ~180 km away and named exactly 'Zeldzaamplek', so score 1.0
+  --
+  -- Drop dist2 from the local ORDER BY and near-far leads; drop the bbox and
+  -- far-exact leads. A fixture set where distance, id and score all agreed
+  -- would rank identically under all three and prove none of them.
+  ('p037-near-far',  'Zeldzaamplek A', null,           'cafe',        5.09, 52.07, 'Domstraat 1', 'Utrecht',    '3511 AA', 'NL', 0.90),
+  ('p037-near-near', 'Zeldzaamplek B', null,           'cafe',        5.12, 52.10, null,          'Utrecht',    '3512 BB', 'NL', 0.90),
+  ('p037-far-exact', 'Zeldzaamplek',   null,           'cafe',        5.69, 50.85, 'Vrijthof 1',  'Maastricht', '6211 CC', 'NL', 0.90),
+  ('p037-far-c',     'Zeldzaamplek C', null,           'cafe',        5.70, 50.86, 'Vrijthof 2',  'Maastricht', '6211 DD', 'NL', 0.90),
+  ('p037-far-d',     'Zeldzaamplek D', null,           'cafe',        5.71, 50.87, 'Vrijthof 3',  'Maastricht', '6211 EE', 'NL', 0.90),
+  ('p037-far-e',     'Zeldzaamplek E', null,           'cafe',        5.72, 50.88, 'Vrijthof 4',  'Maastricht', '6211 FF', 'NL', 0.90),
+  ('p037-brand',     'Onherkenbaar 001', 'Merkzoektest', 'gas_station', 5.13, 52.11, 'Merkweg 9', 'Utrecht',    '3513 CC', 'NL', 0.80),
+  ('p037-pct',       'Procenttest',    null,           null,          5.14, 52.12, null,          null,         null,      'NL', null),
+  -- The two guard tripwires. Their names contain the pathological query
+  -- STRINGS LITERALLY, so a weakened guard finds them and a correct guard
+  -- refuses to look. Without these rows the guard assertions in 037.8 read 0
+  -- either way and prove nothing — measured: swapping the guard for
+  -- `char_length(term) >= 3` left the whole section green.
+  ('p037-wild',      'Wildcard %%%% Testplek', null,   null,          5.15, 52.13, null,          'Utrecht',    null,      'NL', null),
+  ('p037-dash',      'Z-e-l Testplek', null,           null,          5.16, 52.14, null,          'Utrecht',    null,      'NL', null),
+  -- The ORDER BY tiebreak pair: identical name, identical coordinates, so
+  -- score AND dist2 tie and only `id` can separate them. Inserted in DESCENDING
+  -- id order on purpose — heap order is insertion order in this transaction, so
+  -- without the tiebreak the scan returns dup-2 first and the assertion fails.
+  ('p037-dup-2',     'Dubbelplek',     null,           null,          5.11, 52.09, null,          'Utrecht',    null,      'NL', null),
+  ('p037-dup-1',     'Dubbelplek',     null,           null,          5.11, 52.09, null,          'Utrecht',    null,      'NL', null),
+  -- SIX rows, all inside the box, all with the same name and therefore the same
+  -- score, at increasing distance and DECREASING id order. Six because the
+  -- local pass takes five: its ORDER BY is a *selection* criterion, so it only
+  -- bites when the box holds more candidates than the cap.
+  --
+  -- That is exactly the gap this pair of families closes. With only the two
+  -- Zeldzaamplek rows in the box, dropping `dist2` from the local ORDER BY
+  -- changed nothing — the final pooled sort re-ordered them anyway — so the
+  -- mutation survived every assertion. Here it changes WHICH FIVE SURVIVE:
+  -- by distance the farthest (box-a) is dropped, by id the nearest (box-f) is.
+  ('p037-box-a',     'Boxvulplek',     null,           null,          5.11, 52.29, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-b',     'Boxvulplek',     null,           null,          5.11, 52.25, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-c',     'Boxvulplek',     null,           null,          5.11, 52.21, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-d',     'Boxvulplek',     null,           null,          5.11, 52.17, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-e',     'Boxvulplek',     null,           null,          5.11, 52.13, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-f',     'Boxvulplek',     null,           null,          5.11, 52.10, null,          'Utrecht',    null,      'NL', null);
+
+-- --------------------------------------------------------------------------
+-- 037.1  The load-insurance CHECKs. No client can reach them, so what they
+--        guard is a hand-run \copy: a whitespace name, a coordinate pair
+--        swapped in the column list, a garbage country code.
+-- --------------------------------------------------------------------------
+select assert_rejected($$insert into places (id,name,lon,lat,country) values ('p037-x1','   ',5.1,52.1,'NL')$$,
+  '23514', '037: a whitespace-only name is refused');
+select assert_rejected($$insert into places (id,name,lon,lat,country) values ('p037-x2','Ok',5.1,952.1,'NL')$$,
+  '23514', '037: a latitude outside -90..90 is refused — a swapped \copy column list is the realistic cause');
+select assert_rejected($$insert into places (id,name,lon,lat,country) values ('p037-x3','Ok',5.1,52.1,'nl')$$,
+  '23514', '037: a lower-case country code is refused — the column is ISO 3166-1 alpha-2');
+select assert_rejected($$insert into places (id,name,lon,lat,country,confidence) values ('p037-x4','Ok',5.1,52.1,'NL',1.5)$$,
+  '23514', '037: a confidence outside 0..1 is refused');
+
+-- --------------------------------------------------------------------------
+-- 037.2  RLS is on, and there is exactly ONE policy. Scoped to this table
+--        rather than counting policies schema-wide, so it keeps testing its
+--        own intent when the next surface lands.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'public.places'::regclass),
+  true, '037: row level security is enabled on places');
+select assert_eq(
+  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'places'),
+  1, '037: places carries exactly one policy');
+select assert_eq(
+  (select cmd from pg_policies where schemaname = 'public' and tablename = 'places'),
+  'SELECT'::text, '037: ... and it is a SELECT policy — nothing here is writable through RLS');
+select assert_eq(
+  (select roles::text from pg_policies where schemaname = 'public' and tablename = 'places'),
+  '{authenticated}'::text, '037: ... to authenticated, never anon — decision #1');
+
+-- --------------------------------------------------------------------------
+-- 037.3  Privileges BY ROLE. This suite runs as the table owner, for whom no
+--        grant barrier exists, so a "can I insert" test that simply tries it
+--        would pass against a table anyone can write. 031's lesson.
+-- --------------------------------------------------------------------------
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'select'),
+  true, '037: authenticated holds SELECT');
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'insert'),
+  false, '037: authenticated holds NO INSERT — the index is loaded out of band');
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'update'),
+  false, '037: authenticated holds NO UPDATE');
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'delete'),
+  false, '037: authenticated holds NO DELETE');
+select assert_eq(has_table_privilege('anon', 'public.places', 'select'),
+  false, '037: anon cannot even read it — is_public means "signed-in rider", never "the internet"');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'anon'),
+  0, '037: anon holds zero grants of any kind on places');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'authenticated'),
+  1, '037: authenticated holds exactly one grant, and 037.3 above names it SELECT');
+
+-- 034 §4b shipped a per-COLUMN insert grant, which does not appear in
+-- role_table_grants at all. So a write path could hide from every assertion
+-- above. Checked explicitly rather than inferred from the table-level count.
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'places'
+      and grantee in ('anon', 'authenticated') and privilege_type <> 'SELECT'),
+  0, '037: no column-level write grant hides behind the table-level one');
+
+-- --------------------------------------------------------------------------
+-- 037.4  The function: INVOKER, path pinned, reachable by riders only.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select prosecdef from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  false, '037: search_places is SECURITY INVOKER — the places SELECT policy governs it, with no second copy of the rule');
+select assert_eq(
+  (select proconfig @> array['search_path=""'] from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  true, '037: ... with search_path pinned empty, 005''s rule');
+select assert_eq(
+  has_function_privilege('authenticated',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  true, '037: authenticated may call search_places');
+select assert_eq(
+  has_function_privilege('anon',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  false, '037: anon may NOT — the default EXECUTE to PUBLIC was revoked');
+
+-- --------------------------------------------------------------------------
+-- 037.5  The indexes the design depends on, and the extension's home.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select nspname::text from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+    where e.extname = 'pg_trgm'),
+  'extensions'::text, '037: pg_trgm lives in `extensions`, not `public` — the extension_in_public advisor');
+-- 037's two trigram indexes — one on `name`, a partial one on `brand` — were
+-- asserted here and are GONE as of 039, which replaced them with a single GIN
+-- index over the generated `search_text` column. This suite applies the whole
+-- chain and then asserts, so an assertion pinning a superseded state fails
+-- rather than documents one. The replacement lives in 039.7, scoped to the
+-- index set 039 actually created; it is not repeated here.
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places' and indexname = 'places_lat_lon_idx'),
+  1, '037: the coordinate btree exists — the bbox prefilter PostGIS was not enabled for');
+
+-- Scoped to this table on purpose. A global count of enforce_participation_gate
+-- triggers belongs to 023/034 and would stop testing 037's own intent, which is
+-- narrower: places has no client write path, so there is nothing to gate.
+select assert_eq(
+  (select count(*)::int from pg_trigger where tgrelid = 'public.places'::regclass and not tgisinternal),
+  0, '037: places carries no trigger at all — 023''s gate guards writes, and there are none');
+
+-- --------------------------------------------------------------------------
+-- 037.6  As a signed-in rider: reads work, every write is refused.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+
+select assert_eq((select count(*)::int from places where id = 'p037-near-near'),
+  1, '037: a signed-in rider can read a place');
+select assert_denied($$insert into places (id,name,lon,lat,country) values ('p037-hack','Mine',5.1,52.1,'NL')$$,
+  '037: a signed-in rider cannot INSERT a place');
+select assert_denied($$update places set name = 'Mine' where id = 'p037-near-near'$$,
+  '037: ... cannot UPDATE one');
+select assert_denied($$delete from places where id = 'p037-near-near'$$,
+  '037: ... cannot DELETE one');
+
+-- --------------------------------------------------------------------------
+-- 037.7  search_places: the ranking contract the design draws.
+-- --------------------------------------------------------------------------
+-- ** The next assertion is the one that covers §5b, which the migration spends
+-- twenty lines justifying and which previously had NO discriminating test. **
+-- Review mutated the function two ways and all 795 assertions stayed green:
+-- removing the ~28 km box entirely (so there is one pass, not two), and
+-- dropping `dist2` from the local ORDER BY (so proximity stops ordering the
+-- near rows). Both are the design; neither was tested.
+--
+-- The full ordered array is asserted rather than a prefix, because each
+-- position carries a different rule:
+--
+--   1 near-near   the box runs FIRST, and dist2 orders inside it
+--   2 near-far    ... even though its id sorts earlier
+--   3 far-exact   the national pass runs, and score orders IT — an exact match
+--                 outranks the partial ones, but only after the local rows
+--   4 far-e       ... and dist2 breaks the tie among equal-scoring far rows
+--   5 far-d
+--
+-- Under m_nobbox the array becomes {far-exact, near-near, near-far, far-e,
+-- far-d}; under m_nodist it becomes {near-far, near-near, far-exact, far-c,
+-- far-d}. Both differ at position 1, so this single assertion catches both.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Zeldzaamplek', 52.09, 5.11)) s),
+  '{p037-near-near,p037-near-far,p037-far-exact,p037-far-e,p037-far-d}'::text,
+  '037: the two-pass order — box first and nearest-first inside it, then the national pass by score');
+select assert_eq(
+  (select count(*)::int from search_places('Zeldzaamplek', 52.09, 5.11)),
+  5, '037: ... capped at five, because the design draws five');
+select assert_eq(
+  (select count(*)::int from search_places('Zeldzaamplek', 52.09, 5.11) where id like 'p037-far-%'),
+  3, '037: ... and the national pass fills the remaining three, not zero — a place with no near namesake is still findable');
+
+-- The claim §5b actually makes, stated as its own assertion: proximity beats a
+-- better text match. `p037-far-exact` scores 1.0 against every other row's
+-- partial match and still comes third, because it is outside the box.
+select assert_eq(
+  (select id from search_places('Zeldzaamplek', 52.09, 5.11) limit 1),
+  'p037-near-near'::text,
+  '037: a nearby PARTIAL match outranks a distant EXACT one — proximity is the primary key, not a tiebreak');
+
+-- No point supplied at all: pure text ranking, no distance term, no error.
+select assert_eq(
+  (select count(*)::int from search_places('Zeldzaamplek')),
+  5, '037: a search with no location still works — proximity is a bias, not a requirement');
+select assert_eq(
+  (select id from search_places('Zeldzaamplek') limit 1),
+  'p037-far-exact'::text,
+  '037: ... and with no location the exact match DOES lead, which is what makes the assertion above about proximity rather than about score');
+
+-- The Meta line of the design's Label-over-Meta row.
+select assert_eq(
+  (select meta from search_places('Zeldzaamplek', 52.09, 5.11) where id = 'p037-near-far'),
+  'Domstraat 1, Utrecht'::text, '037: meta is street then locality');
+select assert_eq(
+  (select meta from search_places('Zeldzaamplek', 52.09, 5.11) where id = 'p037-near-near'),
+  'Utrecht'::text, '037: ... and a null street collapses rather than leaving a leading comma');
+select assert_eq(
+  (select meta from search_places('Procenttest', 52.09, 5.11)),
+  null::text, '037: ... and a row with neither is NULL, so the UI draws one line instead of an empty one');
+
+-- brand is searchable, and it is the 8% case: the label still shows the name.
+select assert_eq(
+  (select label from search_places('Merkzoektest', 52.09, 5.11)),
+  'Onherkenbaar 001'::text, '037: brand matches, and label is still the place name');
+
+-- --------------------------------------------------------------------------
+-- 037.7b  The ORDER BY tiebreak. Without it the result set is not a sequence.
+-- --------------------------------------------------------------------------
+-- `p037-dup-1` and `p037-dup-2` share a name AND a coordinate, so `score` and
+-- `dist2` both tie and only `id` can order them. They are inserted in
+-- descending id order, so heap order and id order disagree: drop the tiebreak
+-- and the scan returns dup-2 first.
+--
+-- Both call shapes, because they exercise different ORDER BYs — with a location
+-- the pair goes through `local_hits`, without one through `national_hits`,
+-- where every `dist2` is NULL and the tie is total.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Dubbelplek', 52.09, 5.11)) s),
+  '{p037-dup-1,p037-dup-2}'::text,
+  '037: rows tying on score and distance are ordered by id, not by physical order (local pass)');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Dubbelplek')) s),
+  '{p037-dup-1,p037-dup-2}'::text,
+  '037: ... and with no location, where every dist2 is NULL and the tie is total (national pass)');
+
+-- Structural as well as behavioural: the behavioural pair above depends on heap
+-- order matching insertion order, which is true here but is a property of the
+-- test rather than of the function. This names the thing itself.
+select assert_eq(
+  (select (prosrc like '%dist2 asc, p.id%')
+      and (prosrc like '%dist2 asc nulls last, p.id%')
+      and (prosrc like '%r.dist2 asc nulls last, r.id%')
+     from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  true, '037: ... and all three ORDER BYs in the body carry the id tiebreak');
+
+-- --------------------------------------------------------------------------
+-- 037.7e  The local ORDER BY as a SELECTION criterion, which is the only way
+--         it is observable at all.
+-- --------------------------------------------------------------------------
+-- ** This exists because the obvious test does not work, and review proved it. **
+-- Dropping `dist2` from the local pass's ORDER BY survived every assertion in
+-- this section, because with two rows in the box the pass returns both and the
+-- FINAL pooled sort — which still has `dist2` — puts them back in order. The
+-- local ORDER BY decides *which rows survive the LIMIT*, nothing else, so it is
+-- invisible until the box holds more than five candidates.
+--
+-- Six Boxvulplek rows tie on score exactly and differ only in distance, with id
+-- order running opposite to distance order. By distance the five NEAREST
+-- survive and box-a is dropped; by id the five with the LOWEST ids survive and
+-- box-f — the nearest of all — is dropped instead. The presence of box-f is the
+-- discriminator, and the full array pins the ordering with it.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Boxvulplek', 52.09, 5.11)) s),
+  '{p037-box-f,p037-box-e,p037-box-d,p037-box-c,p037-box-b}'::text,
+  '037: when the box holds more than five, the local ORDER BY keeps the NEAREST five — not the five with the lowest ids');
+select assert_eq(
+  (select count(*)::int from search_places('Boxvulplek', 52.09, 5.11) where id = 'p037-box-a'),
+  0, '037: ... so the farthest is the one dropped');
+
+-- --------------------------------------------------------------------------
+-- 037.7c  A broken GPS degrades to a nationwide search; it does not raise.
+-- --------------------------------------------------------------------------
+-- All four of these used to ERROR: `cos(radians(Infinity))` is "input is out of
+-- range" and squaring 1e308 overflows. The coordinates come from
+-- `navigator.geolocation` through a client nobody controls, and the function
+-- already had a graceful path for a missing location — so a nonsense value is
+-- made missing rather than given a second failure mode.
+--
+-- Five rows, i.e. exactly the no-location result, is the assertion: it proves
+-- the value was discarded rather than merely survived.
+select assert_eq((select count(*)::int from search_places('Zeldzaamplek', 'Infinity'::double precision, 5.11)),
+  5, '037: an infinite latitude falls back to a nationwide search instead of raising');
+select assert_eq((select count(*)::int from search_places('Zeldzaamplek', 'NaN'::double precision, 5.11)),
+  5, '037: ... so does NaN');
+select assert_eq((select count(*)::int from search_places('Zeldzaamplek', 1e308, 5.11)),
+  5, '037: ... so does 1e308, which used to overflow the squared distance');
+select assert_eq((select count(*)::int from search_places('Zeldzaamplek', 52.09, 1e308)),
+  5, '037: ... and so does a nonsense longitude, which is the other half nobody checks');
+select assert_eq(
+  (select id from search_places('Zeldzaamplek', 'Infinity'::double precision, 5.11) limit 1),
+  'p037-far-exact'::text,
+  '037: ... and the fallback really is the no-location ranking, not a silently clamped one');
+
+-- --------------------------------------------------------------------------
+-- 037.7d  The RPC contract PostgREST publishes: argument AND output names.
+-- --------------------------------------------------------------------------
+-- `supabase.rpc('search_places', { q, near_lat, near_lon })` routes on the
+-- argument names, and the returned object keys are the output column names, so
+-- both halves are a wire contract and neither is visible in a policy. Pinned
+-- together, in order.
+--
+-- `lon` rather than `lng` throughout: `places.lon`, the extractor's CSV header
+-- and the loader all say `lon`, and one quantity gets one name.
+select assert_eq(
+  (select string_agg(a, ',' order by ord)
+     from unnest((select proargnames from pg_proc
+                   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure))
+          with ordinality as u(a, ord)),
+  'q,near_lat,near_lon,id,label,meta,lat,lon'::text,
+  '037: the RPC signature and its output columns, pinned — `lon`, never `lng`');
+
+-- --------------------------------------------------------------------------
+-- 037.8  The two rules that live in the function body, not in a policy.
+-- --------------------------------------------------------------------------
+-- The guard is an alphanumeric RUN of three, not a length of three, and the
+-- ~1.4 s figure quoted for the unguarded case is from the 750k-row synthetic
+-- bench in 037 §3 — not from this table, and not from the real extract.
+--
+-- ** Each asserts 0 against a fixture that WOULD match. ** That is the whole
+-- design: a bare "returns nothing" reads 0 whether the guard refused or the
+-- search simply found nothing, so it survives the guard being deleted entirely.
+-- p037-wild and p037-dash carry the query strings in their names, and 'Ze' is a
+-- prefix of six rows.
+--
+-- ** The three do NOT all discriminate the same mutation, and an earlier
+-- revision of this comment claimed they did. ** It said "with
+-- `char_length(term) >= 3` in place of the regex, all three fail". Only two do.
+-- 'Ze' is two characters, so BOTH guards refuse it and it reads 0 either way —
+-- it discriminates *no guard at all* from *some guard*, which is a different
+-- and weaker thing. The percent signs and the dashed letters are the two that
+-- separate the length check from the regex, because both are long enough to
+-- pass the former and carry no alphanumeric run to pass the latter.
+select assert_eq((select count(*)::int from search_places('Ze', 52.09, 5.11)),
+  0, '037: a two-character query returns nothing — even though six rows start with it (this one only proves SOME guard exists)');
+select assert_eq((select count(*)::int from search_places('%%%%', 52.09, 5.11)),
+  0, '037: ... and four percent signs return nothing even though a row is named for them — they pass a length check and extract no trigram');
+select assert_eq((select count(*)::int from search_places('Z-e-l', 52.09, 5.11)),
+  0, '037: ... and so do punctuation-separated letters, with a row named for those too — pg_trgm treats non-alphanumerics as separators');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure
+      and prosrc like '%[[:alnum:]]{3}%'),
+  1, '037: ... and the guard in the body is that regex, named rather than only inferred from behaviour');
+select assert_eq((select count(*)::int from search_places('', 52.09, 5.11)),
+  0, '037: an empty query returns nothing');
+select assert_eq((select count(*)::int from search_places(null, 52.09, 5.11)),
+  0, '037: a null query returns nothing');
+
+-- LIKE metacharacters are escaped, so a typed `%` is a percent sign and not a
+-- wildcard. Both halves: the escaped form finds nothing, the bare form finds the
+-- row — a broken escape would make the first return 1 as well.
+select assert_eq((select count(*)::int from search_places('Procenttest', 52.09, 5.11)),
+  1, '037: the escape test row is findable');
+select assert_eq((select count(*)::int from search_places('Procenttest%', 52.09, 5.11)),
+  0, '037: ... but a trailing % is a literal percent sign, not a wildcard');
+select assert_eq((select count(*)::int from search_places('Procentt_st', 52.09, 5.11)),
+  0, '037: ... and an underscore is a literal underscore, not "any character"');
+
+-- --------------------------------------------------------------------------
+-- 037.9  As anon: nothing, in both directions.
+-- --------------------------------------------------------------------------
+reset role;
+set role anon;
+select assert_denied($$select count(*) from places$$,
+  '037: anon cannot read places at all');
+select assert_denied($$select count(*) from search_places('Zeldzaamplek', 52.09, 5.11)$$,
+  '037: anon cannot call search_places either — the grant, not the policy, is what stops it');
+
+reset role;
+
+rollback to savepoint places_037;
+
+\echo ''
+\echo '# A username cannot be removed once it is set (038)'
+
+-- ===========================================================================
+-- 038. "Once set, never unset."
+-- ===========================================================================
+--
+-- The defect: `authenticated` holds column UPDATE on `username`, both CHECKs
+-- admit NULL by construction, and enforce_onboarding_completion returned early
+-- for an already-onboarded rider before reaching any username logic. So
+-- `PATCH /rest/v1/profiles?id=eq.<me>` with `{"username": null}` removed the row
+-- from every other rider's read — the `profiles` SELECT policy is
+-- `(auth.uid() = id) OR (username IS NOT NULL AND NOT private.is_blocked(...))`.
+--
+-- ** The new rule is asserted as STORED STATE, never as an error code. ** 038
+-- coerces rather than raises, matching 012's treatment of `terms_accepted_at` in
+-- the same function, so the write returns 200 with the old value intact. An
+-- assertion written as assert_rejected(..., '23514', ...) would FAIL against a
+-- correct implementation. The assertions below that do name a SQLSTATE are each
+-- pinning a refusal that PREDATES this change — the unique index (23505), the
+-- format CHECK (23514) and complete_onboarding's own guard.
+--
+-- ** The load-bearing fixture is an ONBOARDED one. ** A guard placed below the
+-- `old.onboarding_completed_at ... return new` early return is dead code for
+-- exactly the population it protects, and would still pass a suite that only
+-- tested a mid-wizard rider. 3801 is that fixture; 3802 is the mid-wizard case,
+-- which is a real second rule rather than a weaker restatement of the first.
+--
+-- The arms 038 carried forward from 003, 012 and 023 are not re-asserted here —
+-- the sections above already cover every one of them (the consent re-pin, the
+-- INSERT arms, the completion guard), and they run against the replaced body.
+--
+-- Self-contained fixtures, like 036 and 037 above: this section runs last and
+-- must not depend on what twenty-three sections left behind. The block pair from
+-- seed.sql (1a/1b) is reused for the two block assertions, because the block row
+-- itself is the fixture and re-seeding it would be a second copy of the same
+-- relationship.
+--   3801  onboarded, has a username           -- the population the rule protects
+--   3802  mid-wizard, has a username          -- "once set", before completion
+--   3803  no username, no stamps              -- onboarding step 1 must still work
+--   3804  onboarded, someone else's row       -- the cross-rider case
+--   3805  consent + username, not completed   -- complete_onboarding must still stamp
+--   3806  consent, NO username                -- ... and must still refuse
+savepoint username_038;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000038001', 'u38onboarded@example.com'),
+  ('00000000-0000-0000-0000-000000038002', 'u38halfway@example.com'),
+  ('00000000-0000-0000-0000-000000038003', 'u38fresh@example.com'),
+  ('00000000-0000-0000-0000-000000038004', 'u38other@example.com'),
+  ('00000000-0000-0000-0000-000000038005', 'u38qualified@example.com'),
+  ('00000000-0000-0000-0000-000000038006', 'u38noname@example.com');
+reset role;
+
+update profiles set username = 'u38onboarded', location = 'Lisbon', bio = 'before',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038001';
+update profiles set username = 'u38halfway', bio = 'before',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038002';
+update profiles set username = 'u38other', location = 'Faro', bio = 'before',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038004';
+update profiles set username = 'u38qualified', location = 'Aveiro',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038005';
+update profiles set terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000038006';
+-- 3803 is left exactly as handle_new_user made it: no username, no stamps.
+
+-- ---------------------------------------------------------------------------
+-- 038.1 — the onboarded rider, which is the whole point
+-- ---------------------------------------------------------------------------
+-- Each of these writes a SECOND column in the same statement and reads it back.
+-- An UPDATE filtered to zero rows by RLS does not error, so "the username is
+-- unchanged" on its own would pass against a policy that permitted nothing at
+-- all — the trap the comment on assert_allowed records. The bio landing is what
+-- proves the statement ran and only the username was coerced.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000038001', false);
+
+update profiles set username = null, bio = 'after' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38onboarded',
+  '038: an ONBOARDED rider cannot null their own username — the arm sits above the completion early return');
+select assert_eq((select bio from profiles where id = auth.uid()),
+  'after',
+  '038: ... and the same statement''s other column DID land, so the write was coerced rather than filtered to zero rows');
+
+-- A rename is untouched: the guard is `coalesce`, so it only ever fires on NULL.
+-- Q1 (may a rider rename?) is deliberately left as it was, and this is the
+-- assertion that fails if someone later tightens the rule without deciding it.
+update profiles set username = 'u38renamed' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38renamed', '038: a rename to another valid name still succeeds — the guard is NULL-only, and Q1 stays open');
+update profiles set username = 'u38onboarded' where id = auth.uid();
+
+-- ---------------------------------------------------------------------------
+-- 038.2 — the mid-wizard rider, which is a second rule and not a weaker one
+-- ---------------------------------------------------------------------------
+-- Keyed on `old.username` rather than on `old.onboarding_completed_at`, so a
+-- rider who chose a name at step 1 and is sitting on step 2 is covered too. That
+-- is the route by which a taken name could otherwise be freed and re-taken.
+select set_config('test.uid', '00000000-0000-0000-0000-000000038002', false);
+
+update profiles set username = null, bio = 'after' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38halfway',
+  '038: a rider MID-WIZARD cannot null a username they have already chosen — the rule keys on old.username, not on completion');
+select assert_eq((select bio from profiles where id = auth.uid()),
+  'after', '038: ... and that write landed too');
+
+-- The consequence, and it is asserted against the INDEX rather than against the
+-- availability check. `isUsernameTaken` reads under the block-aware SELECT
+-- policy, so "reads as taken to every other rider" is not a true statement about
+-- this database — see 038.3 immediately below.
+select set_config('test.uid', '00000000-0000-0000-0000-000000038003', false);
+select assert_rejected($$update profiles set username = 'u38halfway'
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23505',
+  '038: the name the mid-wizard rider kept still cannot be taken by anyone else — profiles_username_lower_key, not the availability check');
+
+-- ---------------------------------------------------------------------------
+-- 038.3 — the pre-existing asymmetry, pinned so neither half can be "fixed" alone
+-- ---------------------------------------------------------------------------
+-- 1a blocked 1b. To 1b, 1a's name reads FREE (the SELECT policy hides the row)
+-- while taking it is refused by the index. That predates this change and is
+-- unaltered by it; 038.2's wording depends on knowing it, so it is asserted
+-- rather than described.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq((select count(*)::int from profiles where lower(username) = 'blocker'),
+  0, '038: a rider blocked by the holder of a name reads that name as FREE — the availability check runs under the block-aware policy');
+select assert_rejected($$update profiles set username = 'blocker'
+  where id = '00000000-0000-0000-0000-00000000001b'$$,
+  '23505',
+  '038: ... while taking it is still refused 23505 — an inference channel that predates 038 and is neither opened nor closed by it');
+
+-- ---------------------------------------------------------------------------
+-- 038.4 — the regression this change most plausibly causes
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000038003', false);
+savepoint first_username_038;
+update profiles set username = 'u38fresh' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38fresh', '038: a rider whose username is NULL can still set one — onboarding step 1 is unbroken');
+update profiles set username = null where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38fresh', '038: ... and from that moment on they cannot remove it — the rule engages on the value, not on a stamp');
+rollback to savepoint first_username_038;
+
+-- ---------------------------------------------------------------------------
+-- 038.5 — complete_onboarding is security definer, so it never sees this arm
+-- ---------------------------------------------------------------------------
+-- Inside a security definer function `current_user` is the owner, so the
+-- trigger's first gate returns early and the function's own restatement of 003's
+-- rule is the enforcement. Both arms, to prove the new code disturbed neither.
+select set_config('test.uid', '00000000-0000-0000-0000-000000038005', false);
+savepoint complete_038;
+select assert_eq(public.complete_onboarding('Nijmegen') is not null,
+  true, '038: complete_onboarding() still stamps for a rider who has a username');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Nijmegen', '038: ... and still applies the location in the same statement');
+rollback to savepoint complete_038;
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000038006', false);
+select assert_rejected($$select public.complete_onboarding('Tilburg')$$,
+  '23514', '038: ... and still refuses one who does not — that guard lives in the function, not in the trigger');
+
+-- ---------------------------------------------------------------------------
+-- 038.6 — the operator escape hatch, which is why this is not a CHECK
+-- ---------------------------------------------------------------------------
+-- The trigger's `current_user <> 'authenticated'` gate is preserved rather than
+-- narrowed, so the table owner, service_role, the seed and the signup trigger
+-- still write NULL freely. ** This is the assertion that fails if someone later
+-- "tightens" 038 into a CHECK constraint **, which no role can pass and which
+-- would leave a rider stranded by any future defect unrepairable.
+reset role;
+savepoint operator_038;
+update profiles set username = null where id = '00000000-0000-0000-0000-000000038001';
+select assert_eq((select username from profiles where id = '00000000-0000-0000-0000-000000038001'),
+  null::text, '038: the table owner can still null a username — the operator escape hatch survives');
+rollback to savepoint operator_038;
+
+-- ---------------------------------------------------------------------------
+-- 038.7 — NULL really was the only hole
+-- ---------------------------------------------------------------------------
+-- Verified against the live constraint rather than assumed: '' does not match
+-- '^[a-z0-9_]{3,20}$', and neither does a value carrying a newline — Postgres's
+-- `~` is not anchored to the whole string across newlines unless it is written
+-- this way, so the newline case is the one worth stating.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000038003', false);
+select assert_rejected($$update profiles set username = ''
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23514', '038: an empty username is refused 23514 — 003''s CHECK, unchanged');
+select assert_rejected($$update profiles set username = '   '
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23514', '038: ... and a whitespace-only one');
+select assert_rejected($$update profiles set username = 'ab'
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23514', '038: ... and a two-character one');
+select assert_rejected($$update profiles set username = E'ok\nname'
+  where id = '00000000-0000-0000-0000-000000038003'$$,
+  '23514', '038: ... and one carrying a newline');
+
+-- ---------------------------------------------------------------------------
+-- 038.8 — deleting the row is the OTHER way to vanish, and it is left as it is
+-- ---------------------------------------------------------------------------
+-- Asserted rather than assumed, and both halves: the grant is live and the
+-- refusal rests entirely on the absence of a DELETE policy. The pair is what
+-- detects a future permissive policy reopening this by another route. The revoke
+-- is a follow-up of its own, deliberately not bundled into a trigger change.
+select set_config('test.uid', '00000000-0000-0000-0000-000000038001', false);
+savepoint own_delete_038;
+delete from profiles where id = auth.uid();
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000038001'),
+  1, '038: a rider deleting their OWN profiles row affects zero rows');
+rollback to savepoint own_delete_038;
+
+reset role;
+select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'delete'),
+  true, '038: ... and authenticated DOES hold the table-level DELETE grant, so the refusal is the policy''s absence');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'profiles' and cmd = 'DELETE'),
+  0, '038: ... and there is no DELETE policy on profiles for that grant to use');
+
+-- ---------------------------------------------------------------------------
+-- 038.9 — another rider's row, and the upsert route into your own
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000038001', false);
+update profiles set username = null, bio = 'intruder'
+  where id = '00000000-0000-0000-0000-000000038004';
+select assert_eq((select username from profiles where id = '00000000-0000-0000-0000-000000038004'),
+  'u38other', '038: a rider cannot null ANOTHER rider''s username');
+select assert_eq((select bio from profiles where id = '00000000-0000-0000-0000-000000038004'),
+  'before',
+  '038: ... and nothing else on that row moved either — zero rows affected by the UPDATE policy, not a coerced write');
+
+-- The statement supabase-js sends for `Prefer: resolution=merge-duplicates`.
+-- `authenticated` holds INSERT on `username` and an INSERT policy exists, so this
+-- is a genuine second client route into the column; that the BEFORE UPDATE
+-- trigger fires for the DO UPDATE arm is a two-step derivation nothing else
+-- pins. Same class as the `ignoreDuplicates` bug src/lib/actions/profile.ts
+-- records, where the suite issued a different statement than production and
+-- shipped green.
+insert into profiles (id, username, bio)
+values ('00000000-0000-0000-0000-000000038001', null, 'upserted')
+on conflict (id) do update set username = excluded.username, bio = excluded.bio;
+select assert_eq((select username from profiles where id = auth.uid()),
+  'u38onboarded',
+  '038: the PostgREST upsert is not a second way in — INSERT ... ON CONFLICT DO UPDATE is coerced the same way');
+select assert_eq((select bio from profiles where id = auth.uid()),
+  'upserted', '038: ... and the upsert itself landed, so that is a coercion and not a refusal');
+
+-- ---------------------------------------------------------------------------
+-- 038.10 — this change opens no new channel, and reaches no new role
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-00000000001a'),
+  0, '038: a blocked rider still reads zero rows of the blocker''s profile');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-00000000001b'),
+  0, '038: ... and the blocker still reads zero of theirs — symmetric, unchanged');
+
+reset role;
+set role anon;
+select assert_denied($$select count(*) from profiles$$,
+  '038: anon still reaches nothing on profiles — the function was replaced, so decision #1 is re-proved');
+select assert_denied($$update profiles set username = 'anonymous'
+  where id = '00000000-0000-0000-0000-000000038001'$$,
+  '038: ... and cannot write a username either');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 038.11 — the body itself, named rather than only inferred from behaviour
+-- ---------------------------------------------------------------------------
+-- A position comparison, not a presence one: "the arm exists" passes just as
+-- well when it is dead code below the early return, which is the single most
+-- likely way to ship a green useless fix. 038.1 is the behavioural proof; this
+-- is the one that says why it failed when it fails.
+select assert_eq(
+  (select prosrc like '%coalesce(new.username, old.username)%'
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  true, '038: the coercion is in the function body');
+select assert_eq(
+  (select strpos(prosrc, 'coalesce(new.username, old.username)')
+        < strpos(prosrc, 'new.onboarding_completed_at := old.onboarding_completed_at')
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  true, '038: ... and it sits ABOVE the completion early return, where it is not dead code for an onboarded rider');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  false, '038: the function is still security invoker — as definer its own current_user gate would never fire for anyone');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.profiles'::regclass and not tgisinternal and tgattr <> ''),
+  0, '038: and neither trigger is column-scoped — one scoped OF username would never fire for a rename');
+
+rollback to savepoint username_038;
+
+\echo ''
+\echo '# Places: street and locality are searchable, and rank below a name (039)'
+
+-- ===========================================================================
+-- 039. Widening a search is easy; keeping it useful is the part that can fail
+-- silently, so most of this section is about RANKING rather than matching.
+-- ===========================================================================
+--
+-- Three things are asserted and they fail in different ways.
+--
+--   MATCHING   — per token, ANDed. `Jumbo Maastricht` must reach a row named
+--                `Jumbo` whose locality is `Maastricht`. A single ILIKE against
+--                the concatenated text CANNOT do that (the street sits between
+--                the two), and an OR would return every Jumbo in the country.
+--                One assertion catches both, because they fail in opposite
+--                directions: 0 rows and many rows.
+--   RANKING    — a place the query NAMES outranks a place it merely LOCATES.
+--                Widening means `Amsterdam` matches thousands of rows that have
+--                nothing to do with the word except their address.
+--   PRESERVED  — everything 037 established. Those assertions live in the 037
+--                section and still run; what is repeated here is only what 039
+--                could plausibly have broken, and only where 037's own fixtures
+--                cannot reach it.
+--
+-- Fixtures are self-contained and the 037 block has already rolled its own back.
+-- Coordinates are chosen against the same Utrecht probe 037 uses:
+--
+--   Utrecht probe   52.09 / 5.11, box lat 51.84..52.34, lon 4.71..5.51
+--
+-- ** Mutation record, because a tally is the only honest way to read coverage. **
+-- Twenty-three mutations of 039 have been attempted against this suite:
+--
+--   20  caught by an assertion below
+--    1  provably UNCATCHABLE — padding `pats[1]`, see the end of this note
+--    1  a no-op — rewording a comment, which changes no claim (it survives
+--       because the guards no longer key on any particular wording; an earlier
+--       revision of 039.0 did, and that was the defect)
+--    1  survives in the SAFE direction — a `--` inside a string literal makes
+--       039.0's stripper over-reach, which turns needles red rather than green
+--
+-- FOUR were caught only after review found them green, and each now has an
+-- assertion written for it and re-mutated:
+--
+--   * removing the `score` pinning to 0        -> the Kerkstraat pair (039.3)
+--   * removing the national `ilike all (pats)` -> the five-token pair (039.2)
+--   * weakening the dedup                      -> 039.2 and 039.4
+--
+-- ** The dedup one took THREE attempts and every failure is worth carrying,
+-- because each is a different way an assertion can look like coverage. **
+--
+--   1. No assertion at all. Deduplication cannot change a result, so nothing
+--      behavioural sees it and the mutation was simply green.
+--   2. `prosrc like '%group by s.tok%'` — matched the function's own EXPLANATORY
+--      COMMENT, which `prosrc` includes, and passed with the code deleted.
+--      CLAUDE.md's comment trap, inside a function body rather than a grep.
+--      Now handled generally by 039.0's stripper rather than by one careful
+--      needle, because the needle was only ever a workaround for the technique.
+--   3. The needle was right and the CODE was wrong: `group by s.tok` dedupes by
+--      byte equality while `ILIKE` is case-insensitive, so fourteen
+--      capitalisations of one word were fourteen keys and one predicate — the
+--      dedup never fired on the vector someone would actually choose (039 §5d:
+--      7,149 ms against 2,806 ms). Caught by review, not by this suite, and
+--      NOTHING BEHAVIOURAL COULD HAVE CAUGHT IT: both spellings return identical
+--      rows and differ only in cost. It is pinned structurally, at 039.0 and
+--      039.4, which is the only place a cost-only property can live.
+--
+-- One mutation is UNCATCHABLE and no assertion claims otherwise: padding
+-- `pats[1]` to '%' like the other three slots is unobservable, because a
+-- token-less term never reaches the join. That is recorded at 039.4 rather than
+-- papered over with an assertion that would pass either way.
+savepoint places_039;
+
+reset role;
+select set_config('test.uid', '', false);
+
+insert into places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) values
+  -- The headline case. FIVE Jumbos inside the Utrecht box, so a bare 'Jumbo'
+  -- fills the local pass and short-circuits the national one — 037 §5b's known
+  -- limitation, still true and pinned below. The sixth is in Maastricht, ~180 km
+  -- away, and is reachable only by naming the town.
+  ('p039-jumbo-u1', 'Jumbo', null, 'shop', 5.11, 52.10, 'Biltstraat 1', 'Utrecht', '3572 AA', 'NL', 0.9),
+  ('p039-jumbo-u2', 'Jumbo', null, 'shop', 5.11, 52.11, 'Biltstraat 2', 'Utrecht', '3572 AB', 'NL', 0.9),
+  ('p039-jumbo-u3', 'Jumbo', null, 'shop', 5.11, 52.12, 'Biltstraat 3', 'Utrecht', '3572 AC', 'NL', 0.9),
+  ('p039-jumbo-u4', 'Jumbo', null, 'shop', 5.11, 52.13, 'Biltstraat 4', 'Utrecht', '3572 AD', 'NL', 0.9),
+  ('p039-jumbo-u5', 'Jumbo', null, 'shop', 5.11, 52.14, 'Biltstraat 5', 'Utrecht', '3572 AE', 'NL', 0.9),
+  ('p039-jumbo-m',  'Jumbo', null, 'shop', 5.69, 50.85, 'Wycker Brugstraat 7', 'Maastricht', '6221 CJ', 'NL', 0.9),
+
+  -- Symptom 1: a street name found nothing under 037. Both are inside the box,
+  -- and only kerk-b carries house number 40, which is what makes the two-token
+  -- assertion able to fail.
+  --
+  -- ** They are ALSO the pair that pins `score` to 0 for an address-only match,
+  -- and that job dictates their names and coordinates. ** An earlier revision
+  -- named them 'Slagerij Van Dijk' and 'Bloemist Bos' — both score 0.0 against
+  -- 'Kerkstraat', so removing the score pinning changed nothing and the mutation
+  -- survived the whole suite. These two disagree instead:
+  --
+  --   kerk-a  'Bakkerij'     similarity 0.0526 (shares the trigram `ker`), 12 km out
+  --   kerk-b  'Vishandel Q'  similarity 0.0,                               at the probe
+  --
+  -- Shipped, both scores are pinned to 0 and `dist2` orders them: kerk-b first.
+  -- Unpinned, kerk-a's incidental 0.0526 wins and it leads. kerk-a also sorts
+  -- first by id, so the shipped order is reachable ONLY through distance.
+  ('p039-kerk-a', 'Bakkerij',    null, 'shop', 5.11, 52.20, 'Kerkstraat 12', 'Utrecht', '3581 AA', 'NL', 0.8),
+  ('p039-kerk-b', 'Vishandel Q', null, 'shop', 5.11, 52.09, 'Kerkstraat 40', 'Utrecht', '3581 AB', 'NL', 0.8),
+
+  -- FIVE tokens is one more than the four indexed slots, so token 5 is enforced
+  -- by `ilike all (pats)` alone. This row carries Alfa/Bravo/Charlie/Delta and
+  -- Echo but NOT Zulu, which is what lets the fifth token be observed at all.
+  -- Placed outside every Utrecht box so it is reached only by the national pass,
+  -- which is the arm whose `ilike all` had no coverage.
+  ('p039-fivetok', 'Alfa Bravo Charlie Delta', null, 'cafe', 6.90, 53.40, 'Echo 1', 'Foxtrot', '9999 ZZ', 'NL', 0.6),
+
+  -- Ranking, local pass. `Vondel` must put the place CALLED Vondel above the
+  -- place ON Vondelstraat — and the fixture is built so that BOTH other keys
+  -- point the wrong way:
+  --   vondel-addr is at the probe itself (dist2 = 0) where vondel-name is 12 km out
+  --   similarity('Vondel','Vondei') = 0.556 vs 0.292 for 'Vondel Paviljoen Terras'
+  -- so with no tiering at all the near, better-scoring address row leads.
+  ('p039-vondel-name', 'Vondel Paviljoen Terras', null, 'cafe', 5.11, 52.20, 'Overtoom 3',    'Utrecht', '3583 AA', 'NL', 0.7),
+  ('p039-vondel-addr', 'Vondei',                  null, 'cafe', 5.11, 52.09, 'Vondelstraat 1','Utrecht', '3583 AB', 'NL', 0.7),
+
+  -- ** The pair that isolates `mrank` from `score`, and it has to be a BRAND
+  -- match. ** Because `score` is 0 for an address-only row, a tier-0 row that
+  -- matched by NAME always outscores it anyway — so a name-vs-address fixture
+  -- cannot tell "mrank was removed" from "mrank is doing nothing". A brand match
+  -- can: `similarity('Zoekmerk','Publiek 123')` is exactly 0 (no shared
+  -- trigram, verified), so both rows score 0 and only mrank separates them.
+  -- The address row is nearer AND sorts first by id, so it wins on every
+  -- remaining key.
+  ('p039-merk-a-addr',  'Cafe Q',      null,       'cafe', 5.11, 52.09, 'Zoekmerkweg 3', 'Utrecht', '3584 AA', 'NL', 0.7),
+  ('p039-merk-b-brand', 'Publiek 123', 'Zoekmerk', 'cafe', 5.11, 52.20, 'Havenweg 2',    'Utrecht', '3584 AB', 'NL', 0.7),
+
+  -- The same isolation for the NATIONAL pass, where every dist2 is NULL and the
+  -- only remaining key is id. Placed in Groningen, outside every Utrecht box, so
+  -- these two are only ever reached by a no-location call.
+  ('p039-merk2-a-addr',  'Cafe R',      null,        'cafe', 6.57, 53.22, 'Andermerkkade 5', 'Groningen', '9711 AA', 'NL', 0.7),
+  ('p039-merk2-b-brand', 'Publiek 456', 'Andermerk', 'cafe', 6.57, 53.23, 'Kade 8',          'Groningen', '9711 AB', 'NL', 0.7),
+
+  -- The thousands-of-rows case in miniature, national pass. Same shape as the
+  -- Vondel pair: without tiering the address row's 0.444 beats the name row's
+  -- 0.278. Both outside the Utrecht box on purpose.
+  ('p039-ams-name', 'Amsterdam Bierhuis Restaurant Terras', null, 'cafe', 4.48, 51.92, null,     'Rotterdam', '3011 AA', 'NL', 0.7),
+  ('p039-ams-addr', 'Amsterdan Grill',                      null, 'cafe', 4.90, 52.37, 'Kade 9', 'Amsterdam', '1011 AA', 'NL', 0.7),
+
+  -- The guard tripwire, 037's technique: the row carries BOTH pathological
+  -- tokens literally, so a weakened guard finds it and a correct guard refuses
+  -- to look. Without it 'ab 40' reads 0 either way and proves nothing.
+  ('p039-short', 'Kortab 40 Testplek', null, null, 5.12, 52.13, null, 'Utrecht', null, 'NL', null),
+  -- LIKE-escaping, now applied per token rather than to the whole term.
+  ('p039-pct',   'Procenttest',        null, null, 5.13, 52.14, null, 'Utrecht', null, 'NL', null);
+
+-- --------------------------------------------------------------------------
+-- 039.0  Structural needles read COMMENT-STRIPPED source, not raw `prosrc`.
+-- --------------------------------------------------------------------------
+-- ** `prosrc` includes the function's own comments, so a needle can match the
+-- sentence describing a thing instead of the thing. ** That is CLAUDE.md's
+-- comment trap inside a function body, and it is not hypothetical here: the
+-- dedup needle was written as `prosrc like '%group by s.tok%'`, the comment two
+-- lines above the code says exactly that, and the assertion passed with the code
+-- deleted. Matching `group by s.tok) d` fixed that one instance and left the
+-- technique intact — any future comment containing a needle silently disarms it.
+--
+-- So every structural needle in this section goes through the stripped source.
+--
+-- ** The stripper is naive — `--` inside a string literal would eat the rest of
+-- that line — and that is acceptable because it fails in the SAFE direction. **
+-- The body has no such literal today. If one is added, the over-strip removes
+-- code a needle looks for and the needle goes RED; it cannot turn a needle
+-- green, because the only thing asserted absent is `--` itself, and losing more
+-- text never reintroduces a deleted mechanism. Tested: injecting `'--'` into the
+-- body leaves the suite green rather than falsely passing anything.
+--
+-- (§037's three needles were audited as untrapped and are left on raw `prosrc`;
+-- they assert ORDER BY tails that no prose would reproduce.)
+create function pg_temp.sp_code() returns text language sql stable as $$
+  select pg_catalog.regexp_replace(prosrc, '--[^\n]*', '', 'g')
+    from pg_proc
+   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure
+$$;
+
+-- The stripper has to actually strip, or every needle below silently reverts to
+-- reading raw prosrc. Three checks, and the first two are deliberately NOT
+-- phrased against a particular comment: an earlier revision asserted that the
+-- string `is the deduplication` was absent, which goes on passing if someone
+-- merely rewords that comment — a guard that can succeed vacuously, which is
+-- the exact failure this whole section is about. `--` cannot survive a working
+-- stripper, and the length must fall, whatever the comments happen to say.
+select assert_eq(
+  (select pg_temp.sp_code() like '%--%'),
+  false, '039: the comment stripper leaves no comment marker at all — checked against `--` itself, not against any wording that could be edited');
+select assert_eq(
+  (select length(pg_temp.sp_code())
+        < (select length(prosrc) from pg_proc
+            where oid = 'public.search_places(text,double precision,double precision)'::regprocedure)),
+  true, '039: ... and it removed something, so the needles below are not silently reading raw prosrc');
+select assert_eq(
+  (select pg_temp.sp_code() like '%group by lower(s.tok)%'),
+  true, '039: ... while leaving the code, so a needle that finds nothing means the code is gone rather than the stripper over-reaching');
+
+-- **The over-reach fails safe for CONTAINMENT needles only, and that qualifier is
+-- load-bearing rather than pedantry.** A naive stripper eats from `--` to the end
+-- of line, including a `--` inside a string literal, so it can delete real code.
+-- For every `like '%x%'` needle here that can only make the needle *false* — red,
+-- never green. It does NOT hold for a needle that counts occurrences: review
+-- planted a genuine defect (a second indexed conjunct in the local pass, which
+-- costs the bbox index) on a line beginning with a `'--'` literal, the stripper
+-- ate the added `t.pat2`, the count still read 1, and the suite went green on a
+-- real defect.
+--
+-- So the `t.pat2` count above reads RAW prosrc deliberately. It is safe to do so
+-- because `t.pat2` occurs exactly once raw and once stripped — it appears in no
+-- comment, so there is nothing for the stripper to protect it from. The rule to
+-- carry: strip comments for "is this code present", never for "how many times".
+
+-- --------------------------------------------------------------------------
+-- 039.1  The generated column itself — separator, coalesce, and STORED.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select attgenerated::text from pg_attribute
+    where attrelid = 'public.places'::regclass and attname = 'search_text'),
+  's'::text, '039: search_text is a STORED generated column, not a plain one a load could forget to fill');
+select assert_eq(
+  (select search_text from places where id = 'p039-jumbo-m'),
+  'Jumbo  Wycker Brugstraat 7 Maastricht'::text,
+  '039: name, brand, street and locality are space-joined — a NULL brand collapses to an empty field, not to a NULL row');
+select assert_eq(
+  (select search_text from places where id = 'p039-pct'),
+  'Procenttest   Utrecht'::text,
+  '039: ... and three NULL fields still leave their separators, so a token can never bridge two columns');
+-- postcode is deliberately absent: '3572 AA' would make every numeric token a
+-- postcode lookup and collide with house numbers already inside `street`.
+select assert_eq(
+  (select count(*)::int from places where search_text like '%3572%'),
+  0, '039: postcode is NOT in search_text — deliberate, 039 §2');
+-- The write-refusals are in 039.8 (grants) and 039.9 (as a rider). They cannot
+-- live here: this block runs as the table OWNER, for whom no grant barrier
+-- exists at all, so `assert_denied` would report a false negative. 031's lesson.
+
+-- --------------------------------------------------------------------------
+-- 039.2  MATCHING: per token, ANDed. The headline case.
+-- --------------------------------------------------------------------------
+-- ** This is the assertion the whole migration exists for. ** `Jumbo` is the
+-- name, `Maastricht` is the locality, and the street sits between them in
+-- search_text — so it catches three different wrong implementations at once:
+--
+--   one ILIKE '%Jumbo Maastricht%' against the concatenation  -> 0 rows
+--   tokens ORed instead of ANDed                              -> 6 rows
+--   street/locality not matched at all (037)                  -> 0 rows
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Jumbo Maastricht', 52.09, 5.11)) s),
+  '{p039-jumbo-m}'::text,
+  '039: a rider in Utrecht reaches the Maastricht Jumbo by naming the town — matching is per token and ANDed, against a text where the street sits between the two');
+
+-- The other half of the escape hatch, and 037 §5b's limitation restated as a
+-- fact rather than a comment: WITHOUT the town, the box fills and Maastricht is
+-- unreachable. The pair is what makes the assertion above about the town rather
+-- than about Jumbo being findable.
+select assert_eq(
+  (select count(*)::int from search_places('Jumbo', 52.09, 5.11)),
+  5, '039: a bare chain name fills the local box — still capped at five');
+select assert_eq(
+  (select count(*)::int from search_places('Jumbo', 52.09, 5.11) where id = 'p039-jumbo-m'),
+  0, '039: ... and the distant branch is NOT in it — 037 §5b''s known limitation, unchanged and now escapable by typing the town');
+
+-- Symptom 1, the plain case: a street name found nothing at all under 037.
+select assert_eq(
+  (select count(*)::int from search_places('Kerkstraat', 52.09, 5.11)),
+  2, '039: a street name now matches — `Kerkstraat` returned nothing under 037');
+select assert_eq(
+  (select count(*)::int from search_places('Amsterdam')),
+  2, '039: ... and so does a locality, which is what no row''s name has to contain');
+
+-- A token that matches nothing kills the row. Catches "extra tokens are
+-- ignored" and "tokens are ORed", which both return rows here.
+select assert_eq(
+  (select count(*)::int from search_places('Jumbo Zzzznietbestaat', 52.09, 5.11)),
+  0, '039: every token must match — an unmatched one returns nothing rather than being dropped');
+
+-- ** Tokens beyond the fourth, which ONLY `ilike all (pats)` enforces. **
+-- `pat1`..`pat4` are the four indexed slots; a fifth token is carried by the
+-- array alone. Reviewer deleted `and p.search_text ilike all (t.pats)` from the
+-- NATIONAL pass and the suite stayed green — the local-pass copy is caught by
+-- the Jumbo Maastricht assertion above, that one had nothing. No location, so
+-- the local pass is empty and this is unambiguously the national arm.
+--
+-- The positive twin is not decoration: without it, "returns 0" would also pass
+-- against a function where five-token queries never match anything at all.
+select assert_eq(
+  (select count(*)::int from search_places('Alfa Bravo Charlie Delta Zulu')),
+  0, '039: a FIFTH token still constrains — only `ilike all (pats)` carries it, since the four indexed slots are already spent');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Alfa Bravo Charlie Delta Echo')) s),
+  '{p039-fivetok}'::text,
+  '039: ... and a five-token query whose every token DOES match still returns the row, so the assertion above is about Zulu and not about arity');
+
+-- ** Duplicate tokens are collapsed, and this is a COST guard wearing a
+-- correctness assertion's clothes. ** `x AND x` is `x`, so deduplication can
+-- never change a result — which is exactly why nothing else here would notice
+-- if the `group by s.tok` were "simplified" away, restoring a 2.5x multiplier a
+-- rider controls through the 100-character cap (039 §5d: 7,063 ms against
+-- 2,784 ms on the bench). Asserted as equality between a repeated term and its
+-- single-token form, in both passes.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat Kerkstraat Kerkstraat', 52.09, 5.11)) s),
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '039: a repeated token is identical to a single one — dedup is result-preserving, and the `group by` that makes it cheap is load-bearing');
+select assert_eq(
+  (select count(*)::int from search_places('Alfa Alfa Bravo Bravo Charlie Charlie Delta Delta Echo Echo')),
+  1, '039: ... and dedup happens BEFORE the four indexed slots are filled, so ten tokens that collapse to five still match');
+
+-- ** The case half, which is what the shipped version got wrong — and these two
+-- do NOT catch it. Say so rather than implying otherwise. ** `ILIKE` is
+-- case-insensitive, so capitalisations of one token are one predicate however
+-- they are grouped: byte-equality and `lower()` produce IDENTICAL RESULTS and
+-- differ only in cost (039 §5d: 7,149 ms against 2,806 ms). Nothing behavioural
+-- can see a cost, so the mutation that reverts `lower()` to byte equality is
+-- caught by the STRUCTURAL needle at 039.4 and by 039.0, not here.
+--
+-- They are kept because they pin the equivalence these two implementations
+-- share and 039 §5d's correctness argument rests on: that adding capitalisations
+-- of an existing token changes nothing a caller can observe. If that ever stops
+-- being true, the dedup is unsound and these fail.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat KERKSTRAAT Kerkstraat kerkstraat KeRkStRaAt', 52.09, 5.11)) s),
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '039: ... and capitalisations of ONE token collapse to it — the group-by key is lower(), because byte equality leaves them as distinct keys and one predicate');
+select assert_eq(
+  (select count(*)::int from search_places('ALFA alfa Alfa BRAVO bravo Charlie DELTA Echo')),
+  1, '039: ... so a mixed-case term that collapses to five distinct tokens still fills only five slots, not eight');
+
+-- Adding a word narrows, never widens. The property the two-pass fix rests on.
+select assert_eq(
+  (select count(*)::int from search_places('Kerkstraat', 52.09, 5.11))
+    > (select count(*)::int from search_places('Kerkstraat 40', 52.09, 5.11)),
+  true, '039: adding a token NARROWS the result set — which is why naming the town empties the local box');
+
+-- --------------------------------------------------------------------------
+-- 039.3  RANKING: a place the query NAMES beats a place it merely LOCATES.
+-- --------------------------------------------------------------------------
+-- Both keys point the other way here — the address row is at the probe itself
+-- and scores 0.556 against the name row's 0.292 — so this fails under any
+-- implementation that ranks on text or distance alone.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Vondel', 52.09, 5.11)) s),
+  '{p039-vondel-name,p039-vondel-addr}'::text,
+  '039: a place CALLED Vondel outranks a place ON Vondelstraat — even when the latter is nearer and scores higher');
+
+-- ** The assertion that isolates mrank, and it has to be the brand pair. **
+-- A name match always outscores an address match (whose score is pinned to 0),
+-- so a name-vs-address fixture cannot distinguish "mrank removed" from "mrank
+-- redundant". Here both rows score exactly 0, and the address row is nearer AND
+-- lower by id — so deleting `mrank` from the local ORDER BY flips this and
+-- nothing else in the suite notices.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Zoekmerk', 52.09, 5.11)) s),
+  '{p039-merk-b-brand,p039-merk-a-addr}'::text,
+  '039: a BRAND match is a name match — it leads even at 12 km against an address match at zero, with both scoring 0');
+
+-- ** The other half of §4's rule: `score` is PINNED TO 0 for an address-only
+-- match, and nothing asserted it until reviewer mutated it. ** Every assertion
+-- above isolates `mrank`; removing the `case when m.named then … else 0 end`
+-- from `score` left the suite green, because a name match always outscores an
+-- address match anyway. This is the case where it bites: two rows that BOTH
+-- match only through their street, so mrank ties and score is the whole
+-- question. Unpinned, `Bakkerij` leads on 0.0526 of incidental trigram overlap
+-- with `Kerkstraat` — from 12 km away, over a row at the probe itself.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '{p039-kerk-b,p039-kerk-a}'::text,
+  '039: two address-only matches are ordered by DISTANCE, not by incidental name similarity — score is pinned to 0 for them');
+
+-- The same two rules through the NATIONAL pass, which is a different ORDER BY.
+-- 037.7b's discipline: a tiebreak asserted in one pass is untested in the other.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Andermerk')) s),
+  '{p039-merk2-b-brand,p039-merk2-a-addr}'::text,
+  '039: ... and in the national pass too, where every dist2 is NULL and only id would otherwise separate them');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Amsterdam')) s),
+  '{p039-ams-name,p039-ams-addr}'::text,
+  '039: a place NAMED Amsterdam leads the thousands merely located there — the whole reason widening needed a ranking rule');
+
+-- --------------------------------------------------------------------------
+-- 039.4  The guard: unchanged, and it is already per-token.
+-- --------------------------------------------------------------------------
+-- An alphanumeric run of three cannot span whitespace, so `term ~
+-- '[[:alnum:]]{3}'` holds exactly when SOME token carries such a run. No
+-- per-token floor was added, and these two assertions are the pair that says
+-- why: a query of only short tokens is refused, and a short token riding along
+-- with a long one is honoured rather than dropped.
+--
+-- p039-short carries 'ab' (inside 'Kortab') and '40' literally, so a weakened
+-- guard finds it. Without that row the first assertion reads 0 either way.
+select assert_eq((select count(*)::int from search_places('ab 40', 52.09, 5.11)),
+  0, '039: two short tokens are refused — no token carries three alphanumerics, and a row containing both exists');
+select assert_eq((select count(*)::int from search_places('a b c d e', 52.09, 5.11)),
+  0, '039: ... and neither does splitting a long term into single characters');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kortab 40', 52.09, 5.11)) s),
+  '{p039-short}'::text,
+  '039: but a two-character token in a query that DOES pass the guard is honoured, not silently dropped');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat 40', 52.09, 5.11)) s),
+  '{p039-kerk-b}'::text,
+  '039: ... so `Kerkstraat 40` is not quietly `Kerkstraat` — it returns the one house, and the other Kerkstraat row is excluded');
+-- 037's three guard assertions are scoped to 037's fixtures and still run. This
+-- one names the regex itself, because 039 rewrote the surrounding CTE.
+select assert_eq(
+  (select pg_temp.sp_code() like '%[[:alnum:]]{3}%'),
+  true, '039: the guard regex survived the rewrite of the term CTE');
+select assert_eq((select count(*)::int from search_places('%%%%', 52.09, 5.11)),
+  0, '039: ... and four percent signs still return nothing');
+-- ** These two say "the guard refuses it", NOT "slot 1 is un-padded". ** An
+-- earlier revision labelled them the second way and it was false: mutating
+-- `pats[1]` to pad to '%' like the other three slots changed NOTHING here, or
+-- anywhere else in this suite. A token-less term never reaches the join —
+-- `searchable` is false for it and `ilike all (NULL)` is NULL besides — so the
+-- un-padded slot is defence in depth and is not observable. Recorded rather than
+-- quietly deleted, because the assertion looked like coverage and was not.
+select assert_eq((select count(*)::int from search_places(null, 52.09, 5.11)),
+  0, '039: a null query returns nothing — the guard refuses it, as it did under 037');
+select assert_eq((select count(*)::int from search_places('   ', 52.09, 5.11)),
+  0, '039: ... and so does whitespace, which now splits into zero tokens rather than into one empty term');
+
+-- ** The two shapes below are invisible in behaviour and cost 6x when wrong. **
+-- 039 §5b: a second ILIKE conjunct in the LOCAL pass talks the planner out of
+-- `places_lat_lon_idx`, so the bbox stops being an index condition and becomes a
+-- filter over every matching row in the country — 48 ms to 214 ms on the bench,
+-- with identical results. Nothing behavioural can see that, so it is pinned
+-- structurally or not at all.
+select assert_eq(
+  (select (length(prosrc) - length(replace(prosrc, 't.pat2', ''))) / length('t.pat2')
+     from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  1, '039: `t.pat2` appears exactly once — only the NATIONAL pass indexes more than one token; adding one to the local pass costs it the bbox index');
+select assert_eq(
+  (select pg_temp.sp_code() like '%order by (d.tok ~ ''[[:alnum:]]{3}'') desc, d.ord%'),
+  true, '039: ... and tokens are ordered indexable-first, so those slots go to tokens a trigram index can actually serve');
+-- The dedup itself, named — and specifically that the key is `lower()`. The
+-- behavioural assertions in 039.2 are EQUALITIES between two calls, which pass
+-- just as well if both sides are broken; this says the mechanism is present and
+-- is case-folding. 039 §5d has what each half is worth.
+--
+-- Reads the comment-stripped source (039.0), because the line above the code
+-- explains what the group-by is for and a raw-`prosrc` needle matched that
+-- sentence instead of the code.
+select assert_eq(
+  (select pg_temp.sp_code() like '%group by lower(s.tok)%'),
+  true, '039: ... and duplicate tokens are collapsed CASE-INSENSITIVELY before the slots are filled — byte equality misses fourteen capitalisations of one word');
+
+-- --------------------------------------------------------------------------
+-- 039.5  LIKE escaping, now applied PER TOKEN.
+-- --------------------------------------------------------------------------
+-- The whole-term cases are 037's and still run. What is new is that the escape
+-- moved inside the split, so a metacharacter in the SECOND token is the case
+-- that could regress silently.
+select assert_eq((select count(*)::int from search_places('Procenttest', 52.09, 5.11)),
+  1, '039: the escape test row is findable');
+select assert_eq((select count(*)::int from search_places('Procenttest %Utrecht', 52.09, 5.11)),
+  0, '039: ... but a percent sign in the SECOND token is a literal too — unescaped it would match through the locality');
+select assert_eq((select count(*)::int from search_places('Procenttest Utrecht', 52.09, 5.11)),
+  1, '039: ... and the same query without it does match, so the assertion above is about the escape and not about the token');
+
+-- --------------------------------------------------------------------------
+-- 039.6  What 037 established and 039 must not have moved.
+-- --------------------------------------------------------------------------
+-- Scoped to what this migration touched. The full 037 contract is asserted in
+-- its own section and still runs; repeating it here would stop testing 039's
+-- intent the moment either changes.
+select assert_eq(
+  (select prosecdef from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  false, '039: search_places is STILL security invoker after the replace');
+select assert_eq(
+  (select proconfig @> array['search_path=""'] from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  true, '039: ... with search_path still pinned empty');
+select assert_eq(
+  has_function_privilege('authenticated',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  true, '039: authenticated may still call it');
+select assert_eq(
+  has_function_privilege('anon',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  false, '039: anon still may not — create or replace preserves the ACL, and 039 re-issues it anyway');
+-- The wire contract PostgREST publishes. 039 changed the body and nothing else,
+-- and an accidental rename here breaks every caller with a 404 rather than an error.
+select assert_eq(
+  (select string_agg(a, ',' order by ord)
+     from unnest((select proargnames from pg_proc
+                   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure))
+          with ordinality as u(a, ord)),
+  'q,near_lat,near_lon,id,label,meta,lat,lon'::text,
+  '039: the RPC signature and output columns are byte-identical to 037 — `lon`, never `lng`');
+-- All three ORDER BYs still end in id, and all three now carry mrank. Structural
+-- because the behavioural proof depends on heap order, which is a property of
+-- this transaction rather than of the function.
+select assert_eq(
+  (select (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc, p.id%')
+      and (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc nulls last, p.id%')
+      and (pg_temp.sp_code() like '%order by r.tier, r.mrank, r.score desc, r.dist2 asc nulls last, r.id%')),
+  true, '039: all three ORDER BYs carry mrank AND still end in id — ordering stays total');
+-- mrank sits AFTER tier in the pooled sort, not before: proximity remains the
+-- primary key. Reversing them is a change to 037 §5b rather than an addition.
+select assert_eq(
+  (select strpos(pg_temp.sp_code(), 'r.tier') < strpos(pg_temp.sp_code(), 'r.mrank')),
+  true, '039: ... and tier outranks mrank, so a nearby address match still beats a distant name match');
+-- 037 §5b's short-circuit, named. Its behavioural coverage is 037.7's; this
+-- catches a rewrite that dropped the guard while keeping both CTEs.
+select assert_eq(
+  (select pg_temp.sp_code() like '%(select count(*) from local_hits) < 5%'),
+  true, '039: the national pass is still gated on the local one yielding fewer than five');
+-- A broken GPS still degrades rather than raising — the term CTE was rewritten
+-- around the coordinate range checks, so they are worth re-proving here.
+select assert_eq((select count(*)::int from search_places('Jumbo', 'Infinity'::double precision, 5.11)),
+  5, '039: an infinite latitude still falls back to a nationwide search instead of raising');
+select assert_eq((select count(*)::int from search_places('Jumbo', 'NaN'::double precision, 5.11)),
+  5, '039: ... so does NaN');
+select assert_eq((select count(*)::int from search_places('Jumbo', 52.09, 1e308)),
+  5, '039: ... and so does a nonsense longitude');
+
+-- --------------------------------------------------------------------------
+-- 039.7  The indexes: one trigram GIN now, and two are GONE.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places' and indexdef like '%gin_trgm_ops%'),
+  1, '039: ONE trigram GIN index — 037''s name and brand pair is replaced, not supplemented');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places'
+      and indexname = 'places_search_text_trgm_idx' and indexdef like '%search_text%'),
+  1, '039: ... and it is on search_text');
+select assert_eq(
+  (select to_regclass('public.places_name_trgm_idx') is null
+      and to_regclass('public.places_brand_trgm_idx') is null),
+  true, '039: the two 037 trigram indexes are dropped — search_text begins with name then brand, so no plan loses an access path');
+-- ** This was a whole-table `count(*) = 3` until 040 landed, and rescoping it
+-- rather than bumping the number to 4 is deliberate. ** CLAUDE.md's rule: an
+-- assertion counting everything on a shared table stops testing its own intent
+-- the moment a second surface arrives there — and it did, one migration later.
+-- 039's intent is "the set 037 and 039 established is intact, and the two
+-- trigram indexes are GONE not supplemented", which the three names below and
+-- the two assertions above say exactly. **The total is now owned by 040.6**,
+-- which is the migration that last changed it; a future index migration takes
+-- it over from there rather than editing this line again.
+select assert_eq(
+  (select array_agg(indexname order by indexname)::text from pg_indexes
+    where schemaname = 'public' and tablename = 'places'
+      and indexname in ('places_pkey', 'places_lat_lon_idx', 'places_search_text_trgm_idx')),
+  '{places_lat_lon_idx,places_pkey,places_search_text_trgm_idx}'::text,
+  '039: the three indexes 037 and 039 leave behind are all present — pkey, the coordinate btree, and the search_text GIN');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places' and indexname = 'places_lat_lon_idx'),
+  1, '039: the coordinate btree survives — the local pass indexes ONE token precisely so the planner keeps using it');
+
+-- --------------------------------------------------------------------------
+-- 039.8  A generated column is not a write path. No grant arrived with it.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'authenticated'),
+  1, '039: authenticated still holds exactly one table grant');
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'select'),
+  true, '039: ... and it is SELECT');
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', 'public.places', p))
+     from unnest(array['insert', 'update', 'delete']) p),
+  false, '039: no INSERT, UPDATE or DELETE arrived with the new column');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'places'
+      and grantee in ('anon', 'authenticated') and privilege_type <> 'SELECT'),
+  0, '039: and no COLUMN-level write grant on search_text either — 034 §4b''s trap');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'anon'),
+  0, '039: anon still holds zero grants of any kind — decision #1');
+select assert_eq(
+  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'places'),
+  1, '039: places still carries exactly one policy — 039 added a column, not a surface');
+
+-- --------------------------------------------------------------------------
+-- 039.9  As a signed-in rider, and then as anon.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+
+select assert_eq((select count(*)::int from search_places('Kerkstraat', 52.09, 5.11)),
+  2, '039: a signed-in rider gets the widened search, under the same SELECT policy');
+select assert_eq((select search_text from places where id = 'p039-jumbo-m'),
+  'Jumbo  Wycker Brugstraat 7 Maastricht'::text,
+  '039: ... and can read search_text, because a table-level SELECT covers a column added later');
+-- Two independent barriers, and the OUTER one is not RLS. A generated column
+-- refuses the write at parse time with 428C9, before the missing grant or the
+-- missing policy is ever consulted — so this is assert_rejected rather than
+-- assert_denied. The grant half is asserted separately in 039.8, because a
+-- rejection that happens for the wrong reason still passes.
+select assert_rejected($$update places set search_text = 'mine' where id = 'p039-pct'$$,
+  '428C9', '039: ... and cannot write it — a generated column refuses the UPDATE ahead of RLS entirely');
+select assert_denied($$update places set locality = 'mine' where id = 'p039-pct'$$,
+  '039: ... nor its INPUTS, which is the barrier that actually keeps search_text honest');
+
+reset role;
+set role anon;
+select assert_denied($$select search_text from places$$,
+  '039: anon cannot read search_text any more than the rest of the row');
+select assert_denied($$select count(*) from search_places('Kerkstraat', 52.09, 5.11)$$,
+  '039: anon cannot call the widened search either — the grant, not the policy, is what stops it');
+reset role;
+
+rollback to savepoint places_039;
+
+\echo ''
+\echo '# A locality name resolves to one coordinate, exactly and never fuzzily (040)'
+
+-- ===========================================================================
+-- 040. locality_centroid — a RESOLVER, and the assertions are mostly about
+-- what it must refuse to do.
+-- ===========================================================================
+--
+-- Four things are asserted and they fail in different ways.
+--
+--   EXACTNESS  — the match is an indexed equality and must stay one. This is
+--                the bulk of the section, because a fuzzy "improvement" is the
+--                realistic future edit and it would import 039 §5d's still-open
+--                5,914 ms abuse path into a function that has no guard. Five
+--                negative cases, each naming the wrong implementation it kills.
+--   ESTIMATOR  — the componentwise MEDIAN, not the mean. Fixtures are built so
+--                the two disagree by tens of degrees, because the mean is the
+--                obvious implementation and a fixture where both agree proves
+--                nothing.
+--   EMPTINESS  — zero rows for an unknown locality, not one row of NULLs. An
+--                ungrouped aggregate forms a group over zero input, so this is
+--                a real behaviour that `having count(*) > 0` creates.
+--   COST       — two properties nothing behavioural can see: that the shipped
+--                function reaches the shipped index, and that no pattern match
+--                crept into the body. Pinned structurally and by a runtime
+--                probe, in the tradition of 039 §5b.
+--
+-- Fixtures are self-contained and the 039 block has already rolled its own
+-- back. Coordinates are chosen for EXACT binary representability rather than
+-- for realism: `percentile_cont` interpolates for an even row count, so
+-- 52.0/52.5 gives an exact 52.25 where 52.20/52.30 would not, and an assertion
+-- on a float that is only nearly right is an assertion that fails on a
+-- different machine.
+savepoint places_040;
+
+reset role;
+select set_config('test.uid', '', false);
+
+insert into places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) values
+  -- ** The mean-vs-median family, odd n. ** Four good rows and one null-island
+  -- geocode failure, which is the classic shape: a row whose coordinates failed
+  -- to resolve and defaulted to (0, 0).
+  --
+  --   lat sorted [0, 52.0, 52.0, 52.0, 52.0] -> median 52.0 EXACTLY, mean 41.6
+  --   lon sorted [0,  5.0,  5.0,  5.0,  5.0] -> median  5.0 EXACTLY, mean  4.0
+  --
+  -- n is odd, so percentile_cont selects an existing value rather than
+  -- interpolating and the comparison is exact by construction.
+  ('p040-med-bad', 'Kapotte Geocode', null, null, 0.0, 0.0, null, 'Mediaanstad', null, 'NL', 0.5),
+  ('p040-med-1',   'Mediaan Een',     null, null, 5.0, 52.0, null, 'Mediaanstad', null, 'NL', 0.9),
+  ('p040-med-2',   'Mediaan Twee',    null, null, 5.0, 52.0, null, 'Mediaanstad', null, 'NL', 0.9),
+  ('p040-med-3',   'Mediaan Drie',    null, null, 5.0, 52.0, null, 'Mediaanstad', null, 'NL', 0.9),
+  ('p040-med-4',   'Mediaan Vier',    null, null, 5.0, 52.0, null, 'Mediaanstad', null, 'NL', 0.9),
+
+  -- ** Even n, chosen so cont, disc and mean are all THREE distinct. ** This is
+  -- the fixture that pins `percentile_cont` specifically rather than "some
+  -- median": with [0, 52.0, 52.5, 52.5] the interpolated answer is 52.25, the
+  -- discrete one is 52.0, and the mean is 39.25.
+  ('p040-even-bad', 'Even Kapot', null, null, 0.0, 0.0,  null, 'Evenstad', null, 'NL', 0.5),
+  ('p040-even-1',   'Even Een',   null, null, 5.0, 52.0, null, 'Evenstad', null, 'NL', 0.9),
+  ('p040-even-2',   'Even Twee',  null, null, 5.5, 52.5, null, 'Evenstad', null, 'NL', 0.9),
+  ('p040-even-3',   'Even Drie',  null, null, 5.5, 52.5, null, 'Evenstad', null, 'NL', 0.9),
+
+  -- ** The BIMODAL family — the case that actually decided the estimator, and
+  -- the one `place_count` cannot see. ** Two genuinely different towns sharing
+  -- one name, ~180 km apart, 3 north to 2 south. NL really has these: Bergen NH
+  -- and Bergen L, and they are not data errors, so no cleaning removes them.
+  --
+  --   median -> 52.60 / 4.70, i.e. ON the northern town (the majority)
+  --   mean   -> 52.12 / 5.22, i.e. in a field belonging to neither
+  --
+  -- n is odd again so the median is an exact selection, and the count is a
+  -- healthy 5 either way — which is the point: a caller reading `place_count`
+  -- alone cannot tell this locality from a well-behaved one.
+  ('p040-twee-n1', 'Tweestad Noord Een',  null, null, 4.70, 52.60, null, 'Tweestad', null, 'NL', 0.9),
+  ('p040-twee-n2', 'Tweestad Noord Twee', null, null, 4.70, 52.60, null, 'Tweestad', null, 'NL', 0.9),
+  ('p040-twee-n3', 'Tweestad Noord Drie', null, null, 4.70, 52.60, null, 'Tweestad', null, 'NL', 0.9),
+  ('p040-twee-z1', 'Tweestad Zuid Een',   null, null, 6.00, 51.40, null, 'Tweestad', null, 'NL', 0.9),
+  ('p040-twee-z2', 'Tweestad Zuid Twee',  null, null, 6.00, 51.40, null, 'Tweestad', null, 'NL', 0.9),
+
+  -- ** The NOT-FUZZY pair, and the coordinates matter as much as the names. **
+  -- `Kernstad` and `Kernstad Noord` are two distinct localities whose names are
+  -- a prefix pair, placed a degree apart so that a LIKE implementation is
+  -- visible in the COORDINATES as well as in the count: exact gives
+  -- (52.0, 5.0, 1), a prefix match gives (51.5, 4.5, 2).
+  ('p040-kern',       'Kernplek',       null, null, 5.0, 52.0, null, 'Kernstad',       null, 'NL', 0.9),
+  ('p040-kern-noord', 'Kernplek Noord', null, null, 4.0, 51.0, null, 'Kernstad Noord', null, 'NL', 0.9),
+
+  -- ** Normalisation, on the COLUMN side as well as the argument side. ** One
+  -- row stored with a trailing space, one stored lower-case. They resolve to a
+  -- single locality only if BOTH `lower` and `btrim` are applied to the column;
+  -- drop either and `place_count` reads 1 instead of 2. `locality` carries no
+  -- CHECK, so what a hand-run \copy puts there is not something the function
+  -- gets to assume.
+  ('p040-spatie-1', 'Spatie Een',  null, null, 5.0, 52.0, null, 'Spatiestad ', null, 'NL', 0.9),
+  ('p040-spatie-2', 'Spatie Twee', null, null, 5.5, 52.5, null, 'spatiestad',  null, 'NL', 0.9),
+
+  -- ** Two tripwires, 037.8's technique. ** Each exists so that a "returns
+  -- nothing" assertion means the function REFUSED rather than merely failed to
+  -- find anything — without them both read 0 whether the guard is there or not.
+  --   empty  : an empty-string locality, which `locality_centroid('')` would
+  --            return the centroid of if `btrim(q) <> ''` were removed.
+  --   nulloc : a NULL locality, for the `locality_centroid(null)` case, which an
+  --            `is not distinct from` implementation would match.
+  ('p040-empty',  'Leeg Testplek', null, null, 4.0, 51.0, null, '',   null, 'NL', 0.5),
+  ('p040-nulloc', 'Nul Testplek',  null, null, 4.0, 51.0, null, null, null, 'NL', 0.5),
+
+  -- A one-row locality: the degenerate case, which must still answer.
+  ('p040-solo', 'Solo Testplek', null, null, 6.0, 53.0, null, 'Solostad', null, 'NL', 0.9);
+
+-- --------------------------------------------------------------------------
+-- 040.0  Structural needles read COMMENT-STRIPPED source, 039.0's rule.
+-- --------------------------------------------------------------------------
+-- `prosrc` includes the function's own comments, so a needle can match the
+-- sentence describing a thing instead of the thing — CLAUDE.md's comment trap
+-- inside a function body, which 039 hit for real. 040's body comments do not
+-- currently contain any of the needles below, but the technique is what is
+-- being kept, not today's wording: a comment added tomorrow would disarm a raw
+-- needle silently.
+--
+-- 039's stripper is a pg_temp function created after `savepoint places_039`, so
+-- rolling that savepoint back dropped it. This is the same three lines, not a
+-- second mechanism, and it carries the same caveat: the stripper is naive and a
+-- `--` inside a string literal would eat the rest of that line. That fails in
+-- the SAFE direction for the containment needles here — over-stripping removes
+-- code a needle looks for and turns it RED — but NOT for a needle that counts
+-- occurrences, so there are none of those in this section.
+create function pg_temp.lc_code() returns text language sql stable as $$
+  select pg_catalog.regexp_replace(prosrc, '--[^\n]*', '', 'g')
+    from pg_proc
+   where oid = 'public.locality_centroid(text)'::regprocedure
+$$;
+
+-- The stripper has to actually strip, or every needle below silently reverts to
+-- reading raw prosrc. Phrased against `--` itself and against a length change,
+-- never against a particular comment's wording — a guard that goes on passing
+-- after someone rewords a comment is the exact failure this technique is for.
+select assert_eq(
+  (select pg_temp.lc_code() like '%--%'),
+  false, '040: the comment stripper leaves no comment marker at all');
+select assert_eq(
+  (select length(pg_temp.lc_code())
+        < (select length(prosrc) from pg_proc
+            where oid = 'public.locality_centroid(text)'::regprocedure)),
+  true, '040: ... and it removed something, so the needles below are not silently reading raw prosrc');
+-- ** The "code survived" probe deliberately names something NO OTHER assertion
+-- owns. ** It was `percentile_cont` for one revision, which made this line
+-- double as an estimator check: mutating the estimator to `avg()` turned THIS
+-- red first, and psql stops at the first failure — so the mean-vs-median
+-- mutation was reported against a label about comment stripping. A shared
+-- needle is not wrong, it just misattributes, and a misattributed failure is
+-- how the wrong thing gets fixed.
+select assert_eq(
+  (select pg_temp.lc_code() like '%from public.places p%'),
+  true, '040: ... while leaving the code, so a needle that finds nothing means the code is gone rather than the stripper over-reaching');
+
+-- --------------------------------------------------------------------------
+-- 040.1  The estimator: the MEDIAN, and the mean is what it must not be.
+-- --------------------------------------------------------------------------
+-- Every fixture below is built so the mean and the median disagree by tens of
+-- degrees. A locality whose rows agree would return the same answer under both
+-- and would prove nothing — which is the shape of test that let three separate
+-- 039 mutations survive.
+select assert_eq(
+  (select lat from locality_centroid('Mediaanstad')),
+  52.0::double precision,
+  '040: one mis-geocoded row does not move the answer — the estimator is the median, where the mean would read 41.6');
+select assert_eq(
+  (select lon from locality_centroid('Mediaanstad')),
+  5.0::double precision,
+  '040: ... on the longitude too, which is computed independently and is the half nobody checks');
+select assert_eq(
+  (select place_count from locality_centroid('Mediaanstad')),
+  5, '040: ... and place_count counts every matching row INCLUDING the bad one, so it is a row count and not a quality score');
+
+-- ** The bimodal case, which is the one that actually chose the median. ** It
+-- does not shrink with n and `place_count` cannot see it: two real towns share
+-- a name, so the mean lands in open country 68 km from either while reporting a
+-- perfectly healthy count.
+select assert_eq(
+  (select lat from locality_centroid('Tweestad')),
+  52.60::double precision,
+  '040: a locality that is two towns resolves to the MAJORITY one, not to a point between them — the mean would read 52.12, which is a field');
+select assert_eq(
+  (select lon from locality_centroid('Tweestad')),
+  4.70::double precision,
+  '040: ... and the longitude lands on the same town rather than splitting the difference');
+select assert_eq(
+  (select place_count from locality_centroid('Tweestad')),
+  5, '040: ... while place_count reads a healthy 5, which is exactly why it is documented as a row count and NOT a confidence score');
+
+-- ** Even row count: cont, disc and mean are all three distinct here. ** This
+-- pins `percentile_cont` specifically. Interpolating rather than stepping is a
+-- CHOICE (039's §-style honesty: both are defensible), so this assertion says
+-- "the choice is still the documented one", not "the alternative is a defect".
+select assert_eq(
+  (select lat from locality_centroid('Evenstad')),
+  52.25::double precision,
+  '040: an even row count INTERPOLATES between the two middle values — percentile_cont (52.25), not percentile_disc (52.0) and not the mean (39.25)');
+select assert_eq(
+  (select lon from locality_centroid('Evenstad')),
+  5.25::double precision,
+  '040: ... on the longitude too');
+
+-- The degenerate case still answers rather than dividing by anything.
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('Solostad')),
+  array[53.0, 6.0, 1.0]::double precision[],
+  '040: a one-row locality resolves to that row');
+
+-- --------------------------------------------------------------------------
+-- 040.2  EMPTINESS: zero rows, never one row of NULLs.
+-- --------------------------------------------------------------------------
+-- ** This is a real behaviour and not a formality. ** An aggregate query with
+-- no GROUP BY forms exactly one group even over zero input rows, so without
+-- `having count(*) > 0` an unknown locality returns `(NULL, NULL, 0)` — one
+-- row, which a caller testing `rows.length === 0` reads as a successful
+-- resolution to a null island. Verified against a real Postgres, not recalled.
+--
+-- Each of the four below is asserted as a ROW COUNT, because that is the
+-- contract; asserting `lat is null` would pass against the broken shape.
+select assert_eq((select count(*)::int from locality_centroid('Zzzznietbestaathelemaalniet')),
+  0, '040: an unknown locality returns ZERO ROWS — not one row of NULLs, which is what an ungrouped aggregate produces without the HAVING');
+select assert_eq((select count(*)::int from locality_centroid(null)),
+  0, '040: a NULL locality returns zero rows — and a row whose own locality IS NULL exists, so an `is not distinct from` implementation would return it');
+select assert_eq((select count(*)::int from locality_centroid('')),
+  0, '040: an empty locality returns zero rows — and a row whose locality is the empty string exists, so without `btrim(q) <> ''''` this would return its centroid');
+select assert_eq((select count(*)::int from locality_centroid('   ')),
+  0, '040: ... and so does whitespace, which btrims to the same empty string');
+
+-- The positive twin. Without it every assertion above would also pass against a
+-- function that returns zero rows for everything.
+select assert_eq((select count(*)::int from locality_centroid('Kernstad')),
+  1, '040: a KNOWN locality returns exactly one row, so the four refusals above are refusals rather than a function that never answers');
+
+-- The HAVING itself, named. Behaviour covers its removal (the four assertions
+-- above go from 0 to 1), but not its replacement by `group by`, which is
+-- behaviourally identical and is the shape 040 §3 rejected — it reads as
+-- removable, which is how the NULL row comes back later.
+select assert_eq(
+  (select pg_temp.lc_code() like '%having count(*) > 0%'),
+  true, '040: emptiness is produced by an explicit HAVING, not as a side effect of a GROUP BY that reads as removable');
+
+-- --------------------------------------------------------------------------
+-- 040.3  EXACTNESS: five negative cases, each naming the implementation it kills.
+-- --------------------------------------------------------------------------
+-- ** This is the section the migration exists to protect. ** Making the match
+-- fuzzy is the realistic future edit — it looks like a kindness to the rider —
+-- and it would give a function with no guard, no length cap and no dedup the
+-- whole scan-cost surface 039 §5d measured at 5,914 ms and left OPEN.
+--
+-- `Kernstad` is the fixture. Each query below is a variant that some plausible
+-- non-exact implementation WOULD match, so each reads 0 only because the
+-- function refused — 037.8's tripwire discipline. The positive twin is at the
+-- end of 040.2.
+select assert_eq((select count(*)::int from locality_centroid('Kern')),
+  0, '040: a PREFIX matches nothing — `locality like q || ''%''` would return the row');
+select assert_eq((select count(*)::int from locality_centroid('rnsta')),
+  0, '040: an interior SUBSTRING matches nothing — `locality ilike ''%'' || q || ''%''` would return it');
+select assert_eq((select count(*)::int from locality_centroid('Kernstad Noord Oost')),
+  0, '040: a SUPERSTRING matches nothing — an implementation matching the column against the argument''s prefix would return it');
+select assert_eq((select count(*)::int from locality_centroid('Kernstat')),
+  0, '040: a one-character TYPO matches nothing — a trigram similarity would score this well above threshold');
+select assert_eq((select count(*)::int from locality_centroid('Kernstadt')),
+  0, '040: ... and so does one extra character, which is the other half of the same typo class');
+
+-- ** The prefix pair, asserted through the COORDINATES and not only the count. **
+-- `Kernstad` and `Kernstad Noord` are distinct localities a degree apart. Exact
+-- matching gives (52.0, 5.0, 1); any prefix match pools them into
+-- (51.5, 4.5, 2), so this single assertion moves on all three columns.
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('Kernstad')),
+  array[52.0, 5.0, 1.0]::double precision[],
+  '040: `Kernstad` resolves to Kernstad ALONE — a prefix match would pool `Kernstad Noord` in and answer (51.5, 4.5, 2)');
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('Kernstad Noord')),
+  array[51.0, 4.0, 1.0]::double precision[],
+  '040: ... and the longer name resolves to its own row, so the pair discriminates in both directions');
+
+-- ** Normalisation is symmetric: both sides lower AND btrim. ** The two fixture
+-- rows are stored as `Spatiestad ` and `spatiestad`, so they pool into one
+-- locality only if the COLUMN is normalised too. Drop `lower` or `btrim` from
+-- the column side and place_count reads 1; drop it from the argument side and
+-- the mixed-case query below returns nothing at all.
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('SPATIESTAD')),
+  array[52.25, 5.25, 2.0]::double precision[],
+  '040: a stored trailing space and a stored lower-case spelling are ONE locality — both sides are lower() and btrim()');
+select assert_eq(
+  (select place_count from locality_centroid('  spatiestad  ')),
+  2, '040: ... and surrounding whitespace on the ARGUMENT is trimmed too, which is the half a stored-only btrim would miss');
+select assert_eq(
+  (select place_count from locality_centroid('SpAtIeStAd')),
+  2, '040: ... and the match is case-insensitive in both directions');
+
+-- --------------------------------------------------------------------------
+-- 040.4  Estimator and signature, pinned structurally.
+-- --------------------------------------------------------------------------
+-- The behavioural assertions in 040.1 already discriminate mean from median, so
+-- this needle is not the primary guard. It is here because 040 §1 makes a
+-- CHOICE between two defensible estimators, and a choice with no assertion
+-- behind it becomes a drift rather than a decision.
+select assert_eq(
+  (select pg_temp.lc_code() like '%percentile_cont(0.5) within group (order by p.lat)%'
+      and pg_temp.lc_code() like '%percentile_cont(0.5) within group (order by p.lon)%'),
+  true, '040: both axes use percentile_cont, taken independently — the componentwise median 040 §1 measured');
+
+-- The wire contract PostgREST publishes. `rpc(''locality_centroid'', { q })`
+-- routes on the argument name and the returned object keys are the output
+-- column names, so both halves are a contract no policy can show. `lon`, never
+-- `lng` — 037 §5bb, one quantity gets one name.
+select assert_eq(
+  (select string_agg(a, ',' order by ord)
+     from unnest((select proargnames from pg_proc
+                   where oid = 'public.locality_centroid(text)'::regprocedure))
+          with ordinality as u(a, ord)),
+  'q,lat,lon,place_count'::text,
+  '040: the RPC signature and its output columns, pinned — `lon`, never `lng`');
+-- lat before lon in the output, which the assertion above already fixes, but
+-- 040.1 is what proves they are not swapped in the BODY: Mediaanstad answers
+-- 52.0/5.0, and a swap would answer 5.0/52.0.
+
+-- --------------------------------------------------------------------------
+-- 040.5  COST: two properties nothing behavioural can see. 039 §5b's tradition.
+-- --------------------------------------------------------------------------
+-- ** (a) The shipped function must reach the shipped index. ** An expression
+-- index serves a qual only on an EXACT expression match, so dropping `btrim`
+-- from either the index or the predicate changes no result, raises nothing, and
+-- silently turns the lookup into a sequential scan — 20 ms to 141 ms on the
+-- 750k-row bench in 040 §2.
+--
+-- The structural half first: the index definition and the function body have to
+-- carry the same expression.
+select assert_eq(
+  (select indexdef like '%lower(btrim(locality))%' from pg_indexes
+    where schemaname = 'public' and indexname = 'places_locality_lower_idx'),
+  true, '040: the index is on lower(btrim(locality))');
+select assert_eq(
+  (select pg_temp.lc_code() like '%lower(btrim(p.locality)) = lower(btrim(locality_centroid.q))%'),
+  true, '040: ... and the function''s predicate is the same expression on the same side — an expression index serves a qual only on an exact match');
+
+-- ** The runtime half, which is the stronger of the two: it proves the SHIPPED
+-- function reaches the SHIPPED index rather than proving two strings look
+-- alike. ** `pg_stat_get_xact_numscans` is the transaction-local index scan
+-- counter, so it is visible inside this uncommitted transaction where
+-- `pg_stat_user_indexes` is not.
+--
+-- ** The `enable_seqscan = off` is REQUIRED, not belt-and-braces. ** With ~21
+-- fixture rows the planner correctly prefers a sequential scan, so an unforced
+-- probe reads 0 against a perfectly good index and would be a guard that can
+-- never pass. Forcing makes the question "is this index USABLE for this qual",
+-- which is exactly the property at stake.
+--
+-- Mutation-tested rather than assumed: rebuilding the index as `lower(locality)`
+-- while the function keeps `lower(btrim(...))` leaves the counter at 0 and turns
+-- this red. Plan caching does not defeat it either — calling the function
+-- unforced first and then forced still increments, checked explicitly.
+set local enable_seqscan = off;
+create temporary table lc_probe as
+  select pg_stat_get_xact_numscans('public.places_locality_lower_idx'::regclass) as before_call;
+select count(*) from locality_centroid('Mediaanstad');
+select assert_eq(
+  (select pg_stat_get_xact_numscans('public.places_locality_lower_idx'::regclass)
+        > (select before_call from lc_probe)),
+  true, '040: a real call to locality_centroid() actually SCANS places_locality_lower_idx — the index and the predicate agree at runtime, not just as strings');
+drop table lc_probe;
+set local enable_seqscan = on;
+
+-- ** (b) No pattern match crept into the body. ** The five negative cases in
+-- 040.3 catch a fuzzy match that CHANGES results. They cannot catch one that
+-- does not: a redundant `ilike` conjunct beside the equality returns identical
+-- rows and costs a scan, which is precisely the cost-only defect class 039 §5b
+-- records. Absence is the enforcement, so absence is what is asserted.
+select assert_eq(
+  (select pg_temp.lc_code() like '%ilike%' or pg_temp.lc_code() like '%similarity%'),
+  false, '040: the body contains no ILIKE and no similarity() — a redundant one would return identical rows and cost the index, which 040.3 cannot see');
+
+-- --------------------------------------------------------------------------
+-- 040.6  Privileges BY ROLE, and the surfaces 040 must NOT have widened.
+-- --------------------------------------------------------------------------
+-- 031's lesson: this suite runs as the table owner, for whom no grant barrier
+-- exists at all, so every privilege is asserted by name rather than by trying it.
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.locality_centroid(text)'::regprocedure),
+  false, '040: locality_centroid is SECURITY INVOKER — the places SELECT policy governs it, with no second copy of the rule and no seventh definer advisor');
+select assert_eq(
+  (select proconfig @> array['search_path=""'] from pg_proc
+    where oid = 'public.locality_centroid(text)'::regprocedure),
+  true, '040: ... with search_path pinned empty, 005''s rule');
+select assert_eq(
+  (select provolatile::text || proparallel::text from pg_proc
+    where oid = 'public.locality_centroid(text)'::regprocedure),
+  'ss'::text, '040: ... and it is STABLE and PARALLEL SAFE, matching search_places');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.locality_centroid(text)', 'execute'),
+  true, '040: authenticated may call locality_centroid');
+select assert_eq(
+  has_function_privilege('anon', 'public.locality_centroid(text)', 'execute'),
+  false, '040: anon may NOT — the default EXECUTE to PUBLIC was revoked');
+
+-- 040 added an index and a function. It must not have added a surface. Scoped
+-- to `places` rather than counting schema-wide, so these keep testing 040's own
+-- intent when the next table lands.
+select assert_eq(
+  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'places'),
+  1, '040: places still carries exactly one policy');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'anon'),
+  0, '040: anon still holds zero grants of any kind on places — decision #1');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'authenticated'),
+  1, '040: authenticated still holds exactly one table grant');
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', 'public.places', p))
+     from unnest(array['insert', 'update', 'delete']) p),
+  false, '040: ... and it is not INSERT, UPDATE or DELETE — no write path arrived with the index');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'places'
+      and grantee in ('anon', 'authenticated') and privilege_type <> 'SELECT'),
+  0, '040: and no COLUMN-level write grant hides behind the table-level one — 034 §4b''s trap');
+select assert_eq(
+  (select count(*)::int from pg_indexes where schemaname = 'public' and tablename = 'places'),
+  4, '040: FOUR indexes now — 039''s three plus places_locality_lower_idx');
+select assert_eq(
+  (select count(*)::int from pg_trigger where tgrelid = 'public.places'::regclass and not tgisinternal),
+  0, '040: places still carries no trigger — 023''s gate guards writes, and there are still none');
+
+-- --------------------------------------------------------------------------
+-- 040.7  As a signed-in rider, and then as anon.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('Mediaanstad')),
+  array[52.0, 5.0, 5.0]::double precision[],
+  '040: a signed-in rider gets the same answer, under the same SELECT policy — security invoker means there is no second rule');
+select assert_eq((select count(*)::int from locality_centroid('Zzzznietbestaathelemaalniet')),
+  0, '040: ... and the same zero rows for an unknown locality');
+select assert_denied($$insert into places (id,name,lon,lat,country,locality) values ('p040-hack','Mine',5.1,52.1,'NL','Mediaanstad')$$,
+  '040: ... and still cannot write a place, so nobody can move a locality''s centroid');
+
+reset role;
+set role anon;
+select assert_denied($$select count(*) from locality_centroid('Mediaanstad')$$,
+  '040: anon cannot call locality_centroid — the grant, not the policy, is what stops it');
+reset role;
+
+rollback to savepoint places_040;
 
 rollback;
 

@@ -350,6 +350,92 @@ export function formatRelativeTime(date: string, now: Date = new Date()) {
   return 'just now'
 }
 
+/**
+ * `2m` / `23m` / `1d` / `2w` — the compact stamp on line one of a notification
+ * row (`Inbox - Notifications`, measured 2026-08-07). **Not `formatRelativeTime`**:
+ * that formatter produces prose ("2 minutes ago") for the postcard byline it was
+ * named for, and per this file's own rule a formatter is named for the screen
+ * it serves rather than shared, because each design draws a genuinely different
+ * shape. This is that screen's own.
+ *
+ * Needs no zone, like `formatRelativeTime` — it measures the distance between
+ * two instants, and that distance is the same number of seconds everywhere.
+ *
+ * Floors rather than rounds (`23m` reads as "at least 23, not yet 24" rather
+ * than "closest to 23"), which is the usual convention for a compact stamp and
+ * keeps it monotonic as time passes rather than jumping a unit early.
+ *
+ * The design draws `2m` through `2w` and nothing older — `Inbox - Notifications`'s
+ * own "All time" section only reaches two weeks in its mocked data. Months and
+ * years are **not measured**, only extended from the same table by the same
+ * rule the design already establishes (a fixed unit per order of magnitude);
+ * logged in `docs/FIGMA-FIDELITY-TODO.md` as inferred rather than read.
+ */
+export function formatNotificationStamp(date: string, now: Date = new Date()) {
+  const seconds = Math.max(0, Math.round((now.getTime() - new Date(date).getTime()) / 1000))
+  if (seconds < 60) return 'now'
+
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d`
+
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return `${weeks}w`
+
+  // Gate on `days`, never on the derived `months`. The two units disagree
+  // about where a year starts — `days / 30` reaches 12 on day 360 while
+  // `days / 365` is still 0 until day 365 — so `months < 12` handed days
+  // 360–364 to the years branch, which drew `0y`. Clamping the month count
+  // keeps the sequence monotonic across the seam: 359d and 364d both read
+  // `11mo`, and `1y` starts on day 365.
+  if (days < 365) return `${Math.min(Math.floor(days / 30), 11)}mo`
+
+  return `${Math.floor(days / 365)}y`
+}
+
+/**
+ * Which of `Inbox - Notifications`'s four sections a row's `created_at` falls
+ * into — `Today` / `Yesterday` / `This week` / `All time`.
+ *
+ * Boundaries resolve in `APP_TIME_ZONE` via `rideZoneDayKey`, matching every
+ * other day boundary in the app and for the same interim reason: the
+ * prerender pass runs on Vercel, so a boundary computed in the runtime's own
+ * zone would render one section into the HTML and another on hydration.
+ *
+ * `key` strings are `YYYY-MM-DD`, so lexicographic comparison is chronological
+ * comparison — no arithmetic on the offset needed once the zone conversion is
+ * done.
+ *
+ * **"This week" is a 7-day rolling window, not a calendar week**, and that is
+ * inferred rather than measured: the design draws no boundary at all, only
+ * four labelled sections with mocked rows that happen to span `2m` through
+ * `2w`. A calendar week would move a Monday notification into `All time` on
+ * Tuesday with nothing about the notification having changed, which is a
+ * worse property than an arbitrary-looking rolling window. Logged in
+ * `docs/FIGMA-FIDELITY-TODO.md` rather than passed off as read from the frame.
+ */
+export function notificationSection(
+  date: string,
+  now: Date = new Date()
+): 'Today' | 'Yesterday' | 'This week' | 'All time' {
+  const key = rideZoneDayKey(date)
+  const todayKey = rideZoneDayKey(now.toISOString())
+  if (key === todayKey) return 'Today'
+
+  const yesterdayKey = rideZoneDayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())
+  if (key === yesterdayKey) return 'Yesterday'
+
+  const weekAgoKey = rideZoneDayKey(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString())
+  if (key >= weekAgoKey) return 'This week'
+
+  return 'All time'
+}
+
 // Tolerates null: a rider mid-onboarding has no username yet, and every call
 // site reaches this through `username ?? 'Rider'` — but the fallback is one
 // edit away from being dropped, and .split on undefined throws.

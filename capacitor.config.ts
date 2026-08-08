@@ -29,6 +29,46 @@ import type { CapacitorConfig } from '@capacitor/cli'
  *
  * Until then `npx cap sync` has nothing to copy. That is expected, not a
  * misconfiguration in this file.
+ *
+ * ## `'out'` is only right while `distDir` is untouched — read this before setting one
+ *
+ * `out/` is not a fixed name. Read out of `next/dist/esm/export/utils.js` and
+ * `next/dist/esm/build/index.js` at the pinned 16.2.9, the export directory is
+ * chosen like this (the ESM copies — the CJS `dist/build/index.js` is the same
+ * logic through `(0, _utils2.hasCustomExportOutput)(config)`, so quote whichever
+ * you actually opened):
+ *
+ *     // hasCustomExportOutput()
+ *     return config.output === 'export' && config.distDir !== '.next'
+ *
+ *     let configOutDir = 'out'
+ *     if (hasCustomExportOutput(config)) {
+ *       configOutDir = config.distDir   // the export lands HERE
+ *       config.distDir = '.next'        // build artifacts go back to .next
+ *     }
+ *
+ * So under `output: 'export'` a custom `distDir` **becomes** the export
+ * directory and **`out/` is never created at all**. Next's own comment says it:
+ * *"when `output: export` is configured, `next build` does both steps. So the
+ * user-configured distDir is actually the outDir."*
+ *
+ * That matters because setting a `distDir` is the obvious, correct-looking move
+ * when the native export arrives — it keeps the export's build cache out of
+ * `.next` so a plain `npm run build` and a native build cannot hand each other a
+ * half-static cache. Doing that without changing this line leaves `webDir`
+ * pointing at a directory that does not exist, and **an empty `webDir` fails at
+ * launch, on a device, as a white screen** — the most expensive place in this
+ * epic to find a one-word mistake. `npx cap sync` copies whatever is there and
+ * does not check that it is a site.
+ *
+ * The rule, either way round: **`webDir` must equal `distDir` whenever one is
+ * set, and `'out'` only when one is not.**
+ *
+ * Verified 2026-08-08 by reading the pinned Next source, not by running a native
+ * build — no platform has ever run here (see the header). The mechanism came
+ * from `claude/store-submission-prep-6o1q3d`, an unmerged branch that measured
+ * it empirically on 2026-08-06 and found the HTML at
+ * `.next-capacitor/postcards/placeholder/index.html` with no `out/` present.
  */
 const config: CapacitorConfig = {
   /**

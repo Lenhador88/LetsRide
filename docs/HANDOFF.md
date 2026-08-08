@@ -89,11 +89,11 @@ so they are "checked by a human, not by CI" rather than unchecked.
 ```bash
 npm ci
 npx tsc --noEmit                      # exit 0
-npm run lint                          # exit 0 — 5 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 747/747 across 32 files
+npm run lint                          # exit 0 — 7 pre-existing <img> warnings, 0 errors
+npm run test:unit                     # 775/775 across 32 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 647 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 908 assertions, 0 failures
 ```
 
 **Two traps met while doing that, both of which produced a confident wrong answer first:**
@@ -445,8 +445,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **647** (594 before `034`'s chat section and `035`'s) |
-| Unit tests | `npm run test:unit` — **747 across 32 files on a clean tree**, measured 2026-08-07 after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **908** (843 before `039`'s address search; 808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
+| Unit tests | `npm run test:unit` — **775 across 32 files on a clean tree**, measured 2026-08-08 (773 at `development`; `037`'s branch adds the two `scripts/places/` source files) after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -674,14 +674,103 @@ drop function private.is_ride_crew(uuid);
 delete from supabase_migrations.schema_migrations where name = 'ride_messages';
 ```
 
-**`034` and `035` are on BOTH databases as of 2026-08-07 — there is nothing outstanding.**
-Verify rather than trust this line; it is exactly the kind that goes stale:
+**FOUR migrations are on DEV and not on PROD as of 2026-08-08, for THREE DIFFERENT reasons —
+conflating any two is how the wrong one gets applied.** `036` is held back **deliberately** and
+must not be cleared on sight. `037` (the places index) and `039` (its address search) are merely
+unshipped: both purely additive, in `034`'s class, so they *could* go to PROD ahead of their code —
+they would just need a data load there. **`039` travels with `037` and is meaningless without it**,
+since it extends the table `037` creates. `038` (username durability, PD-127) is held on an **owner
+decision that has not been made**, not on a technical constraint: it carries no ordering constraint
+in either direction, but which of three PROD apply orders to use is `proposal.md` Q3 and is
+explicitly blocking. Verify rather than trust this line; it is exactly the kind that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   both should read 35 rows, ending 035_comment_whitespace_floor
-ls supabase/migrations/ | wc -l          # 35
+#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808131801 places_address_search
+#   PROD (zwprydcyryvudhurbnye): 35 rows, ending 035_comment_whitespace_floor
+ls supabase/migrations/ | wc -l          # 39
 ```
+
+**`039` (places address search, PD-141) is applied to DEV and is additive in `034`'s class**, so
+it could go to PROD ahead of its code — except that `037` has not gone to PROD either, and `039`
+requires it. The pair travels together or not at all. It widens `search_places()` to match
+`street` and `locality` per token, and it **drops** `places_name_trgm_idx` and
+`places_brand_trgm_idx` in favour of one GIN index over a generated `search_text` column — the
+only non-additive thing in it, and safe only because `places` holds 0 rows on DEV and does not
+exist on PROD. That safety does not survive a data load; after one, dropping an index is a
+deliberate act again.
+
+**`038` closes a live hole that is still open on PROD.** A rider can `PATCH
+/rest/v1/profiles?id=eq.<me>` with `{"username": null}` and vanish from every other rider's
+`profiles` read — the SELECT policy's second arm requires `username IS NOT NULL`. Reproduced on DEV
+before the apply and again after it, both inside a `DO` block that raised so it rolled back:
+`before=devrider093453 after=<NULL>` became `after_update=devrider093453
+after_upsert=devrider093453`. **PROD is unchanged by this session** and the hole is open there
+until the owner answers Q3 — the recommended default is `037` then `038`, leaving only the
+deliberately-gated `036` behind. `openspec/changes/forbid-username-removal/proposal.md` §Deployment
+ordering has all three rows and the cost of each.
+
+DEV's `038` was applied byte-identical to the file: `md5(statements[1])` is
+`2d4ef85b74923ca18a702f88d2657997`, which equals `md5sum` of
+`supabase/migrations/038_username_is_not_removable.sql` with its trailing newline stripped.
+
+**"The MCP strips it" was the wrong conclusion, drawn from one sample — corrected 2026-08-08.**
+The MCP stores exactly the string the caller passes; `038`'s caller simply did not send the final
+newline. Measured across all three places migrations, recorded md5 against `md5sum` of the file
+**including** its trailing newline:
+
+| | recorded on DEV | file, newline kept | file, newline stripped |
+|---|---|---|---|
+| `037` | `1dcfa7d5…` | **neither matches** — see below | **neither matches** |
+| `038` | `2d4ef85b…` | `31924e1c…` | **matches** |
+| `039` | recompute — see below | recompute | recompute |
+
+So the instruction that used to close this paragraph — *check the stripped hash rather than the
+raw one* — is backwards for two of the three. **Compare the raw `md5sum` first**; only `038` needs
+the stripped form, and that is a property of how `038` was applied, not of the tool.
+
+**`037` matches under neither form as of 2026-08-08, and that is expected rather than drift:** `039`
+edits `037`'s *comments* — the `SUPERSEDED BY 039` banners at §3 and §5d, plus its verification
+footer — which changes the file and no SQL. `037`'s own banners record this so the mismatch is
+discoverable where it is found.
+
+**Do not write `037`'s file hash into this table.** The first attempt did, and both cells were
+wrong within the same commit, because the hash was computed before the banners the commit itself
+added. Any later comment edit moves it again. Recompute instead:
+
+```bash
+md5sum supabase/migrations/037_places_index.sql          # raw
+printf '%s' "$(cat supabase/migrations/037_places_index.sql)" | md5sum   # stripped
+```
+
+**`039` does not qualify either, and the commit that wrote this rule falsified its own `039` row
+within the same branch.** It recorded `68136ed3…`/**matches** before `039` was revised and
+re-applied; DEV now records `4c7ee462…`. The verdict survived by luck, the values did not.
+
+So the rule is narrower than first written: **a hash is only worth recording for a file nothing
+edits again — which in practice means a migration that has already shipped.** An unmerged one is
+still being revised by definition, and its own branch is what revises it. `038` qualifies; `037`
+and `039` did not, and both were wrong here before anyone read them. Recompute both:
+
+```bash
+md5sum supabase/migrations/0NN_*.sql                                # raw
+printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
+# via the Supabase MCP: list_migrations -> md5(statements[1])
+```
+Nothing automated depends on it — `npm run db:drift` compares migration *names* only.
+
+**`places` exists on DEV with 0 rows and does not exist on PROD at all.** Filling it is an owner
+action — a 99 MB `\copy` needing a direct Postgres connection no session holds
+(`scripts/places/README.md` §Loading). An empty index is indistinguishable from a working search
+that finds nothing.
+
+**Do not apply `036` to PROD to "clear the drift".** The standing *unapplied migrations are drift*
+rule is what makes that the obvious move, and it is wrong here — read `036`'s own header first. It
+hangs six fan-out triggers off five **already-shipped** write paths (`postcard_likes`,
+`postcard_comments`, `ride_members`, `rides`, `club_members`), so the instant it applies, every
+like, comment, RSVP, ride creation and club join runs new code inside the rider's own transaction,
+and a trigger that raises takes that write down with it. All five paths were exercised by hand on
+DEV and all five still succeed; PROD goes after the code deploys.
 
 PROD's `034` was applied byte-identical to the file — `md5(statements[1])` equals `md5sum` of
 `supabase/migrations/034_ride_messages.sql`, `4a3e605891b8ab49db1a5d614bcb9a84` — and every
@@ -777,7 +866,12 @@ violations, and all 3 survive.
   > function, which is written
   > **Urgency** 3/10 — nothing forces it until a store submission, which needs the shell first
   > **This session** N — needs the function deployed, which is an owner action
-- **Inbox has no route and no tables, and as of 2026-08-07 it has no tab either.** The owner
+- **Inbox still has no tab, but two thirds of it now exist.** Per-ride group chat shipped as `034`
+  (PD-115) and **notifications shipped 2026-08-07 as `036` (PD-118)** — a `notifications` table
+  written only by six `private` fan-out triggers, and a `/notifications` route reached from a
+  `MailboxIcon` in the header of the four tab-root screens rather than from a tab. What is left of
+  the epic is **DMs** and the tab itself; when the tab returns, `/notifications` becomes
+  `/inbox/notifications`. The owner
   decided PD-100's open question — *build the epic, or hide the tab* — in favour of hiding it,
   so the nav is **four tabs**: Home, Rides, Clubs, Profile. Verify rather than trust this line,
   because it is the one that has been wrong twice already — and **scope the range before you
@@ -1140,6 +1234,24 @@ did not need:
   one alarm that detects a frozen queue could never fire — self-reinforcingly, since the
   `Needs help` path deliberately leaves an open PR behind. **Never reintroduce an early return
   above STEP 1.5**, including the tempting "cheap checks first, skip the Linear round trip".
+- **The usage-headroom check is weaker than it was asked to be, and cannot be strengthened from a
+  session.** Asked for 2026-08-07 as *"if any Claude usage limit is above 80%, skip the run"*.
+  **No number is readable**: `claude` has no `usage` subcommand (`/usage` is interactive only),
+  nothing under `~/.claude` carries it, no env var does, and no MCP tool exposes it — all checked
+  that day. So STEP 0.5 check (5) is *"exit if a usage warning is visible in this session"*, which
+  the reuse helps with because a warning from an earlier turn is still in the conversation.
+
+  Writing it as a numeric threshold would be a gate that can never fire — the third instance of
+  that shape in this one file, after the team-scoped lock and the buried stall alarm. Querying an
+  undocumented endpoint with the session's OAuth credential is worse: it breaks silently and
+  *looks* like it works. **The lever that works is the owner's** —
+  `update_trigger trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan enabled=false` pauses it in one call,
+  and a disabled trigger's row has **no `enabled` key at all** rather than `"enabled": false`.
+
+  ```bash
+  claude --help | sed -n '/^Commands:/,$p'   # no `usage` subcommand
+  ls ~/.claude; env | grep -iE 'usage|limit|quota'   # nothing
+  ```
 - **STEP 0.6, reduce the session.** Context accumulates across firings and **no tool available to a
   session clears its own context**; `/clear` and `/compact` are CLI commands the owner types. The
   mechanism is therefore delegation: gates inline, build in subagents, never a diff or a test log
@@ -1234,9 +1346,23 @@ busy queue. Always pass `project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`.
 #   -> statuses; anything in Development (AI) or Needs help holds the lock
 ```
 
-**The queue is frozen right now and it needs an owner decision.** As of 2026-08-07 19:36 UTC two
-issues hold the lock together — **`PD-118`** (Notifications; moved to `Development (AI)` at
-19:35, minutes after this session started, by something other than this session) and **`PD-125`**
-(Ride chat unreachable; created 19:26 already in that status). Neither has a branch —
-`git branch -r` shows only `main`, `development` and this session's. Four issues wait behind them
-in `Queued (AI)`. Until one of them is moved back, every firing will correctly exit at STEP 1.
+**The board is empty as of 2026-08-07 22:15 UTC — `Queued (AI)`, `Development (AI)` and
+`Needs help` all have zero issues**, so every firing will exit silently at STEP 1.5 until the
+owner queues something. That is the designed idle state, not a fault. Re-derive rather than trust
+it, because this is the fastest-moving line in the file:
+
+```bash
+# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
+#   -> group by status; Queued (AI) is the queue, the other two are the lock
+```
+
+**The Routine has run for real and the whole path is proven.** Four firings on 2026-08-07: three
+exited on the lock (correctly — `PD-118` held it), and the fourth took **`PD-132`**, a
+deliberately empty test issue, through gates → lock → pick → claim → `Done` → push notification.
+`PD-132` closed with no code change and no PR, because the issue asked for none.
+
+**`PD-133` is open in `Needs decision`** — the owner's question about whether the column's manual
+order should replace the `priority` attribute. Note the thing to check first: no `list_issues`
+response this session carried an ordering field (`sortOrder`, `position`), so the idea may not be
+buildable through this MCP at all. `Needs decision` is typed `unstarted` and does **not** hold the
+lock.
