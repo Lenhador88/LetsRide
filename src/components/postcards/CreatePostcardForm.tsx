@@ -11,6 +11,7 @@ import { createPostcard } from '@/lib/actions/postcards'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { uploadPostcardImage, validateImageFile } from '@/lib/media'
+import { cn } from '@/lib/utils'
 import { POSTCARD_CAPTION_MAX_LENGTH } from '@/lib/validation/postcards'
 import type { Club } from '@/types'
 
@@ -31,12 +32,27 @@ type Upload =
  * time this form submits, the image is in Storage and only its path travels
  * with the FormData — which is exactly the contract createPostcard expects.
  *
- * The photo box is measured against `v2 / Component / Input / Image`
- * (`1918:17004`, PD-112, 2026-08-08): a single tappable box with Empty/Filled
- * variants, no separate picker button beside it — so the box itself is the
- * control in both states. The rest of the layout — caption/audience order
- * relative to it, and the progress treatment — is still inferred; the create
- * flow's own frame was never in the read set. See docs/FIGMA-FIDELITY-TODO.md
+ * The photo box is measured against the composer's own frame — `Home /
+ * Create postcard` → `Home - Postcards - All new` [1918:16843] (390×844,
+ * design/frames/home-create-postcard-home-postcards-all-new.json) — not only
+ * the named `v2 / Component / Input / Image` set. The frame is fully
+ * readable; it was missed the first time only because this exact screen name
+ * repeats across six frames in five other flows (CLAUDE.md §Development
+ * Workflow's screen-name trap), so qualify with the flow to find it. It
+ * draws a 358×224 box, radius 8, `White/100` fill, 1px solid `Grey/20%`
+ * stroke, and centred content — the 24×24 `Image` icon in `Grey/60` above
+ * "Add photo" set as an `Accent Brand/100` 14/Semibold link button — one
+ * tappable control in both states, which the shipped single button already
+ * matches. (The named component set itself still carries stale
+ * `Grey (OLD)/15` dark-background styling; it's the composer's own frame
+ * that draws the live white/green version actually shipped.)
+ *
+ * The rest of the frame is also now readable and differs on purpose from
+ * what ships below: field order is box → Club → caption, and Post is a
+ * small primary button in the header beside Cancel rather than inline at
+ * the bottom. That reorder is separate follow-up work, not done here.
+ * Geometry, radius, stroke and the label's colour are logged as deliberate
+ * deviations rather than adopted — see docs/FIGMA-FIDELITY-TODO.md
  * §Create postcard.
  */
 export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
@@ -58,6 +74,12 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
   async function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
+
+    // Cleared immediately, not only on a successful upload — the browser
+    // fires no `change` event on re-picking the same file otherwise, and the
+    // photo itself is now the only retry affordance (a validation failure or
+    // a failed upload both leave the rider retrying the same file).
+    event.target.value = ''
 
     // Checked here as well as inside uploadPostcardImage so an oversized or
     // wrong-typed file is refused before it is compressed.
@@ -98,7 +120,10 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
           onClick={() => inputRef.current?.click()}
           disabled={upload.status === 'uploading'}
           aria-label={preview ? 'Choose a different photo' : undefined}
-          className="flex aspect-4/5 w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-border-strong bg-surface disabled:opacity-50"
+          className={cn(
+            'flex aspect-4/5 w-full items-center justify-center overflow-hidden rounded-xl bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50',
+            !preview && 'border-2 border-dashed border-border-strong',
+          )}
         >
           {preview ? (
             // eslint-disable-next-line @next/next/no-img-element -- a blob: object URL, not a remote asset next/image can optimise
@@ -116,6 +141,8 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
           type="file"
           accept="image/*"
           onChange={onFileChange}
+          tabIndex={-1}
+          aria-hidden="true"
           className="sr-only"
         />
 

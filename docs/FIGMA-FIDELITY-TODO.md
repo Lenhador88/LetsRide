@@ -733,10 +733,40 @@ Deviations that are ours, not the design's:
       `State=Filled`, with no separate button beside it — `Empty` holds `Element / Icon /
       Image` at 24×24 above the label "Add photo" (`Poppins/12/Regular`); `Filled` is the same
       box with the photo as its fill. The standalone "Choose a photo" button was removed and
-      the box itself (both states) now opens the picker, matching that. Remaining order — box
-      → caption → audience → submit, one screen, no crop step — is still the prior guess: the
-      component set only covers the box, not the composer frame, so whether the design has a
-      crop/preview step or splits this across screens is still unread.
+      the box itself (both states) now opens the picker, matching that.
+- [ ] **The composer's own frame is readable, and the earlier claim that "the component set
+      only covers the box, not the composer frame" was wrong — corrected 2026-08-08 after
+      `reviewer` found it.** `Home / Create postcard` → `Home - Postcards - All new`
+      [`1918:16843`] / [`1918:17056`] (390×844 each,
+      `design/frames/home-create-postcard-home-postcards-all-new(-2).json`) was missed on the
+      first pass only because this exact screen name repeats across six frames in five other
+      flows — `CLAUDE.md` §Development Workflow's screen-name trap; qualify with the flow to
+      find it. It is one screen, no crop step: the photo box (358×224, radius 8, `White/100`,
+      1px solid `Grey/20%` stroke, "Add photo" as an `Accent Brand/100` 14/Semibold link
+      button — see the deviation below) is followed by a `Club` field, then
+      `What's on your mind?`, with `Post` a small primary button in the header beside `Cancel`
+      rather than inline at the bottom. Order, header-button placement, and both field labels
+      ("Club" / "What's on your mind?" vs. the shipped "Who can see this" / "Caption") all
+      differ from what ships. **Filed as separate follow-up — not changed by this fix**, which
+      only touches the box's own tap behaviour and focus/retry handling.
+- [ ] **Photo box geometry, radius, stroke and label colour deviate from the frame — found
+      2026-08-08, deliberately not adopted.** Same status as §Rides list's RSVP-pill contrast
+      finding: a design question on record, not a bug to silently patch. The frame's box is a
+      358×224 landscape rectangle (~1.6:1) at radius 8, 1px solid `Grey/20%`, with "Add photo"
+      as an `Accent Brand/100` 14/Semibold link button. The shipped box (`aspect-4/5`,
+      `rounded-xl`, `border-2 border-dashed border-border-strong`, `text-xs text-muted` label)
+      deviates on all four, and none are adopted here:
+      - **Aspect ratio** — `aspect-4/5` (0.8:1, portrait) vs. the frame's ~1.6:1 landscape box.
+        PD-112 specified `aspect-4/5` directly; silently reversing an explicit instruction
+        would be worse than logging the gap.
+      - **Radius** — `rounded-xl` (12px) vs. the frame's 8px (`rounded-lg`). No product reason
+        is on record for the difference; logged rather than guessed at.
+      - **Stroke** — `border-2 border-dashed` vs. the frame's 1px solid. The colour already
+        matches (`border-border-strong` **is** `Grey/20%`); only weight and dash differ.
+      - **Label colour** — `text-xs text-muted` (`Grey/80`) vs. the frame's `Accent Brand/100`
+        14/Semibold link style. Kept on purpose: the frame's green measures **3.52:1** on
+        `White/100`, under the 4.5:1 bar for 14px text, while `text-muted` measures **5.74:1**.
+        Adopting the design's colour here would trade a passing label for a failing one.
 - [ ] **Upload progress** — *chose:* a 6px `Accent Brand/100` bar plus "Uploading… N%".
       Unread entirely.
 - [ ] **Failure states** — *chose:* upload failure inline under the picker; the insert's own
