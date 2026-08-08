@@ -1262,16 +1262,65 @@ did not need:
 
   **Where the split falls is forced, not chosen.** No agent in `.claude/agents/` holds a single
   `mcp__Linear__*` tool, none holds `create_pull_request` or `merge_pull_request`, and `gh` is not
-  installed in this container — so the Linear moves, the PR and the merge must stay in the main
-  thread, and only the building delegates. An earlier draft told the firing to run the whole
-  pickup in one subagent; it could not have worked. `general-purpose` and `claude` inherit every
-  tool and could in principle, but **whether an inherited MCP grant survives into a subagent here
-  is untested** — do not find that out mid-firing, after the issue is already claimed.
+  installed in this container — so the Linear moves, the PR and the merge stay in the main
+  thread, and only the building delegates.
+
+  **The inherited-grant question is answered for reads, measured 2026-08-08**, and this passage
+  used to call it untested. A `general-purpose` subagent reached `mcp__Linear__list_issue_statuses`,
+  `mcp__github__get_me`, `mcp__github__list_pull_requests` and `mcp__Supabase__list_projects`,
+  all returning real data as `Lenhador88` with **zero prompts and zero denials**; `git ls-remote
+  origin` worked too. **The schemas are deferred, so every call needed `ToolSearch` `select:<name>`
+  first** — and a subagent that skips that fails with `InputValidationError`, which looks exactly
+  like a missing permission and is not one. **Writes were not probed** (`save_issue`,
+  `create_pull_request`, `merge_pull_request`, `git push`), and four clean reads say nothing about
+  them, so the split above stands until someone probes a write deliberately rather than mid-firing.
 
   ```bash
   grep -l "mcp__Linear__\|create_pull_request\|merge_pull_request" .claude/agents/*.md # expect none
   command -v gh                                                                        # expect none
   ```
+
+### The 2026-08-08 revision — where a firing ends, and the clear that cannot happen
+
+Four changes at the product owner's request, and the first is a correctness fix the request
+uncovered rather than one it asked for.
+
+**The board renamed three statuses and nothing in the repo noticed.** `Backlog` → **`Backlog AI`**,
+`Done` → **`Done (in production)`**, and **`Deployed to DEV`** was added. `CLAUDE.md`,
+`.claude/commands/queue-pickup.md` and `docs/HANDOFF.md` all named the old ones, and a `save_issue`
+naming a status that no longer exists returns a successful-looking payload with the field dropped —
+the same silent shape as the `project` trap. Re-derive, never type from memory:
+
+```
+mcp__Linear__list_issue_statuses  team=Pedro & Dave
+```
+
+**A firing now ends at `Deployed to DEV`, not at `Done`.** The owner promotes to production by
+hand, in a separate session, at their own timing, so **no session ever sets `Done (in production)`**
+— that status claims riders have the feature and only the promotion makes it true. Two consequences
+that both fail silently if missed:
+
+- **The lock is two *names*** — `Development (AI)` and `Needs help`. `Deployed to DEV` is typed
+  `started` and so is `Queued (AI)`, so a lock rewritten as "any `started` issue" is held by every
+  queued and every shipped story, freezing the queue permanently while looking like a healthy job
+  behind a busy column. Third instance of this repo's recurring shape.
+- **A blocker clears at `Deployed to DEV`**, not at `Done (in production)`. Firings branch off
+  `development`, so work merged there is already available to build on; requiring the promotion
+  would park every dependent story behind a manual step on the owner's schedule.
+
+**"Compact or clear the session before each story" cannot be done from inside a session**, and that
+is measured rather than assumed — no tool compacts or clears the caller's own context, no hook
+*initiates* a compact (`PreCompact`/`PostCompact` are reactive only), `/clear` and `/compact` are
+built-in CLI commands and explicitly not skills, `--autocompact` sets a startup threshold that
+cannot fire mid-session, and no env var or `settings.json` key exposes it. **The substitute is one
+build subagent per story**, which does start empty, plus a `/clear`-is-safe hint appended to STEP
+5's push notification so the owner learns it somewhere they read. `PD-136` carries the decision the
+owner still has to make.
+
+**Follow-ups are searched before they are filed** — where an issue already covers one, it gets a
+comment and the ratings rather than a second issue. The owner asked for issues *"created or
+updated"*, and the update half is the one a firing will skip; a duplicate reads to them as two
+pieces of work.
 
 **A firing now folds strong follow-ups into the same PR instead of filing all of them — 2026-08-07,
 at the product owner's request.** The old §Scope discipline sent adjacent improvements to `Backlog`
@@ -1291,8 +1340,9 @@ STEP 4b is the procedure, and it asks **two questions in a fixed order**:
    first draft had no such test: the ≥7/Y bar encodes nothing about what you are building, so it
    would have licensed any sufficiently good idea. `reviewer` caught that.
 2. **The rating block** — ≥ 7/10 *and* `This session` **Y** builds now, same branch, same PR, same
-   `reviewer` pass. Anything else is a story: `Todo AI`, `Todo Human` + `Owner only`, or `Backlog`
-   below 4/10.
+   `reviewer` pass. Anything else is a story: `Todo AI`, `Todo Human` + `Owner only`, or
+   `Backlog AI` below 4/10 — **or a comment on the issue that already covers it**, since
+   2026-08-08 requires searching the board before filing a second one.
 
 What carries the risk, and each is the point rather than a caveat:
 
@@ -1317,7 +1367,7 @@ mentions of scope and CI checks that a diff compiles, not that it was asked for.
 unreleased in `development`; that is now `origin/development...HEAD`.
 
 **The failure mode to watch is a follow-up that gets rated and then never filed** — it looks
-handled precisely because it was rated. STEP 5 files the stories *before* it writes the `Done`
+handled precisely because it was rated. STEP 5 files the stories *before* it writes the closing
 comment that links them, and §If you get stuck now says every exit path owes the same, since
 `Needs help` and STEP 2c both leave without reaching STEP 5.
 
@@ -1362,6 +1412,7 @@ it, because this is the fastest-moving line in the file:
 **The Routine has run for real and the whole path is proven.** Four firings on 2026-08-07: three
 exited on the lock (correctly — `PD-118` held it), and the fourth took **`PD-132`**, a
 deliberately empty test issue, through gates → lock → pick → claim → `Done` → push notification.
+(That run predates the 2026-08-08 status split — the same walk today ends at `Deployed to DEV`.)
 `PD-132` closed with no code change and no PR, because the issue asked for none.
 
 **`PD-133` is open in `Needs decision`** — the owner's question about whether the column's manual

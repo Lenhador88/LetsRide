@@ -23,6 +23,48 @@ id, never the name.
 
 ---
 
+## The status names — re-derive them, never type them from memory
+
+**Three of them changed on 2026-08-08 and nothing in the repo noticed**, which is the second
+time this exact drift has bitten: `CLAUDE.md` already warns that *renaming a status is a
+two-click change nothing in the repo can see*, and then every file naming a status went stale
+anyway. The live set, read back off the board:
+
+| Status | Type | Means | Who moves it |
+|---|---|---|---|
+| `Backlog AI` | backlog | Captured, not triaged. **Was `Backlog`** | Either |
+| `Todo Human` | unstarted | Triaged; owner chores live here | Either |
+| `Todo AI` | unstarted | Triaged, and a session could do it. **Not a start signal** | Either |
+| `Needs decision` | unstarted | Blocked on a product answer | **Owner** |
+| `Queued (AI)` | started | **Approved to build. The only start signal** | **Owner** |
+| `Development (AI)` | started | An agent has it *now*. **The concurrency lock** | Agent |
+| `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
+| **`Deployed to DEV`** | started | **Merged to `development` and live on DEV. Where a firing ends** | Agent |
+| `Done (in production)` | completed | Promoted to `main` and live for riders. **Was `Done`** | **Owner** |
+| `Canceled` / `Duplicate` | canceled / duplicate | — | Either |
+
+```
+mcp__Linear__list_issue_statuses  team=Pedro & Dave
+```
+
+**Run that before the first status write of a firing.** A `save_issue` naming a status that no
+longer exists is the failure this table exists to catch, and it is not loud — the call can come
+back looking successful with the field silently dropped, which `CLAUDE.md` records happening
+four times in one batch to the `project` field.
+
+**Two traps live in the `Type` column, and both are the kind that fail silently:**
+
+- **`Deployed to DEV` is typed `started`.** So is `Queued (AI)`. **Never widen the STEP 1 lock
+  to "any issue whose statusType is `started`"** — that would count every queued story and every
+  story already shipped to DEV as work in flight, and the queue would freeze permanently while
+  looking perfectly healthy. The lock is **two names**, and STEP 1 says which.
+- **`Done (in production)` is the only `completed` status, and a session never sets it.**
+  Production promotion is manual and the owner's, done in their own session at their own timing
+  (§STEP 5). A firing that moves an issue there is claiming riders have the feature when they do
+  not.
+
+---
+
 ## STEP 0 — Can you even see the board?
 
 Try `mcp__Linear__list_issues` (load it via ToolSearch first). **If the Linear tools are not
@@ -137,55 +179,80 @@ is the worst possible place to guess. Let the next hour try again.
 
 ---
 
-## STEP 0.6 — Reduce the session before doing anything expensive
+## STEP 0.6 — Start the story in a clean context
 
-The session is reused, so every firing that reads files, greps the tree and reviews a diff
-in the **main thread** leaves that behind for every later firing. Unchecked, the Development
-session gets slower and dumber by the day. There is no tool available to a session that
-clears its own context — `/clear` and `/compact` are CLI commands the owner types — so the
-discipline below is the mechanism, not a nicety.
+The product owner's instruction, 2026-08-08: *"everytime a new story is about to be picked up,
+session should be compacted or cleared if possible before starting to build a new story."*
 
-**Delegate the build. Keep the main thread to gates, decisions and the final summary.**
+**It is not possible from inside the session, and that was measured rather than assumed.** The
+finding, so nobody spends another session rediscovering it:
 
-**The split is forced by what the squad can reach, not chosen — check before you redraw it.**
-No agent in `.claude/agents/` holds a single `mcp__Linear__*` tool, none holds
-`create_pull_request` or `merge_pull_request`, and **`gh` is not installed in this
-container**. So the Linear moves, the PR and the merge **cannot** be delegated to the squad
-and must stay in the main thread. They are cheap — a handful of calls — which is what makes
-this split workable rather than a compromise. Re-derive rather than trust it:
+| Route | Result |
+|---|---|
+| A tool that compacts or clears the caller's own context | **Does not exist.** Not in the built-in tool set, not in the Agent SDK's `Query` / `ClaudeSDKClient` surface |
+| A hook that *initiates* a compact | **Does not exist.** `PreCompact` and `PostCompact` are reactive only; no hook output field triggers either |
+| `/compact`, `/clear` | Built-in **CLI commands the owner types**. The `Skill` tool's own description says built-in commands are not skills, so there is no invocation path |
+| `claude --autocompact <n>` | Real, but it sets a **startup threshold** — it cannot fire mid-session, and this session was not started with it |
+| An env var or `settings.json` key | None. No `autoCompact`, no `compactInterval` |
+
+**So "clear the session" is an owner action, and the honest substitute is to build the story
+somewhere that starts empty.** A subagent does: it gets its own fresh context window, and its
+file reads, greps, diffs and test logs never enter this conversation. **One build subagent per
+story is therefore the closest achievable thing to a clear**, and it is the rule, not a
+preference.
+
+### The split — and the part of it that was untested is now tested
+
+**`general-purpose` and `claude` inherit this session's MCP grants. Probed 2026-08-08 from a
+real subagent**, because this file used to call the question untested and ask for exactly this
+experiment:
+
+- `mcp__Linear__list_issue_statuses`, `mcp__github__get_me`, `mcp__github__list_pull_requests`
+  and `mcp__Supabase__list_projects` **all resolved and returned real data**, authenticated as
+  `Lenhador88`, with **zero permission prompts and zero denials**. `git ls-remote origin`
+  succeeded too, so the git credential is reachable.
+- **The schemas are deferred, not preloaded.** Every one needed a `ToolSearch`
+  `select:<name>` lookup first. A subagent that calls `mcp__Linear__save_issue` straight off
+  fails on `InputValidationError` — **which looks exactly like a missing permission and is
+  not one.** Brief subagents to `ToolSearch` first.
+- **Only reads were probed. The writes — `save_issue`, `create_pull_request`,
+  `merge_pull_request`, `git push` — remain unverified**, and four clean reads are not
+  evidence about writes.
+
+**`gh` is still not installed**, so `mcp__github__create_pull_request` is the only route to a
+PR. Re-derive rather than trust any of this:
 
 ```bash
-grep -l "mcp__Linear__\|create_pull_request\|merge_pull_request" .claude/agents/*.md   # expect none
 command -v gh                                                                          # expect nothing
+grep -l "mcp__Linear__\|create_pull_request\|merge_pull_request" .claude/agents/*.md   # expect none
 ```
 
-- **Main thread, always:** STEPs 0–3, STEP 4b's triage decision, the Linear status moves, the
-  PR open/merge (STEP 4c), and STEP 5. The triage is a decision, so it stays here; the work it
-  decides to do goes to a subagent like any other build.
-- **Subagents, always:** the actual building — `feature`, `data`, `design-system`, `media`,
-  `realtime`, `test`, and the non-negotiable `reviewer` pass. Every one of those holds
-  Read/Write/Edit/Bash, which is all a build needs. A subagent's file reads, greps and test
-  output never enter this conversation; only its conclusion does.
-- Do not read a large file into the main thread to "get oriented". Ask a subagent for the
-  conclusion instead. `CLAUDE.md` §When to delegate: *the answer is a conclusion, not the
-  files*.
+That second command is why the squad agents cannot own the Linear and PR steps: none of them
+holds those tools in its frontmatter. The built-ins do — but until the write probe is done,
+**keep those calls in the main thread.** They are perhaps a dozen calls a firing and they carry
+no file content, so the split costs almost nothing:
+
+- **Main thread, always:** STEPs 0–3, STEP 4b's triage *decision*, the Linear status writes, the
+  PR open and merge (STEP 4c), and STEP 5.
+- **One build subagent, always:** everything from branching to a pushed, reviewed branch. It
+  runs the squad itself where the story needs specialists, and returns **a short report, never a
+  diff** — what landed, which files, what it wants triaged, and the two commit ranges STEP 4c
+  needs.
+- Do not read a large file into the main thread to "get oriented". Ask for the conclusion.
+  `CLAUDE.md` §When to delegate: *the answer is a conclusion, not the files*.
 - Never paste a full diff, a full test log or a full file into the main thread. A path and a
   line number is clickable and costs nothing.
 
-**Do not "run the whole pickup in one subagent" to save more.** An earlier draft said to,
-and it cannot work: the pickup has to move Linear statuses and open and merge a PR, and per
-above nothing in `.claude/agents/` can do either. The only agent types that could are the
-built-in `general-purpose` and `claude`, which inherit every tool — **but whether an
-inherited MCP grant actually survives into a subagent here is untested**, and a pickup that
-discovers it does not, halfway through, has already claimed the issue. Keep the split above.
-If you want to test the inherited-grant question, do it deliberately in its own session and
-write down what you find; do not find out during a firing.
+**The `reviewer` pass stays non-negotiable and stays a separate subagent from the builder.** Its
+entire value is that it did not write the code, so folding it into the build agent to save a
+hop destroys the thing it is there for.
 
-**Tell the owner when a clear would help.** You cannot do it, they can, and they will not
-know unless you say so. One line at the end of a firing is enough: *"this session is
-carrying N firings of history and holds nothing in flight — `/clear` is safe whenever you
-want it."* Only say it when STEP 5 finished cleanly, because a clear during in-flight work
-would discard exactly the context that makes the reuse worth having.
+### Tell the owner when a clear is due — and say it where they will see it
+
+You cannot clear this session; they can, and they will not know unless you say so. **STEP 5
+sends it as part of the push notification**, not only as a line of text in a transcript nobody
+opens on a phone. Only ever say it when STEP 5 finished cleanly and nothing is in flight — a
+clear mid-build would discard exactly the context that makes the reuse worth having.
 
 ---
 
@@ -196,6 +263,13 @@ statuses. **If ANY of them is in `Development (AI)` or `Needs help`, that is the
 is held.** One story at a time is the rule — an issue in either status means a previous
 firing is still in flight, or is blocked waiting on the owner. Carry the answer to STEP 1.5
 rather than exiting here.
+
+**Exactly those two names, and match on the name rather than the type.** `Deployed to DEV` is
+typed `started` and so is `Queued (AI)`, so a lock written as "any `started` issue" is held by
+every queued story and by every story that has already shipped — permanently, and with the
+symptom of a healthy job behind a busy queue. **A story sitting in `Deployed to DEV` does not
+hold the lock**: it is finished as far as a firing is concerned, and it waits there only for a
+production promotion the owner does by hand. See §The status names.
 
 **Scope that query to the project, never to the team, and this is not a style preference.**
 Measured 2026-08-07: `list_issues` filtered by team and `state: Development (AI)` returns
@@ -306,7 +380,7 @@ Only if the gates passed. List issues with status **`Queued (AI)`**.
 - Otherwise take the **highest priority** issue: Urgent (1) beats High (2) beats Medium (3)
   beats Low (4) beats No priority (0). Ties break by oldest `createdAt`.
 
-**Never take work from `Backlog`, `Todo Human`, `Todo AI` or `Needs decision`.**
+**Never take work from `Backlog AI`, `Todo Human`, `Todo AI` or `Needs decision`.**
 `Queued (AI)` is the only start signal — it is how the owner chooses what gets built, and
 picking from anywhere else takes that decision away from them. `Todo AI` is the one to be
 careful with: the name reads like permission and it is not one.
@@ -332,11 +406,18 @@ returns `relations.blockedBy` / `.blocks` / `.relatedTo`.
 mcp__Linear__get_issue  id=<the issue>  includeRelations=true   ->   .relations.blockedBy
 ```
 
-For each entry, look up its status. **If any blocker is not `Done` or `Canceled`, do not
-build this issue.** Comment on it once naming the unfinished blocker, then go back to STEP 2
-and take the next candidate by priority. Do **not** move it to `Needs help` — being blocked
-is an ordinary state, not something the owner must clear, and parking the whole queue for it
-would be worse than skipping one story.
+For each entry, look up its status. **A blocker counts as cleared when it is `Deployed to DEV`,
+`Done (in production)` or `Canceled`. Anything else and you do not build this issue.** Comment
+on it once naming the unfinished blocker, then go back to STEP 2 and take the next candidate by
+priority. Do **not** move it to `Needs help` — being blocked is an ordinary state, not something
+the owner must clear, and parking the whole queue for it would be worse than skipping one story.
+
+**`Deployed to DEV` has to be in that set, and leaving it out would deadlock the queue.** A
+firing branches off `development`, so a blocker merged there is *already available to build
+on* — waiting for `Done (in production)` would mean waiting for a manual promotion the owner
+does on their own schedule, and every dependent story in the column would sit blocked until
+they did. The build order and the release order are different questions; this check is the
+first one.
 
 If every candidate in the column is blocked, exit silently.
 
@@ -397,8 +478,11 @@ and merging is STEP 4c, after the triage. An earlier draft put the triage after 
 still told it to use "the same PR", which is not executable in order; `reviewer` caught it
 before this file shipped.
 
-Per STEP 0.6, prefer a subagent for anything that reads widely. The main thread should end
-this step holding a branch and a one-line result, not a diff.
+**Per STEP 0.6 this whole step runs in one build subagent, and that is the mechanism standing
+in for the clear the owner asked for.** Brief it with the issue, the branch name and the
+`CLAUDE.md` rules that bear on the story; let it run the squad itself. The main thread should
+end this step holding a branch name, a short report and the two commit ranges — never a diff,
+never a test log, never a file.
 
 ---
 
@@ -498,11 +582,36 @@ Never `Queued (AI)` — that is the owner's column and the only start signal.
 |---|---|
 | **`Todo AI`** | A session could build it, and you would recommend building it (≥ 4/10) |
 | **`Todo Human`** + `Owner only` | Nobody in a session can do it |
-| **`Backlog`** | You rated it below 4/10 — a real thought, not a triaged one |
+| **`Backlog AI`** | You rated it below 4/10 — a real thought, not a triaged one |
 
-**`Backlog` is not banned, and an earlier draft of this file banned it wrongly.** `Todo AI`
+**`Backlog AI` is not banned, and an earlier draft of this file banned it wrongly.** `Todo AI`
 means *triaged*, and the owner reads it to choose work; filling it with 2/10 ideas devalues
 exactly the column this change depends on.
+
+### Search before you file — update an existing issue rather than opening a second one
+
+The product owner's instruction, 2026-08-08: non-obvious improvements *"should lead to issues
+created **or updated** in linear"*. The second half is the one a firing will skip, and skipping
+it is not neutral — a board carrying two issues for one problem reads as two pieces of work,
+which is the same failure as filing nothing and then some.
+
+So for each item, **search first**:
+
+```
+mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  query=<a few distinctive words>
+```
+
+- **Something already covers it** → update that issue instead. Add a comment with what this
+  build learned, the four ratings and the PR it surfaced from; raise the priority or move the
+  status only if this build genuinely changed the picture. **Never move an existing issue into
+  `Queued (AI)`** — that is still the owner's column, and promoting one from inside a firing is
+  the same overreach as picking work from it.
+- **Nothing covers it** → create it, per the table above.
+- **Say which you did** in the STEP 5 comment. "Updated `PD-xxx`" and "filed `PD-yyy`" are
+  different facts and the owner is reading for both.
+
+Search on the *symptom*, not on your own phrasing of the fix — the existing issue was almost
+certainly written from a different angle, and a query built from your title will miss it.
 
 **Use `parentId` when the follow-up belongs to the same feature as the story it came out of.**
 §Sequencing's "one issue per feature" applies to work a firing files just as much as to work
@@ -571,15 +680,17 @@ reviewed at all:
 separate task, and STEP 4b's stories are part of it — a follow-up that was rated and then never
 filed is worse than one that was never noticed, because the rating made it look handled.
 
-**The order of the first two bullets is load-bearing.** A draft of this step wrote the `Done`
+**The order of the first two bullets is load-bearing.** A draft of this step wrote the closing
 comment first and told it to name the stories, which cannot be done before they exist:
 
-- **File every STEP 4b follow-up that did not get built.** First, because the next bullet links
-  them.
-- Merged → move the issue to **`Done`** and comment with the PR link, one line on what landed,
-  what was folded in, and a link to each story just filed.
+- **File or update every STEP 4b follow-up that did not get built.** First, because the next
+  bullet links them, and per STEP 4b's search rule some of them are updates to issues that
+  already exist rather than new ones.
+- Merged → move the issue to **`Deployed to DEV`** and comment with the PR link, one line on
+  what landed, what was folded in, and a link to each story filed **or updated**.
 - Send one push notification with the `PushNotification` tool: `Done ; ) <issue id> <short
-  title>`.
+  title>`. Append `— /clear is safe` when the session is idle per the last bullet, so the
+  owner learns it somewhere they actually read (STEP 0.6).
 - **Leave the session idle**: branch back on `development`, clean tree, nothing in flight —
   so the next firing's STEP 0.5 passes. This is now part of finishing the work rather than
   housekeeping, because the next firing reads that state as its gate.
@@ -588,7 +699,37 @@ comment first and told it to name the stories, which cannot be done before they 
 git checkout development && git pull origin development && git status --porcelain
 ```
 
-- Then the one line from STEP 0.6 about `/clear` being safe.
+### `Deployed to DEV` is where a firing ends. Production is not yours.
+
+**The owner promotes to production by hand, in their own session, at their own timing** —
+stated 2026-08-08: *"Deployment to production is not automated, and I will do it on a different
+session at my own will."* So:
+
+- **A firing never moves an issue to `Done (in production)`**, never opens a PR against `main`,
+  and never merges one. That status is a claim that riders have the feature, and only the
+  promotion makes it true.
+- **`Deployed to DEV` is an honest end state, not a lesser one.** The work is merged, green and
+  live on DEV. `CLAUDE.md` §Working Principles' *committed and pushed is not shipped* is
+  satisfied by the merge — the queue's unit of done is a merged PR, and the release is a
+  separate decision the owner owns.
+
+**Check the DEV deploy once before you claim it, and do not poll.** The status says *deployed*,
+so spending one call to avoid asserting something false is worth it — `CLAUDE.md`: *a claim
+about state needs the command that checks it*.
+
+```
+mcp__Vercel__list_deployments   -> the newest deployment of the development branch
+```
+
+- `READY`, or still `BUILDING`/`QUEUED` → move to `Deployed to DEV` and say which in the
+  comment. A build in flight is the normal case; the merge is the commitment and waiting on
+  Vercel would just burn the firing.
+- **`ERROR` → do not move it to `Deployed to DEV`.** That is a broken DEV, which is exactly
+  what §If you get stuck is for: `Needs help`, with the deployment URL and the failure in the
+  comment. Green CI and a failed deploy are different gates and CI passing does not cover this.
+- The Vercel connector missing or the call failing is **not** a reason to stop — note in the
+  comment that the deploy was unverified and carry on. An unlabelled guess is the thing to
+  avoid, not the missing check itself.
 
 ---
 
@@ -650,8 +791,9 @@ The rule now has two halves, and **STEP 4b is where they are applied**:
 
 - **Work that makes the picked story right travels with it** — when it passes the relatedness
   test *and* rates ≥ 7/10 with `This session` **Y**. Same branch, same PR, same `reviewer` pass.
-- **Everything else becomes a story** in `Todo AI`, `Todo Human` or `Backlog`, and the owner
-  decides when it gets built.
+- **Everything else becomes a story** in `Todo AI`, `Todo Human` or `Backlog AI` — or an update
+  to the issue that already covers it, per STEP 4b's search rule — and the owner decides when it
+  gets built.
 
 **What did NOT change: the story in front of you is still the scope**, and the old rule's last
 sentence still stands unedited — *a scheduled session is the worst possible place for scope
@@ -683,7 +825,7 @@ What it costs, and what each cost is paid with:
 | Cost | Paid with |
 |---|---|
 | The session is not idle by construction | STEP 0.5 |
-| Context accumulates across firings | STEP 0.6 |
+| Context accumulates across firings | STEP 0.6 — **partially.** No session can compact or clear itself, so the mechanism is a fresh subagent per story plus an owner-facing `/clear` prompt |
 | The trigger cannot carry push notifications | STEP 0 / STEP 5 send them from the session |
 | A firing can land mid-conversation with the owner | STEP 0.5 (1) — their work wins |
 
