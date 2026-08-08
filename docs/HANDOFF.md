@@ -1322,6 +1322,28 @@ comment and the ratings rather than a second issue. The owner asked for issues *
 updated"*, and the update half is the one a firing will skip; a duplicate reads to them as two
 pieces of work.
 
+**Two new idle gates, and they are the ones most likely to freeze the queue.** The owner asked
+for pickup only *"IF there are no other sessions active / doing work in claude code And I'm AFK
+for >15 mins."* Both come from one `list_sessions mine=true` call:
+
+| Gate | Signal |
+|---|---|
+| No other session working | any **other** session with `session_status: SESSION_STATUS_RUNNING` (= `status_bucket: …_WORKING`). `ARCHIVED` and `IDLE` do not count |
+| Owner AFK > 15 min | `max(updated_at)` across all **other** sessions, archived included — archiving is itself a thing the owner just did by hand |
+
+**Both must exclude the calling session's own id.** The firing runs in a RUNNING session and
+moves that session's `updated_at`, so a check that counts itself is held for ever — this repo's
+recurring silent-guard shape, fourth instance. The case exclusion loses is the owner typing into
+*this* session, which gate (1) already covers.
+
+**The AFK half is a labelled proxy, not a measurement.** It sees Claude Code activity only, so
+an owner reading the app, sitting in Linear or on their phone reads as away; there is no
+presence signal a session can reach. And it compounds with the hourly schedule — a burst of work
+15 minutes before the firing minute skips the whole hour, so a quiet queue is the gate working
+rather than the Routine being broken. STEP 1.5 stall-alarms on a stuck RUNNING session (naming
+its title, since nothing on the board points at it) and never on the AFK gate, which is a live
+human.
+
 **A firing now folds strong follow-ups into the same PR instead of filing all of them — 2026-08-07,
 at the product owner's request.** The old §Scope discipline sent adjacent improvements to `Backlog`
 "or note them in the PR", which in practice means the test a new function needs and the doc line

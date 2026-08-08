@@ -1790,12 +1790,22 @@ What it does, in order — and the order is the design:
 0.5. **Is the session idle? Gather, do not exit.** New with the reuse, and the cost it pays for.
    A fresh session was idle by construction; this one is not. The firing message queues behind
    whatever the session is doing and lands the moment that finishes — possibly mid-conversation
-   with the owner. Five checks: an unfinished owner request in the conversation, a dirty tree, a
-   branch with commits not on `development`, an open PR **whose head is the current branch**, and
-   **low Claude usage headroom**.
-   **The first is judgement and it is the one that matters**; three of the rest are the backstop
-   that catches a session which died mid-build. **The owner's work always wins** — the queue
-   waits an hour, which costs nothing.
+   with the owner. Seven checks: an unfinished owner request in the conversation, a dirty tree, a
+   branch with commits not on `development`, an open PR **whose head is the current branch**,
+   **low Claude usage headroom**, **any other Claude Code session currently RUNNING**, and
+   **the owner having touched any session in the last 15 minutes**.
+   **The first is judgement and it is the one that matters**; the rest are the backstop that
+   catches a session which died mid-build. **The owner's work always wins** — the queue waits an
+   hour, which costs nothing.
+
+   **The last two are the product owner's, 2026-08-08:** pick up a story only *"IF there are no
+   other sessions active / doing work in claude code And I'm AFK for >15 mins."* Both come from
+   one `list_sessions mine=true` call — `session_status` for the first, `max(updated_at)` for the
+   second — and **both must exclude the calling session's own id**, or the firing holds its own
+   gate and the queue never runs. The AFK half is explicitly a **proxy**: it sees Claude Code
+   activity and nothing else, so an owner reading the app or sitting in Linear reads as away.
+   It also slows the effective cadence well below hourly, which is the intent rather than a
+   fault.
 
    **The usage check is deliberately weaker than what was asked for, and that is the honest
    shape rather than a shortfall to be fixed.** The request (2026-08-07) was *"if any Claude

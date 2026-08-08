@@ -105,7 +105,7 @@ idle by construction. This one is not. The firing message is queued behind whate
 session is already doing and lands the moment that finishes — which may be the middle of a
 conversation with the owner, or the middle of a build.
 
-> **Gather the answers here; do NOT exit here.** Every reason to stop — this step's five and
+> **Gather the answers here; do NOT exit here.** Every reason to stop — this step's seven and
 > STEP 1's lock — is collected first and acted on together in **STEP 1.5**, which owns the
 > only exit path. That ordering is load-bearing and it is not how this file was first
 > written: an unconditional silent exit at STEP 0.5 sat *in front of* STEP 1's stall
@@ -171,6 +171,49 @@ conversation with the owner, or the middle of a build.
    Reading it back: a **disabled** trigger's `list_triggers` row has no `enabled` key at all
    rather than `"enabled": false`.
 
+6. **Another Claude Code session is working.** Product owner, 2026-08-08: the trigger picks up a
+   story only *"IF there are no other sessions active / doing work in claude code"*. One
+   `list_sessions` call answers it.
+
+   **Any session other than this one with `session_status` `SESSION_STATUS_RUNNING` — equivalently
+   `status_bucket` `SESSION_STATUS_BUCKET_WORKING` — is a reason to stop.** Archived and idle
+   sessions are not: `SESSION_STATUS_ARCHIVED` and `SESSION_STATUS_IDLE` both mean nothing is
+   executing.
+
+   **Exclude your own id or this gate is held by the firing itself** — the pickup runs in a
+   RUNNING session by definition, so a check that counts every RUNNING session never passes.
+   Fourth instance of this repo's recurring shape, and the cheapest one to get wrong.
+
+7. **The owner is at the keyboard.** Same instruction, second half: *"And I'm AFK for >15 mins."*
+   **If any of the owner's other sessions was touched within the last 15 minutes, stop.**
+
+   Take `max(updated_at)` across every session the same call returns **except this one**, and
+   compare it against now. **Archived sessions count** — archiving is itself something the owner
+   just did by hand, and a recent `updated_at` on an archived session is presence, not residue.
+
+   **This is a proxy for AFK, not a measurement of it, and it is labelled as one deliberately.**
+   It sees activity in Claude Code sessions and nothing else: the owner reading the app, sitting
+   in Linear, or on their phone all read as AFK. There is no presence signal a session can reach,
+   so this is the honest ceiling rather than a first approximation to be tightened later.
+
+   **Exclude this session for the same reason as (6)** — the firing lands here and moves this
+   session's own `updated_at`, so including it makes the gate permanently held. The case that
+   exclusion loses is the owner typing *into this session*, and (1) is what covers it: the two
+   checks are complementary rather than redundant.
+
+   **Note what this does to the cadence, because it is a consequence rather than a bug.** The
+   Routine fires hourly at a fixed minute. If the owner touched any session in the 15 minutes
+   before that instant, the whole hour is skipped — so a day of working in short bursts can mean
+   no pickups at all. That is what was asked for; it is written down here so a future session
+   reads a quiet queue as the gate working rather than as the Routine being broken.
+
+```
+list_sessions  mine=true  limit=20
+  -> exclude your own session id
+  -> (6) any remaining SESSION_STATUS_RUNNING            -> stop
+  -> (7) max(updated_at) of the rest within 15 minutes   -> stop
+```
+
 The commands for (2) (3) (4):
 
 ```bash
@@ -186,9 +229,10 @@ mcp__github__list_pull_requests  owner=Lenhador88 repo=letsride state=open
   -> keep only those whose head ref == $BRANCH
 ```
 
-**Only (1) and (5) need judgement, and (1) is the one that matters most.** The other three
-are the backstop that catches what judgement misses — a session that died mid-build leaves a
-dirty tree behind, and that is exactly the state where picking up a second story does damage.
+**Only (1) and (5) need judgement, and (1) is the one that matters most.** (2), (3), (4), (6)
+and (7) are all mechanical — a `git` command or one `list_sessions` call — and they are the
+backstop that catches what judgement misses. A session that died mid-build leaves a dirty tree
+behind, and that is exactly the state where picking up a second story does damage.
 
 **Do not "help" by finishing the in-flight work.** It was not queued to you, you do not know
 whether the owner is still deciding something about it, and a scheduled unattended session
@@ -308,7 +352,7 @@ blocked one looks stuck.
 
 ## STEP 1.5 — The only exit. Decide here, and never above here.
 
-You now hold every reason to stop: STEP 0.5's four and STEP 1's lock. **If none is true, go
+You now hold every reason to stop: STEP 0.5's seven and STEP 1's lock. **If none is true, go
 to STEP 2.** Otherwise stop — but run the stall check *before* you do, because this is the
 one place that can see a queue which has frozen.
 
@@ -327,6 +371,15 @@ oldest blocking condition has been true:
   external condition the owner already knows about and can see better than this session can.
   A push saying "the queue is stalled because your usage is high" tells them nothing they do
   not know and spends the very budget it is reporting on. Exclude it.
+- **Another session RUNNING (0.5 gate 6)** — **stalls, and this is the one most likely to
+  freeze the queue silently from now on.** A session left in `SESSION_STATUS_RUNNING` blocks
+  every firing for as long as it sits there, and unlike a lock or a branch there is nothing on
+  the board pointing at it. Age it by its `updated_at`. Name the session's title in the
+  notification, because "another session is working" is not actionable and *"'Postcard flip
+  with comments' has been RUNNING since 09:12"* is.
+- **The owner not being AFK (0.5 gate 7)** — never stalls. Same reason as (1) and (5): it is a
+  live human at a keyboard, and telling them the queue is waiting because they are using it is
+  noise about a condition they are actively creating.
 
 **If the oldest is more than 3 hours old but less than 4, send ONE push notification naming
 it and saying the queue is stalled, then stop.** The window is narrow on purpose: it fires
