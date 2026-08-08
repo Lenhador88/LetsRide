@@ -175,10 +175,15 @@ conversation with the owner, or the middle of a build.
    story only *"IF there are no other sessions active / doing work in claude code"*. One
    `list_sessions` call answers it.
 
-   **Any session other than this one with `session_status` `SESSION_STATUS_RUNNING` — equivalently
-   `status_bucket` `SESSION_STATUS_BUCKET_WORKING` — is a reason to stop.** Archived and idle
-   sessions are not: `SESSION_STATUS_ARCHIVED` and `SESSION_STATUS_IDLE` both mean nothing is
-   executing.
+   **Any session other than this one with `session_status: SESSION_STATUS_RUNNING` is a reason to
+   stop.** Archived and idle sessions are not: `SESSION_STATUS_ARCHIVED` and
+   `SESSION_STATUS_IDLE` both mean nothing is executing.
+
+   **Key off `session_status`, not `status_bucket`.** In the 2026-08-08 sample the two agreed —
+   the one RUNNING session was bucketed `…_WORKING`, archived ones `…_COMPLETED`, the idle one
+   `…_REVIEW_READY` — but that is one observation of a correlation, not a documented mapping, and
+   the bucket is a UI grouping that can be re-cut without the status changing. `session_status` is
+   the field that names the thing being asked about.
 
    **Exclude your own id or this gate is held by the firing itself** — the pickup runs in a
    RUNNING session by definition, so a check that counts every RUNNING session never passes.
