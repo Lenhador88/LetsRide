@@ -45,7 +45,7 @@ function briefs(): Array<{ name: string; body: string }> {
  * obituaries").
  *
  * It requires a CORRECTION MARKER, not merely a negation. The first draft
- * exempted bare `not`/`no`/`never`, which matched 27.4% of all brief lines — so
+ * exempted bare `not`/`no`/`never`, which matched ~27% of all brief lines — so
  * "A friend request is not visible to a blocked rider" sailed through, a
  * sentence that treats the dropped concept as live while happening to contain
  * "not". Caught by `reviewer` on the commit that added this file, which is the
