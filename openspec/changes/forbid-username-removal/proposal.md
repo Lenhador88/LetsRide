@@ -60,6 +60,13 @@ with database access.
 Decision #7 makes the username *the* display name — there is no `full_name` to fall back to — so
 this is not a cosmetic gap in one list. It is every rendering of that person, everywhere.
 
+**`location` is the other half of `003`'s completion invariant and is deliberately left
+writable-to-NULL.** It is reachable by the identical route — `authenticated` holds UPDATE on it,
+`profiles_location_length` admits NULL, and the same early return means an onboarded rider's
+`{"location": null}` lands. The difference is the harm: clearing a stated location is a privacy
+affordance a rider might legitimately want, and no policy keys on its nullness, so it hides
+nobody from anything. Stated here so the asymmetry is a decision rather than an oversight.
+
 **Why now:** it is live, the fix is additive, and pre-flight is clean on both databases (0 rows
 violate the invariant today — measured below). The window in which this costs one trigger branch
 and nothing else is open now.
@@ -88,8 +95,8 @@ and nothing else is open now.
 - **Removal is silently coerced, not raised.** The write succeeds and the stored value is
   unchanged, matching `012`'s treatment of `terms_accepted_at` one branch above it in the same
   function. The alternative — raising `check_violation` — is argued and rejected in `design.md`
-  §D2. The observable contract is therefore *state*, not an error code, and the assertions must
-  check the stored value rather than a rejection.
+  §D2. The **new rule** must therefore be asserted as stored state rather than as a rejection;
+  assertions that do check an error code are pinning refusals that predate this change.
 
 - **No application code changes.** `setUsername` keeps its direct
   `.from('profiles').update({ username })`, its `23505` and `23514` branches, and its column
@@ -180,29 +187,39 @@ Measured 2026-08-08 with `list_migrations` against `ls supabase/migrations/`:
 
 - **DEV is at `037`** (`20260808075952 places_index`).
 - **PROD is at `035`** (`035_comment_whitespace_floor`). Both `036` and `037` are unapplied there.
-- **`036_notifications` is deliberately held back.** Its own header is explicit: it hangs six
-  triggers off five already-shipped write paths, so from the moment it applies every like,
-  comment, RSVP, ride creation and club join runs new code inside the rider's transaction. PROD
-  goes only after those five paths have been exercised by hand on DEV *and* the code has
-  deployed.
+- **They are unapplied for opposite reasons, and `docs/HANDOFF.md` §Two migrations says so in
+  terms: "conflating them is how the wrong one gets applied".** `036_notifications` is held back
+  **deliberately** — its header hangs six triggers off five already-shipped write paths, so from
+  the moment it applies every like, comment, RSVP, ride creation and club join runs new code
+  inside the rider's transaction; PROD goes only after those five paths have been exercised by
+  hand on DEV *and* the code has deployed. **`037_places_index` is merely unshipped** — purely
+  additive, in `034`'s class, and HANDOFF states it *could* go to PROD ahead of its code, needing
+  only its own data load there.
 
-So `038` cannot reach PROD in filename order without dragging `036` in front of it. Three
-properties make the recommended default safe, and all three are stated so the owner is deciding
-rather than discovering this at apply time:
+So there are **three** orders available, not two, and the middle one is the recommendation:
+
+| Order | Deviation from filename order | Cost |
+|---|---|---|
+| `036`, `037`, `038` | none | the live hole waits on the notifications rollout |
+| **`037`, `038`** | **one file, and that file is not gated** | `037` reaches PROD with an empty `places` table until the owner's `\copy` |
+| `038` alone | two files, one of them the gated `036` | smallest apply, largest gap between file order and hosted order |
+
+Two properties make any of them safe, stated so the owner is deciding rather than discovering
+this at apply time:
 
 1. `038` touches `public.profiles` only, and `036`/`037` touch neither `profiles` nor
    `enforce_onboarding_completion`. They are independent files in every direction.
 2. `supabase/tests/run.sh` applies by filename, so the local suite always runs the full chain in
    order and proves nothing about the hosted apply order either way.
-3. **PROD's recorded order already differs from filename order** and always has —
-   `CLAUDE.md` records its rows running `001`, `004`, `005`, `006`, `007`, `002`. Out-of-order
-   application on PROD is precedent here, not a novelty.
 
-**Recommended default (Q3): apply `038` to PROD ahead of `036` and `037`, out of filename
-order**, on the grounds that the hole is live and the file is independent of both. Record the
-deviation in the migration header and in `docs/ENVIRONMENTS.md`. **The owner may prefer to let
-`038` ride behind `036`'s gate instead**; that is a legitimate call and the only cost is that the
-production hole stays open until the notifications rollout finishes.
+**Recommended default (Q3): apply `037` then `038`, leaving only the deliberately-gated `036`
+behind.** It closes the live hole while deviating from filename order by a single file that
+nothing is holding back — strictly less drift than skipping both, and it does not require the
+notifications rollout to finish first. `037` arriving with an empty `places` table is the state
+DEV is already in and is not a regression. Record the
+deviation in the migration header, in `docs/ENVIRONMENTS.md` and in `docs/HANDOFF.md`. **The owner
+may prefer either of the other two rows**; both are legitimate, and the cost of each is in the
+table.
 
 ## Open questions
 
@@ -226,9 +243,9 @@ decided)** Decided as coerce, matching `012`. Full argument in `design.md` §D2.
 question because it changes what the suite asserts, and a reviewer expecting `23514` would
 otherwise read the assertions as wrong.
 
-**Q3 — PROD apply order relative to the held-back `036`. (BLOCKING for the PROD apply only;
-product owner)** See §Deployment ordering. It does not block writing the migration, the tests, or
-the DEV apply.
+**Q3 — PROD apply order: which of the three rows in §Deployment ordering's table. (BLOCKING for
+the PROD apply only; product owner)** Recommended default is `037` then `038`. It does not block
+writing the migration, the tests, or the DEV apply.
 
 **Q4 — Is there a rider on PROD already in the impossible state? (non-blocking; answered)**
 Measured: no. 0 rows have `onboarding_completed_at` set with a NULL username on either database.

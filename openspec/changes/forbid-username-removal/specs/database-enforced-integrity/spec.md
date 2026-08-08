@@ -29,10 +29,9 @@ The rule is **"once set, never unset"**, keyed on the username's own prior value
 onboarding completion, so it also covers a rider who chose a name at step 1 and has not yet
 finished step 2.
 
-**The removal SHALL be coerced, not raised**: the statement succeeds and the stored value is
-unchanged, matching the treatment `012` gives `terms_accepted_at`. Every scenario below is
-therefore a statement about the **stored value**, not about an error code, and an assertion that
-checks for a rejection is asserting the wrong contract.
+**The invariant is the stored value**: after any such write, `username` SHALL hold what it held
+before. Whether the attempt is refused with an error or absorbed silently is an error-surface
+choice, not part of this contract — `design.md` §D2 makes it and owns it.
 
 #### Scenario: An onboarded rider cannot null their own username
 
@@ -47,8 +46,20 @@ checks for a rejection is asserting the wrong contract.
 - **WHEN** a rider whose `onboarding_completed_at` is NULL, and whose `username` is already set,
   updates their own row with `username` set to NULL
 - **THEN** the stored `username` SHALL be unchanged
-- **AND** the name SHALL continue to read as taken to every other rider running the step 1
-  availability check, so a name cannot be freed and re-taken by this route
+- **AND** the name SHALL remain unavailable to any other rider attempting to take it, enforced by
+  the `profiles_username_lower_key` unique index rather than by what the availability check
+  reports — so a name cannot be freed and re-taken by this route
+
+#### Scenario: An upsert is not a second route into the column
+
+- **WHEN** a rider issues a PostgREST upsert against their own row —
+  `Prefer: resolution=merge-duplicates`, which compiles to `INSERT … ON CONFLICT DO UPDATE` —
+  carrying `username` as NULL
+- **THEN** the stored `username` SHALL be unchanged
+- **AND** this SHALL be asserted rather than derived: `authenticated` holds INSERT on `username`
+  and an INSERT policy exists, so the upsert is a genuine second client route into the column, and
+  "the BEFORE UPDATE trigger fires for the DO UPDATE arm" is a two-step derivation that no test
+  currently pins
 
 #### Scenario: The legitimate first write is unaffected
 
@@ -71,8 +82,16 @@ checks for a rejection is asserting the wrong contract.
 - **THEN** this requirement SHALL NOT be relied upon to stop it, because `current_user` inside
   such a function is the function's owner and the trigger returns early for any role that is not
   `authenticated`
-- **AND** no such function exists today — `accept_terms`, `complete_onboarding` and
-  `my_onboarding_state` are the three that touch `profiles` and none of them writes `username`
+- **AND** **six** functions reference `public.profiles` and every one of them is
+  `security definer` — `private.may_participate`, `private.transfer_owned_clubs`,
+  `public.accept_terms`, `public.complete_onboarding`, `public.handle_new_user`,
+  `public.my_onboarding_state`. **Three of them write it** (`accept_terms`,
+  `complete_onboarding`, `handle_new_user`); none writes `username`, which is why the gap is
+  empty today rather than merely unexplored
+- **AND** `public.handle_new_user` is the one to watch: it INSERTs the profile row at signup and
+  deliberately leaves `username` NULL. Seeding a username there from OAuth or `user_metadata`
+  would be a write this requirement does not reach, so that change SHALL carry the rule in its
+  own body
 - **AND** any future one SHALL restate the rule in its own body, the way `complete_onboarding`
   already restates `003`'s and `023`'s guards for the same reason
 
@@ -137,8 +156,12 @@ negative silently becomes whatever the migration author assumed.
 
 - **WHEN** rider A blocks rider B, and B reads A's `profiles` row by any route
 - **THEN** zero rows SHALL be returned, unchanged, and the same SHALL hold with A and B exchanged
-- **AND** B SHALL NOT be able to detect whether A's username exists, changed, or was attacked, so
-  no new inference channel is opened by this change
+- **AND** this change SHALL open no new inference channel. **One pre-existing channel is stated
+  rather than denied**: `profiles_username_lower_key` is a plain unique index, so B attempting to
+  take A's name gets `23505` and learns it exists, while `isUsernameTaken` reads under the
+  block-aware SELECT policy and reports it free. That asymmetry predates this change, is unaltered
+  by it, and is the reason the mid-onboarding scenario above is worded against the index rather
+  than against the availability check
 
 #### Scenario: Club owner, admin, member and non-member
 

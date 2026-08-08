@@ -129,6 +129,14 @@ it wins.
 
 ### D2 — Coerce, do not raise
 
+**This decision lives here and not in the spec.** The contract is "the stored value is unchanged";
+*how* the attempt is refused is an error surface, and writing it into a standing capability spec
+would collide with follow-up B — a `set_username()` RPC would naturally raise, and would then be
+in breach of a requirement it satisfies in substance. It would also survive an archive as a
+permanent MUST, which is the wholesale-replacement hazard
+`openspec/changes/add-notifications/specs/database-enforced-integrity/spec.md` documents at its
+head.
+
 `new.username := coalesce(new.username, old.username)` silently keeps the old value. The
 alternative is `raise exception … using errcode = 'check_violation'`.
 
@@ -182,9 +190,27 @@ what makes it inert with respect to everything else in the chain.
 ### D6 — The security definer gap is documented, not closed
 
 A `security definer` function writing `username` would bypass this guard, because `current_user`
-is the owner and step 1 returns early. No such function exists (`accept_terms`,
-`complete_onboarding` and `my_onboarding_state` are the three that touch `profiles`; none writes
-`username`), so there is nothing to close today.
+is the owner and step 1 returns early.
+
+**Six functions reference `public.profiles`, not three, and all six are `security definer`** —
+measured against `pg_proc` on PROD 2026-08-08 rather than recalled:
+
+| Function | Writes `public.profiles` |
+|---|---|
+| `private.may_participate` | no |
+| `private.transfer_owned_clubs` | no |
+| `public.accept_terms` | **yes** — `terms_accepted_at`, `terms_version` |
+| `public.complete_onboarding` | **yes** — `location`, `onboarding_completed_at` |
+| `public.handle_new_user` | **yes** — INSERTs the row at signup |
+| `public.my_onboarding_state` | no |
+
+None writes `username`, so the gap is empty today — but it is a *populated category with an empty
+intersection*, not the empty category an earlier draft of this section implied. **`handle_new_user`
+is the one to watch**: it creates the profile row and deliberately leaves `username` NULL
+(`rls_test.sql:105`, *"the signup trigger no longer invents a username"*). Seeding a username
+there from OAuth or `user_metadata` — the obvious future extension — is a write this guard does
+not reach, and someone making that change would never find the rule if the enumeration told them
+only three functions existed and none of them wrote anything.
 
 Closing it speculatively would mean deleting the `current_user` gate, which would break the seed,
 the signup trigger and the dashboard repair path — trading a hypothetical for three real
