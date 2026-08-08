@@ -37,23 +37,21 @@ type Upload =
  * design/frames/home-create-postcard-home-postcards-all-new.json) — not only
  * the named `v2 / Component / Input / Image` set. The frame is fully
  * readable; it was missed the first time only because this exact screen name
- * repeats across six frames in five other flows (CLAUDE.md §Development
- * Workflow's screen-name trap), so qualify with the flow to find it. It
- * draws a 358×224 box, radius 8, `White/100` fill, 1px solid `Grey/20%`
- * stroke, and centred content — the 24×24 `Image` icon in `Grey/60` above
- * "Add photo" set as an `Accent Brand/100` 14/Semibold link button — one
- * tappable control in both states, which the shipped single button already
- * matches. (The named component set itself still carries stale
- * `Grey (OLD)/15` dark-background styling; it's the composer's own frame
- * that draws the live white/green version actually shipped.)
+ * repeats across six frames total, two of them inside this same flow
+ * (CLAUDE.md §Development Workflow's screen-name trap), so qualify with the
+ * flow to find it. It draws a 358×224 box, radius 8, `White/100` fill, 1px
+ * solid `Grey/20%` stroke, and centred content — the 24×24 `Image` icon in
+ * `Grey/60` above "Add photo" set as an `Accent Brand/100` 14/Semibold link
+ * button, drawn only in the Empty state and sized to the button, not the
+ * box. Making the whole box tappable is ours, logged as a deviation below.
  *
  * The rest of the frame is also now readable and differs on purpose from
  * what ships below: field order is box → Club → caption, and Post is a
  * small primary button in the header beside Cancel rather than inline at
  * the bottom. That reorder is separate follow-up work, not done here.
- * Geometry, radius, stroke and the label's colour are logged as deliberate
+ * Box geometry, tap target, colours and label type are logged as deliberate
  * deviations rather than adopted — see docs/FIGMA-FIDELITY-TODO.md
- * §Create postcard.
+ * §Create postcard for the full list.
  */
 export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
   const [state, formAction, pending] = useActionState(createPostcard, emptyActionState)
@@ -141,9 +139,7 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
           type="file"
           accept="image/*"
           onChange={onFileChange}
-          tabIndex={-1}
-          aria-hidden="true"
-          className="sr-only"
+          className="hidden"
         />
 
         {upload.status === 'uploading' && (

@@ -910,8 +910,9 @@ npm run figma -- icons               # the exported icon set
 ```
 
 **Screen names repeat across flows** — six frames are called `Home - Postcards - All new`,
-one per flow that shows the home screen. Qualify with the flow, as above; an ambiguous name
-prints every match with its flow and node id, so the next command is copy-pasteable.
+across five flows, two of them inside `Home / Create postcard` itself. Qualify with the
+flow, as above; an ambiguous name prints every match with its flow and node id, so the next
+command is copy-pasteable.
 
 **`tree` and `text` hide layers Figma has toggled off** — a component instance carries every
 variant slot it does not use, so the Home header still *contains* the back button it hides.

@@ -728,7 +728,7 @@ Deviations that are ours, not the design's:
 
 ### Create postcard
 
-- [x] ~~**Flow order**~~ — **the picker half is measured, 2026-08-08 (PD-112).**
+- [x] ~~**Photo picker composition**~~ — **measured, 2026-08-08 (PD-112).**
       `v2 / Component / Input / Image` (`1918:17004`) is one box, `State=Empty` /
       `State=Filled`, with no separate button beside it — `Empty` holds `Element / Icon /
       Image` at 24×24 above the label "Add photo" (`Poppins/12/Regular`); `Filled` is the same
@@ -737,25 +737,42 @@ Deviations that are ours, not the design's:
 - [ ] **The composer's own frame is readable, and the earlier claim that "the component set
       only covers the box, not the composer frame" was wrong — corrected 2026-08-08 after
       `reviewer` found it.** `Home / Create postcard` → `Home - Postcards - All new`
-      [`1918:16843`] / [`1918:17056`] (390×844 each,
-      `design/frames/home-create-postcard-home-postcards-all-new(-2).json`) was missed on the
-      first pass only because this exact screen name repeats across six frames in five other
-      flows — `CLAUDE.md` §Development Workflow's screen-name trap; qualify with the flow to
-      find it. It is one screen, no crop step: the photo box (358×224, radius 8, `White/100`,
-      1px solid `Grey/20%` stroke, "Add photo" as an `Accent Brand/100` 14/Semibold link
-      button — see the deviation below) is followed by a `Club` field, then
-      `What's on your mind?`, with `Post` a small primary button in the header beside `Cancel`
-      rather than inline at the bottom. Order, header-button placement, and both field labels
-      ("Club" / "What's on your mind?" vs. the shipped "Who can see this" / "Caption") all
-      differ from what ships. **Filed as separate follow-up — not changed by this fix**, which
-      only touches the box's own tap behaviour and focus/retry handling.
-- [ ] **Photo box geometry, radius, stroke and label colour deviate from the frame — found
-      2026-08-08, deliberately not adopted.** Same status as §Rides list's RSVP-pill contrast
-      finding: a design question on record, not a bug to silently patch. The frame's box is a
-      358×224 landscape rectangle (~1.6:1) at radius 8, 1px solid `Grey/20%`, with "Add photo"
-      as an `Accent Brand/100` 14/Semibold link button. The shipped box (`aspect-4/5`,
-      `rounded-xl`, `border-2 border-dashed border-border-strong`, `text-xs text-muted` label)
-      deviates on all four, and none are adopted here:
+      [`1918:16843`] (390×844,
+      `design/frames/home-create-postcard-home-postcards-all-new.json`) was missed on the
+      first pass only because this exact screen name repeats across six frames total, two of
+      them inside this same flow — `CLAUDE.md` §Development Workflow's screen-name trap;
+      qualify with the flow to find it. It is one screen, no crop step: the photo box (358×224,
+      radius 8, `White/100`, 1px solid `Grey/20%` stroke, "Add photo" as an
+      `Accent Brand/100` 14/Semibold link button — see the deviation below) is followed by
+      a `Club` field, then `What's on your mind?`, with `Post` a small primary button in the
+      header beside `Cancel` rather than inline at the bottom. Order, header-button placement,
+      and both field labels ("Club" / "What's on your mind?" vs. the shipped "Who can see
+      this" / "Caption") all differ from what ships. **Filed as separate follow-up — not
+      changed by this fix**, which only touches the box's own tap behaviour and focus/retry
+      handling.
+
+      The other frame sharing this name, [`1918:17056`]
+      (`design/frames/home-create-postcard-home-postcards-all-new-2.json`), is a rougher
+      variant, not a second source for the measurements above: same 390×844 canvas and
+      `Cancel` placement, but **no `Club` field at all**, the placeholder `"What's up?"`
+      instead of a labelled field, and `Post` drawn in its **disabled** variant. Not cited for
+      anything above.
+- [ ] **The whole box is the tap target; the frame only shows a small button inside it —
+      found 2026-08-08.** The frame's tappable element is `1918:17042`
+      (`v2 / Component / Button / Link / Primary`, "Add photo"), 75×32, sitting inside the
+      358×224 box — not the box itself. The named `v2 / Component / Input / Image` set draws
+      no Filled-state control either: `1918:17013` / `1918:17014` (`State=Filled`) have no
+      children at all, just the photo as the fill. Making the whole box tappable is ours —
+      defensible on the 44px glove-target floor, and the owner asked for it — but it is a
+      deviation, not a measured match, and belongs here rather than only in the docstring.
+- [ ] **Photo box styling deviates from the frame on six counts — found 2026-08-08,
+      deliberately not adopted.** Same status as §Rides list's RSVP-pill contrast finding: a
+      design question on record, not a bug to silently patch. The frame's box is a 358×224
+      landscape rectangle (~1.6:1) at radius 8, 1px solid `Grey/20%`, with a `Grey/60` icon and
+      "Add photo" set as an `Accent Brand/100` 14/Semibold link button. The shipped box
+      (`aspect-4/5`, `rounded-xl`, `border-2 border-dashed border-border-strong`, icon and
+      label both `text-muted` via `currentColor`, label `text-xs`) deviates on all six, and
+      none are adopted here:
       - **Aspect ratio** — `aspect-4/5` (0.8:1, portrait) vs. the frame's ~1.6:1 landscape box.
         PD-112 specified `aspect-4/5` directly; silently reversing an explicit instruction
         would be worse than logging the gap.
@@ -763,6 +780,11 @@ Deviations that are ours, not the design's:
         is on record for the difference; logged rather than guessed at.
       - **Stroke** — `border-2 border-dashed` vs. the frame's 1px solid. The colour already
         matches (`border-border-strong` **is** `Grey/20%`); only weight and dash differ.
+      - **Icon colour** — `Grey/80` (via `currentColor`) vs. the frame's `Grey/60`. `CLAUDE.md`
+        §Design System already flags `Grey/60` as "near-unused; may be a stray", which is
+        reason enough not to chase it.
+      - **Label size and weight** — `text-xs` (12px, regular) vs. the frame's 14/Semibold.
+        Untouched for the same reason as the colour below.
       - **Label colour** — `text-xs text-muted` (`Grey/80`) vs. the frame's `Accent Brand/100`
         14/Semibold link style. Kept on purpose: the frame's green measures **3.52:1** on
         `White/100`, under the 4.5:1 bar for 14px text, while `text-muted` measures **5.74:1**.
