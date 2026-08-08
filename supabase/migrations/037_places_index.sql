@@ -447,9 +447,11 @@ grant select on public.places to authenticated;
 -- "Vrijthof" now finds the places on it. `postcode` is STILL excluded, and 039
 -- §2 says why. Read 039 before changing anything below.
 --
--- ** This banner and the one in §3 are the only edits made to 037 after it
--- shipped, and they break one thing: the file no longer md5-matches its own
--- applied statement. ** 037
+-- ** Three comment edits were made to 037 after it shipped — this banner, the
+-- one in §3, and the corrected index count in the Verification footer — and
+-- together they break one thing: the file no longer md5-matches its own applied
+-- statement. ** A partly-annotated file is worse than either choice made
+-- consistently, so every stale claim is marked rather than some of them. 037
 -- was applied to DEV byte-identical — recorded `md5(statements[1])` was
 -- `1dcfa7d58c7422c2772310bda1e27d12`, equal to `md5sum` of this file including
 -- its trailing newline — and adding these lines changes that hash while
@@ -634,7 +636,9 @@ grant execute on function public.search_places(text, double precision, double pr
 --   select prosecdef, proconfig from pg_proc
 --    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure;
 --
---   -- 4 — pkey plus the three from §3
+--   -- 3, NOT the 4 this line predicted until 2026-08-08 — 039 drops the two
+--   -- trigram indexes from §3 and adds one over `search_text`, so the live set
+--   -- is places_pkey, places_lat_lon_idx, places_search_text_trgm_idx.
 --   select indexname from pg_indexes where schemaname='public' and tablename='places';
 --
 --   -- extensions, not public

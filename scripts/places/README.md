@@ -176,6 +176,29 @@ sequential scan, and two contracts the UI has to honour:
   rows match: a distant place can be crowded out by five nearby ones. The escape
   hatch is to type the town — which is exactly what `039` made possible.
 
-- **Debounce the input.** A bare city name with no location measured **541 ms** on
-  a 750k-row *synthetic* bench (`039` §5c) — not on the real table, which is
-  empty. With a location supplied every term measured came in at 17–47 ms.
+- **Debounce the input — required, not advisable.** Cost is roughly linear in
+  matched rows (8–11 µs each), and **the broadest tokens are street-type
+  suffixes, not city names**. On a 750k-row *synthetic* bench (`039` §5c — not
+  the real table, which is empty), national pass, best of five:
+
+  | term | rows matched | national | with a location |
+  |---|---|---|---|
+  | `Kerkstraat` | 17,876 | 171 ms | 37 ms |
+  | `Maastricht` | 45,029 | 497 ms | 51 ms |
+  | `weg` | 89,200 | 740 ms | 44 ms |
+  | `sta` | 101,524 | **996 ms** | 54 ms |
+  | `straat` | 391,586 | **2,957 ms** | 152 ms |
+
+  **`sta` is the case to design around**: three characters, so it is the *first*
+  query the typeahead fires the moment the guard stops refusing — someone typing
+  "Stationsweg". `straat` matches **52% of the table**; the biggest city matches
+  6%. Fire on a pause, not a keystroke, and **always pass `near_lat`/`near_lon`
+  when you have them** — the bbox is what keeps every row above under 152 ms.
+
+  **This is a cost class `037` did not have and `039` creates.** Those tokens
+  used to be matched against `name`/`brand`, where `straat` appears in a handful
+  of business names; they are now matched against every row's street line.
+
+  Nothing exceeds the 8 s statement timeout, so no rider sees an error — which is
+  the hazard as much as the reassurance. Duplicate tokens are collapsed before
+  matching (`039` §5d), so a repeated word cannot multiply the work.

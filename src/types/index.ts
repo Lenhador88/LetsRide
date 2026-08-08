@@ -711,8 +711,24 @@ export type Place = {
  *    and anything outside ±90 / ±180 fall back to the nationwide ranking rather
  *    than raising, so a broken GPS costs relevance and never an error toast.
  *
- * **Debounce it.** A bare city name with no location measured 541 ms on that
- * same synthetic bench — the widened search has a genuinely expensive shape.
+ * **Debounce it — required, not advisable, and the numbers are worse than a
+ * city name.** Cost is roughly linear in matched rows (8–11 µs each) and the
+ * broadest tokens in Dutch address text are street-type suffixes. On the same
+ * 750k-row synthetic bench, national pass: `straat` **2,957 ms** (it matches
+ * 52% of rows), `sta` **996 ms**, `weg` 740 ms, a city name 497 ms.
+ *
+ * **`sta` is the one to design around** — three characters, so it is the *first*
+ * query this fires the instant the guard stops refusing, for anyone typing
+ * "Stationsweg". Two things to do about it, both client-side:
+ *
+ *  - Fire on a pause, not a keystroke.
+ *  - **Always pass `near_lat`/`near_lon` when you have them.** With a location
+ *    every term above measured 29–152 ms, because the bbox applies. Without one
+ *    there is nothing to narrow the scan.
+ *
+ * Nothing exceeds the 8 s statement timeout, so a slow query surfaces as a slow
+ * screen rather than an error — which is why this is worth reading rather than
+ * discovering.
  */
 export type PlaceSearchResult = {
   /** The Overture GERS id. Store this on the ride, not the label. */

@@ -6841,6 +6841,27 @@ rollback to savepoint username_038;
 -- Coordinates are chosen against the same Utrecht probe 037 uses:
 --
 --   Utrecht probe   52.09 / 5.11, box lat 51.84..52.34, lon 4.71..5.51
+--
+-- ** Mutation record, because a tally is the only honest way to read coverage. **
+-- Nineteen mutations of 039 have been run against this suite: 18 are caught, and
+-- the 19th is provably uncatchable. THREE were caught only after review found
+-- them green, and each now has an assertion written for it and re-mutated:
+--
+--   * removing the `score` pinning to 0        -> the Kerkstraat pair (039.3)
+--   * removing the national `ilike all (pats)` -> the five-token pair (039.2)
+--   * removing the dedup `group by`            -> 039.4, structural only
+--
+-- ** The dedup one took two attempts and the first failure is worth carrying. **
+-- Deduplication cannot change a result, so only a structural assertion can see
+-- it — and the obvious `prosrc like '%group by s.tok%'` matched the function's
+-- own EXPLANATORY COMMENT, which `prosrc` includes, so it passed with the code
+-- deleted. It now matches `group by s.tok) d`. This is CLAUDE.md's comment trap
+-- inside a function body rather than inside a grep.
+--
+-- One mutation is UNCATCHABLE and no assertion claims otherwise: padding
+-- `pats[1]` to '%' like the other three slots is unobservable, because a
+-- token-less term never reaches the join. That is recorded at 039.4 rather than
+-- papered over with an assertion that would pass either way.
 savepoint places_039;
 
 reset role;
@@ -6858,11 +6879,31 @@ insert into places (id, name, brand, category, lon, lat, street, locality, postc
   ('p039-jumbo-u5', 'Jumbo', null, 'shop', 5.11, 52.14, 'Biltstraat 5', 'Utrecht', '3572 AE', 'NL', 0.9),
   ('p039-jumbo-m',  'Jumbo', null, 'shop', 5.69, 50.85, 'Wycker Brugstraat 7', 'Maastricht', '6221 CJ', 'NL', 0.9),
 
-  -- Symptom 1: a street name found nothing under 037. Both are inside the box.
-  -- Only kerk-b carries house number 40, which is what makes the two-token
+  -- Symptom 1: a street name found nothing under 037. Both are inside the box,
+  -- and only kerk-b carries house number 40, which is what makes the two-token
   -- assertion able to fail.
-  ('p039-kerk-a', 'Slagerij Van Dijk', null, 'shop', 5.11, 52.095, 'Kerkstraat 12', 'Utrecht', '3581 AA', 'NL', 0.8),
-  ('p039-kerk-b', 'Bloemist Bos',      null, 'shop', 5.11, 52.096, 'Kerkstraat 40', 'Utrecht', '3581 AB', 'NL', 0.8),
+  --
+  -- ** They are ALSO the pair that pins `score` to 0 for an address-only match,
+  -- and that job dictates their names and coordinates. ** An earlier revision
+  -- named them 'Slagerij Van Dijk' and 'Bloemist Bos' — both score 0.0 against
+  -- 'Kerkstraat', so removing the score pinning changed nothing and the mutation
+  -- survived the whole suite. These two disagree instead:
+  --
+  --   kerk-a  'Bakkerij'     similarity 0.0526 (shares the trigram `ker`), 12 km out
+  --   kerk-b  'Vishandel Q'  similarity 0.0,                               at the probe
+  --
+  -- Shipped, both scores are pinned to 0 and `dist2` orders them: kerk-b first.
+  -- Unpinned, kerk-a's incidental 0.0526 wins and it leads. kerk-a also sorts
+  -- first by id, so the shipped order is reachable ONLY through distance.
+  ('p039-kerk-a', 'Bakkerij',    null, 'shop', 5.11, 52.20, 'Kerkstraat 12', 'Utrecht', '3581 AA', 'NL', 0.8),
+  ('p039-kerk-b', 'Vishandel Q', null, 'shop', 5.11, 52.09, 'Kerkstraat 40', 'Utrecht', '3581 AB', 'NL', 0.8),
+
+  -- FIVE tokens is one more than the four indexed slots, so token 5 is enforced
+  -- by `ilike all (pats)` alone. This row carries Alfa/Bravo/Charlie/Delta and
+  -- Echo but NOT Zulu, which is what lets the fifth token be observed at all.
+  -- Placed outside every Utrecht box so it is reached only by the national pass,
+  -- which is the arm whose `ilike all` had no coverage.
+  ('p039-fivetok', 'Alfa Bravo Charlie Delta', null, 'cafe', 6.90, 53.40, 'Echo 1', 'Foxtrot', '9999 ZZ', 'NL', 0.6),
 
   -- Ranking, local pass. `Vondel` must put the place CALLED Vondel above the
   -- place ON Vondelstraat — and the fixture is built so that BOTH other keys
@@ -6969,6 +7010,44 @@ select assert_eq(
   (select count(*)::int from search_places('Jumbo Zzzznietbestaat', 52.09, 5.11)),
   0, '039: every token must match — an unmatched one returns nothing rather than being dropped');
 
+-- ** Tokens beyond the fourth, which ONLY `ilike all (pats)` enforces. **
+-- `pat1`..`pat4` are the four indexed slots; a fifth token is carried by the
+-- array alone. Reviewer deleted `and p.search_text ilike all (t.pats)` from the
+-- NATIONAL pass and the suite stayed green — the local-pass copy is caught by
+-- the Jumbo Maastricht assertion above, that one had nothing. No location, so
+-- the local pass is empty and this is unambiguously the national arm.
+--
+-- The positive twin is not decoration: without it, "returns 0" would also pass
+-- against a function where five-token queries never match anything at all.
+select assert_eq(
+  (select count(*)::int from search_places('Alfa Bravo Charlie Delta Zulu')),
+  0, '039: a FIFTH token still constrains — only `ilike all (pats)` carries it, since the four indexed slots are already spent');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Alfa Bravo Charlie Delta Echo')) s),
+  '{p039-fivetok}'::text,
+  '039: ... and a five-token query whose every token DOES match still returns the row, so the assertion above is about Zulu and not about arity');
+
+-- ** Duplicate tokens are collapsed, and this is a COST guard wearing a
+-- correctness assertion's clothes. ** `x AND x` is `x`, so deduplication can
+-- never change a result — which is exactly why nothing else here would notice
+-- if the `group by s.tok` were "simplified" away, restoring a 2.5x multiplier a
+-- rider controls through the 100-character cap (039 §5d: 7,063 ms against
+-- 2,784 ms on the bench). Asserted as equality between a repeated term and its
+-- single-token form, in both passes.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat Kerkstraat Kerkstraat', 52.09, 5.11)) s),
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '039: a repeated token is identical to a single one — dedup is result-preserving, and the `group by` that makes it cheap is load-bearing');
+select assert_eq(
+  (select count(*)::int from search_places('Alfa Alfa Bravo Bravo Charlie Charlie Delta Delta Echo Echo')),
+  1, '039: ... and dedup happens BEFORE the four indexed slots are filled, so ten tokens that collapse to five still match');
+
 -- Adding a word narrows, never widens. The property the two-pass fix rests on.
 select assert_eq(
   (select count(*)::int from search_places('Kerkstraat', 52.09, 5.11))
@@ -7000,6 +7079,21 @@ select assert_eq(
              from search_places('Zoekmerk', 52.09, 5.11)) s),
   '{p039-merk-b-brand,p039-merk-a-addr}'::text,
   '039: a BRAND match is a name match — it leads even at 12 km against an address match at zero, with both scoring 0');
+
+-- ** The other half of §4's rule: `score` is PINNED TO 0 for an address-only
+-- match, and nothing asserted it until reviewer mutated it. ** Every assertion
+-- above isolates `mrank`; removing the `case when m.named then … else 0 end`
+-- from `score` left the suite green, because a name match always outscores an
+-- address match anyway. This is the case where it bites: two rows that BOTH
+-- match only through their street, so mrank ties and score is the whole
+-- question. Unpinned, `Bakkerij` leads on 0.0526 of incidental trigram overlap
+-- with `Kerkstraat` — from 12 km away, over a row at the probe itself.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '{p039-kerk-b,p039-kerk-a}'::text,
+  '039: two address-only matches are ordered by DISTANCE, not by incidental name similarity — score is pinned to 0 for them');
 
 -- The same two rules through the NATIONAL pass, which is a different ORDER BY.
 -- 037.7b's discipline: a tiebreak asserted in one pass is untested in the other.
@@ -7076,10 +7170,27 @@ select assert_eq(
     where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
   1, '039: `t.pat2` appears exactly once — only the NATIONAL pass indexes more than one token; adding one to the local pass costs it the bbox index');
 select assert_eq(
-  (select prosrc like '%order by (s.tok ~ ''[[:alnum:]]{3}'') desc, s.ord%'
+  (select prosrc like '%order by (d.tok ~ ''[[:alnum:]]{3}'') desc, d.ord%'
      from pg_proc
     where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
   true, '039: ... and tokens are ordered indexable-first, so those slots go to tokens a trigram index can actually serve');
+-- The dedup itself, named. Its behavioural assertion in 039.2 is an EQUALITY
+-- between two calls, which passes just as well if both sides are broken; this
+-- says the mechanism is present. 039 §5d has the 2.5x it is worth.
+--
+-- ** Matched on `group by s.tok) d` — WITH the closing paren and alias — and
+-- that detail is the whole assertion. ** `prosrc` includes the function's own
+-- comments, and the line above the code explains what `group by s.tok` is for.
+-- The obvious pattern therefore matches the COMMENT and passes with the code
+-- deleted: written that way first, it survived its mutation. CLAUDE.md calls
+-- this the repo's most-repeated measurement error — a description of a thing
+-- looks exactly like the thing — and it is just as true inside a function body
+-- as in a grep.
+select assert_eq(
+  (select prosrc like '%group by s.tok) d%'
+     from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  true, '039: ... and duplicate tokens are collapsed before the slots are filled — a cost guard no result can reveal');
 
 -- --------------------------------------------------------------------------
 -- 039.5  LIKE escaping, now applied PER TOKEN.

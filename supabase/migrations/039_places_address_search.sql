@@ -243,8 +243,8 @@ drop index public.places_brand_trgm_idx;
 -- ** The measured half: a short token ANDed with an indexable one is free. **
 -- On the bench (750k rows, and see §2 for why that is not this table):
 --
---     search_text ilike '%40%'                          287 ms, parallel seq scan
---     search_text ilike '%Jumbo%' AND ilike '%40%'      8.9 ms, bitmap index scan
+--     search_text ilike '%40%'                          819 ms, sequential scan
+--     search_text ilike '%Jumbo%' AND ilike '%40%'       12 ms, bitmap index scan
 --
 -- The first is the failure mode the guard exists for: `40` is two characters, no
 -- trigram can be extracted, and the pattern degenerates to a full scan. The
@@ -280,23 +280,23 @@ drop index public.places_brand_trgm_idx;
 -- `places_lat_lon_idx` from the plan. Measured on the bench, local pass,
 -- `Maastricht` (45,029 matching rows) at the Utrecht probe:
 --
---     1 conjunct    BitmapAnd(trgm, lat_lon) -> 1,648 heap rows      48 ms
---     2 conjuncts   trgm only, bbox as filter -> 45,029 heap rows   214 ms
---     3 conjuncts   ... same                                       271 ms
---     4 conjuncts   ... same                                       333 ms
+--     1 conjunct    BitmapAnd(trgm, lat_lon), bbox as an INDEX COND     53 ms
+--     2 conjuncts   trgm only, bbox demoted to a filter                274 ms
+--     3 conjuncts   ... same                                           312 ms
+--     4 conjuncts   ... same                                           343 ms
 --
 -- One conjunct, and the bbox does the work it exists to do. The remaining
 -- tokens are still enforced — by `ilike all (pats)`, which is correct and
 -- unindexable, applied to the ~1,600 rows the BitmapAnd already narrowed to.
 --
 -- ** `ilike all (array)` never uses the index — verified, not assumed. ** On its
--- own it is a parallel sequential scan (279 ms). That is why it appears only
+-- own it is a parallel sequential scan (300 ms). That is why it appears only
 -- alongside an explicit conjunct, in both passes, and why the national pass
 -- spells out four patterns instead of relying on the array.
 --
 -- The `'%'` padding in slots 2-4 is a no-op sentinel for a query with fewer than
 -- four tokens: it extracts no trigram, so GIN ignores it, and it is true for
--- every row. Measured at no cost (7.6 ms against 7.6 ms).
+-- every row. Measured at no cost (9.3 ms against 9.9 ms).
 --
 -- ** Slot 1 is left un-padded, and that is defence in depth rather than the
 -- barrier — stated carefully because the obvious reading is wrong. ** It looks
@@ -314,34 +314,82 @@ drop index public.places_brand_trgm_idx;
 -- them all in one scan.
 --
 -- ---------------------------------------------------------------------------
--- §5c. What this costs — measured, and where it is worst
+-- §5c. What this costs — measured, and it is worse than a city name
 -- ---------------------------------------------------------------------------
--- Best of three warm runs, same synthetic bench, Utrecht probe for "local":
+-- ** An earlier revision of this section put the worst case at 541 ms, from a
+-- bare CITY NAME. That was understated by more than 5x, because a city name is
+-- nowhere near the broadest token in Dutch address text. ** Review caught it and
+-- the figures below are a re-measurement on the same synthetic bench (750k rows,
+-- PG 16.13, best of five warm runs; §2 says why that is not this table).
 --
---     term                     rows matched   037      039
---     'Jumbo'          local          1,021    13 ms    17 ms
---     'Jumbo Maastricht' local           82    19 ms    23 ms   (037: 0 rows)
---     'Cafe'           local         34,641    26 ms    31 ms
---     'Kerkstraat'     local         17,876     6 ms    41 ms   (037: 0 rows)
---     'Maastricht'     local         45,029    14 ms    47 ms   (037: 522 rows)
---     'Cafe'        national         34,641   209 ms   367 ms
---     'Kerkstraat'  national         17,876     5 ms   170 ms   (037: 0 rows)
---     'Maastricht'  national         45,029    12 ms   541 ms   (037: 522 rows)
---     guard-refused                       —       —      5 ms
+-- The broadest tokens are the STREET-TYPE SUFFIXES, and one of them is three
+-- characters — which makes it the **first** query a typeahead fires, the instant
+-- the guard passes, for anyone typing "Stationsweg":
+--
+--     term                    rows matched    local      national
+--     'Kerkstraat'                  17,876    37 ms        171 ms
+--     'Cafe'                        34,641    29 ms        427 ms
+--     'Maastricht'                  45,029    51 ms        497 ms
+--     'weg'                         89,200    44 ms        740 ms
+--     'sta'                        101,524    54 ms        996 ms
+--     'straat'                     391,586   152 ms      2,957 ms
+--     'straat' x14 (97 chars)      391,586   295 ms      2,784 ms  (see §5d)
+--     guard-refused                      —     5 ms            —
+--
+-- Cost is close to linear in matched rows — 8-11 µs each — so the ranking is not
+-- doing anything pathological; there are simply far more rows. `straat` matches
+-- **52% of the table**, where the biggest city matches 6%.
+--
+-- ** This is a COST CLASS 037 did not have, and 039 creates it. ** Under 037
+-- those tokens were matched against `name` and `brand` only, where `straat`
+-- appears in a handful of business names; now they are matched against every
+-- row's street line, where it appears in half of them. The fix is not free
+-- performance — it is a deliberate trade, and this is its price.
 --
 -- `Cafe` is the only honest like-for-like line: the same 34,641 rows match under
--- both functions, and 039 costs **1.75x** — a longer trigram scan plus the
--- `named` test per candidate. Every other row where 037 looks fast is 037
--- matching far fewer rows, which is the defect being fixed rather than a
--- regression.
+-- both functions, and 039 costs **1.7x** (251 ms against 427 ms) — a longer
+-- trigram scan plus the `named` test per candidate. Every other row where 037
+-- looked fast is 037 matching far fewer rows, which is the defect being fixed
+-- rather than a regression.
 --
--- ** The worst case is a bare city name with no location: 541 ms. ** It is the
--- shape with nothing to narrow it — 45,029 candidates, no bbox, and every one
--- has to be scored before the top five are known. It sits well under
--- `authenticated`'s 8 s statement timeout but it is half a second of database
--- CPU, so the client must debounce; the function comment says so. The path the
--- app will actually take — a location supplied, so the bbox applies — is 17-47
--- ms across every term measured.
+-- ** Two things keep this tolerable, and one of them is the client's job. **
+--
+--   * **The bbox.** Every term above is 29-152 ms with a location supplied, and
+--     that is the path the app takes — `navigator.geolocation` then the RPC. The
+--     national pass only runs when the box yields fewer than five.
+--   * **Debouncing, which is now REQUIRED rather than advisable.** A three-
+--     character token can cost a second of database CPU, and three characters is
+--     exactly where the guard stops refusing. Fire on a pause, not a keystroke.
+--
+-- Nothing here exceeds `authenticated`'s 8 s statement timeout, so no rider sees
+-- an error. That is the reassurance and also the hazard: the failure mode is a
+-- slow screen and a large bill, not a red mark anyone will notice.
+--
+-- ---------------------------------------------------------------------------
+-- §5d. Duplicate tokens: the one multiplier a caller controls
+-- ---------------------------------------------------------------------------
+-- The 100-character cap bounds the term, not the WORK. Before deduplication,
+-- `'straat straat …'` x14 measured **7,063 ms** nationally — 2.5x the cost of
+-- one `straat` and within 12% of the 8 s statement timeout, from a 97-character
+-- string any signed-in rider can send. Repeating a token narrows nothing (AND is
+-- idempotent) while multiplying both the `ilike all (pats)` filter and the
+-- `named` test by the token count, over the full candidate set.
+--
+-- `group by s.tok` in the term CTE collapses it. Measured on the same bench:
+--
+--     'straat' x14   7,063 ms  ->  2,784 ms   (i.e. down to one `straat`)
+--     'sta'    x25   5,058 ms  ->  1,435 ms
+--     'weg'    x25   2,425 ms  ->    747 ms
+--     single tokens  unchanged within noise
+--
+-- ** It changes no result, and that is provable rather than hopeful: ** `x AND
+-- x` is `x`. Verified anyway across both passes on eight terms, and asserted in
+-- supabase/tests/rls_test.sql §039 so a later "simplification" that drops the
+-- `group by` fails rather than silently restoring the multiplier.
+--
+-- What this does NOT fix is the 2,784 ms floor — that is the inherent cost of
+-- scoring 391,586 candidates and cannot go away without capping the candidate
+-- set, which would change the ranking. Left as a known cost, not a defect.
 --
 -- ---------------------------------------------------------------------------
 -- §6. The function
@@ -406,16 +454,24 @@ as $fn$
       -- resolution any ordering here can express.
       cos(radians(coalesce(raw.la, 0))) * 111.32 as km_per_lon
     from raw
-    -- One escaped LIKE pattern per whitespace-separated token, indexable tokens
-    -- first so the four join slots go to tokens the GIN index can use. The same
-    -- three replaces 037 applied to the whole term, applied per token.
+    -- One escaped LIKE pattern per DISTINCT whitespace-separated token,
+    -- indexable tokens first so the four join slots go to tokens the GIN index
+    -- can use. The same three replaces 037 applied to the whole term, applied
+    -- per token.
+    --
+    -- `group by s.tok` is the deduplication, and it is a COST fix rather than a
+    -- correctness one — AND is idempotent, so requiring a token twice is
+    -- requiring it once, and no result can change. It is here because a rider
+    -- controls the multiplier otherwise: see 039 §5d.
     left join lateral (
       select array_agg(
-               '%' || replace(replace(replace(s.tok, '\', '\\'), '%', '\%'), '_', '\_') || '%'
-               order by (s.tok ~ '[[:alnum:]]{3}') desc, s.ord
+               '%' || replace(replace(replace(d.tok, '\', '\\'), '%', '\%'), '_', '\_') || '%'
+               order by (d.tok ~ '[[:alnum:]]{3}') desc, d.ord
              ) as pats
-        from regexp_split_to_table(raw.term, '\s+') with ordinality as s(tok, ord)
-       where s.tok <> ''
+        from (select s.tok, min(s.ord) as ord
+                from regexp_split_to_table(raw.term, '\s+') with ordinality as s(tok, ord)
+               where s.tok <> ''
+               group by s.tok) d
     ) tk on true
   ),
   -- Squared distance throughout: monotonic in distance, so the ordering is
@@ -484,7 +540,7 @@ as $fn$
 $fn$;
 
 comment on function public.search_places(text, double precision, double precision) is
-  'Meeting-point typeahead over public.places (037, widened by 039). SECURITY INVOKER — the places SELECT policy governs it, there is nothing to re-check. Returns at most 5 rows: the design draws five. MATCHES name, brand, street and locality, PER TOKEN and ANDed: the term is split on whitespace and every token must appear somewhere in the row''s searchable text, so `Jumbo Maastricht` finds a Jumbo whose locality is Maastricht and adding a word always narrows. RANKS a place the query NAMES (every token in name or brand) above a place the query merely LOCATES; name matches are then ordered by trigram similarity and address-only matches by distance, so a bare city name does not bury the place actually called that. Proximity still outranks both: matches within roughly 28 km fill the list first and the rest of the country fills only what is left, so a distant branch of a nearby chain is unreachable while a location is supplied (037 §5b) — the escape hatch is to type the town, which is what 039 makes possible. Returns ZERO rows unless the query holds three consecutive alphanumerics; that guard is per-token by construction, since such a run cannot span whitespace. A short token ANDed with a long one is free and is honoured, so `Kerkstraat 40` is not silently `Kerkstraat`. Non-finite or out-of-range coordinates degrade to a nationwide search instead of raising. DEBOUNCE IT: a bare city name with no location scored 541 ms on a 750k-row synthetic bench (039 §5c), not on this table, which is empty.';
+  'Meeting-point typeahead over public.places (037, widened by 039). SECURITY INVOKER — the places SELECT policy governs it, there is nothing to re-check. Returns at most 5 rows: the design draws five. MATCHES name, brand, street and locality, PER TOKEN and ANDed: the term is split on whitespace and every token must appear somewhere in the row''s searchable text, so `Jumbo Maastricht` finds a Jumbo whose locality is Maastricht and adding a word always narrows. RANKS a place the query NAMES (every token in name or brand) above a place the query merely LOCATES; name matches are then ordered by trigram similarity and address-only matches by distance, so a bare city name does not bury the place actually called that. Proximity still outranks both: matches within roughly 28 km fill the list first and the rest of the country fills only what is left, so a distant branch of a nearby chain is unreachable while a location is supplied (037 §5b) — the escape hatch is to type the town, which is what 039 makes possible. Returns ZERO rows unless the query holds three consecutive alphanumerics; that guard is per-token by construction, since such a run cannot span whitespace. A short token ANDed with a long one is free and is honoured, so `Kerkstraat 40` is not silently `Kerkstraat`. Non-finite or out-of-range coordinates degrade to a nationwide search instead of raising. DEBOUNCE IT — REQUIRED, not advisable: cost is roughly linear in matched rows (8-11 µs each) and the broadest tokens are Dutch street-type suffixes, not city names. On a 750k-row SYNTHETIC bench (039 §5c; this table is empty, so nothing is measured on real data) the national pass took 2,957 ms for `straat`, which matches 52% of rows, and 996 ms for `sta` — three characters, so it is the FIRST query fired the moment the guard stops refusing, for anyone typing "Stationsweg". A city name is 497 ms. Supplying a location keeps every one of those to 29-152 ms because the bbox applies, so pass `near_lat`/`near_lon` whenever you have them and fire on a pause rather than a keystroke. Duplicate tokens are collapsed before matching (039 §5d) so a repeated word cannot multiply the work; nothing exceeds the 8 s statement timeout, which means the failure mode is a slow screen and a large bill rather than an error anyone notices.';
 
 comment on table public.places is
   'Self-hosted place index for ride meeting points (037), built from Overture Maps open data — NOT rider content: no owner, no author, loaded out of band by `\copy` and readable by every signed-in rider. ATTRIBUTION IS AN OPEN QUESTION, not a settled one: measured over 527,725 sampled rows, ZERO cite OpenStreetMap — the sources present are Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick — so an "© OpenStreetMap contributors" credit would be wrong. What those eight require has NOT been read from Overture''s own attribution terms (unreachable from the build container), and doing so is an owner action that gates the search UI, not this table. Search it through public.search_places(), never with an ad-hoc ILIKE — the function carries the guard that keeps a broad query off a full-table scan, and since 039 it also carries the per-token AND and the name-over-address ranking that make a widened search useful rather than merely wider. `search_text` is generated from name, brand, street and locality; never write to it and never name it in a `\copy` column list. POI rows only — Overture''s addresses theme (17.8M NL rows, 1.5 GB) is deliberately not imported, so a residential address is not findable here.';
