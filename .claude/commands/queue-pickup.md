@@ -67,11 +67,28 @@ four times in one batch to the `project` field.
 
 ## STEP 0 — Can you even see the board?
 
-Try `mcp__Linear__list_issues` (load it via ToolSearch first). **If the Linear tools are not
-available, STOP and send a push notification saying the scheduled pickup cannot reach
-Linear.** Do not proceed on assumptions and do not pick work from the repo instead.
+Load `list_issues` via `ToolSearch` and call it. **If the Linear tools are not available, STOP
+and send a push notification saying the scheduled pickup cannot reach Linear.** Do not proceed
+on assumptions and do not pick work from the repo instead.
 
 It must fail loudly — a job that silently does nothing looks exactly like an empty queue.
+
+**Search for it by keyword, not by the `mcp__Linear__*` name — that prefix is not stable.**
+Watched rotate mid-session on 2026-08-08: every connector's tools came back re-registered under
+a **UUID** prefix (`mcp__a55a164a-…__list_issues`) and the `mcp__Linear__*` names stopped
+resolving entirely. A `select:mcp__Linear__list_issues` lookup returns no match at that point,
+which reads exactly like "the connector is gone" when it is right there under another name.
+This is the same rotation that quietly broke the `mcp__Linear__*` entries in
+`.claude/settings.json` and the squad's tool allowlists (`PD-154`).
+
+```
+ToolSearch  query="+list_issues linear"      # keyword, survives a rename
+ToolSearch  query="select:mcp__Linear__list_issues"   # exact — fails the moment ids rotate
+```
+
+Everywhere below writes `mcp__Linear__<tool>` for readability. **Read it as "the tool called
+`<tool>` on the Linear connector", whatever prefix it currently carries**, and reach it by
+keyword search rather than by pasting the literal name.
 
 **Send it yourself, with the `PushNotification` tool.** A self-bound Routine cannot carry
 completion notifications: the server rejects the `notifications` parameter for any trigger
@@ -718,8 +735,17 @@ so spending one call to avoid asserting something false is worth it — `CLAUDE.
 about state needs the command that checks it*.
 
 ```
-mcp__Vercel__list_deployments   -> the newest deployment of the development branch
+list_deployments  teamId=team_LkthusCourobWuutI1HA8stg  projectId=prj_WPbeT9zuZY53g296XzOuzDH5HOCY
 ```
+
+**Both ids are required and neither is in the repo** — no `.vercel/` directory exists, so
+without them the check costs `list_teams` → `list_projects` → `list_deployments` every firing.
+They are recorded here to keep it one call. The Vercel project is **`letsrideapp`** under team
+**`Pedro's projects`**; re-derive with those two list calls if either id ever stops resolving.
+
+**There is no branch filter** — the response comes back newest-first across every branch, so
+pick the newest entry whose branch is `development` yourself. Do not assume entry `[0]` is
+yours: feature-branch previews and the `main` production build land in the same list.
 
 - `READY`, or still `BUILDING`/`QUEUED` → move to `Deployed to DEV` and say which in the
   comment. A build in flight is the normal case; the merge is the commitment and waiting on
