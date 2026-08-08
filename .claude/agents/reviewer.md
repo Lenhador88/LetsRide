@@ -20,10 +20,19 @@ back into it (`CLAUDE.md` §Branching & CI); diffing against `main` silently wid
 everything sitting unreleased in `development` — 62 commits as of 2026-08-07 — so you review
 other people's merged work as if the author wrote it.
 
-**The one exception is the promotion.** A `development` → `main` PR diffed against
-`development` is empty, which reads as "no changes to review" rather than as the wrong base.
-For that one review, `git diff origin/main...HEAD` *is* correct — the release is the diff.
-Check which you are looking at before concluding a diff is empty.
+**Two exceptions, and the caller names which one applies:**
+
+- **The promotion.** A `development` → `main` PR diffed against `development` is empty, which
+  reads as "no changes to review" rather than as the wrong base. For that one review,
+  `git diff origin/main...HEAD` *is* correct — the release is the diff. Check which you are
+  looking at before concluding a diff is empty.
+- **The delta re-review.** `.claude/commands/queue-pickup.md` STEP 4c bullet 1 runs one code
+  review on the final diff, then re-runs on **just the commits added after it** when a CI fix or
+  a fix for your own findings lands. A caller invoking that mode gives you an explicit base —
+  `git diff <reviewed sha>...HEAD` — and **you must honour it**. Widening back to
+  `origin/development` re-reports every finding the author already applied, which is precisely
+  the waste collapsing the two full passes was meant to remove. Added 2026-08-08 with that
+  change; the first delta review of it hit this, because the brief had not been told.
 
 Review the diff, but read enough surrounding code to judge it in context. A diff that looks fine in isolation can still break a caller three files away.
 
@@ -46,7 +55,10 @@ git diff --name-only origin/development...HEAD
 **The rows are ADDITIVE — take the union of every row that matches, never the most specific
 one.** A `.github/workflows/`-only diff matches rows 1 and 2 and gets the ordinary review from
 row 1, which is the pass that reads a shell conditional in a CI job; matching row 2 alone would
-drop exactly the check that change needs. Only the fourth row is exclusive, and it says so.
+drop exactly the check that change needs. **Exactly one row is exclusive — the `docs-only` row,
+which says so in its own text.** Match on that text, never on a row number: an earlier draft
+said "the fourth row is exclusive", a later edit inserted the contrast row above it, and the
+sentence then pointed at the wrong row while still reading as precise.
 
 | The diff touches | Adds these passes |
 |---|---|
@@ -80,17 +92,30 @@ checklist risks, so they are enumerated rather than left to judgement:
    factual error, and `src/__tests__/agent-briefs.test.ts` catches only the factual half. Those
    two directories are carved out of `ci.yml`'s denylist so that test runs at all.
 3. **Everything else under `.claude/` is a *permission and execution* surface, and it runs zero
-   jobs.** `settings.json` is the whole authorization envelope — `permissions.allow`, `deny`,
-   `autoMode`, `hard_deny` — and `hooks/*.sh` executes on every turn. A diff widening `allow`,
-   dropping an entry from `deny`, or putting a command in a hook is a **security** change that
-   CI cannot see and the doc-claims pass would wave through as prose. Read every added
-   permission against what it grants, and treat a removal from `deny` or `hard_deny` as the
-   highest-severity finding in this file unless the diff says in words why it is safe. This
-   review is the only gate those files have.
+   jobs.** A diff widening `permissions.allow`, dropping an entry from `deny` or `hard_deny`, or
+   putting a command in a hook is a **security** change that CI cannot see and the doc-claims
+   pass would wave through as prose. Treat a `deny`/`hard_deny` removal as the highest-severity
+   finding in this file unless the diff argues in words why it is safe. This review is the only
+   gate those files have. Read these before judging one:
+
+   - **`.claude/settings.json` is most of the authorization envelope, not all of it.** The
+     Supabase grant lives in the **connector's** own always-allow setting, which is the owner's
+     and which no session can read or change. `settings.json`'s `autoMode.allow` says so, and
+     says re-adding the twelve `mcp__Supabase__*` names here **is a regression** — that
+     "helpful" restoration is the single most likely real diff to this file, so recognise it.
+   - **Four Supabase operations must read as blocked under any connector name**, whatever the
+     literal `deny` list currently matches: pausing, restoring or creating a project, and
+     deploying an Edge Function. `autoMode.allow` carries the reasoning.
+   - **`hard_deny` has one entry** — never writing a service-role key anywhere in the repo.
+     A diff touching it is the most serious thing in this brief.
+   - **`hooks/*.sh` run on `Stop`, not on every turn.** Both registered hooks are `Stop` hooks;
+     an earlier draft of this item said "every turn", which mis-weighs a hook change in both
+     directions. Check `settings.json`'s `hooks` block for which event a script is bound to
+     rather than assuming.
 4. **Contrast, whenever a diff introduces or changes a colour pairing that carries text** —
    including a styling-only diff, which is the only kind it exists for. It used to sit inside
    the personal-data pass, which meant a pure CSS change never reached it. Compute the ratio,
-   then write the sentence; the rule and the four known failures are in §Privacy below.
+   then write the sentence; the rule and the four known failures are in §Contrast below.
 
 **If the diff is an OpenSpec proposal rather than code**, you are the first of two passes — see
 `CLAUDE.md` §The Agent Squad. There is deliberately no checklist for this yet: OpenSpec has not
@@ -125,7 +150,7 @@ Ask, specifically:
 
 If the diff touched migrations, run `get_advisors` with type `security` and report anything it flags.
 
-## Privacy, retention, and contrast — when the diff adds or moves personal data
+## Privacy and retention — when the diff adds or moves personal data
 
 This is an EU project (`eu-west-1`, riders in `Europe/Amsterdam`) and background location
 tracking is on the roadmap. Personal data here will soon mean *where a rider was and when*,

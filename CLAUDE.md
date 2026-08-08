@@ -1107,12 +1107,15 @@ re-derive rather than trust it, and note the two predicates are different and gi
 answers, which is how the first draft of this line quoted 63% for the narrower one:
 
 ```bash
-# commits touching NO src/ and NO supabase/ — reviewer.md's "no code to review"
-#   56% of the last 94, 63% of the last 30. Quote the window; the two differ by 7 points.
-# commits confined ENTIRELY to the denylist — this sentence's predicate: 47/94 = 50%
-#   (swap the grep for: grep -qvE '^(docs/|design/|openspec/|\.claude/|[^/]*\.md$)')
+# This sentence's predicate — commits confined ENTIRELY to the denylist: 47/94 = 50%
 git rev-list --no-merges -n 94 origin/development | while read c; do
   git show --name-only --format= "$c" | grep -qvE '^(docs/|design/|openspec/|\.claude/|[^/]*\.md$)' || echo "$c"
+done | wc -l
+
+# reviewer.md's DIFFERENT predicate — commits touching no src/ and no supabase/:
+# 53/94 = 56%, but 19/30 = 63% over the last 30. Quote the window or the number is noise.
+git rev-list --no-merges -n 94 origin/development | while read c; do
+  git show --name-only --format= "$c" | grep -qE '^(src/|supabase/)' || echo "$c"
 done | wc -l
 ```
 

@@ -920,10 +920,14 @@ live RLS hole letting any signed-in rider post a ride into any club.
    at bullet 3, and any fix for `reviewer`'s own findings. The bound is *one pass covers
    everything up to it*, so — **re-run `reviewer` on the delta alone** (`git diff <reviewed
    sha>...HEAD`) when what you added after it is non-trivial: anything touching `src/`,
-   `supabase/`, a policy, a guard or a permission. A lockfile bump, a typo, a formatting fix or
-   a reworded comment does not need one. **When in doubt, re-run on the delta** — it is a small
-   diff by definition, so the cheap call is the safe one, which is the opposite of the
-   trade-off that justified collapsing the two full passes.
+   `supabase/`, a policy, a guard, a permission, **`.claude/agents/*.md`, `.claude/commands/*.md`
+   or `CLAUDE.md`**. Those last three are on the list because `reviewer.md` calls them
+   *executable process* whose only gate is this review — fixing a review finding by editing a
+   brief or this very procedure is a routine way to land an unreviewed change, and `CLAUDE.md`
+   is loaded into every future session. A lockfile bump, a typo, a formatting fix or a reworded
+   comment does not need one. **When in doubt, re-run on the delta** — it is a small diff by
+   definition, so the cheap call is the safe one, which is the opposite of the trade-off that
+   justified collapsing the two full passes.
 
    **Its prompt must carry the scope material, because it runs before the PR exists and so
    cannot read the PR body.** Pass: the issue being built, each fold-in with its one-line
