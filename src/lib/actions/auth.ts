@@ -234,7 +234,6 @@ export async function updatePassword(
  * coordinates survive this function's client-side navigation (there is no
  * page reload) into whoever signs in next on the same device.
  *
-
  * **The rider ends up signed out even when the revocation fails**, which is the
  * offline case 4.5 names. `signOut()` defaults to `scope: 'global'` — a network
  * call to revoke every session — and on a dead network that rejects. Falling

@@ -21,6 +21,7 @@ vi.mock('@/lib/data/places', () => ({ getLocalityCentroid: (...args: unknown[]) 
 const {
   resolveRiderLocation,
   requestDeviceLocation,
+  clearRiderLocation,
   resetRiderLocationCacheForTests,
 } = await import('@/lib/location/rider-location')
 
@@ -56,8 +57,23 @@ function fakeGeolocation(outcome: GeoOutcome) {
   }
 }
 
+/**
+ * A geolocation fake that does not call back until the test tells it to —
+ * standing in for a real OS permission dialog, which does not resolve the
+ * moment `getCurrentPosition` is called but whenever the rider answers it.
+ */
+function manualGeolocation() {
+  let deliver: (() => void) | undefined
+  return {
+    getCurrentPosition: vi.fn((onSuccess: (p: unknown) => void) => {
+      deliver = () => onSuccess({ coords: { latitude: 52.09, longitude: 5.12 }, timestamp: Date.now() })
+    }),
+    respondWithSuccess: () => deliver?.(),
+  }
+}
+
 function nav(opts: {
-  geolocation?: ReturnType<typeof fakeGeolocation> | null
+  geolocation?: { getCurrentPosition: unknown } | null
   permission?: PermissionState | 'unsupported' | 'throws'
 }) {
   const { geolocation = null, permission } = opts
@@ -253,6 +269,129 @@ describe('caching for the page load', () => {
 
     expect(getMyLocationText).toHaveBeenCalledTimes(2)
   })
+
+  /**
+   * A failed attempt must not harden into a page-load-long verdict —
+   * `guard-cache.ts`'s own rule, and the defect reviewer found: a
+   * `getMyLocationText` rejection (a real PostgREST failure, via `unwrap`)
+   * used to be memoised forever by `cachedLocation ??= resolveChain()`, so
+   * one mobile network blip lost the search bias for the rest of the page
+   * load. The public contract still never rejects — the caller sees `null`
+   * — but the very next call must retry rather than repeat that `null`.
+   */
+  it('does not memoise a failed attempt — the next call retries instead of repeating null forever', async () => {
+    installNavigator(nav({}))
+    getMyLocationText.mockRejectedValueOnce(new Error('network blip'))
+    getMyLocationText.mockResolvedValueOnce('Utrecht')
+    getLocalityCentroid.mockResolvedValue({ lat: 52.09, lon: 5.12 })
+
+    await expect(resolveRiderLocation()).resolves.toBeNull()
+    await expect(resolveRiderLocation()).resolves.toEqual({ lat: 52.09, lon: 5.12, source: 'profile' })
+
+    expect(getMyLocationText).toHaveBeenCalledTimes(2)
+  })
+
+  it('never lets a failed attempt reject the caller — it degrades to null like every other empty answer', async () => {
+    installNavigator(nav({}))
+    getMyLocationText.mockRejectedValue(new Error('network blip'))
+
+    await expect(resolveRiderLocation()).resolves.toBeNull()
+  })
+
+  /**
+   * The TTL fix: "for the page load" is the app's whole lifetime in a
+   * Capacitor WebView, which can live for hours. `GEOLOCATION_MAX_AGE_MS` is
+   * reused as the memo's own TTL so a rider who has actually moved gets a
+   * fresh bias rather than keeping their opening city forever.
+   */
+  it('expires the memo after GEOLOCATION_MAX_AGE_MS — a rider who has moved gets a fresh bias', async () => {
+    vi.useFakeTimers()
+    installNavigator(nav({}))
+    getMyLocationText.mockResolvedValue('Utrecht')
+    getLocalityCentroid.mockResolvedValue({ lat: 52.09, lon: 5.12 })
+
+    await resolveRiderLocation()
+    expect(getMyLocationText).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1)
+    await resolveRiderLocation()
+
+    expect(getMyLocationText).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not re-resolve before the TTL has elapsed', async () => {
+    vi.useFakeTimers()
+    installNavigator(nav({}))
+    getMyLocationText.mockResolvedValue('Utrecht')
+    getLocalityCentroid.mockResolvedValue({ lat: 52.09, lon: 5.12 })
+
+    await resolveRiderLocation()
+    await vi.advanceTimersByTimeAsync(60_000)
+    await resolveRiderLocation()
+
+    expect(getMyLocationText).toHaveBeenCalledTimes(1)
+  })
+
+  it('a fresh explicit device fix resets the TTL too', async () => {
+    vi.useFakeTimers()
+    installNavigator(nav({}))
+    getMyLocationText.mockResolvedValue('Utrecht')
+    getLocalityCentroid.mockResolvedValue({ lat: 1, lon: 1 })
+    await resolveRiderLocation()
+
+    const geolocation = fakeGeolocation({ kind: 'success', lat: 52.09, lon: 5.12 })
+    installNavigator(nav({ geolocation, permission: 'granted' }))
+    await requestDeviceLocation()
+
+    // Just under the TTL measured from the device fix, well past it measured
+    // from the original profile resolution — proves the timestamp moved.
+    await vi.advanceTimersByTimeAsync(4 * 60_000)
+    await expect(resolveRiderLocation()).resolves.toEqual({ lat: 52.09, lon: 5.12, source: 'device' })
+    expect(getMyLocationText).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('clearRiderLocation — signOut\'s sweep', () => {
+  it('clears the memo so the next call resolves fresh', async () => {
+    installNavigator(nav({}))
+    getMyLocationText.mockResolvedValue('Utrecht')
+    getLocalityCentroid.mockResolvedValue({ lat: 52.09, lon: 5.12 })
+
+    await resolveRiderLocation()
+    clearRiderLocation()
+    await resolveRiderLocation()
+
+    expect(getMyLocationText).toHaveBeenCalledTimes(2)
+  })
+
+  it('is what keeps rider A\'s coordinates out of rider B\'s session on the same device', async () => {
+    installNavigator(nav({}))
+    getMyLocationText.mockResolvedValue('Utrecht')
+    getLocalityCentroid.mockResolvedValue({ lat: 52.09, lon: 5.12 })
+    await expect(resolveRiderLocation()).resolves.toEqual({ lat: 52.09, lon: 5.12, source: 'profile' })
+
+    // Rider A signs out; signOut calls this. Rider B signs in — same page,
+    // same module state, no reload.
+    clearRiderLocation()
+    getMyLocationText.mockResolvedValue(null)
+
+    await expect(resolveRiderLocation()).resolves.toBeNull()
+  })
+
+  it('is a no-op during a server render, the same way clearGuardCache is', async () => {
+    installNavigator(nav({}))
+    getMyLocationText.mockResolvedValue('Utrecht')
+    getLocalityCentroid.mockResolvedValue({ lat: 52.09, lon: 5.12 })
+    await resolveRiderLocation()
+
+    delete globals.document
+    expect(() => clearRiderLocation()).not.toThrow()
+    globals.document = {}
+
+    // The memo survived — nothing was cleared without a document.
+    await expect(resolveRiderLocation()).resolves.toEqual({ lat: 52.09, lon: 5.12, source: 'profile' })
+    expect(getMyLocationText).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('requestDeviceLocation — the explicit "use my location" affordance', () => {
@@ -309,5 +448,40 @@ describe('requestDeviceLocation — the explicit "use my location" affordance', 
     await requestDeviceLocation()
 
     await expect(resolveRiderLocation()).resolves.toEqual({ lat: 1, lon: 1, source: 'profile' })
+  })
+
+  /**
+   * The exact defect reviewer reproduced: a rider taps "use my location",
+   * reads the OS dialog for several seconds, then taps Allow — and the fix
+   * must still land. Before the fix, a JS backstop armed at call time (4.5s)
+   * fired while the dialog was still open, so a real position arriving at 6s
+   * landed in a `settled` no-op and the rider was told "no location" on
+   * exactly the grant that matters, the first one.
+   */
+  it('does not give up while the OS permission dialog is still open', async () => {
+    vi.useFakeTimers()
+    const geolocation = manualGeolocation()
+    // Before the tap, the platform legitimately does not know the answer yet
+    // — that is the whole reason a dialog is about to show.
+    installNavigator(nav({ geolocation, permission: 'prompt' }))
+
+    const pending = requestDeviceLocation()
+    await vi.advanceTimersByTimeAsync(6_000) // the rider reading the dialog
+    geolocation.respondWithSuccess() // ...then tapping Allow
+
+    await expect(pending).resolves.toEqual({ lat: 52.09, lon: 5.12, source: 'device' })
+  })
+
+  it('still protects against a genuinely hung acquisition when permission is already granted', async () => {
+    // Unlike the case above: no dialog is possible here, so the backstop is
+    // safe to arm immediately and must still cut a real hang off.
+    vi.useFakeTimers()
+    const geolocation = fakeGeolocation({ kind: 'hang' })
+    installNavigator(nav({ geolocation, permission: 'granted' }))
+
+    const pending = requestDeviceLocation()
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    await expect(pending).resolves.toBeNull()
   })
 })
