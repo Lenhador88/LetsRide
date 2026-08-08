@@ -7377,9 +7377,21 @@ select assert_eq(
   (select to_regclass('public.places_name_trgm_idx') is null
       and to_regclass('public.places_brand_trgm_idx') is null),
   true, '039: the two 037 trigram indexes are dropped — search_text begins with name then brand, so no plan loses an access path');
+-- ** This was a whole-table `count(*) = 3` until 040 landed, and rescoping it
+-- rather than bumping the number to 4 is deliberate. ** CLAUDE.md's rule: an
+-- assertion counting everything on a shared table stops testing its own intent
+-- the moment a second surface arrives there — and it did, one migration later.
+-- 039's intent is "the set 037 and 039 established is intact, and the two
+-- trigram indexes are GONE not supplemented", which the three names below and
+-- the two assertions above say exactly. **The total is now owned by 040.6**,
+-- which is the migration that last changed it; a future index migration takes
+-- it over from there rather than editing this line again.
 select assert_eq(
-  (select count(*)::int from pg_indexes where schemaname = 'public' and tablename = 'places'),
-  3, '039: three indexes in total — pkey, the coordinate btree, and the one above');
+  (select array_agg(indexname order by indexname)::text from pg_indexes
+    where schemaname = 'public' and tablename = 'places'
+      and indexname in ('places_pkey', 'places_lat_lon_idx', 'places_search_text_trgm_idx')),
+  '{places_lat_lon_idx,places_pkey,places_search_text_trgm_idx}'::text,
+  '039: the three indexes 037 and 039 leave behind are all present — pkey, the coordinate btree, and the search_text GIN');
 select assert_eq(
   (select count(*)::int from pg_indexes
     where schemaname = 'public' and tablename = 'places' and indexname = 'places_lat_lon_idx'),
@@ -7441,6 +7453,459 @@ select assert_denied($$select count(*) from search_places('Kerkstraat', 52.09, 5
 reset role;
 
 rollback to savepoint places_039;
+
+\echo ''
+\echo '# A locality name resolves to one coordinate, exactly and never fuzzily (040)'
+
+-- ===========================================================================
+-- 040. locality_centroid — a RESOLVER, and the assertions are mostly about
+-- what it must refuse to do.
+-- ===========================================================================
+--
+-- Four things are asserted and they fail in different ways.
+--
+--   EXACTNESS  — the match is an indexed equality and must stay one. This is
+--                the bulk of the section, because a fuzzy "improvement" is the
+--                realistic future edit and it would import 039 §5d's still-open
+--                5,914 ms abuse path into a function that has no guard. Five
+--                negative cases, each naming the wrong implementation it kills.
+--   ESTIMATOR  — the componentwise MEDIAN, not the mean. Fixtures are built so
+--                the two disagree by tens of degrees, because the mean is the
+--                obvious implementation and a fixture where both agree proves
+--                nothing.
+--   EMPTINESS  — zero rows for an unknown locality, not one row of NULLs. An
+--                ungrouped aggregate forms a group over zero input, so this is
+--                a real behaviour that `having count(*) > 0` creates.
+--   COST       — two properties nothing behavioural can see: that the shipped
+--                function reaches the shipped index, and that no pattern match
+--                crept into the body. Pinned structurally and by a runtime
+--                probe, in the tradition of 039 §5b.
+--
+-- Fixtures are self-contained and the 039 block has already rolled its own
+-- back. Coordinates are chosen for EXACT binary representability rather than
+-- for realism: `percentile_cont` interpolates for an even row count, so
+-- 52.0/52.5 gives an exact 52.25 where 52.20/52.30 would not, and an assertion
+-- on a float that is only nearly right is an assertion that fails on a
+-- different machine.
+savepoint places_040;
+
+reset role;
+select set_config('test.uid', '', false);
+
+insert into places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) values
+  -- ** The mean-vs-median family, odd n. ** Four good rows and one null-island
+  -- geocode failure, which is the classic shape: a row whose coordinates failed
+  -- to resolve and defaulted to (0, 0).
+  --
+  --   lat sorted [0, 52.0, 52.0, 52.0, 52.0] -> median 52.0 EXACTLY, mean 41.6
+  --   lon sorted [0,  5.0,  5.0,  5.0,  5.0] -> median  5.0 EXACTLY, mean  4.0
+  --
+  -- n is odd, so percentile_cont selects an existing value rather than
+  -- interpolating and the comparison is exact by construction.
+  ('p040-med-bad', 'Kapotte Geocode', null, null, 0.0, 0.0, null, 'Mediaanstad', null, 'NL', 0.5),
+  ('p040-med-1',   'Mediaan Een',     null, null, 5.0, 52.0, null, 'Mediaanstad', null, 'NL', 0.9),
+  ('p040-med-2',   'Mediaan Twee',    null, null, 5.0, 52.0, null, 'Mediaanstad', null, 'NL', 0.9),
+  ('p040-med-3',   'Mediaan Drie',    null, null, 5.0, 52.0, null, 'Mediaanstad', null, 'NL', 0.9),
+  ('p040-med-4',   'Mediaan Vier',    null, null, 5.0, 52.0, null, 'Mediaanstad', null, 'NL', 0.9),
+
+  -- ** Even n, chosen so cont, disc and mean are all THREE distinct. ** This is
+  -- the fixture that pins `percentile_cont` specifically rather than "some
+  -- median": with [0, 52.0, 52.5, 52.5] the interpolated answer is 52.25, the
+  -- discrete one is 52.0, and the mean is 39.25.
+  ('p040-even-bad', 'Even Kapot', null, null, 0.0, 0.0,  null, 'Evenstad', null, 'NL', 0.5),
+  ('p040-even-1',   'Even Een',   null, null, 5.0, 52.0, null, 'Evenstad', null, 'NL', 0.9),
+  ('p040-even-2',   'Even Twee',  null, null, 5.5, 52.5, null, 'Evenstad', null, 'NL', 0.9),
+  ('p040-even-3',   'Even Drie',  null, null, 5.5, 52.5, null, 'Evenstad', null, 'NL', 0.9),
+
+  -- ** The BIMODAL family — the case that actually decided the estimator, and
+  -- the one `place_count` cannot see. ** Two genuinely different towns sharing
+  -- one name, ~180 km apart, 3 north to 2 south. NL really has these: Bergen NH
+  -- and Bergen L, and they are not data errors, so no cleaning removes them.
+  --
+  --   median -> 52.60 / 4.70, i.e. ON the northern town (the majority)
+  --   mean   -> 52.12 / 5.22, i.e. in a field belonging to neither
+  --
+  -- n is odd again so the median is an exact selection, and the count is a
+  -- healthy 5 either way — which is the point: a caller reading `place_count`
+  -- alone cannot tell this locality from a well-behaved one.
+  ('p040-twee-n1', 'Tweestad Noord Een',  null, null, 4.70, 52.60, null, 'Tweestad', null, 'NL', 0.9),
+  ('p040-twee-n2', 'Tweestad Noord Twee', null, null, 4.70, 52.60, null, 'Tweestad', null, 'NL', 0.9),
+  ('p040-twee-n3', 'Tweestad Noord Drie', null, null, 4.70, 52.60, null, 'Tweestad', null, 'NL', 0.9),
+  ('p040-twee-z1', 'Tweestad Zuid Een',   null, null, 6.00, 51.40, null, 'Tweestad', null, 'NL', 0.9),
+  ('p040-twee-z2', 'Tweestad Zuid Twee',  null, null, 6.00, 51.40, null, 'Tweestad', null, 'NL', 0.9),
+
+  -- ** The NOT-FUZZY pair, and the coordinates matter as much as the names. **
+  -- `Kernstad` and `Kernstad Noord` are two distinct localities whose names are
+  -- a prefix pair, placed a degree apart so that a LIKE implementation is
+  -- visible in the COORDINATES as well as in the count: exact gives
+  -- (52.0, 5.0, 1), a prefix match gives (51.5, 4.5, 2).
+  ('p040-kern',       'Kernplek',       null, null, 5.0, 52.0, null, 'Kernstad',       null, 'NL', 0.9),
+  ('p040-kern-noord', 'Kernplek Noord', null, null, 4.0, 51.0, null, 'Kernstad Noord', null, 'NL', 0.9),
+
+  -- ** Normalisation, on the COLUMN side as well as the argument side. ** One
+  -- row stored with a trailing space, one stored lower-case. They resolve to a
+  -- single locality only if BOTH `lower` and `btrim` are applied to the column;
+  -- drop either and `place_count` reads 1 instead of 2. `locality` carries no
+  -- CHECK, so what a hand-run \copy puts there is not something the function
+  -- gets to assume.
+  ('p040-spatie-1', 'Spatie Een',  null, null, 5.0, 52.0, null, 'Spatiestad ', null, 'NL', 0.9),
+  ('p040-spatie-2', 'Spatie Twee', null, null, 5.5, 52.5, null, 'spatiestad',  null, 'NL', 0.9),
+
+  -- ** Two tripwires, 037.8's technique. ** Each exists so that a "returns
+  -- nothing" assertion means the function REFUSED rather than merely failed to
+  -- find anything — without them both read 0 whether the guard is there or not.
+  --   empty  : an empty-string locality, which `locality_centroid('')` would
+  --            return the centroid of if `btrim(q) <> ''` were removed.
+  --   nulloc : a NULL locality, for the `locality_centroid(null)` case, which an
+  --            `is not distinct from` implementation would match.
+  ('p040-empty',  'Leeg Testplek', null, null, 4.0, 51.0, null, '',   null, 'NL', 0.5),
+  ('p040-nulloc', 'Nul Testplek',  null, null, 4.0, 51.0, null, null, null, 'NL', 0.5),
+
+  -- A one-row locality: the degenerate case, which must still answer.
+  ('p040-solo', 'Solo Testplek', null, null, 6.0, 53.0, null, 'Solostad', null, 'NL', 0.9);
+
+-- --------------------------------------------------------------------------
+-- 040.0  Structural needles read COMMENT-STRIPPED source, 039.0's rule.
+-- --------------------------------------------------------------------------
+-- `prosrc` includes the function's own comments, so a needle can match the
+-- sentence describing a thing instead of the thing — CLAUDE.md's comment trap
+-- inside a function body, which 039 hit for real. 040's body comments do not
+-- currently contain any of the needles below, but the technique is what is
+-- being kept, not today's wording: a comment added tomorrow would disarm a raw
+-- needle silently.
+--
+-- 039's stripper is a pg_temp function created after `savepoint places_039`, so
+-- rolling that savepoint back dropped it. This is the same three lines, not a
+-- second mechanism, and it carries the same caveat: the stripper is naive and a
+-- `--` inside a string literal would eat the rest of that line. That fails in
+-- the SAFE direction for the containment needles here — over-stripping removes
+-- code a needle looks for and turns it RED — but NOT for a needle that counts
+-- occurrences, so there are none of those in this section.
+create function pg_temp.lc_code() returns text language sql stable as $$
+  select pg_catalog.regexp_replace(prosrc, '--[^\n]*', '', 'g')
+    from pg_proc
+   where oid = 'public.locality_centroid(text)'::regprocedure
+$$;
+
+-- The stripper has to actually strip, or every needle below silently reverts to
+-- reading raw prosrc. Phrased against `--` itself and against a length change,
+-- never against a particular comment's wording — a guard that goes on passing
+-- after someone rewords a comment is the exact failure this technique is for.
+select assert_eq(
+  (select pg_temp.lc_code() like '%--%'),
+  false, '040: the comment stripper leaves no comment marker at all');
+select assert_eq(
+  (select length(pg_temp.lc_code())
+        < (select length(prosrc) from pg_proc
+            where oid = 'public.locality_centroid(text)'::regprocedure)),
+  true, '040: ... and it removed something, so the needles below are not silently reading raw prosrc');
+-- ** The "code survived" probe deliberately names something NO OTHER assertion
+-- owns. ** It was `percentile_cont` for one revision, which made this line
+-- double as an estimator check: mutating the estimator to `avg()` turned THIS
+-- red first, and psql stops at the first failure — so the mean-vs-median
+-- mutation was reported against a label about comment stripping. A shared
+-- needle is not wrong, it just misattributes, and a misattributed failure is
+-- how the wrong thing gets fixed.
+select assert_eq(
+  (select pg_temp.lc_code() like '%from public.places p%'),
+  true, '040: ... while leaving the code, so a needle that finds nothing means the code is gone rather than the stripper over-reaching');
+
+-- --------------------------------------------------------------------------
+-- 040.1  The estimator: the MEDIAN, and the mean is what it must not be.
+-- --------------------------------------------------------------------------
+-- Every fixture below is built so the mean and the median disagree by tens of
+-- degrees. A locality whose rows agree would return the same answer under both
+-- and would prove nothing — which is the shape of test that let three separate
+-- 039 mutations survive.
+select assert_eq(
+  (select lat from locality_centroid('Mediaanstad')),
+  52.0::double precision,
+  '040: one mis-geocoded row does not move the answer — the estimator is the median, where the mean would read 41.6');
+select assert_eq(
+  (select lon from locality_centroid('Mediaanstad')),
+  5.0::double precision,
+  '040: ... on the longitude too, which is computed independently and is the half nobody checks');
+select assert_eq(
+  (select place_count from locality_centroid('Mediaanstad')),
+  5, '040: ... and place_count counts every matching row INCLUDING the bad one, so it is a row count and not a quality score');
+
+-- ** The bimodal case, which is the one that actually chose the median. ** It
+-- does not shrink with n and `place_count` cannot see it: two real towns share
+-- a name, so the mean lands in open country 68 km from either while reporting a
+-- perfectly healthy count.
+select assert_eq(
+  (select lat from locality_centroid('Tweestad')),
+  52.60::double precision,
+  '040: a locality that is two towns resolves to the MAJORITY one, not to a point between them — the mean would read 52.12, which is a field');
+select assert_eq(
+  (select lon from locality_centroid('Tweestad')),
+  4.70::double precision,
+  '040: ... and the longitude lands on the same town rather than splitting the difference');
+select assert_eq(
+  (select place_count from locality_centroid('Tweestad')),
+  5, '040: ... while place_count reads a healthy 5, which is exactly why it is documented as a row count and NOT a confidence score');
+
+-- ** Even row count: cont, disc and mean are all three distinct here. ** This
+-- pins `percentile_cont` specifically. Interpolating rather than stepping is a
+-- CHOICE (039's §-style honesty: both are defensible), so this assertion says
+-- "the choice is still the documented one", not "the alternative is a defect".
+select assert_eq(
+  (select lat from locality_centroid('Evenstad')),
+  52.25::double precision,
+  '040: an even row count INTERPOLATES between the two middle values — percentile_cont (52.25), not percentile_disc (52.0) and not the mean (39.25)');
+select assert_eq(
+  (select lon from locality_centroid('Evenstad')),
+  5.25::double precision,
+  '040: ... on the longitude too');
+
+-- The degenerate case still answers rather than dividing by anything.
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('Solostad')),
+  array[53.0, 6.0, 1.0]::double precision[],
+  '040: a one-row locality resolves to that row');
+
+-- --------------------------------------------------------------------------
+-- 040.2  EMPTINESS: zero rows, never one row of NULLs.
+-- --------------------------------------------------------------------------
+-- ** This is a real behaviour and not a formality. ** An aggregate query with
+-- no GROUP BY forms exactly one group even over zero input rows, so without
+-- `having count(*) > 0` an unknown locality returns `(NULL, NULL, 0)` — one
+-- row, which a caller testing `rows.length === 0` reads as a successful
+-- resolution to a null island. Verified against a real Postgres, not recalled.
+--
+-- Each of the four below is asserted as a ROW COUNT, because that is the
+-- contract; asserting `lat is null` would pass against the broken shape.
+select assert_eq((select count(*)::int from locality_centroid('Zzzznietbestaathelemaalniet')),
+  0, '040: an unknown locality returns ZERO ROWS — not one row of NULLs, which is what an ungrouped aggregate produces without the HAVING');
+select assert_eq((select count(*)::int from locality_centroid(null)),
+  0, '040: a NULL locality returns zero rows — and a row whose own locality IS NULL exists, so an `is not distinct from` implementation would return it');
+select assert_eq((select count(*)::int from locality_centroid('')),
+  0, '040: an empty locality returns zero rows — and a row whose locality is the empty string exists, so without `btrim(q) <> ''''` this would return its centroid');
+select assert_eq((select count(*)::int from locality_centroid('   ')),
+  0, '040: ... and so does whitespace, which btrims to the same empty string');
+
+-- The positive twin. Without it every assertion above would also pass against a
+-- function that returns zero rows for everything.
+select assert_eq((select count(*)::int from locality_centroid('Kernstad')),
+  1, '040: a KNOWN locality returns exactly one row, so the four refusals above are refusals rather than a function that never answers');
+
+-- The HAVING itself, named. Behaviour covers its removal (the four assertions
+-- above go from 0 to 1), but not its replacement by `group by`, which is
+-- behaviourally identical and is the shape 040 §3 rejected — it reads as
+-- removable, which is how the NULL row comes back later.
+select assert_eq(
+  (select pg_temp.lc_code() like '%having count(*) > 0%'),
+  true, '040: emptiness is produced by an explicit HAVING, not as a side effect of a GROUP BY that reads as removable');
+
+-- --------------------------------------------------------------------------
+-- 040.3  EXACTNESS: five negative cases, each naming the implementation it kills.
+-- --------------------------------------------------------------------------
+-- ** This is the section the migration exists to protect. ** Making the match
+-- fuzzy is the realistic future edit — it looks like a kindness to the rider —
+-- and it would give a function with no guard, no length cap and no dedup the
+-- whole scan-cost surface 039 §5d measured at 5,914 ms and left OPEN.
+--
+-- `Kernstad` is the fixture. Each query below is a variant that some plausible
+-- non-exact implementation WOULD match, so each reads 0 only because the
+-- function refused — 037.8's tripwire discipline. The positive twin is at the
+-- end of 040.2.
+select assert_eq((select count(*)::int from locality_centroid('Kern')),
+  0, '040: a PREFIX matches nothing — `locality like q || ''%''` would return the row');
+select assert_eq((select count(*)::int from locality_centroid('rnsta')),
+  0, '040: an interior SUBSTRING matches nothing — `locality ilike ''%'' || q || ''%''` would return it');
+select assert_eq((select count(*)::int from locality_centroid('Kernstad Noord Oost')),
+  0, '040: a SUPERSTRING matches nothing — an implementation matching the column against the argument''s prefix would return it');
+select assert_eq((select count(*)::int from locality_centroid('Kernstat')),
+  0, '040: a one-character TYPO matches nothing — a trigram similarity would score this well above threshold');
+select assert_eq((select count(*)::int from locality_centroid('Kernstadt')),
+  0, '040: ... and so does one extra character, which is the other half of the same typo class');
+
+-- ** The prefix pair, asserted through the COORDINATES and not only the count. **
+-- `Kernstad` and `Kernstad Noord` are distinct localities a degree apart. Exact
+-- matching gives (52.0, 5.0, 1); any prefix match pools them into
+-- (51.5, 4.5, 2), so this single assertion moves on all three columns.
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('Kernstad')),
+  array[52.0, 5.0, 1.0]::double precision[],
+  '040: `Kernstad` resolves to Kernstad ALONE — a prefix match would pool `Kernstad Noord` in and answer (51.5, 4.5, 2)');
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('Kernstad Noord')),
+  array[51.0, 4.0, 1.0]::double precision[],
+  '040: ... and the longer name resolves to its own row, so the pair discriminates in both directions');
+
+-- ** Normalisation is symmetric: both sides lower AND btrim. ** The two fixture
+-- rows are stored as `Spatiestad ` and `spatiestad`, so they pool into one
+-- locality only if the COLUMN is normalised too. Drop `lower` or `btrim` from
+-- the column side and place_count reads 1; drop it from the argument side and
+-- the mixed-case query below returns nothing at all.
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('SPATIESTAD')),
+  array[52.25, 5.25, 2.0]::double precision[],
+  '040: a stored trailing space and a stored lower-case spelling are ONE locality — both sides are lower() and btrim()');
+select assert_eq(
+  (select place_count from locality_centroid('  spatiestad  ')),
+  2, '040: ... and surrounding whitespace on the ARGUMENT is trimmed too, which is the half a stored-only btrim would miss');
+select assert_eq(
+  (select place_count from locality_centroid('SpAtIeStAd')),
+  2, '040: ... and the match is case-insensitive in both directions');
+
+-- --------------------------------------------------------------------------
+-- 040.4  Estimator and signature, pinned structurally.
+-- --------------------------------------------------------------------------
+-- The behavioural assertions in 040.1 already discriminate mean from median, so
+-- this needle is not the primary guard. It is here because 040 §1 makes a
+-- CHOICE between two defensible estimators, and a choice with no assertion
+-- behind it becomes a drift rather than a decision.
+select assert_eq(
+  (select pg_temp.lc_code() like '%percentile_cont(0.5) within group (order by p.lat)%'
+      and pg_temp.lc_code() like '%percentile_cont(0.5) within group (order by p.lon)%'),
+  true, '040: both axes use percentile_cont, taken independently — the componentwise median 040 §1 measured');
+
+-- The wire contract PostgREST publishes. `rpc(''locality_centroid'', { q })`
+-- routes on the argument name and the returned object keys are the output
+-- column names, so both halves are a contract no policy can show. `lon`, never
+-- `lng` — 037 §5bb, one quantity gets one name.
+select assert_eq(
+  (select string_agg(a, ',' order by ord)
+     from unnest((select proargnames from pg_proc
+                   where oid = 'public.locality_centroid(text)'::regprocedure))
+          with ordinality as u(a, ord)),
+  'q,lat,lon,place_count'::text,
+  '040: the RPC signature and its output columns, pinned — `lon`, never `lng`');
+-- lat before lon in the output, which the assertion above already fixes, but
+-- 040.1 is what proves they are not swapped in the BODY: Mediaanstad answers
+-- 52.0/5.0, and a swap would answer 5.0/52.0.
+
+-- --------------------------------------------------------------------------
+-- 040.5  COST: two properties nothing behavioural can see. 039 §5b's tradition.
+-- --------------------------------------------------------------------------
+-- ** (a) The shipped function must reach the shipped index. ** An expression
+-- index serves a qual only on an EXACT expression match, so dropping `btrim`
+-- from either the index or the predicate changes no result, raises nothing, and
+-- silently turns the lookup into a sequential scan — 20 ms to 141 ms on the
+-- 750k-row bench in 040 §2.
+--
+-- The structural half first: the index definition and the function body have to
+-- carry the same expression.
+select assert_eq(
+  (select indexdef like '%lower(btrim(locality))%' from pg_indexes
+    where schemaname = 'public' and indexname = 'places_locality_lower_idx'),
+  true, '040: the index is on lower(btrim(locality))');
+select assert_eq(
+  (select pg_temp.lc_code() like '%lower(btrim(p.locality)) = lower(btrim(locality_centroid.q))%'),
+  true, '040: ... and the function''s predicate is the same expression on the same side — an expression index serves a qual only on an exact match');
+
+-- ** The runtime half, which is the stronger of the two: it proves the SHIPPED
+-- function reaches the SHIPPED index rather than proving two strings look
+-- alike. ** `pg_stat_get_xact_numscans` is the transaction-local index scan
+-- counter, so it is visible inside this uncommitted transaction where
+-- `pg_stat_user_indexes` is not.
+--
+-- ** The `enable_seqscan = off` is REQUIRED, not belt-and-braces. ** With ~21
+-- fixture rows the planner correctly prefers a sequential scan, so an unforced
+-- probe reads 0 against a perfectly good index and would be a guard that can
+-- never pass. Forcing makes the question "is this index USABLE for this qual",
+-- which is exactly the property at stake.
+--
+-- Mutation-tested rather than assumed: rebuilding the index as `lower(locality)`
+-- while the function keeps `lower(btrim(...))` leaves the counter at 0 and turns
+-- this red. Plan caching does not defeat it either — calling the function
+-- unforced first and then forced still increments, checked explicitly.
+set local enable_seqscan = off;
+create temporary table lc_probe as
+  select pg_stat_get_xact_numscans('public.places_locality_lower_idx'::regclass) as before_call;
+select count(*) from locality_centroid('Mediaanstad');
+select assert_eq(
+  (select pg_stat_get_xact_numscans('public.places_locality_lower_idx'::regclass)
+        > (select before_call from lc_probe)),
+  true, '040: a real call to locality_centroid() actually SCANS places_locality_lower_idx — the index and the predicate agree at runtime, not just as strings');
+drop table lc_probe;
+set local enable_seqscan = on;
+
+-- ** (b) No pattern match crept into the body. ** The five negative cases in
+-- 040.3 catch a fuzzy match that CHANGES results. They cannot catch one that
+-- does not: a redundant `ilike` conjunct beside the equality returns identical
+-- rows and costs a scan, which is precisely the cost-only defect class 039 §5b
+-- records. Absence is the enforcement, so absence is what is asserted.
+select assert_eq(
+  (select pg_temp.lc_code() like '%ilike%' or pg_temp.lc_code() like '%similarity%'),
+  false, '040: the body contains no ILIKE and no similarity() — a redundant one would return identical rows and cost the index, which 040.3 cannot see');
+
+-- --------------------------------------------------------------------------
+-- 040.6  Privileges BY ROLE, and the surfaces 040 must NOT have widened.
+-- --------------------------------------------------------------------------
+-- 031's lesson: this suite runs as the table owner, for whom no grant barrier
+-- exists at all, so every privilege is asserted by name rather than by trying it.
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.locality_centroid(text)'::regprocedure),
+  false, '040: locality_centroid is SECURITY INVOKER — the places SELECT policy governs it, with no second copy of the rule and no seventh definer advisor');
+select assert_eq(
+  (select proconfig @> array['search_path=""'] from pg_proc
+    where oid = 'public.locality_centroid(text)'::regprocedure),
+  true, '040: ... with search_path pinned empty, 005''s rule');
+select assert_eq(
+  (select provolatile::text || proparallel::text from pg_proc
+    where oid = 'public.locality_centroid(text)'::regprocedure),
+  'ss'::text, '040: ... and it is STABLE and PARALLEL SAFE, matching search_places');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.locality_centroid(text)', 'execute'),
+  true, '040: authenticated may call locality_centroid');
+select assert_eq(
+  has_function_privilege('anon', 'public.locality_centroid(text)', 'execute'),
+  false, '040: anon may NOT — the default EXECUTE to PUBLIC was revoked');
+
+-- 040 added an index and a function. It must not have added a surface. Scoped
+-- to `places` rather than counting schema-wide, so these keep testing 040's own
+-- intent when the next table lands.
+select assert_eq(
+  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'places'),
+  1, '040: places still carries exactly one policy');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'anon'),
+  0, '040: anon still holds zero grants of any kind on places — decision #1');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'authenticated'),
+  1, '040: authenticated still holds exactly one table grant');
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', 'public.places', p))
+     from unnest(array['insert', 'update', 'delete']) p),
+  false, '040: ... and it is not INSERT, UPDATE or DELETE — no write path arrived with the index');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'places'
+      and grantee in ('anon', 'authenticated') and privilege_type <> 'SELECT'),
+  0, '040: and no COLUMN-level write grant hides behind the table-level one — 034 §4b''s trap');
+select assert_eq(
+  (select count(*)::int from pg_indexes where schemaname = 'public' and tablename = 'places'),
+  4, '040: FOUR indexes now — 039''s three plus places_locality_lower_idx');
+select assert_eq(
+  (select count(*)::int from pg_trigger where tgrelid = 'public.places'::regclass and not tgisinternal),
+  0, '040: places still carries no trigger — 023''s gate guards writes, and there are still none');
+
+-- --------------------------------------------------------------------------
+-- 040.7  As a signed-in rider, and then as anon.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+
+select assert_eq(
+  (select array[lat, lon, place_count::double precision] from locality_centroid('Mediaanstad')),
+  array[52.0, 5.0, 5.0]::double precision[],
+  '040: a signed-in rider gets the same answer, under the same SELECT policy — security invoker means there is no second rule');
+select assert_eq((select count(*)::int from locality_centroid('Zzzznietbestaathelemaalniet')),
+  0, '040: ... and the same zero rows for an unknown locality');
+select assert_denied($$insert into places (id,name,lon,lat,country,locality) values ('p040-hack','Mine',5.1,52.1,'NL','Mediaanstad')$$,
+  '040: ... and still cannot write a place, so nobody can move a locality''s centroid');
+
+reset role;
+set role anon;
+select assert_denied($$select count(*) from locality_centroid('Mediaanstad')$$,
+  '040: anon cannot call locality_centroid — the grant, not the policy, is what stops it');
+reset role;
+
+rollback to savepoint places_040;
 
 rollback;
 

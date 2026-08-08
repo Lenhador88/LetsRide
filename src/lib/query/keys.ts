@@ -203,6 +203,29 @@ export const queryKeys = {
     list: (): QueryKey => ['notifications', 'list'],
     unread: (): QueryKey => ['notifications', 'unread'],
   },
+
+  /**
+   * `search_places()` (`037`/`039`), read through `searchPlaces` in
+   * `lib/data/places.ts`. No `revalidatePath` predecessor, like
+   * `notifications` — `places` is reference data with no writer in this app
+   * at all, so this key was designed against the cache contract from the
+   * start rather than translated from a route claim.
+   *
+   * `near` is folded into the key rather than dropped, because a biased and
+   * an unbiased search for the same term are different *questions* with
+   * different answers — `Jumbo` from a rider in Utrecht and `Jumbo` with no
+   * location can legitimately return different top hits (`PlaceSearchResult`'s
+   * doc block), and caching them under one key would show whichever answered
+   * first to both.
+   */
+  places: {
+    search: (term: string, near: { lat: number; lon: number } | null): QueryKey => [
+      'places',
+      'search',
+      term,
+      near ? `${near.lat},${near.lon}` : null,
+    ],
+  },
 } as const
 
 /**

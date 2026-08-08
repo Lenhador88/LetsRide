@@ -628,9 +628,11 @@ export type NotificationCursor = { createdAt: string; id: string }
  * container cannot reach. Settle it before a result renders; see `037`'s
  * header.
  *
- * Most screens want `PlaceSearchResult` instead. **Nothing reads this type
- * yet** — there is no `src/lib/data/places.ts`, and the table is empty until
- * the operator load in `037` §6.
+ * Most screens want `PlaceSearchResult` instead. **Nothing reads this RAW
+ * shape** — `src/lib/data/places.ts` exists, but it reads through
+ * `search_places()`/`locality_centroid()`, which return `PlaceSearchResult`/
+ * `LocalityCentroid`, never a row of this type directly. The table itself is
+ * empty until the operator load in `037` §6.
  */
 export type Place = {
   /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */
@@ -749,4 +751,66 @@ export type PlaceSearchResult = {
   lat: number
   /** `lon`, not `lng` — one name for one quantity, matching `Place.lon`. */
   lon: number
+}
+
+/**
+ * The single row from the `locality_centroid(q)` RPC (`040`) — or **no row at
+ * all**, which is the case the caller has to handle first.
+ *
+ * It exists for one job: when the rider declines GPS, `profiles.location` — the
+ * free-text city from onboarding — is the *only* position signal the app holds
+ * (`rides` has no coordinates and nothing stores a rider position). This turns
+ * that string into a `near_lat`/`near_lon` pair for `search_places()`, which is
+ * the difference between a 2,957 ms nationwide search and a 152 ms local one.
+ *
+ * ```ts
+ * const [c] = await supabase.rpc('locality_centroid', { q: profile.location })
+ *   .then(r => r.data ?? [])
+ * const { data } = await supabase.rpc('search_places',
+ *   c ? { q: term, near_lat: c.lat, near_lon: c.lon } : { q: term })
+ * ```
+ *
+ * Four things the caller has to know:
+ *
+ *  - **Zero rows is the "no location" answer, and it is the common one.** It is
+ *    returned for an unknown city, for a null or empty `q`, and — today — for
+ *    *every* input, because `places` is empty on DEV and does not exist on PROD
+ *    until the operator load runs. All of these mean the same thing at the call
+ *    site: call `search_places()` without coordinates. Do **not** try to tell
+ *    them apart; an unloaded index is indistinguishable from an unknown city by
+ *    design, not by oversight.
+ *  - **Matching is EXACT** — `lower(btrim(locality))` on both sides, so case and
+ *    surrounding whitespace are forgiven and nothing else is. `Utrech`,
+ *    `trecht` and `Utrechtt` all return zero rows. This is deliberate and the
+ *    migration argues it at length: it is why this lookup has none of
+ *    `search_places`' scan-cost surface and needs no guard, no length cap and no
+ *    debounce. If a rider's stored city does not resolve, that is a data
+ *    question, not a reason to loosen the predicate.
+ *  - **Cache it for the session.** A rider's onboarding city does not change
+ *    between keystrokes, so resolving it once per screen is right and calling it
+ *    alongside every `search_places()` doubles the round trips for nothing.
+ *  - **`place_count` is a row count, NOT a confidence score**, and the
+ *    difference bites. It answers "does the index know this town, and from more
+ *    than a handful of rows". It cannot see the case that actually goes wrong:
+ *    Dutch names repeat — Bergen NH and Bergen L are 180 km apart — and such a
+ *    locality reports a perfectly healthy count while having no single centre.
+ *    The centroid is a **median** rather than a mean precisely so that case
+ *    resolves to the larger of the two towns instead of a field between them
+ *    (measured: 68 km off under a mean, 2.3 km under a median), but no number in
+ *    this row flags it. Treat a low count as "maybe don't bias on this"; do not
+ *    read a high one as certainty.
+ *
+ * Unlike `PlaceSearchResult.meta`, **every field here is genuinely non-nullable**
+ * and the generated `Database` type is right for once: `places.lat`/`lon` are
+ * `not null`, and the function's `having count(*) > 0` means a returned row
+ * always had at least one input. Emptiness is expressed as *zero rows*, never as
+ * a row of nulls — which is the whole reason that `having` is in the migration.
+ */
+export type LocalityCentroid = {
+  /** Median latitude of the places in that locality. */
+  lat: number
+  /** `lon`, not `lng` — matching `Place.lon` and `PlaceSearchResult.lon`. */
+  lon: number
+  /** How many rows backed the answer. A row count, not a confidence score. */
+  place_count: number
 }
