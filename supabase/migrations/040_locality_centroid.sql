@@ -1,0 +1,460 @@
+-- 040: public.locality_centroid(q) — resolve a rider's onboarding city to one
+-- coordinate, so place search can be biased when GPS is unavailable.
+--
+-- This extends 037 and 039 — read supabase/migrations/037_places_index.sql
+-- (especially §4 RLS, §5 the function shape and §5a the guard) and
+-- 039_places_address_search.sql (§5c, the cost table this file exists because
+-- of) before this one. Nothing either of them established is changed here: no
+-- policy is touched, no grant is widened, no existing function is replaced.
+-- 040 adds one index and one function.
+--
+-- No Linear issue id was supplied with this change; the driver is 039 §5c's
+-- measured cost table, quoted below. Recorded that way rather than citing an
+-- issue number that would be invented.
+--
+-- ---------------------------------------------------------------------------
+-- WHY — this is a UX problem with a database-shaped answer
+-- ---------------------------------------------------------------------------
+-- `search_places()` is fast with a location and slow without it, because the
+-- ~28 km bbox is what keeps a broad term off most of the table. 039 §5c, on the
+-- 750k-row synthetic bench:
+--
+--     term          rows matched     WITH a location     WITHOUT one
+--     'Cafe'              34,641          29 ms             427 ms
+--     'Maastricht'        45,029          51 ms             497 ms
+--     'sta'              101,524          54 ms             996 ms
+--     'straat'           391,586         152 ms           2,957 ms
+--
+-- So **always having a location is the highest-leverage performance fix
+-- available to this epic**, and it is not a query-tuning problem: the query is
+-- already tuned. The missing input is a coordinate.
+--
+-- `navigator.geolocation` supplies one when the rider grants it. When they
+-- decline — and on a first run, before any permission prompt has been answered
+-- at all — the app holds exactly one signal about where the rider is:
+-- `profiles.location`, the free-text city typed at onboarding (018 bounds it to
+-- 1..100 characters and nothing else). `rides` has no coordinate columns, and
+-- no table stores a rider position. That is the whole inventory.
+--
+-- This function turns that one string into a coordinate. It is the difference
+-- between a 2,957 ms nationwide search and a 152 ms local one, for every rider
+-- who says no to the permission dialog.
+--
+-- ---------------------------------------------------------------------------
+-- SCOPE — this is a RESOLVER, not a search box. ** DO NOT MAKE IT FUZZY. **
+-- ---------------------------------------------------------------------------
+-- ** This is the single most important line in the file, so it is near the top
+-- rather than buried in §1. ** The match is
+--
+--     lower(btrim(locality)) = lower(btrim(q))
+--
+-- an indexed EQUALITY, and it must stay one. The input is a city name the rider
+-- already typed into onboarding and that the app already stores — it is not a
+-- typeahead, nobody is typing into it, and there is no partial-input state to
+-- be tolerant of.
+--
+-- ** Because of that, this function has NONE of search_places' scan-cost
+-- surface. ** No trigram, no `ILIKE '%..%'`, no token splitting, no
+-- `similarity()`, and therefore no need for 037 §5a's alphanumeric-run guard,
+-- no 100-character cap and no per-token dedup. Every one of those exists in
+-- search_places to stop a caller turning a text match into a sequential scan.
+-- An equality against an expression index cannot become a sequential scan, so
+-- there is nothing to guard.
+--
+-- ** Making the match fuzzy would import all of it, including the part that is
+-- still OPEN. ** 039 §5d records an unclosed abuse path: ten distinct
+-- co-extensive substrings of one word — `str tra raa aat stra traa raat straa
+-- traat straat`, 49 characters — AND to the same 391,586 rows while multiplying
+-- the per-row work by ten, measured at **5,914 ms**, inside `authenticated`'s
+-- 8 s statement timeout and therefore returned successfully rather than
+-- erroring. No deduplication reaches it, because nothing is duplicated, and a
+-- function-level `statement_timeout` does not bound it (039 §5d: measured
+-- inert, and worse than a no-op because a `proconfig` assertion would pass).
+-- That cost is the price 039 paid deliberately for a search box. There is no
+-- reason to pay it twice, for a lookup whose input is a value the database
+-- itself handed the client.
+--
+-- If a fuzzy locality resolver is ever genuinely wanted — a rider whose stored
+-- city is `Den Bosch` against an extract that says `'s-Hertogenbosch` — that is
+-- a **different function** with its own cost analysis and its own guard, not a
+-- loosened predicate here. Asserted, not merely asked for: 040.3 pins five
+-- negative cases (prefix, substring, superstring, one-character typo, and a
+-- trailing-token extension), each of which a LIKE or trigram implementation
+-- would answer with rows.
+--
+-- ---------------------------------------------------------------------------
+-- ** DORMANT: `places` is EMPTY, so this returns nothing until the load runs. **
+-- ---------------------------------------------------------------------------
+-- Same dormancy as everything else in this epic, stated rather than left for a
+-- caller to diagnose. `places` holds **0 rows on DEV and does not exist on PROD
+-- at all** — 037 §6 is the load, it is an operator step, and no session holds
+-- database credentials. Until it runs, `locality_centroid('Utrecht')` returns
+-- zero rows, which is byte-identical to what it returns for a locality that
+-- genuinely does not exist.
+--
+-- ** So a caller cannot distinguish "no data loaded" from "unknown city", and
+-- must not try. ** Both mean the same thing at the call site — no location —
+-- and the correct response to both is to call `search_places()` without
+-- coordinates. An empty index looks exactly like a working lookup that finds
+-- nothing; that is the failure mode to expect while this is unloaded, and it is
+-- not a bug in this function.
+--
+-- ---------------------------------------------------------------------------
+-- ** ATTRIBUTION: inherited, and still OPEN. **
+-- ---------------------------------------------------------------------------
+-- A centroid derived from `places` is derived from Overture Maps data, so it
+-- carries `places`' unresolved attribution obligation whole — see 037's header
+-- for the measurement. In short: a census of 527,725 sampled rows found the
+-- sources to be Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo,
+-- DAC and Krick, and **zero** OpenStreetMap, so the ODbL credit this repo first
+-- assumed is wrong; what the eight actually require has NOT been read, because
+-- Overture's attribution page is egress-blocked from the build container.
+--
+-- ** A derived coordinate is not laundered by the derivation. ** If the source
+-- terms require credit for the underlying rows, they require it for a median of
+-- those rows too — this function reduces 37,500 records to two numbers, and
+-- reducing data is not the same as being free of it. Settling it is an owner
+-- action and it gates any screen that renders a result, not this migration.
+--
+-- ---------------------------------------------------------------------------
+-- Personal data — one new question, and it is answered rather than skipped
+-- ---------------------------------------------------------------------------
+-- `.claude/agents/data.md` §Personal data asks retention and reach at creation
+-- time. 037 and 039 answered both with "a place is a shop, not a person", and
+-- that is still true of every row this reads.
+--
+-- ** But 040 is the first function in this repo whose ARGUMENT is a value
+-- copied out of a rider's profile, ** so the question is not quite the same one
+-- and is worth answering explicitly instead of inheriting an answer:
+--
+--   * Retention — nothing to retain. This function writes no row, creates no
+--     table and keeps no state; `q` exists for the duration of one query. There
+--     is no new table, so there is no window to state and no mechanism to
+--     prefer over an intention.
+--   * Reach of account deletion — nothing to reach. `private.delete_account`
+--     (029) needs no new arm. The rider's city already lives in
+--     `profiles.location`, which deletion already covers; passing a copy of it
+--     as a function argument creates no second copy anywhere.
+--   * The one real caveat: `q` is a rider's stated city **in transit**. Postgres
+--     does not log statement parameters by default, but `log_statement = 'all'`
+--     or a slow-query log would capture it in the platform's log store, which is
+--     outside `private.delete_account`'s reach by construction. That is a
+--     property of *any* parameter carrying profile data and not specific to this
+--     function; recorded so it is a known property rather than a discovery.
+--
+-- No `updated_at` and no client-generated id, for 037's reason: nothing here is
+-- writable, so both would document an intention the grants contradict.
+--
+-- ---------------------------------------------------------------------------
+-- Settled decisions carried in here
+-- ---------------------------------------------------------------------------
+--   #1 no anonymous access  -> EXECUTE revoked from public and anon, granted to
+--      authenticated alone. `places`' own policy and grants are UNCHANGED.
+--   #2 blocking is in RLS   -> nothing this function reads is a person, so no
+--      block predicate. It does not read `profiles`: the caller passes the
+--      string in, which is also why it needs no `security definer`.
+--   #8 Supabase IS the backend -> a Postgres function called via rpc(), tier 2
+--      of `.claude/agents/data.md` §Where logic lives. Not tier 1, because
+--      PostgREST cannot express `percentile_cont(...) within group` and because
+--      the normalisation on both sides of the equality has to be the same
+--      expression the index was built on. Not tier 3: no secret, no outbound
+--      call, no schedule.
+
+-- ---------------------------------------------------------------------------
+-- §1. The estimator: componentwise MEDIAN, not the mean. Measured.
+-- ---------------------------------------------------------------------------
+-- ** The mean is the obvious answer and it is the wrong one, for a reason that
+-- has nothing to do with outliers. ** Measured on a 750k-row synthetic bench
+-- (local Postgres 16.13, 2026-08-08; `places` is empty, so nothing here is
+-- measured on real data), against three failure shapes. Error is the distance
+-- from the estimate to the true town centre:
+--
+--     locality shape                          n        mean       median
+--     10 rows, one null-island geocode        10   577.06 km     0.10 km
+--     BIMODAL 60/40, two towns ~180 km apart 1000    68.01 km     2.32 km
+--     10,001 rows, one null-island geocode 10001     0.50 km     0.06 km
+--
+-- **Read the middle row, not the first.** The outlier argument — one
+-- mis-geocoded row drags the mean — is real but self-limiting: it only bites at
+-- small `n`, and small `n` is exactly what `place_count` already tells the
+-- caller. By 10,000 rows a null-island row moves the mean 500 m, which is
+-- nothing against a 28 km box.
+--
+-- ** The bimodal case is the one that decides it, because it does not shrink
+-- with n and `place_count` cannot see it. ** Dutch toponymy repeats: Bergen
+-- (NH) and Bergen (L) are 180 km apart and share a name, and so do Beek,
+-- Hoogeveen and others. Those rows are not errors — they are two real towns —
+-- so no confidence column, no `confidence` filter and no amount of data
+-- cleaning removes them.
+--
+--   * The **mean** lands between the two modes: 68 km from one town and ~90 km
+--     from the other, in a field belonging to neither. Every search that rider
+--     makes is then biased to open country, the local pass returns nothing, and
+--     the national pass runs — which is the 2,957 ms case this whole change
+--     exists to avoid. It fails by making the feature actively counterproductive
+--     while reporting `place_count = 1000`, i.e. **confidently wrong**.
+--   * The **median** snaps to whichever mode holds the majority: 2.32 km, inside
+--     the town. "The bigger of the two Bergens" is a defensible answer where "a
+--     point between them" is not.
+--
+-- `percentile_cont(0.5)` rather than `avg()`, taken independently per axis.
+--
+-- ** Two honest caveats, because a componentwise median is not the geometric
+-- median and this file should not imply otherwise: **
+--
+--   1. **It lands inside the majority cluster but displaced toward the
+--      minority.** Measured on the 60/40 bench: the median of all 1,000 rows is
+--      the 500th, and 400 southern rows sort below every northern one, so the
+--      answer is the 100th of 600 northern rows — the 16.7th percentile of that
+--      cluster, 2.32 km off its centre rather than 0. Still inside the town,
+--      which is all this needs to be.
+--   2. **At a near-even split there is no right answer and this returns one
+--      anyway.** As the split approaches 50/50 that displacement reaches the
+--      edge of the majority cluster and then jumps to the other one. No single
+--      point serves a 50/50 bimodal locality, so this is a limit of the
+--      question and not of the estimator — but it is a case where the returned
+--      coordinate is plausible and wrong, and nothing in the return shape says
+--      so. See §1b.
+--
+-- `percentile_cont` over `percentile_disc`: for an even row count `cont`
+-- interpolates between the two middle values where `disc` picks one of them, so
+-- adding a single row moves the answer smoothly instead of stepping. Both are
+-- defensible; the choice is pinned in 040.4 so a swap is a decision rather than
+-- a drift.
+--
+-- ** COST — the median is ~2.6x the mean and it does not matter. ** Same bench,
+-- best of five warm runs, through the expression index in §2:
+--
+--     locality size                  percentile_cont      avg()
+--     37,500 rows (the largest)           20.1 ms         7.6 ms
+--     285 rows (a typical town)            2.0 ms            —
+--     unknown locality (the miss)          0.08 ms           —
+--
+-- 12.5 ms of extra worst-case work, once, to avoid up to 2,957 ms per search.
+-- That is a ratio of about 1:150 in the *worst* case and far better in every
+-- other. Cost was never the question here; correctness of the biasing point was.
+--
+-- ---------------------------------------------------------------------------
+-- §1b. What `place_count` is for, and what it deliberately does NOT say
+-- ---------------------------------------------------------------------------
+-- It answers ONE question: is this a locality the index actually knows, and
+-- knows from more than a handful of rows? A count of 3 is a hamlet or a
+-- misspelling and a caller may reasonably decline to bias on it; a count of
+-- 12,000 is a city.
+--
+-- ** It is NOT a confidence score, and the bimodal case is exactly where it
+-- misleads. ** `Bergen` reports 1,000 — which reads as high confidence — for a
+-- locality that has no single centre at all. A dispersion column (a bounding
+-- radius, an interquartile spread) would express that, and it was considered and
+-- deliberately NOT added:
+--
+--   * the caller has no threshold to compare it against, so shipping one would
+--     mean inventing a cut-off here and asserting it as though it were measured;
+--   * the downside is bounded and self-correcting. A bad centroid does not
+--     return wrong places — the local pass simply finds nothing and 037 §5b's
+--     `count(*) < 5` short-circuit lets the national pass run, so the result
+--     degrades to the no-location search it would have been anyway. Slower, not
+--     wrong;
+--   * and nothing consumes this yet, so a fourth column would be a guess
+--     hardening into a contract before a caller exists to shape it.
+--
+-- Recorded as an open question rather than omitted silently. If a caller ever
+-- needs to tell `Bergen` from `Amsterdam`, add the column then, with a threshold
+-- that came from a screen rather than from this comment.
+
+-- ---------------------------------------------------------------------------
+-- §2. The index — and the ONE way this change breaks silently
+-- ---------------------------------------------------------------------------
+-- An expression index serves a qual only when the indexed expression matches the
+-- query's expression EXACTLY. So these two must stay byte-identical:
+--
+--     the index      lower(btrim(locality))
+--     the predicate  lower(btrim(p.locality)) = lower(btrim(locality_centroid.q))
+--
+-- ** Drop `btrim` from one side and nothing breaks, nothing errors, and no test
+-- of behaviour goes red — the lookup silently becomes a sequential scan. **
+-- Measured on the 750k-row bench: 20.1 ms through the index against **141 ms**
+-- with it unusable, 7x, with identical results. That is the whole failure mode,
+-- and it is invisible from the outside.
+--
+-- Pinned two ways in 040.5, because neither alone is enough: a structural needle
+-- (the index definition and the function body carry the same expression) and a
+-- RUNTIME probe (`set local enable_seqscan = off`, then
+-- `pg_stat_get_xact_numscans` before and after a real call). The probe is the
+-- stronger of the two — it proves the SHIPPED function reaches the SHIPPED
+-- index rather than proving two strings look alike — and it was mutation-tested
+-- by rebuilding the index as `lower(locality)`, which leaves the counter at 0.
+-- The forcing is required: with 20 fixture rows the planner correctly prefers a
+-- sequential scan, so an unforced probe reads 0 against a perfectly good index.
+--
+-- `btrim` earns its place rather than being defensive noise: the bench carries a
+-- `'Spatiestad '` row beside a `'Spatiestad'` one, and the two resolve to one
+-- locality only because both sides trim. `locality` has no NOT NULL and no CHECK
+-- — 037 typed it from the measured data and did not constrain it — so what a
+-- hand-run `\copy` puts in it is not something this function gets to assume.
+--
+-- **No partial predicate**, unlike 037's `places_brand_trgm_idx`. That one is
+-- partial because `brand` is null on 92% of rows, which took it from ~30 MB to
+-- 2 MB. `locality` is populated on ~99% (039 §SCOPE), so `where locality is not
+-- null` would exclude about 1% of entries and buy nothing but a predicate to get
+-- wrong. Not every index deserves the trick that paid off once.
+--
+-- **Size, from the same synthetic bench:** 5.1 MB over 761k rows. Small because
+-- locality values repeat heavily and B-tree deduplication (PG 13+) collapses
+-- them — the real extract has more distinct towns, so expect more. Re-measure
+-- after the first real load; this is an order of magnitude and nothing more.
+create index places_locality_lower_idx
+  on public.places (lower(btrim(locality)));
+
+comment on index public.places_locality_lower_idx is
+  'Serves public.locality_centroid()''s exact-match lookup (040). THE EXPRESSION `lower(btrim(locality))` MUST STAY BYTE-IDENTICAL TO THAT FUNCTION''S WHERE CLAUSE — an expression index serves a qual only on an exact match, so dropping `btrim` from either side does not error, changes no result, and silently turns the lookup into a sequential scan (20 ms to 141 ms on a 750k-row synthetic bench). Pinned structurally and by a runtime index-scan probe in supabase/tests/rls_test.sql §040.5. Not partial: `locality` is populated on ~99% of rows, so excluding NULLs would save nothing.';
+
+-- ---------------------------------------------------------------------------
+-- §3. public.locality_centroid
+-- ---------------------------------------------------------------------------
+-- `security invoker`, `set search_path = ''`, `stable`, `parallel safe` — all
+-- for 037 §5's reasons, and the first is the one that matters:
+--
+-- ** SECURITY INVOKER, so `places`' SELECT policy governs this exactly as it
+-- governs a direct select. ** There is no authorization to re-check inside the
+-- body — the function reads one table whose policy is `using (true) to
+-- authenticated` — so a definer would buy nothing and would cost a SEVENTH
+-- `authenticated_security_definer_function_executable` advisor for CLAUDE.md's
+-- table to explain. Invoker also means that if the `places` policy is ever
+-- narrowed, this narrows with it, with no second copy of the rule.
+--
+-- Every non-pg_catalog name is schema-qualified per 005's rule. `lower`,
+-- `btrim`, `count` and `percentile_cont` are all pg_catalog and resolve under an
+-- empty search_path; `public.places` is the one that would not.
+--
+-- ** `having count(*) > 0` is LOAD-BEARING, not tidiness. ** An aggregate query
+-- with no GROUP BY forms exactly one group even over zero input rows, so without
+-- it an unknown locality returns ONE row of `(NULL, NULL, 0)` rather than none.
+-- Verified rather than recalled. The contract is zero rows, because the caller's
+-- test is then `if (rows.length === 0) -> no location` instead of a null check on
+-- two coordinate fields it would otherwise have to remember to make. Deleting
+-- the HAVING is the obvious "simplification" here — there is only ever one group
+-- — so it is asserted directly in 040.2.
+--
+-- `group by lower(btrim(p.locality))` would achieve the same thing as a side
+-- effect of grouping, and is deliberately NOT used: it states the wrong intent
+-- and reads as removable for precisely the reason above.
+--
+-- ** `btrim(q) <> ''` is a MEANING floor, not a cost guard — do not read it as
+-- 037 §5a's. ** `locality` carries no CHECK, so a load can put an empty string
+-- in it; without this line `locality_centroid('')` would return the centroid of
+-- every place whose town is unknown, which is a nonsense answer wearing the
+-- shape of a real one. It is Var-free, so it costs a one-time filter and cannot
+-- affect the index condition below. A NULL `q` needs no separate arm: the
+-- comparison is NULL, which is not true, so it matches nothing.
+create function public.locality_centroid(q text)
+returns table (
+  lat double precision,
+  lon double precision,
+  place_count integer
+)
+language sql
+stable
+parallel safe
+security invoker
+set search_path = ''
+as $fn$
+  select
+    -- Componentwise median, per axis independently. NOT avg(): §1 has the
+    -- measurement. The bimodal case is what decides it — a mean lands between
+    -- two towns that share a name, 68 km from either.
+    percentile_cont(0.5) within group (order by p.lat),
+    percentile_cont(0.5) within group (order by p.lon),
+    count(*)::integer
+  from public.places p
+  -- A meaning floor, not a cost guard: an empty `q` would otherwise return the
+  -- centroid of every row whose locality is the empty string. §3.
+  where btrim(locality_centroid.q) <> ''
+    -- EXACT, indexed equality. Never a LIKE, never a trigram — see SCOPE at the
+    -- top of this file. The left side must stay byte-identical to
+    -- places_locality_lower_idx's expression or this silently seq-scans.
+    and lower(btrim(p.locality)) = lower(btrim(locality_centroid.q))
+  -- Zero rows for an unknown locality. Without this, zero input rows still
+  -- produce one all-NULL row, because an ungrouped aggregate always forms one
+  -- group. §3.
+  having count(*) > 0;
+$fn$;
+
+comment on function public.locality_centroid(text) is
+  'Resolves a locality NAME to one coordinate, so search_places() can be biased when the rider has declined GPS (040). The only position signal the app holds in that case is profiles.location, the free-text city from onboarding. SECURITY INVOKER — the places SELECT policy governs it, there is nothing to re-check. MATCHING IS AN EXACT, INDEXED EQUALITY on lower(btrim(locality)) and MUST STAY ONE: this resolves a name the rider already typed, it is not a search box, and it therefore has none of search_places'' scan-cost surface — no trigram, no ILIKE, no token splitting, and so no guard, no length cap and no dedup needed. Making it fuzzy would import all of that including 039 §5d''s still-OPEN abuse path (5,914 ms from 49 characters). Returns the componentwise MEDIAN, not the mean, and that is measured rather than stylistic: Dutch toponymy repeats names — Bergen NH and Bergen L are 180 km apart — and a mean lands between the two modes, 68 km from either town, while a median snaps to whichever holds the majority. place_count says how many rows backed the answer; it is NOT a confidence score and cannot see the bimodal case, which reports a healthy 1,000. Returns ZERO ROWS for an unknown locality, for a NULL or empty q, and while the index is unloaded — the caller treats all of these identically as "no location" and calls search_places() without coordinates. CACHE THE RESULT for the session: a rider''s onboarding city does not change between keystrokes, so calling this alongside every search_places() doubles the round trips for no gain. `lon`, never `lng` — 037 §5bb. DORMANT: places holds 0 rows on DEV and does not exist on PROD, so this returns nothing until 037 §6''s operator load runs, and an empty index is indistinguishable from a working lookup that finds nothing. Inherits places'' OPEN attribution question: a median of Overture rows is still derived from them.';
+
+-- ---------------------------------------------------------------------------
+-- §4. Grants — default EXECUTE goes to PUBLIC on creation, so take it away
+-- ---------------------------------------------------------------------------
+-- 005's rule, and the same shape 037 §5 uses. As there, `anon` is
+-- defence-in-depth rather than the live half: `postgres`'s default ACL for
+-- functions in `public` grants EXECUTE to authenticated and service_role only,
+-- so anon holds nothing to revoke. It is `public` that actually loses a grant
+-- here. Kept because it costs nothing and still catches a function created by a
+-- role whose default ACL does include anon.
+revoke all on function public.locality_centroid(text) from public, anon;
+grant execute on function public.locality_centroid(text) to authenticated;
+
+-- No table grant changes and no policy changes. `authenticated` holds SELECT on
+-- public.places and nothing else, `anon` holds nothing, and `places` still
+-- carries exactly one policy — 040 added an index and a function, not a surface.
+-- Asserted in supabase/tests/rls_test.sql §040.6.
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the live project after applying, not just in CI
+-- ---------------------------------------------------------------------------
+-- The suite runs on plain Postgres as the table owner and cannot see role
+-- grants, PostgREST exposure or Supabase defaults. Each of these predicts a
+-- number:
+--
+--   -- false, and {search_path=""} — invoker, with the path pinned
+--   select prosecdef, proconfig from pg_proc
+--    where oid = 'public.locality_centroid(text)'::regprocedure;
+--
+--   -- s and s — stable, parallel safe
+--   select provolatile, proparallel from pg_proc
+--    where oid = 'public.locality_centroid(text)'::regprocedure;
+--
+--   -- true, then false — riders may call it, anon may not
+--   select has_function_privilege('authenticated', 'public.locality_centroid(text)', 'execute'),
+--          has_function_privilege('anon',          'public.locality_centroid(text)', 'execute');
+--
+--   -- q,lat,lon,place_count — the wire contract PostgREST publishes
+--   select proargnames from pg_proc
+--    where oid = 'public.locality_centroid(text)'::regprocedure;
+--
+--   -- 4 now, not 039's 3 — pkey, the coordinate btree, the search_text GIN,
+--   -- and places_locality_lower_idx
+--   select indexname from pg_indexes where schemaname='public' and tablename='places';
+--
+--   -- the index expression, which must match the function's WHERE clause
+--   select indexdef from pg_indexes
+--    where schemaname='public' and indexname='places_locality_lower_idx';
+--   -- -> ... USING btree (lower(btrim(locality)))
+--
+--   -- UNCHANGED by this file: 1 policy, SELECT, {authenticated}; RLS on
+--   select cmd, roles::text from pg_policies
+--    where schemaname='public' and tablename='places';
+--   select relrowsecurity from pg_class where oid = 'public.places'::regclass;
+--
+--   -- exactly {SELECT}, and 0 — no write path arrived with the index
+--   select privilege_type from information_schema.role_table_grants
+--    where table_schema='public' and table_name='places' and grantee='authenticated';
+--   select count(*) from information_schema.column_privileges
+--    where table_schema='public' and table_name='places'
+--      and grantee in ('anon','authenticated') and privilege_type <> 'SELECT';
+--   select count(*) from information_schema.role_table_grants
+--    where table_schema='public' and table_name='places' and grantee='anon';
+--
+--   -- 0 rows, four times over, and NO error — the "no location" contract.
+--   -- On an unloaded index EVERY call returns 0, including a real city, which
+--   -- is expected and is why the negative cases below are asserted in CI too.
+--   select count(*) from public.locality_centroid(null);
+--   select count(*) from public.locality_centroid('');
+--   select count(*) from public.locality_centroid('   ');
+--   select count(*) from public.locality_centroid('Zzzznietbestaathelemaalniet');
+--
+-- And the advisors: `get_advisors(security)` must still return the documented
+-- EIGHT. This function is `security invoker`, so it adds no
+-- `authenticated_security_definer_function_executable` warning — a ninth would
+-- mean it was created `security definer`.
