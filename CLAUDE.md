@@ -1879,15 +1879,22 @@ What it does, in order — and the order is the design:
 1.5. **The only exit, and the stall alarm.** If nothing blocks, go to 2. Otherwise check how long
    the *oldest blocking reason* has been true — the lock (`get_issue` →
    `stateHistory[].startedAt`), a dirty tree's newest file mtime, the in-flight branch's tip, the
-   open PR's `createdAt`, **and the two session gates: another session left `RUNNING`, or an
-   `updated_at` that keeps refreshing so the AFK gate never opens** — and **if it is 3–4 hours old,
-   send one push notification naming it**, then stop. Outside that window, exit silently. Only
-   the owner's unfinished request and low usage headroom are excluded: both are live conditions
-   the owner can already see.
+   open PR's `createdAt`, **and another session left `RUNNING`** — and **if it is 3–4 hours old,
+   send one push notification naming it**, then stop. Outside that window, exit silently.
    **The RUNNING-session entry is the one most likely to freeze the queue silently from now on**,
    because unlike a lock or a branch there is nothing on the board pointing at it — so the
-   notification has to name the session's title. `.claude/commands/queue-pickup.md` STEP 1.5 is
-   the procedure and it wins; this summary has already been the stale half once.
+   notification has to name the session's title.
+
+   **Three blocking reasons have no alarm, and the third is the interesting one.** The owner's
+   unfinished request and low usage headroom are excluded because both are live conditions the
+   owner can already see. **The AFK gate is excluded because no clock can reach it**: it is
+   *defined* as `now − max(updated_at) < 15 min`, so whenever it is held that value is under 15
+   minutes by construction and can never land in a 3–4 hour window, and a stateless firing has no
+   history to measure instead. A draft wrote the alarm anyway; it was **worse than none**, because
+   it claimed cover that did not exist. **Do not reintroduce it** — gate (6) is what catches the
+   dangerous case, since a session touching itself every few minutes is almost certainly RUNNING.
+   `.claude/commands/queue-pickup.md` STEP 1.5 is the procedure and it wins; this summary has
+   already been the stale half twice.
    Without this a condition nobody is holding freezes the queue for ever while every firing exits
    quietly — the exact failure step 1 exists to prevent. The window is narrow so it fires roughly
    once rather than hourly. **The alarm covers every blocking reason, not just the lock**, and

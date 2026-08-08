@@ -1348,6 +1348,11 @@ presence signal a session can reach. And it compounds with the hourly schedule �
 15 minutes before the firing minute skips the whole hour, so a quiet queue is the gate working
 rather than the Routine being broken.
 
+**Three exits stop with no clock behind them and therefore notify directly** — `list_sessions`
+failing, `list_sessions` truncating (`has_more`), and a dirty tree whose mtime cannot be read. A
+stop that nothing can age is a stop nothing will ever report, so each sends its own
+`PushNotification` rather than leaving a transcript line.
+
 **STEP 1.5 alarms on a stuck RUNNING session — naming its title, since nothing on the board
 points at it — and cannot alarm on the AFK gate at all.** Not an exemption, a measurement: that
 gate is *defined* as `now − max(updated_at) < 15 min`, so whenever it is held that clock reads

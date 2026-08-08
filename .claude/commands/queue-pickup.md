@@ -245,7 +245,9 @@ list_sessions  mine=true  limit=50
 
 **If the call fails or the connector is unreachable, treat both gates as HELD and stop** — and
 because a held gate with no data has no `updated_at` to age, **STEP 1.5 cannot stall-alarm on
-it**, so say so in that firing rather than exiting silently. This is the one external call in
+it**. So this exit **sends its own `PushNotification`** rather than leaving a line in a
+transcript nobody opens: without one the queue freezes hourly and completely silently, which is
+the failure STEP 0 exists to prevent, reappearing one gate later. This is the one external call in
 this file that had no stated failure behaviour; STEP 0 names Linear's (notify loudly, stop) and
 STEP 5 names Vercel's (continue, mark unverified). Failing open here is the worst option
 available: it starts a story alongside live work, which is the single outcome STEP 0.5 exists to
@@ -261,10 +263,13 @@ to prevent, and it would look like a clean pass. `limit=50` is chosen to make tr
 unlikely rather than impossible; the `has_more` check is what makes it safe.
 
 **Failing closed costs an hour — and like the connector-failure case above, it cannot be
-stall-aged**, because a gate held with no usable data has no clock behind it. So a firing that
-stops for `has_more` says so in that firing rather than exiting silently. Do not write "STEP 1.5
-covers it": that was in a draft of this paragraph and it is the same unreachable-alarm mistake
-gate (7) documents at length.
+stall-aged**, because a gate held with no usable data has no clock behind it. So this exit
+**also sends its own `PushNotification`**. Do not write "STEP 1.5 covers it": that was in a draft
+of this paragraph and it is the same unreachable-alarm mistake gate (7) documents at length.
+
+**Three exits in this file stop with no clock behind them** — this one, the connector failure
+above, and an unmeasurable dirty tree at STEP 1.5. All three notify, for the same reason: a stop
+that nothing can age is a stop nothing will ever report.
 
 The commands for (2) (3) (4):
 
@@ -440,19 +445,40 @@ oldest blocking condition has been true:
 - **The lock** — `mcp__Linear__get_issue` → `stateHistory[].startedAt` on each issue in
   `Development (AI)` or `Needs help`. Take the longest-held.
 - **A dirty tree (0.5 gate 2)** — age the newest mtime among the modified files:
-  `git status --porcelain | awk '{print $2}' | xargs -r stat -c %Y | sort -rn | head -1`. **This
-  entry is easy to leave out and it is the one with no other cover.** A session that died holding
+
+  ```bash
+  git status --porcelain -z | sed -z 's/^...//' | xargs -0 -r stat -c %Y 2>/dev/null \
+    | sort -rn | head -1
+  ```
+
+  **Use `-z`, and do not "simplify" it to `awk '{print $2}' | xargs`.** That version was in this
+  file and is broken — measured with a repro, not reasoned. `git status --porcelain` **quotes**
+  any path containing a space or a non-ASCII byte (`core.quotePath` is on by default), `awk`
+  splits it at the space, and `xargs` then dies with *"unmatched double quote"* having processed
+  only the paths before it. In the repro a tree dirtied **3 minutes** ago aged as **57,886
+  hours**, because the one file it managed to `stat` was an old one. `R  old -> new` entries fail
+  the same way — `$2` is the path that no longer exists.
+
+  **And the direction of the error is the opposite of harmless.** Dropping entries can only
+  *lower* a maximum, so every failure mode makes the tree read **older** than it is — pushing the
+  age straight past the 3–4 hour window and out the far side, where the alarm exits silently.
+  An earlier caveat here claimed the failures "read newer, so it errs toward staying quiet". That
+  was backwards, and it papered over the bug rather than fixing it.
+
+  **This entry is easy to leave out and it is the one with no other cover.** A session that died
+  holding
   one uncommitted file on `development` makes gate (3) false (nothing is committed) and gate (4)
   false (no PR), so if this is missing nothing ages it, STEP 1.5 exits silently, and the queue
   freezes hourly with nothing on the board pointing at it. Caught by `reviewer` against a
   sentence claiming the list was already complete.
 
-  **The mtime is an approximation and that is fine here** — it dates the last *edit*, not the
-  moment the tree became dirty, and the one-liner skips deleted paths (`stat` fails on them) and
-  mishandles filenames with spaces. None of that matters for an alarm whose only question is
-  "has this been true for hours": every failure mode makes it read *newer*, so it errs toward
-  staying quiet rather than toward a false alarm. If nothing is stat-able, fall back to the
-  lock's own clock.
+  **The mtime is still an approximation** — it dates the last *edit*, not the moment the tree
+  became dirty, and `2>/dev/null` drops deleted paths that cannot be `stat`ed. That is fine for
+  an alarm whose only question is "has this been true for hours". **But if the command returns
+  nothing at all, do not fall back to the lock's own clock** — the scenario this entry exists for
+  is a dirty tree on `development` with no lock, no branch and no PR, so there is nothing to fall
+  back to. Treat an empty result as *unknown age* and say so in the firing, the same as the other
+  two unmeasurable exits below.
 - **A branch in flight (0.5 gate 3)** — `git log -1 --format=%cr` on its tip.
 - **An open PR on the current branch (0.5 gate 4)** — its `createdAt`.
 - **The owner's unfinished request** — never stalls. It is a live human, not a stuck job.
@@ -857,8 +883,21 @@ reviewed at all:
    commits versus the fold-ins'. Without those, `reviewer.md`'s scope pass cannot check the
    breadth cap at all, and is briefed to report that rather than guess the boundary from the
    diff.
-2. Open a PR against **`development`**, with the `## Folded in` section from STEP 4b in the
-   body — or nothing there, if nothing travelled.
+2. **Push the branch — again, if STEP 4b built anything.** Then open a PR against
+   **`development`**, with the `## Folded in` section from STEP 4b in the body, or nothing there
+   if nothing travelled.
+
+   **The push at the end of STEP 4 does not cover the fold-ins**, because STEP 4b commits after
+   it. `create_pull_request` succeeds against whatever was last pushed, so skipping this leaves a
+   PR that merges the story without the fold-in while the `## Folded in` section and the STEP 5
+   comment both say it shipped — and STEP 5's `git checkout development` then strands those
+   commits. Nothing in CI, the PR or the board would show it. Push unconditionally; it is a no-op
+   when there is nothing new.
+
+   ```bash
+   git push -u origin "$BRANCH"
+   git log --oneline origin/"$BRANCH"..HEAD    # must be empty before opening the PR
+   ```
 3. Drive CI to green and merge. Do not merge red. **Never push to `main` and never open a PR
    against `main`** — production promotion belongs to the owner.
 
