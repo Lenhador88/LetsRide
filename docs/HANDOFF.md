@@ -93,7 +93,7 @@ npm run lint                          # exit 0 — 7 pre-existing <img> warnings
 npm run test:unit                     # 775/775 across 32 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 843 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 908 assertions, 0 failures
 ```
 
 **Two traps met while doing that, both of which produced a confident wrong answer first:**
@@ -445,7 +445,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **843** (808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **908** (843 before `039`'s address search; 808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
 | Unit tests | `npm run test:unit` — **775 across 32 files on a clean tree**, measured 2026-08-08 (773 at `development`; `037`'s branch adds the two `scripts/places/` source files) after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
@@ -674,21 +674,31 @@ drop function private.is_ride_crew(uuid);
 delete from supabase_migrations.schema_migrations where name = 'ride_messages';
 ```
 
-**THREE migrations are on DEV and not on PROD as of 2026-08-08, and they are outstanding for
-THREE DIFFERENT reasons — conflating any two is how the wrong one gets applied.** `036` is held
-back **deliberately** and must not be cleared on sight. `037` (the places index) is merely
-unshipped: purely additive, in `034`'s class, so it *could* go to PROD ahead of its code — it would
-just need its own data load there. `038` (username durability, PD-127) is held on an **owner
+**FOUR migrations are on DEV and not on PROD as of 2026-08-08, for THREE DIFFERENT reasons —
+conflating any two is how the wrong one gets applied.** `036` is held back **deliberately** and
+must not be cleared on sight. `037` (the places index) and `039` (its address search) are merely
+unshipped: both purely additive, in `034`'s class, so they *could* go to PROD ahead of their code —
+they would just need a data load there. **`039` travels with `037` and is meaningless without it**,
+since it extends the table `037` creates. `038` (username durability, PD-127) is held on an **owner
 decision that has not been made**, not on a technical constraint: it carries no ordering constraint
 in either direction, but which of three PROD apply orders to use is `proposal.md` Q3 and is
 explicitly blocking. Verify rather than trust this line; it is exactly the kind that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 38 rows, ending 20260808095414 username_is_not_removable
+#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808131801 places_address_search
 #   PROD (zwprydcyryvudhurbnye): 35 rows, ending 035_comment_whitespace_floor
-ls supabase/migrations/ | wc -l          # 38
+ls supabase/migrations/ | wc -l          # 39
 ```
+
+**`039` (places address search, PD-141) is applied to DEV and is additive in `034`'s class**, so
+it could go to PROD ahead of its code — except that `037` has not gone to PROD either, and `039`
+requires it. The pair travels together or not at all. It widens `search_places()` to match
+`street` and `locality` per token, and it **drops** `places_name_trgm_idx` and
+`places_brand_trgm_idx` in favour of one GIN index over a generated `search_text` column — the
+only non-additive thing in it, and safe only because `places` holds 0 rows on DEV and does not
+exist on PROD. That safety does not survive a data load; after one, dropping an index is a
+deliberate act again.
 
 **`038` closes a live hole that is still open on PROD.** A rider can `PATCH
 /rest/v1/profiles?id=eq.<me>` with `{"username": null}` and vanish from every other rider's
@@ -702,9 +712,52 @@ ordering has all three rows and the cost of each.
 
 DEV's `038` was applied byte-identical to the file: `md5(statements[1])` is
 `2d4ef85b74923ca18a702f88d2657997`, which equals `md5sum` of
-`supabase/migrations/038_username_is_not_removable.sql` with its trailing newline stripped (the
-MCP strips it; the file's own `md5sum` is `31924e1ce18fe4f88334d8da85152d3e`). Check it that way
-rather than comparing the raw `md5sum`, or a correct apply reads as a mismatch.
+`supabase/migrations/038_username_is_not_removable.sql` with its trailing newline stripped.
+
+**"The MCP strips it" was the wrong conclusion, drawn from one sample — corrected 2026-08-08.**
+The MCP stores exactly the string the caller passes; `038`'s caller simply did not send the final
+newline. Measured across all three places migrations, recorded md5 against `md5sum` of the file
+**including** its trailing newline:
+
+| | recorded on DEV | file, newline kept | file, newline stripped |
+|---|---|---|---|
+| `037` | `1dcfa7d5…` | **neither matches** — see below | **neither matches** |
+| `038` | `2d4ef85b…` | `31924e1c…` | **matches** |
+| `039` | recompute — see below | recompute | recompute |
+
+So the instruction that used to close this paragraph — *check the stripped hash rather than the
+raw one* — is backwards for two of the three. **Compare the raw `md5sum` first**; only `038` needs
+the stripped form, and that is a property of how `038` was applied, not of the tool.
+
+**`037` matches under neither form as of 2026-08-08, and that is expected rather than drift:** `039`
+edits `037`'s *comments* — the `SUPERSEDED BY 039` banners at §3 and §5d, plus its verification
+footer — which changes the file and no SQL. `037`'s own banners record this so the mismatch is
+discoverable where it is found.
+
+**Do not write `037`'s file hash into this table.** The first attempt did, and both cells were
+wrong within the same commit, because the hash was computed before the banners the commit itself
+added. Any later comment edit moves it again. Recompute instead:
+
+```bash
+md5sum supabase/migrations/037_places_index.sql          # raw
+printf '%s' "$(cat supabase/migrations/037_places_index.sql)" | md5sum   # stripped
+```
+
+**`039` does not qualify either, and the commit that wrote this rule falsified its own `039` row
+within the same branch.** It recorded `68136ed3…`/**matches** before `039` was revised and
+re-applied; DEV now records `4c7ee462…`. The verdict survived by luck, the values did not.
+
+So the rule is narrower than first written: **a hash is only worth recording for a file nothing
+edits again — which in practice means a migration that has already shipped.** An unmerged one is
+still being revised by definition, and its own branch is what revises it. `038` qualifies; `037`
+and `039` did not, and both were wrong here before anyone read them. Recompute both:
+
+```bash
+md5sum supabase/migrations/0NN_*.sql                                # raw
+printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
+# via the Supabase MCP: list_migrations -> md5(statements[1])
+```
+Nothing automated depends on it — `npm run db:drift` compares migration *names* only.
 
 **`places` exists on DEV with 0 rows and does not exist on PROD at all.** Filling it is an owner
 action — a 99 MB `\copy` needing a direct Postgres connection no session holds

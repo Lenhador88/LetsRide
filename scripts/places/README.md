@@ -123,6 +123,10 @@ reachable through PostgREST can.
 indistinguishable from a working search that finds nothing.** `037` creates the
 schema; it cannot create the rows.
 
+**Loading is also what arms the open cost in §Searching.** Linear **PD-150** —
+~5.9 s of database CPU per request from a 49-character term — is 0 ms today only
+because there is nothing to scan. Land it before this load reaches PROD.
+
 ## Refreshing
 
 Overture releases monthly, so the index goes stale on its own. **A refresh that
@@ -150,8 +154,77 @@ sequential scan, and two contracts the UI has to honour:
   `char_length(term) >= 3` accepts `'%%%%'` — which escapes to a pattern with no
   extractable trigram and measured **1,443 ms of sequential scan**, under the 8 s
   statement timeout and therefore silent.
-- **Matching is prefix/substring on `name` and `brand`, not fuzzy.** `pg_trgm`'s
-  default `word_similarity_threshold` of 0.6 does not catch typos anyway —
-  `word_similarity('jubmo', 'Jumbo Utrecht')` is 0.33 — while widening a selective
-  query from 9 rows to 9,529. `street`, `locality` and `postcode` are display-only
-  and are **not** searchable, so "Kerkstraat Amsterdam" finds nothing today.
+- **Matching is substring, per token, ANDed — over `name`, `brand`, `street` and
+  `locality`.** The term is split on whitespace and every token must appear
+  somewhere in the row's searchable text, so `Jumbo Maastricht` finds a Jumbo
+  whose *locality* is Maastricht, and adding a word always narrows. Not fuzzy:
+  `pg_trgm`'s default `word_similarity_threshold` of 0.6 does not catch typos
+  anyway — `word_similarity('jubmo', 'Jumbo Utrecht')` is 0.33 — while widening a
+  selective query from 9 rows to 9,529.
+
+  **This section said the opposite until 2026-08-08 and it was true when written.**
+  It read *"`street`, `locality` and `postcode` are display-only and are **not**
+  searchable, so 'Kerkstraat Amsterdam' finds nothing today"*. `039` (PD-141) made
+  street and locality searchable; `Kerkstraat` returns rows now. **`postcode` is
+  still excluded** — a Dutch postcode is two tokens and its digits collide with
+  house numbers already inside `street` (`039` §2).
+
+- **Ranking: a place the query NAMES beats a place it merely LOCATES.** Widening
+  means `Amsterdam` matches thousands of rows whose only connection to the word is
+  their address, so the function tiers them — every token in `name`/`brand` first,
+  address-only matches after. Name matches are then ordered by trigram similarity,
+  address matches by distance. Proximity still outranks both, per `037` §5b.
+
+- **The result set is capped at five and the local pass short-circuits the
+  national one.** Unchanged by `039`, and now more likely to bite because more
+  rows match: a distant place can be crowded out by five nearby ones. The escape
+  hatch is to type the town — which is exactly what `039` made possible.
+
+- **Debounce the input — required, not advisable.** Cost is roughly linear in
+  matched rows (8–11 µs each), and **the broadest tokens are street-type
+  suffixes, not city names**. On a 750k-row *synthetic* bench (`039` §5c — not
+  the real table, which is empty), national pass, best of five:
+
+  | term | rows matched | national | with a location |
+  |---|---|---|---|
+  | `Kerkstraat` | 17,876 | 171 ms | 37 ms |
+  | `Maastricht` | 45,029 | 497 ms | 51 ms |
+  | `weg` | 89,200 | 740 ms | 44 ms |
+  | `sta` | 101,524 | **996 ms** | 54 ms |
+  | `straat` | 391,586 | **2,957 ms** | 152 ms |
+
+  **`sta` is the case to design around**: three characters, so it is the *first*
+  query the typeahead fires the moment the guard stops refusing — someone typing
+  "Stationsweg". `straat` matches **52% of the table**; the biggest city matches
+  6%. Fire on a pause, not a keystroke, and **always pass `near_lat`/`near_lon`
+  when you have them** — the bbox is what keeps every row above under 152 ms.
+
+  **This is a cost class `037` did not have and `039` creates.** Those tokens
+  used to be matched against `name`/`brand`, where `straat` appears in a handful
+  of business names; they are now matched against every row's street line.
+
+  Nothing exceeds the 8 s statement timeout, so no rider sees an error — which is
+  the hazard as much as the reassurance.
+
+- **A long multi-token term is an OPEN cost — gate it, do not just debounce it.**
+  Per-candidate work is linear in the *number of distinct patterns*, so a term
+  that holds many patterns matching the same rows multiplies the whole query.
+  `039` §5d closes one half of this and leaves the other open, and the README
+  said the opposite for one revision:
+
+  | payload | chars | before `lower()` | after |
+  |---|---|---|---|
+  | `straat` ×14, one casing | 97 | 2,899 ms | 2,838 ms |
+  | `straat` ×14, **14 casings** | 97 | 7,149 ms | **2,806 ms** — closed |
+  | **10 distinct substrings** of one word | 49 | 5,835 ms | **5,914 ms** — open |
+
+  Case-insensitively repeated tokens are collapsed (`group by lower(s.tok)`),
+  because `ILIKE` is case-insensitive and byte-equality dedup misses exactly the
+  vector someone would choose deliberately. **Distinct co-extensive substrings
+  are not collapsed by anything** — nothing is duplicated — so the worst measured
+  term costs ~5.9 s from 49 characters, half the cap. A function-level
+  `statement_timeout` does *not* bound it: measured on PG 16.13, the timer is
+  armed before the function is entered, so the setting is applied and inert.
+
+  Until a cap lands, **the client is the only bound**: reject or truncate terms
+  with more than a handful of tokens before calling the RPC.

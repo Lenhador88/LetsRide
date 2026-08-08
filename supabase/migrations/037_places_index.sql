@@ -221,6 +221,13 @@ comment on column public.places.confidence is
 -- The brand index is partial because `brand` is null on 92% of rows; the
 -- predicate takes it from ~30 MB to 2 MB and costs nothing, since a search for a
 -- null brand is not a thing.
+--
+-- ** ^ SUPERSEDED BY 039: both trigram indexes below are DROPPED, and the size
+-- table above no longer describes the table. ** 039 replaces them with one GIN
+-- index over a generated `search_text` column and re-measures the whole set on
+-- its own bench — read 039 §2 and §3 for the current figures rather than
+-- budgeting storage from this table. The `lat/lon` btree survives untouched, and
+-- 039 §5b explains why the local pass is written the way it is to keep using it.
 create index places_name_trgm_idx
   on public.places using gin (name extensions.gin_trgm_ops);
 
@@ -370,6 +377,14 @@ grant select on public.places to authenticated;
 -- limitation rather than a guarantee, because a comment claiming the reverse is
 -- worse than no comment.
 --
+-- ** ^ SUPERSEDED BY 039 — the escape hatch is no longer "call it without a
+-- location". ** That was the only answer 037 had and it is not one a rider can
+-- express in a text field. Since 039 the term is matched per token across
+-- `street` and `locality`, so typing the town — `Jumbo Maastricht` — empties the
+-- local box and lets the national pass run. 039 §4 has it. The LIMITATION above
+-- is unchanged and in fact bites more often, because a widened match set fills
+-- the box more easily; only the workaround moved.
+--
 -- The national pass is guarded by `(select count(*) from local_hits) < 5`, which
 -- is Var-free and therefore a **One-Time Filter**: when the local pass fills,
 -- the national scan is planned and `never executed`. Confirmed in EXPLAIN
@@ -431,6 +446,29 @@ grant select on public.places to authenticated;
 -- filter is `name` and `brand`, per PD-140. So "Vrijthof" finds nothing even
 -- though places sit on it. That is a scope line, filed separately as a product
 -- question, not an oversight.
+--
+-- ** ^ SUPERSEDED BY 039 for `street` and `locality`, 2026-08-08 (PD-141). **
+-- The paragraph above describes what THIS migration shipped and is kept for
+-- that reason; it is no longer what the database does. `039` adds a generated
+-- `search_text` column, matches PER TOKEN and ANDed across name, brand, street
+-- and locality, and ranks a place the query NAMES above one it merely LOCATES.
+-- "Vrijthof" now finds the places on it. `postcode` is STILL excluded, and 039
+-- §2 says why. Read 039 before changing anything below.
+--
+-- ** Four comment edits were made to 037 after it shipped — this banner, the one
+-- in §3, the one in §5b about the escape hatch, and the corrected index count in
+-- the Verification footer — and together they break one thing: the file no
+-- longer md5-matches its own applied statement. ** A partly-annotated file is
+-- worse than either choice made consistently, so every stale claim is marked
+-- rather than some of them; review found the §5b one after the first three
+-- landed, which is precisely the failure that standard exists to prevent. 037
+-- was applied to DEV byte-identical — recorded `md5(statements[1])` was
+-- `1dcfa7d58c7422c2772310bda1e27d12`, equal to `md5sum` of this file including
+-- its trailing newline — and adding these lines changes that hash while
+-- changing no SQL. Nothing automated depends on it (`npm run db:drift` compares
+-- migration NAMES only), but a hand-run md5 check on 037 will now mismatch and
+-- must not be read as a bad apply. 037's own header says the next change is an
+-- `038`, and that rule still holds for anything executable: this is a comment.
 create or replace function public.search_places(
   q text,
   near_lat double precision default null,
@@ -543,6 +581,22 @@ grant execute on function public.search_places(text, double precision, double pr
 -- somebody runs the two commands below, and an empty table looks exactly like a
 -- working search that finds nothing.
 --
+-- **STOP — read this before running the load, because loading is what arms it.**
+-- `039` leaves one abuse path open and says so: ten distinct co-extensive
+-- substrings of a common word (`str tra raa aat stra … straat`, 49 characters)
+-- match ~50% of the table and measured **5,914 ms**, inside the 8 s statement
+-- timeout so it returns successfully, repeatable by any signed-in account. No
+-- deduplication reaches it, because nothing is duplicated, and a function-level
+-- `statement_timeout` does NOT bound it (039 §5d — it is inert, and worse than a
+-- no-op because a `proconfig` assertion would pass).
+--
+-- Every one of those numbers is 0 ms today **only because this table is empty**.
+-- The `\copy` below is the step that turns a documented cost into a live
+-- exposure, and it is the one moment an operator is standing here to read this.
+--
+--   **Land Linear PD-150 before this load reaches PROD.** Loading DEV to try the
+--   search out is fine; loading PROD without it is shipping the exposure.
+--
 --   python3 scripts/places/extract-nl.py --out nl-places.csv
 --
 --   psql "$DEV_DATABASE_URL" \
@@ -608,7 +662,9 @@ grant execute on function public.search_places(text, double precision, double pr
 --   select prosecdef, proconfig from pg_proc
 --    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure;
 --
---   -- 4 — pkey plus the three from §3
+--   -- 3, NOT the 4 this line predicted until 2026-08-08 — 039 drops the two
+--   -- trigram indexes from §3 and adds one over `search_text`, so the live set
+--   -- is places_pkey, places_lat_lon_idx, places_search_text_trgm_idx.
 --   select indexname from pg_indexes where schemaname='public' and tablename='places';
 --
 --   -- extensions, not public

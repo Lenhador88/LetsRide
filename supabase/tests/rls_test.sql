@@ -6240,15 +6240,12 @@ select assert_eq(
   (select nspname::text from pg_extension e join pg_namespace n on n.oid = e.extnamespace
     where e.extname = 'pg_trgm'),
   'extensions'::text, '037: pg_trgm lives in `extensions`, not `public` — the extension_in_public advisor');
-select assert_eq(
-  (select count(*)::int from pg_indexes
-    where schemaname = 'public' and tablename = 'places' and indexdef like '%gin_trgm_ops%'),
-  2, '037: two trigram GIN indexes — name and brand');
-select assert_eq(
-  (select count(*)::int from pg_indexes
-    where schemaname = 'public' and tablename = 'places'
-      and indexname = 'places_brand_trgm_idx' and indexdef like '%brand IS NOT NULL%'),
-  1, '037: ... and the brand one is partial, because brand is null on 92% of rows');
+-- 037's two trigram indexes — one on `name`, a partial one on `brand` — were
+-- asserted here and are GONE as of 039, which replaced them with a single GIN
+-- index over the generated `search_text` column. This suite applies the whole
+-- chain and then asserts, so an assertion pinning a superseded state fails
+-- rather than documents one. The replacement lives in 039.7, scoped to the
+-- index set 039 actually created; it is not repeated here.
 select assert_eq(
   (select count(*)::int from pg_indexes
     where schemaname = 'public' and tablename = 'places' and indexname = 'places_lat_lon_idx'),
@@ -6815,6 +6812,635 @@ select assert_eq(
   0, '038: and neither trigger is column-scoped — one scoped OF username would never fire for a rename');
 
 rollback to savepoint username_038;
+
+\echo ''
+\echo '# Places: street and locality are searchable, and rank below a name (039)'
+
+-- ===========================================================================
+-- 039. Widening a search is easy; keeping it useful is the part that can fail
+-- silently, so most of this section is about RANKING rather than matching.
+-- ===========================================================================
+--
+-- Three things are asserted and they fail in different ways.
+--
+--   MATCHING   — per token, ANDed. `Jumbo Maastricht` must reach a row named
+--                `Jumbo` whose locality is `Maastricht`. A single ILIKE against
+--                the concatenated text CANNOT do that (the street sits between
+--                the two), and an OR would return every Jumbo in the country.
+--                One assertion catches both, because they fail in opposite
+--                directions: 0 rows and many rows.
+--   RANKING    — a place the query NAMES outranks a place it merely LOCATES.
+--                Widening means `Amsterdam` matches thousands of rows that have
+--                nothing to do with the word except their address.
+--   PRESERVED  — everything 037 established. Those assertions live in the 037
+--                section and still run; what is repeated here is only what 039
+--                could plausibly have broken, and only where 037's own fixtures
+--                cannot reach it.
+--
+-- Fixtures are self-contained and the 037 block has already rolled its own back.
+-- Coordinates are chosen against the same Utrecht probe 037 uses:
+--
+--   Utrecht probe   52.09 / 5.11, box lat 51.84..52.34, lon 4.71..5.51
+--
+-- ** Mutation record, because a tally is the only honest way to read coverage. **
+-- Twenty-three mutations of 039 have been attempted against this suite:
+--
+--   20  caught by an assertion below
+--    1  provably UNCATCHABLE — padding `pats[1]`, see the end of this note
+--    1  a no-op — rewording a comment, which changes no claim (it survives
+--       because the guards no longer key on any particular wording; an earlier
+--       revision of 039.0 did, and that was the defect)
+--    1  survives in the SAFE direction — a `--` inside a string literal makes
+--       039.0's stripper over-reach, which turns needles red rather than green
+--
+-- FOUR were caught only after review found them green, and each now has an
+-- assertion written for it and re-mutated:
+--
+--   * removing the `score` pinning to 0        -> the Kerkstraat pair (039.3)
+--   * removing the national `ilike all (pats)` -> the five-token pair (039.2)
+--   * weakening the dedup                      -> 039.2 and 039.4
+--
+-- ** The dedup one took THREE attempts and every failure is worth carrying,
+-- because each is a different way an assertion can look like coverage. **
+--
+--   1. No assertion at all. Deduplication cannot change a result, so nothing
+--      behavioural sees it and the mutation was simply green.
+--   2. `prosrc like '%group by s.tok%'` — matched the function's own EXPLANATORY
+--      COMMENT, which `prosrc` includes, and passed with the code deleted.
+--      CLAUDE.md's comment trap, inside a function body rather than a grep.
+--      Now handled generally by 039.0's stripper rather than by one careful
+--      needle, because the needle was only ever a workaround for the technique.
+--   3. The needle was right and the CODE was wrong: `group by s.tok` dedupes by
+--      byte equality while `ILIKE` is case-insensitive, so fourteen
+--      capitalisations of one word were fourteen keys and one predicate — the
+--      dedup never fired on the vector someone would actually choose (039 §5d:
+--      7,149 ms against 2,806 ms). Caught by review, not by this suite, and
+--      NOTHING BEHAVIOURAL COULD HAVE CAUGHT IT: both spellings return identical
+--      rows and differ only in cost. It is pinned structurally, at 039.0 and
+--      039.4, which is the only place a cost-only property can live.
+--
+-- One mutation is UNCATCHABLE and no assertion claims otherwise: padding
+-- `pats[1]` to '%' like the other three slots is unobservable, because a
+-- token-less term never reaches the join. That is recorded at 039.4 rather than
+-- papered over with an assertion that would pass either way.
+savepoint places_039;
+
+reset role;
+select set_config('test.uid', '', false);
+
+insert into places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) values
+  -- The headline case. FIVE Jumbos inside the Utrecht box, so a bare 'Jumbo'
+  -- fills the local pass and short-circuits the national one — 037 §5b's known
+  -- limitation, still true and pinned below. The sixth is in Maastricht, ~180 km
+  -- away, and is reachable only by naming the town.
+  ('p039-jumbo-u1', 'Jumbo', null, 'shop', 5.11, 52.10, 'Biltstraat 1', 'Utrecht', '3572 AA', 'NL', 0.9),
+  ('p039-jumbo-u2', 'Jumbo', null, 'shop', 5.11, 52.11, 'Biltstraat 2', 'Utrecht', '3572 AB', 'NL', 0.9),
+  ('p039-jumbo-u3', 'Jumbo', null, 'shop', 5.11, 52.12, 'Biltstraat 3', 'Utrecht', '3572 AC', 'NL', 0.9),
+  ('p039-jumbo-u4', 'Jumbo', null, 'shop', 5.11, 52.13, 'Biltstraat 4', 'Utrecht', '3572 AD', 'NL', 0.9),
+  ('p039-jumbo-u5', 'Jumbo', null, 'shop', 5.11, 52.14, 'Biltstraat 5', 'Utrecht', '3572 AE', 'NL', 0.9),
+  ('p039-jumbo-m',  'Jumbo', null, 'shop', 5.69, 50.85, 'Wycker Brugstraat 7', 'Maastricht', '6221 CJ', 'NL', 0.9),
+
+  -- Symptom 1: a street name found nothing under 037. Both are inside the box,
+  -- and only kerk-b carries house number 40, which is what makes the two-token
+  -- assertion able to fail.
+  --
+  -- ** They are ALSO the pair that pins `score` to 0 for an address-only match,
+  -- and that job dictates their names and coordinates. ** An earlier revision
+  -- named them 'Slagerij Van Dijk' and 'Bloemist Bos' — both score 0.0 against
+  -- 'Kerkstraat', so removing the score pinning changed nothing and the mutation
+  -- survived the whole suite. These two disagree instead:
+  --
+  --   kerk-a  'Bakkerij'     similarity 0.0526 (shares the trigram `ker`), 12 km out
+  --   kerk-b  'Vishandel Q'  similarity 0.0,                               at the probe
+  --
+  -- Shipped, both scores are pinned to 0 and `dist2` orders them: kerk-b first.
+  -- Unpinned, kerk-a's incidental 0.0526 wins and it leads. kerk-a also sorts
+  -- first by id, so the shipped order is reachable ONLY through distance.
+  ('p039-kerk-a', 'Bakkerij',    null, 'shop', 5.11, 52.20, 'Kerkstraat 12', 'Utrecht', '3581 AA', 'NL', 0.8),
+  ('p039-kerk-b', 'Vishandel Q', null, 'shop', 5.11, 52.09, 'Kerkstraat 40', 'Utrecht', '3581 AB', 'NL', 0.8),
+
+  -- FIVE tokens is one more than the four indexed slots, so token 5 is enforced
+  -- by `ilike all (pats)` alone. This row carries Alfa/Bravo/Charlie/Delta and
+  -- Echo but NOT Zulu, which is what lets the fifth token be observed at all.
+  -- Placed outside every Utrecht box so it is reached only by the national pass,
+  -- which is the arm whose `ilike all` had no coverage.
+  ('p039-fivetok', 'Alfa Bravo Charlie Delta', null, 'cafe', 6.90, 53.40, 'Echo 1', 'Foxtrot', '9999 ZZ', 'NL', 0.6),
+
+  -- Ranking, local pass. `Vondel` must put the place CALLED Vondel above the
+  -- place ON Vondelstraat — and the fixture is built so that BOTH other keys
+  -- point the wrong way:
+  --   vondel-addr is at the probe itself (dist2 = 0) where vondel-name is 12 km out
+  --   similarity('Vondel','Vondei') = 0.556 vs 0.292 for 'Vondel Paviljoen Terras'
+  -- so with no tiering at all the near, better-scoring address row leads.
+  ('p039-vondel-name', 'Vondel Paviljoen Terras', null, 'cafe', 5.11, 52.20, 'Overtoom 3',    'Utrecht', '3583 AA', 'NL', 0.7),
+  ('p039-vondel-addr', 'Vondei',                  null, 'cafe', 5.11, 52.09, 'Vondelstraat 1','Utrecht', '3583 AB', 'NL', 0.7),
+
+  -- ** The pair that isolates `mrank` from `score`, and it has to be a BRAND
+  -- match. ** Because `score` is 0 for an address-only row, a tier-0 row that
+  -- matched by NAME always outscores it anyway — so a name-vs-address fixture
+  -- cannot tell "mrank was removed" from "mrank is doing nothing". A brand match
+  -- can: `similarity('Zoekmerk','Publiek 123')` is exactly 0 (no shared
+  -- trigram, verified), so both rows score 0 and only mrank separates them.
+  -- The address row is nearer AND sorts first by id, so it wins on every
+  -- remaining key.
+  ('p039-merk-a-addr',  'Cafe Q',      null,       'cafe', 5.11, 52.09, 'Zoekmerkweg 3', 'Utrecht', '3584 AA', 'NL', 0.7),
+  ('p039-merk-b-brand', 'Publiek 123', 'Zoekmerk', 'cafe', 5.11, 52.20, 'Havenweg 2',    'Utrecht', '3584 AB', 'NL', 0.7),
+
+  -- The same isolation for the NATIONAL pass, where every dist2 is NULL and the
+  -- only remaining key is id. Placed in Groningen, outside every Utrecht box, so
+  -- these two are only ever reached by a no-location call.
+  ('p039-merk2-a-addr',  'Cafe R',      null,        'cafe', 6.57, 53.22, 'Andermerkkade 5', 'Groningen', '9711 AA', 'NL', 0.7),
+  ('p039-merk2-b-brand', 'Publiek 456', 'Andermerk', 'cafe', 6.57, 53.23, 'Kade 8',          'Groningen', '9711 AB', 'NL', 0.7),
+
+  -- The thousands-of-rows case in miniature, national pass. Same shape as the
+  -- Vondel pair: without tiering the address row's 0.444 beats the name row's
+  -- 0.278. Both outside the Utrecht box on purpose.
+  ('p039-ams-name', 'Amsterdam Bierhuis Restaurant Terras', null, 'cafe', 4.48, 51.92, null,     'Rotterdam', '3011 AA', 'NL', 0.7),
+  ('p039-ams-addr', 'Amsterdan Grill',                      null, 'cafe', 4.90, 52.37, 'Kade 9', 'Amsterdam', '1011 AA', 'NL', 0.7),
+
+  -- The guard tripwire, 037's technique: the row carries BOTH pathological
+  -- tokens literally, so a weakened guard finds it and a correct guard refuses
+  -- to look. Without it 'ab 40' reads 0 either way and proves nothing.
+  ('p039-short', 'Kortab 40 Testplek', null, null, 5.12, 52.13, null, 'Utrecht', null, 'NL', null),
+  -- LIKE-escaping, now applied per token rather than to the whole term.
+  ('p039-pct',   'Procenttest',        null, null, 5.13, 52.14, null, 'Utrecht', null, 'NL', null);
+
+-- --------------------------------------------------------------------------
+-- 039.0  Structural needles read COMMENT-STRIPPED source, not raw `prosrc`.
+-- --------------------------------------------------------------------------
+-- ** `prosrc` includes the function's own comments, so a needle can match the
+-- sentence describing a thing instead of the thing. ** That is CLAUDE.md's
+-- comment trap inside a function body, and it is not hypothetical here: the
+-- dedup needle was written as `prosrc like '%group by s.tok%'`, the comment two
+-- lines above the code says exactly that, and the assertion passed with the code
+-- deleted. Matching `group by s.tok) d` fixed that one instance and left the
+-- technique intact — any future comment containing a needle silently disarms it.
+--
+-- So every structural needle in this section goes through the stripped source.
+--
+-- ** The stripper is naive — `--` inside a string literal would eat the rest of
+-- that line — and that is acceptable because it fails in the SAFE direction. **
+-- The body has no such literal today. If one is added, the over-strip removes
+-- code a needle looks for and the needle goes RED; it cannot turn a needle
+-- green, because the only thing asserted absent is `--` itself, and losing more
+-- text never reintroduces a deleted mechanism. Tested: injecting `'--'` into the
+-- body leaves the suite green rather than falsely passing anything.
+--
+-- (§037's three needles were audited as untrapped and are left on raw `prosrc`;
+-- they assert ORDER BY tails that no prose would reproduce.)
+create function pg_temp.sp_code() returns text language sql stable as $$
+  select pg_catalog.regexp_replace(prosrc, '--[^\n]*', '', 'g')
+    from pg_proc
+   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure
+$$;
+
+-- The stripper has to actually strip, or every needle below silently reverts to
+-- reading raw prosrc. Three checks, and the first two are deliberately NOT
+-- phrased against a particular comment: an earlier revision asserted that the
+-- string `is the deduplication` was absent, which goes on passing if someone
+-- merely rewords that comment — a guard that can succeed vacuously, which is
+-- the exact failure this whole section is about. `--` cannot survive a working
+-- stripper, and the length must fall, whatever the comments happen to say.
+select assert_eq(
+  (select pg_temp.sp_code() like '%--%'),
+  false, '039: the comment stripper leaves no comment marker at all — checked against `--` itself, not against any wording that could be edited');
+select assert_eq(
+  (select length(pg_temp.sp_code())
+        < (select length(prosrc) from pg_proc
+            where oid = 'public.search_places(text,double precision,double precision)'::regprocedure)),
+  true, '039: ... and it removed something, so the needles below are not silently reading raw prosrc');
+select assert_eq(
+  (select pg_temp.sp_code() like '%group by lower(s.tok)%'),
+  true, '039: ... while leaving the code, so a needle that finds nothing means the code is gone rather than the stripper over-reaching');
+
+-- **The over-reach fails safe for CONTAINMENT needles only, and that qualifier is
+-- load-bearing rather than pedantry.** A naive stripper eats from `--` to the end
+-- of line, including a `--` inside a string literal, so it can delete real code.
+-- For every `like '%x%'` needle here that can only make the needle *false* — red,
+-- never green. It does NOT hold for a needle that counts occurrences: review
+-- planted a genuine defect (a second indexed conjunct in the local pass, which
+-- costs the bbox index) on a line beginning with a `'--'` literal, the stripper
+-- ate the added `t.pat2`, the count still read 1, and the suite went green on a
+-- real defect.
+--
+-- So the `t.pat2` count above reads RAW prosrc deliberately. It is safe to do so
+-- because `t.pat2` occurs exactly once raw and once stripped — it appears in no
+-- comment, so there is nothing for the stripper to protect it from. The rule to
+-- carry: strip comments for "is this code present", never for "how many times".
+
+-- --------------------------------------------------------------------------
+-- 039.1  The generated column itself — separator, coalesce, and STORED.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select attgenerated::text from pg_attribute
+    where attrelid = 'public.places'::regclass and attname = 'search_text'),
+  's'::text, '039: search_text is a STORED generated column, not a plain one a load could forget to fill');
+select assert_eq(
+  (select search_text from places where id = 'p039-jumbo-m'),
+  'Jumbo  Wycker Brugstraat 7 Maastricht'::text,
+  '039: name, brand, street and locality are space-joined — a NULL brand collapses to an empty field, not to a NULL row');
+select assert_eq(
+  (select search_text from places where id = 'p039-pct'),
+  'Procenttest   Utrecht'::text,
+  '039: ... and three NULL fields still leave their separators, so a token can never bridge two columns');
+-- postcode is deliberately absent: '3572 AA' would make every numeric token a
+-- postcode lookup and collide with house numbers already inside `street`.
+select assert_eq(
+  (select count(*)::int from places where search_text like '%3572%'),
+  0, '039: postcode is NOT in search_text — deliberate, 039 §2');
+-- The write-refusals are in 039.8 (grants) and 039.9 (as a rider). They cannot
+-- live here: this block runs as the table OWNER, for whom no grant barrier
+-- exists at all, so `assert_denied` would report a false negative. 031's lesson.
+
+-- --------------------------------------------------------------------------
+-- 039.2  MATCHING: per token, ANDed. The headline case.
+-- --------------------------------------------------------------------------
+-- ** This is the assertion the whole migration exists for. ** `Jumbo` is the
+-- name, `Maastricht` is the locality, and the street sits between them in
+-- search_text — so it catches three different wrong implementations at once:
+--
+--   one ILIKE '%Jumbo Maastricht%' against the concatenation  -> 0 rows
+--   tokens ORed instead of ANDed                              -> 6 rows
+--   street/locality not matched at all (037)                  -> 0 rows
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Jumbo Maastricht', 52.09, 5.11)) s),
+  '{p039-jumbo-m}'::text,
+  '039: a rider in Utrecht reaches the Maastricht Jumbo by naming the town — matching is per token and ANDed, against a text where the street sits between the two');
+
+-- The other half of the escape hatch, and 037 §5b's limitation restated as a
+-- fact rather than a comment: WITHOUT the town, the box fills and Maastricht is
+-- unreachable. The pair is what makes the assertion above about the town rather
+-- than about Jumbo being findable.
+select assert_eq(
+  (select count(*)::int from search_places('Jumbo', 52.09, 5.11)),
+  5, '039: a bare chain name fills the local box — still capped at five');
+select assert_eq(
+  (select count(*)::int from search_places('Jumbo', 52.09, 5.11) where id = 'p039-jumbo-m'),
+  0, '039: ... and the distant branch is NOT in it — 037 §5b''s known limitation, unchanged and now escapable by typing the town');
+
+-- Symptom 1, the plain case: a street name found nothing at all under 037.
+select assert_eq(
+  (select count(*)::int from search_places('Kerkstraat', 52.09, 5.11)),
+  2, '039: a street name now matches — `Kerkstraat` returned nothing under 037');
+select assert_eq(
+  (select count(*)::int from search_places('Amsterdam')),
+  2, '039: ... and so does a locality, which is what no row''s name has to contain');
+
+-- A token that matches nothing kills the row. Catches "extra tokens are
+-- ignored" and "tokens are ORed", which both return rows here.
+select assert_eq(
+  (select count(*)::int from search_places('Jumbo Zzzznietbestaat', 52.09, 5.11)),
+  0, '039: every token must match — an unmatched one returns nothing rather than being dropped');
+
+-- ** Tokens beyond the fourth, which ONLY `ilike all (pats)` enforces. **
+-- `pat1`..`pat4` are the four indexed slots; a fifth token is carried by the
+-- array alone. Reviewer deleted `and p.search_text ilike all (t.pats)` from the
+-- NATIONAL pass and the suite stayed green — the local-pass copy is caught by
+-- the Jumbo Maastricht assertion above, that one had nothing. No location, so
+-- the local pass is empty and this is unambiguously the national arm.
+--
+-- The positive twin is not decoration: without it, "returns 0" would also pass
+-- against a function where five-token queries never match anything at all.
+select assert_eq(
+  (select count(*)::int from search_places('Alfa Bravo Charlie Delta Zulu')),
+  0, '039: a FIFTH token still constrains — only `ilike all (pats)` carries it, since the four indexed slots are already spent');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Alfa Bravo Charlie Delta Echo')) s),
+  '{p039-fivetok}'::text,
+  '039: ... and a five-token query whose every token DOES match still returns the row, so the assertion above is about Zulu and not about arity');
+
+-- ** Duplicate tokens are collapsed, and this is a COST guard wearing a
+-- correctness assertion's clothes. ** `x AND x` is `x`, so deduplication can
+-- never change a result — which is exactly why nothing else here would notice
+-- if the `group by s.tok` were "simplified" away, restoring a 2.5x multiplier a
+-- rider controls through the 100-character cap (039 §5d: 7,063 ms against
+-- 2,784 ms on the bench). Asserted as equality between a repeated term and its
+-- single-token form, in both passes.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat Kerkstraat Kerkstraat', 52.09, 5.11)) s),
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '039: a repeated token is identical to a single one — dedup is result-preserving, and the `group by` that makes it cheap is load-bearing');
+select assert_eq(
+  (select count(*)::int from search_places('Alfa Alfa Bravo Bravo Charlie Charlie Delta Delta Echo Echo')),
+  1, '039: ... and dedup happens BEFORE the four indexed slots are filled, so ten tokens that collapse to five still match');
+
+-- ** The case half, which is what the shipped version got wrong — and these two
+-- do NOT catch it. Say so rather than implying otherwise. ** `ILIKE` is
+-- case-insensitive, so capitalisations of one token are one predicate however
+-- they are grouped: byte-equality and `lower()` produce IDENTICAL RESULTS and
+-- differ only in cost (039 §5d: 7,149 ms against 2,806 ms). Nothing behavioural
+-- can see a cost, so the mutation that reverts `lower()` to byte equality is
+-- caught by the STRUCTURAL needle at 039.4 and by 039.0, not here.
+--
+-- They are kept because they pin the equivalence these two implementations
+-- share and 039 §5d's correctness argument rests on: that adding capitalisations
+-- of an existing token changes nothing a caller can observe. If that ever stops
+-- being true, the dedup is unsound and these fail.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat KERKSTRAAT Kerkstraat kerkstraat KeRkStRaAt', 52.09, 5.11)) s),
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '039: ... and capitalisations of ONE token collapse to it — the group-by key is lower(), because byte equality leaves them as distinct keys and one predicate');
+select assert_eq(
+  (select count(*)::int from search_places('ALFA alfa Alfa BRAVO bravo Charlie DELTA Echo')),
+  1, '039: ... so a mixed-case term that collapses to five distinct tokens still fills only five slots, not eight');
+
+-- Adding a word narrows, never widens. The property the two-pass fix rests on.
+select assert_eq(
+  (select count(*)::int from search_places('Kerkstraat', 52.09, 5.11))
+    > (select count(*)::int from search_places('Kerkstraat 40', 52.09, 5.11)),
+  true, '039: adding a token NARROWS the result set — which is why naming the town empties the local box');
+
+-- --------------------------------------------------------------------------
+-- 039.3  RANKING: a place the query NAMES beats a place it merely LOCATES.
+-- --------------------------------------------------------------------------
+-- Both keys point the other way here — the address row is at the probe itself
+-- and scores 0.556 against the name row's 0.292 — so this fails under any
+-- implementation that ranks on text or distance alone.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Vondel', 52.09, 5.11)) s),
+  '{p039-vondel-name,p039-vondel-addr}'::text,
+  '039: a place CALLED Vondel outranks a place ON Vondelstraat — even when the latter is nearer and scores higher');
+
+-- ** The assertion that isolates mrank, and it has to be the brand pair. **
+-- A name match always outscores an address match (whose score is pinned to 0),
+-- so a name-vs-address fixture cannot distinguish "mrank removed" from "mrank
+-- redundant". Here both rows score exactly 0, and the address row is nearer AND
+-- lower by id — so deleting `mrank` from the local ORDER BY flips this and
+-- nothing else in the suite notices.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Zoekmerk', 52.09, 5.11)) s),
+  '{p039-merk-b-brand,p039-merk-a-addr}'::text,
+  '039: a BRAND match is a name match — it leads even at 12 km against an address match at zero, with both scoring 0');
+
+-- ** The other half of §4's rule: `score` is PINNED TO 0 for an address-only
+-- match, and nothing asserted it until reviewer mutated it. ** Every assertion
+-- above isolates `mrank`; removing the `case when m.named then … else 0 end`
+-- from `score` left the suite green, because a name match always outscores an
+-- address match anyway. This is the case where it bites: two rows that BOTH
+-- match only through their street, so mrank ties and score is the whole
+-- question. Unpinned, `Bakkerij` leads on 0.0526 of incidental trigram overlap
+-- with `Kerkstraat` — from 12 km away, over a row at the probe itself.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '{p039-kerk-b,p039-kerk-a}'::text,
+  '039: two address-only matches are ordered by DISTANCE, not by incidental name similarity — score is pinned to 0 for them');
+
+-- The same two rules through the NATIONAL pass, which is a different ORDER BY.
+-- 037.7b's discipline: a tiebreak asserted in one pass is untested in the other.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Andermerk')) s),
+  '{p039-merk2-b-brand,p039-merk2-a-addr}'::text,
+  '039: ... and in the national pass too, where every dist2 is NULL and only id would otherwise separate them');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Amsterdam')) s),
+  '{p039-ams-name,p039-ams-addr}'::text,
+  '039: a place NAMED Amsterdam leads the thousands merely located there — the whole reason widening needed a ranking rule');
+
+-- --------------------------------------------------------------------------
+-- 039.4  The guard: unchanged, and it is already per-token.
+-- --------------------------------------------------------------------------
+-- An alphanumeric run of three cannot span whitespace, so `term ~
+-- '[[:alnum:]]{3}'` holds exactly when SOME token carries such a run. No
+-- per-token floor was added, and these two assertions are the pair that says
+-- why: a query of only short tokens is refused, and a short token riding along
+-- with a long one is honoured rather than dropped.
+--
+-- p039-short carries 'ab' (inside 'Kortab') and '40' literally, so a weakened
+-- guard finds it. Without that row the first assertion reads 0 either way.
+select assert_eq((select count(*)::int from search_places('ab 40', 52.09, 5.11)),
+  0, '039: two short tokens are refused — no token carries three alphanumerics, and a row containing both exists');
+select assert_eq((select count(*)::int from search_places('a b c d e', 52.09, 5.11)),
+  0, '039: ... and neither does splitting a long term into single characters');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kortab 40', 52.09, 5.11)) s),
+  '{p039-short}'::text,
+  '039: but a two-character token in a query that DOES pass the guard is honoured, not silently dropped');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat 40', 52.09, 5.11)) s),
+  '{p039-kerk-b}'::text,
+  '039: ... so `Kerkstraat 40` is not quietly `Kerkstraat` — it returns the one house, and the other Kerkstraat row is excluded');
+-- 037's three guard assertions are scoped to 037's fixtures and still run. This
+-- one names the regex itself, because 039 rewrote the surrounding CTE.
+select assert_eq(
+  (select pg_temp.sp_code() like '%[[:alnum:]]{3}%'),
+  true, '039: the guard regex survived the rewrite of the term CTE');
+select assert_eq((select count(*)::int from search_places('%%%%', 52.09, 5.11)),
+  0, '039: ... and four percent signs still return nothing');
+-- ** These two say "the guard refuses it", NOT "slot 1 is un-padded". ** An
+-- earlier revision labelled them the second way and it was false: mutating
+-- `pats[1]` to pad to '%' like the other three slots changed NOTHING here, or
+-- anywhere else in this suite. A token-less term never reaches the join —
+-- `searchable` is false for it and `ilike all (NULL)` is NULL besides — so the
+-- un-padded slot is defence in depth and is not observable. Recorded rather than
+-- quietly deleted, because the assertion looked like coverage and was not.
+select assert_eq((select count(*)::int from search_places(null, 52.09, 5.11)),
+  0, '039: a null query returns nothing — the guard refuses it, as it did under 037');
+select assert_eq((select count(*)::int from search_places('   ', 52.09, 5.11)),
+  0, '039: ... and so does whitespace, which now splits into zero tokens rather than into one empty term');
+
+-- ** The two shapes below are invisible in behaviour and cost 6x when wrong. **
+-- 039 §5b: a second ILIKE conjunct in the LOCAL pass talks the planner out of
+-- `places_lat_lon_idx`, so the bbox stops being an index condition and becomes a
+-- filter over every matching row in the country — 48 ms to 214 ms on the bench,
+-- with identical results. Nothing behavioural can see that, so it is pinned
+-- structurally or not at all.
+select assert_eq(
+  (select (length(prosrc) - length(replace(prosrc, 't.pat2', ''))) / length('t.pat2')
+     from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  1, '039: `t.pat2` appears exactly once — only the NATIONAL pass indexes more than one token; adding one to the local pass costs it the bbox index');
+select assert_eq(
+  (select pg_temp.sp_code() like '%order by (d.tok ~ ''[[:alnum:]]{3}'') desc, d.ord%'),
+  true, '039: ... and tokens are ordered indexable-first, so those slots go to tokens a trigram index can actually serve');
+-- The dedup itself, named — and specifically that the key is `lower()`. The
+-- behavioural assertions in 039.2 are EQUALITIES between two calls, which pass
+-- just as well if both sides are broken; this says the mechanism is present and
+-- is case-folding. 039 §5d has what each half is worth.
+--
+-- Reads the comment-stripped source (039.0), because the line above the code
+-- explains what the group-by is for and a raw-`prosrc` needle matched that
+-- sentence instead of the code.
+select assert_eq(
+  (select pg_temp.sp_code() like '%group by lower(s.tok)%'),
+  true, '039: ... and duplicate tokens are collapsed CASE-INSENSITIVELY before the slots are filled — byte equality misses fourteen capitalisations of one word');
+
+-- --------------------------------------------------------------------------
+-- 039.5  LIKE escaping, now applied PER TOKEN.
+-- --------------------------------------------------------------------------
+-- The whole-term cases are 037's and still run. What is new is that the escape
+-- moved inside the split, so a metacharacter in the SECOND token is the case
+-- that could regress silently.
+select assert_eq((select count(*)::int from search_places('Procenttest', 52.09, 5.11)),
+  1, '039: the escape test row is findable');
+select assert_eq((select count(*)::int from search_places('Procenttest %Utrecht', 52.09, 5.11)),
+  0, '039: ... but a percent sign in the SECOND token is a literal too — unescaped it would match through the locality');
+select assert_eq((select count(*)::int from search_places('Procenttest Utrecht', 52.09, 5.11)),
+  1, '039: ... and the same query without it does match, so the assertion above is about the escape and not about the token');
+
+-- --------------------------------------------------------------------------
+-- 039.6  What 037 established and 039 must not have moved.
+-- --------------------------------------------------------------------------
+-- Scoped to what this migration touched. The full 037 contract is asserted in
+-- its own section and still runs; repeating it here would stop testing 039's
+-- intent the moment either changes.
+select assert_eq(
+  (select prosecdef from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  false, '039: search_places is STILL security invoker after the replace');
+select assert_eq(
+  (select proconfig @> array['search_path=""'] from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  true, '039: ... with search_path still pinned empty');
+select assert_eq(
+  has_function_privilege('authenticated',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  true, '039: authenticated may still call it');
+select assert_eq(
+  has_function_privilege('anon',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  false, '039: anon still may not — create or replace preserves the ACL, and 039 re-issues it anyway');
+-- The wire contract PostgREST publishes. 039 changed the body and nothing else,
+-- and an accidental rename here breaks every caller with a 404 rather than an error.
+select assert_eq(
+  (select string_agg(a, ',' order by ord)
+     from unnest((select proargnames from pg_proc
+                   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure))
+          with ordinality as u(a, ord)),
+  'q,near_lat,near_lon,id,label,meta,lat,lon'::text,
+  '039: the RPC signature and output columns are byte-identical to 037 — `lon`, never `lng`');
+-- All three ORDER BYs still end in id, and all three now carry mrank. Structural
+-- because the behavioural proof depends on heap order, which is a property of
+-- this transaction rather than of the function.
+select assert_eq(
+  (select (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc, p.id%')
+      and (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc nulls last, p.id%')
+      and (pg_temp.sp_code() like '%order by r.tier, r.mrank, r.score desc, r.dist2 asc nulls last, r.id%')),
+  true, '039: all three ORDER BYs carry mrank AND still end in id — ordering stays total');
+-- mrank sits AFTER tier in the pooled sort, not before: proximity remains the
+-- primary key. Reversing them is a change to 037 §5b rather than an addition.
+select assert_eq(
+  (select strpos(pg_temp.sp_code(), 'r.tier') < strpos(pg_temp.sp_code(), 'r.mrank')),
+  true, '039: ... and tier outranks mrank, so a nearby address match still beats a distant name match');
+-- 037 §5b's short-circuit, named. Its behavioural coverage is 037.7's; this
+-- catches a rewrite that dropped the guard while keeping both CTEs.
+select assert_eq(
+  (select pg_temp.sp_code() like '%(select count(*) from local_hits) < 5%'),
+  true, '039: the national pass is still gated on the local one yielding fewer than five');
+-- A broken GPS still degrades rather than raising — the term CTE was rewritten
+-- around the coordinate range checks, so they are worth re-proving here.
+select assert_eq((select count(*)::int from search_places('Jumbo', 'Infinity'::double precision, 5.11)),
+  5, '039: an infinite latitude still falls back to a nationwide search instead of raising');
+select assert_eq((select count(*)::int from search_places('Jumbo', 'NaN'::double precision, 5.11)),
+  5, '039: ... so does NaN');
+select assert_eq((select count(*)::int from search_places('Jumbo', 52.09, 1e308)),
+  5, '039: ... and so does a nonsense longitude');
+
+-- --------------------------------------------------------------------------
+-- 039.7  The indexes: one trigram GIN now, and two are GONE.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places' and indexdef like '%gin_trgm_ops%'),
+  1, '039: ONE trigram GIN index — 037''s name and brand pair is replaced, not supplemented');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places'
+      and indexname = 'places_search_text_trgm_idx' and indexdef like '%search_text%'),
+  1, '039: ... and it is on search_text');
+select assert_eq(
+  (select to_regclass('public.places_name_trgm_idx') is null
+      and to_regclass('public.places_brand_trgm_idx') is null),
+  true, '039: the two 037 trigram indexes are dropped — search_text begins with name then brand, so no plan loses an access path');
+select assert_eq(
+  (select count(*)::int from pg_indexes where schemaname = 'public' and tablename = 'places'),
+  3, '039: three indexes in total — pkey, the coordinate btree, and the one above');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places' and indexname = 'places_lat_lon_idx'),
+  1, '039: the coordinate btree survives — the local pass indexes ONE token precisely so the planner keeps using it');
+
+-- --------------------------------------------------------------------------
+-- 039.8  A generated column is not a write path. No grant arrived with it.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'authenticated'),
+  1, '039: authenticated still holds exactly one table grant');
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'select'),
+  true, '039: ... and it is SELECT');
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', 'public.places', p))
+     from unnest(array['insert', 'update', 'delete']) p),
+  false, '039: no INSERT, UPDATE or DELETE arrived with the new column');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'places'
+      and grantee in ('anon', 'authenticated') and privilege_type <> 'SELECT'),
+  0, '039: and no COLUMN-level write grant on search_text either — 034 §4b''s trap');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'anon'),
+  0, '039: anon still holds zero grants of any kind — decision #1');
+select assert_eq(
+  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'places'),
+  1, '039: places still carries exactly one policy — 039 added a column, not a surface');
+
+-- --------------------------------------------------------------------------
+-- 039.9  As a signed-in rider, and then as anon.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+
+select assert_eq((select count(*)::int from search_places('Kerkstraat', 52.09, 5.11)),
+  2, '039: a signed-in rider gets the widened search, under the same SELECT policy');
+select assert_eq((select search_text from places where id = 'p039-jumbo-m'),
+  'Jumbo  Wycker Brugstraat 7 Maastricht'::text,
+  '039: ... and can read search_text, because a table-level SELECT covers a column added later');
+-- Two independent barriers, and the OUTER one is not RLS. A generated column
+-- refuses the write at parse time with 428C9, before the missing grant or the
+-- missing policy is ever consulted — so this is assert_rejected rather than
+-- assert_denied. The grant half is asserted separately in 039.8, because a
+-- rejection that happens for the wrong reason still passes.
+select assert_rejected($$update places set search_text = 'mine' where id = 'p039-pct'$$,
+  '428C9', '039: ... and cannot write it — a generated column refuses the UPDATE ahead of RLS entirely');
+select assert_denied($$update places set locality = 'mine' where id = 'p039-pct'$$,
+  '039: ... nor its INPUTS, which is the barrier that actually keeps search_text honest');
+
+reset role;
+set role anon;
+select assert_denied($$select search_text from places$$,
+  '039: anon cannot read search_text any more than the rest of the row');
+select assert_denied($$select count(*) from search_places('Kerkstraat', 52.09, 5.11)$$,
+  '039: anon cannot call the widened search either — the grant, not the policy, is what stops it');
+reset role;
+
+rollback to savepoint places_039;
 
 rollback;
 

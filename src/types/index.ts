@@ -646,6 +646,19 @@ export type Place = {
   /** ISO 3166-1 alpha-2. `'NL'` on every row today. */
   country: string
   confidence: number | null
+  /**
+   * `name`, `brand`, `street` and `locality` space-joined — the column
+   * `search_places()` matches tokens against (`039`). `postcode` is deliberately
+   * not in it.
+   *
+   * **Read-only, and two things the generated `Database` type gets wrong.** It
+   * is a STORED GENERATED column, so it appears in the generator's `Insert` and
+   * `Update` shapes and writing it raises `428C9` — there is no INSERT or UPDATE
+   * grant here in any case. And the generator types it `string | null`, which it
+   * never is: `name` is `NOT NULL` and every other field is coalesced, so the
+   * worst case is a string of separators. Trust this type over that one.
+   */
+  search_text: string
 }
 
 /**
@@ -662,28 +675,69 @@ export type Place = {
  * purpose, so the UI draws one line instead of an empty second one. Trust this
  * type over the generated one.
  *
- * Three behaviours the caller has to know, all enforced in the function body
+ * Five behaviours the caller has to know, all enforced in the function body
  * rather than by validation the client could skip:
  *
+ *  - **Matching is PER TOKEN and ANDed, over `name`, `brand`, `street` and
+ *    `locality`** (`039`). The term is split on whitespace and every token must
+ *    appear somewhere in the row's searchable text, so `Jumbo Maastricht`
+ *    reaches a Jumbo whose *locality* is Maastricht. **Adding a word always
+ *    narrows** — useful for a "did you mean fewer results?" affordance, and the
+ *    reason a two-word query can return nothing where one word returned five.
+ *    `postcode` is NOT searchable.
+ *  - **A place the query NAMES outranks a place it merely LOCATES.** Searching
+ *    `Amsterdam` puts a place called "Amsterdam …" above the thousands merely
+ *    located there. Within the top tier the order is trigram similarity to the
+ *    name; within the address tier it is distance. Nothing to do client-side —
+ *    just do not re-sort the rows, the order is the product.
  *  - **Fewer than three consecutive alphanumerics returns zero rows**, always.
  *    Not an error and not "no matches" — the query is refused, because below
  *    that a trigram index cannot serve the search and it degrades to a
  *    full-table scan (1,443 ms on a 750k-row synthetic bench; the real table is
  *    empty until it is loaded). Debounce and gate the input on it rather than
- *    rendering an empty state.
+ *    rendering an empty state. The guard is on the WHOLE term, not per token, so
+ *    `Kerkstraat 40` is fine and its two-character token is honoured rather than
+ *    dropped — but `ab 40` is refused.
  *  - **`near_lat`/`near_lon` are optional, and they are a bias with a sharp
  *    edge.** Matches within roughly 28 km fill the list first and the rest of
  *    the country fills only what is left — so when five nearby matches exist,
  *    the national pass never runs and a *distant branch of a nearby chain is
  *    unreachable* ("Jumbo" in Utrecht cannot reach the Maastricht one).
- *    Deliberate, filed separately as a product question. Omitting the point
- *    ranks on text alone and is the escape hatch today.
+ *    Deliberate, and `039` makes it MORE likely by widening what matches.
+ *    **The escape hatch is now something a rider can type**: naming the town
+ *    ("Jumbo Maastricht") empties the local box and lets the national pass run.
+ *    Omitting the point entirely still works and ranks on text alone.
  *  - **A nonsense coordinate is discarded, not rejected.** `Infinity`, `NaN`
  *    and anything outside ±90 / ±180 fall back to the nationwide ranking rather
  *    than raising, so a broken GPS costs relevance and never an error toast.
  *
- * The search covers `name` and `brand` only — `street`, `locality` and
- * `postcode` are display, not index.
+ * **Debounce it — required, not advisable, and the numbers are worse than a
+ * city name.** Cost is roughly linear in matched rows (8–11 µs each) and the
+ * broadest tokens in Dutch address text are street-type suffixes. On the same
+ * 750k-row synthetic bench, national pass: `straat` **2,957 ms** (it matches
+ * 52% of rows), `sta` **996 ms**, `weg` 740 ms, a city name 497 ms.
+ *
+ * **`sta` is the one to design around** — three characters, so it is the *first*
+ * query this fires the instant the guard stops refusing, for anyone typing
+ * "Stationsweg". Two things to do about it, both client-side:
+ *
+ *  - Fire on a pause, not a keystroke.
+ *  - **Always pass `near_lat`/`near_lon` when you have them.** With a location
+ *    every term above measured 29–152 ms, because the bbox applies. Without one
+ *    there is nothing to narrow the scan.
+ *  - **Gate the token COUNT, not just the timing — this one is not optional and
+ *    the database cannot do it for you.** Per-candidate work is linear in the
+ *    number of distinct patterns, so a term holding many patterns that match the
+ *    same rows multiplies the whole query: ten substrings of one word inside 49
+ *    characters measured **5,914 ms**. `039` §5d collapses case-insensitively
+ *    duplicate tokens, which closes the repeat vector, but nothing collapses
+ *    genuinely distinct substrings and a function-level `statement_timeout`
+ *    cannot bound it (the timer is armed before the function is entered).
+ *    Refuse or truncate terms beyond a handful of tokens client-side.
+ *
+ * Nothing exceeds the 8 s statement timeout, so a slow query surfaces as a slow
+ * screen rather than an error — which is why this is worth reading rather than
+ * discovering.
  */
 export type PlaceSearchResult = {
   /** The Overture GERS id. Store this on the ride, not the label. */
