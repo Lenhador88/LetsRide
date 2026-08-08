@@ -1286,10 +1286,16 @@ Four changes at the product owner's request, and the first is a correctness fix 
 uncovered rather than one it asked for.
 
 **The board renamed three statuses and nothing in the repo noticed.** `Backlog` → **`Backlog AI`**,
-`Done` → **`Done (in production)`**, and **`Deployed to DEV`** was added. `CLAUDE.md`,
-`.claude/commands/queue-pickup.md` and `docs/HANDOFF.md` all named the old ones, and a `save_issue`
-naming a status that no longer exists returns a successful-looking payload with the field dropped —
-the same silent shape as the `project` trap. Re-derive, never type from memory:
+`Done` → **`Done (in production)`**, and **`Deployed to DEV`** was added. A `save_issue` naming a
+status that no longer exists returns a successful-looking payload with the field dropped — the same
+silent shape as the `project` trap.
+
+**Five files were stale, not the obvious three.** `CLAUDE.md`, `.claude/commands/queue-pickup.md`
+and `docs/HANDOFF.md` are the ones anybody would check; the two that were missed were
+`openspec/changes/add-notifications/tasks.md` and
+`openspec/changes/forbid-username-removal/tasks.md`, both carrying dead status names in
+**unchecked, executable** tasks in changes that merged and were never archived. Grep the tree
+rather than reasoning about which files "own" statuses. Re-derive, never type from memory:
 
 ```
 mcp__Linear__list_issue_statuses  team=Pedro & Dave

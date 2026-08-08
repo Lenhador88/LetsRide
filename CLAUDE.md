@@ -1437,12 +1437,19 @@ blockquote. Both defeat the grouping. The earlier version of this rule put the l
 description inside the bar as well; blocks written that way survive in `docs/HANDOFF.md`'s
 history and in archived proposals — the shape above is the one to write.
 
-**Committed and pushed is not shipped.** Work only counts when it is on `main`. A branch that
-is green, pushed and reviewed still changes nothing until it merges — and the gap between
-"I opened the PR" and "it landed" is where things get dropped, because every other signal
-(clean tree, pushed branch, green CI) already looks finished. Before ending a session, merge
-it or say plainly that it is open and why. This is not hypothetical: a handoff rewrite sat in
-an unmerged PR while `main` told the next session a shipped epic was half-finished.
+**Committed and pushed is not shipped.** A branch that is green, pushed and reviewed still
+changes nothing until it merges — and the gap between "I opened the PR" and "it landed" is where
+things get dropped, because every other signal (clean tree, pushed branch, green CI) already
+looks finished. Before ending a session, merge it or say plainly that it is open and why. This
+is not hypothetical: a handoff rewrite sat in an unmerged PR while `main` told the next session
+a shipped epic was half-finished.
+
+**"Counts" has two thresholds, and this line said only the second until 2026-08-08.** It read
+*"Work only counts when it is on `main`"*, which no session can satisfy — production promotion
+is manual and the owner's. **A session's unit of done is a merged PR on `development`**, which
+is where a queue firing ends (`Deployed to DEV`). Reaching riders is the owner's promotion to
+`main`, and `Done (in production)` is the status that asserts it. Both thresholds are real; only
+the first is yours.
 
 **A claim about state needs the command that checks it.** `docs/HANDOFF.md` describes things
 that move on their own — what is deployed, what is applied, how many tests there are. Write
@@ -1590,10 +1597,19 @@ only start signal, and an issue sitting in `Todo AI` is triaged, not released.
 
 **Then it happened again on 2026-08-08, to three rows at once**, which is why the command above
 the table is the answer and the table is the liability: `Backlog` became **`Backlog AI`**, `Done`
-became **`Done (in production)`**, and **`Deployed to DEV` was added**. Every file naming a
-status went stale silently and simultaneously — `CLAUDE.md`, `.claude/commands/queue-pickup.md`
-and `docs/HANDOFF.md`. Nothing failed; a `save_issue` naming a status that no longer exists
-comes back looking successful with the field dropped, exactly like the `project` trap below.
+became **`Done (in production)`**, and **`Deployed to DEV` was added**. Nothing failed; a
+`save_issue` naming a status that no longer exists comes back looking successful with the field
+dropped, exactly like the `project` trap below.
+
+**Five files went stale, not three, and the blast radius is the part to re-derive.** The obvious
+three are `CLAUDE.md`, `.claude/commands/queue-pickup.md` and `docs/HANDOFF.md` — but
+**`openspec/changes/*/tasks.md` carried dead status names in unchecked, executable tasks**, in
+changes that had merged and never been archived. A first draft of this very sentence listed only
+the three. Grep the tree rather than trusting any list:
+
+```bash
+grep -rn '`Backlog`\|`Done`' --include="*.md" . | grep -v node_modules   # then read each hit
+```
 
 **The split of `Done` into two is a workflow change, not a rename, and it is the one to
 internalise.** A firing's unit of done is a **merged PR on `development`**, which is
@@ -1861,9 +1877,16 @@ What it does, in order — and the order is the design:
    queue. Carry the answer to 1.5 rather than exiting here.
 1.5. **The only exit, and the stall alarm.** If nothing blocks, go to 2. Otherwise check how long
    the *oldest blocking reason* has been true — the lock (`get_issue` →
-   `stateHistory[].startedAt`), the in-flight branch's tip, the open PR's `createdAt` — and **if
-   it is 3–4 hours old, send one push notification naming it**, then stop. Outside that window,
-   exit silently. The owner's unfinished request is excluded: it is a live human, not a stuck job.
+   `stateHistory[].startedAt`), a dirty tree's newest file mtime, the in-flight branch's tip, the
+   open PR's `createdAt`, **and the two session gates: another session left `RUNNING`, or an
+   `updated_at` that keeps refreshing so the AFK gate never opens** — and **if it is 3–4 hours old,
+   send one push notification naming it**, then stop. Outside that window, exit silently. Only
+   the owner's unfinished request and low usage headroom are excluded: both are live conditions
+   the owner can already see.
+   **The RUNNING-session entry is the one most likely to freeze the queue silently from now on**,
+   because unlike a lock or a branch there is nothing on the board pointing at it — so the
+   notification has to name the session's title. `.claude/commands/queue-pickup.md` STEP 1.5 is
+   the procedure and it wins; this summary has already been the stale half once.
    Without this a condition nobody is holding freezes the queue for ever while every firing exits
    quietly — the exact failure step 1 exists to prevent. The window is narrow so it fires roughly
    once rather than hourly. **The alarm covers every blocking reason, not just the lock**, and

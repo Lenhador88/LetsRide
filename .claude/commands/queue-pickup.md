@@ -243,6 +243,15 @@ list_sessions  mine=true  limit=50
   -> (7) max(updated_at) of the rest within 15 minutes   -> stop
 ```
 
+**If the call fails or the connector is unreachable, treat both gates as HELD and stop** — and
+because a held gate with no data has no `updated_at` to age, **STEP 1.5 cannot stall-alarm on
+it**, so say so in that firing rather than exiting silently. This is the one external call in
+this file that had no stated failure behaviour; STEP 0 names Linear's (notify loudly, stop) and
+STEP 5 names Vercel's (continue, mark unverified). Failing open here is the worst option
+available: it starts a story alongside live work, which is the single outcome STEP 0.5 exists to
+prevent. And per STEP 0, a `select:` miss is a *rename*, not an absence — search by keyword
+before concluding the tool is gone.
+
 **If the response comes back with `has_more: true`, treat both gates as HELD and stop.** The
 ordering of that list is not documented anywhere this session can read, so a truncated page is
 not a sample you can reason about: a RUNNING session on the next page is invisible, and a
@@ -332,10 +341,16 @@ holds those tools in its frontmatter. The built-ins do — but until the write p
 no file content, so the split costs almost nothing:
 
 - **Main thread, always:** STEPs 0–3, STEP 4b's triage *decision*, the Linear status writes, the
-  PR open and merge (STEP 4c), STEP 5 — **and every `Agent` call.**
-- **One build subagent:** everything from branching to a pushed branch. It returns **a short
-  report, never a diff** — what landed, which files, what it wants triaged, and the two commit
-  ranges STEP 4c needs.
+  `git push`, the PR open and merge (STEP 4c), STEP 5 — **and every `Agent` call.**
+- **One build subagent:** everything from branching to a **committed** branch. It returns **a
+  short report, never a diff** — what landed, which files, what it wants triaged, and the two
+  commit ranges STEP 4c needs.
+
+**The push is the main thread's for the same reason the Linear and PR writes are.** `git push`
+is on the unprobed-writes list below, and handing an unverified write to a subagent *during a
+firing* is the thing that list exists to prevent — the issue is already claimed and the lock
+already held by that point. It is one Bash call carrying no file content, so keeping it inline
+costs nothing.
 - **A second, separate `reviewer` subagent**, spawned by the main thread after the builder
   returns.
 
@@ -419,8 +434,15 @@ oldest blocking condition has been true:
 
 - **The lock** — `mcp__Linear__get_issue` → `stateHistory[].startedAt` on each issue in
   `Development (AI)` or `Needs help`. Take the longest-held.
-- **A branch in flight** — `git log -1 --format=%cr` on its tip.
-- **An open PR on the current branch** — its `createdAt`.
+- **A dirty tree (0.5 gate 2)** — age the newest mtime among the modified files:
+  `git status --porcelain | awk '{print $2}' | xargs -r stat -c %Y | sort -rn | head -1`. **This
+  entry is easy to leave out and it is the one with no other cover.** A session that died holding
+  one uncommitted file on `development` makes gate (3) false (nothing is committed) and gate (4)
+  false (no PR), so if this is missing nothing ages it, STEP 1.5 exits silently, and the queue
+  freezes hourly with nothing on the board pointing at it. Caught by `reviewer` against a
+  sentence claiming the list was already complete.
+- **A branch in flight (0.5 gate 3)** — `git log -1 --format=%cr` on its tip.
+- **An open PR on the current branch (0.5 gate 4)** — its `createdAt`.
 - **The owner's unfinished request** — never stalls. It is a live human, not a stuck job.
   Exclude it; notifying someone about their own open conversation is noise.
 - **Low usage headroom** — never stalls either, and for the same reason: it is a live
@@ -626,7 +648,8 @@ subagent cannot spawn one. Then spawn `reviewer` separately, from the main threa
 result.
 
 The main thread should end this step holding a branch name, two short reports and the two commit
-ranges — never a diff, never a test log, never a file.
+ranges — never a diff, never a test log, never a file — and it does the `git push` itself, per
+STEP 0.6.
 
 ---
 
