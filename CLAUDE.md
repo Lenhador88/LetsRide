@@ -573,7 +573,7 @@ migration, and CI has no path that would catch it.
 | `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; **`024` dropped it, applied 2026-08-05**. Five query sites embedded `clubs(id, name, avatar_url)`; the three that draw an image could only ever draw initials, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
-| `places` | The self-hosted location provider for ride meeting points, added by `037` — **the only table here that is not rider content**. Reference data extracted from Overture Maps and loaded out of band, so it has no owner column, no author, and the repo's first `using (true)` SELECT policy: every signed-in rider sees every row, which is correct precisely because the table references no person. `authenticated` holds **SELECT and nothing else** — the load runs as the table owner, which is what lets an operator write while nothing reachable through PostgREST can. Query it through `search_places(q, near_lat, near_lon)`, never an ad-hoc `ILIKE`: the function carries the guard that keeps a query off a sequential scan, and that guard is `term ~ '[[:alnum:]]{3}'` rather than a length check because `char_length(term) >= 3` accepts `'%%%%'`, which escapes to a pattern with no extractable trigram — measured at 1,443 ms, under the 8 s statement timeout and therefore silent. **`039` widened what it matches and this line said `name` and `brand` only until 2026-08-08**: it is now `name`, `brand`, `street` and `locality`, matched **per token and ANDed** against a generated `search_text` column, so `Jumbo Maastricht` reaches a Jumbo whose locality is Maastricht and adding a word always narrows. `postcode` stays out. Widening needs a ranking rule, so a place the query **names** outranks one it merely **locates** — `Amsterdam` puts the place called that above the thousands sitting there. The guard is unchanged and is already per-token, because an alphanumeric run of three cannot span whitespace. `039` also **drops** `places_name_trgm_idx` and `places_brand_trgm_idx` for one GIN index over `search_text`. **The table exists on DEV with 0 rows and does not exist on PROD at all** until someone runs the load, and an empty index is indistinguishable from a working search that finds nothing. **Attribution is an OPEN question, not a settled one** — a census of 527,725 rows names Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap, so the ODbL credit this repo first assumed is wrong and the commercial sources' terms are unread (their hosts are egress-blocked). Settle it before any screen renders a result. |
+| `places` | The self-hosted location provider for ride meeting points, added by `037` — **the only table here that is not rider content**. Reference data extracted from Overture Maps and loaded out of band, so it has no owner column, no author, and the repo's first `using (true)` SELECT policy: every signed-in rider sees every row, which is correct precisely because the table references no person. `authenticated` holds **SELECT and nothing else** — the load runs as the table owner, which is what lets an operator write while nothing reachable through PostgREST can. Query it through `search_places(q, near_lat, near_lon)`, never an ad-hoc `ILIKE`: the function carries the guard that keeps a query off a sequential scan, and that guard is `term ~ '[[:alnum:]]{3}'` rather than a length check because `char_length(term) >= 3` accepts `'%%%%'`, which escapes to a pattern with no extractable trigram — measured at 1,443 ms, under the 8 s statement timeout and therefore silent. **`039` widened what it matches and this line said `name` and `brand` only until 2026-08-08**: it is now `name`, `brand`, `street` and `locality`, matched **per token and ANDed** against a generated `search_text` column, so `Jumbo Maastricht` reaches a Jumbo whose locality is Maastricht and adding a word always narrows. `postcode` stays out. Widening needs a ranking rule, so a place the query **names** outranks one it merely **locates** — `Amsterdam` puts the place called that above the thousands sitting there. The guard is unchanged and is already per-token, because an alphanumeric run of three cannot span whitespace. `039` also **drops** `places_name_trgm_idx` and `places_brand_trgm_idx` for one GIN index over `search_text`. **The table exists on BOTH projects with 0 rows** until someone runs the load, and an empty index is indistinguishable from a working search that finds nothing. **Attribution is an OPEN question, not a settled one** — a census of 527,725 rows names Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap, so the ODbL credit this repo first assumed is wrong and the commercial sources' terms are unread (their hosts are egress-blocked). Settle it before any screen renders a result. |
 | `ride_messages` | Per-ride group chat, added by `034`. **Its audience is an INTERSECTION and neither half alone is it** — riders who can see the ride (an `EXISTS` against `rides` under the caller's RLS) *and* who are on its crew (`private.is_ride_crew`: organizer, or any `ride_members` row of either status). Using the crew helper on its own is the trap this table already fell into once: it is `security definer`, so it steps past the block and private-club arms of the `rides` policy, and a `ride_members` row outlives both — an ex-club-member kept reading a private ride's chat. INSERT is granted **per column** so `created_at` cannot be client-written (a `default` only applies when the column is omitted, and ordering is the product here). No UPDATE policy and no UPDATE grant. In the `supabase_realtime` publication, which is what makes a subscription fire at all. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
@@ -606,47 +606,43 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 39 files. DEV is at `039`, PROD is at `035`, so the gap is now FOUR — measured
-2026-08-08.** DEV (`letsride-dev`) has 39 rows ending `places_address_search`; PROD (`letsride`)
-has 35 ending `035_comment_whitespace_floor`.
+**Applied state: 40 files, and DEV and PROD AGREE for the first time since `035` — both at
+`040`, measured 2026-08-08.** `letsride-dev` and `letsride` each have 40 rows ending
+`locality_centroid`. There is **no gap**, so the standing *"unapplied migrations are drift"* rule
+has nothing outstanding to point at.
 
-**Four unapplied migrations, three distinct reasons, and conflating any two is the trap.** Each is
-described once, below, in its own paragraph — `036` held back on purpose, `038` on an owner
-decision, and `037`+`039` merely unshipped.
+**Do not restore a gap by accident.** Every paragraph this section used to carry — `036` held
+back, `038` on an owner decision, `037`+`039` merely unshipped — described a state that no longer
+exists. They are gone rather than edited, because a stale "held back" note is what makes a session
+hesitate over something already applied. The history is in PR #122 and in each migration's header.
 
-**`037` and `039` are the merely-unshipped pair.** Both are additive — a new extension, a new
-table, a new function, an added column and index — and neither touches an existing write path, so
-they are in `034`'s class and could go to PROD ahead of their code. **They travel together**:
-`039` extends the table `037` creates and is meaningless without it. Either way they would need a
-data load there to be worth anything. **On DEV the table exists and holds 0 rows; on PROD it does
-not exist at all** — say it that way rather than "empty on both", which reads as though `037` had
-already shipped (`scripts/places/README.md` §Loading; no session holds database credentials).
+**`036` was the gated one, and its gate was discharged rather than waived.** It hangs six fan-out
+triggers off five **already-shipped** write paths — `postcard_likes`, `postcard_comments`,
+`ride_members`, `rides`, `club_members` — so from the moment it applies, every like, comment, RSVP,
+ride creation and club join runs new code inside the rider's own transaction, and **a trigger that
+raises takes that rider's write down with it.** The precondition was to exercise all five by hand
+on DEV first. Done, in a rolled-back transaction: each path fired its trigger, produced exactly one
+notification, none raised. It then went to PROD *before* the promotion, deliberately reversing its
+own deploy-then-apply order, because the promotion ships the notifications UI and `/notifications`
+would otherwise have errored for real riders until someone applied it.
 
-**`039` (PD-141) makes `street` and `locality` searchable** and is `037`'s companion rather than a
-separate decision — it adds a generated `search_text` column, one GIN index over it, drops the two
-`037` trigram indexes, and replaces `search_places()`. Matching is **per token, ANDed**, which is
-what makes `Jumbo Maastricht` reach a Maastricht row from Utrecht. Apply it only with `037`; alone
-it references a table that does not exist.
+**How a large migration gets applied when nothing can pipe a file into `apply_migration`.** The
+tool takes SQL as a string and `036` is 61 KB, so applying meant reproducing it — which risks a
+silent transcription error in production DDL. The technique that made it safe, and the one to
+reuse:
 
-**`038` (username durability, PD-127) is held on an OWNER DECISION, not on a technical
-constraint**, and that is its own category rather than a variant of either other one. It carries no
-ordering constraint in either direction — no code change, no grant, no policy, one trigger function
-body — so it is appliable to PROD at any moment. What is unanswered is *which of three apply orders*
-(`openspec/changes/forbid-username-removal/proposal.md` §Deployment ordering, Q3, marked blocking);
-the recommended default is `037` then `038`, leaving only the deliberately-gated `036` behind.
-**Until it lands there, the hole it closes is open on PROD:** a rider can `PATCH
-/rest/v1/profiles?id=eq.<me>` with `{"username": null}` and disappear from every other rider's
-`profiles` read, because the SELECT policy's second arm requires `username IS NOT NULL`.
+1. Reduce the file to the statements that execute, **preserving comments inside `$$` bodies** —
+   stripping those changes `prosrc`, which would make the applied function differ from DEV's and
+   defeat step 3. `036` went 61 KB to 13.9 KB, with all 45 statements verified present.
+2. Apply the reduction.
+3. **Prove it by diffing the result against DEV**, which already had the migration applied
+   correctly: `md5(string_agg(...))` over `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`,
+   `information_schema.columns`, `pg_indexes` and the grants. Every hash matched.
 
-**`036` is the one migration in this repo that must NOT be applied to PROD on sight**, and the
-standing *"Unapplied migrations are drift — apply them before adding another"* rule is exactly what
-would make a session do it. Read `036`'s own header before touching PROD. The short version: it
-hangs six triggers off five **already-shipped** write paths — `postcard_likes`,
-`postcard_comments`, `ride_members`, `rides`, `club_members` — so from the moment it applies, every
-like, comment, RSVP, ride creation and club join runs new code inside the rider's own transaction,
-and **a trigger that raises takes that rider's write down with it.** That is the opposite of `034`,
-which could go to PROD ahead of its code precisely because nothing existing executed it. PROD goes
-after the five paths have been exercised by hand on DEV *and* the code has deployed.
+That is *stronger* than the recorded-statement md5 convention it gives up, because it compares the
+objects rather than the text that produced them. **The cost is real: PROD's recorded statement for
+`036`-`040` is the reduced form, so `md5(statements[1])` on those five will NOT equal `md5sum` of
+the file.** Expected, not drift.
 
 `034` (ride chat) and `035` (the comment whitespace floor) landed on both the same day.
 
