@@ -7013,6 +7013,21 @@ select assert_eq(
   (select pg_temp.sp_code() like '%group by lower(s.tok)%'),
   true, '039: ... while leaving the code, so a needle that finds nothing means the code is gone rather than the stripper over-reaching');
 
+-- **The over-reach fails safe for CONTAINMENT needles only, and that qualifier is
+-- load-bearing rather than pedantry.** A naive stripper eats from `--` to the end
+-- of line, including a `--` inside a string literal, so it can delete real code.
+-- For every `like '%x%'` needle here that can only make the needle *false* — red,
+-- never green. It does NOT hold for a needle that counts occurrences: review
+-- planted a genuine defect (a second indexed conjunct in the local pass, which
+-- costs the bbox index) on a line beginning with a `'--'` literal, the stripper
+-- ate the added `t.pat2`, the count still read 1, and the suite went green on a
+-- real defect.
+--
+-- So the `t.pat2` count above reads RAW prosrc deliberately. It is safe to do so
+-- because `t.pat2` occurs exactly once raw and once stripped — it appears in no
+-- comment, so there is nothing for the stripper to protect it from. The rule to
+-- carry: strip comments for "is this code present", never for "how many times".
+
 -- --------------------------------------------------------------------------
 -- 039.1  The generated column itself — separator, coalesce, and STORED.
 -- --------------------------------------------------------------------------
@@ -7256,7 +7271,9 @@ select assert_eq((select count(*)::int from search_places('   ', 52.09, 5.11)),
 -- with identical results. Nothing behavioural can see that, so it is pinned
 -- structurally or not at all.
 select assert_eq(
-  (select (length(pg_temp.sp_code()) - length(replace(pg_temp.sp_code(), 't.pat2', ''))) / length('t.pat2')),
+  (select (length(prosrc) - length(replace(prosrc, 't.pat2', ''))) / length('t.pat2')
+     from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
   1, '039: `t.pat2` appears exactly once — only the NATIONAL pass indexes more than one token; adding one to the local pass costs it the bbox index');
 select assert_eq(
   (select pg_temp.sp_code() like '%order by (d.tok ~ ''[[:alnum:]]{3}'') desc, d.ord%'),

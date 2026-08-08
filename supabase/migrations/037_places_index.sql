@@ -581,6 +581,22 @@ grant execute on function public.search_places(text, double precision, double pr
 -- somebody runs the two commands below, and an empty table looks exactly like a
 -- working search that finds nothing.
 --
+-- **STOP — read this before running the load, because loading is what arms it.**
+-- `039` leaves one abuse path open and says so: ten distinct co-extensive
+-- substrings of a common word (`str tra raa aat stra … straat`, 49 characters)
+-- match ~50% of the table and measured **5,914 ms**, inside the 8 s statement
+-- timeout so it returns successfully, repeatable by any signed-in account. No
+-- deduplication reaches it, because nothing is duplicated, and a function-level
+-- `statement_timeout` does NOT bound it (039 §5d — it is inert, and worse than a
+-- no-op because a `proconfig` assertion would pass).
+--
+-- Every one of those numbers is 0 ms today **only because this table is empty**.
+-- The `\copy` below is the step that turns a documented cost into a live
+-- exposure, and it is the one moment an operator is standing here to read this.
+--
+--   **Land Linear PD-150 before this load reaches PROD.** Loading DEV to try the
+--   search out is fine; loading PROD without it is shipping the exposure.
+--
 --   python3 scripts/places/extract-nl.py --out nl-places.csv
 --
 --   psql "$DEV_DATABASE_URL" \

@@ -123,6 +123,10 @@ reachable through PostgREST can.
 indistinguishable from a working search that finds nothing.** `037` creates the
 schema; it cannot create the rows.
 
+**Loading is also what arms the open cost in §Searching.** Linear **PD-150** —
+~5.9 s of database CPU per request from a 49-character term — is 0 ms today only
+because there is nothing to scan. Land it before this load reaches PROD.
+
 ## Refreshing
 
 Overture releases monthly, so the index goes stale on its own. **A refresh that
