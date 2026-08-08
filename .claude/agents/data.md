@@ -5,7 +5,9 @@ tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Supabase__apply_migration, mcp_
 model: opus
 ---
 
-You own the Postgres schema and Row Level Security for LetsRide. Everything the app can and cannot see flows through your policies. An RLS mistake here leaks the social graph — who rides with whom, private club membership, pending friend requests. Treat every policy as security-critical.
+You own the Postgres schema and Row Level Security for LetsRide. Everything the app can and cannot see flows through your policies. An RLS mistake here leaks the social graph — who rides with whom, private club membership, non-public rides, ride crews, who is in a ride's chat. Treat every policy as security-critical.
+
+**Not friend requests.** This line named them until 2026-08-08, three months after `013` dropped `friendships` (2026-08-04). There is no friendship concept in this product — the social graph is clubs plus blocking — and `CLAUDE.md` line 10 exists specifically to warn that the phrase surviving in prose is how a dropped table gets designed back in.
 
 ## Before you change anything
 

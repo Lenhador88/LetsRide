@@ -361,8 +361,9 @@ is on the unprobed-writes list below, and handing an unverified write to a subag
 firing* is the thing that list exists to prevent — the issue is already claimed and the lock
 already held by that point. It is one Bash call carrying no file content, so keeping it inline
 costs nothing.
-- **A second, separate `reviewer` subagent**, spawned by the main thread after the builder
-  returns.
+- **A second, separate `reviewer` subagent**, spawned by the main thread at **STEP 4c** — after
+  the builder returns *and* after STEP 4b has committed anything travelling, so the one pass
+  sees the whole branch.
 
 **The main thread spawns both, one after the other, because a subagent cannot spawn a
 subagent.** No agent in `.claude/agents/*.md` carries a Task tool in its frontmatter, so a build
@@ -686,10 +687,24 @@ Follow `CLAUDE.md` exactly. In particular:
 - Follow the squad order in §The Agent Squad. `openspec` first if the story has real domain
   rules — visibility, membership, permissions, or a schema change. Skip it for copy, styling
   or a dependency bump.
-- **Always run the `reviewer` agent on the diff before merging, never after.** It is the one
-  non-negotiable delegation. It has caught, in one session: a feature that shipped completely
+- **The `reviewer` pass on the code happens once, at STEP 4c, on the final diff — not here.**
+  Changed 2026-08-08. It is still the one non-negotiable delegation, and still always *before*
+  the merge and never after: it has caught, in one session, a feature that shipped completely
   unreachable because an optional prop gated its only entry point, and an RLS leak that every
-  other gate passed.
+  other gate passed. What changed is *when*, not *whether*.
+
+  **Reviewing here and then again after STEP 4b was one pass too many, and the second was the
+  only one that saw everything.** A fold-in commits after this step, so a review taken here is
+  provably incomplete the moment STEP 4b builds anything — which is why STEP 4c already carried
+  a conditional re-review. Two passes where the earlier one is superseded is not defence in
+  depth; it is the same diff read twice, minus the fold-ins, at full cost. Running once at the
+  end makes "code added after `reviewer` looked" **impossible by construction** rather than
+  prevented by a rule someone has to remember.
+
+  **The proposal pass is a different gate and it stays.** When `openspec` runs, `reviewer` reads
+  the *proposal* — that is the first of `CLAUDE.md` §The Agent Squad's two, and the only artifact
+  in this pipeline with no automated gate at all, since `openspec/` runs zero CI jobs. Collapsing
+  the build passes does not touch it.
 - Verify locally: `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
   Run `PGPASSWORD=postgres npm test` if anything under `supabase/**` changed.
 - A migration that changes a policy must add an assertion.
@@ -705,12 +720,13 @@ before this file shipped.
 standing in for the clear the owner asked for.** Brief it with the issue, the branch name and
 the `CLAUDE.md` rules that bear on the story. Where the story wants a specialist — `data`,
 `media`, `realtime`, `design-system`, `test` — **the main thread spawns that agent**, because a
-subagent cannot spawn one. Then spawn `reviewer` separately, from the main thread, on the
-result.
+subagent cannot spawn one. `reviewer` is spawned separately from the main thread too, but at
+STEP 4c rather than here.
 
-The main thread should end this step holding a branch name, two short reports and the two commit
-ranges — never a diff, never a test log, never a file — and it does the `git push` itself, per
-STEP 0.6.
+The main thread should end this step holding a branch name, a short build report and the commit
+range that is the story itself — never a diff, never a test log, never a file — and it does the
+`git push` itself, per STEP 0.6. **Keep that range**: STEP 4c's scope pass needs it to tell the
+story's own commits from the fold-ins', and it cannot be recovered from a combined diff.
 
 ---
 
@@ -880,14 +896,18 @@ has a cheap correct answer, and it is the conservative one.
 ## STEP 4c — Open the PR and merge it
 
 Only now, with the triage done and anything travelling already committed. **In this order** —
-the review comes before the merge, and putting it after is the same defect STEP 4 documents
-itself as fixing, moved one step later and onto the bullet that decides whether fold-ins ship
-reviewed at all:
+the review comes before the merge, and putting it after is the defect this repo has paid for
+three times: PR #34, #46 and #94 each shipped and were then reviewed, and #46's finding was a
+live RLS hole letting any signed-in rider post a ride into any club.
 
-1. **Re-run `reviewer` on the final diff, if anything was folded in after the STEP 4 pass.**
-   That is the entire safety argument for building fold-ins unattended, so it is not optional
-   and it is not "the review I already ran": code added after `reviewer` looked has not been
-   reviewed. Nothing folded in → the STEP 4 pass still stands and this is a no-op.
+1. **Run `reviewer` on the final diff. Always, once, here.** This is the single code-review
+   gate for the firing — STEP 4 no longer runs one, so there is no earlier pass to fall back on
+   and **no "nothing folded in, so this is a no-op" branch**. That branch is gone deliberately:
+   it was the one path through this file that could reach a merge with a review that predated
+   the last commit.
+
+   Because it now always sees the whole branch, it is also the pass that reviews the fold-ins —
+   which is the entire safety argument for building them unattended.
 
    **Its prompt must carry the scope material, because it runs before the PR exists and so
    cannot read the PR body.** Pass: the issue being built, each fold-in with its one-line

@@ -64,6 +64,20 @@ jobs:
             app=false
           fi
 
+          # ...with one carve-out from the denylist, added 2026-08-08. The squad
+          # briefs and the queue-pickup procedure are EXECUTABLE process, not
+          # prose: a brief is the only thing a fresh subagent reads, and it has no
+          # conversation history to correct it. Three of ten were materially wrong
+          # at once — one told the Realtime agent that the tables it was about to
+          # touch did not exist — and nothing caught it, because the highest
+          # blast-radius-per-line files in the repo were the only ones no job ever
+          # looked at. src/__tests__/agent-briefs.test.ts is the tripwire, and it
+          # only helps if a .claude/ change actually runs it.
+          if echo "$files" | grep -qE '^\.claude/(agents|commands)/'; then
+            app=true
+            echo "-> .claude/agents or .claude/commands touched: running the app job for the brief tripwire"
+          fi
+
           # The database job's inputs are the migration chain, the assertions,
           # and the seed check that runs beside them — so an allowlist is correct
           # here rather than merely cheap. `scripts/db/` is in it because the
