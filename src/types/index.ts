@@ -607,3 +607,92 @@ export type NotificationCursor = { createdAt: string; id: string }
 
 // `Friendship` was removed with the table in 013. The product's social graph is
 // clubs plus blocking; the design has no friendship concept anywhere.
+
+/**
+ * One row of `public.places` (`037`) — the self-hosted Overture Maps index the
+ * ride meeting-point picker searches.
+ *
+ * **Reference data, not rider content.** There is no owner column, no
+ * `created_at` and no `updated_at`, because nothing in the app writes here:
+ * `authenticated` holds SELECT and nothing else, and the rows arrive by
+ * `\copy` from `scripts/places/extract-nl.py`. Nullability below is measured
+ * against the 2026-07-22.0 release rather than assumed — `brand` is null on
+ * 92% of rows and `street` on ~5%.
+ *
+ * **Attribution is an OPEN question, not a settled one.** An earlier version of
+ * this comment said any screen must credit "© OpenStreetMap contributors".
+ * That was wrong: measured across 527,725 sampled rows, *zero* cite
+ * OpenStreetMap — the sources present are Overture, meta, Foursquare,
+ * Microsoft, AllThePlaces, PinMeTo, DAC and Krick. What those eight require has
+ * not been read from Overture's own attribution terms, which the build
+ * container cannot reach. Settle it before a result renders; see `037`'s
+ * header.
+ *
+ * Most screens want `PlaceSearchResult` instead. **Nothing reads this type
+ * yet** — there is no `src/lib/data/places.ts`, and the table is empty until
+ * the operator load in `037` §6.
+ */
+export type Place = {
+  /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */
+  id: string
+  name: string
+  brand: string | null
+  category: string | null
+  lon: number
+  lat: number
+  street: string | null
+  locality: string | null
+  postcode: string | null
+  /** ISO 3166-1 alpha-2. `'NL'` on every row today. */
+  country: string
+  confidence: number | null
+}
+
+/**
+ * One row from the `search_places(q, near_lat, near_lon)` RPC (`037`) — at most
+ * five, because the design's result sheet draws five.
+ *
+ * `label` over `meta` is the design's two-line result row: the place name, then
+ * street and locality joined.
+ *
+ * **`meta` is nullable and the generated `Database` type says it is not.**
+ * `generate_typescript_types` renders every `RETURNS TABLE` column
+ * non-nullable, which is a generator limitation rather than a fact about the
+ * function: a place with neither `street` nor `locality` yields `null` here, on
+ * purpose, so the UI draws one line instead of an empty second one. Trust this
+ * type over the generated one.
+ *
+ * Three behaviours the caller has to know, all enforced in the function body
+ * rather than by validation the client could skip:
+ *
+ *  - **Fewer than three consecutive alphanumerics returns zero rows**, always.
+ *    Not an error and not "no matches" — the query is refused, because below
+ *    that a trigram index cannot serve the search and it degrades to a
+ *    full-table scan (1,443 ms on a 750k-row synthetic bench; the real table is
+ *    empty until it is loaded). Debounce and gate the input on it rather than
+ *    rendering an empty state.
+ *  - **`near_lat`/`near_lon` are optional, and they are a bias with a sharp
+ *    edge.** Matches within roughly 28 km fill the list first and the rest of
+ *    the country fills only what is left — so when five nearby matches exist,
+ *    the national pass never runs and a *distant branch of a nearby chain is
+ *    unreachable* ("Jumbo" in Utrecht cannot reach the Maastricht one).
+ *    Deliberate, filed separately as a product question. Omitting the point
+ *    ranks on text alone and is the escape hatch today.
+ *  - **A nonsense coordinate is discarded, not rejected.** `Infinity`, `NaN`
+ *    and anything outside ±90 / ±180 fall back to the nationwide ranking rather
+ *    than raising, so a broken GPS costs relevance and never an error toast.
+ *
+ * The search covers `name` and `brand` only — `street`, `locality` and
+ * `postcode` are display, not index.
+ */
+export type PlaceSearchResult = {
+  /** The Overture GERS id. Store this on the ride, not the label. */
+  id: string
+  /** The place name — the design's Label line. */
+  label: string
+  /** Street and locality, comma-joined. Null when the place has neither. */
+  meta: string | null
+  lat: number
+  /** `lon`, not `lng` — one name for one quantity, matching `Place.lon`. */
+  lon: number
+}

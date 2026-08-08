@@ -6042,6 +6042,454 @@ select assert_rejected($$
 
 rollback to savepoint notifications_036;
 
+\echo ''
+\echo '# Places: reference data — every signed-in rider reads it, nobody writes it (037)'
+
+-- ===========================================================================
+-- 037. The first table in this schema with NO owner column, and the first
+-- function whose whole job is a query plan.
+-- ===========================================================================
+--
+-- Two things are being asserted and they fail in different ways.
+--
+-- The ACCESS half is the ordinary one, with one twist: `using (true)` is the
+-- entire policy, so the thing that keeps this table off the internet is the
+-- `to authenticated` scoping and the absent grants — not a predicate. Absence is
+-- the enforcement, which is exactly what a well-meaning `grant all` restores
+-- without turning anything red. Every privilege below is therefore asserted
+-- BY ROLE with has_table_privilege / has_function_privilege rather than by
+-- trying it as the owner, per 031's lesson: this suite runs as the table owner,
+-- for whom no grant barrier exists at all.
+--
+-- The BEHAVIOURAL half covers the two rules that live in search_places' body
+-- rather than in a policy, because neither is visible in pg_policies and both
+-- are one careless edit from silently reverting: the alphanumeric-run guard that
+-- keeps the function off a sequential scan, and the LIKE escaping that stops a
+-- typed `%` matching the country.
+--
+-- Fixtures are self-contained. seed.sql has no places and should not grow any:
+-- these rows exist to pin an ORDERING (near before far) and a CAP (five), so
+-- they need coordinates chosen against a known probe point rather than whatever
+-- a shared fixture happens to hold.
+--
+--   Utrecht probe   52.09 / 5.11   — 2 'Zeldzaamplek' rows within the ~28 km box
+--   Maastricht      50.85 / 5.69   — 4 more, ~180 km away, outside every box
+savepoint places_037;
+
+reset role;
+select set_config('test.uid', '', false);
+
+insert into places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) values
+  -- The Zeldzaamplek family. Coordinates and ids are chosen so that DISTANCE
+  -- and ID ORDER DISAGREE inside the box, and so that the best TEXT match sits
+  -- outside it. Both are deliberate: they are what make 037.7 able to fail.
+  --
+  --   near-near  1.3 km from the probe, but sorts SECOND by id
+  --   near-far   2.6 km from the probe, but sorts FIRST by id
+  --   far-exact  ~180 km away and named exactly 'Zeldzaamplek', so score 1.0
+  --
+  -- Drop dist2 from the local ORDER BY and near-far leads; drop the bbox and
+  -- far-exact leads. A fixture set where distance, id and score all agreed
+  -- would rank identically under all three and prove none of them.
+  ('p037-near-far',  'Zeldzaamplek A', null,           'cafe',        5.09, 52.07, 'Domstraat 1', 'Utrecht',    '3511 AA', 'NL', 0.90),
+  ('p037-near-near', 'Zeldzaamplek B', null,           'cafe',        5.12, 52.10, null,          'Utrecht',    '3512 BB', 'NL', 0.90),
+  ('p037-far-exact', 'Zeldzaamplek',   null,           'cafe',        5.69, 50.85, 'Vrijthof 1',  'Maastricht', '6211 CC', 'NL', 0.90),
+  ('p037-far-c',     'Zeldzaamplek C', null,           'cafe',        5.70, 50.86, 'Vrijthof 2',  'Maastricht', '6211 DD', 'NL', 0.90),
+  ('p037-far-d',     'Zeldzaamplek D', null,           'cafe',        5.71, 50.87, 'Vrijthof 3',  'Maastricht', '6211 EE', 'NL', 0.90),
+  ('p037-far-e',     'Zeldzaamplek E', null,           'cafe',        5.72, 50.88, 'Vrijthof 4',  'Maastricht', '6211 FF', 'NL', 0.90),
+  ('p037-brand',     'Onherkenbaar 001', 'Merkzoektest', 'gas_station', 5.13, 52.11, 'Merkweg 9', 'Utrecht',    '3513 CC', 'NL', 0.80),
+  ('p037-pct',       'Procenttest',    null,           null,          5.14, 52.12, null,          null,         null,      'NL', null),
+  -- The two guard tripwires. Their names contain the pathological query
+  -- STRINGS LITERALLY, so a weakened guard finds them and a correct guard
+  -- refuses to look. Without these rows the guard assertions in 037.8 read 0
+  -- either way and prove nothing — measured: swapping the guard for
+  -- `char_length(term) >= 3` left the whole section green.
+  ('p037-wild',      'Wildcard %%%% Testplek', null,   null,          5.15, 52.13, null,          'Utrecht',    null,      'NL', null),
+  ('p037-dash',      'Z-e-l Testplek', null,           null,          5.16, 52.14, null,          'Utrecht',    null,      'NL', null),
+  -- The ORDER BY tiebreak pair: identical name, identical coordinates, so
+  -- score AND dist2 tie and only `id` can separate them. Inserted in DESCENDING
+  -- id order on purpose — heap order is insertion order in this transaction, so
+  -- without the tiebreak the scan returns dup-2 first and the assertion fails.
+  ('p037-dup-2',     'Dubbelplek',     null,           null,          5.11, 52.09, null,          'Utrecht',    null,      'NL', null),
+  ('p037-dup-1',     'Dubbelplek',     null,           null,          5.11, 52.09, null,          'Utrecht',    null,      'NL', null),
+  -- SIX rows, all inside the box, all with the same name and therefore the same
+  -- score, at increasing distance and DECREASING id order. Six because the
+  -- local pass takes five: its ORDER BY is a *selection* criterion, so it only
+  -- bites when the box holds more candidates than the cap.
+  --
+  -- That is exactly the gap this pair of families closes. With only the two
+  -- Zeldzaamplek rows in the box, dropping `dist2` from the local ORDER BY
+  -- changed nothing — the final pooled sort re-ordered them anyway — so the
+  -- mutation survived every assertion. Here it changes WHICH FIVE SURVIVE:
+  -- by distance the farthest (box-a) is dropped, by id the nearest (box-f) is.
+  ('p037-box-a',     'Boxvulplek',     null,           null,          5.11, 52.29, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-b',     'Boxvulplek',     null,           null,          5.11, 52.25, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-c',     'Boxvulplek',     null,           null,          5.11, 52.21, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-d',     'Boxvulplek',     null,           null,          5.11, 52.17, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-e',     'Boxvulplek',     null,           null,          5.11, 52.13, null,          'Utrecht',    null,      'NL', null),
+  ('p037-box-f',     'Boxvulplek',     null,           null,          5.11, 52.10, null,          'Utrecht',    null,      'NL', null);
+
+-- --------------------------------------------------------------------------
+-- 037.1  The load-insurance CHECKs. No client can reach them, so what they
+--        guard is a hand-run \copy: a whitespace name, a coordinate pair
+--        swapped in the column list, a garbage country code.
+-- --------------------------------------------------------------------------
+select assert_rejected($$insert into places (id,name,lon,lat,country) values ('p037-x1','   ',5.1,52.1,'NL')$$,
+  '23514', '037: a whitespace-only name is refused');
+select assert_rejected($$insert into places (id,name,lon,lat,country) values ('p037-x2','Ok',5.1,952.1,'NL')$$,
+  '23514', '037: a latitude outside -90..90 is refused — a swapped \copy column list is the realistic cause');
+select assert_rejected($$insert into places (id,name,lon,lat,country) values ('p037-x3','Ok',5.1,52.1,'nl')$$,
+  '23514', '037: a lower-case country code is refused — the column is ISO 3166-1 alpha-2');
+select assert_rejected($$insert into places (id,name,lon,lat,country,confidence) values ('p037-x4','Ok',5.1,52.1,'NL',1.5)$$,
+  '23514', '037: a confidence outside 0..1 is refused');
+
+-- --------------------------------------------------------------------------
+-- 037.2  RLS is on, and there is exactly ONE policy. Scoped to this table
+--        rather than counting policies schema-wide, so it keeps testing its
+--        own intent when the next surface lands.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'public.places'::regclass),
+  true, '037: row level security is enabled on places');
+select assert_eq(
+  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'places'),
+  1, '037: places carries exactly one policy');
+select assert_eq(
+  (select cmd from pg_policies where schemaname = 'public' and tablename = 'places'),
+  'SELECT'::text, '037: ... and it is a SELECT policy — nothing here is writable through RLS');
+select assert_eq(
+  (select roles::text from pg_policies where schemaname = 'public' and tablename = 'places'),
+  '{authenticated}'::text, '037: ... to authenticated, never anon — decision #1');
+
+-- --------------------------------------------------------------------------
+-- 037.3  Privileges BY ROLE. This suite runs as the table owner, for whom no
+--        grant barrier exists, so a "can I insert" test that simply tries it
+--        would pass against a table anyone can write. 031's lesson.
+-- --------------------------------------------------------------------------
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'select'),
+  true, '037: authenticated holds SELECT');
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'insert'),
+  false, '037: authenticated holds NO INSERT — the index is loaded out of band');
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'update'),
+  false, '037: authenticated holds NO UPDATE');
+select assert_eq(has_table_privilege('authenticated', 'public.places', 'delete'),
+  false, '037: authenticated holds NO DELETE');
+select assert_eq(has_table_privilege('anon', 'public.places', 'select'),
+  false, '037: anon cannot even read it — is_public means "signed-in rider", never "the internet"');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'anon'),
+  0, '037: anon holds zero grants of any kind on places');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'places' and grantee = 'authenticated'),
+  1, '037: authenticated holds exactly one grant, and 037.3 above names it SELECT');
+
+-- 034 §4b shipped a per-COLUMN insert grant, which does not appear in
+-- role_table_grants at all. So a write path could hide from every assertion
+-- above. Checked explicitly rather than inferred from the table-level count.
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'places'
+      and grantee in ('anon', 'authenticated') and privilege_type <> 'SELECT'),
+  0, '037: no column-level write grant hides behind the table-level one');
+
+-- --------------------------------------------------------------------------
+-- 037.4  The function: INVOKER, path pinned, reachable by riders only.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select prosecdef from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  false, '037: search_places is SECURITY INVOKER — the places SELECT policy governs it, with no second copy of the rule');
+select assert_eq(
+  (select proconfig @> array['search_path=""'] from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  true, '037: ... with search_path pinned empty, 005''s rule');
+select assert_eq(
+  has_function_privilege('authenticated',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  true, '037: authenticated may call search_places');
+select assert_eq(
+  has_function_privilege('anon',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  false, '037: anon may NOT — the default EXECUTE to PUBLIC was revoked');
+
+-- --------------------------------------------------------------------------
+-- 037.5  The indexes the design depends on, and the extension's home.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select nspname::text from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+    where e.extname = 'pg_trgm'),
+  'extensions'::text, '037: pg_trgm lives in `extensions`, not `public` — the extension_in_public advisor');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places' and indexdef like '%gin_trgm_ops%'),
+  2, '037: two trigram GIN indexes — name and brand');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places'
+      and indexname = 'places_brand_trgm_idx' and indexdef like '%brand IS NOT NULL%'),
+  1, '037: ... and the brand one is partial, because brand is null on 92% of rows');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and tablename = 'places' and indexname = 'places_lat_lon_idx'),
+  1, '037: the coordinate btree exists — the bbox prefilter PostGIS was not enabled for');
+
+-- Scoped to this table on purpose. A global count of enforce_participation_gate
+-- triggers belongs to 023/034 and would stop testing 037's own intent, which is
+-- narrower: places has no client write path, so there is nothing to gate.
+select assert_eq(
+  (select count(*)::int from pg_trigger where tgrelid = 'public.places'::regclass and not tgisinternal),
+  0, '037: places carries no trigger at all — 023''s gate guards writes, and there are none');
+
+-- --------------------------------------------------------------------------
+-- 037.6  As a signed-in rider: reads work, every write is refused.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+
+select assert_eq((select count(*)::int from places where id = 'p037-near-near'),
+  1, '037: a signed-in rider can read a place');
+select assert_denied($$insert into places (id,name,lon,lat,country) values ('p037-hack','Mine',5.1,52.1,'NL')$$,
+  '037: a signed-in rider cannot INSERT a place');
+select assert_denied($$update places set name = 'Mine' where id = 'p037-near-near'$$,
+  '037: ... cannot UPDATE one');
+select assert_denied($$delete from places where id = 'p037-near-near'$$,
+  '037: ... cannot DELETE one');
+
+-- --------------------------------------------------------------------------
+-- 037.7  search_places: the ranking contract the design draws.
+-- --------------------------------------------------------------------------
+-- ** The next assertion is the one that covers §5b, which the migration spends
+-- twenty lines justifying and which previously had NO discriminating test. **
+-- Review mutated the function two ways and all 795 assertions stayed green:
+-- removing the ~28 km box entirely (so there is one pass, not two), and
+-- dropping `dist2` from the local ORDER BY (so proximity stops ordering the
+-- near rows). Both are the design; neither was tested.
+--
+-- The full ordered array is asserted rather than a prefix, because each
+-- position carries a different rule:
+--
+--   1 near-near   the box runs FIRST, and dist2 orders inside it
+--   2 near-far    ... even though its id sorts earlier
+--   3 far-exact   the national pass runs, and score orders IT — an exact match
+--                 outranks the partial ones, but only after the local rows
+--   4 far-e       ... and dist2 breaks the tie among equal-scoring far rows
+--   5 far-d
+--
+-- Under m_nobbox the array becomes {far-exact, near-near, near-far, far-e,
+-- far-d}; under m_nodist it becomes {near-far, near-near, far-exact, far-c,
+-- far-d}. Both differ at position 1, so this single assertion catches both.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Zeldzaamplek', 52.09, 5.11)) s),
+  '{p037-near-near,p037-near-far,p037-far-exact,p037-far-e,p037-far-d}'::text,
+  '037: the two-pass order — box first and nearest-first inside it, then the national pass by score');
+select assert_eq(
+  (select count(*)::int from search_places('Zeldzaamplek', 52.09, 5.11)),
+  5, '037: ... capped at five, because the design draws five');
+select assert_eq(
+  (select count(*)::int from search_places('Zeldzaamplek', 52.09, 5.11) where id like 'p037-far-%'),
+  3, '037: ... and the national pass fills the remaining three, not zero — a place with no near namesake is still findable');
+
+-- The claim §5b actually makes, stated as its own assertion: proximity beats a
+-- better text match. `p037-far-exact` scores 1.0 against every other row's
+-- partial match and still comes third, because it is outside the box.
+select assert_eq(
+  (select id from search_places('Zeldzaamplek', 52.09, 5.11) limit 1),
+  'p037-near-near'::text,
+  '037: a nearby PARTIAL match outranks a distant EXACT one — proximity is the primary key, not a tiebreak');
+
+-- No point supplied at all: pure text ranking, no distance term, no error.
+select assert_eq(
+  (select count(*)::int from search_places('Zeldzaamplek')),
+  5, '037: a search with no location still works — proximity is a bias, not a requirement');
+select assert_eq(
+  (select id from search_places('Zeldzaamplek') limit 1),
+  'p037-far-exact'::text,
+  '037: ... and with no location the exact match DOES lead, which is what makes the assertion above about proximity rather than about score');
+
+-- The Meta line of the design's Label-over-Meta row.
+select assert_eq(
+  (select meta from search_places('Zeldzaamplek', 52.09, 5.11) where id = 'p037-near-far'),
+  'Domstraat 1, Utrecht'::text, '037: meta is street then locality');
+select assert_eq(
+  (select meta from search_places('Zeldzaamplek', 52.09, 5.11) where id = 'p037-near-near'),
+  'Utrecht'::text, '037: ... and a null street collapses rather than leaving a leading comma');
+select assert_eq(
+  (select meta from search_places('Procenttest', 52.09, 5.11)),
+  null::text, '037: ... and a row with neither is NULL, so the UI draws one line instead of an empty one');
+
+-- brand is searchable, and it is the 8% case: the label still shows the name.
+select assert_eq(
+  (select label from search_places('Merkzoektest', 52.09, 5.11)),
+  'Onherkenbaar 001'::text, '037: brand matches, and label is still the place name');
+
+-- --------------------------------------------------------------------------
+-- 037.7b  The ORDER BY tiebreak. Without it the result set is not a sequence.
+-- --------------------------------------------------------------------------
+-- `p037-dup-1` and `p037-dup-2` share a name AND a coordinate, so `score` and
+-- `dist2` both tie and only `id` can order them. They are inserted in
+-- descending id order, so heap order and id order disagree: drop the tiebreak
+-- and the scan returns dup-2 first.
+--
+-- Both call shapes, because they exercise different ORDER BYs — with a location
+-- the pair goes through `local_hits`, without one through `national_hits`,
+-- where every `dist2` is NULL and the tie is total.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Dubbelplek', 52.09, 5.11)) s),
+  '{p037-dup-1,p037-dup-2}'::text,
+  '037: rows tying on score and distance are ordered by id, not by physical order (local pass)');
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Dubbelplek')) s),
+  '{p037-dup-1,p037-dup-2}'::text,
+  '037: ... and with no location, where every dist2 is NULL and the tie is total (national pass)');
+
+-- Structural as well as behavioural: the behavioural pair above depends on heap
+-- order matching insertion order, which is true here but is a property of the
+-- test rather than of the function. This names the thing itself.
+select assert_eq(
+  (select (prosrc like '%dist2 asc, p.id%')
+      and (prosrc like '%dist2 asc nulls last, p.id%')
+      and (prosrc like '%r.dist2 asc nulls last, r.id%')
+     from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  true, '037: ... and all three ORDER BYs in the body carry the id tiebreak');
+
+-- --------------------------------------------------------------------------
+-- 037.7e  The local ORDER BY as a SELECTION criterion, which is the only way
+--         it is observable at all.
+-- --------------------------------------------------------------------------
+-- ** This exists because the obvious test does not work, and review proved it. **
+-- Dropping `dist2` from the local pass's ORDER BY survived every assertion in
+-- this section, because with two rows in the box the pass returns both and the
+-- FINAL pooled sort — which still has `dist2` — puts them back in order. The
+-- local ORDER BY decides *which rows survive the LIMIT*, nothing else, so it is
+-- invisible until the box holds more than five candidates.
+--
+-- Six Boxvulplek rows tie on score exactly and differ only in distance, with id
+-- order running opposite to distance order. By distance the five NEAREST
+-- survive and box-a is dropped; by id the five with the LOWEST ids survive and
+-- box-f — the nearest of all — is dropped instead. The presence of box-f is the
+-- discriminator, and the full array pins the ordering with it.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Boxvulplek', 52.09, 5.11)) s),
+  '{p037-box-f,p037-box-e,p037-box-d,p037-box-c,p037-box-b}'::text,
+  '037: when the box holds more than five, the local ORDER BY keeps the NEAREST five — not the five with the lowest ids');
+select assert_eq(
+  (select count(*)::int from search_places('Boxvulplek', 52.09, 5.11) where id = 'p037-box-a'),
+  0, '037: ... so the farthest is the one dropped');
+
+-- --------------------------------------------------------------------------
+-- 037.7c  A broken GPS degrades to a nationwide search; it does not raise.
+-- --------------------------------------------------------------------------
+-- All four of these used to ERROR: `cos(radians(Infinity))` is "input is out of
+-- range" and squaring 1e308 overflows. The coordinates come from
+-- `navigator.geolocation` through a client nobody controls, and the function
+-- already had a graceful path for a missing location — so a nonsense value is
+-- made missing rather than given a second failure mode.
+--
+-- Five rows, i.e. exactly the no-location result, is the assertion: it proves
+-- the value was discarded rather than merely survived.
+select assert_eq((select count(*)::int from search_places('Zeldzaamplek', 'Infinity'::double precision, 5.11)),
+  5, '037: an infinite latitude falls back to a nationwide search instead of raising');
+select assert_eq((select count(*)::int from search_places('Zeldzaamplek', 'NaN'::double precision, 5.11)),
+  5, '037: ... so does NaN');
+select assert_eq((select count(*)::int from search_places('Zeldzaamplek', 1e308, 5.11)),
+  5, '037: ... so does 1e308, which used to overflow the squared distance');
+select assert_eq((select count(*)::int from search_places('Zeldzaamplek', 52.09, 1e308)),
+  5, '037: ... and so does a nonsense longitude, which is the other half nobody checks');
+select assert_eq(
+  (select id from search_places('Zeldzaamplek', 'Infinity'::double precision, 5.11) limit 1),
+  'p037-far-exact'::text,
+  '037: ... and the fallback really is the no-location ranking, not a silently clamped one');
+
+-- --------------------------------------------------------------------------
+-- 037.7d  The RPC contract PostgREST publishes: argument AND output names.
+-- --------------------------------------------------------------------------
+-- `supabase.rpc('search_places', { q, near_lat, near_lon })` routes on the
+-- argument names, and the returned object keys are the output column names, so
+-- both halves are a wire contract and neither is visible in a policy. Pinned
+-- together, in order.
+--
+-- `lon` rather than `lng` throughout: `places.lon`, the extractor's CSV header
+-- and the loader all say `lon`, and one quantity gets one name.
+select assert_eq(
+  (select string_agg(a, ',' order by ord)
+     from unnest((select proargnames from pg_proc
+                   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure))
+          with ordinality as u(a, ord)),
+  'q,near_lat,near_lon,id,label,meta,lat,lon'::text,
+  '037: the RPC signature and its output columns, pinned — `lon`, never `lng`');
+
+-- --------------------------------------------------------------------------
+-- 037.8  The two rules that live in the function body, not in a policy.
+-- --------------------------------------------------------------------------
+-- The guard is an alphanumeric RUN of three, not a length of three, and the
+-- ~1.4 s figure quoted for the unguarded case is from the 750k-row synthetic
+-- bench in 037 §3 — not from this table, and not from the real extract.
+--
+-- ** Each asserts 0 against a fixture that WOULD match. ** That is the whole
+-- design: a bare "returns nothing" reads 0 whether the guard refused or the
+-- search simply found nothing, so it survives the guard being deleted entirely.
+-- p037-wild and p037-dash carry the query strings in their names, and 'Ze' is a
+-- prefix of six rows.
+--
+-- ** The three do NOT all discriminate the same mutation, and an earlier
+-- revision of this comment claimed they did. ** It said "with
+-- `char_length(term) >= 3` in place of the regex, all three fail". Only two do.
+-- 'Ze' is two characters, so BOTH guards refuse it and it reads 0 either way —
+-- it discriminates *no guard at all* from *some guard*, which is a different
+-- and weaker thing. The percent signs and the dashed letters are the two that
+-- separate the length check from the regex, because both are long enough to
+-- pass the former and carry no alphanumeric run to pass the latter.
+select assert_eq((select count(*)::int from search_places('Ze', 52.09, 5.11)),
+  0, '037: a two-character query returns nothing — even though six rows start with it (this one only proves SOME guard exists)');
+select assert_eq((select count(*)::int from search_places('%%%%', 52.09, 5.11)),
+  0, '037: ... and four percent signs return nothing even though a row is named for them — they pass a length check and extract no trigram');
+select assert_eq((select count(*)::int from search_places('Z-e-l', 52.09, 5.11)),
+  0, '037: ... and so do punctuation-separated letters, with a row named for those too — pg_trgm treats non-alphanumerics as separators');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure
+      and prosrc like '%[[:alnum:]]{3}%'),
+  1, '037: ... and the guard in the body is that regex, named rather than only inferred from behaviour');
+select assert_eq((select count(*)::int from search_places('', 52.09, 5.11)),
+  0, '037: an empty query returns nothing');
+select assert_eq((select count(*)::int from search_places(null, 52.09, 5.11)),
+  0, '037: a null query returns nothing');
+
+-- LIKE metacharacters are escaped, so a typed `%` is a percent sign and not a
+-- wildcard. Both halves: the escaped form finds nothing, the bare form finds the
+-- row — a broken escape would make the first return 1 as well.
+select assert_eq((select count(*)::int from search_places('Procenttest', 52.09, 5.11)),
+  1, '037: the escape test row is findable');
+select assert_eq((select count(*)::int from search_places('Procenttest%', 52.09, 5.11)),
+  0, '037: ... but a trailing % is a literal percent sign, not a wildcard');
+select assert_eq((select count(*)::int from search_places('Procentt_st', 52.09, 5.11)),
+  0, '037: ... and an underscore is a literal underscore, not "any character"');
+
+-- --------------------------------------------------------------------------
+-- 037.9  As anon: nothing, in both directions.
+-- --------------------------------------------------------------------------
+reset role;
+set role anon;
+select assert_denied($$select count(*) from places$$,
+  '037: anon cannot read places at all');
+select assert_denied($$select count(*) from search_places('Zeldzaamplek', 52.09, 5.11)$$,
+  '037: anon cannot call search_places either — the grant, not the policy, is what stops it');
+
+reset role;
+
+rollback to savepoint places_037;
+
 rollback;
 
 \echo ''
