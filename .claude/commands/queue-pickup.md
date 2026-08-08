@@ -447,22 +447,28 @@ oldest blocking condition has been true:
 - **A dirty tree (0.5 gate 2)** — age the newest mtime among the modified files:
 
   ```bash
-  git status --porcelain -z | sed -z 's/^...//' | xargs -0 -r stat -c %Y 2>/dev/null \
-    | sort -rn | head -1
+  { git ls-files -z -m -o --exclude-standard; git diff --name-only -z --cached; } \
+    | xargs -0 -r stat -c %Y 2>/dev/null | sort -rn | head -1
   ```
 
-  **Use `-z`, and do not "simplify" it to `awk '{print $2}' | xargs`.** That version was in this
-  file and is broken — measured with a repro, not reasoned. `git status --porcelain` **quotes**
-  any path containing a space or a non-ASCII byte (`core.quotePath` is on by default), `awk`
-  splits it at the space, and `xargs` then dies with *"unmatched double quote"* having processed
-  only the paths before it. In the repro a tree dirtied **3 minutes** ago aged as **57,886
-  hours**, because the one file it managed to `stat` was an old one. `R  old -> new` entries fail
-  the same way — `$2` is the path that no longer exists.
+  **Do not parse `git status --porcelain` for this. Two attempts did and both were broken** —
+  each measured with a repro rather than reasoned about, and each found only after it shipped:
 
-  **And the direction of the error is the opposite of harmless.** Dropping entries can only
+  | Attempt | What breaks it |
+  |---|---|
+  | `\| awk '{print $2}' \| xargs` | `--porcelain` **quotes** any path with a space or non-ASCII byte (`core.quotePath` is on by default). `awk` splits it, `xargs` dies with *"unmatched double quote"* having `stat`ed only the paths before it. A tree dirtied **3 minutes** ago aged as **57,886 hours** |
+  | `--porcelain -z \| sed -z 's/^...//'` | A rename is **two** `-z` records — `R  <new>\0<old>\0` — and the second carries no status prefix, so `sed` eats the first three characters of a real path. Observed: `todelete.txt` → `elete.txt` |
+
+  `ls-files` emits **paths only**, so there is no prefix to strip and no quoting to unpick;
+  `--cached` adds staged-only files, which `-m` misses when the working copy matches the index.
+  Duplicates between the two are harmless — the answer is a maximum. Deleted paths fail `stat`
+  and drop out, which is why `2>/dev/null` is there; **the pipeline therefore exits non-zero on a
+  tree with deletions, so do not run it under `set -e` or `pipefail`.**
+
+  **The direction of these errors is the opposite of harmless.** Dropping entries can only
   *lower* a maximum, so every failure mode makes the tree read **older** than it is — pushing the
-  age straight past the 3–4 hour window and out the far side, where the alarm exits silently.
-  An earlier caveat here claimed the failures "read newer, so it errs toward staying quiet". That
+  age straight past the 3–4 hour window and out the far side, where the alarm exits silently. An
+  earlier caveat here claimed the failures "read newer, so it errs toward staying quiet". That
   was backwards, and it papered over the bug rather than fixing it.
 
   **This entry is easy to leave out and it is the one with no other cover.** A session that died
