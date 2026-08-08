@@ -69,8 +69,26 @@ connection, and the build container holds no database credentials — the Supaba
 MCP is fine for DDL but not for a load of this size.
 
 ```bash
-psql "$DEV_DATABASE_URL" -c "\copy places_import FROM 'nl-places.csv' WITH (FORMAT csv, HEADER true)"
+psql "$DEV_DATABASE_URL" \
+  -c "\copy public.places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) FROM 'nl-places.csv' WITH (FORMAT csv, HEADER true)" \
+  -c "analyze public.places"
 ```
+
+**The explicit column list is required** — a bare `\copy public.places FROM …`
+demands every column in table order instead.
+
+**So is the `analyze`.** A bulk-loaded table carries no statistics, and the
+planner picks between the trigram bitmap and a sequential scan from them. Skip it
+and the first searches after a load can be an order of magnitude slower,
+intermittently — about the hardest thing to diagnose after the fact.
+
+The load runs as the table owner, which is how it bypasses RLS and the absent
+INSERT grant. That asymmetry is deliberate: the operator can write, and nothing
+reachable through PostgREST can.
+
+**The table is empty until someone runs this, and an empty index is
+indistinguishable from a working search that finds nothing.** `037` creates the
+schema; it cannot create the rows.
 
 ## Refreshing
 
@@ -82,3 +100,25 @@ band of the previous run, and that a known landmark still resolves.
 
 CI is the natural runner, since GitHub Actions already holds DEV credentials and
 the extract needs only Python.
+
+**Load into a fresh table and swap it in** — never `truncate` and reload. A
+truncate leaves search returning nothing for the length of a 99 MB `\copy`, which
+riders experience as the feature being broken.
+
+## Searching
+
+Go through `public.search_places(term, near_lat, near_lng)`, never an ad-hoc
+`ILIKE`. The function carries the guard that keeps a query off a 736k-row
+sequential scan, and two contracts the UI has to honour:
+
+- **Under three consecutive alphanumerics it returns zero rows by refusal, not by
+  "no matches".** Gate the input; do not render an empty state. The guard is
+  `term ~ '[[:alnum:]]{3}'` rather than a length check, because
+  `char_length(term) >= 3` accepts `'%%%%'` — which escapes to a pattern with no
+  extractable trigram and measured **1,443 ms of sequential scan**, under the 8 s
+  statement timeout and therefore silent.
+- **Matching is prefix/substring on `name` and `brand`, not fuzzy.** `pg_trgm`'s
+  default `word_similarity_threshold` of 0.6 does not catch typos anyway —
+  `word_similarity('jubmo', 'Jumbo Utrecht')` is 0.33 — while widening a selective
+  query from 9 rows to 9,529. `street`, `locality` and `postcode` are display-only
+  and are **not** searchable, so "Kerkstraat Amsterdam" finds nothing today.
