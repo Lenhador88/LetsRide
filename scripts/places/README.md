@@ -200,5 +200,27 @@ sequential scan, and two contracts the UI has to honour:
   of business names; they are now matched against every row's street line.
 
   Nothing exceeds the 8 s statement timeout, so no rider sees an error — which is
-  the hazard as much as the reassurance. Duplicate tokens are collapsed before
-  matching (`039` §5d), so a repeated word cannot multiply the work.
+  the hazard as much as the reassurance.
+
+- **A long multi-token term is an OPEN cost — gate it, do not just debounce it.**
+  Per-candidate work is linear in the *number of distinct patterns*, so a term
+  that holds many patterns matching the same rows multiplies the whole query.
+  `039` §5d closes one half of this and leaves the other open, and the README
+  said the opposite for one revision:
+
+  | payload | chars | before `lower()` | after |
+  |---|---|---|---|
+  | `straat` ×14, one casing | 97 | 2,899 ms | 2,838 ms |
+  | `straat` ×14, **14 casings** | 97 | 7,149 ms | **2,806 ms** — closed |
+  | **10 distinct substrings** of one word | 49 | 5,835 ms | **5,914 ms** — open |
+
+  Case-insensitively repeated tokens are collapsed (`group by lower(s.tok)`),
+  because `ILIKE` is case-insensitive and byte-equality dedup misses exactly the
+  vector someone would choose deliberately. **Distinct co-extensive substrings
+  are not collapsed by anything** — nothing is duplicated — so the worst measured
+  term costs ~5.9 s from 49 characters, half the cap. A function-level
+  `statement_timeout` does *not* bound it: measured on PG 16.13, the timer is
+  armed before the function is entered, so the setting is applied and inert.
+
+  Until a cap lands, **the client is the only bound**: reject or truncate terms
+  with more than a handful of tokens before calling the RPC.

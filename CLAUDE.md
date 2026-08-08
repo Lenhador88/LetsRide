@@ -678,7 +678,7 @@ deleted `proxy.ts` as what gates every app route. (A database comment is the `da
 first read via `list_tables`, so it is the one piece of documentation no edit to this file can
 reach.) The `SKIP_MIGRATIONS` machinery that modelled the once-held-back pair is **gone**,
 along with the three `rls_test_pending_*.sql` files; the full chain applies on every run.
-Suite **903** assertions — re-derive rather than trust it:
+Suite **908** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read **641** here while the true
 figure was **647**, and stayed wrong through several sessions because the command beside it was
 never run — then `036` added 100, `037` added 61 and `038` moved it by 35. A number with its own

@@ -6843,20 +6843,41 @@ rollback to savepoint username_038;
 --   Utrecht probe   52.09 / 5.11, box lat 51.84..52.34, lon 4.71..5.51
 --
 -- ** Mutation record, because a tally is the only honest way to read coverage. **
--- Nineteen mutations of 039 have been run against this suite: 18 are caught, and
--- the 19th is provably uncatchable. THREE were caught only after review found
--- them green, and each now has an assertion written for it and re-mutated:
+-- Twenty-three mutations of 039 have been attempted against this suite:
+--
+--   20  caught by an assertion below
+--    1  provably UNCATCHABLE — padding `pats[1]`, see the end of this note
+--    1  a no-op — rewording a comment, which changes no claim (it survives
+--       because the guards no longer key on any particular wording; an earlier
+--       revision of 039.0 did, and that was the defect)
+--    1  survives in the SAFE direction — a `--` inside a string literal makes
+--       039.0's stripper over-reach, which turns needles red rather than green
+--
+-- FOUR were caught only after review found them green, and each now has an
+-- assertion written for it and re-mutated:
 --
 --   * removing the `score` pinning to 0        -> the Kerkstraat pair (039.3)
 --   * removing the national `ilike all (pats)` -> the five-token pair (039.2)
---   * removing the dedup `group by`            -> 039.4, structural only
+--   * weakening the dedup                      -> 039.2 and 039.4
 --
--- ** The dedup one took two attempts and the first failure is worth carrying. **
--- Deduplication cannot change a result, so only a structural assertion can see
--- it — and the obvious `prosrc like '%group by s.tok%'` matched the function's
--- own EXPLANATORY COMMENT, which `prosrc` includes, so it passed with the code
--- deleted. It now matches `group by s.tok) d`. This is CLAUDE.md's comment trap
--- inside a function body rather than inside a grep.
+-- ** The dedup one took THREE attempts and every failure is worth carrying,
+-- because each is a different way an assertion can look like coverage. **
+--
+--   1. No assertion at all. Deduplication cannot change a result, so nothing
+--      behavioural sees it and the mutation was simply green.
+--   2. `prosrc like '%group by s.tok%'` — matched the function's own EXPLANATORY
+--      COMMENT, which `prosrc` includes, and passed with the code deleted.
+--      CLAUDE.md's comment trap, inside a function body rather than a grep.
+--      Now handled generally by 039.0's stripper rather than by one careful
+--      needle, because the needle was only ever a workaround for the technique.
+--   3. The needle was right and the CODE was wrong: `group by s.tok` dedupes by
+--      byte equality while `ILIKE` is case-insensitive, so fourteen
+--      capitalisations of one word were fourteen keys and one predicate — the
+--      dedup never fired on the vector someone would actually choose (039 §5d:
+--      7,149 ms against 2,806 ms). Caught by review, not by this suite, and
+--      NOTHING BEHAVIOURAL COULD HAVE CAUGHT IT: both spellings return identical
+--      rows and differ only in cost. It is pinned structurally, at 039.0 and
+--      039.4, which is the only place a cost-only property can live.
 --
 -- One mutation is UNCATCHABLE and no assertion claims otherwise: padding
 -- `pats[1]` to '%' like the other three slots is unobservable, because a
@@ -6943,6 +6964,54 @@ insert into places (id, name, brand, category, lon, lat, street, locality, postc
   ('p039-short', 'Kortab 40 Testplek', null, null, 5.12, 52.13, null, 'Utrecht', null, 'NL', null),
   -- LIKE-escaping, now applied per token rather than to the whole term.
   ('p039-pct',   'Procenttest',        null, null, 5.13, 52.14, null, 'Utrecht', null, 'NL', null);
+
+-- --------------------------------------------------------------------------
+-- 039.0  Structural needles read COMMENT-STRIPPED source, not raw `prosrc`.
+-- --------------------------------------------------------------------------
+-- ** `prosrc` includes the function's own comments, so a needle can match the
+-- sentence describing a thing instead of the thing. ** That is CLAUDE.md's
+-- comment trap inside a function body, and it is not hypothetical here: the
+-- dedup needle was written as `prosrc like '%group by s.tok%'`, the comment two
+-- lines above the code says exactly that, and the assertion passed with the code
+-- deleted. Matching `group by s.tok) d` fixed that one instance and left the
+-- technique intact — any future comment containing a needle silently disarms it.
+--
+-- So every structural needle in this section goes through the stripped source.
+--
+-- ** The stripper is naive — `--` inside a string literal would eat the rest of
+-- that line — and that is acceptable because it fails in the SAFE direction. **
+-- The body has no such literal today. If one is added, the over-strip removes
+-- code a needle looks for and the needle goes RED; it cannot turn a needle
+-- green, because the only thing asserted absent is `--` itself, and losing more
+-- text never reintroduces a deleted mechanism. Tested: injecting `'--'` into the
+-- body leaves the suite green rather than falsely passing anything.
+--
+-- (§037's three needles were audited as untrapped and are left on raw `prosrc`;
+-- they assert ORDER BY tails that no prose would reproduce.)
+create function pg_temp.sp_code() returns text language sql stable as $$
+  select pg_catalog.regexp_replace(prosrc, '--[^\n]*', '', 'g')
+    from pg_proc
+   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure
+$$;
+
+-- The stripper has to actually strip, or every needle below silently reverts to
+-- reading raw prosrc. Three checks, and the first two are deliberately NOT
+-- phrased against a particular comment: an earlier revision asserted that the
+-- string `is the deduplication` was absent, which goes on passing if someone
+-- merely rewords that comment — a guard that can succeed vacuously, which is
+-- the exact failure this whole section is about. `--` cannot survive a working
+-- stripper, and the length must fall, whatever the comments happen to say.
+select assert_eq(
+  (select pg_temp.sp_code() like '%--%'),
+  false, '039: the comment stripper leaves no comment marker at all — checked against `--` itself, not against any wording that could be edited');
+select assert_eq(
+  (select length(pg_temp.sp_code())
+        < (select length(prosrc) from pg_proc
+            where oid = 'public.search_places(text,double precision,double precision)'::regprocedure)),
+  true, '039: ... and it removed something, so the needles below are not silently reading raw prosrc');
+select assert_eq(
+  (select pg_temp.sp_code() like '%group by lower(s.tok)%'),
+  true, '039: ... while leaving the code, so a needle that finds nothing means the code is gone rather than the stripper over-reaching');
 
 -- --------------------------------------------------------------------------
 -- 039.1  The generated column itself — separator, coalesce, and STORED.
@@ -7048,6 +7117,30 @@ select assert_eq(
   (select count(*)::int from search_places('Alfa Alfa Bravo Bravo Charlie Charlie Delta Delta Echo Echo')),
   1, '039: ... and dedup happens BEFORE the four indexed slots are filled, so ten tokens that collapse to five still match');
 
+-- ** The case half, which is what the shipped version got wrong — and these two
+-- do NOT catch it. Say so rather than implying otherwise. ** `ILIKE` is
+-- case-insensitive, so capitalisations of one token are one predicate however
+-- they are grouped: byte-equality and `lower()` produce IDENTICAL RESULTS and
+-- differ only in cost (039 §5d: 7,149 ms against 2,806 ms). Nothing behavioural
+-- can see a cost, so the mutation that reverts `lower()` to byte equality is
+-- caught by the STRUCTURAL needle at 039.4 and by 039.0, not here.
+--
+-- They are kept because they pin the equivalence these two implementations
+-- share and 039 §5d's correctness argument rests on: that adding capitalisations
+-- of an existing token changes nothing a caller can observe. If that ever stops
+-- being true, the dedup is unsound and these fail.
+select assert_eq(
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat KERKSTRAAT Kerkstraat kerkstraat KeRkStRaAt', 52.09, 5.11)) s),
+  (select array_agg(s.id order by s.ord)::text
+     from (select id, row_number() over () as ord
+             from search_places('Kerkstraat', 52.09, 5.11)) s),
+  '039: ... and capitalisations of ONE token collapse to it — the group-by key is lower(), because byte equality leaves them as distinct keys and one predicate');
+select assert_eq(
+  (select count(*)::int from search_places('ALFA alfa Alfa BRAVO bravo Charlie DELTA Echo')),
+  1, '039: ... so a mixed-case term that collapses to five distinct tokens still fills only five slots, not eight');
+
 -- Adding a word narrows, never widens. The property the two-pass fix rests on.
 select assert_eq(
   (select count(*)::int from search_places('Kerkstraat', 52.09, 5.11))
@@ -7140,10 +7233,8 @@ select assert_eq(
 -- 037's three guard assertions are scoped to 037's fixtures and still run. This
 -- one names the regex itself, because 039 rewrote the surrounding CTE.
 select assert_eq(
-  (select count(*)::int from pg_proc
-    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure
-      and prosrc like '%[[:alnum:]]{3}%'),
-  1, '039: the guard regex survived the rewrite of the term CTE');
+  (select pg_temp.sp_code() like '%[[:alnum:]]{3}%'),
+  true, '039: the guard regex survived the rewrite of the term CTE');
 select assert_eq((select count(*)::int from search_places('%%%%', 52.09, 5.11)),
   0, '039: ... and four percent signs still return nothing');
 -- ** These two say "the guard refuses it", NOT "slot 1 is un-padded". ** An
@@ -7165,32 +7256,22 @@ select assert_eq((select count(*)::int from search_places('   ', 52.09, 5.11)),
 -- with identical results. Nothing behavioural can see that, so it is pinned
 -- structurally or not at all.
 select assert_eq(
-  (select (length(prosrc) - length(replace(prosrc, 't.pat2', ''))) / length('t.pat2')
-     from pg_proc
-    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  (select (length(pg_temp.sp_code()) - length(replace(pg_temp.sp_code(), 't.pat2', ''))) / length('t.pat2')),
   1, '039: `t.pat2` appears exactly once — only the NATIONAL pass indexes more than one token; adding one to the local pass costs it the bbox index');
 select assert_eq(
-  (select prosrc like '%order by (d.tok ~ ''[[:alnum:]]{3}'') desc, d.ord%'
-     from pg_proc
-    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  (select pg_temp.sp_code() like '%order by (d.tok ~ ''[[:alnum:]]{3}'') desc, d.ord%'),
   true, '039: ... and tokens are ordered indexable-first, so those slots go to tokens a trigram index can actually serve');
--- The dedup itself, named. Its behavioural assertion in 039.2 is an EQUALITY
--- between two calls, which passes just as well if both sides are broken; this
--- says the mechanism is present. 039 §5d has the 2.5x it is worth.
+-- The dedup itself, named — and specifically that the key is `lower()`. The
+-- behavioural assertions in 039.2 are EQUALITIES between two calls, which pass
+-- just as well if both sides are broken; this says the mechanism is present and
+-- is case-folding. 039 §5d has what each half is worth.
 --
--- ** Matched on `group by s.tok) d` — WITH the closing paren and alias — and
--- that detail is the whole assertion. ** `prosrc` includes the function's own
--- comments, and the line above the code explains what `group by s.tok` is for.
--- The obvious pattern therefore matches the COMMENT and passes with the code
--- deleted: written that way first, it survived its mutation. CLAUDE.md calls
--- this the repo's most-repeated measurement error — a description of a thing
--- looks exactly like the thing — and it is just as true inside a function body
--- as in a grep.
+-- Reads the comment-stripped source (039.0), because the line above the code
+-- explains what the group-by is for and a raw-`prosrc` needle matched that
+-- sentence instead of the code.
 select assert_eq(
-  (select prosrc like '%group by s.tok) d%'
-     from pg_proc
-    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
-  true, '039: ... and duplicate tokens are collapsed before the slots are filled — a cost guard no result can reveal');
+  (select pg_temp.sp_code() like '%group by lower(s.tok)%'),
+  true, '039: ... and duplicate tokens are collapsed CASE-INSENSITIVELY before the slots are filled — byte equality misses fourteen capitalisations of one word');
 
 -- --------------------------------------------------------------------------
 -- 039.5  LIKE escaping, now applied PER TOKEN.
@@ -7240,25 +7321,19 @@ select assert_eq(
 -- because the behavioural proof depends on heap order, which is a property of
 -- this transaction rather than of the function.
 select assert_eq(
-  (select (prosrc like '%order by mrank, score desc, dist2 asc, p.id%')
-      and (prosrc like '%order by mrank, score desc, dist2 asc nulls last, p.id%')
-      and (prosrc like '%order by r.tier, r.mrank, r.score desc, r.dist2 asc nulls last, r.id%')
-     from pg_proc
-    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  (select (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc, p.id%')
+      and (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc nulls last, p.id%')
+      and (pg_temp.sp_code() like '%order by r.tier, r.mrank, r.score desc, r.dist2 asc nulls last, r.id%')),
   true, '039: all three ORDER BYs carry mrank AND still end in id — ordering stays total');
 -- mrank sits AFTER tier in the pooled sort, not before: proximity remains the
 -- primary key. Reversing them is a change to 037 §5b rather than an addition.
 select assert_eq(
-  (select strpos(prosrc, 'r.tier') < strpos(prosrc, 'r.mrank')
-     from pg_proc
-    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  (select strpos(pg_temp.sp_code(), 'r.tier') < strpos(pg_temp.sp_code(), 'r.mrank')),
   true, '039: ... and tier outranks mrank, so a nearby address match still beats a distant name match');
 -- 037 §5b's short-circuit, named. Its behavioural coverage is 037.7's; this
 -- catches a rewrite that dropped the guard while keeping both CTEs.
 select assert_eq(
-  (select prosrc like '%(select count(*) from local_hits) < 5%'
-     from pg_proc
-    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  (select pg_temp.sp_code() like '%(select count(*) from local_hits) < 5%'),
   true, '039: the national pass is still gated on the local one yielding fewer than five');
 -- A broken GPS still degrades rather than raising — the term CTE was rewritten
 -- around the coordinate range checks, so they are worth re-proving here.

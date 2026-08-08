@@ -377,6 +377,14 @@ grant select on public.places to authenticated;
 -- limitation rather than a guarantee, because a comment claiming the reverse is
 -- worse than no comment.
 --
+-- ** ^ SUPERSEDED BY 039 — the escape hatch is no longer "call it without a
+-- location". ** That was the only answer 037 had and it is not one a rider can
+-- express in a text field. Since 039 the term is matched per token across
+-- `street` and `locality`, so typing the town — `Jumbo Maastricht` — empties the
+-- local box and lets the national pass run. 039 §4 has it. The LIMITATION above
+-- is unchanged and in fact bites more often, because a widened match set fills
+-- the box more easily; only the workaround moved.
+--
 -- The national pass is guarded by `(select count(*) from local_hits) < 5`, which
 -- is Var-free and therefore a **One-Time Filter**: when the local pass fills,
 -- the national scan is planned and `never executed`. Confirmed in EXPLAIN
@@ -447,11 +455,13 @@ grant select on public.places to authenticated;
 -- "Vrijthof" now finds the places on it. `postcode` is STILL excluded, and 039
 -- §2 says why. Read 039 before changing anything below.
 --
--- ** Three comment edits were made to 037 after it shipped — this banner, the
--- one in §3, and the corrected index count in the Verification footer — and
--- together they break one thing: the file no longer md5-matches its own applied
--- statement. ** A partly-annotated file is worse than either choice made
--- consistently, so every stale claim is marked rather than some of them. 037
+-- ** Four comment edits were made to 037 after it shipped — this banner, the one
+-- in §3, the one in §5b about the escape hatch, and the corrected index count in
+-- the Verification footer — and together they break one thing: the file no
+-- longer md5-matches its own applied statement. ** A partly-annotated file is
+-- worse than either choice made consistently, so every stale claim is marked
+-- rather than some of them; review found the §5b one after the first three
+-- landed, which is precisely the failure that standard exists to prevent. 037
 -- was applied to DEV byte-identical — recorded `md5(statements[1])` was
 -- `1dcfa7d58c7422c2772310bda1e27d12`, equal to `md5sum` of this file including
 -- its trailing newline — and adding these lines changes that hash while

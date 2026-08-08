@@ -93,7 +93,7 @@ npm run lint                          # exit 0 — 7 pre-existing <img> warnings
 npm run test:unit                     # 775/775 across 32 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 903 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 908 assertions, 0 failures
 ```
 
 **Two traps met while doing that, both of which produced a confident wrong answer first:**
@@ -445,7 +445,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **903** (843 before `039`'s address search; 808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **908** (843 before `039`'s address search; 808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
 | Unit tests | `npm run test:unit` — **775 across 32 files on a clean tree**, measured 2026-08-08 (773 at `development`; `037`'s branch adds the two `scripts/places/` source files) after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
@@ -686,7 +686,7 @@ explicitly blocking. Verify rather than trust this line; it is exactly the kind 
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808123556 places_address_search
+#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808131801 places_address_search
 #   PROD (zwprydcyryvudhurbnye): 35 rows, ending 035_comment_whitespace_floor
 ls supabase/migrations/ | wc -l          # 39
 ```

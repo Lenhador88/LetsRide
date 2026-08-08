@@ -725,6 +725,15 @@ export type Place = {
  *  - **Always pass `near_lat`/`near_lon` when you have them.** With a location
  *    every term above measured 29–152 ms, because the bbox applies. Without one
  *    there is nothing to narrow the scan.
+ *  - **Gate the token COUNT, not just the timing — this one is not optional and
+ *    the database cannot do it for you.** Per-candidate work is linear in the
+ *    number of distinct patterns, so a term holding many patterns that match the
+ *    same rows multiplies the whole query: ten substrings of one word inside 49
+ *    characters measured **5,914 ms**. `039` §5d collapses case-insensitively
+ *    duplicate tokens, which closes the repeat vector, but nothing collapses
+ *    genuinely distinct substrings and a function-level `statement_timeout`
+ *    cannot bound it (the timer is armed before the function is entered).
+ *    Refuse or truncate terms beyond a handful of tokens client-side.
  *
  * Nothing exceeds the 8 s statement timeout, so a slow query surfaces as a slow
  * screen rather than an error — which is why this is worth reading rather than
