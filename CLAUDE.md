@@ -606,18 +606,26 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 38 files. DEV is at `038`, PROD is at `035`, so the gap is now THREE and no two
-of them are outstanding for the same reason — measured 2026-08-08.** DEV (`letsride-dev`) has
-38 rows ending `username_is_not_removable`; PROD (`letsride`) has 35 ending
-`035_comment_whitespace_floor`.
+**Applied state: 39 files. DEV is at `039`, PROD is at `035`, so the gap is now FOUR — measured
+2026-08-08.** DEV (`letsride-dev`) has 39 rows ending `places_address_search`; PROD (`letsride`)
+has 35 ending `035_comment_whitespace_floor`.
 
-**The three unapplied migrations are unapplied for three different reasons, and conflating any two
-is the trap.** `036` is held back **on purpose** (see the next paragraph). `037` (the places index)
+**Four unapplied migrations, three distinct reasons, and conflating any two is the trap.** `036` is
+held back **on purpose** (see below). `038` is held on an **owner decision** (see below). `037` and
+`039` are the third category — **merely unshipped**: both are additive, neither touches an existing
+write path, and `039` only extends what `037` created, so the pair travels together and would need
+a data load on PROD to be worth anything. `037` (the places index)
 is merely additive and unshipped — a new extension, a new table, a new function, no existing write
 path touched — so it is in `034`'s class and could go to PROD ahead of its code. It would need its
 own data load there. **On DEV the table exists and holds 0 rows; on PROD it does not exist at
 all** — say it that way rather than "empty on both", which reads as though `037` had already
 shipped (`scripts/places/README.md` §Loading; no session holds database credentials).
+
+**`039` (PD-141) makes `street` and `locality` searchable** and is `037`'s companion rather than a
+separate decision — it adds a generated `search_text` column, one GIN index over it, drops the two
+`037` trigram indexes, and replaces `search_places()`. Matching is **per token, ANDed**, which is
+what makes `Jumbo Maastricht` reach a Maastricht row from Utrecht. Apply it only with `037`; alone
+it references a table that does not exist.
 
 **`038` (username durability, PD-127) is held on an OWNER DECISION, not on a technical
 constraint**, and that is a third category rather than a variant of either above. It carries no
@@ -669,7 +677,7 @@ deleted `proxy.ts` as what gates every app route. (A database comment is the `da
 first read via `list_tables`, so it is the one piece of documentation no edit to this file can
 reach.) The `SKIP_MIGRATIONS` machinery that modelled the once-held-back pair is **gone**,
 along with the three `rls_test_pending_*.sql` files; the full chain applies on every run.
-Suite **843** assertions — re-derive rather than trust it:
+Suite **897** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read **641** here while the true
 figure was **647**, and stayed wrong through several sessions because the command beside it was
 never run — then `036` added 100, `037` added 61 and `038` moved it by 35. A number with its own
