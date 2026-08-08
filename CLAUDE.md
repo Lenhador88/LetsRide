@@ -52,13 +52,52 @@ then **rewritten on 2026-08-04** — `main` and `development` root at `0ea7054` 
 (#26)"), not at the original `78530d7` ("Initial commit", 2026-06-02) — so everything that had
 already merged survived *as files* while every branch that had not was left on an orphaned root
 with **no merge base to `development` at all**. `git merge` cannot reach those commits; only
-`git show <sha> -- <path>` can. Six branches sit there; this was the only one carrying content
-that had never landed. Check for the trap rather than trust this paragraph:
+`git show <sha> -- <path>` can. **Eight** branches sit there. Six had their tips merged through
+PRs #1–#15 before the rewrite; the two that never opened a PR are this one and
+`figma-api-token-config-ykcx6i`, whose `scripts/figma.sh` and `docs/figma-api.md` were
+superseded by the `scripts/figma/*` pipeline. Check for the trap rather than trust this
+paragraph — the first draft of it said six branches, counting by date from a table instead of
+running the second command:
 
 ```bash
 git rev-list --max-parents=0 origin/development   # 0ea7054 — one root, dated 2026-08-04
 git merge-base origin/development origin/<branch> # empty output = orphaned, unmergeable
 ```
+
+**Those eight must never be deleted, and that is the whole reason the recovery above still
+works.** An orphan's commits are reachable from no other ref, so deleting the branch makes
+`git show c773173` fail and turns this paragraph into a description of a door with no handle.
+They cost nothing and they are the only copy of anything that was in flight on 2026-08-04.
+`PD-143` asks the owner to clear the merged branches and carries the do-not-touch list.
+
+**But "is it an orphan" is the wrong safety question, and a first draft of this paragraph asked
+only that.** Orphan-ness explains why a branch is *unmergeable*; it says nothing about whether
+its content ever landed, and three of the branches carrying unlanded work are **not** orphans.
+The property that matters is *unmerged content*, and it is the one to re-derive before deleting
+anything — `git merge-tree` answers it without needing a merge base, where an ahead-count and
+`git cherry` both report every commit of a squash-merged branch as unlanded for ever:
+
+```bash
+devtree=$(git rev-parse origin/development^{tree})
+for b in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin |
+           grep -vE '^origin/(development|main|HEAD)$'); do
+  res=$(git merge-tree --write-tree origin/development "$b" 2>/dev/null | head -1)
+  [ -z "$res" ] && { echo "ORPHAN  $b"; continue; }          # no merge base at all
+  [ "$res" != "$devtree" ] && echo "UNMERGED $b"             # merging it would change something
+done
+```
+
+**And the answer is a snapshot, not a fact.** A concurrent session pushed a branch carrying
+migration `037` *while the 2026-08-08 audit was being reviewed*. Any list of branches to delete
+is stale the moment another session pushes, so re-run the loop immediately before deleting
+rather than trusting a list written earlier — including the one in `PD-143`.
+
+**A session cannot delete a branch here, tested 2026-08-08 rather than assumed.** `git push
+origin --delete` returns **HTTP 403** from GitHub while ordinary pushes to the same remote in
+the same session succeed, including `--force-with-lease` — and the agent proxy is not the cause
+(`$HTTPS_PROXY/__agentproxy/status` reports `recentRelayFailures: []`). The GitHub MCP server
+exposes `create_branch` and no delete counterpart, so there is no second route. Branch cleanup
+is therefore an **owner action**; do not spend a session rediscovering this.
 
 ## Stack
 
