@@ -150,8 +150,32 @@ sequential scan, and two contracts the UI has to honour:
   `char_length(term) >= 3` accepts `'%%%%'` — which escapes to a pattern with no
   extractable trigram and measured **1,443 ms of sequential scan**, under the 8 s
   statement timeout and therefore silent.
-- **Matching is prefix/substring on `name` and `brand`, not fuzzy.** `pg_trgm`'s
-  default `word_similarity_threshold` of 0.6 does not catch typos anyway —
-  `word_similarity('jubmo', 'Jumbo Utrecht')` is 0.33 — while widening a selective
-  query from 9 rows to 9,529. `street`, `locality` and `postcode` are display-only
-  and are **not** searchable, so "Kerkstraat Amsterdam" finds nothing today.
+- **Matching is substring, per token, ANDed — over `name`, `brand`, `street` and
+  `locality`.** The term is split on whitespace and every token must appear
+  somewhere in the row's searchable text, so `Jumbo Maastricht` finds a Jumbo
+  whose *locality* is Maastricht, and adding a word always narrows. Not fuzzy:
+  `pg_trgm`'s default `word_similarity_threshold` of 0.6 does not catch typos
+  anyway — `word_similarity('jubmo', 'Jumbo Utrecht')` is 0.33 — while widening a
+  selective query from 9 rows to 9,529.
+
+  **This section said the opposite until 2026-08-08 and it was true when written.**
+  It read *"`street`, `locality` and `postcode` are display-only and are **not**
+  searchable, so 'Kerkstraat Amsterdam' finds nothing today"*. `039` (PD-141) made
+  street and locality searchable; `Kerkstraat` returns rows now. **`postcode` is
+  still excluded** — a Dutch postcode is two tokens and its digits collide with
+  house numbers already inside `street` (`039` §2).
+
+- **Ranking: a place the query NAMES beats a place it merely LOCATES.** Widening
+  means `Amsterdam` matches thousands of rows whose only connection to the word is
+  their address, so the function tiers them — every token in `name`/`brand` first,
+  address-only matches after. Name matches are then ordered by trigram similarity,
+  address matches by distance. Proximity still outranks both, per `037` §5b.
+
+- **The result set is capped at five and the local pass short-circuits the
+  national one.** Unchanged by `039`, and now more likely to bite because more
+  rows match: a distant place can be crowded out by five nearby ones. The escape
+  hatch is to type the town — which is exactly what `039` made possible.
+
+- **Debounce the input.** A bare city name with no location measured **541 ms** on
+  a 750k-row *synthetic* bench (`039` §5c) — not on the real table, which is
+  empty. With a location supplied every term measured came in at 17–47 ms.

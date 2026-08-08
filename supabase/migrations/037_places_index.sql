@@ -221,6 +221,13 @@ comment on column public.places.confidence is
 -- The brand index is partial because `brand` is null on 92% of rows; the
 -- predicate takes it from ~30 MB to 2 MB and costs nothing, since a search for a
 -- null brand is not a thing.
+--
+-- ** ^ SUPERSEDED BY 039: both trigram indexes below are DROPPED, and the size
+-- table above no longer describes the table. ** 039 replaces them with one GIN
+-- index over a generated `search_text` column and re-measures the whole set on
+-- its own bench — read 039 §2 and §3 for the current figures rather than
+-- budgeting storage from this table. The `lat/lon` btree survives untouched, and
+-- 039 §5b explains why the local pass is written the way it is to keep using it.
 create index places_name_trgm_idx
   on public.places using gin (name extensions.gin_trgm_ops);
 
@@ -431,6 +438,25 @@ grant select on public.places to authenticated;
 -- filter is `name` and `brand`, per PD-140. So "Vrijthof" finds nothing even
 -- though places sit on it. That is a scope line, filed separately as a product
 -- question, not an oversight.
+--
+-- ** ^ SUPERSEDED BY 039 for `street` and `locality`, 2026-08-08 (PD-141). **
+-- The paragraph above describes what THIS migration shipped and is kept for
+-- that reason; it is no longer what the database does. `039` adds a generated
+-- `search_text` column, matches PER TOKEN and ANDed across name, brand, street
+-- and locality, and ranks a place the query NAMES above one it merely LOCATES.
+-- "Vrijthof" now finds the places on it. `postcode` is STILL excluded, and 039
+-- §2 says why. Read 039 before changing anything below.
+--
+-- ** This banner and the one in §3 are the only edits made to 037 after it
+-- shipped, and they break one thing: the file no longer md5-matches its own
+-- applied statement. ** 037
+-- was applied to DEV byte-identical — recorded `md5(statements[1])` was
+-- `1dcfa7d58c7422c2772310bda1e27d12`, equal to `md5sum` of this file including
+-- its trailing newline — and adding these lines changes that hash while
+-- changing no SQL. Nothing automated depends on it (`npm run db:drift` compares
+-- migration NAMES only), but a hand-run md5 check on 037 will now mismatch and
+-- must not be read as a bad apply. 037's own header says the next change is an
+-- `038`, and that rule still holds for anything executable: this is a comment.
 create or replace function public.search_places(
   q text,
   near_lat double precision default null,

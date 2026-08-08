@@ -685,10 +685,19 @@ explicitly blocking. Verify rather than trust this line; it is exactly the kind 
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 38 rows, ending 20260808095414 username_is_not_removable
+#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808112547 places_address_search
 #   PROD (zwprydcyryvudhurbnye): 35 rows, ending 035_comment_whitespace_floor
-ls supabase/migrations/ | wc -l          # 38
+ls supabase/migrations/ | wc -l          # 39
 ```
+
+**`039` (places address search, PD-141) is applied to DEV and is additive in `034`'s class**, so
+it could go to PROD ahead of its code — except that `037` has not gone to PROD either, and `039`
+requires it. The pair travels together or not at all. It widens `search_places()` to match
+`street` and `locality` per token, and it **drops** `places_name_trgm_idx` and
+`places_brand_trgm_idx` in favour of one GIN index over a generated `search_text` column — the
+only non-additive thing in it, and safe only because `places` holds 0 rows on DEV and does not
+exist on PROD. That safety does not survive a data load; after one, dropping an index is a
+deliberate act again.
 
 **`038` closes a live hole that is still open on PROD.** A rider can `PATCH
 /rest/v1/profiles?id=eq.<me>` with `{"username": null}` and vanish from every other rider's
@@ -702,9 +711,27 @@ ordering has all three rows and the cost of each.
 
 DEV's `038` was applied byte-identical to the file: `md5(statements[1])` is
 `2d4ef85b74923ca18a702f88d2657997`, which equals `md5sum` of
-`supabase/migrations/038_username_is_not_removable.sql` with its trailing newline stripped (the
-MCP strips it; the file's own `md5sum` is `31924e1ce18fe4f88334d8da85152d3e`). Check it that way
-rather than comparing the raw `md5sum`, or a correct apply reads as a mismatch.
+`supabase/migrations/038_username_is_not_removable.sql` with its trailing newline stripped.
+
+**"The MCP strips it" was the wrong conclusion, drawn from one sample — corrected 2026-08-08.**
+The MCP stores exactly the string the caller passes; `038`'s caller simply did not send the final
+newline. Measured across all three places migrations, recorded md5 against `md5sum` of the file
+**including** its trailing newline:
+
+| | recorded on DEV | file, newline kept | file, newline stripped |
+|---|---|---|---|
+| `037` | `1dcfa7d5…` | **matches** | `07ccebd6…` |
+| `038` | `2d4ef85b…` | `31924e1c…` | **matches** |
+| `039` | `68136ed3…` | **matches** | `c8ee0081…` |
+
+So the instruction that used to close this paragraph — *check the stripped hash rather than the
+raw one* — is backwards for two of the three. **Compare the raw `md5sum` first**; only `038` needs
+the stripped form, and that is a property of how `038` was applied, not of the tool.
+
+`037`'s raw hash **no longer matches** as of 2026-08-08, and that is expected rather than drift:
+`039` added two `SUPERSEDED BY 039` banners to its comments (§3 and §5d), which changed the file
+and no SQL. `037`'s own §5d banner records this so the mismatch is discoverable where it is found.
+Nothing automated depends on it — `npm run db:drift` compares migration *names* only.
 
 **`places` exists on DEV with 0 rows and does not exist on PROD at all.** Filling it is an owner
 action — a 99 MB `\copy` needing a direct Postgres connection no session holds
