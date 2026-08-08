@@ -3,10 +3,17 @@
 
 **Why this exists.** The location provider for ride meeting points is a
 self-hosted index rather than a third-party geocoder (see PD-114). Overture's
-places theme is open data — CDLA-Permissive for the Overture-contributed parts,
-ODbL where it derives from OSM — so the coordinates we store are ours to keep,
-with no 30-day deletion clause, no "must be shown on our map" restriction, and
-no per-keystroke bill.
+places theme is open data, so there is no 30-day deletion clause, no "must be
+shown on our map" restriction, and no per-keystroke bill.
+
+**The exact licence and the attribution it requires are an OPEN question** — see
+scripts/places/README.md §Attribution. An earlier version of this docstring said
+"CDLA-Permissive for the Overture-contributed parts, ODbL where it derives from
+OSM"; a census of 527,725 rows found **zero** attributed to OpenStreetMap, and
+the commercial sources that do appear (Foursquare, Microsoft, PinMeTo, Krick)
+have terms nobody has read, because their hosts are egress-blocked. Do not
+restate a licence position here — that duplication is how the wrong one survived
+a retraction.
 
 **Why it does not download 10.5 GB.** The theme is 16 parquet parts totalling
 10.5 GB, partitioned by nothing useful — but the rows are spatially sorted and

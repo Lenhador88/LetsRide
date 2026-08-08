@@ -16,18 +16,51 @@ The provider comparison is in PD-114's comments. Two clauses decided it:
   Maps deeplink and the tile-less surfaces (`RideCard`, the chat header,
   notification rows) all sit outside that.
 
-Overture is CDLA-Permissive where Overture-contributed and ODbL where OSM-derived.
-So the coordinates are ours to keep, no keystroke leaves our infrastructure, there
-is no key to hide in a Capacitor bundle, and there is no per-request bill.
+What self-hosting does buy, and these three are not in doubt: no keystroke leaves
+our infrastructure, there is no key to hide in a Capacitor bundle, and there is no
+per-request bill.
 
 **It does not cover map tiles.** Overture is data, not rendered imagery — PD-104
 still needs a tile provider.
 
-## Attribution is not optional
+## Attribution is an OPEN question — do not render a result until it is settled
 
-ODbL requires it. Any screen rendering these results must credit
-**© OpenStreetMap contributors** and **Overture Maps Foundation**. That is a
-product requirement, not a footnote — check it before the search sheet ships.
+**This section previously said the opposite, and it was wrong.** It asserted that
+Overture is "ODbL where OSM-derived" and that any screen showing a result must
+credit "© OpenStreetMap contributors". That was inferred from the theme's general
+description rather than measured, and the measurement contradicts it.
+
+A census of the `sources` column across 28 of the 84 NL row groups in release
+`2026-07-22.0` — **527,725 rows** — attributes them as:
+
+| Source | Rows |
+|---|---|
+| Overture | 527,725 |
+| meta | 405,612 |
+| Foursquare | 58,733 |
+| Microsoft | 53,432 |
+| AllThePlaces | 6,338 |
+| PinMeTo | 3,093 |
+| DAC | 505 |
+| Krick | 12 |
+| **OpenStreetMap** | **0** |
+
+So crediting OpenStreetMap would credit a contributor that supplied nothing, while
+the sources that did supply the rows go unnamed.
+
+**What is still unknown is the part that matters.** The census says which sources
+are *present*; it does not say what their terms *require*. Foursquare, Microsoft,
+PinMeTo and Krick are commercial datasets, and that is exactly where a
+redistribution or attribution obligation would live. Their terms could not be read
+from any container — `overturemaps.org`, `docs.overturemaps.org`,
+`opendatacommons.org` and `cdla.dev` all return `000` through the egress proxy,
+while the S3 bucket and GitHub return `200`, so this is host-specific policy and
+not a broken client.
+
+**Owner action: read Overture's terms and settle the credit string before the
+search sheet ships.** `sources` is not currently extracted, so provenance cannot be
+recovered from `public.places` — add it to `COLUMNS` if per-row attribution turns
+out to be required.
 
 ## Extracting
 
@@ -107,7 +140,7 @@ riders experience as the feature being broken.
 
 ## Searching
 
-Go through `public.search_places(term, near_lat, near_lng)`, never an ad-hoc
+Go through `public.search_places(q, near_lat, near_lon)`, never an ad-hoc
 `ILIKE`. The function carries the guard that keeps a query off a 736k-row
 sequential scan, and two contracts the UI has to honour:
 
