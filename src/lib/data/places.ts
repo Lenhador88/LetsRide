@@ -39,10 +39,20 @@ export const PLACE_SEARCH_MIN_CHARS = 4
  * client-side caller yet for it to live in.
  *
  * Eight tokens covers any real meeting-point query with room to spare
- * ("Jumbo Maastricht Stationsweg 40" is four) and truncating rather than
- * refusing means a rider who pastes something long still gets a search back,
- * just narrower than what they typed — the same trade the RPC itself makes by
- * padding missing token slots rather than erroring.
+ * ("Jumbo Maastricht Stationsweg 40" is four), and truncating rather than
+ * refusing means a rider who pastes something long still gets a search back.
+ *
+ * **Truncating makes the search BROADER, not narrower** — tokens are ANDed, so
+ * dropping one removes a constraint and more rows match. That is the safe
+ * direction (extra results, never a missed one) but it is the opposite of what
+ * it intuitively reads as, and an earlier revision of this comment had it
+ * backwards.
+ *
+ * **This does NOT close PD-150, and must not be read as the mitigation.** It is
+ * a client-side bound, so it only protects riders using our UI from an
+ * accidentally expensive query. Anyone can call the RPC directly through
+ * PostgREST with forty tokens and pay none of it. The real gate has to be in
+ * `search_places()` itself — that is what PD-150 tracks, and it is still open.
  */
 export const PLACE_SEARCH_MAX_TOKENS = 8
 
