@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useRef, useState } from 'react'
+import { ImageIcon } from '@/components/icons/generated'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
 import { createPostcard } from '@/lib/actions/postcards'
@@ -30,10 +31,13 @@ type Upload =
  * time this form submits, the image is in Storage and only its path travels
  * with the FormData — which is exactly the contract createPostcard expects.
  *
- * Layout is inferred. The create flow is one of the frames the Figma rate
- * limit kept shut, so the order of picker → preview → caption → audience, and
- * the progress treatment, are defensible guesses rather than measurements.
- * See docs/FIGMA-FIDELITY-TODO.md §Create postcard.
+ * The photo box is measured against `v2 / Component / Input / Image`
+ * (`1918:17004`, PD-112, 2026-08-08): a single tappable box with Empty/Filled
+ * variants, no separate picker button beside it — so the box itself is the
+ * control in both states. The rest of the layout — caption/audience order
+ * relative to it, and the progress treatment — is still inferred; the create
+ * flow's own frame was never in the read set. See docs/FIGMA-FIDELITY-TODO.md
+ * §Create postcard.
  */
 export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
   const [state, formAction, pending] = useActionState(createPostcard, emptyActionState)
@@ -89,18 +93,23 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
       {ready && <input type="hidden" name="imagePath" value={upload.path} />}
 
       <div className="flex flex-col gap-3">
-        {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a blob: object URL, not a remote asset next/image can optimise
-          <img
-            src={preview}
-            alt="The photo you selected"
-            className="aspect-4/5 w-full rounded-xl bg-background object-cover"
-          />
-        ) : (
-          <div className="flex aspect-4/5 w-full items-center justify-center rounded-xl border-2 border-dashed border-border-strong bg-surface px-6 text-center text-sm text-muted">
-            Choose a photo from your last ride.
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={upload.status === 'uploading'}
+          aria-label={preview ? 'Choose a different photo' : undefined}
+          className="flex aspect-4/5 w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-border-strong bg-surface disabled:opacity-50"
+        >
+          {preview ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a blob: object URL, not a remote asset next/image can optimise
+            <img src={preview} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex flex-col items-center gap-1 px-6 text-center text-xs text-muted">
+              <ImageIcon className="h-6 w-6" aria-hidden="true" />
+              Add photo
+            </span>
+          )}
+        </button>
 
         <input
           ref={inputRef}
@@ -109,15 +118,6 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
           onChange={onFileChange}
           className="sr-only"
         />
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          onClick={() => inputRef.current?.click()}
-          disabled={upload.status === 'uploading'}
-        >
-          {preview ? 'Choose a different photo' : 'Choose a photo'}
-        </Button>
 
         {upload.status === 'uploading' && (
           <div className="flex flex-col gap-1.5">

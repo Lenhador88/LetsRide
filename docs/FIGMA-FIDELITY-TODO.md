@@ -728,10 +728,15 @@ Deviations that are ours, not the design's:
 
 ### Create postcard
 
-- [ ] **Flow order** — *chose:* preview → choose-photo button → caption → audience → submit,
-      one screen, no crop step. Upload starts on file selection, not on submit, so progress
-      is real and the path is ready when the form posts. Unread: whether the design has a
-      crop/preview step or splits this across screens.
+- [x] ~~**Flow order**~~ — **the picker half is measured, 2026-08-08 (PD-112).**
+      `v2 / Component / Input / Image` (`1918:17004`) is one box, `State=Empty` /
+      `State=Filled`, with no separate button beside it — `Empty` holds `Element / Icon /
+      Image` at 24×24 above the label "Add photo" (`Poppins/12/Regular`); `Filled` is the same
+      box with the photo as its fill. The standalone "Choose a photo" button was removed and
+      the box itself (both states) now opens the picker, matching that. Remaining order — box
+      → caption → audience → submit, one screen, no crop step — is still the prior guess: the
+      component set only covers the box, not the composer frame, so whether the design has a
+      crop/preview step or splits this across screens is still unread.
 - [ ] **Upload progress** — *chose:* a 6px `Accent Brand/100` bar plus "Uploading… N%".
       Unread entirely.
 - [ ] **Failure states** — *chose:* upload failure inline under the picker; the insert's own
