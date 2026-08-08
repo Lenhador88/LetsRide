@@ -610,16 +610,17 @@ by anything, and has been deleted. It is unrelated to `letsride-dev`.
 2026-08-08.** DEV (`letsride-dev`) has 39 rows ending `places_address_search`; PROD (`letsride`)
 has 35 ending `035_comment_whitespace_floor`.
 
-**Four unapplied migrations, three distinct reasons, and conflating any two is the trap.** `036` is
-held back **on purpose** (see below). `038` is held on an **owner decision** (see below). `037` and
-`039` are the third category — **merely unshipped**: both are additive, neither touches an existing
-write path, and `039` only extends what `037` created, so the pair travels together and would need
-a data load on PROD to be worth anything. `037` (the places index)
-is merely additive and unshipped — a new extension, a new table, a new function, no existing write
-path touched — so it is in `034`'s class and could go to PROD ahead of its code. It would need its
-own data load there. **On DEV the table exists and holds 0 rows; on PROD it does not exist at
-all** — say it that way rather than "empty on both", which reads as though `037` had already
-shipped (`scripts/places/README.md` §Loading; no session holds database credentials).
+**Four unapplied migrations, three distinct reasons, and conflating any two is the trap.** Each is
+described once, below, in its own paragraph — `036` held back on purpose, `038` on an owner
+decision, and `037`+`039` merely unshipped.
+
+**`037` and `039` are the merely-unshipped pair.** Both are additive — a new extension, a new
+table, a new function, an added column and index — and neither touches an existing write path, so
+they are in `034`'s class and could go to PROD ahead of their code. **They travel together**:
+`039` extends the table `037` creates and is meaningless without it. Either way they would need a
+data load there to be worth anything. **On DEV the table exists and holds 0 rows; on PROD it does
+not exist at all** — say it that way rather than "empty on both", which reads as though `037` had
+already shipped (`scripts/places/README.md` §Loading; no session holds database credentials).
 
 **`039` (PD-141) makes `street` and `locality` searchable** and is `037`'s companion rather than a
 separate decision — it adds a generated `search_text` column, one GIN index over it, drops the two
@@ -628,7 +629,7 @@ what makes `Jumbo Maastricht` reach a Maastricht row from Utrecht. Apply it only
 it references a table that does not exist.
 
 **`038` (username durability, PD-127) is held on an OWNER DECISION, not on a technical
-constraint**, and that is a third category rather than a variant of either above. It carries no
+constraint**, and that is its own category rather than a variant of either other one. It carries no
 ordering constraint in either direction — no code change, no grant, no policy, one trigger function
 body — so it is appliable to PROD at any moment. What is unanswered is *which of three apply orders*
 (`openspec/changes/forbid-username-removal/proposal.md` §Deployment ordering, Q3, marked blocking);

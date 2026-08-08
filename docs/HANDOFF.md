@@ -686,7 +686,7 @@ explicitly blocking. Verify rather than trust this line; it is exactly the kind 
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808112547 places_address_search
+#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808123556 places_address_search
 #   PROD (zwprydcyryvudhurbnye): 35 rows, ending 035_comment_whitespace_floor
 ls supabase/migrations/ | wc -l          # 39
 ```
@@ -723,7 +723,7 @@ newline. Measured across all three places migrations, recorded md5 against `md5s
 |---|---|---|---|
 | `037` | `1dcfa7d5…` | **neither matches** — see below | **neither matches** |
 | `038` | `2d4ef85b…` | `31924e1c…` | **matches** |
-| `039` | `68136ed3…` | **matches** | `c8ee0081…` |
+| `039` | recompute — see below | recompute | recompute |
 
 So the instruction that used to close this paragraph — *check the stripped hash rather than the
 raw one* — is backwards for two of the three. **Compare the raw `md5sum` first**; only `038` needs
@@ -743,8 +743,20 @@ md5sum supabase/migrations/037_places_index.sql          # raw
 printf '%s' "$(cat supabase/migrations/037_places_index.sql)" | md5sum   # stripped
 ```
 
-The general lesson beyond `037`: **a hash is only worth recording for a file nothing edits again.**
-`038` and `039` qualify; a migration whose comments are annotated by its successor does not.
+**`039` does not qualify either, and the commit that wrote this rule falsified its own `039` row
+within the same branch.** It recorded `68136ed3…`/**matches** before `039` was revised and
+re-applied; DEV now records `4c7ee462…`. The verdict survived by luck, the values did not.
+
+So the rule is narrower than first written: **a hash is only worth recording for a file nothing
+edits again — which in practice means a migration that has already shipped.** An unmerged one is
+still being revised by definition, and its own branch is what revises it. `038` qualifies; `037`
+and `039` did not, and both were wrong here before anyone read them. Recompute both:
+
+```bash
+md5sum supabase/migrations/0NN_*.sql                                # raw
+printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
+# via the Supabase MCP: list_migrations -> md5(statements[1])
+```
 Nothing automated depends on it — `npm run db:drift` compares migration *names* only.
 
 **`places` exists on DEV with 0 rows and does not exist on PROD at all.** Filling it is an owner
