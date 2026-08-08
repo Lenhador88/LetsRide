@@ -1606,8 +1606,11 @@ that status asserts riders have the feature, and only the promotion makes it tru
 - **`Deployed to DEV` is typed `started`, and so is `Queued (AI)`.** The concurrency lock is
   therefore **two names — `Development (AI)` and `Needs help`** — and must never be rewritten as
   "any `started` issue". That version is held by every queued and every shipped story, freezing
-  the queue permanently while looking like a healthy job behind a busy column. Third instance of
-  this repo's recurring shape: a guard that can never pass, indistinguishable from success.
+  the queue permanently while looking like a healthy job behind a busy column. Same recurring
+  shape as the team-scoped lock and the buried stall alarm: a guard that can never pass,
+  indistinguishable from success. **Do not number these** — a count that mixes observed failures
+  with hypothetical ones ends up with two different "third instance"s, which has already
+  happened here.
 - **A blocker counts as cleared at `Deployed to DEV`**, not at `Done (in production)`. Firings
   branch off `development`, so work merged there is already available to build on; requiring the
   promotion would block every dependent story behind a manual step on the owner's schedule.
@@ -1794,9 +1797,10 @@ What it does, in order — and the order is the design:
    branch with commits not on `development`, an open PR **whose head is the current branch**,
    **low Claude usage headroom**, **any other Claude Code session currently RUNNING**, and
    **the owner having touched any session in the last 15 minutes**.
-   **The first is judgement and it is the one that matters**; the rest are the backstop that
-   catches a session which died mid-build. **The owner's work always wins** — the queue waits an
-   hour, which costs nothing.
+   **(1) and (5) need judgement and (1) is the one that matters**; (2), (3), (4), (6) and (7) are
+   mechanical — a `git` command or one `list_sessions` call. (2), (3) and (4) are the backstop
+   that catches a session which died mid-build; (6) and (7) detect something *live* instead.
+   **The owner's work always wins** — the queue waits an hour, which costs nothing.
 
    **The last two are the product owner's, 2026-08-08:** pick up a story only *"IF there are no
    other sessions active / doing work in claude code And I'm AFK for >15 mins."* Both come from

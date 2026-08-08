@@ -1328,7 +1328,7 @@ for >15 mins."* Both come from one `list_sessions mine=true` call:
 
 | Gate | Signal |
 |---|---|
-| No other session working | any **other** session with `session_status: SESSION_STATUS_RUNNING` (= `status_bucket: …_WORKING`). `ARCHIVED` and `IDLE` do not count |
+| No other session working | any **other** session with `session_status: SESSION_STATUS_RUNNING`. `ARCHIVED` and `IDLE` do not count. **Key off `session_status`, never `status_bucket`** — the two agreed in one sample, which is a correlation observed once, not a mapping |
 | Owner AFK > 15 min | `max(updated_at)` across all **other** sessions, archived included — archiving is itself a thing the owner just did by hand |
 
 **Both must exclude the calling session's own id.** The firing runs in a RUNNING session and

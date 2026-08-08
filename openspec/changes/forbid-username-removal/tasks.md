@@ -145,10 +145,11 @@ that is 3.1, 3.2, 3.4 and 3.9b. The assertions that *do* check an error code (3.
 - [x] 6.2 Add the `profiles` row to `CLAUDE.md`'s schema table only if it gains a claim worth
       carrying; prefer one sentence naming the durability rule over restating the migration.
 - [ ] 6.3 File follow-ups A, B and C from `design.md` §Follow-ups as Linear issues — `Todo AI` for
-      A and B, `Backlog` for C. Never `Queued (AI)`.
+      A and B, `Backlog AI` for C. Never `Queued (AI)`.
 - [ ] 6.4 Run `reviewer` on the diff before the PR, per `CLAUDE.md`. The proposal has no automated
       gate at all: `openspec/` is in the CI denylist, so a proposal-only PR runs zero jobs.
-- [ ] 6.5 PR to `development`, drive it green, merge, move PD-127 to `Done`.
+- [ ] 6.5 PR to `development`, drive it green, merge, move PD-127 to `Deployed to DEV` (the status
+      renamed on 2026-08-08; `Done (in production)` is the owner's, after their manual promotion).
 - [ ] 6.6 `/opsx:archive` once the RLS suite is green and the migration is applied to at least DEV.
 
 ## Implementation notes — 2026-08-08

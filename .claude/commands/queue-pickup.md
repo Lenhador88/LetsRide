@@ -35,13 +35,17 @@ anyway. The live set, read back off the board:
 | `Backlog AI` | backlog | Captured, not triaged. **Was `Backlog`** | Either |
 | `Todo Human` | unstarted | Triaged; owner chores live here | Either |
 | `Todo AI` | unstarted | Triaged, and a session could do it. **Not a start signal** | Either |
-| `Needs decision` | unstarted | Blocked on a product answer | **Owner** |
+| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
 | `Queued (AI)` | started | **Approved to build. The only start signal** | **Owner** |
 | `Development (AI)` | started | An agent has it *now*. **The concurrency lock** | Agent |
 | `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
-| **`Deployed to DEV`** | started | **Merged to `development` and live on DEV. Where a firing ends** | Agent |
+| **`Deployed to DEV`** | started | **Merged to `development`, green, live on DEV. Where a firing ends** | Agent |
 | `Done (in production)` | completed | Promoted to `main` and live for riders. **Was `Done`** | **Owner** |
-| `Canceled` / `Duplicate` | canceled / duplicate | — | Either |
+| `Canceled` / `Duplicate` | canceled / duplicate | Closed without shipping. **Both clear a blocker** (STEP 2b) | Either |
+
+`duplicate` really is what `list_issue_statuses` returns as `Duplicate`'s `type` — read back off
+the board 2026-08-08, not inferred from Linear's published `WorkflowState.type` enum, which does
+not list it. Do not "correct" it to `canceled`.
 
 ```
 mcp__Linear__list_issue_statuses  team=Pedro & Dave
@@ -57,7 +61,10 @@ four times in one batch to the `project` field.
 - **`Deployed to DEV` is typed `started`.** So is `Queued (AI)`. **Never widen the STEP 1 lock
   to "any issue whose statusType is `started`"** — that would count every queued story and every
   story already shipped to DEV as work in flight, and the queue would freeze permanently while
-  looking perfectly healthy. The lock is **two names**, and STEP 1 says which.
+  looking perfectly healthy. The lock is **two names**, and STEP 1 says which. (This is the same
+  never-clearing-guard shape as the team-scoped lock and the buried stall alarm. It is a
+  recurring failure here, not a numbered series — do not give it a sequence number, because
+  hypotheticals and observed events end up sharing one.)
 - **`Done (in production)` is the only `completed` status, and a session never sets it.**
   Production promotion is manual and the owner's, done in their own session at their own timing
   (§STEP 5). A firing that moves an issue there is claiming riders have the feature when they do
@@ -86,9 +93,17 @@ ToolSearch  query="+list_issues linear"      # keyword, survives a rename
 ToolSearch  query="select:mcp__Linear__list_issues"   # exact — fails the moment ids rotate
 ```
 
-Everywhere below writes `mcp__Linear__<tool>` for readability. **Read it as "the tool called
-`<tool>` on the Linear connector", whatever prefix it currently carries**, and reach it by
-keyword search rather than by pasting the literal name.
+**This applies to every connector, not just Linear** — the rotation re-registered all of them at
+once. So `mcp__github__list_pull_requests` (STEP 0.5 check 4) and `mcp__github__create_pull_request`
+(STEP 4c, the only route to a PR since `gh` is absent) carry the same hazard, and check 4's
+version of it **fails open**: the name does not resolve, no open PR is found, the gate passes,
+and the firing builds on top of unfinished pushed work.
+
+Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as "the tool called
+`<tool>` on that connector", whatever prefix it currently carries**, and reach it by keyword
+search rather than by pasting the literal name. **A `select:` lookup that returns no match means
+"search again by keyword", never "the connector is gone"** — only a keyword search coming back
+empty establishes that.
 
 **Send it yourself, with the `PushNotification` tool.** A self-bound Routine cannot carry
 completion notifications: the server rejects the `notifications` parameter for any trigger
@@ -187,7 +202,16 @@ conversation with the owner, or the middle of a build.
 
    **Exclude your own id or this gate is held by the firing itself** — the pickup runs in a
    RUNNING session by definition, so a check that counts every RUNNING session never passes.
-   Fourth instance of this repo's recurring shape, and the cheapest one to get wrong.
+   This repo's recurring shape again, and the cheapest one to get wrong.
+
+   **Your own id is `session_01B2mxc642tG8vZ15wysQpqM` — the Development session.** That is not
+   a lookup, it is a fact about where this Routine fires, and §The Development session is
+   infrastructure already requires a firing to confirm it *is* that session before acting on a
+   pickup at all. If you are not it, the pickup is a misrouted message and you stop for that
+   reason rather than this one. The session id also appears in this session's own
+   `Claude-Session: https://claude.ai/code/<id>` line — the one used for commit trailers — which
+   is the fallback if the Routine is ever rebound to a different session and this paragraph goes
+   stale.
 
 7. **The owner is at the keyboard.** Same instruction, second half: *"And I'm AFK for >15 mins."*
    **If any of the owner's other sessions was touched within the last 15 minutes, stop.**
@@ -213,11 +237,20 @@ conversation with the owner, or the middle of a build.
    reads a quiet queue as the gate working rather than as the Routine being broken.
 
 ```
-list_sessions  mine=true  limit=20
-  -> exclude your own session id
+list_sessions  mine=true  limit=50
+  -> drop session_01B2mxc642tG8vZ15wysQpqM (yourself)
   -> (6) any remaining SESSION_STATUS_RUNNING            -> stop
   -> (7) max(updated_at) of the rest within 15 minutes   -> stop
 ```
+
+**If the response comes back with `has_more: true`, treat both gates as HELD and stop.** The
+ordering of that list is not documented anywhere this session can read, so a truncated page is
+not a sample you can reason about: a RUNNING session on the next page is invisible, and a
+`max(updated_at)` over an arbitrary subset is not the maximum. Both would then **fail open** —
+the firing starts a second story alongside live work, which is the one outcome STEP 0.5 exists
+to prevent, and it would look like a clean pass. `limit=50` is chosen to make truncation
+unlikely rather than impossible; the `has_more` check is what makes it safe. Failing closed
+costs an hour, and STEP 1.5's alarm covers a `has_more` that somehow never clears.
 
 The commands for (2) (3) (4):
 
@@ -267,7 +300,7 @@ file reads, greps, diffs and test logs never enter this conversation. **One buil
 story is therefore the closest achievable thing to a clear**, and it is the rule, not a
 preference.
 
-### The split — and the part of it that was untested is now tested
+### The split — reads are now probed, writes are still not
 
 **`general-purpose` and `claude` inherit this session's MCP grants. Probed 2026-08-08 from a
 real subagent**, because this file used to call the question untested and ask for exactly this
@@ -299,19 +332,37 @@ holds those tools in its frontmatter. The built-ins do — but until the write p
 no file content, so the split costs almost nothing:
 
 - **Main thread, always:** STEPs 0–3, STEP 4b's triage *decision*, the Linear status writes, the
-  PR open and merge (STEP 4c), and STEP 5.
-- **One build subagent, always:** everything from branching to a pushed, reviewed branch. It
-  runs the squad itself where the story needs specialists, and returns **a short report, never a
-  diff** — what landed, which files, what it wants triaged, and the two commit ranges STEP 4c
-  needs.
+  PR open and merge (STEP 4c), STEP 5 — **and every `Agent` call.**
+- **One build subagent:** everything from branching to a pushed branch. It returns **a short
+  report, never a diff** — what landed, which files, what it wants triaged, and the two commit
+  ranges STEP 4c needs.
+- **A second, separate `reviewer` subagent**, spawned by the main thread after the builder
+  returns.
+
+**The main thread spawns both, one after the other, because a subagent cannot spawn a
+subagent.** No agent in `.claude/agents/*.md` carries a Task tool in its frontmatter, so a build
+agent told to "run the squad itself" and to "have `reviewer` check its work" simply cannot, and
+the review silently does not happen — a story with no fold-ins would then merge having never
+been reviewed at all, with CI green, a merged PR and a `Deployed to DEV` status all looking
+correct. **Caught by `reviewer` on this very change**, which is the argument for the rule making
+its own case.
+
+That costs the main thread two `Agent` calls and two short reports per story, and nothing else:
+the reports are the only thing that lands in this conversation, which is the whole point.
+
+**Where the story genuinely needs a specialist** — `data` for a migration, `media` for an
+upload, `realtime` for a subscription — **the main thread spawns that agent directly** instead
+of, or before, the generic builder. Same rule: the main thread holds the `Agent` calls, the
+subagents hold the files.
 - Do not read a large file into the main thread to "get oriented". Ask for the conclusion.
   `CLAUDE.md` §When to delegate: *the answer is a conclusion, not the files*.
 - Never paste a full diff, a full test log or a full file into the main thread. A path and a
   line number is clickable and costs nothing.
 
-**The `reviewer` pass stays non-negotiable and stays a separate subagent from the builder.** Its
-entire value is that it did not write the code, so folding it into the build agent to save a
-hop destroys the thing it is there for.
+**The `reviewer` pass stays non-negotiable and stays a separate subagent from the builder,
+spawned by the main thread.** Its entire value is that it did not write the code, so folding it
+into the build agent to save a hop destroys the thing it is there for — and per above, the build
+agent could not run it anyway.
 
 ### Tell the owner when a clear is due — and say it where they will see it
 
@@ -382,9 +433,19 @@ oldest blocking condition has been true:
   the board pointing at it. Age it by its `updated_at`. Name the session's title in the
   notification, because "another session is working" is not actionable and *"'Postcard flip
   with comments' has been RUNNING since 09:12"* is.
-- **The owner not being AFK (0.5 gate 7)** — never stalls. Same reason as (1) and (5): it is a
-  live human at a keyboard, and telling them the queue is waiting because they are using it is
-  noise about a condition they are actively creating.
+- **The owner not being AFK (0.5 gate 7)** — **stalls, and the tempting exemption is wrong.**
+  The obvious reading is that this gate can only be held by a live human at a keyboard, so
+  notifying them about it is noise — the same argument that correctly exempts (1) and (5). It
+  does not hold, because **nothing establishes that only a human moves `updated_at`.** A
+  background agent, a cloud session or a second Routine touching itself more often than every
+  15 minutes holds this gate on every firing for ever, and an exempt gate has **no notification
+  path at all** — a permanent silent freeze, which is precisely what this step exists to catch.
+
+  So: age it by the same `max(updated_at)`, and **because a real human genuinely does hold it
+  for hours at a time, only alarm well past the point where that is the likely explanation.**
+  Nobody works a keyboard for three unbroken hours without a 15-minute gap; something automated
+  does. Name the session whose `updated_at` is the one staying fresh — that is the thing the
+  owner has to go and stop, and without the name the notification is unactionable.
 
 **If the oldest is more than 3 hours old but less than 4, send ONE push notification naming
 it and saying the queue is stalled, then stop.** The window is narrow on purpose: it fires
@@ -482,7 +543,11 @@ mcp__Linear__get_issue  id=<the issue>  includeRelations=true   ->   .relations.
 ```
 
 For each entry, look up its status. **A blocker counts as cleared when it is `Deployed to DEV`,
-`Done (in production)` or `Canceled`. Anything else and you do not build this issue.** Comment
+`Done (in production)`, `Canceled` or `Duplicate`. Anything else and you do not build this
+issue.** `Duplicate` has to be in that set for the same reason `Canceled` is — a blocker closed
+as a duplicate is never going to reach any other status, so leaving it out means every firing
+skips the dependent story, comments once, and moves on, for ever, with no alarm behind it.
+Comment
 on it once naming the unfinished blocker, then go back to STEP 2 and take the next candidate by
 priority. Do **not** move it to `Needs help` — being blocked is an ordinary state, not something
 the owner must clear, and parking the whole queue for it would be worse than skipping one story.
@@ -553,11 +618,15 @@ and merging is STEP 4c, after the triage. An earlier draft put the triage after 
 still told it to use "the same PR", which is not executable in order; `reviewer` caught it
 before this file shipped.
 
-**Per STEP 0.6 this whole step runs in one build subagent, and that is the mechanism standing
-in for the clear the owner asked for.** Brief it with the issue, the branch name and the
-`CLAUDE.md` rules that bear on the story; let it run the squad itself. The main thread should
-end this step holding a branch name, a short report and the two commit ranges — never a diff,
-never a test log, never a file.
+**Per STEP 0.6 the building runs in a subagent the main thread spawns, and that is the mechanism
+standing in for the clear the owner asked for.** Brief it with the issue, the branch name and
+the `CLAUDE.md` rules that bear on the story. Where the story wants a specialist — `data`,
+`media`, `realtime`, `design-system`, `test` — **the main thread spawns that agent**, because a
+subagent cannot spawn one. Then spawn `reviewer` separately, from the main thread, on the
+result.
+
+The main thread should end this step holding a branch name, two short reports and the two commit
+ranges — never a diff, never a test log, never a file.
 
 ---
 
@@ -758,21 +827,35 @@ filed is worse than one that was never noticed, because the rating made it look 
 **The order of the first two bullets is load-bearing.** A draft of this step wrote the closing
 comment first and told it to name the stories, which cannot be done before they exist:
 
-- **File or update every STEP 4b follow-up that did not get built.** First, because the next
-  bullet links them, and per STEP 4b's search rule some of them are updates to issues that
-  already exist rather than new ones.
-- Merged → move the issue to **`Deployed to DEV`** and comment with the PR link, one line on
-  what landed, what was folded in, and a link to each story filed **or updated**.
-- Send one push notification with the `PushNotification` tool: `Done ; ) <issue id> <short
-  title>`. Append `— /clear is safe` when the session is idle per the last bullet, so the
-  owner learns it somewhere they actually read (STEP 0.6).
-- **Leave the session idle**: branch back on `development`, clean tree, nothing in flight —
-  so the next firing's STEP 0.5 passes. This is now part of finishing the work rather than
-  housekeeping, because the next firing reads that state as its gate.
+**In this order.** Every bullet below depends on the one above it, and the DEV-deploy check is
+third rather than last for exactly that reason — a draft of this step left it as a trailing
+paragraph *after* the status move and the notification, which made it a gate on something that
+had already happened.
 
-```bash
-git checkout development && git pull origin development && git status --porcelain
-```
+1. **File or update every STEP 4b follow-up that did not get built.** First, because bullet 4
+   links them, and per STEP 4b's search rule some are updates to issues that already exist
+   rather than new ones.
+2. **Return to `development` and pull**, so the next firing's STEP 0.5 passes and so bullet 3
+   has the merge commit to check against.
+
+   ```bash
+   git checkout development && git pull origin development && git status --porcelain
+   git rev-parse origin/development     # the sha bullet 3 must match
+   ```
+
+3. **Check the DEV deploy** — see below. `ERROR` on *your* commit stops the run here and goes to
+   `Needs help`; anything else continues.
+4. **Move the issue to `Deployed to DEV`** and comment with the PR link, one line on what
+   landed, what was folded in, a link to each story filed **or updated**, and the deploy state
+   from bullet 3.
+5. **Send one push notification** with the `PushNotification` tool: `Done ; ) <issue id> <short
+   title>`. Append `— /clear is safe` when bullet 2 left the session clean, so the owner learns
+   it somewhere they actually read (STEP 0.6).
+
+**Bullet 3 failing means the PR is already merged**, so §If you get stuck's usual claim — that
+parking into `Needs help` leaves a branch and an open PR for the next firing to trip over — does
+**not** apply here. The lock is the only thing holding the queue, which is correct: a broken DEV
+is exactly what should stop the next story from starting.
 
 ### `Deployed to DEV` is where a firing ends. Production is not yours.
 
@@ -801,19 +884,26 @@ without them the check costs `list_teams` → `list_projects` → `list_deployme
 They are recorded here to keep it one call. The Vercel project is **`letsrideapp`** under team
 **`Pedro's projects`**; re-derive with those two list calls if either id ever stops resolving.
 
-**There is no branch filter** — the response comes back newest-first across every branch, so
-pick the newest entry whose branch is `development` yourself. Do not assume entry `[0]` is
-yours: feature-branch previews and the `main` production build land in the same list.
+**Match on the commit, not on "the newest `development` build" — otherwise the check is worse
+than none.** There is no branch filter, so the response mixes feature-branch previews and the
+`main` production build in with DEV. Entry `[0]` is not yours, and *neither is the newest
+`development` entry*: called seconds after the merge, that is usually the **pre-merge** build.
+Reading it green claims `Deployed to DEV` for a build that does not exist; reading a stale
+`ERROR` sends a healthy story to `Needs help` and parks the queue on someone else's old failure.
 
-- `READY`, or still `BUILDING`/`QUEUED` → move to `Deployed to DEV` and say which in the
-  comment. A build in flight is the normal case; the merge is the commitment and waiting on
-  Vercel would just burn the firing.
-- **`ERROR` → do not move it to `Deployed to DEV`.** That is a broken DEV, which is exactly
-  what §If you get stuck is for: `Needs help`, with the deployment URL and the failure in the
-  comment. Green CI and a failed deploy are different gates and CI passing does not cover this.
-- The Vercel connector missing or the call failing is **not** a reason to stop — note in the
-  comment that the deploy was unverified and carry on. An unlabelled guess is the thing to
-  avoid, not the missing check itself.
+**Find the entry whose `meta.githubCommitSha` equals `git rev-parse origin/development` from
+bullet 2.** Then:
+
+- `READY`, or still `BUILDING`/`QUEUED` → continue to bullet 4 and say which in the comment. A
+  build in flight is the normal case; the merge is the commitment and waiting on Vercel would
+  just burn the firing.
+- **`ERROR` → stop.** That is a broken DEV, and it is what §If you get stuck is for:
+  `Needs help`, with the deployment URL and the failure in the comment. Green CI and a failed
+  deploy are different gates; CI passing does not cover this.
+- **No entry matches your sha yet** → the deploy has not been created. Continue, and say
+  "deploy not yet visible" in the comment. Do not poll for it.
+- **The Vercel connector is missing or the call fails** → continue, and say the deploy was
+  unverified. An unlabelled guess is the thing to avoid, not the missing check itself.
 
 ---
 
