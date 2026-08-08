@@ -674,22 +674,25 @@ drop function private.is_ride_crew(uuid);
 delete from supabase_migrations.schema_migrations where name = 'ride_messages';
 ```
 
-**FOUR migrations are on DEV and not on PROD as of 2026-08-08, for THREE DIFFERENT reasons —
-conflating any two is how the wrong one gets applied.** `036` is held back **deliberately** and
-must not be cleared on sight. `037` (the places index) and `039` (its address search) are merely
-unshipped: both purely additive, in `034`'s class, so they *could* go to PROD ahead of their code —
-they would just need a data load there. **`039` travels with `037` and is meaningless without it**,
-since it extends the table `037` creates. `038` (username durability, PD-127) is held on an **owner
-decision that has not been made**, not on a technical constraint: it carries no ordering constraint
-in either direction, but which of three PROD apply orders to use is `proposal.md` Q3 and is
-explicitly blocking. Verify rather than trust this line; it is exactly the kind that goes stale:
+**DEV and PROD AGREE — both at `040`, as of 2026-08-08.** No migration gap, for the first time
+since `035`. The old paragraph here enumerated four outstanding migrations and three reasons; all
+four were applied in one sitting (`036` before the promotion, `037`/`038`/`039`/`040` after), so it
+is deleted rather than edited — a stale "held back" note makes a session hesitate over something
+already live. Verify rather than trust this line; it is exactly the kind that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808131801 places_address_search
-#   PROD (zwprydcyryvudhurbnye): 35 rows, ending 035_comment_whitespace_floor
-ls supabase/migrations/ | wc -l          # 39
+#   DEV  (fpmrimzxadewsaiwpsel): 40 rows, ending 20260808205709 locality_centroid
+#   PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 locality_centroid
+ls supabase/migrations/ | wc -l          # 40
 ```
+
+**PROD's recorded statements for `036`-`040` are comment-reduced, not the files.** Nothing can pipe
+a file into `apply_migration`, so each was reduced to its executing statements (preserving comments
+inside `$$` bodies, which are part of `prosrc`) and then **verified by diffing every resulting
+object against DEV** — function, trigger, policy, column, index and grant hashes all matched. So
+`md5(statements[1])` on PROD will NOT equal `md5sum` of those five files. Expected, not drift, and
+the object diff is the stronger check.
 
 **`039` (places address search, PD-141) is applied to DEV and is additive in `034`'s class**, so
 it could go to PROD ahead of its code — except that `037` has not gone to PROD either, and `039`
@@ -759,7 +762,7 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 ```
 Nothing automated depends on it — `npm run db:drift` compares migration *names* only.
 
-**`places` exists on DEV with 0 rows and does not exist on PROD at all.** Filling it is an owner
+**`places` exists on BOTH projects with 0 rows.** Filling it is an owner
 action — a 99 MB `\copy` needing a direct Postgres connection no session holds
 (`scripts/places/README.md` §Loading). An empty index is indistinguishable from a working search
 that finds nothing.
