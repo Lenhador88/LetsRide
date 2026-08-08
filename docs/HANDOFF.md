@@ -1244,7 +1244,7 @@ did not need:
   that day. So STEP 0.5 check (5) is *"exit if a usage warning is visible in this session"*, which
   the reuse helps with because a warning from an earlier turn is still in the conversation.
 
-  Writing it as a numeric threshold would be a gate that can never fire — the third instance of
+  Writing it as a numeric threshold would be a gate that can never fire — the same recurring
   that shape in this one file, after the team-scoped lock and the buried stall alarm. Querying an
   undocumented endpoint with the session's OAuth credential is worse: it breaks silently and
   *looks* like it works. **The lever that works is the owner's** —
@@ -1309,7 +1309,7 @@ that both fail silently if missed:
 - **The lock is two *names*** — `Development (AI)` and `Needs help`. `Deployed to DEV` is typed
   `started` and so is `Queued (AI)`, so a lock rewritten as "any `started` issue" is held by every
   queued and every shipped story, freezing the queue permanently while looking like a healthy job
-  behind a busy column. Third instance of this repo's recurring shape.
+  behind a busy column. The same recurring shape again; deliberately not numbered, because a count that mixes observed failures with hypothetical ones ends up with two different "third instance"s — which had already happened across these three files.
 - **A blocker clears at `Deployed to DEV`**, not at `Done (in production)`. Firings branch off
   `development`, so work merged there is already available to build on; requiring the promotion
   would park every dependent story behind a manual step on the owner's schedule.
@@ -1339,16 +1339,23 @@ for >15 mins."* Both come from one `list_sessions mine=true` call:
 
 **Both must exclude the calling session's own id.** The firing runs in a RUNNING session and
 moves that session's `updated_at`, so a check that counts itself is held for ever — this repo's
-recurring silent-guard shape, fourth instance. The case exclusion loses is the owner typing into
+recurring silent-guard shape. The case exclusion loses is the owner typing into
 *this* session, which gate (1) already covers.
 
 **The AFK half is a labelled proxy, not a measurement.** It sees Claude Code activity only, so
 an owner reading the app, sitting in Linear or on their phone reads as away; there is no
 presence signal a session can reach. And it compounds with the hourly schedule — a burst of work
 15 minutes before the firing minute skips the whole hour, so a quiet queue is the gate working
-rather than the Routine being broken. STEP 1.5 stall-alarms on a stuck RUNNING session (naming
-its title, since nothing on the board points at it) and never on the AFK gate, which is a live
-human.
+rather than the Routine being broken.
+
+**STEP 1.5 alarms on a stuck RUNNING session — naming its title, since nothing on the board
+points at it — and cannot alarm on the AFK gate at all.** Not an exemption, a measurement: that
+gate is *defined* as `now − max(updated_at) < 15 min`, so whenever it is held that clock reads
+under 15 minutes by construction and can never land in a 3–4 hour window, and a stateless firing
+has no history to measure instead. A draft wrote the alarm anyway and it was **worse than none**,
+because it claimed cover that did not exist. What actually catches the dangerous case — something
+automated touching a session every few minutes — is gate (6), since such a session is almost
+certainly RUNNING while it does it.
 
 **A firing now folds strong follow-ups into the same PR instead of filing all of them — 2026-08-07,
 at the product owner's request.** The old §Scope discipline sent adjacent improvements to `Backlog`

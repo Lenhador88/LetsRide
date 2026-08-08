@@ -258,8 +258,13 @@ not a sample you can reason about: a RUNNING session on the next page is invisib
 `max(updated_at)` over an arbitrary subset is not the maximum. Both would then **fail open** —
 the firing starts a second story alongside live work, which is the one outcome STEP 0.5 exists
 to prevent, and it would look like a clean pass. `limit=50` is chosen to make truncation
-unlikely rather than impossible; the `has_more` check is what makes it safe. Failing closed
-costs an hour, and STEP 1.5's alarm covers a `has_more` that somehow never clears.
+unlikely rather than impossible; the `has_more` check is what makes it safe.
+
+**Failing closed costs an hour — and like the connector-failure case above, it cannot be
+stall-aged**, because a gate held with no usable data has no clock behind it. So a firing that
+stops for `has_more` says so in that firing rather than exiting silently. Do not write "STEP 1.5
+covers it": that was in a draft of this paragraph and it is the same unreachable-alarm mistake
+gate (7) documents at length.
 
 The commands for (2) (3) (4):
 
@@ -441,6 +446,13 @@ oldest blocking condition has been true:
   false (no PR), so if this is missing nothing ages it, STEP 1.5 exits silently, and the queue
   freezes hourly with nothing on the board pointing at it. Caught by `reviewer` against a
   sentence claiming the list was already complete.
+
+  **The mtime is an approximation and that is fine here** — it dates the last *edit*, not the
+  moment the tree became dirty, and the one-liner skips deleted paths (`stat` fails on them) and
+  mishandles filenames with spaces. None of that matters for an alarm whose only question is
+  "has this been true for hours": every failure mode makes it read *newer*, so it errs toward
+  staying quiet rather than toward a false alarm. If nothing is stat-able, fall back to the
+  lock's own clock.
 - **A branch in flight (0.5 gate 3)** — `git log -1 --format=%cr` on its tip.
 - **An open PR on the current branch (0.5 gate 4)** — its `createdAt`.
 - **The owner's unfinished request** — never stalls. It is a live human, not a stuck job.
@@ -455,19 +467,30 @@ oldest blocking condition has been true:
   the board pointing at it. Age it by its `updated_at`. Name the session's title in the
   notification, because "another session is working" is not actionable and *"'Postcard flip
   with comments' has been RUNNING since 09:12"* is.
-- **The owner not being AFK (0.5 gate 7)** — **stalls, and the tempting exemption is wrong.**
-  The obvious reading is that this gate can only be held by a live human at a keyboard, so
-  notifying them about it is noise — the same argument that correctly exempts (1) and (5). It
-  does not hold, because **nothing establishes that only a human moves `updated_at`.** A
-  background agent, a cloud session or a second Routine touching itself more often than every
-  15 minutes holds this gate on every firing for ever, and an exempt gate has **no notification
-  path at all** — a permanent silent freeze, which is precisely what this step exists to catch.
+- **The owner not being AFK (0.5 gate 7)** — **has no reachable alarm, and the honest move is to
+  say so rather than write one that cannot fire.**
 
-  So: age it by the same `max(updated_at)`, and **because a real human genuinely does hold it
-  for hours at a time, only alarm well past the point where that is the likely explanation.**
-  Nobody works a keyboard for three unbroken hours without a 15-minute gap; something automated
-  does. Name the session whose `updated_at` is the one staying fresh — that is the thing the
-  owner has to go and stop, and without the name the notification is unactionable.
+  The risk is real: **nothing establishes that only a human moves `updated_at`.** A background
+  agent, a cloud session or a second Routine touching itself more often than every 15 minutes
+  holds this gate on every firing, for ever.
+
+  **But no clock available here can detect that.** The gate is *defined* as
+  `now − max(updated_at) < 15 minutes`, so whenever it is held that value is under 15 minutes by
+  construction — ageing the gate by it can never produce a number inside the 3–4 hour window.
+  A draft of this file did exactly that and called it a fix. **It was strictly worse than no
+  alarm**, because the exemption at least said plainly that nothing would fire. There is no
+  session-side history to measure against either: each firing is stateless and cannot know
+  whether this gate was also held an hour ago.
+
+  **So: do not fake it, and do not reintroduce the `max(updated_at)` version.** What actually
+  covers the dangerous case is **gate (6)** — a session touching itself every few minutes is
+  almost certainly `SESSION_STATUS_RUNNING` while it does so, and (6) both catches that and
+  alarms on it correctly. The residue that (6) misses is a session that updates without running,
+  which no signal here distinguishes from a human at a keyboard.
+
+  **If a firing ever notices this gate held while (6) is clear and every fresh session looks
+  automated, say so in that firing's notification** — a judgement call reported once is worth
+  more than a threshold that never trips.
 
 **If the oldest is more than 3 hours old but less than 4, send ONE push notification naming
 it and saying the queue is stalled, then stop.** The window is narrow on purpose: it fires
@@ -847,13 +870,11 @@ reviewed at all:
 separate task, and STEP 4b's stories are part of it — a follow-up that was rated and then never
 filed is worse than one that was never noticed, because the rating made it look handled.
 
-**The order of the first two bullets is load-bearing.** A draft of this step wrote the closing
-comment first and told it to name the stories, which cannot be done before they exist:
-
-**In this order.** Every bullet below depends on the one above it, and the DEV-deploy check is
-third rather than last for exactly that reason — a draft of this step left it as a trailing
-paragraph *after* the status move and the notification, which made it a gate on something that
-had already happened.
+**In this order — every bullet depends on the one above it**, and two drafts of this step got it
+wrong in the same way. One wrote the closing comment before the stories it was told to link,
+which cannot be done before they exist. The other left the DEV-deploy check as a trailing
+paragraph *after* the status move and the notification, making it a gate on something that had
+already happened. Both are why the steps below are numbered and cross-referenced by number.
 
 1. **File or update every STEP 4b follow-up that did not get built.** First, because bullet 4
    links them, and per STEP 4b's search rule some are updates to issues that already exist

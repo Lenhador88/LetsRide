@@ -1553,7 +1553,7 @@ on why it matters. **A Linear issue that grows a specification is a bug** — th
 proposal, where `openspec/config.yaml`'s rules apply and a missing visibility rule fails loudly
 rather than silently.
 
-### Seven statuses, and the board does not mirror the squad
+### The statuses, and why the board does not mirror the squad
 
 The board was trimmed on 2026-08-07, the day after it was seeded, and the reason is worth
 keeping because it is the same reason the boundary above exists. It briefly carried ten
@@ -1835,7 +1835,8 @@ What it does, in order — and the order is the design:
    usage warning is visible in this session"*, which the reuse actually helps with, since a
    warning from an earlier turn is still in the conversation. **Writing it as a numeric
    threshold would produce a gate that can never fire** — the same silently-failing shape as the
-   team-scoped lock and the buried stall alarm, and this file's third instance of it. Reaching
+   team-scoped lock and the buried stall alarm — the same recurring shape, which this file
+   deliberately does not number. Reaching
    for the OAuth credential to query an undocumented endpoint is worse, not better: it would
    break silently and *look* like it worked. The lever that works is the owner's —
    `update_trigger enabled: false` pauses the Routine in one call.
@@ -1897,8 +1898,10 @@ What it does, in order — and the order is the design:
    is skipped**: an epic outranks its own children on priority, so a container in the column
    would be picked before any of the work under it.
 3b. **Check `blockedBy` on what it picked** — `get_issue` with `includeRelations: true` — and if
-   any blocker is not `Deployed to DEV`, `Done (in production)` or `Canceled`, comment and take
-   the next candidate. This line used
+   any blocker is not `Deployed to DEV`, `Done (in production)`, `Canceled` or `Duplicate`,
+   comment and take the next candidate. `Duplicate` belongs in that set for the same reason
+   `Canceled` does — a blocker closed as a duplicate will never reach any other status, so
+   omitting it parks the dependent story for ever. This line used
    to read "It does **not** check dependencies, and cannot"; that was written from the default
    `get_issue` response and is wrong (§Sequencing has the measurement). It is a **backstop**, not
    the mechanism: `list_issues` still cannot filter on relations, so the check only runs after a
