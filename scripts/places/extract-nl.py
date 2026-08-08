@@ -29,6 +29,7 @@ import argparse
 import csv
 import os
 import sys
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -49,6 +50,32 @@ NL_BBOX = dict(xmin=3.36, xmax=7.23, ymin=50.75, ymax=53.56)
 # here is what keeps the transfer at ~476 MB instead of the full row width.
 COLUMNS = ["id", "names", "categories", "brand", "addresses", "confidence", "bbox"]
 
+# How wide a bbox may be before we stop believing it describes a point.
+#
+# The bbox is stored float32 and rounded OUTWARD, so even a true point gets a
+# non-empty envelope: 15,836 of 15,943 sampled rows have xmin != xmax.
+#
+# Two figures for how wide that envelope is, and they disagree, so both are
+# recorded rather than one quietly replacing the other:
+#
+#   * MODELLED — one float32 ULP at Dutch latitudes is 3.815e-6 deg, an envelope
+#     ~0.42 m wide, putting a corner at most 0.262 m from the true point and a
+#     midpoint at most 0.100 m.
+#   * MEASURED — sampled against the decoded WKB, the corner is 0.633 m out at
+#     the median and 0.846 m at the worst.
+#
+# The measurement is ~3x the model, so Overture pads by more than a single ULP.
+# The model has the mechanism right and the margin wrong, which is exactly why
+# the threshold is set off the MEASURED figure: 1e-4 deg is ~11 m, about 13x the
+# observed worst case and 26x the modelled envelope, and far below any real
+# polygon. So it trips on a genuine non-point and never on float32 rounding.
+#
+# It matters because the coordinate we write is the bbox MIDPOINT. For a rounded
+# point that is the true location to within half an ULP; for an actual polygon it
+# is the centre of the envelope, which may be nowhere near the place and may not
+# even be on it. Rather than let that arrive silently, the run fails.
+MAX_POINT_EXTENT_DEG = 1e-4
+
 CSV_HEADER = [
     "id", "name", "brand", "category", "lon", "lat",
     "street", "locality", "postcode", "country", "confidence",
@@ -56,12 +83,37 @@ CSV_HEADER = [
 
 
 def list_parts(release: str, theme: str, type_: str) -> list[str]:
-    """Return every parquet key under a theme, via the S3 REST list API."""
+    """Return every parquet key under a theme, via the S3 REST list API.
+
+    Paginated, because "every" has to mean every. S3 caps a ListObjectsV2
+    response at 1,000 keys and signals more with `IsTruncated`; the theme has 16
+    parts today, so one page is enough and the loop has never run twice. That is
+    exactly why it is worth having: the day a release ships more than 1,000
+    parts, an unpaginated version does not fail — it silently returns a prefix
+    of the theme and the extract quietly loses places.
+    """
     prefix = f"release/{release}/theme={theme}/type={type_}/"
-    url = f"{BUCKET}/?list-type=2&prefix={prefix}&max-keys=1000"
-    with urllib.request.urlopen(url, timeout=60) as resp:
-        root = ET.fromstring(resp.read())
-    keys = [c.findtext(f"{S3_NS}Key") for c in root.findall(f"{S3_NS}Contents")]
+    keys: list[str] = []
+    token: str | None = None
+
+    while True:
+        url = f"{BUCKET}/?list-type=2&prefix={prefix}&max-keys=1000"
+        if token:
+            url += f"&continuation-token={urllib.parse.quote(token, safe='')}"
+        with urllib.request.urlopen(url, timeout=60) as resp:
+            root = ET.fromstring(resp.read())
+
+        keys += [c.findtext(f"{S3_NS}Key") for c in root.findall(f"{S3_NS}Contents")]
+
+        if root.findtext(f"{S3_NS}IsTruncated") != "true":
+            break
+        token = root.findtext(f"{S3_NS}NextContinuationToken")
+        if not token:
+            # Truncated but no token to continue with: S3 should never do this,
+            # and silently returning a partial listing is the one outcome this
+            # function must not have.
+            raise SystemExit("S3 reported a truncated listing with no continuation token")
+
     return [k for k in keys if k and k.endswith(".parquet")]
 
 
@@ -117,10 +169,25 @@ def write_rows(table, writer, bbox: dict, countries: set[str], stats: dict) -> i
     names = pc.struct_field(table["names"], "primary").to_pylist()
     brands = pc.struct_field(pc.struct_field(table["brand"], "names"), "primary").to_pylist()
     cats = pc.struct_field(table["categories"], "primary").to_pylist()
-    # Overture places are points, so the bbox degenerates to the coordinate
-    # itself — cheaper and dependency-free next to decoding the WKB geometry.
-    lons = pc.struct_field(table["bbox"], "xmin").to_pylist()
-    lats = pc.struct_field(table["bbox"], "ymin").to_pylist()
+    # The coordinate is the bbox MIDPOINT, and taking a corner instead was a
+    # measured bug rather than a stylistic choice.
+    #
+    # This used to read "Overture places are points, so the bbox degenerates to
+    # the coordinate itself" and take xmin/ymin. The bbox does not degenerate:
+    # 15,836 of 15,943 sampled rows have xmin != xmax, because the struct is
+    # float32 and rounded OUTWARD so that it is guaranteed to contain the true
+    # point. Taking the low corner therefore put every single coordinate
+    # systematically SOUTH-WEST of the truth — median 0.633 m, max 0.846 m
+    # against the decoded WKB. A consistent bias, not noise, and `.7f` below was
+    # writing seven decimals of a number that did not have them.
+    #
+    # The midpoint recovers the true coordinate to within half an ULP and still
+    # needs no WKB decode, so it keeps the reason the corner was chosen (no
+    # shapely, no geo dependency) without the error.
+    xmins = pc.struct_field(table["bbox"], "xmin").to_pylist()
+    xmaxs = pc.struct_field(table["bbox"], "xmax").to_pylist()
+    ymins = pc.struct_field(table["bbox"], "ymin").to_pylist()
+    ymaxs = pc.struct_field(table["bbox"], "ymax").to_pylist()
     confs = table["confidence"].to_pylist()
     addrs = table["addresses"].to_pylist()
 
@@ -142,9 +209,17 @@ def write_rows(table, writer, bbox: dict, countries: set[str], stats: dict) -> i
             stats["other_country"] += 1
             continue
 
+        # Counted, not raised on the spot: main() fails the run at the end, so
+        # the operator learns HOW MANY non-point places appeared rather than
+        # only that a first one did.
+        extent = max(xmaxs[i] - xmins[i], ymaxs[i] - ymins[i])
+        if extent > MAX_POINT_EXTENT_DEG:
+            stats["oversized_bbox"] += 1
+            stats["max_extent"] = max(stats["max_extent"], extent)
+
         writer.writerow([
             ids[i], names[i], brands[i], cats[i],
-            f"{lons[i]:.7f}", f"{lats[i]:.7f}",
+            f"{(xmins[i] + xmaxs[i]) / 2:.7f}", f"{(ymins[i] + ymaxs[i]) / 2:.7f}",
             first_address_field(a, "freeform"),
             first_address_field(a, "locality"),
             first_address_field(a, "postcode"),
@@ -183,7 +258,7 @@ def main() -> int:
 
     fs = fsspec.filesystem("https")
     written = scanned = groups_read = 0
-    stats = {"no_country": 0, "other_country": 0}
+    stats = {"no_country": 0, "other_country": 0, "oversized_bbox": 0, "max_extent": 0.0}
 
     with open(args.out, "w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
@@ -217,6 +292,24 @@ def main() -> int:
     print(f"dropped: {stats['no_country']:,} no country, "
           f"{stats['other_country']:,} other country", file=sys.stderr)
     print(f"output: {args.out}", file=sys.stderr)
+
+    # The centroid assumption, asserted rather than trusted. Every coordinate in
+    # the CSV is a bbox midpoint, which is the true point for a rounded point and
+    # merely the centre of an envelope for anything else. If Overture ever ships
+    # a place with real extent, the file is still written — someone may decide
+    # the centre is good enough — but the run is RED, so it cannot be loaded by
+    # a script that checks its exit code, and nobody inherits the assumption
+    # silently.
+    if stats["oversized_bbox"]:
+        print(
+            f"\nFAIL: {stats['oversized_bbox']:,} places have a bbox wider than "
+            f"{MAX_POINT_EXTENT_DEG} deg (largest {stats['max_extent']:.6f} deg). "
+            "The written coordinate is the bbox midpoint, which is only the true "
+            "location for a point. Decide what these should resolve to before "
+            "loading; see the note beside MAX_POINT_EXTENT_DEG.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

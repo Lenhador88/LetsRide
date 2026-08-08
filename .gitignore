@@ -61,3 +61,14 @@ yarn-error.log*
 
 # Per-machine Claude Code overrides — holds this machine's MCP connector ids
 .claude/settings.local.json
+
+# Python bytecode from scripts/places/.
+#
+# Keeps it out of the repo, and that is ALL it does — worth saying, because the
+# reason it was added invites the opposite reading. `python3 -m py_compile`
+# moves the unit-test count from 775 to 776, because no-service-role-key.test.ts
+# walks the FILESYSTEM rather than the git index, so it counts the .pyc whether
+# or not git can see it. Measured both ways. If that drift ever costs anyone
+# real time, the fix is an exclusion in that test, not here.
+__pycache__/
+*.py[cod]

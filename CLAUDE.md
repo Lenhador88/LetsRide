@@ -336,6 +336,7 @@ design/                     # Committed Figma snapshot — READ THIS, don't call
 ├── components/*.json       # One pruned tree per component set
 └── icons/                  # index.json + exported SVGs
 scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
+scripts/places/             # The Overture extract behind the self-hosted place search (037)
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
 └── changes/                # Active proposals; archive/ holds shipped ones
@@ -482,6 +483,7 @@ migration, and CI has no path that would catch it.
 | `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; **`024` dropped it, applied 2026-08-05**. Five query sites embedded `clubs(id, name, avatar_url)`; the three that draw an image could only ever draw initials, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
+| `places` | The self-hosted location provider for ride meeting points, added by `037` — **the only table here that is not rider content**. Reference data extracted from Overture Maps and loaded out of band, so it has no owner column, no author, and the repo's first `using (true)` SELECT policy: every signed-in rider sees every row, which is correct precisely because the table references no person. `authenticated` holds **SELECT and nothing else** — the load runs as the table owner, which is what lets an operator write while nothing reachable through PostgREST can. Query it through `search_places(q, near_lat, near_lon)`, never an ad-hoc `ILIKE`: the function carries the guard that keeps a query off a sequential scan, and that guard is `term ~ '[[:alnum:]]{3}'` rather than a length check because `char_length(term) >= 3` accepts `'%%%%'`, which escapes to a pattern with no extractable trigram — measured at 1,443 ms, under the 8 s statement timeout and therefore silent. **The table is EMPTY on both projects** until someone runs the load, and an empty index is indistinguishable from a working search that finds nothing. **Attribution is an OPEN question, not a settled one** — a census of 527,725 rows names Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap, so the ODbL credit this repo first assumed is wrong and the commercial sources' terms are unread (their hosts are egress-blocked). Settle it before any screen renders a result. |
 | `ride_messages` | Per-ride group chat, added by `034`. **Its audience is an INTERSECTION and neither half alone is it** — riders who can see the ride (an `EXISTS` against `rides` under the caller's RLS) *and* who are on its crew (`private.is_ride_crew`: organizer, or any `ride_members` row of either status). Using the crew helper on its own is the trap this table already fell into once: it is `security definer`, so it steps past the block and private-club arms of the `rides` policy, and a `ride_members` row outlives both — an ex-club-member kept reading a private ride's chat. INSERT is granted **per column** so `created_at` cannot be client-written (a `default` only applies when the column is omitted, and ordering is the product here). No UPDATE policy and no UPDATE grant. In the `supabase_realtime` publication, which is what makes a subscription fire at all. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
@@ -514,9 +516,16 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 36 files. DEV is at `036`, PROD is at `035`, and the split is DELIBERATE —
-measured 2026-08-07.** DEV (`letsride-dev`) has 36 rows ending `20260807204019 notifications`; PROD
-(`letsride`) has 35 ending `035_comment_whitespace_floor`.
+**Applied state: 37 files. DEV is at `037`, PROD is at `035`, so the gap is now TWO and only one
+half of it is deliberate — measured 2026-08-08.** DEV (`letsride-dev`) has 37 rows ending
+`places_index`; PROD (`letsride`) has 35 ending `035_comment_whitespace_floor`.
+
+**The two unapplied migrations are unapplied for opposite reasons, and conflating them is the
+trap.** `036` is held back **on purpose** (see the next paragraph). `037` (the places index) is
+merely additive and unshipped — a new extension, a new table, a new function, no existing write
+path touched — so it is in `034`'s class and could go to PROD ahead of its code. It would need its
+own data load there, and **the table is empty on both projects until an operator runs one**
+(`scripts/places/README.md` §Loading; no session holds database credentials).
 
 **`036` is the one migration in this repo that must NOT be applied to PROD on sight**, and the
 standing *"Unapplied migrations are drift — apply them before adding another"* rule is exactly what
@@ -558,11 +567,11 @@ deleted `proxy.ts` as what gates every app route. (A database comment is the `da
 first read via `list_tables`, so it is the one piece of documentation no edit to this file can
 reach.) The `SKIP_MIGRATIONS` machinery that modelled the once-held-back pair is **gone**,
 along with the three `rls_test_pending_*.sql` files; the full chain applies on every run.
-Suite **747** assertions — re-derive rather than trust it:
+Suite **808** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read **641** here while the true
 figure was **647**, and stayed wrong through several sessions because the command beside it was
-never run — then `036` added 100. A number with its own verification command next to it is still
-a number nobody checked.) (It read 527 for a few hours, from
+never run — then `036` added 100 and `037` added 61. A number with its own verification command
+next to it is still a number nobody checked.) (It read 527 for a few hours, from
 a parallel session that folded the same three files independently; the two were reconciled by
 comparing *label sets* rather than counts, which is the only comparison that shows whether an
 assertion was lost.)
