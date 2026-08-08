@@ -628,9 +628,11 @@ export type NotificationCursor = { createdAt: string; id: string }
  * container cannot reach. Settle it before a result renders; see `037`'s
  * header.
  *
- * Most screens want `PlaceSearchResult` instead. **Nothing reads this type
- * yet** — there is no `src/lib/data/places.ts`, and the table is empty until
- * the operator load in `037` §6.
+ * Most screens want `PlaceSearchResult` instead. **Nothing reads this RAW
+ * shape** — `src/lib/data/places.ts` exists, but it reads through
+ * `search_places()`/`locality_centroid()`, which return `PlaceSearchResult`/
+ * `LocalityCentroid`, never a row of this type directly. The table itself is
+ * empty until the operator load in `037` §6.
  */
 export type Place = {
   /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */

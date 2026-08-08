@@ -1,6 +1,6 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { unwrapList } from '@/lib/data/unwrap'
-import type { PlaceSearchResult } from '@/types'
+import type { LocalityCentroid, PlaceSearchResult } from '@/types'
 
 /**
  * `search_places(q, near_lat, near_lon)` (`037`/`039`) — the meeting-point
@@ -25,7 +25,10 @@ import type { PlaceSearchResult } from '@/types'
  * number the database would also accept faster; it is this client choosing not
  * to fire the worst common case at all. Keep both floors — collapsing them into
  * one would either loosen the security guard or block a legitimate two-token
- * query like `ab 40` for a UX reason that has nothing to do with it.
+ * query like `Kerkstraat 40` for a UX reason that has nothing to do with it.
+ * (`ab 40` is not that example — it is refused by the database's own guard
+ * regardless of anything this file does, since it holds no run of three
+ * consecutive alphanumerics anywhere in the term.)
  */
 export const PLACE_SEARCH_MIN_CHARS = 4
 
@@ -44,7 +47,8 @@ export const PLACE_SEARCH_MIN_CHARS = 4
  *
  * **Truncating makes the search BROADER, not narrower** — tokens are ANDed, so
  * dropping one removes a constraint and more rows match. That is the safe
- * direction (extra results, never a missed one) but it is the opposite of what
+ * direction (never a missed match, though the five-row cap can still rank one
+ * out — see `search_places()`'s own `limit 5`) but it is the opposite of what
  * it intuitively reads as, and an earlier revision of this comment had it
  * backwards.
  *
@@ -56,10 +60,31 @@ export const PLACE_SEARCH_MIN_CHARS = 4
  */
 export const PLACE_SEARCH_MAX_TOKENS = 8
 
+/**
+ * Deduped case-insensitively before the cap is applied — not a query-cost fix
+ * (`039` §5d already dedups server-side before building patterns, so a
+ * repeated word costs one pattern there regardless of what this does), but
+ * without it here the CAP wastes its budget on repeats: `Jumbo jumbo JUMBO
+ * ×8 Maastricht` is nine raw tokens, so the un-deduped cap kept the eight
+ * Jumbos and dropped `Maastricht` entirely — where the database would have
+ * collapsed the eight into one and kept it. Deduping first means a repeated
+ * word can never push a genuinely distinct one out of the truncated term.
+ */
 function boundTerm(term: string): string {
   const tokens = term.split(/\s+/).filter(Boolean)
-  return tokens.length > PLACE_SEARCH_MAX_TOKENS
-    ? tokens.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ')
+
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  for (const token of tokens) {
+    const key = token.toLowerCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      deduped.push(token)
+    }
+  }
+
+  return deduped.length > PLACE_SEARCH_MAX_TOKENS
+    ? deduped.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ')
     : term
 }
 
@@ -110,11 +135,8 @@ export async function searchPlaces(
   return unwrapList(result, 'places matching that search') as unknown as PlaceSearchResult[]
 }
 
-export type LocalityCentroid = { lat: number; lon: number }
-
 /**
- * `locality_centroid(q)` — migration `040`, landing concurrently with this
- * file from a different agent. Resolves a rider's free-text onboarding
+ * `locality_centroid(q)` (`040`). Resolves a rider's free-text onboarding
  * `location` (`profiles.location`) to a coarse centroid, for
  * `resolveRiderLocation`'s profile fallback (`src/lib/location/`).
  *
@@ -124,9 +146,20 @@ export type LocalityCentroid = { lat: number; lon: number }
  * quietly rendering the wrong thing. This one is different in kind: it feeds a
  * search *bias*, not correctness-critical data, and `search_places` already
  * treats "no location" as a first-class case — the worst outcome of treating a
- * real failure as "no bias" is an unbiased nationwide search. Throwing here
- * would instead take a search sheet down over a function that, as of this
- * file, has not necessarily shipped yet (`040` is concurrent with this PR).
+ * real failure as "no bias" is an unbiased nationwide search.
+ *
+ * **This is not a temporary shim for `040` being unshipped, and it must not
+ * be read that way once that migration has landed.** It stays permanent: the
+ * function can still be renamed, dropped, or refused by a role grant that
+ * changes independently of this file, and swallowing that silently forever
+ * is a worse failure than the one it prevents — hence the `console.warn`,
+ * which is what keeps a broken deploy from being invisible.
+ *
+ * `LocalityCentroid`'s own doc block promises every field is genuinely
+ * non-nullable and that emptiness is expressed as zero rows, never a row of
+ * nulls (the function's `having count(*) > 0`) — so this trusts that contract
+ * for `place_count` rather than re-deriving it, and only sanity-checks the
+ * two fields it is about to feed into a search RPC.
  */
 export async function getLocalityCentroid(q: string): Promise<LocalityCentroid | null> {
   const trimmed = q.trim()
@@ -134,12 +167,13 @@ export async function getLocalityCentroid(q: string): Promise<LocalityCentroid |
 
   const supabase = await resolveSupabase()
   const { data, error } = await supabase.rpc('locality_centroid', { q: trimmed })
-  if (error || !data) return null
+  if (error) {
+    console.warn('[places] locality_centroid failed — searching with no location bias', error)
+    return null
+  }
 
-  const rows = data as { lat: number | null; lon: number | null; place_count?: number }[]
-  const row = rows[0]
-  if (!row || row.lat == null || row.lon == null) return null
-  if (row.place_count !== undefined && row.place_count <= 0) return null
+  const row = ((data ?? []) as LocalityCentroid[])[0]
+  if (!row || !Number.isFinite(row.lat) || !Number.isFinite(row.lon)) return null
 
-  return { lat: row.lat, lon: row.lon }
+  return row
 }

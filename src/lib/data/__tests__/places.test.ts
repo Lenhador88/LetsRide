@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * `search_places()` (`037`/`039`) and `locality_centroid()` (`040`, concurrent
- * with this file), read through `lib/data/places.ts`.
+ * `search_places()` (`037`/`039`) and `locality_centroid()` (`040`), read
+ * through `lib/data/places.ts`.
  *
  * The client is a thenable stub rather than a mock of `@supabase/supabase-js`
  * — same reasoning as `media.test.ts`'s header: what is worth pinning is the
@@ -87,6 +87,39 @@ describe('the token cap', () => {
     await searchPlaces('Jumbo Maastricht', null)
 
     expect(rpc).toHaveBeenCalledWith('search_places', expect.objectContaining({ q: 'Jumbo Maastricht' }))
+  })
+
+  /**
+   * The nit reviewer flagged: `039` §5d dedups case-insensitively before
+   * building patterns, so the CAP must do the same before slicing — otherwise
+   * eight repeats of one word (case-varied, so a naive dedup would miss it)
+   * fill the whole budget and a genuinely distinct final word never reaches
+   * the database at all.
+   */
+  it('dedupes case-insensitively before truncating, so a repeated word cannot push out a distinct one', async () => {
+    const repeated = ['Jumbo', 'jumbo', 'JUMBO', 'Jumbo', 'jumbo', 'JUMBO', 'Jumbo', 'jumbo']
+    expect(repeated).toHaveLength(PLACE_SEARCH_MAX_TOKENS)
+
+    await searchPlaces([...repeated, 'Maastricht'].join(' '), null)
+
+    // Under the cap once deduped (2 unique tokens), so nothing is truncated —
+    // the original term, repeats and all, is sent unchanged and the database
+    // does its own dedup on the far side (`039` §5d).
+    expect(rpc).toHaveBeenCalledWith(
+      'search_places',
+      expect.objectContaining({ q: [...repeated, 'Maastricht'].join(' ') })
+    )
+  })
+
+  it('still truncates once the number of genuinely distinct tokens exceeds the cap', async () => {
+    const distinct = Array.from({ length: PLACE_SEARCH_MAX_TOKENS + 2 }, (_, i) => `word${i}`)
+
+    await searchPlaces(distinct.join(' '), null)
+
+    expect(rpc).toHaveBeenCalledWith(
+      'search_places',
+      expect.objectContaining({ q: distinct.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ') })
+    )
   })
 })
 
@@ -173,38 +206,50 @@ describe('getLocalityCentroid', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('resolves a locality to a centroid', async () => {
+  it('resolves a locality to its full row — lat, lon AND place_count', async () => {
+    // `LocalityCentroid` (`src/types/index.ts`, `040`) is the canonical type;
+    // this returns the row as-is rather than narrowing it to `{lat, lon}`.
     rpc.mockReturnValue(fakeQuery({ data: [{ lat: 52.09, lon: 5.12, place_count: 431 }], error: null }))
 
-    await expect(getLocalityCentroid('Utrecht')).resolves.toEqual({ lat: 52.09, lon: 5.12 })
+    await expect(getLocalityCentroid('Utrecht')).resolves.toEqual({ lat: 52.09, lon: 5.12, place_count: 431 })
     expect(rpc).toHaveBeenCalledWith('locality_centroid', { q: 'Utrecht' })
   })
 
   /**
-   * The one behaviour this accessor is *for*: `040` may not have shipped yet
-   * — it lands concurrently with this file, from a different agent — and any
-   * error must degrade the resolver to "no bias" rather than take a search
-   * sheet down. Deliberately not narrowed to a specific error code, because a
-   * function that does not exist yet can surface as several different shapes
-   * depending on what PostgREST's schema cache currently holds.
+   * The behaviour this accessor is *for*: a function that is renamed,
+   * dropped, or refused by a role grant must degrade the resolver to "no
+   * bias" rather than take a search sheet down. Deliberately not narrowed to
+   * a specific error code, because a broken deploy can surface as several
+   * different shapes depending on what PostgREST's schema cache currently
+   * holds. Also asserts the `console.warn` fires — the thing that keeps that
+   * kind of break from being invisible forever.
    */
-  it('degrades to null on any RPC error, not only "function missing"', async () => {
-    rpc.mockReturnValue(fakeQuery({ data: null, error: { message: 'could not find function', code: '42883' } }))
-    await expect(getLocalityCentroid('Utrecht')).resolves.toBeNull()
+  it('degrades to null on any RPC error, not only "function missing" — and warns rather than staying silent', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      rpc.mockReturnValue(fakeQuery({ data: null, error: { message: 'could not find function', code: '42883' } }))
+      await expect(getLocalityCentroid('Utrecht')).resolves.toBeNull()
+      expect(warn).toHaveBeenCalled()
 
-    rpc.mockReturnValue(fakeQuery({ data: null, error: { message: 'PGRST202', code: 'PGRST202' } }))
-    await expect(getLocalityCentroid('Utrecht')).resolves.toBeNull()
+      warn.mockClear()
+      rpc.mockReturnValue(fakeQuery({ data: null, error: { message: 'PGRST202', code: 'PGRST202' } }))
+      await expect(getLocalityCentroid('Utrecht')).resolves.toBeNull()
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 
-  it('returns null for a locality with no matching rows', async () => {
-    rpc.mockReturnValue(fakeQuery({ data: [{ lat: null, lon: null, place_count: 0 }], error: null }))
+  it('returns null for a locality with no matching rows (zero rows, never a row of nulls)', async () => {
+    rpc.mockReturnValue(fakeQuery({ data: [], error: null }))
     await expect(getLocalityCentroid('Nowhereville')).resolves.toBeNull()
   })
 
-  it('returns null when place_count is zero even if lat/lon are not null', async () => {
-    // Should not happen from a well-formed AVG/COUNT query, but this accessor
-    // does not trust the function's internals — only its own contract.
-    rpc.mockReturnValue(fakeQuery({ data: [{ lat: 0, lon: 0, place_count: 0 }], error: null }))
+  it('sanity-checks lat/lon rather than trusting a malformed row blindly', async () => {
+    rpc.mockReturnValue(fakeQuery({ data: [{ lat: null, lon: null, place_count: 0 }], error: null }))
+    await expect(getLocalityCentroid('Nowhereville')).resolves.toBeNull()
+
+    rpc.mockReturnValue(fakeQuery({ data: [{ lat: NaN, lon: 5.12, place_count: 1 }], error: null }))
     await expect(getLocalityCentroid('Nowhereville')).resolves.toBeNull()
   })
 
@@ -218,6 +263,6 @@ describe('getLocalityCentroid', () => {
         error: null,
       })
     )
-    await expect(getLocalityCentroid('Utrecht')).resolves.toEqual({ lat: 52.09, lon: 5.12 })
+    await expect(getLocalityCentroid('Utrecht')).resolves.toEqual({ lat: 52.09, lon: 5.12, place_count: 10 })
   })
 })

@@ -34,13 +34,35 @@ import { getMyLocationText } from '@/lib/data/profile'
  * `requestDeviceLocation`, and only because it only ever runs from an
  * explicit tap.
  *
- * ## Cached for the page load
+ * ## Cached, with a TTL — not "for the page load" any more
  *
  * Same shape as `guard-cache.ts`, simplified: nothing here needs to be read
  * synchronously during render (no `useSyncExternalStore`, no listeners), so a
  * single memoised promise is enough — re-resolving per keystroke of a search
  * sheet would mean re-asking Permissions and re-reading the profile on every
  * character typed.
+ *
+ * **"For the page load" was the wrong framing for a Capacitor WebView, which
+ * can live for hours rather than minutes.** A rider who opens the app in
+ * Utrecht and rides 200 km to Maastricht would otherwise keep an Utrecht bias
+ * for the WebView's entire life — and per `PlaceSearchResult`'s documented
+ * proximity edge, once five Utrecht rows fill the local pass, a Maastricht
+ * place is *unreachable*, not merely ranked lower. `GEOLOCATION_MAX_AGE_MS`
+ * is the TTL as well as the device fix's own `maximumAge` — the same number
+ * for the same reason: a position (or a resolved bias built from one) is not
+ * worth trusting past it.
+ *
+ * **A failed attempt is a third thing, and it is not cached at all.** See
+ * `resolveAndCache`'s own comment — the short version is `guard-cache.ts`'s
+ * own rule, "a failed read must never harden into a verdict."
+ *
+ * ## Sign-out
+ *
+ * `clearRiderLocation()` is this module's half of `signOut`'s sweep
+ * (`src/lib/actions/auth.ts`), alongside `clearQueryCache`/`clearGuardCache`.
+ * `signOut` navigates with `router.replace`, not a reload, so nothing else in
+ * this module resets between one rider signing out and the next signing in on
+ * the same device.
  *
  * ## The read-in-an-effect rule applies here too
  *
@@ -61,12 +83,22 @@ export type RiderLocation = {
 }
 
 /**
- * A hanging GPS fix must never delay a search. `getCurrentPosition`'s own
- * `timeout` option is the primary guard; `getPositionOnce` below adds a
- * second, JS-level timer as well, because some WebView geolocation shims are
- * known not to honour it and never call either callback at all — belt and
- * braces, not paranoia, given a rider is standing at a petrol station with
- * the engine running.
+ * A hanging GPS *acquisition* must never delay a search. `getCurrentPosition`'s
+ * own `timeout` option is the primary guard for that; `getPositionOnce`
+ * below can add a second, JS-level timer as well for a WebView shim known not
+ * to honour it and never call either callback at all — belt and braces, not
+ * paranoia, given a rider is standing at a petrol station with the engine
+ * running.
+ *
+ * **That belt must never be armed before permission is decided.** Per the
+ * Geolocation API's own algorithm, the native `timeout` is measured from
+ * "acquire a position" — i.e. from *after* the rider has answered the OS
+ * prompt — but a JS `setTimeout` started at call time counts the prompt
+ * itself. Reproduced: tap "use my location", read the dialog, tap Allow at
+ * 6s — an unconditionally-armed backstop had already fired at 4.5s, so the
+ * real fix arrived into a no-op and the rider was told "no location" on
+ * exactly the grant that matters, the first one. See `getPositionOnce`'s
+ * `arm` parameter.
  */
 const GEOLOCATION_TIMEOUT_MS = 4_000
 
@@ -76,6 +108,11 @@ const GEOLOCATION_TIMEOUT_MS = 4_000
  * costs nothing here and saves the device a fresh GPS acquisition (battery),
  * unlike a ride actually being tracked, which is a `watchPosition` concern
  * that belongs to the native shell rather than to this one-shot read.
+ *
+ * Doubles as the page-load memo's TTL — see the module header's "cached, with
+ * a TTL" section for why five minutes is also the right bound for how long a
+ * *resolved* bias stays trustworthy, not only for the device's own
+ * `maximumAge`.
  */
 const GEOLOCATION_MAX_AGE_MS = 5 * 60_000
 
@@ -100,7 +137,23 @@ async function permissionState(): Promise<PermissionState | 'unsupported'> {
   }
 }
 
-function getPositionOnce(): Promise<GeolocationPosition | null> {
+/**
+ * `arm` decides whether the JS-level backstop timer starts counting from
+ * THIS call. It must only be `true` when the caller already knows, before
+ * calling, that no OS permission dialog can appear for this request — see
+ * `GEOLOCATION_TIMEOUT_MS`'s own comment for the defect an unconditional
+ * `true` caused.
+ *
+ * The silent path (`resolveFromDeviceSilently`) always passes `true`: it has
+ * already confirmed `granted` before calling, so no dialog is possible.
+ * `requestDeviceLocation` passes `true` only when its own pre-check already
+ * reads `granted`, and `false` otherwise — accepting, deliberately, that a
+ * WebView shim which both ignores the native `timeout` *and* never calls
+ * either callback would then hang with no local recovery on that path. That
+ * is a narrower, rarer failure than the one this parameter exists to fix,
+ * which happened on the very first grant every rider makes.
+ */
+function getPositionOnce(arm: boolean): Promise<GeolocationPosition | null> {
   return new Promise((resolve) => {
     let settled = false
     const settle = (value: GeolocationPosition | null) => {
@@ -109,16 +162,15 @@ function getPositionOnce(): Promise<GeolocationPosition | null> {
       resolve(value)
     }
 
-    // The belt to `timeout` below's braces — see the constant's own comment.
-    const timer = setTimeout(() => settle(null), GEOLOCATION_TIMEOUT_MS + 500)
+    const timer = arm ? setTimeout(() => settle(null), GEOLOCATION_TIMEOUT_MS + 500) : undefined
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        clearTimeout(timer)
+        if (timer) clearTimeout(timer)
         settle(position)
       },
       () => {
-        clearTimeout(timer)
+        if (timer) clearTimeout(timer)
         settle(null) // denied, unavailable, or timed out — all degrade the same way
       },
       { timeout: GEOLOCATION_TIMEOUT_MS, maximumAge: GEOLOCATION_MAX_AGE_MS }
@@ -135,16 +187,26 @@ async function resolveFromDeviceSilently(): Promise<RiderLocation | null> {
   if (!hasGeolocation()) return null
   if ((await permissionState()) !== 'granted') return null
 
-  const position = await getPositionOnce()
+  const position = await getPositionOnce(true) // already known granted — no dialog possible
   return position ? toRiderLocation(position) : null
 }
 
 /**
  * Source 2 — the rider's onboarding city, geocoded. Two reads:
  * `profiles.location` (free text), then `locality_centroid()` (`040`) to turn
- * it into coordinates. Either coming back empty degrades to the next source
- * rather than throwing — a rider with no onboarding location, or a locality
- * the geocoder does not recognise, is an ordinary case here, not a fault.
+ * it into coordinates. Either one coming back EMPTY degrades to the next
+ * source rather than throwing — a rider with no onboarding location, or a
+ * locality the geocoder does not recognise, is an ordinary case here, not a
+ * fault.
+ *
+ * **A genuine READ FAILURE is a different thing, and it is not swallowed
+ * here.** `getMyLocationText()` uses `unwrap`, which throws on any PostgREST
+ * error (`lib/data/unwrap.ts`'s own honesty argument), and that throw
+ * propagates out of this function and out of `resolveChain` — it is not
+ * caught here. It never reaches a caller of `resolveRiderLocation`, though:
+ * `resolveAndCache`'s own comment is where that is actually handled, by not
+ * memoising a failed attempt rather than by pretending this function cannot
+ * fail.
  */
 async function resolveFromProfile(): Promise<RiderLocation | null> {
   const location = await getMyLocationText()
@@ -184,15 +246,47 @@ function assertBrowser(fn: string): void {
 }
 
 let cachedLocation: Promise<RiderLocation | null> | undefined
+let cachedAt = 0
 
 /**
- * The resolver every caller should reach for. Resolves once per page load and
- * reuses that answer for every later call — see the module header's "cached
- * for the page load" section.
+ * Starts a fresh chain resolution and memoises it — but only for as long as
+ * it stays a *success*, never a failure.
+ *
+ * `resolveChain()` can reject (`resolveFromProfile` propagating a genuine
+ * read error, see its own comment). Caching that rejected promise is the
+ * defect this function exists to avoid: `guard-cache.ts` states the rule
+ * this mirrors — "a failed read must never harden into a verdict" — and
+ * without it, one mobile network blip would lose the search bias for the
+ * rest of the WebView's life rather than for one call. So a rejection is
+ * caught here, turned into `null` for *this* caller only, and the memo is
+ * cleared so the very next call retries the whole chain from scratch.
+ *
+ * The identity check before clearing matters: `requestDeviceLocation` may
+ * already have overwritten `cachedLocation` with a fresher, successful
+ * answer while this attempt was still in flight, and that must win rather
+ * than being erased by a late failure behind it.
+ */
+function resolveAndCache(): Promise<RiderLocation | null> {
+  cachedAt = Date.now()
+  const promise: Promise<RiderLocation | null> = resolveChain().catch(() => {
+    if (cachedLocation === promise) cachedLocation = undefined
+    return null
+  })
+  cachedLocation = promise
+  return promise
+}
+
+/**
+ * The resolver every caller should reach for. Resolves once and reuses that
+ * answer until it goes stale — see the module header's "cached, with a TTL"
+ * section — rather than re-asking Permissions and re-reading the profile on
+ * every keystroke of a search sheet.
  */
 export function resolveRiderLocation(): Promise<RiderLocation | null> {
   assertBrowser('resolveRiderLocation')
-  cachedLocation ??= resolveChain()
+
+  const stale = cachedLocation !== undefined && Date.now() - cachedAt >= GEOLOCATION_MAX_AGE_MS
+  if (cachedLocation === undefined || stale) return resolveAndCache()
   return cachedLocation
 }
 
@@ -201,8 +295,8 @@ export function resolveRiderLocation(): Promise<RiderLocation | null> {
  * module that may trigger the OS permission prompt, because it only ever
  * runs from a tap. Bypasses the chain and asks the device directly.
  *
- * On success it also overwrites the page-load cache, so a
- * `resolveRiderLocation()` call later in the same session sees the fresher
+ * On success it also overwrites the page-load cache (and its timestamp), so
+ * a `resolveRiderLocation()` call later in the same session sees the fresher
  * device fix instead of repeating the profile fallback. On denial, timeout,
  * or a device with no geolocation it returns `null` and leaves the cache
  * exactly as it was — a rejected explicit request should not erase whatever
@@ -212,15 +306,44 @@ export async function requestDeviceLocation(): Promise<RiderLocation | null> {
   assertBrowser('requestDeviceLocation')
   if (!hasGeolocation()) return null
 
-  const position = await getPositionOnce()
+  // Only arm the JS backstop when a pre-check already reads `granted` — see
+  // `getPositionOnce`'s header for the defect this avoids. A `prompt`,
+  // `denied` (re-requesting after a previous decline), or `unsupported` read
+  // all mean the wait could be a human reading the OS dialog rather than a
+  // hung GPS fix, so the backstop is skipped for those and the native
+  // `timeout` — which starts only after the decision — is the only guard.
+  const arm = (await permissionState()) === 'granted'
+
+  const position = await getPositionOnce(arm)
   if (!position) return null
 
   const location = toRiderLocation(position)
   cachedLocation = Promise.resolve(location)
+  cachedAt = Date.now()
   return location
+}
+
+/**
+ * Sign-out's own sweep, matching `clearQueryCache`/`clearGuardCache`
+ * (`src/lib/actions/auth.ts`). A `RiderLocation` carries no user id and no
+ * ownership check of its own — nothing here would notice a different rider —
+ * so without this, rider A's coordinates survive `signOut`'s client-side
+ * `router.replace` (there is no page reload) straight into rider B's session
+ * on the same device.
+ *
+ * Guarded the same way `clearGuardCache` is: a no-op with no `document`, so
+ * "nothing writes this module's state during a server render" holds by
+ * construction rather than by every caller happening to be client-only
+ * today.
+ */
+export function clearRiderLocation(): void {
+  if (typeof document === 'undefined') return
+  cachedLocation = undefined
+  cachedAt = 0
 }
 
 /** Test seam, matching `resetGuardCacheForTests`. Nothing in the app calls it. */
 export function resetRiderLocationCacheForTests(): void {
   cachedLocation = undefined
+  cachedAt = 0
 }

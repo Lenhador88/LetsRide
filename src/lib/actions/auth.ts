@@ -1,6 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
+import { clearRiderLocation } from '@/lib/location/rider-location'
 import { clearSessionStore } from '@/lib/supabase/session-store'
 import { RECOVERY_EXPIRED_MESSAGE, consumePasswordResetGrant } from '@/lib/auth/recovery'
 import type { ActionState } from '@/lib/actions/state'
@@ -227,6 +228,13 @@ export async function updatePassword(
  * rather than the query cache's — see `lib/auth/guard-cache.ts` for why it is
  * cleared here as well as by the `SIGNED_OUT` listener.
  *
+ * **`clearRiderLocation()` is the fourth**, added with the place-search
+ * location provider (`src/lib/location/rider-location.ts`). It holds no user
+ * id of its own to check against, so without this call a rider's resolved
+ * coordinates survive this function's client-side navigation (there is no
+ * page reload) into whoever signs in next on the same device.
+ *
+
  * **The rider ends up signed out even when the revocation fails**, which is the
  * offline case 4.5 names. `signOut()` defaults to `scope: 'global'` — a network
  * call to revoke every session — and on a dead network that rejects. Falling
@@ -244,6 +252,7 @@ export async function signOut(): Promise<ActionState> {
 
   clearQueryCache()
   clearGuardCache()
+  clearRiderLocation()
   await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
 }
