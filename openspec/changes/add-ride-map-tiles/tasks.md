@@ -34,8 +34,10 @@
   leaving 80×134 of map. If the answer is that it cannot be made legible, the strip renders no tile
   — that is the specified negative case, not a failure.
 - [ ] 0.4 **Q3 — product owner, non-blocking.** Render ceiling per ride. Default: **10 renders per
-  ride per rolling 24 hours**, enforced by the counter in task 1.4. High enough that no honest
-  organizer meets it, low enough to bound a loop.
+  ride per fixed 24-hour window**, enforced by the trigger-owned counter in task 1.4. High enough
+  that no honest organizer meets it, low enough to bound a loop. **Fixed, not rolling** — a rolling
+  window needs one row per render; the cheap version's worst case is 2× the ceiling across a window
+  boundary (`design.md` §D2).
 - [ ] 0.5 **Q4 — product owner, non-blocking.** Signed-URL TTL for tiles. Default: **the shortest
   TTL already used for images in this app** — match it rather than inventing a second number, and
   record what it is. This bounds the revocation window in `stored-media-visibility`.
@@ -56,9 +58,10 @@
 - [ ] 1.1 Write `supabase/migrations/042_ride_map_tiles.sql`. **Header must state the grant level
   read from `relacl` and `attacl`** and that the table-level grant is deliberately left in place —
   the columns arrive client-writable and that is accepted, per `design.md` §D2.
-- [ ] 1.2 Add `latitude double precision`, `longitude double precision`, `geocode_confidence real`,
-  `map_card_path text`, `map_detail_path text` to `public.rides`. All nullable. NULL is the normal
-  state, not an error.
+- [ ] 1.2 Add **seven** columns to `public.rides`: `latitude double precision`,
+  `longitude double precision`, `geocode_confidence real`, `map_card_path text`,
+  `map_detail_path text` (all nullable — NULL is the normal state, not an error), plus
+  `map_render_count integer not null default 0` and `map_render_window_start timestamptz`.
 - [ ] 1.3 Add the constraints:
   - the **coupling + floor** CHECK — either all of `latitude`/`longitude`/`geocode_confidence` are
     NULL, or all are present with the coordinates in range and `geocode_confidence >= <floor>`;
@@ -67,25 +70,37 @@
   - a **path-pinning** CHECK on both path columns —
     `like 'ride-maps/' || organizer_id::text || '/%'` plus the filename shape, matching the pinning
     `profiles` and `clubs` already use.
-- [ ] 1.4 Add the render counter and its ceiling (Q3), enforced by the database rather than by the
-  function, which is stateless and can be called concurrently.
-- [ ] 1.5 Add the `BEFORE UPDATE` trigger clearing all five columns, scoped
-  `WHEN (old.meeting_point IS DISTINCT FROM new.meeting_point)`. **The scope is not optional** —
-  `propagate_club_privacy_to_rides` bulk-updates `rides` and an unscoped trigger wipes every tile in
-  a club when it turns private. Revoke EXECUTE on the trigger function from `public, anon,
-  authenticated` so it produces no security advisor.
+- [ ] 1.4 Add the counter-ownership `BEFORE UPDATE` trigger. It **derives `map_render_count` and
+  `map_render_window_start` from their `OLD` values and discards whatever the client supplied**,
+  resets the window when it has elapsed, and refuses the write when the ceiling (Q3) is reached.
+  **A DEFAULT is not the enforcement** — `rides` carries a table-level UPDATE grant this change
+  deliberately retains, so without the trigger the organizer can `PATCH {"map_render_count": 0}`
+  and reset the ceiling that exists to bound the organizer.
+- [ ] 1.5 Add the stale-tile `BEFORE UPDATE` trigger clearing the **five tile columns** (not the two
+  counters), scoped `WHEN (old.meeting_point IS DISTINCT FROM new.meeting_point)`. **The scope is
+  not optional** — `propagate_club_privacy_to_rides` bulk-updates `rides` and an unscoped trigger
+  wipes every tile in a club when it turns private. Revoke EXECUTE on both trigger functions from
+  `public, anon, authenticated` so they produce no security advisor.
 - [ ] 1.6 Add the three `storage.objects` policies for `ride-maps/`. **Copy the SELECT shape from
-  `Riders read postcard images their audience predicate allows`, not from any INSERT policy** —
-  `EXISTS` against `rides` under caller RLS, matching `map_card_path` or `map_detail_path`, plus the
-  uid-segment pin to `organizer_id`. INSERT and DELETE take the ordinary own-folder shape.
+  `Riders read postcard images their audience predicate allows`, not from any INSERT policy and not
+  from "the five folders" generally** — four of the five carry an `own-folder OR EXISTS(parent)`
+  disjunction. The policy is `EXISTS` against `rides` under caller RLS, matching `map_card_path` or
+  `map_detail_path`, plus the uid-segment pin to `organizer_id`, **plus a deliberate own-folder arm**
+  (`design.md` §D9/§D10) so an orphan stays listable and deletable by its organizer. INSERT and
+  DELETE take the ordinary own-folder shape.
 - [ ] 1.7 Add an index supporting the storage SELECT policy's lookup by path, so a tile fetch does
   not sequentially scan `rides`.
 - [ ] 1.8 **Paired assertions in `supabase/tests/rls_test.sql`** — required by
   `openspec/config.yaml`; a policy change with no new assertion is not finished. Cover every row of
   the per-role table: organizer, crew (`going` and `maybe`), signed-in non-crew on a visible ride,
   non-member of a private club, ex-member with a surviving `ride_members` row, blocked in **both**
-  directions, club owner, club admin, and the object no row names. Also assert both CHECKs, the
-  trigger firing on an address change, and the trigger **not** firing on an `is_public` bulk update.
+  directions, club owner, club admin, and the object no row names — asserting for that last one
+  that **another** rider is refused **and** that the organizer is not. Also assert all three CHECKs,
+  the stale-tile trigger firing on an address change and **not** firing on an `is_public` bulk
+  update, and the counter trigger discarding a client-supplied `map_render_count`.
+- [ ] 1.8a Assert the **left-the-club** path directly: an organizer whose ride keeps a `club_id`
+  they are no longer a member of can SELECT the ride and is refused the UPDATE by the policy's
+  `WITH CHECK` arm. This is the silent-failure path in `design.md` §D2 and nothing else covers it.
 - [ ] 1.9 Assert the storage policies **per folder**, not by reusing another folder's coverage, per
   `stored-media-visibility`.
 - [ ] 1.10 `PGPASSWORD=postgres npm test` green. Reconcile by **label set**, not by count — a count
@@ -137,6 +152,13 @@ exactly what they render today.** That is the intended intermediate state.
 - [ ] 4.4 Take **only** a ride id. Establish entitlement by reading the ride under the caller's own
   RLS and comparing `organizer_id` to the verified subject — no organizer id, club id or uid from
   the request body.
+- [ ] 4.4a **Pre-flight the club-membership arm before spending anything.** After the ride read,
+  check `club_id IS NULL OR <caller holds a club_members row for it>` under the caller's own JWT,
+  and stop before the geocode if it fails. `private.is_club_member` is unreachable — PostgREST
+  routes only to `public` — so read `club_members` directly. Without this, an organizer who left
+  the club pays for a geocode and two renders and then has the column write refused.
+- [ ] 4.4b **Read the render counter and refuse before the vendor call** if the ride is at its
+  ceiling. The trigger is the backstop; this is the layer that saves the money.
 - [ ] 4.5 Geocode, then apply the granularity gate and then the numeric floor. Below either: write
   nothing, return success, do not render — a render costs a call for an image that must not be
   shown.
@@ -145,7 +167,10 @@ exactly what they render today.** That is the intended intermediate state.
   policy.
 - [ ] 4.7 Upload, then write the columns. Every vendor and upload failure returns success to the
   caller with NULL columns; the ride write must never fail because a map did not render.
-- [ ] 4.8 Delete the superseded objects when replacing a tile.
+- [ ] 4.8 **On a refused column write, delete the objects just uploaded.** That is the only moment
+  their paths are still known — the row never recorded them and the trigger would not have kept
+  them. Not tidy-up; the compensating action for the mid-flight membership change 4.4a cannot
+  catch. Generate the object names in the function so they are in hand throughout.
 - [ ] 4.9 Key-absence tripwire test in the shape of `src/__tests__/no-service-role-key.test.ts`,
   **including that the detector still catches a real key** — a guard that has quietly stopped
   matching passes for ever and looks exactly like a clean repo.
@@ -157,6 +182,11 @@ exactly what they render today.** That is the intended intermediate state.
 
 - [ ] 5.1 Call the function from `src/lib/actions/rides.ts` after a create, and after an update that
   changed `meeting_point`. Fire-and-forget: never block the redirect, never surface a map error.
+- [ ] 5.1a **Delete the existing tile objects BEFORE issuing the UPDATE that changes
+  `meeting_point`.** The stale-tile trigger NULLs the path columns in that same statement, so
+  afterwards nothing knows their names. Same ordering as the ride-delete path — objects first, then
+  the row that names them (`design.md` §D9).
+- [ ] 5.1b Same ordering in the ride **delete** action: remove both objects, then delete the row.
 - [ ] 5.2 Invalidate `rides.all()` and `rides.detail(id)` when a render reports that it wrote paths.
   No new key — the paths ride on rows those keys already cover.
 - [ ] 5.3 Extend `keys.ts`'s header table only if a claim changes. Do not add a key for a field.

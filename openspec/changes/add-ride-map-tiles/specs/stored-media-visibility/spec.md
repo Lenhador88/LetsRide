@@ -25,9 +25,16 @@ owner alone.
 
 **A path is not a permission.** Object paths in this app are constructed from uids and row ids,
 both of which are visible to riders in ordinary API responses, so a folder protected only by its
-prefix is protected by nothing. The five existing SELECT policies already do this correctly and
-are the pattern; the five INSERT and five DELETE policies check the prefix and the caller's uid
-**only**, which is correct for a write and catastrophic if copied into a read.
+prefix is protected by nothing. All six SELECT policies carry the `EXISTS`; the six INSERT and six
+DELETE policies check the prefix and the caller's uid **only**, which is correct for a write and
+catastrophic if copied into a read.
+
+**Two shapes are in use and both are permitted — measured 2026-08-09, and the distinction is the
+subject of the own-folder requirement below.** Four SELECT policies are
+`own-folder OR EXISTS(parent)` (`avatars`, `covers`, `club-avatars`, `club-covers`); `postcards` is
+the bare `EXISTS`; `ride-maps` is `own-folder OR EXISTS(rides)`. The disjunction is safe **only**
+where the folder's uid segment identifies the same rider the owning row is about — which is why
+this requirement legislates that condition rather than banning the arm outright.
 
 #### Scenario: The read policy defers to the parent row's policy
 - **WHEN** a SELECT policy is written for any folder
@@ -50,11 +57,32 @@ are the pattern; the five INSERT and five DELETE policies check the prefix and t
 - **AND** the reason SHALL be recorded: without it, a rider who can write the referencing column
   can point it at another rider's object and publish it to their own row's audience
 
-#### Scenario: An object no row names is unreadable
+#### Scenario: An object no row names is unreadable by everyone except its folder's owner
 - **WHEN** an object exists that no row references
-- **THEN** every fetch SHALL be refused, including from the rider whose folder it sits in
-- **AND** an "or I own the folder" arm SHALL NOT be added to make it readable, because it would
-  keep content readable after the row granting its audience was deleted
+- **THEN** every fetch by any other rider SHALL be refused
+- **AND** the folder's own rider MAY still read and delete it, where the own-folder arm is
+  permitted by the rule below
+- **AND** the reason SHALL be recorded: an object nobody can name is an object nobody can delete,
+  so removing that arm converts a cleanup affordance into permanent invisible retention
+
+#### Scenario: The own-folder arm is permitted only where the folder identifies the row's subject
+- **WHEN** a SELECT policy adds an `own-folder OR …` arm
+- **THEN** it SHALL be permitted only where the folder's uid segment identifies the **same rider
+  the owning row is about** — their own profile, a club they own, a ride they organise
+- **AND** it SHALL be forbidden where the folder's uid identifies a rider who is merely the
+  *uploader* of content whose audience belongs to someone else or to a group, because there the arm
+  grants reach the parent row deliberately withheld
+- **AND** this SHALL be recognised as describing the live schema rather than contradicting it: the
+  four folders carrying the arm are all of the first kind, and `postcards` — where an image's
+  audience is its club rather than its author — correctly omits it
+
+#### Scenario: The rule is not read as condemning the four policies that predate it
+- **WHEN** a later audit compares the live `storage.objects` policies against this capability
+- **THEN** `avatars`, `covers`, `club-avatars` and `club-covers` SHALL be found **compliant**, not
+  defective
+- **AND** no migration SHALL be written to strip their own-folder arms on the strength of this
+  requirement, because doing so would remove a rider's ability to read and clean up their own
+  superseded uploads — a behaviour change nobody has decided
 
 #### Scenario: A signed-out visitor reads no object
 - **WHEN** a request for any object arrives with no session
@@ -137,8 +165,14 @@ photo.
 Every folder in the bucket SHALL have its own SELECT, INSERT and DELETE policies, and each SHALL
 carry its own assertions. A folder SHALL NOT rely on another folder's assertions.
 
-Fifteen policies across five folders exist today with no per-folder test contract written down; a
-sixth folder added without its own assertions looks exactly like a correct one.
+Folders have been added without a per-folder test contract written down, and a new one carrying no
+assertions of its own looks exactly like a correct one. Re-derive the inventory rather than reading
+a number here — it moves with every folder:
+
+```sql
+select cmd, count(*) from pg_policies
+ where schemaname = 'storage' and tablename = 'objects' group by cmd order by cmd;
+```
 
 #### Scenario: A new folder arrives with three policies and its own assertions
 - **WHEN** a folder is added

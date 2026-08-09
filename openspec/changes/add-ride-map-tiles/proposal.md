@@ -36,10 +36,14 @@ storage indefinitely, serving it to multiple end users, with no active-subscript
 architecture is **render once, store in Supabase Storage, never call the vendor from a rider's
 device**, which answers offline read, per-view cost, per-view IP leak and key exposure together.
 
-- **Four new columns on `public.rides`** — `latitude double precision`,
-  `longitude double precision`, `geocode_confidence real`, and the two Storage object paths
-  `map_card_path text` / `map_detail_path text`. All nullable; NULL is the normal state and the
-  designed fallback, not an error.
+- **Seven new columns on `public.rides`** — `latitude double precision`,
+  `longitude double precision`, `geocode_confidence real`, the two Storage object paths
+  `map_card_path text` / `map_detail_path text`, and the two spend-control columns
+  `map_render_count integer` / `map_render_window_start timestamptz`. The first five are nullable
+  and NULL is the normal state and the designed fallback, not an error. **Count them from this
+  list rather than from a total written in prose** — an earlier revision of this bullet said
+  "four" above a list of five, and the two counter columns were absent from the inventory while
+  being required by the spec.
 - **Three CHECK constraints**, and the middle one is deliberately one-directional. A coordinate may
   not exist without a confidence at or above the floor (§The confidence floor); a **tile path may
   not exist without a coordinate**, while a coordinate **may** exist without a tile path, because a
@@ -47,16 +51,30 @@ device**, which answers offline read, per-view cost, per-view IP leak and key ex
   requiring both would turn a partial failure into a write failure and lose the coordinate too; and
   both path columns are pinned to `'ride-maps/' || organizer_id || '/%'`, the shape `profiles` and
   `clubs` already use.
-- **One `BEFORE UPDATE` trigger on `rides`** that NULLs all five columns when `meeting_point`
+- **One `BEFORE UPDATE` trigger on `rides`** that NULLs the five tile columns when `meeting_point`
   changes. This is the stale-tile rule, and it is a trigger rather than a convention in
   `lib/actions/` because the client owns the mutation path and can decline to run a convention.
   It is scoped with `WHEN (old.meeting_point IS DISTINCT FROM new.meeting_point)` — **measured
   2026-08-09**: `propagate_club_privacy_to_rides` issues
   `update public.rides set is_public = false where club_id = … and is_public`, so an unscoped
   trigger would wipe every tile in a club the moment that club went private.
-- **A sixth Storage folder, `ride-maps/<organizer uid>/<uuid>.jpg`**, with three policies matching
-  the shape of the five folders that already exist — INSERT and DELETE pinned to the caller's own
-  folder, SELECT joined to the parent row.
+
+  **The same trigger is why the caller must delete the superseded objects *before* it issues that
+  UPDATE.** Clearing the columns destroys the only record of the old object names, and this
+  change builds no privileged sweeper that could find them afterwards. See §Orphaned objects.
+- **The spend control is owned by the database and overwritten, not merely defaulted.** A second
+  `BEFORE UPDATE` trigger owns `map_render_count` and `map_render_window_start` outright: it
+  derives both from their `OLD` values and discards whatever the client supplied, which is `034`'s
+  `created_at` ruling applied to a counter. Without that, the counter is client-writable — `rides`
+  carries a **table-level** UPDATE grant that this change deliberately keeps — and the organizer
+  could reset the ceiling that exists to bound the organizer.
+- **A sixth Storage folder, `ride-maps/<organizer uid>/<uuid>.jpg`**, with three policies. INSERT
+  and DELETE take the ordinary own-folder shape. **The SELECT policy is modelled on
+  `Riders read postcard images their audience predicate allows` specifically, not on "the five
+  folders" generally** — four of the five carry an `own-folder OR EXISTS(parent)` **disjunction**,
+  and copying that blindly is a different policy from the one this change specifies. `ride-maps`
+  carries the own-folder arm too, but for a stated reason rather than by imitation: see
+  §Orphaned objects.
 - **One Edge Function, `resolve-ride-location`** — geocode `meeting_point`, render both tiles,
   upload them, write the columns. It holds the Geoapify key in its secret store and **verifies the
   caller's JWT itself** rather than trusting the gateway, following
@@ -130,10 +148,26 @@ than assumed:
   `bucket_id = 'media' AND foldername[1] = '<folder>' AND foldername[2] = auth.uid()::text` plus a
   filename regex. `ride-maps` takes the identical shape, so the organizer writing their own tile
   needs no new kind of permission.
-- **The column write needs no elevation.** `rides` carries a **table-level** grant to
-  `authenticated` — `relacl` is `arwdDxtm`, and `pg_attribute.attacl` is empty for every column —
-  so the four new columns arrive client-writable the moment `alter table` runs, and the existing
-  UPDATE policy (`auth.uid() = organizer_id`) already scopes them to the organizer.
+- **The column write needs no elevation — but it is not unconditional, and the second arm is the
+  one that bites.** `rides` carries a **table-level** grant to `authenticated` — `relacl` is
+  `arwdDxtm`, and `pg_attribute.attacl` is empty for every column — so the new columns arrive
+  client-writable the moment `alter table` runs. The UPDATE policy
+  `Organizers update their own rides, within their own clubs` is **two arms, not one**, and an
+  earlier revision of this proposal quoted only the first:
+
+  ```sql
+  USING      (auth.uid() = organizer_id)
+  WITH CHECK ((auth.uid() = organizer_id)
+              AND ((club_id IS NULL) OR private.is_club_member(club_id)))
+  ```
+
+  `WITH CHECK` re-evaluates club membership on **every** update, including one that touches only
+  the map columns — and **nothing clears `rides.club_id` when a rider leaves a club** (measured
+  2026-08-09: `club_members` carries only `enforce_participation_gate` and `notify_club_joined`).
+  So an organizer who left the club their ride sits in can still *read* and still *upload*, and
+  their column write is refused. That is a live path, not a corner: leaving a club is an ordinary
+  supported action. §Ordering inside the function is what keeps it from costing money and leaving
+  litter.
 - **The bucket does not refuse the write.** `media` is private with
   `allowed_mime_types = ['image/jpeg']` and a 5 MB ceiling. It refuses PNG. **The tile is
   therefore requested as JPEG**, not PNG — recorded because "store a rendered static-map PNG"
@@ -145,7 +179,18 @@ means the organizer can write those columns directly through PostgREST — setti
 disagrees with their own address, or pointing `map_card_path` at another object. The first is
 within their authority as argued above. The second is closed by a CHECK pinning both paths to
 `'ride-maps/' || organizer_id || '/%'`, which is the shape `postcards`, `profiles` and `clubs`
-already use. The alternative — revoking the table-level UPDATE and re-granting per column, the way
+already use.
+
+**That "within their authority" argument covers the tile columns and does NOT cover the spend
+control, and the asymmetry is the reason the two decisions cannot share a rationale.** A
+coordinate, a path and an address are the organizer's own data, and a rider corrupting their own
+ride harms only their own ride. `map_render_count` is not their data — it is a limit on **our**
+vendor bill, and the organizer is the party it is aimed at. A control the adversary can reset is
+not a control. So the two counter columns are owned by a trigger that overwrites whatever the
+client sends (§What Changes), which is `034`'s ruling on `created_at`: a DEFAULT is not a rule when
+the client can name the column.
+
+The alternative — revoking the table-level UPDATE and re-granting per column, the way
 `025` did for `profiles` — buys protection against a rider vandalising their own ride and costs a
 destructive migration plus the permanent inversion that every future column on `rides` arrives
 with no UPDATE grant. Declined, and stated in the migration rather than left silent, which is what
@@ -157,6 +202,63 @@ entitled to render a ride it does not organise, which is exactly the property th
 service-role key out. That is the right trade, and it is why §What Changes lists the backfill as
 out of scope rather than as a later task.
 
+## Ordering inside the function
+
+Three steps, in this order, and each exists because of a specific failure:
+
+1. **Pre-flight the club-membership arm before spending anything.** Having read the ride, the
+   function checks `club_id IS NULL OR <caller holds a club_members row for it>` under the caller's
+   own JWT. If that fails, it stops **before** the geocode. This is the whole remedy for the
+   left-the-club path above: the money is spent at step 2, so the check belongs at step 1.
+   `private.is_club_member` is unreachable — PostgREST routes only to `public` — so the function
+   reads `club_members` directly, which RLS already scopes correctly.
+2. **Geocode, render, upload.** The object names are generated by the function, so it holds them
+   in memory from here on. That fact is load-bearing at step 3.
+3. **Write the columns; on refusal, delete the objects it just uploaded.** A membership change
+   landing between step 1 and step 3 still refuses the write, and this is the **one moment in the
+   entire design when the orphan's path is still known**. The compensating delete is therefore
+   mandatory rather than tidy-up.
+
+Writing the columns *before* uploading was considered and rejected: it trades an orphaned object
+for a row naming an object that does not exist, which renders as a broken image to every rider who
+can see the ride, and the compensating action for *that* is a second write that can fail the same
+way.
+
+## Orphaned objects — one mechanism, two routes in
+
+An object nobody can name is the shared end state of two different failures, and they are resolved
+together rather than with two bolt-ons:
+
+- **The address edit.** The stale-tile trigger NULLs the path columns, so the superseded object's
+  name is gone from the row the instant the address changes.
+- **The refused column write.** Step 3 above, when its compensating delete also fails.
+
+The **primary** rule is ordering, matching the ride-deletion rule this proposal already got right:
+**the caller deletes the old objects before issuing the UPDATE that clears them.** But that makes
+cleanup depend on a client this change elsewhere refuses to trust, so it needs a recovery path, and
+the recovery path is the mechanism:
+
+> **The `ride-maps` SELECT policy carries an own-folder arm** — `foldername[2] = auth.uid()::text`
+> **OR** the `EXISTS` against `rides`. An organizer can therefore list and delete anything in
+> `ride-maps/<their own uid>/`, including objects no row names.
+
+This grants nothing: the folder is keyed to the organizer, every object in it is a render of a
+meeting point **they authored**, and no other rider gains a single byte. What it buys is that an
+orphan stays *findable and deletable by exactly one accountable party* instead of becoming
+permanently invisible litter — a rendered image of where an identified person previously intended
+to be, retained indefinitely and uncounted.
+
+An earlier revision of this proposal argued the opposite, that the own-folder arm should be
+omitted so a deleted ride's tile stops being readable by its organizer. That reasoning was
+backwards on the only axis that matters: without the arm the organizer cannot *delete* the object
+either, so the tile survives anyway — unreadable, unlistable and permanent. The arm converts a
+retention problem into a cleanup affordance.
+
+**The sweep obligations that follow**, none of them a background job: the ride-edit action deletes
+before it updates; the ride-delete action deletes before it deletes the row; the account-deletion
+Edge Function sweeps the whole `ride-maps/<uid>/` prefix; and a rider's own orphans remain
+reachable to all three.
+
 ## Who may cause a render
 
 The function costs money and quota on every call, so this is an access-control rule, not a
@@ -167,8 +269,20 @@ politeness:
   the work rather than an `if` in the function.
 - **Nobody else.** A crew member, a club admin, a club owner, a non-member, a blocked rider and a
   signed-out caller all get nothing. Enumerated per role in `specs/ride-map-tiles/spec.md`.
-- **Bounded per ride.** An organizer editing `meeting_point` in a loop bills us on every pass.
-  A stored render counter with a ceiling makes the limit database-enforced rather than a comment.
+- **Bounded per ride, by a counter the organizer cannot reset.** An organizer editing
+  `meeting_point` in a loop bills us on every pass, so the ceiling is aimed squarely at the one
+  role that *is* allowed to render. `map_render_count` and `map_render_window_start` are therefore
+  **owned by a trigger that overwrites whatever the client supplies**, not merely defaulted — a
+  counter sitting in a client-writable column is satisfied on paper and absent in fact, and the
+  symptom is a vendor bill with no rider-visible signal. The function also reads the counter and
+  refuses **before** the vendor call, so the ceiling costs nothing to enforce; the trigger is the
+  backstop that a direct PostgREST caller cannot evade.
+- **The window is a fixed 24-hour window, not a rolling one, and the difference is stated.**
+  `map_render_window_start` plus a count is two columns; a genuinely rolling window needs one row
+  per render. The cost of the cheap version is that an organizer can spend the ceiling at the end
+  of one window and again at the start of the next — worst case 2× the ceiling across a boundary.
+  Accepted, and named, because "rolling" was the word in the original question and a reader would
+  otherwise assume the stronger guarantee.
 
 ## Capabilities
 
@@ -242,10 +356,14 @@ policy and a `ride_members` row outlives both.
 **A map tile is the opposite case, and applying `034`'s shape here would be a bug.** The tile
 depicts `meeting_point`, which `RideCard` and `RideMap` already render **as text to everyone who
 can see the ride**. So the tile's audience is exactly the ride's audience — no wider, no narrower
-— and the correct policy is the bare `EXISTS` against `rides` under the caller's own RLS that
-`postcard_comments`, `postcard_likes` and the `postcards` storage read policy all use. Narrowing
-it to the crew would hide the tile from riders who are already reading the address it draws, on a
-list screen where they can see every other field of the row.
+— and the audience-deciding condition is the plain `EXISTS` against `rides` under the caller's own
+RLS that `postcard_comments`, `postcard_likes` and the `postcards` storage read policy all use.
+Narrowing it to the crew would hide the tile from riders who are already reading the address it
+draws, on a list screen where they can see every other field of the row.
+
+(The policy also carries an own-folder arm, which admits **only** the organizer — a rider who can
+already see the ride. It decides nothing about the audience and exists to keep orphans deletable;
+see §Orphaned objects.)
 
 The half of `034`'s lesson that **does** transfer is the mechanism, not the shape: the `EXISTS`
 must run under the caller's own row security, and no `security definer` helper may stand in for
@@ -259,7 +377,8 @@ unapplied and belongs to the active `tag-postcards-to-rides` change. **Do not re
 off `CLAUDE.md`**, which says 40 files and both projects at `040`; the file count moved when that
 change wrote its migration and the applied count did not.
 
-The migration is **purely additive**: four nullable columns, one CHECK, one trigger, three
+The migration is **purely additive**: **seven columns** (five nullable tile columns, two spend
+counters), **three CHECKs**, **two triggers** (stale-tile, counter-ownership), three
 `storage.objects` policies, one index. Nothing is dropped, no existing policy is altered, no grant
 is revoked. It is therefore safe to apply **before** the code that uses it deploys, and there is
 no additive/destructive split to sequence — which is what makes §Deploy reality workable.
@@ -304,7 +423,7 @@ MCP, so these are true counts and not per-viewer ones:**
 | `profiles` grant to `authenticated` | `dDxtm` at table level + 8 per-column ACLs — the `025` precedent for revoke-and-regrant |
 | Storage buckets | **one**, `media`, private, `allowed_mime_types = ['image/jpeg']`, 5 MB |
 | `storage.objects` policies | **15** across 5 folders — 5 SELECT, 5 INSERT, 5 DELETE, all `authenticated`, **none UPDATE** |
-| Shape of the 5 SELECT policies | folder pin **plus** an `EXISTS` against the parent row joined on path equality — *not* prefix-only |
+| Shape of the 5 SELECT policies | **4 are `own-folder OR EXISTS(parent)` — a disjunction**; only `postcards` is the bare `EXISTS`. None is prefix-only |
 | Shape of the 5 INSERT/DELETE policies | prefix and owner-folder only |
 | `rides` non-internal triggers | `enforce_participation_gate`, `enforce_ride_club_audience`, `notify_ride_created_in_club` |
 | `propagate_club_privacy_to_rides` body | `update public.rides set is_public = false where club_id = new.id and is_public` — touches `is_public` only |

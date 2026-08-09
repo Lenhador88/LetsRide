@@ -121,6 +121,17 @@ policy into a SELECT position produces a folder any signed-in rider can read.
   private-club arm and `022` are inherited rather than restated
 - **AND** it SHALL additionally pin the object's second path segment to the ride's `organizer_id`,
   so that a row cannot make an object readable by naming it
+- **AND** it SHALL be modelled on `Riders read postcard images their audience predicate allows`
+  specifically rather than on "the existing folders" generally, because four of the five carry an
+  `own-folder OR EXISTS(parent)` disjunction and only that one is the bare `EXISTS`
+
+#### Scenario: The own-folder arm admits the organizer and widens the audience by nobody
+- **WHEN** the policy's own-folder arm (`foldername[2] = auth.uid()::text`) is evaluated
+- **THEN** it SHALL admit only the rider whose folder the object sits in
+- **AND** that rider SHALL be the ride's `organizer_id` for every referenced object, by the CHECK
+  pinning the path, so the arm returns nothing the `EXISTS` would not already have returned for a
+  live tile
+- **AND** its entire effect SHALL therefore be on **orphans**, which is why it is present
 
 #### Scenario: No `security definer` helper stands in for the parent check
 - **WHEN** the policy is written, reviewed or refactored
@@ -135,14 +146,18 @@ policy into a SELECT position produces a folder any signed-in rider can read.
 - **AND** the gate SHALL NOT be claimed as covering the upload, because the trigger is on tables
   and `storage.objects` is not one of the nine it is attached to
 
-#### Scenario: An orphaned object is unreadable rather than public
+#### Scenario: An orphaned object stays reachable by its uploader and by nobody else
 - **WHEN** an object exists under `ride-maps/` that no `rides` row names — an upload whose column
-  write failed, or a tile whose ride was deleted
-- **THEN** every fetch of it SHALL be refused, including by the rider who uploaded it, because the
-  `EXISTS` matches nothing
-- **AND** this SHALL be accepted as the correct failure direction, since the alternative — an
-  owner-folder arm that lets the uploader read anything they wrote — would make a deleted ride's
-  meeting point permanently readable by its organizer's session
+  write was refused, a tile superseded by an address edit, or a tile whose ride was deleted
+- **THEN** the `EXISTS` against `rides` SHALL match nothing, so **no other rider** SHALL be able to
+  fetch it under any circumstances
+- **AND** the organizer whose folder it sits in SHALL still be able to list and delete it, through
+  the policy's own-folder arm
+- **AND** the reason SHALL be recorded: without that arm the object is invisible in a listing and
+  its name is unrecoverable, so it can never be deleted by anyone — an unreadable object is not an
+  erased one, and this change builds no privileged sweeper that could find it
+- **AND** the arm SHALL be understood to grant nothing, because the folder is keyed to the
+  organizer and every object in it renders a meeting point that same rider authored
 
 #### Scenario: The bucket stays private
 - **WHEN** the folder is added
@@ -209,6 +224,38 @@ with no rider-visible symptom.
   by the function counting for itself, because the function is stateless and a client may call it
   concurrently
 - **AND** the refusal SHALL leave the existing tile in place rather than clearing it
+
+#### Scenario: The counter is not writable by the role it exists to bound
+- **WHEN** the ride's organizer issues any UPDATE naming `map_render_count` or
+  `map_render_window_start` — including a direct PostgREST call setting the count to zero
+- **THEN** the supplied value SHALL be discarded and the stored value SHALL be derived from its
+  `OLD` value by a `BEFORE UPDATE` trigger
+- **AND** the mechanism SHALL be stated in the migration, because `rides` carries a **table-level**
+  UPDATE grant that this change deliberately retains, so the columns are otherwise client-writable
+  the moment `alter table` runs
+- **AND** a column DEFAULT SHALL NOT be treated as the enforcement, matching the ruling already
+  made for a conversation's `created_at`: a DEFAULT applies only when the column is omitted, and
+  the client may name it
+- **AND** the reason this differs from the coordinate and path columns SHALL be recorded — those
+  are the organizer's own data and corrupting them harms only their own ride, whereas the counter
+  limits **our** vendor spend and the organizer is the party it is aimed at
+
+#### Scenario: The ceiling refuses before the money is spent
+- **WHEN** a render is requested for a ride already at its ceiling
+- **THEN** the function SHALL refuse **before** issuing the geocode or render call
+- **AND** the trigger SHALL independently refuse the column write, so that a caller bypassing the
+  function gains nothing
+- **AND** neither layer SHALL be described as sufficient alone: the function's check saves the
+  money, and the trigger's is the one that cannot be evaded
+
+#### Scenario: The window is fixed, not rolling, and the difference is stated
+- **WHEN** the ceiling's window is documented
+- **THEN** it SHALL be described as a **fixed** window anchored on `map_render_window_start`, reset
+  on the first render after the window elapses
+- **AND** it SHALL NOT be described as rolling, because a rolling window requires one row per
+  render and this design stores a count and a start
+- **AND** the worst case SHALL be stated: an organizer may spend the ceiling at the end of one
+  window and again at the start of the next, so the true bound is 2× the ceiling across a boundary
 
 #### Scenario: A refused render never fails the ride write
 - **WHEN** a render is refused for any reason — entitlement, ceiling, or vendor failure
@@ -299,6 +346,23 @@ today's screens show the rider's own words and are never wrong.
 - **AND** the CHECK SHALL permit this, because a constraint requiring paths alongside coordinates
   would turn a partial failure into a write failure and lose the coordinate too
 
+#### Scenario: An upload that succeeds and a column write that RLS refuses
+- **WHEN** the uploads land but the `UPDATE` on `rides` is refused — the organizer left the club
+  their ride belongs to, so the UPDATE policy's `WITH CHECK` arm
+  `(club_id IS NULL) OR private.is_club_member(club_id)` no longer holds, and **nothing clears
+  `rides.club_id` when a rider leaves a club**
+- **THEN** the ride SHALL remain unchanged and the rider SHALL see the fallback with no error
+- **AND** the function SHALL delete the objects it just uploaded, because that is the **only**
+  moment at which their paths are still known
+- **AND** the function SHALL check the club-membership condition **before** the geocode, so that
+  this path normally costs nothing; the compensating delete covers only a membership change
+  landing mid-flight
+- **AND** if the compensating delete also fails, the objects SHALL remain listable and deletable
+  by the organizer through the policy's own-folder arm, rather than becoming permanently
+  unnameable
+- **AND** this SHALL be asserted separately from the failed-upload case, because the upload did
+  **not** fail and an assertion covering only that one would leave this path untested
+
 #### Scenario: One tile succeeding and the other failing renders one map
 - **WHEN** only one of the two uploads lands
 - **THEN** the screen whose path is present SHALL draw its tile and the other SHALL draw its
@@ -353,11 +417,26 @@ place** shown beside the right one. The rule is a `BEFORE UPDATE` trigger and no
   again
 - **AND** the ride SHALL be left with NULL columns and the fallback if any of them refuses
 
-#### Scenario: The superseded object is not left readable
+#### Scenario: The superseded object is deleted BEFORE the statement that forgets its name
 - **WHEN** a new tile replaces an old one for the same ride
-- **THEN** the old object SHALL be deleted
-- **AND** if the delete fails, the object SHALL be unreadable regardless, because no `rides` row
-  names it any more
+- **THEN** the old objects SHALL be deleted **before** the UPDATE that changes `meeting_point` is
+  issued, because that UPDATE fires the clearing trigger and the row is the only place their names
+  are recorded
+- **AND** this SHALL match the ordering already required for ride deletion — objects first, then
+  the row that names them — rather than being reasoned about separately
+- **AND** an implementation that deletes afterwards SHALL be treated as a defect, because by then
+  there is nothing left to name
+
+#### Scenario: A failed pre-delete leaves a recoverable orphan, not a permanent one
+- **WHEN** the pre-delete fails, or the client crashes between the delete and the update
+- **THEN** the objects SHALL be unreadable by every rider except the organizer whose folder holds
+  them
+- **AND** they SHALL remain listable and deletable by that organizer through the policy's
+  own-folder arm, so cleanup remains possible at any later time
+- **AND** the ordering rule SHALL NOT be relied on alone, because it makes deletion best-effort by
+  a client this change elsewhere refuses to trust
+- **AND** the two together SHALL be recorded as the complete answer: ordering is the primary rule
+  and the own-folder arm is the recovery path
 
 ### Requirement: Attribution SHALL render wherever a tile renders, and a tile that cannot carry it SHALL NOT render
 
@@ -453,10 +532,13 @@ today**.
   crop shows one street and reads as texture rather than as a place
 
 #### Scenario: A ride with a blank meeting point renders nothing new
-- **WHEN** `meeting_point` is whitespace — which nothing currently rejects, since `001` set no
-  CHECK and there is no Zod schema for ride creation
+- **WHEN** `meeting_point` is whitespace — which the app's own form rejects but the **database**
+  does not: `rideSchema` trims and requires a non-empty meeting point at the action boundary, and
+  `001` set no CHECK behind it, so any PostgREST writer can still store one
 - **THEN** no geocode SHALL be attempted and no tile SHALL exist
 - **AND** the panel SHALL continue to render nothing at all, as it does today
+- **AND** the Zod rule SHALL NOT be treated as the guarantee, per the standing rule that a rule
+  reaching only a schema is advisory once the client owns the mutation path
 
 ### Requirement: Tiles SHALL be destroyed with the ride and with the rider, and their retention SHALL be stated
 
@@ -473,11 +555,14 @@ of where somebody will be is the same class of record.
 - **AND** the objects SHALL be deleted **before** the row that names them, because once the row is
   gone no policy matches the object and nothing can reach it to delete it
 
-#### Scenario: An orphaned object is unreachable but not gone, and that is recorded
-- **WHEN** a Storage delete fails while the row delete succeeds
-- **THEN** the object SHALL be unreadable by every role through the API
-- **AND** it SHALL be recorded that unreadable is not erased, and that the bytes remain until
+#### Scenario: An orphaned object is unreachable by others but not gone, and stays sweepable
+- **WHEN** a Storage delete fails while the row delete succeeds, or an address edit supersedes a
+  tile whose pre-delete failed
+- **THEN** the object SHALL be unreadable by every rider except the organizer whose folder holds it
+- **AND** it SHALL be recorded that unreadable is **not** erased, and that the bytes remain until
   something sweeps them
+- **AND** the organizer SHALL retain the ability to list and delete it, so that "until something
+  sweeps them" names an actor that exists rather than describing a permanent condition
 
 #### Scenario: Account deletion removes the rider's tiles
 - **WHEN** a rider deletes their account
@@ -498,6 +583,15 @@ of where somebody will be is the same class of record.
 - **AND** because nothing deletes a past ride, retention SHALL be understood as indefinite
 - **AND** this SHALL be an open question owned by the product owner with a stated default, not an
   omission
+
+#### Scenario: Indefinite retention covers orphans too, and they are counted
+- **WHEN** retention is stated
+- **THEN** it SHALL cover **both** live tiles and orphaned objects, since each orphan is a rendered
+  image of where an identified rider previously intended to be
+- **AND** an orphan SHALL NOT be treated as outside the retention statement on the grounds that no
+  row names it, because the bytes and their location data persist either way
+- **AND** the count SHALL be knowable — a rider's orphans are listable within their own folder —
+  rather than being an unbounded invisible set
 
 #### Scenario: The address leaves our infrastructure and that is disclosed
 - **WHEN** a meeting point is geocoded

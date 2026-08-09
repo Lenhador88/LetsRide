@@ -35,10 +35,17 @@ select cmd, count(*) from pg_policies
 
 **The read half is the addition, and it is the half that fails silently.** Measured 2026-08-09:
 this repo's INSERT and DELETE policies check the folder prefix and the caller's uid **only**, while
-its SELECT policies additionally carry an `EXISTS` against the parent row evaluated under the
-caller's own RLS. Both shapes are correct in their own position, and they are one line apart in a
-migration — a write policy pasted into a read position grants every signed-in rider every object in
-the folder, and reviews as a consistent-looking pair.
+every SELECT policy carries an `EXISTS` against the parent row evaluated under the caller's own
+RLS. Both shapes are correct in their own position, and they are one line apart in a migration — a
+write policy pasted into a read position grants every signed-in rider every object in the folder,
+and reviews as a consistent-looking pair.
+
+**Read the SELECT policies as a disjunction, not a conjunction.** Five of the six are
+`own-folder OR EXISTS(parent)`; only `postcards` is the bare `EXISTS`. The own-folder arm is
+permitted where the folder's uid identifies the same rider the owning row is about, and forbidden
+where it identifies a mere uploader — `stored-media-visibility` owns that rule and the reasoning.
+Describing the shape as "folder pin **plus** an `EXISTS`" is the error to avoid: it reads as a
+conjunction and hides the arm entirely.
 
 #### Scenario: A rider cannot claim another rider's object
 - **WHEN** a rider inserts a `postcards` row whose `image_path` sits in another rider's folder
@@ -49,12 +56,14 @@ the folder, and reviews as a consistent-looking pair.
   `club-covers/` or `ride-maps/` outside their own folder
 - **THEN** Storage SHALL refuse the upload
 
-#### Scenario: A rider cannot read an object whose owning row is invisible to them
-- **WHEN** a rider fetches an object in any folder while the row naming it is not visible to them
-  under that row's own SELECT policy
+#### Scenario: A rider cannot read another rider's object whose owning row is invisible to them
+- **WHEN** a rider fetches an object **outside their own folder** while the row naming it is not
+  visible to them under that row's own SELECT policy
 - **THEN** the fetch SHALL be refused
 - **AND** the refusal SHALL come from an `EXISTS` against the owning row rather than from the path,
   which is constructed from ids the rider can already see and is therefore not a secret
+- **AND** the own-folder arm SHALL NOT be treated as an exception to this, because it admits only
+  the rider whose uid the folder names — a rider reaching their own bytes has learned nothing
 
 #### Scenario: A row cannot widen an object's audience by naming it
 - **WHEN** a rider sets a path column on a row they author to an object in another rider's folder
