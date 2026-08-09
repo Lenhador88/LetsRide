@@ -238,17 +238,22 @@ Apply it per **added passage**, not per file:
 - **Is the carve-out earned?** A correction survives only where a reader would re-derive the
   wrong version from the same evidence. Name the command a careful person writes first and the
   plausible wrong answer it returns; if you cannot, the passage is biography. `CLAUDE.md`
-  §Working Principles gives three worked examples of the shape; apply the test, not the list.
+  §Working Principles gives worked examples of the shape; apply the test, not the list.
 - **One-off or durable rule?** A passage recording a single incident, with no instruction a
   future session can act on, belongs in the commit message or the PR body.
 
 **The line budget — compute it and state the number on every diff touching prose.**
 
-`$BASE` is whatever §Start here settled on — `origin/development` normally, `origin/main` on a
-promotion, the reviewed sha on a delta re-review.
+Set `BASE` inside the block, not around it. An empty one must abort: `git diff ...HEAD` is a
+*valid* range that defaults the omitted side to `HEAD`, so an unset base reports `net +0` and
+exits 0 — a budget that silently cannot fire, which is the shape this whole section exists to
+catch. (`$BRANCH` in `queue-pickup.md` is the opposite case: a refspec has no default, so unset
+there fails loudly on its own.)
 
 ```bash
-git diff --numstat "$BASE"...HEAD -- 'CLAUDE.md' 'docs/*.md' '.claude/**/*.md' \
+BASE=origin/development   # origin/main on a promotion; the reviewed sha on a delta re-review
+git diff --numstat "${BASE:?set BASE — see §Start here}"...HEAD \
+  -- 'CLAUDE.md' 'docs/*.md' '.claude/**/*.md' \
   | awk '{a+=$1; d+=$2} END {printf "+%d -%d  net %+d\n", a, d, a-d}'
 ```
 
