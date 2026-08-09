@@ -1535,8 +1535,23 @@ between statuses are all pre-authorized, encoded in `.claude/settings.json` unde
 §Working Principles: the `autoMode` half applies only while the session is in `AUTO`, which
 `defaultMode` now pins.
 
-One thing it does **not** cover: deleting anything a human authored — an issue, a comment, a
-document, or a label that is in use. Ask first.
+**Closing an issue is included, and does not want a confirmation round.** Product owner,
+2026-08-09: *"if you see these sort of situations, and you are sure about it feel free to wrap it
+up/close it straight away, no need to confirm with me. Just add a short comment to the story or
+so about it."* So when an issue is finished, superseded, or answered by something that already
+landed, **close it and leave a comment saying which** — asking first costs a round trip to
+confirm something already true.
+
+Two things bound it. **"Sure" means measured, not inferred** — read the issue's own body before
+closing it, because a satellite issue's status often lives in its parent and this has already
+gone wrong once in the other direction, an owner action reported as outstanding that had been
+answered in the parent hours earlier. And **`Done (in production)` is still off limits**: it
+asserts riders have the feature. `Duplicate` (with `duplicateOf`) closes a folded-in issue,
+`Canceled` closes one that should not be built, and both are a session's to set.
+
+The one thing this does **not** cover: deleting anything a human authored — an issue, a comment,
+a document, or a label that is in use. Closing is reversible and leaves the record; deleting is
+neither. Ask first.
 
 ### Keep it current, or it rots like the docs did
 
