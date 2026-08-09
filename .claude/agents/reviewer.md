@@ -244,15 +244,18 @@ Apply it per **added passage**, not per file:
 
 **The line budget — compute it and state the number on every diff touching prose.**
 
-Set `BASE` inside the block, not around it. An empty one must abort: `git diff ...HEAD` is a
-*valid* range that defaults the omitted side to `HEAD`, so an unset base reports `net +0` and
-exits 0 — a budget that silently cannot fire, which is the shape this whole section exists to
-catch. (`$BRANCH` in `queue-pickup.md` is the opposite case: a refspec has no default, so unset
-there fails loudly on its own.)
+Set `BASE` inside the block, not around it, and abort on its own line before the pipeline.
+`git diff ...HEAD` is a *valid* range that defaults the omitted side to `HEAD`, so an unset base
+reports `net +0` and exits 0 — a budget that silently cannot fire, which is the shape this whole
+section exists to catch. Guarding inside the pipeline does **not** fix that: each element is a
+subshell, so `${BASE:?}` there kills only `git` and `awk` still prints `net +0` and exits 0.
+(An empty *refspec* is the opposite case — it has no default, so `git log ""..HEAD` fails on its
+own. A range with an omitted side does not.)
 
 ```bash
 BASE=origin/development   # origin/main on a promotion; the reviewed sha on a delta re-review
-git diff --numstat "${BASE:?set BASE — see §Start here}"...HEAD \
+: "${BASE:?set BASE — see §Start here}"
+git diff --numstat "$BASE"...HEAD \
   -- 'CLAUDE.md' 'docs/*.md' '.claude/**/*.md' \
   | awk '{a+=$1; d+=$2} END {printf "+%d -%d  net %+d\n", a, d, a-d}'
 ```
