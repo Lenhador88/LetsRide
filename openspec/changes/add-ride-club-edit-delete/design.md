@@ -8,9 +8,24 @@ genuinely load-bearing and the rest follow from it.
 
 ## D1 — Club deletion goes through a `security definer` RPC, not a client `.delete()`
 
-**Decision.** Add `public.delete_owned_club(club_id uuid)`, `security definer`, `SET search_path`
+**Decision.** Add `public.delete_owned_club(p_club_id uuid)`, `security definer`, `SET search_path`
 pinned, `EXECUTE` to `authenticated`, re-checking `owner_id = auth.uid()` internally. It deletes
-the club's `is_public = false` rides and then the club, in one transaction. `deleteClub` calls it.
+the club's `is_public = false` rides and then the club, in one transaction, and **returns the
+Storage object paths it orphaned** so the client can clear them. `deleteClub` calls it.
+
+**The parameter is `p_club_id`, following `complete_onboarding(p_location text)`** — this repo's
+existing answer to a parameter whose obvious name is also a column (`location` on `profiles`).
+`club_id` is a column on five tables here. The body opens with `#variable_conflict error` and
+qualifies every column with a table alias.
+
+**Measured on DEV 2026-08-09, because the obvious claim about this is wrong:**
+`plpgsql.variable_conflict` is already `error` on this database, and a probe function with the
+colliding parameter raised `42702 column reference "club_id" is ambiguous` and deleted **0 of 3**
+rows. So the collision fails loudly and the happy-path assertion would catch it. The pragma is
+worth writing anyway, for a narrower reason than "it prevents a silent mass delete": it makes the
+guarantee local to the function rather than dependent on a cluster GUC, and `use_column` is the
+one setting under which the silent version becomes real. Recorded with the measurement because a
+scarier unverified rationale in a spec is inherited for ever.
 
 **Why nothing else works.** `rides.club_id` is `ON DELETE SET NULL`, which leaves a private ride
 visible only to its organizer with its `ride_members` rows intact — the zombie `029` names, and
@@ -38,6 +53,13 @@ theirs. It converts a silent bug into a permanent dead end.
 **Cost, stated.** A seventh `authenticated_security_definer_function_executable` advisor, taking
 the total from eight to nine. `CLAUDE.md`'s advisor table must gain the row in the same change, or
 a deliberate WARN reads as a regression for ever.
+
+**What it does not do: Storage.** No SQL function here reaches the Storage API, so club images,
+and every cascade-deleted postcard's image, survive the transaction. The club's own avatar and
+cover sit under the **owner's** uid prefix, so the returned paths let the client delete them; the
+postcard images belong to other riders and the owner's Storage policy cannot touch them, so those
+are **permanently orphaned**. That is `PD-94`'s scope and no new issue is filed — this change just
+hands it an accurate list.
 
 ## D2 — Deleting a ride needs no function
 
@@ -79,7 +101,9 @@ club`, whose epic reads **To do**.
 
 **Build the v2 field set from the schema, not from those frames.** They draw an end date+time, a
 `Distance` in Km, an `Includes offroad` toggle, `Public seats` separate from `max_riders`, a cover
-image, and `Invite` + an `Admin` chip + per-member remove. None has a column. The `Edit club`
+image, **`Country` and `City` as separate text fields**, and `Invite` + an `Admin` chip +
+per-member remove. None has a column — `clubs` is `id, name, description, is_public, owner_id,
+created_at, avatar_path, cover_image_path` and nothing there is a location. The `Edit club`
 frame's header reads `Create club` and its destructive button reads `Delete ride`, which confirms
 it is an unedited copy of Create club.
 
@@ -97,6 +121,6 @@ The editable field set is therefore exactly what the create forms already own:
 | Q2 | Should the postcard count in the delete confirmation be the owner's RLS-visible count, or a true total? | **RLS-visible.** A true total needs a definer function that leaks how much content a private club holds. Copy says "at least", not an exact claim. | No | Product owner |
 | Q3 | If `admin` is ever written to `club_members.role`, does it carry club edit rights? | **Undecided — do not build for it.** No rider can hold the role today. Deciding it here would settle a moderation model nobody has designed. | No | Product owner |
 | Q4 | Should an organizer be able to hand a ride to someone else, or an owner hand over a club? | **No, unchanged.** Both `WITH CHECK`s refuse it and this change does not relax them. The owner-cannot-leave gap is real and stays open. | No | Product owner |
-| Q5 | Should the `rides`/`clubs` UPDATE grant be narrowed per column so `created_at` is not client-writable? | **Yes, but as its own migration.** It hardens a hole predating this change and wants its own assertions. | No | Agent, follow-up |
+| Q5 | Should the `rides`/`clubs` UPDATE grant be narrowed per column so `created_at` is not client-writable? | **Yes, but as its own migration.** Same defect class as **`PD-163`** (already queued, for `postcards`) — fold the rides/clubs half into that issue rather than filing a new one. | No | Agent, follow-up |
 | Q6 | Does cancelling a ride need to tell the crew before PD-124 lands? | **No.** PD-124 owns it and is parked on three owner decisions. The gap is stated in the spec so it is not inherited as covered. | **Yes, if the answer is "it must"** — that would pull notification design into this change | Product owner |
 | Q7 | Should there be a soft-delete / "cancelled" state for rides instead of a hard delete? | **No.** No column exists, the FKs are built for a hard delete, and a tombstone changes what every ride query must filter. | No | Product owner |

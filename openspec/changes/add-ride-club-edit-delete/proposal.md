@@ -163,6 +163,12 @@ again.
 - **Narrowing the `rides`/`clubs` UPDATE grant to a column list.** `ride_messages` did this at
   birth for `created_at`. Doing it retroactively is a separate migration with its own
   assertions, and it hardens a hole that predates this change. Logged, not bundled.
+
+  **This is the same defect class as `PD-163`, which is already queued for `postcards`** — a
+  table-level grant handing `authenticated` write access to columns no form owns. Naming it here
+  so the rides/clubs half reads as the rest of a known defect rather than a new idea, and so
+  whoever picks up `PD-163` can see the full scope in one place. **No new issue is filed**; if
+  the two are ever done together they are one deliverable, not three.
 - **Transferring club ownership.** The `clubs` UPDATE `WITH CHECK` is `auth.uid() = owner_id`,
   so the client cannot move `owner_id` at all. Nothing in this change relaxes that, and "leave
   the club you own" therefore still has no answer.
@@ -194,11 +200,12 @@ node -e "const i=require('./design/index.json');
 **So: composition is ours, and this is the failure mode to avoid — an invented layout presented
 as measured.** What the OLD frames draw that has no column behind it, and must not be built from
 them: an end date+time, `Distance` in Km, an `Includes offroad` toggle, `Public seats` as a
-separate field from `max_riders`, a cover image on both, and `Invite` + an `Admin` chip +
-per-member remove. `club_members.role` has had `admin` since `001` and **nothing has ever
-written it**, so building the chip would render a role no rider can hold. The `Edit club` frame
-also carries two copy bugs confirming it is a copy-paste of Create club: its header title reads
-`Create club` and its destructive button reads **`Delete ride`**.
+separate field from `max_riders`, a cover image on both, **`Country` and `City` as two separate
+text fields** — `clubs` has neither, and `rides` has only the free-text `meeting_point` — and
+`Invite` + an `Admin` chip + per-member remove. `club_members.role` has had `admin` since `001`
+and **nothing has ever written it**, so building the chip would render a role no rider can hold.
+The `Edit club` frame also carries two copy bugs confirming it is a copy-paste of Create club: its
+header title reads `Create club` and its destructive button reads **`Delete ride`**.
 
 **Both frames put the destructive action at the bottom of the edit screen**, as a full-width
 `Warning/100` text button — not in an overflow menu. That is the one piece of layout worth taking

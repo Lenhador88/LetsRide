@@ -19,6 +19,13 @@ is mergeable on its own with neither leaving the other half-built.
       it; `018`'s length CHECKs raise the same SQLSTATE, which is why the message is matched too.
 - [ ] 1.4 Refuse, in the action and in the form, a save where `club_id` is NULL and `is_public`
       is false — the zombie shape. Name both remedies in the message.
+- [ ] 1.4a Handle the **ex-member organizer** dead end. A `WITH CHECK` is evaluated on every
+      update, so an organizer who left the ride's club can no longer edit that ride at all — the
+      refusal arrives on a save that touched no club field. Show the Edit affordance, surface the
+      refusal naming the club, and offer the two exits the policies already permit: delete the
+      ride, or make it public and detach it from the club. Do **not** widen the policy.
+- [ ] 1.4b Add RLS assertions for it: an ex-member organizer's UPDATE is refused; their DELETE
+      succeeds; their `club_id → NULL` with `is_public = true` succeeds.
 - [ ] 1.5 Add `deleteRide(rideId)` to `src/lib/actions/rides.ts`. Plain `.delete()`; no function
       needed (`design.md` §D2).
 - [ ] 1.6 Add `getRideForEdit(rideId)` to `src/lib/data/rides.ts` returning the editable columns
@@ -47,10 +54,28 @@ is mergeable on its own with neither leaving the other half-built.
       migration; confirm the next free prefix with `list_migrations` against
       `ls supabase/migrations/` first** — `CLAUDE.md` records DEV at `042` and PROD at `040`, and
       that number has been wrong in both directions.
-- [ ] 2.2 The function: `public.delete_owned_club(club_id uuid)`, `security definer`,
+- [ ] 2.2 The function: **`public.delete_owned_club(p_club_id uuid)`**, `security definer`,
       `SET search_path = ''`, `revoke execute ... from public/anon`, `grant execute to
       authenticated`. Body re-checks `owner_id = auth.uid()` and raises if not; deletes
-      `rides where club_id = $1 and is_public = false`; deletes the club. One transaction.
+      `rides where r.club_id = p_club_id and r.is_public = false`; deletes the club. One
+      transaction.
+
+      **The parameter is `p_club_id` and that name is load-bearing.** `club_id` is a column on
+      `rides`, `club_members`, `feed_reads`, `postcards` and `notifications`, so a parameter of
+      that name makes `where club_id = club_id` ambiguous. `p_` is this repo's own convention
+      for exactly this case — `complete_onboarding(p_location text)` is the precedent, and
+      `location` is a `profiles` column. Locals take `v_`, as that function's do.
+- [ ] 2.2a **Write `#variable_conflict error` as the first line of the body, and qualify every
+      column reference with its table alias** (`r.club_id`, `c.owner_id`), the way
+      `complete_onboarding` writes `p.id = v_uid`.
+
+      Measured on DEV 2026-08-09: `plpgsql.variable_conflict` is already `error`, so the
+      collision raises `42702 column reference "club_id" is ambiguous` and deletes **nothing** —
+      it does not silently resolve to the column. The pragma is therefore **not** a fix for a
+      silent-deletion bug; it is what makes the guarantee *local to the function* instead of
+      dependent on a cluster GUC an operator can set to `use_column`, which is the setting under
+      which the silent mass delete would become real. Say that in the migration's comment rather
+      than the scarier version, or the next session inherits a claim the database contradicts.
 - [ ] 2.3 **Paired assertion task — a policy/function change with no assertion is not finished.**
       Add to `supabase/tests/rls_test.sql`:
       - `has_function_privilege('authenticated', …, 'EXECUTE')` is true — **name the role, do not
@@ -61,10 +86,27 @@ is mergeable on its own with neither leaving the other half-built.
       - an owner call **leaves a public ride standing** with `club_id` NULL.
       - after an owner call, **no ride exists with `club_id` NULL, `is_public` false and
         surviving `ride_members` rows**.
+- [ ] 2.3a **The blast-radius containment assertion — the one the happy path cannot make.**
+      Seed **two** unrelated clubs, each with a private ride and its own `club_members` and
+      `ride_members` rows. Delete club A. Assert club B still exists **and club B's private ride
+      still exists**, alongside its membership and crew rows.
+
+      Every other assertion in 2.3 checks that the target's rows are *gone*, and all of them pass
+      under a `WHERE` clause that is too broad — a dropped club filter, an ambiguous reference
+      resolved the wrong way, or a plain `delete from rides where is_public = false`. This is the
+      only assertion that fails when the function deletes **more** than it was asked to, which is
+      the entire risk this function carries.
 - [ ] 2.4 Add assertions for the four standing policies from the **client** direction, which the
-      suite does not currently cover: owner/organizer can UPDATE and DELETE; `admin`, `member`,
+      suite does not currently cover: owner/organizer can UPDATE and DELETE; `member`,
       non-member and blocked rider cannot; `organizer_id`/`owner_id` cannot be moved by the
       `WITH CHECK`.
+- [ ] 2.4a The `admin` case is asserted **as a regression guard on current policy text, not as a
+      product rule**: a hand-written `role = 'admin'` row still matches zero rows on club UPDATE
+      and DELETE, because neither policy consults `club_members`. **Name it in the assertion
+      label as such** (e.g. `admin role confers no club write under current policies`) and add a
+      comment pointing at `design.md` Q3, which is open. A label reading "admins may not edit
+      clubs" ships the undecided answer as a green test — the failure `openspec/config.yaml`
+      exists to prevent.
 - [ ] 2.5 Add an assertion pair for `propagate_club_privacy_to_rides` in **both** directions:
       public → private downgrades rides; private → public does **not** restore them.
 - [ ] 2.6 Apply to DEV via `apply_migration`. Then run the security advisors and confirm exactly
@@ -76,16 +118,33 @@ is mergeable on its own with neither leaving the other half-built.
       list: `name`, `description`, `is_public`, `avatar_path`, `cover_image_path`.
 - [ ] 2.9 Add `deleteClub(clubId)` calling the RPC. A bare `.from('clubs').delete()` must not
       ship.
+- [ ] 2.9a Have the function **return the orphaned Storage object paths** (`club-avatars/…`,
+      `club-covers/…`), mirroring `private.transfer_owned_clubs`'s `object_path text` return, and
+      have `deleteClub` delete those objects from Storage. They sit under the owner's own uid
+      prefix, so the caller's Storage policy permits it.
+- [ ] 2.9b Record in the migration comment that **cascade-deleted postcards' images are
+      permanently orphaned** — they live under `postcards/<author uid>/` and the club owner's
+      Storage policy cannot reach another rider's prefix. Point at **`PD-94`** (orphaned Storage
+      objects); **file no new issue**.
 - [ ] 2.10 Add `getClubForEdit(clubId)` and a counts read for the confirmation — postcards, rides
-      and members, **under the caller's own RLS**, no definer path.
+      and members, **under the caller's own RLS**, no definer path. **All three counts undercount
+      by design**: blocked riders' postcards, rides and memberships are invisible to the owner and
+      are still destroyed. Name the variables so the floor is obvious at the call site.
 - [ ] 2.11 Build `src/app/(app)/clubs/[id]/edit/page.tsx`, owner-only, with the image upload the
       create screen already has.
 - [ ] 2.12 Implement the privacy-toggle disclosure: before saving `is_public = false`, state that
       the club's public rides become private and are **not** restored by toggling back, and name
       the count.
-- [ ] 2.13 Implement the delete confirmation: postcard count including other members', ride
-      count, member count, "cannot be undone", second deliberate tap. If the counts cannot be
-      read, **refuse the action** rather than showing zero.
+- [ ] 2.13 Implement the delete confirmation. It must enumerate the **whole** blast radius, not
+      postcards alone: postcard count including other members'; ride count **and that each ride
+      takes its crew list and its entire chat history with it**; member count; "cannot be undone";
+      second deliberate tap. If the counts cannot be read, **refuse the action** rather than
+      showing zero.
+- [ ] 2.13a Phrase every count as a **floor** — "at least N", never "N". All three are read under
+      the owner's RLS and exclude blocked riders' content, which is still destroyed. Do **not**
+      build a privileged count to fix this: it would tell the owner exactly how much content a
+      rider who blocked them holds, which is what blocking withholds. The under-disclosure is the
+      deliberate trade and the copy carries it.
 - [ ] 2.14 Add the Edit affordance to `ClubDetailHeader`, owner-only. Not to
       `ClubDetailPageMenu`.
 - [ ] 2.15 Wire invalidation: `updateClub` → `clubs.all()`, plus `rides.all()` **when
@@ -105,6 +164,8 @@ is mergeable on its own with neither leaving the other half-built.
       claim.
 - [ ] 3.6 Update `docs/HANDOFF.md`: the migration's applied state on DEV vs PROD, each claim
       beside the command that verifies it.
-- [ ] 3.7 Log the deferred hardening as a follow-up: narrow the `rides`/`clubs` UPDATE grant per
-      column so `created_at` is not client-writable (`design.md` Q5).
+- [ ] 3.7 Log the deferred hardening **on the existing `PD-163`** rather than as a new issue:
+      narrow the `rides`/`clubs` UPDATE grant per column so `created_at` is not client-writable
+      (`design.md` Q5). `PD-163` already covers the same defect class on `postcards`; add a
+      comment naming the two extra tables so its scope is complete.
 - [ ] 3.8 Delegate `reviewer` on the final diff, immediately before the PR.

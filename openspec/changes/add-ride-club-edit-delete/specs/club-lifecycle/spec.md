@@ -14,7 +14,7 @@ rather than call it. That is `031`'s lesson applied before it costs a migration 
 | Requirement | Enforced by |
 |---|---|
 | Only the owner may edit or delete | suite — both directions, per role |
-| `admin` grants nothing | suite — an `admin` row that still cannot write |
+| An `admin` row confers no write **as the policies stand today** | suite — a regression guard on current behaviour, **not** a settled product rule; see the open decision below |
 | Ownership is not transferable by a client | suite — `WITH CHECK` on `owner_id` |
 | Deletion destroys members' postcards | suite — FK cascade assertion |
 | Deletion leaves no zombie rides | suite — against the new function |
@@ -25,22 +25,25 @@ rather than call it. That is `031`'s lesson applied before it costs a migration 
 
 ## ADDED Requirements
 
-### Requirement: Only a club's owner SHALL be able to edit or delete it, and `admin` SHALL grant neither
+### Requirement: Only a club's owner SHALL be able to edit or delete it
 
 The rider in `clubs.owner_id` SHALL be able to update the club and to delete it. **No other role
-SHALL be able to do either:**
+SHALL be able to do either**, and this change SHALL NOT add an arm to either policy.
 
-- **A `club_members.role = 'admin'`** SHALL NOT edit or delete the club. The `clubs` UPDATE and
-  DELETE policies test `auth.uid() = owner_id` and consult `club_members` in no arm.
+- **`club_members.role = 'admin'` confers neither, and that is a description of the current
+  policies rather than a rule this change decides.** The `clubs` UPDATE and DELETE policies test
+  `auth.uid() = owner_id` and consult `club_members` in no arm — measured. **Nothing has ever
+  written `admin`**: `CLAUDE.md` records member invitations with an Admin role as unbuilt, and
+  the only code that reads the value is `private.transfer_owned_clubs`, which sorts admins first
+  when picking a successor during account deletion.
 
-  **`admin` is a value in the enum that nothing has ever written.** `CLAUDE.md` records member
-  invitations with an Admin role as unbuilt; the only code that reads the value is
-  `private.transfer_owned_clubs`, which sorts admins first when picking a successor during
-  account deletion. So the honest statement for this change is not "admins may not edit" as a
-  policy choice — it is that **no rider can currently hold the role**, and specifying an admin
-  affordance would build UI for a state the database cannot reach. If the role is ever written,
-  whether it carries edit rights is a **new decision**, not something this spec has already made.
-  Recorded so a later session does not read this silence as a settled "no".
+  **So the requirement asserted here is narrow on purpose: *as the policies stand, an `admin` row
+  changes nothing*.** That is a regression guard on today's behaviour and is worth a test.
+  **What this spec explicitly does NOT decide is whether `admin` *should* carry edit rights once
+  the role can be held** — that is `design.md` Q3, open, product owner's. A later change that
+  grants admins edit rights amends this requirement; it does not violate it. The distinction
+  matters because an assertion phrased as "an admin must never edit a club" would ship the
+  undecided answer as a passing test, which is exactly how silence becomes a settled rule.
 - **An ordinary member** SHALL NOT edit or delete the club. Their only club write is
   `leaveClub`.
 - **A non-member** SHALL NOT edit or delete it, including a signed-in rider who can see a public
@@ -54,11 +57,13 @@ SHALL be able to do either:**
 The affordance SHALL follow the same predicate: a non-owner SHALL see no Edit and no Delete
 control at all.
 
-#### Scenario: A club admin opens the club they help run
+#### Scenario: An `admin` row is written by hand and the policies are unchanged
 
-- **WHEN** a rider whose `club_members.role` is `admin` opens `/clubs/[id]`
-- **THEN** the header offers no Edit action and no Delete
-- **AND** a direct navigation to `/clubs/[id]/edit` SHALL NOT render the form
+- **WHEN** a `club_members` row with `role = 'admin'` exists and that rider attempts a club UPDATE
+  or DELETE
+- **THEN** RLS SHALL match zero rows, because neither policy consults `club_members`
+- **AND** this SHALL be read as pinning current policy behaviour, **not** as deciding that admins
+  may never be granted edit rights
 
 #### Scenario: A member submits a club update anyway
 
@@ -93,15 +98,38 @@ change does not close it.
 out **deliberately for a club deleted by its owner**, so the cascade is settled and this
 capability SHALL NOT change it. What it adds is disclosure.
 
-Before the delete executes, the confirmation SHALL state, from counts read under the owner's own
-RLS at the moment of confirmation:
+Before the delete executes, the confirmation SHALL enumerate the **whole** blast radius, not the
+postcards alone. Deleting a club destroys, by cascade or by `delete_owned_club`: every postcard in
+it, every `club_members` row, every `feed_reads` watermark, every notification about it, every
+private ride in it — **and with each of those rides its `ride_members` crew and its
+`ride_messages` chat history**. A confirmation naming only postcards understates it by two whole
+tables of other people's writing.
 
-- **How many postcards will be permanently deleted, and that they include other members'.** A
-  count the owner cannot see is a count they cannot consent to, so the number SHALL be the
-  RLS-visible one and the copy SHALL NOT imply it is exhaustive of postcards hidden from them.
-- **How many rides will be deleted.**
+The copy SHALL state:
+
+- **How many postcards will be permanently deleted, and that they include other members'.**
+- **How many rides will be deleted, and that each takes its crew list and its entire chat history
+  with it.** The chat is the least recoverable thing here and the least obvious.
 - **That every member loses the club**, and the number of members.
 - **That none of it can be undone.**
+
+**Every count SHALL be read under the owner's own RLS, and the copy SHALL be phrased as a floor
+rather than a total** — "at least N", not "N". This applies to **all three** counts, for the same
+reason and consistently:
+
+- **Postcards** — a postcard by a rider who has blocked the owner is excluded by the `postcards`
+  SELECT policy's `NOT private.is_blocked(...)` arm, and one the owner has hidden is excluded by
+  the `postcard_hides` arm. Both are still destroyed.
+- **Rides** — a ride organized by a rider who has blocked the owner is excluded by the `rides`
+  SELECT policy's `NOT private.is_blocked(auth.uid(), organizer_id)` arm. It is still destroyed.
+- **Members** — `club_members` SELECT carries `(user_id = auth.uid()) OR NOT
+  private.is_blocked(auth.uid(), user_id)`, so a blocked member is invisible to the owner. They
+  still lose the club.
+
+A privileged count that returned the true totals SHALL NOT be built: it would tell the owner
+exactly how much content a rider who blocked them has, which is the thing blocking exists to
+withhold. **Under-disclosing to a floor is the deliberate trade, and the copy carries it** rather
+than the number silently being wrong.
 
 It SHALL require a second, deliberate confirmation step. A single tap SHALL NOT execute it.
 
@@ -111,11 +139,21 @@ product one** — this is the requirement carrying the `Store submission` milest
 #### Scenario: An owner deletes a club other members have posted to
 
 - **WHEN** the owner opens the delete confirmation
-- **THEN** it SHALL name the postcard count, the ride count and the member count
-- **AND** it SHALL state that other members' postcards are included
+- **THEN** it SHALL name the postcard count, the ride count and the member count, each phrased as
+  a floor
+- **AND** it SHALL state that other members' postcards are included, and that each deleted ride
+  takes its crew and chat history with it
 - **WHEN** they confirm
-- **THEN** the club, its `club_members`, its `feed_reads`, its notifications and every postcard in
-  it SHALL be gone
+- **THEN** the club, its `club_members`, its `feed_reads`, its notifications, every postcard in it
+  and every private ride with that ride's `ride_members` and `ride_messages` SHALL be gone
+
+#### Scenario: A club contains a postcard by a rider who blocked the owner
+
+- **WHEN** the owner opens the delete confirmation
+- **THEN** the postcard count SHALL exclude that postcard, because RLS hides it
+- **AND** the copy SHALL be phrased so the stated number is a floor and not a total
+- **WHEN** they confirm
+- **THEN** that postcard SHALL be destroyed along with the rest
 
 ### Requirement: Deleting a club SHALL leave no ride that only its organizer can see
 
@@ -134,9 +172,26 @@ club — and for a private club that is every ride, because `propagate_club_priv
 
 Therefore:
 
-- **Club deletion SHALL go through `public.delete_owned_club(club_id uuid)`**, a `security
+- **Club deletion SHALL go through `public.delete_owned_club(p_club_id uuid)`**, a `security
   definer` function that deletes the club's `is_public = false` rides and the club in one
   transaction. `deleteClub` SHALL call it; a bare `.from('clubs').delete()` SHALL NOT ship.
+- **The parameter SHALL NOT be named for a column it filters on**, and SHALL follow this repo's
+  `p_` convention (`complete_onboarding(p_location text)`, where `location` is a `profiles`
+  column). `club_id` is a column on `rides`, `club_members`, `feed_reads`, `postcards` and
+  `notifications`. Every column reference in the body SHALL be qualified with a table alias, and
+  the body SHALL open with `#variable_conflict error`.
+
+  **Measured on DEV, 2026-08-09, rather than assumed:** `plpgsql.variable_conflict` is `error`,
+  so an unqualified collision raises `42702 column reference "club_id" is ambiguous` and deletes
+  nothing. The pragma therefore SHALL be described as pinning the guarantee **inside** the
+  function — immune to a cluster GUC set to `use_column`, which is the only configuration in
+  which the collision becomes a silent mass delete — and SHALL NOT be described as fixing a
+  silent deletion that the default configuration already refuses.
+- **The suite SHALL contain an assertion that fails when the function deletes more than it was
+  asked to.** Deleting one club SHALL leave a second, unrelated club and that club's private
+  rides, memberships and crew rows intact. Assertions that only prove the target's rows are gone
+  all pass under a `WHERE` clause that is too broad, which is the failure mode this function's
+  elevated rights make dangerous.
 - **`EXECUTE` SHALL be granted to `authenticated` and to no other client role**, and the function
   SHALL re-check `owner_id = auth.uid()` **internally**. A `security definer` function runs with
   RLS bypassed, so the ownership test is the function's own job; relying on the `clubs` DELETE
@@ -164,11 +219,51 @@ Therefore:
 - **THEN** the function SHALL refuse and delete nothing
 - **AND** the refusal SHALL NOT reveal whether the club exists
 
+#### Scenario: One club is deleted while another exists
+
+- **WHEN** an owner deletes club A, and an unrelated club B exists with its own private ride,
+  members and crew
+- **THEN** club B, its private ride, its `club_members` and that ride's `ride_members` SHALL all
+  still exist
+- **AND** the suite SHALL fail if any of them were removed
+
 #### Scenario: A public club with a public ride is deleted
 
 - **WHEN** the owner deletes a public club containing a public ride organized by a member
 - **THEN** that ride SHALL survive with `club_id` NULL
 - **AND** it SHALL remain visible to every signed-in rider not blocked by its organizer
+
+### Requirement: Club deletion SHALL orphan Storage objects, and the specification SHALL say so rather than imply cleanup
+
+`delete_owned_club` deletes **rows**. Storage is a separate API that no SQL function in this repo
+reaches, so every image behind the deleted rows survives the transaction. Three sets, and they are
+**not** equally recoverable:
+
+- **The club's own `avatar_path` and `cover_image_path`** (`016`, under `club-avatars/<owner
+  uid>/` and `club-covers/<owner uid>/`). These sit under the **owner's** uid, and the owner is
+  the caller, so the client SHALL delete them. The function SHALL **return the orphaned object
+  paths**, mirroring `private.transfer_owned_clubs`, which already returns `object_path text` for
+  exactly this reason during account deletion. `deleteClub` SHALL pass them to Storage.
+- **Every cascade-deleted postcard's `image_path`** (under `postcards/<author uid>/`). These
+  belong to **other riders**, and the Storage policies gate on the path's uid prefix, so the club
+  owner cannot delete them and neither can the function. **They are permanently orphaned**, and
+  this SHALL be stated plainly rather than left to be discovered.
+- **Anything the client's Storage call fails to remove** — offline, a partial failure, or a
+  rider who closes the app between the RPC and the Storage delete. The row deletion has already
+  committed, so there is no transaction to roll back.
+
+**Orphaned Storage objects are `PD-94`'s problem, not this change's.** This requirement does not
+propose a sweep, a lifecycle rule or a reconciliation job; it records which objects this change
+orphans so `PD-94` inherits an accurate list instead of rediscovering it. No new issue SHALL be
+filed for it.
+
+#### Scenario: An owner deletes a club with a cover image and other members' postcards
+
+- **WHEN** deletion succeeds
+- **THEN** the function SHALL have returned the club's own avatar and cover object paths
+- **AND** `deleteClub` SHALL delete those objects from Storage
+- **AND** the postcard images authored by other riders SHALL remain in Storage, orphaned, as
+  `PD-94`'s scope
 
 ### Requirement: Turning a club private SHALL rewrite its public rides, and the owner SHALL be told it is one-directional
 

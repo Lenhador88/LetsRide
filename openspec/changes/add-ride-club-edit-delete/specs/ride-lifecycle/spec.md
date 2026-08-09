@@ -16,6 +16,7 @@ anything about *what a screen renders* or *which columns an action sends* is `re
 |---|---|
 | Only the organizer may edit or delete | suite — both directions, per role |
 | A ride cannot be handed to another organizer | suite — `WITH CHECK` on `organizer_id` |
+| An organizer who left the club cannot edit, but can delete or detach | suite — three cases |
 | Cancellation takes crew, chat and notifications | suite — FK cascade assertions |
 | A tagged postcard survives its ride | suite — `SET NULL`, and the SELECT policy unchanged |
 | The audience trigger fires on UPDATE, not only INSERT | suite — an UPDATE that must raise |
@@ -105,6 +106,49 @@ rows survive — the zombie shape `029` names.
 - **WHEN** an organizer sets `is_public` true on a ride whose club is private
 - **THEN** the database SHALL raise `check_violation`
 - **AND** the screen SHALL show the audience-specific message, not a generic failure
+
+### Requirement: An organizer who has left the ride's club SHALL be told why the edit is refused, and SHALL be offered the two exits that exist
+
+The `rides` UPDATE `WITH CHECK` is `auth.uid() = organizer_id AND (club_id IS NULL OR
+private.is_club_member(club_id))`, and a `WITH CHECK` is evaluated against the **post-update row
+on every update**, not only on updates that touch `club_id`. So a rider who organized a ride in a
+club and then left that club **can never edit that ride again** — not the title, not the meeting
+point, not the departure time. The `USING` clause passes (they are still the organizer); the
+`WITH CHECK` fails on a column they did not touch.
+
+This is a live dead end reachable by `leaveClub`, which already ships. It is not hypothetical.
+
+**Two exits exist and both are already permitted by the policies as written:**
+
+- **Delete the ride.** The DELETE policy is `auth.uid() = organizer_id` with no membership test at
+  all, so cancelling always works.
+- **Detach the ride from the club.** Setting `club_id` to NULL satisfies the `WITH CHECK`'s first
+  disjunct, and `enforce_ride_club_audience` does not fire when `club_id` is NULL. Because a ride
+  that is neither public nor in a club is the zombie shape this spec already refuses, detaching
+  SHALL be offered only together with making the ride public.
+
+The UI SHALL **show the Edit affordance and surface the refusal**, not hide it. Hiding it makes
+the organizer's own ride look like someone else's, which is the same undiagnosable state as the
+permission-denied case. The message SHALL name the club, say that leaving it is why the save was
+refused, and offer the two exits above.
+
+**This change SHALL NOT widen the `rides` UPDATE policy**, and any future proposal that does must
+say loudly that it is a visibility change: removing the `is_club_member` conjunct would let an
+ex-member keep editing a ride that is visible to a private club they are no longer in, which is
+the club's audience being written by an outsider.
+
+#### Scenario: An organizer leaves the club and then edits their ride
+
+- **WHEN** a rider who organized a club ride calls `leaveClub` and then submits any edit to that
+  ride
+- **THEN** the `WITH CHECK` SHALL refuse the row even though no club field was changed
+- **AND** the screen SHALL name the club, explain that leaving it caused the refusal, and offer
+  cancelling the ride or making it public and detaching it
+
+#### Scenario: An ex-member cancels the ride instead
+
+- **WHEN** that same rider deletes the ride
+- **THEN** the DELETE SHALL succeed, because the DELETE policy carries no membership test
 
 ### Requirement: `departure_at` SHALL be read and written as `APP_TIME_ZONE` wall-clock
 
