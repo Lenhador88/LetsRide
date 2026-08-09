@@ -1519,7 +1519,8 @@ about the past, it is loaded into every session for ever, and the next revision 
 evidence.** That is the test, and it is much narrower than "someone was once wrong here": name
 the command a careful person writes *first*, and say what it returns. If that is a plausible
 wrong answer, the warning is load-bearing. If they would simply get the right one, it is
-biography. Three earn it today, and they are close to the entire list:
+biography. Three worked examples of the shape — apply the test to the passage in front of you
+rather than checking it against this list, which is not exhaustive:
 
 - **The comment trap** (§Technology Decisions) — a grep for a retired pattern counts its own
   obituaries, so the obvious command returns a wrong number that looks measured.

@@ -36,8 +36,9 @@ would re-derive the wrong version from the same evidence. `.claude/agents/review
 §The necessity gate enforces it, with a 120-net-line budget on prose diffs.
 
 **So read the existing correction paragraphs here as legacy, not as the house style to copy.**
-PD-156 adopted the rule only; **PD-157 is the bulk cut** that applies it to the ~110 passages
-across `CLAUDE.md`, this file and `.claude/commands/queue-pickup.md`, and it is not done.
+PD-156 adopted the rule only; **PD-157 is the bulk cut** that applies it to the legacy
+correction passages across `CLAUDE.md`, this file and `.claude/commands/queue-pickup.md`, and
+it is not done.
 Anything you write from now on follows the new rule; anything already here is PD-157's.
 
 ---

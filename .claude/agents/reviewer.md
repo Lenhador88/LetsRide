@@ -237,16 +237,18 @@ Apply it per **added passage**, not per file:
   sits beside, and say that `git log -p` and the commit message already hold it.
 - **Is the carve-out earned?** A correction survives only where a reader would re-derive the
   wrong version from the same evidence. Name the command a careful person writes first and the
-  plausible wrong answer it returns; if you cannot, the passage is biography. `CLAUDE.md` names
-  three that qualify and calls them close to the whole legitimate set, so a diff adding a fourth
-  needs to argue for it.
+  plausible wrong answer it returns; if you cannot, the passage is biography. `CLAUDE.md`
+  §Working Principles gives three worked examples of the shape; apply the test, not the list.
 - **One-off or durable rule?** A passage recording a single incident, with no instruction a
   future session can act on, belongs in the commit message or the PR body.
 
 **The line budget — compute it and state the number on every diff touching prose.**
 
+`$BASE` is whatever §Start here settled on — `origin/development` normally, `origin/main` on a
+promotion, the reviewed sha on a delta re-review.
+
 ```bash
-git diff --numstat origin/development...HEAD -- 'CLAUDE.md' 'docs/*.md' '.claude/**/*.md' \
+git diff --numstat "$BASE"...HEAD -- 'CLAUDE.md' 'docs/*.md' '.claude/**/*.md' \
   | awk '{a+=$1; d+=$2} END {printf "+%d -%d  net %+d\n", a, d, a-d}'
 ```
 
