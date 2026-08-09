@@ -1159,9 +1159,9 @@ than a status: **the rating block below**, a **blocked capability** (the owner h
 so the ask needs spelling out), and **anything inferred rather than measured**. Brevity is about
 the narration, never about the record.
 
-**Rate every suggestion on five lines, always in this order.** Whenever you propose optional
+**Rate every suggestion on five ratings, always in this order.** Whenever you propose optional
 work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
-with numbers buried in it; the point is that the reader can skim five lines and still decide.
+with numbers buried in it; the point is that the reader can skim five scores and still decide.
 
 **Break the line after each score.** The rating goes on its own line, its justification on the
 next, with a blank `>` between entries. The number and the reason are two different things a
@@ -1169,19 +1169,35 @@ reader scans for — the numbers to triage, the reasons only for the ones that s
 and running them together on one line makes the block read as prose and defeats the skim it
 exists for.
 
-> **Recommendation** 7/10
+**Every score line ends with two trailing spaces, and they are load-bearing.** A bare newline
+inside a blockquote is a *soft* break: CommonMark and GitHub's `.md` renderer both collapse it
+to a space, so without them the block renders as `**Recommendation** 7/10 a dead column that…`
+— score and reason abutting with no separator at all, which is worse than the single line this
+shape replaced. Two trailing spaces are the markdown hard break that makes the split real.
+They are invisible in a diff and a whitespace-trimming editor or formatter will strip them
+silently, so check them before assuming the format is intact:
+
+```bash
+grep -cP '^\s*> \*\*(Recommendation|Complexity|Urgency|Customer value|This session)\*\*.*  $' CLAUDE.md
+grep -nP '^\s*> \*\*(Recommendation|Complexity|Urgency|Customer value|This session)\*\*.*[^ ]$' CLAUDE.md docs/HANDOFF.md
+```
+
+The first counts the intact ones; **the second is the one that matters** and must print
+nothing — it finds any score line whose hard break has been eaten.
+
+> **Recommendation** 7/10  
 > a dead column that reads as live is a trap for the next session
 >
-> **Complexity** 3/10
+> **Complexity** 3/10  
 > one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
 >
-> **Urgency** 2/10
+> **Urgency** 2/10  
 > nothing forces it; rises if anyone starts trusting the column
 >
-> **Customer value** 0/10
+> **Customer value** 0/10  
 > no rider can see this column or notice it going; the whole gain is to the next session
 >
-> **This session** N
+> **This session** N  
 > wants its own branch, and the open PR should land first
 
 **Recommendation goes first** — it is the line that answers *should we*, so it is the one being
@@ -1233,40 +1249,40 @@ list of build tasks hides the one nobody but them can do.
 **Give every lettered option its own blockquote, with the letter and its description *outside*
 the bar.** The bar groups the ratings so a reader scanning three options can see where each one
 ends; the description is the thing being chosen between, and inside the bar it reads as a sixth
-rating line instead of a heading. Two options means two headings and two bars:
+rating instead of a heading. Two options means two headings and two bars:
 
 **A) Drop the dead column.**
 
-> **Recommendation** 7/10
+> **Recommendation** 7/10  
 > a dead column that reads as live is a trap for the next session
 >
-> **Complexity** 3/10
+> **Complexity** 3/10  
 > one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
 >
-> **Urgency** 2/10
+> **Urgency** 2/10  
 > nothing forces it; rises if anyone starts trusting the column
 >
-> **Customer value** 0/10
+> **Customer value** 0/10  
 > no rider can see this column or notice it going; the whole gain is to the next session
 >
-> **This session** N
+> **This session** N  
 > wants its own branch, and the open PR should land first
 
 **B) Enable leaked-password protection.**
 
-> **Recommendation** 9/10
+> **Recommendation** 9/10  
 > the only security advisor that is not deliberate
 >
-> **Complexity** 1/10
+> **Complexity** 1/10  
 > one dashboard toggle
 >
-> **Urgency** 4/10
+> **Urgency** 4/10  
 > low now, high the day real riders sign up
 >
-> **Customer value** 4/10
+> **Customer value** 4/10  
 > no rider sees it working, but it is what stops one of them reusing a breached password
 >
-> **This session** N
+> **This session** N  
 > owner-only, nobody in a session can click it
 
 Do **not** put the ratings outside the bar, and do **not** put several options in one shared

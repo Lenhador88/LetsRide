@@ -690,22 +690,22 @@ index is a deliberate act again.
   3 rides. Read that as "nobody has hit it on a tiny dataset", not as "the window is hard to
   hit". Re-run at apply time.
 
-  > **Recommendation** 8/10
+  > **Recommendation** 8/10  
   > the last place a client can leave the database in a state no constraint forbids, and the
   > invariant is unasserted in *two* places rather than one
   >
-  > **Complexity** 5/10
+  > **Complexity** 5/10  
   > two migrations, four triggers, a backfill, three deploy steps
   >
-  > **Urgency** 4/10
+  > **Urgency** 4/10  
   > both doors need a hand-rolled request. Rises the day a real rider abandons a create, and
   > sharply if create gets a retry affordance or the store build ships
   >
-  > **Customer value** 3/10
+  > **Customer value** 3/10  
   > a rider who abandons a create loses the club entirely — a private orphan is on no list and
   > reachable from no screen, including its owner's. Rare, and total for whoever hits it
   >
-  > **This session** N
+  > **This session** N  
   > 3 blocking questions, two of them product-owner decisions (may an owner leave their own
   > club? may an organizer leave their own crew?)
 
@@ -723,23 +723,23 @@ index is a deliberate act again.
   invocation. **The RLS suite cannot see it either**: its idempotency assertion runs both calls
   inside one psql transaction, so it proves nothing about two.
 
-  > **Recommendation** 6/10
+  > **Recommendation** 6/10  
   > worth closing before the flow ships, not before the flow is built
   >
-  > **Complexity** 4/10
+  > **Complexity** 4/10  
   > an advisory lock is small; a marker column is a migration plus a recovery story for runs
   > that die holding it
   >
-  > **Urgency** 1/10
-  > now, and it is genuinely conditional: it needs two riders deleting within seconds, in a club
-  > they share. There are four accounts. It rises with the user count and sharply the day
-  > deletion is reachable from the UI at all
+  > **Urgency** 1/10 today  
+  > genuinely conditional: it needs two riders deleting within seconds, in a club they share.
+  > There are four accounts — `select count(*) from auth.users` on PROD, 4 as of 2026-08-09. It
+  > rises with the user count, and sharply the day deletion is reachable from the UI at all
   >
-  > **Customer value** 3/10
+  > **Customer value** 3/10  
   > nobody sees it working; what it prevents is a club cascading away with every postcard every
   > *other* member ever posted there, for riders who did nothing and get no warning
   >
-  > **This session** N
+  > **This session** N  
   > it is a design choice between two mechanisms, and the flow it protects does not exist yet
 
 - **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are tested,
@@ -757,21 +757,21 @@ index is a deliberate act again.
   succeeds; another rider's id in the body still deletes only the caller; publishable key
   refused; no token refused) can only be proven live.
 
-  > **Recommendation** 8/10
+  > **Recommendation** 8/10  
   > the expensive half is done and the context is written down; it gets more expensive the
   > longer the function sits unexercised
   >
-  > **Complexity** 5/10
+  > **Complexity** 5/10  
   > the flow is four screens and one action; the risk is all in the function, which is written
   >
-  > **Urgency** 3/10
+  > **Urgency** 3/10  
   > nothing forces it until a store submission, which needs the shell first
   >
-  > **Customer value** 8/10
+  > **Customer value** 8/10  
   > a rider can leave and take their data with them, which they cannot do today by any route —
   > and App Store 5.1.1(v) makes it the difference between shipping and being rejected
   >
-  > **This session** N
+  > **This session** N  
   > needs the function deployed, which is an owner action
 - **Inbox still has no tab, but two thirds of it now exist.** Per-ride group chat shipped as `034`
   (PD-115) and **notifications shipped 2026-08-07 as `036` (PD-118)** — a `notifications` table

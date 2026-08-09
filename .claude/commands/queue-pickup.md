@@ -706,8 +706,8 @@ your head.
 
 ### Second: rate it, and let the block decide
 
-**Rate it with `CLAUDE.md` §Working Principles' five-line block** — the vocabulary already
-exists and two of its five lines are this question:
+**Rate it with `CLAUDE.md` §Working Principles' five-rating block** — the vocabulary already
+exists and two of its five ratings are this question:
 
 | Relatedness | Rating | What happens |
 |---|---|---|
@@ -766,9 +766,14 @@ Never `Queued (AI)` — that is the owner's column and the only start signal.
 
 | Where | When |
 |---|---|
-| **`Todo AI`** | A session could build it, and you would recommend building it (≥ 4/10) |
+| **`Todo AI`** | A session could build it, and you would recommend building it (**Recommendation** ≥ 4/10) |
 | **`Todo Human`** + `Owner only` | Nobody in a session can do it |
-| **`Backlog AI`** | You rated it below 4/10 — a real thought, not a triaged one |
+| **`Backlog AI`** | You rated it **Recommendation** below 4/10 — a real thought, not a triaged one |
+
+**The threshold reads `Recommendation` and nothing else.** There are two 0–10 axes now, and
+**Customer value** is the wrong one to route on: it scores 0–2 for most correctness, migration
+and tooling work, which is precisely what a firing files. Routing on it would send every such
+item to `Backlog AI` — burying the findings this step exists to surface.
 
 **`Backlog AI` is not banned.** `Todo AI` means *triaged*, and the owner reads it to choose
 work; filling it with 2/10 ideas devalues exactly the column this whole step depends on.
@@ -800,7 +805,7 @@ certainly written from a different angle, and a query built from your title will
 the owner files, and a loose top-level story is the shape that rule exists to prevent.
 
 The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
-the five-line rating block, **the relatedness verdict** — which for a filed item is the line
+the five-rating block, **the relatedness verdict** — which for a filed item is the line
 saying why it is *separate* work, not a justification for travel it never claimed — and the
 issue or PR it came out of. **A story that grows a specification is a bug** — that belongs in
 a proposal.
