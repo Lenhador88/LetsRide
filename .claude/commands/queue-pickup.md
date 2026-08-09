@@ -685,7 +685,7 @@ A build always surfaces more than it was asked for. **Two questions, and the ord
 design — relatedness first, rating second.** Skipping straight to the rating is how a firing
 talks itself into a second story, because nothing in a rating block asks what you are building.
 
-### First: is this the story done properly, or the next story started early?
+### First: is this build done properly, or the next build started early?
 
 **Only the first is eligible to travel.** Note what this gate does and does not decide: it
 decides whether something *belongs in this build*, never whether it is worth doing. **Everything
@@ -720,11 +720,15 @@ exists and two of its five ratings are this question:
 | Travels | Anything else | Record it for filing |
 | Filed | *(rate it anyway — the filing table routes by rating)* | Record it for filing |
 
-**`This session` means *on this branch, in this PR, before it merges*** — `CLAUDE.md`'s reading,
-including its worked 3/10 two-minute **Y**. **Do not re-narrow it on the grounds that a firing is
-unattended.** That argument was the rule here until 2026-08-09 and it is exactly what filed the
-cheap related fixes as stories; what bounds an unattended build is the breadth cap below, not a
-higher bar on each item.
+**`This session` means *on this branch, in this PR, before it merges*** — `CLAUDE.md`'s reading
+of that axis, not a narrower one. **Do not re-narrow it on the grounds that a firing is
+unattended**; what bounds an unattended build is the breadth cap below, not a higher bar on each
+item.
+
+**That moves `This session` and leaves `Recommendation` exactly where it was.** Both halves still
+have to clear, so a related fix rated 6/10 is *not* built, and under the table below a sub-4 one
+is not even filed. `CLAUDE.md` illustrates the axis with a two-minute 3/10 **Y** — that example
+says what `This session` *means*, not what travels, and an item rated that low does not.
 
 **Both halves, never either.** A 9/10 recommendation with `This session` **N** is a story, not a
 build — an ordinary pairing here rather than a contradiction, and `CLAUDE.md` illustrates it
@@ -751,6 +755,11 @@ items each rated 8/Y pass every gate above individually while collectively tripl
   all and say so in the PR.
 - **The fold-ins together must stay smaller than the story's own diff.** If the extras are the
   larger half, the PR is no longer the story you were asked to build.
+- **The *discretionary* ones are capped harder — together under a third of the story's diff.**
+  Parity was sized against a gate that admitted only what the story was broken without, and those
+  still travel at any size: a test the new code needs is not optional. An adjacent bug or a
+  tidy-up is a **choice**, and two large ones clear "at most two, smaller than the story" while
+  turning the PR into something else. Over the third, fold the smaller and file the rest.
 - **Anything the folded-in work itself turns up is a story, always**, whatever it rates. One
   level deep, no chaining.
 
@@ -770,9 +779,14 @@ Never `Queued (AI)` — that is the owner's column and the only start signal.
 
 | Where | When |
 |---|---|
+| **`Todo Human`** + `Owner only` | Nobody in a session can do it — **matched first, whatever it rates** |
 | **`Todo AI`** | A session could build it, and you would recommend building it (**Recommendation** ≥ 4/10) |
-| **`Todo Human`** + `Owner only` | Nobody in a session can do it |
-| **Nowhere** | **Recommendation** below 4/10 — write it in the PR body and let it go |
+| **Nowhere** | A session could have built it *and* you rated it below 4/10 — write it in the PR body and let it go |
+
+**Read the rows in order — the owner-only row is matched before the rating is consulted.** An
+owner action can rate 2/10 and still has to be filed: `CLAUDE.md` §Keep it current requires a new
+one in Linear *the moment it is found*, and nobody in a session will ever pick it up off a PR
+body. Only work a session could have done itself is eligible to be dropped.
 
 **Below 4/10 a firing files nothing at all**, where it used to open a `Backlog AI` row. A sub-4
 idea is a real thought and it is still not work, and a column of them is a large part of what the
@@ -780,6 +794,11 @@ owner means by too many stories. The PR body is a durable enough record: a thoug
 twice gets had again by whichever session next opens that file, with better context than the row
 would have carried. **`Backlog AI` stays the owner's to use** — they can park a real idea there;
 a firing cannot.
+
+**On the two exits that never reach a PR — STEP 2c and §If you get stuck — the `Needs help`
+comment is the PR body's stand-in.** Both leave with a triage list and no PR to write it into, so
+without this the sub-4 items go nowhere at all, which §If you get stuck rightly calls worse than
+never having noticed them.
 
 **The threshold reads `Recommendation` and nothing else.** There are two 0–10 axes now, and
 **Customer value** is the wrong one to route on: it scores 0–2 for most correctness, migration
@@ -1032,11 +1051,11 @@ for scope creep*. The rule has two halves, and **STEP 4b is where they are appli
   that already covers it, per STEP 4b's search rule — and the owner decides when it gets built.
   Below 4/10 it becomes a line in the PR body and nothing else.
 
-**Filing *everything* is the failure this shape avoids, and it is an observed one now rather
-than a hypothetical.** The product owner read the board on 2026-08-09 and said so: too many
-stories, build the ones that sit in the context of the work. Both directions cost — a filed
-test the new code needed leaves the story merged and incomplete, and a filed 2/10 thought leaves
-the owner a row to read for ever — but only the second has actually happened here, at scale.
+**Filing *everything* is the failure this shape avoids.** The product owner read the board on
+2026-08-09 and said so: too many stories, build the ones that sit in the context of the work.
+Both directions cost — a filed test the new code needed leaves the story merged and incomplete,
+and a filed 2/10 thought leaves the owner a row to read for ever. Neither cost is a graded
+version of the other; do not let a later revision promote either into history.
 
 The boundary is worth being able to say in one line, because everything above is downstream of
 it: is this **this build, done properly** — or **the next build, started early?** The first

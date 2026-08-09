@@ -1476,12 +1476,15 @@ it does, permanently.
   time:
 
   ```
-  list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  limit=250  fields=["status"]
+  list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  limit=250  fields=["status","createdAt"]
   ```
 
-  2026-08-09: **51 open against 26 that ever reached DEV or production**, 16 of the 51 filed that
-  day. A board growing several times faster than it drains is an archive, not a queue.
-  `.claude/commands/queue-pickup.md` STEP 4b is where a firing applies this.
+  **Open** is every status except `Done (in production)`, `Deployed to DEV`, `Canceled` and
+  `Duplicate` — bucket on the *name*, since `Deployed to DEV` is typed `started` and a
+  `statusType` split would score it as open. 2026-08-09: **51 open against 26 that ever reached
+  DEV or production**, 16 of the 51 created that day. A board growing several times faster than
+  it drains is an archive, not a queue. `.claude/commands/queue-pickup.md` STEP 4b is where a
+  firing applies this.
 
 - **One issue per deliverable — a thing that can be *delivered*, not a step toward one.** The
   unit is what somebody gets when it closes: *"rides show a map"*, *"the native shell builds"*.
