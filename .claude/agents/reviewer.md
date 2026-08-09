@@ -216,14 +216,57 @@ Ask, specifically:
   and the design-system section saying the opposite is worse than either alone, because
   an agent that reads the first and stops will confidently do the wrong thing.
 
-Two standing rules worth applying to any documentation in the diff:
+One standing rule worth applying to any documentation in the diff:
 
 - **Derivable facts should not be hand-written.** Anything the repo or a live API
   already knows — which migrations exist, what CI runs, the directory tree — is a copy
   with an expiry date on it. Prefer pointing at the source. Flag new hand-copies.
-- **`CLAUDE.md` costs tokens on every session, forever.** Additions that restate what is
-  already there, or that document a one-off rather than a durable rule, are a permanent
-  tax on every future run. Flag them.
+
+### The necessity gate — is the passage *needed*, not just true
+
+Everything above asks whether a claim is **true**. This asks whether it should exist, and it is
+the only gate on prose growth: a true sentence that narrates its own revision history is still a
+permanent tax on every session that loads the file. `CLAUDE.md` §Working Principles carries the
+rule the diff must satisfy — *write a claim beside its command, not beside its history*.
+
+Apply it per **added passage**, not per file:
+
+- **Does the addition carry a verification command, or is it narrating a revision?** A passage
+  whose subject is what the file previously said — "this line read X until…", "an earlier draft
+  claimed…", "that was wrong, and review caught it" — is a finding. Quote it, name the claim it
+  sits beside, and say that `git log -p` and the commit message already hold it.
+- **Is the carve-out earned?** A correction survives only where a reader would re-derive the
+  wrong version from the same evidence. Name the command a careful person writes first and the
+  plausible wrong answer it returns; if you cannot, the passage is biography. `CLAUDE.md` names
+  three that qualify and calls them close to the whole legitimate set, so a diff adding a fourth
+  needs to argue for it.
+- **One-off or durable rule?** A passage recording a single incident, with no instruction a
+  future session can act on, belongs in the commit message or the PR body.
+
+**The line budget — compute it and state the number on every diff touching prose.**
+
+```bash
+git diff --numstat origin/development...HEAD -- 'CLAUDE.md' 'docs/*.md' '.claude/**/*.md' \
+  | awk '{a+=$1; d+=$2} END {printf "+%d -%d  net %+d\n", a, d, a-d}'
+```
+
+**Net growth over 120 lines is a finding** unless the diff argues, passage by passage, why each
+addition is a durable rule. The number is derived, not invented: across the last 55
+prose-touching PRs on `development` the net addition to that same file set runs median 32, p75
+73, p90 161, so 120 sits between p75 and p90 and flags roughly the top fifth. Re-derive rather
+than trust it — the distribution moves:
+
+```bash
+for c in $(git rev-list --no-merges -n 60 origin/development); do
+  git show --format= --numstat "$c" -- 'CLAUDE.md' 'docs/*.md' '.claude/**/*.md' |
+    awk '{a+=$1; d+=$2} END {if (a+d) print a-d}'
+done | sort -n | awk '{v[NR]=$1} END {printf "n=%d median=%d p75=%d p90=%d\n", NR, v[int(NR*0.5)], v[int(NR*0.75)], v[int(NR*0.9)]}'
+```
+
+Three things it is deliberately not. It is a **budget, not a cap** — a large true addition
+passes by being defended in the diff. It is **net**, so a diff that deletes more prose than it
+adds can never trip it. And it is **not a substitute for the three checks above**: 40 added
+lines of pure revision history is a finding at any budget.
 
 ## The client-rendered bundle — whenever the diff touches `src/`
 

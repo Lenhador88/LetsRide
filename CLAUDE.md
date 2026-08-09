@@ -1501,6 +1501,37 @@ those with the one-liner that verifies them, so a stale line costs seconds inste
 misleading someone. Counts especially: `git grep -c` beats a number typed by hand, which has
 been wrong here three times (assertion count, dependency count, `.from()` call sites).
 
+**Write a claim beside its command, not beside its history.** This extends the rule above and
+replaces the house style it grew into — stating a fact, then explaining what the file used to
+say instead. A correction paragraph is what gets written when a wrong claim is annotated rather
+than deleted, and it costs more than the wrong claim did: it is itself an unverified statement
+about the past, it is loaded into every session for ever, and the next revision corrects *it*.
+
+- **A fact gets its verification command.** If nothing can check it, it is a decision — record
+  the decision, not the revisions that led to it.
+- **Git history is what a file used to say.** `git log -p -- CLAUDE.md` and `git blame` are
+  complete, dated, and cost nothing until someone asks. Prose restating them is a copy with an
+  error rate.
+- **Replace a wrong claim; do not narrate it.** The commit message is where the change is
+  explained, and it is the one place a reader already knows to look for it.
+
+**Keep the correction only when a reader would re-derive the wrong version from the same
+evidence.** That is the test, and it is much narrower than "someone was once wrong here": name
+the command a careful person writes *first*, and say what it returns. If that is a plausible
+wrong answer, the warning is load-bearing. If they would simply get the right one, it is
+biography. Three earn it today, and they are close to the entire list:
+
+- **The comment trap** (§Technology Decisions) — a grep for a retired pattern counts its own
+  obituaries, so the obvious command returns a wrong number that looks measured.
+- **`^`-anchored `git grep -L`** (same paragraph) — unanchored, a doc comment mentioning
+  `'use client'` counts as the directive, so real server-rendered pages drop out of the list.
+- **The team-scoped lock** (§The queue is drained by a scheduled Routine, step 2) — a
+  team-scoped `list_issues` is the natural query and is held permanently by years-old issues
+  outside this project.
+
+`.claude/agents/reviewer.md` §The necessity gate enforces this, and carries a line budget so
+prose growth is measured rather than argued about.
+
 **Unapplied migrations are drift.** A migration in the repo that has not run against the
 database means the schema in git and the schema in Postgres disagree. Apply them before
 adding another; a queue of unapplied migrations fails in the order nobody tested. Check

@@ -28,6 +28,18 @@ git diff --stat origin/main -- docs/HANDOFF.md    # is this file itself unmerged
 If the second prints anything, someone edited the handoff and it never reached `main` — which
 has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-landed-check.sh`).
 
+**The correction convention is retired as of PD-156 (2026-08-09), and this file does not comply
+yet.** New rule, in `CLAUDE.md` §Working Principles: *write a claim beside its command, not
+beside its history*. A fact gets the one-liner that checks it; what the file used to say lives
+in `git log -p` and the commit message; a correction paragraph survives only where a reader
+would re-derive the wrong version from the same evidence. `.claude/agents/reviewer.md`
+§The necessity gate enforces it, with a 120-net-line budget on prose diffs.
+
+**So read the existing correction paragraphs here as legacy, not as the house style to copy.**
+PD-156 adopted the rule only; **PD-157 is the bulk cut** that applies it to the ~110 passages
+across `CLAUDE.md`, this file and `.claude/commands/queue-pickup.md`, and it is not done.
+Anything you write from now on follows the new rule; anything already here is PD-157's.
+
 ---
 
 ## ⚠ CI is triggering again, but it is NOT proven healthy — and a green tick still is not a check
