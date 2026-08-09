@@ -74,8 +74,13 @@ be skipped by the denylist. Run `31134935301`, 2026-08-07:
 **So runners are being assigned again, and this is the first evidence that actually shows it.**
 State it that narrowly: it is one healthy code run after two failures, and the second failure
 came *after* an apparent recovery. Until a few more land, keep checking **jobs rather than
-runs** — the denylist means a docs-only PR goes green having tested nothing, which is the trap
-that produced the wrong "it is resolved" claim in the first place. If the 15-minute cancel with
+runs** — this is what #79/#80 were at the time (`.claude/` and `docs/` were both fully
+denylisted then): the denylist means an `openspec/`- or `design/`-only PR goes green having
+tested nothing, which is the trap that produced the wrong "it is resolved" claim in the first
+place. **`docs/` no longer denylists as of PD-155 (2026-08-09)** — a docs-only PR now runs
+`Type Check, Lint & Build` for `docs:check`'s anchor sweep, so this specific trap no longer
+applies to that class of PR; it is preserved here as the historical record of what #79/#80
+actually were. If the 15-minute cancel with
 `runner_id: 0` comes back, it is an **owner action**: <https://www.githubstatus.com>, then repo
 Settings → Actions and the account's Actions usage.
 
@@ -90,7 +95,7 @@ so they are "checked by a human, not by CI" rather than unchecked.
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 7 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 839/839 across 35 files
+npm run test:unit                     # 946/946 across 37 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
 PGPASSWORD=postgres npm test          # 958 assertions, 0 failures
@@ -225,11 +230,11 @@ only because `/` sorts first and is static — a filter that is right by luck.
 **That count is 8 as of 2026-08-07, and it was 7 before the ride chat added
 `/rides/[id]/chat`** — it is the one the native epic actually needs, because every dynamic route
 is a route `output: 'export'` refuses without a `generateStaticParams()`. `next build` reports
-**20 static** and **8 dynamic** (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`,
+**22 static** and **8 dynamic** (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`,
 `/rides/[id]`, `/rides/[id]/crew`, `/rides/[id]/chat`). The static-export blocker below therefore
 grew by one; it did not change shape.
-Do not read the `Generating static pages (21/21)` line as the static route count — it is a
-different quantity, and 21 against 20 is exactly the kind of near-miss that gets copied.
+Do not read the `Generating static pages (23/23)` line as the static route count — it is a
+different quantity, and 23 against 22 is exactly the kind of near-miss that gets copied.
 They are dynamic for their *segment*, not for any data. No `ƒ Proxy (Middleware)` line appears
 at all. Measured 2026-08-06 — re-run it rather than trusting the 7.
 
@@ -446,10 +451,11 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **958**, measured 2026-08-08 against the full chain on local Postgres 16 (CI runs 17). It read 908 here and in `CLAUDE.md` until that run, against a chain nobody had changed — `040`'s assertions were never counted in. 908 before `040`'s locality centroid; 843 before `039`'s address search; 808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
-| Unit tests | `npm run test:unit` — **839 across 35 files on a clean tree**, measured 2026-08-08. Decomposition, because the arithmetic is not obvious: **833 across 34 at `origin/development`**, plus `agent-briefs.test.ts`'s 5 `it()` blocks, plus 1 — `no-service-role-key.test.ts` scans that new file too, so its `it.each` gains a case. (`037`'s two `scripts/places/` source files used to be named here as a pending delta; `037` has merged, so they are already inside the 833.) **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **946 across 37 files on a clean tree**, measured 2026-08-08. Decomposition, because the arithmetic is not obvious: **839 across 35 at `origin/development`** (verified directly in a throwaway worktree of that ref — `agent-briefs.test.ts`'s 5 cases and `no-service-role-key.test.ts`'s extra scanned-file case, both already landed there via PR #126, are inside that 839 rather than a delta on top of it). PD-155 adds a further 107 on top of THAT: 103 tests in `scripts/docs/__tests__/`, plus 4 new `it.each` scan cases in `no-service-role-key.test.ts` — the 2 new source files under `scripts/docs/` plus the 2 new test files that also get scanned. 839 + 107 = **946**; 35 + 2 = **37**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
+| Doc-claims sweep | `npm run docs:check` — PD-155. Runs the declared registry in `scripts/docs/registry.mjs` against measured ground truth (dependency/migration/test counts, contrast ratios, `next build` route counts) and reports every disagreement; a stale claim it doesn't yet cover is not proof the doc is right, only that nobody registered it. RLS-backed claims skip cleanly with no Postgres rather than reading as a false pass |
 
 ### The walk, and the relay it now needs
 
