@@ -1159,17 +1159,33 @@ than a status: **the rating block below**, a **blocked capability** (the owner h
 so the ask needs spelling out), and **anything inferred rather than measured**. Brevity is about
 the narration, never about the record.
 
-**Rate every suggestion on four lines, always in this order.** Whenever you propose optional
+**Rate every suggestion on five lines, always in this order.** Whenever you propose optional
 work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
-with numbers buried in it; the point is that the reader can skim four lines and still decide.
+with numbers buried in it; the point is that the reader can skim five lines and still decide.
 
-> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
-> **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
-> **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
-> **This session** N — wants its own branch, and the open PR should land first
+**Break the line after each score.** The rating goes on its own line, its justification on the
+next, with a blank `>` between entries. The number and the reason are two different things a
+reader scans for — the numbers to triage, the reasons only for the ones that survive triage —
+and running them together on one line makes the block read as prose and defeats the skim it
+exists for.
+
+> **Recommendation** 7/10
+> a dead column that reads as live is a trap for the next session
+>
+> **Complexity** 3/10
+> one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
+>
+> **Urgency** 2/10
+> nothing forces it; rises if anyone starts trusting the column
+>
+> **Customer value** 0/10
+> no rider can see this column or notice it going; the whole gain is to the next session
+>
+> **This session** N
+> wants its own branch, and the open PR should land first
 
 **Recommendation goes first** — it is the line that answers *should we*, so it is the one being
-looked for; the other three exist to justify it. What each one means:
+looked for; the other four exist to justify it. What each one means:
 
 - **Recommendation** — how strongly you actually advise doing it, independent of how much fun
   it is to build.
@@ -1177,6 +1193,18 @@ looked for; the other three exist to justify it. What each one means:
 - **Urgency** — *when*, not *whether*. **Name the trigger where one exists**, because most
   urgency here is conditional rather than scheduled: "low now, high the day real riders sign
   up" is the whole content, and the bare number would have hidden it.
+- **Customer value** — **what a rider gets, 0–10.** The one line written from outside the
+  codebase, and the only one that asks whether anybody outside this repo would notice. Name
+  *which* rider and *what changes for them*: "an organizer can finally cancel a ride" is the
+  content; "improves the product" is not. Where the value is a harm prevented rather than a
+  feature gained, rate the harm and name it — "stops any author pinning themselves to the top
+  of every feed" is a real 6, not a 0.
+
+  **A low score is not a criticism, and this is the line most likely to be misread as one.**
+  Most correctness, tooling, migration and documentation work here is a genuine 0–2 and still
+  earns a 9/10 **Recommendation**, because it protects riders instead of reaching them. Rate it
+  honestly at 0 rather than inflating it to justify the work — **Recommendation** already does
+  that job, and a customer-value number that never goes low tells the reader nothing.
 - **This session** — **Y or N, never a number**, plus the half-line of why. It answers "should
   *this* session pick it up next", which is about the session rather than the work: what context
   is loaded, whether a branch is open, whether it is blocked on an answer, and whether it is even
@@ -1184,12 +1212,14 @@ looked for; the other three exist to justify it. What each one means:
   thing this line does, because those are exactly the items that otherwise sit in a list of build
   tasks looking actionable.
 
-**None of the four are correlated, and that is the entire reason there are four.** A 1/10
+**None of the five are correlated, and that is the entire reason there are five.** A 1/10
 complexity item can be a 9/10 recommendation; a clever 6/10 build can be a 2/10 one. **9/10 with
 `This session` N is an ordinary pairing**, not a contradiction — the leaked-password toggle is a
 dashboard click nobody in a session can make. So is its inverse: a 3/10 worth **Y** because the
-files are already open and it costs two minutes. Answer `This session` from where the session
-actually is, not from how good the idea is.
+files are already open and it costs two minutes. **A 0/10 customer value beside a 9/10
+recommendation is equally ordinary** — a revoked grant no rider will ever notice is exactly that
+pairing, and reading the low number as a reason to decline inverts what the line is for. Answer
+`This session` from where the session actually is, not from how good the idea is.
 
 Rate your own ideas honestly, including low — an unrated suggestion reads as advocacy, and the
 reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so in the
@@ -1202,22 +1232,42 @@ list of build tasks hides the one nobody but them can do.
 
 **Give every lettered option its own blockquote, with the letter and its description *outside*
 the bar.** The bar groups the ratings so a reader scanning three options can see where each one
-ends; the description is the thing being chosen between, and inside the bar it reads as a fifth
+ends; the description is the thing being chosen between, and inside the bar it reads as a sixth
 rating line instead of a heading. Two options means two headings and two bars:
 
 **A) Drop the dead column.**
 
-> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
-> **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
-> **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
-> **This session** N — wants its own branch, and the open PR should land first
+> **Recommendation** 7/10
+> a dead column that reads as live is a trap for the next session
+>
+> **Complexity** 3/10
+> one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
+>
+> **Urgency** 2/10
+> nothing forces it; rises if anyone starts trusting the column
+>
+> **Customer value** 0/10
+> no rider can see this column or notice it going; the whole gain is to the next session
+>
+> **This session** N
+> wants its own branch, and the open PR should land first
 
 **B) Enable leaked-password protection.**
 
-> **Recommendation** 9/10 — the only security advisor that is not deliberate
-> **Complexity** 1/10 — one dashboard toggle
-> **Urgency** 4/10 — low now, high the day real riders sign up
-> **This session** N — owner-only, nobody in a session can click it
+> **Recommendation** 9/10
+> the only security advisor that is not deliberate
+>
+> **Complexity** 1/10
+> one dashboard toggle
+>
+> **Urgency** 4/10
+> low now, high the day real riders sign up
+>
+> **Customer value** 4/10
+> no rider sees it working, but it is what stops one of them reusing a breached password
+>
+> **This session** N
+> owner-only, nobody in a session can click it
 
 Do **not** put the ratings outside the bar, and do **not** put several options in one shared
 blockquote. Both defeat the grouping.

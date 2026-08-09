@@ -351,7 +351,7 @@ the diff matches the issue: CI checks that it compiles, not that it was asked fo
 
 **You usually run before the PR exists, so you cannot read a PR body — the caller has to hand
 you the material.** STEP 4c requires the prompt that invokes you to carry the issue being
-built, each fold-in with its one-line relatedness justification and its four ratings, and the
+built, each fold-in with its one-line relatedness justification and its five ratings, and the
 commit range that is the story itself as opposed to the fold-ins. **If a prompt mentions
 fold-ins but does not supply those, say so as a finding and review what you can** — an
 unverifiable scope claim is exactly the thing this pass exists to surface, and guessing the
