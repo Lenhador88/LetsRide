@@ -43,74 +43,74 @@
   `security definer` and survives blocking the organizer and leaving a private club, so crew alone —
   and crew ∩ postcard-visible — both still write ghost rows. `design.md` §D6 has the policy text.
   The product question is only `going`-vs-both; the three conjuncts are not negotiable.
-- [ ] 0.6 Re-derive the migration number rather than trusting this file. It reads **041** at write
+- [x] 0.6 Re-derive the migration number rather than trusting this file. It reads **041** at write
   time, 2026-08-09. `ls supabase/migrations/` against `list_migrations` on **both** projects, **and**
   `grep -rn "0[0-9][0-9]_[a-z_]*\.sql" openspec/changes/*/` — `enforce-creator-membership` still
   claims `029`/`030`, both long taken, and renumbers into whatever is free the day it is picked up.
-- [ ] 0.7 Re-read the seven columns holding UPDATE on `postcards` **in the same session** the
+- [x] 0.7 Re-read the seven columns holding UPDATE on `postcards` **in the same session** the
   migration is written, from `pg_class.relacl` / `pg_attribute.attacl`. Do not copy them from
   `proposal.md`; that list is a snapshot and the re-grant is the one statement in this change that
   fails silently when it is stale.
 
 ## 1. `041_postcard_ride_tag.sql` — the column, the gate, the grant
 
-- [ ] 1.1 Header, in `034`'s and `036`'s style, stating: that this is additive **and inert** (no
+- [x] 1.1 Header, in `034`'s and `036`'s style, stating: that this is additive **and inert** (no
   trigger on any existing write path, unlike `036`); the retention window in words (§the cascade
   window); that SELECT is **deliberately untouched**; that the `set null` sweep runs privileged and
   is not gated by the withheld grant; and that `postcards.created_at` is client-writable and is
   **not** this change's to fix.
-- [ ] 1.2 `alter table public.postcards add column ride_id uuid references public.rides(id) on delete set null;`
+- [x] 1.2 `alter table public.postcards add column ride_id uuid references public.rides(id) on delete set null;`
   — nullable, no CHECK, no uniqueness, and **no constraint tying it to `club_id`** (`design.md` §D4).
-- [ ] 1.3 `create index postcards_ride_id_idx on public.postcards (ride_id, created_at desc) where ride_id is not null;`
+- [x] 1.3 `create index postcards_ride_id_idx on public.postcards (ride_id, created_at desc) where ride_id is not null;`
   — the leading column serves the `set null` sweep, the pair serves the Journal query. Copy
   `postcards_club_id_idx`'s shape exactly.
-- [ ] 1.4 `column` comment saying what the column is: a tag, not an audience, and `club_id` still
+- [x] 1.4 `column` comment saying what the column is: a tag, not an audience, and `club_id` still
   decides who sees the row.
-- [ ] 1.5 Replace the `postcards` INSERT policy, preserving its three existing conjuncts verbatim and
+- [x] 1.5 Replace the `postcards` INSERT policy, preserving its three existing conjuncts verbatim and
   adding one:
   `and (ride_id is null or (exists (select 1 from public.rides r where r.id = ride_id) and private.is_ride_crew(ride_id)))`.
   Policy comment naming both halves and why neither may be dropped.
-- [ ] 1.6 **Leave the `postcards` UPDATE policy completely alone** — no `ride_id` conjunct in `using`
+- [x] 1.6 **Leave the `postcards` UPDATE policy completely alone** — no `ride_id` conjunct in `using`
   or `with check`. An earlier revision of this task added one, calling it "unreachable, since the
   column has no UPDATE grant". **That is false**: a column privilege gates the SET list, an RLS
   `WITH CHECK` is evaluated over the whole new row, so the conjunct fires on a *caption* edit and
   reproduces exactly the lockout `design.md` §D3 exists to reject. The tripwire that replaces it is
   assertion 2.9, which goes red if the column is ever granted UPDATE. State the omission in the
   header, or the next reader adds it back for symmetry with `club_id`.
-- [ ] 1.7 `revoke update on public.postcards from authenticated;` then
+- [x] 1.7 `revoke update on public.postcards from authenticated;` then
   `grant update (<the seven from 0.7>) on public.postcards to authenticated;` — **read from 0.7, not
   from any document**.
-- [ ] 1.8 Confirm no `grant` is issued to `anon` anywhere in the file, and that SELECT and DELETE
+- [x] 1.8 Confirm no `grant` is issued to `anon` anywhere in the file, and that SELECT and DELETE
   policies are untouched.
-- [ ] 1.9 Diff `pg_policies.qual` for `postcards` SELECT before and after as **text**. It must be
+- [x] 1.9 Diff `pg_policies.qual` for `postcards` SELECT before and after as **text**. It must be
   byte-identical. A prose claim does not discharge this task.
 
 ## 2. `supabase/tests/rls_test.sql` — the assertions (`openspec/config.yaml`: a policy change with no new assertion is not finished)
 
-- [ ] 2.1 Fixtures: two clubs (one public, one private), three rides (public/no club, public club's,
+- [x] 2.1 Fixtures: two clubs (one public, one private), three rides (public/no club, public club's,
   private club's), an organizer, a crew member of each status, a non-crew rider who can see the
   public rides, a non-member of the private club, and a blocked pair.
-- [ ] 2.2 **Audience unchanged, widening direction**: a non-member of private club C sees zero rows
+- [x] 2.2 **Audience unchanged, widening direction**: a non-member of private club C sees zero rows
   for a C-scoped postcard tagged to a ride they are on the crew of.
-- [ ] 2.3 **Audience unchanged, narrowing direction**: an app-wide postcard tagged to a private club's
+- [x] 2.3 **Audience unchanged, narrowing direction**: an app-wide postcard tagged to a private club's
   ride is still returned to a rider who cannot see that ride.
-- [ ] 2.4 Crew member (`going`) tags successfully; crew member (`maybe`) tags successfully — identical
+- [x] 2.4 Crew member (`going`) tags successfully; crew member (`maybe`) tags successfully — identical
   rights, no status filter.
-- [ ] 2.5 Non-crew rider who **can** see a public ride is refused. Attributable to the crew conjunct.
-- [ ] 2.6 Non-member of a private club is refused for that club's ride, **and remains refused while
+- [x] 2.5 Non-crew rider who **can** see a public ride is refused. Attributable to the crew conjunct.
+- [x] 2.6 Non-member of a private club is refused for that club's ride, **and remains refused while
   holding a `ride_members` row** inserted as the table owner. Attributable to the visibility conjunct.
-- [ ] 2.7 Crew member who has blocked the organizer is refused — asserted **separately** from 2.6, so
+- [x] 2.7 Crew member who has blocked the organizer is refused — asserted **separately** from 2.6, so
   removing either conjunct fails a case the other does not.
-- [ ] 2.8 Crew member who has left the private club is refused — asserted separately again.
-- [ ] 2.9 `has_column_privilege('authenticated','public.postcards','ride_id','UPDATE') = false`. **Name
+- [x] 2.8 Crew member who has left the private club is refused — asserted separately again.
+- [x] 2.9 `has_column_privilege('authenticated','public.postcards','ride_id','UPDATE') = false`. **Name
   the role; do not attempt the write** (`031`). This is the tripwire standing in for the conjunct 1.6
   removes.
-- [ ] 2.9a **A caption edit on a *tagged* postcard still succeeds after its author leaves the crew.**
+- [x] 2.9a **A caption edit on a *tagged* postcard still succeeds after its author leaves the crew.**
   Set up the author as crew, tag, remove the crew row, then `update postcards set caption = …`. It
   must pass. This is the case that goes red the day somebody adds the `ride_id` conjunct to the UPDATE
   policy, and its label SHALL point at `rls_test.sql:719-727` — the *contrasting* `club_id` case,
   which is asserted as a refusal and is accepted because `club_id` is updatable.
-- [ ] 2.10 **Rewrite `rls_test.sql:977`, which `041` turns red.** It asserts
+- [x] 2.10 **Rewrite `rls_test.sql:977`, which `041` turns red.** It asserts
   `has_table_privilege('authenticated','public.postcards','update') = true`; after the
   revoke-and-regrant that is **false** while every column-level answer stays true — the shape
   `notifications` already has (measured on DEV: table `false`, column `true`). Replace it with
@@ -118,56 +118,64 @@
   deliberately false. **This is a behaviour change to a passing test, not a rename** — leaving it is
   a red suite, and "fixing" it by flipping the expected value to `false` without the per-column
   replacement drops the coverage entirely.
-- [ ] 2.11 The six unambiguous re-granted columns asserted with `has_column_privilege(…,'UPDATE')`,
+- [x] 2.11 The six unambiguous re-granted columns asserted with `has_column_privilege(…,'UPDATE')`,
   so an omission in 1.7 fails here rather than in production: `id, author_id, club_id, image_path,
   caption, updated_at`.
-- [ ] 2.11a `created_at`'s UPDATE grant asserted **separately, labelled as pinning a known defect** —
+- [x] 2.11a `created_at`'s UPDATE grant asserted **separately, labelled as pinning a known defect** —
   `PD-163`, the client-writable feed sort key and pagination cursor. `041` preserves it because this
   change must not silently alter an unrelated column, **but the assertion SHALL NOT be worded as an
   invariant**: it records the status quo so that fixing `PD-163` is a deliberate edit to a labelled
   line rather than a surprise failure.
-- [ ] 2.12 `has_column_privilege('authenticated','public.postcards','ride_id','INSERT')` and `'SELECT'`
+- [x] 2.12 `has_column_privilege('authenticated','public.postcards','ride_id','INSERT')` and `'SELECT'`
   are both true.
-- [ ] 2.13 A rider cannot set `ride_id` on another rider's postcard — pre-existing rule, new reason
+- [x] 2.13 A rider cannot set `ride_id` on another rider's postcard — pre-existing rule, new reason
   to try.
-- [ ] 2.14 **The club/ride orthogonality**, which no assertion covered: a rider who is a member of
+- [x] 2.14 **The club/ride orthogonality**, which no assertion covered: a rider who is a member of
   club C and crew of an unrelated public ride R tags a C-scoped postcard to R successfully, and a
   crew member of R who is **not** in C gets zero rows for it. This is `ride-journal`'s
   *SHALL NOT be constrained to agree* requirement, and without it the tempting agreement trigger
   could be added with a green suite.
-- [ ] 2.15 **A club owner and an `admin` get no elevated read** into a ride's Journal — the row of
+- [x] 2.15 **A club owner and an `admin` get no elevated read** into a ride's Journal — the row of
   the role table with no other assertion behind it. Insert the `admin` row as the table owner and say
   why in the label: `club_members` has no UPDATE policy, so `admin` is unreachable through the client
   (`036`'s finding, unchanged).
-- [ ] 2.16 Delete a ride: postcards survive with `ride_id` NULL, asserted **from the other rider's
+- [x] 2.16 Delete a ride: postcards survive with `ride_id` NULL, asserted **from the other rider's
   session**, not the deleter's.
-- [ ] 2.17 The set of riders who can select a postcard is identical before and after its tag is
+- [x] 2.17 The set of riders who can select a postcard is identical before and after its tag is
   nulled — the audience-invariance assertion.
-- [ ] 2.18 Blocking, both directions, still removes a rider's postcards from the Journal query
+- [x] 2.18 Blocking, both directions, still removes a rider's postcards from the Journal query
   specifically (not only from the feed).
-- [ ] 2.19 A `postcard_hides` row still removes the postcard from the Journal query.
-- [ ] 2.20 `anon` holds no grant on `postcards.ride_id` in any verb.
-- [ ] 2.21 A rider with `terms_accepted_at` NULL still cannot insert a postcard, tagged or untagged.
-- [ ] 2.22 **A nonexistent ride id and an invisible one both raise `42501`** — the error shape is a
+- [x] 2.19 A `postcard_hides` row still removes the postcard from the Journal query.
+- [x] 2.20 `anon` holds no grant on `postcards.ride_id` in any verb.
+- [x] 2.21 A rider with `terms_accepted_at` NULL still cannot insert a postcard, tagged or untagged.
+- [x] 2.22 **A nonexistent ride id and an invisible one both raise `42501`** — the error shape is a
   property of the gate, not an accident. Measured 2026-08-09 on DEV in a rolled-back transaction:
   `WITH CHECK` is evaluated before the FK's `AFTER ROW` referential trigger, so `23503` is
   unreachable while the visibility conjunct stands. The assertion pins that, because removing the
   conjunct would reintroduce the distinction as a real oracle.
-- [ ] 2.23 Run the whole suite and reconcile by **label set**, not count — a count cannot tell a
+- [x] 2.23 Run the whole suite and reconcile by **label set**, not count — a count cannot tell a
   rename from a loss. Baseline is 958 assertions; re-derive with
   `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **2.10 changes an existing label**, so
   expect exactly one removal alongside the additions and confirm it is that one.
 
 ## 3. Apply, and verify against the live databases
 
-- [ ] 3.1 Apply to **DEV** first. Then `get_advisors(security)` — expect **8**, unchanged. A new WARN
+- [x] 3.1 Apply to **DEV** first. Then `get_advisors(security)` — expect **8**, unchanged. A new WARN
   means a function landed in `public` or a revoke did not.
-- [ ] 3.2 On DEV, in a rolled-back transaction: insert a postcard tagged to a ride as a crew member,
+- [x] 3.2 On DEV, in a rolled-back transaction: insert a postcard tagged to a ride as a crew member,
   as a non-crew rider, and as a non-member of a private club. Three outcomes, by hand, before PROD.
-- [ ] 3.3 On DEV, confirm the seven UPDATE column grants by query, and confirm `ride_id` is absent
+- [x] 3.3 On DEV, confirm the seven UPDATE column grants by query, and confirm `ride_id` is absent
   from them.
-- [ ] 3.4 Apply to **PROD**, then re-run 3.1 and 3.3 there.
-- [ ] 3.5 `npm run db:drift` — files against both databases.
+- [ ] 3.4 Apply to **PROD**, then re-run 3.1 and 3.3 there. **Deliberately NOT done 2026-08-09** —
+  the implementing session was scoped to DEV, and both databases being level beforehand does not make
+  promotion that session's call. Nothing gates it: `041` is inert (no trigger on any existing write
+  path) and no code depends on it. **Re-derive the seven UPDATE columns against PROD at apply time**
+  rather than copying them from `041` §3 — that statement is the one that fails silently when stale.
+- [ ] 3.5 `npm run db:drift` — files against both databases. **Not run 2026-08-09**: it needs
+  `PROD_DATABASE_URL` / `DEV_DATABASE_URL`, which no session holds. The equivalent was done through
+  the MCP instead (`list_migrations` on both against `ls supabase/migrations/`) — DEV 41, PROD 40,
+  files 41 — so drift is **known and expected** until 3.4 lands, and `db:drift` will report `041`
+  missing from PROD, correctly.
 
 ## 4. Code — reads, writes, screens
 

@@ -67,7 +67,7 @@ npm run lint                          # exit 0 — 7 pre-existing <img> warnings
 npm run test:unit                     # 947/947 across 37 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 958 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 1043 assertions, 0 failures
 ```
 
 **Two traps in running that, both of which produce a confident wrong answer first:**
@@ -364,7 +364,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **958**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss, and `038` moved this by +36 new and −1 relabelled |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1043**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column) |
 | Unit tests | `npm run test:unit` — **947 across 37 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
@@ -560,22 +560,41 @@ Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
 Inbox or push exists.
 
-## Migrations — DEV and PROD agree, and three things about that will read as drift
+## Migrations — DEV is ONE AHEAD of PROD, and four things will read as drift
 
-**Both projects are at `040` with no gap.** Verify rather than trust it; this is exactly the kind
-of line that goes stale:
+**`041` is applied to DEV and deliberately NOT to PROD.** DEV is at `041`, PROD at `040`, and the
+repo holds 41 files. That gap is a decision, not a lapse: `041` was applied by the session that
+wrote it under a brief scoped to DEV, and promoting it is the owner's call. Verify rather than
+trust it; this is exactly the kind of line that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 40 rows, ending 20260808204829 040_locality_centroid
+#   DEV  (fpmrimzxadewsaiwpsel): 41 rows, ending 20260809121448 041_postcard_ride_tag
 #   PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 040_locality_centroid
-ls supabase/migrations/ | wc -l          # 40
+ls supabase/migrations/ | wc -l          # 41
 ```
 
+**Applying `041` to PROD needs no gate and no ordering.** It is additive and *inert* — one column,
+one index, one FK, one INSERT-policy replacement and one revoke-and-regrant of UPDATE on
+`postcards`, with no trigger on any existing write path. So unlike `036` it starts no new code
+inside a rider's own transaction and needs no hand-exercise first, and unlike `023`/`025` it has no
+relationship to a code deploy: nothing in `src/` reads or writes `ride_id` yet. The one thing to
+re-read before applying is `041`'s §3 — the seven UPDATE columns must be re-derived against PROD at
+apply time rather than copied, because omitting one silently retracts a grant the app relies on.
+
 **Nothing automated compares the stored SQL against the files** — `npm run db:drift` compares
-migration *names* only — and three known mismatches will look like drift to anyone who checks by
+migration *names* only — and four known mismatches will look like drift to anyone who checks by
 hand:
 
+- **`npm run db:drift` reports `041` missing from PROD, and that is TRUE rather than a false
+  positive.** It is the one entry on this list that a session should act on rather than explain
+  away — by applying it to PROD, once the owner decides to. Every other entry here is a recording
+  artefact.
+- **DEV's `041` statement IS byte-identical to its file**, so it does **not** join the reduced-form
+  list below: `md5(statements[1])` on DEV equals `md5sum supabase/migrations/041_postcard_ride_tag.sql`
+  — both `28ac654156c67f8f1a668bba2eee70b2` at apply time, 2026-08-09. Recorded because the *absence*
+  of a mismatch is what someone re-deriving the pattern from `036`–`040` would not predict, and
+  because a later comment edit to that file will move the hash and make it look like the others.
 - **PROD's recorded statements for `036`–`040` are comment-reduced, not the files.** Nothing can
   pipe a file into `apply_migration`, so each was reduced to its executing statements (preserving
   comments inside `$$` bodies, which are part of `prosrc`) and then verified by diffing every

@@ -1,0 +1,415 @@
+-- 041: postcards can be tagged to a ride. A TAG, never a second audience.
+--
+-- Linear PD-123. Specification: openspec/changes/tag-postcards-to-rides/.
+-- Builds the column behind `Ride - Journal (Postcards/Timeline)` (2226:4865)
+-- and unblocks the deferred `postcard_on_ride` notification, which is a
+-- separate change and is NOT started here.
+--
+-- ---------------------------------------------------------------------------
+-- The one sentence this file exists to protect
+-- ---------------------------------------------------------------------------
+-- **`club_id` IS the audience. `ride_id` is a tag.** CLAUDE.md is explicit that
+-- `postcards` carries no `is_public` flag on purpose: NULL `club_id` means the
+-- app-wide feed, a set one means that club's members, and nothing else decides
+-- who sees a row.
+--
+-- A second nullable FK on the same table is the exact shape of a change where
+-- the next implementer reaches for `or ride_id = ...` in the SELECT policy
+-- because it makes the Journal work. It does make the Journal work. It also
+-- hands every rider who can see a public ride every private club's postcard
+-- tagged to it.
+--
+-- **So the SELECT policy is not touched by this file, in either direction.**
+-- `ride_id` neither grants nor withholds. The Journal is a plain
+-- `.eq('ride_id', ...)` under the caller's own row security: two riders open
+-- the same ride's Journal and correctly see different lists, and there is no
+-- "3 more" marker, because a count of what you may not see is the leak the
+-- filtering just prevented.
+--
+-- An unstated absence is what silently becomes something else, so it is
+-- asserted from BOTH sides in rls_test.sql rather than described here: a
+-- postcard tagged to a ride the viewer CAN see stays invisible if `club_id`
+-- says so, and one tagged to a ride the viewer CANNOT see stays visible if
+-- `club_id` says so. The suite also diffs the SELECT policy's `qual` as text.
+--
+-- ---------------------------------------------------------------------------
+-- Additive AND inert — unlike 036, nothing existing starts running new code
+-- ---------------------------------------------------------------------------
+-- One column, one index, one FK, one policy replacement (INSERT `with check`
+-- only), one revoke-and-regrant of UPDATE. **No trigger hangs off any existing
+-- write path.** 036 hung six fan-out triggers off five already-shipped write
+-- paths and therefore needed a hand-exercise gate on DEV before it could apply;
+-- this file needs no such gate. It may be applied before the code that reads it
+-- deploys, and DEV-then-PROD is ordinary caution rather than a sequencing rule.
+--
+-- ---------------------------------------------------------------------------
+-- Retention: the CASCADE WINDOW, and deliberately not a number of days
+-- ---------------------------------------------------------------------------
+-- A postcard tagged to a ride records that a named rider was at a named meeting
+-- point at a named time, so CLAUDE.md requires the window be stated when the
+-- column is written rather than retrofitted. This is it.
+--
+-- **The tag lives exactly as long as both of the rows it joins, and is removed
+-- by the deletion of either**: the postcard by its author's `on delete cascade`
+-- into profiles, the tag by this column's `on delete set null` when the ride
+-- goes. `ride_members` already records the same rider-was-on-this-ride
+-- association, so the tag adds a link rather than a new class of personal data.
+--
+-- **No time-based sweep is claimed**, and that is a decision rather than an
+-- omission: this project has no `pg_cron` and no scheduled Edge Function, so a
+-- window nothing implements becomes a fact nobody rechecks. Account deletion
+-- already reaches this data through the two cascades above — no new table holds
+-- a subject's data, so the deletion path needs no new arm.
+--
+-- ---------------------------------------------------------------------------
+-- `on delete set null`, and why `cascade` would re-create 029's defect
+-- ---------------------------------------------------------------------------
+-- `rides.organizer_id` is `ON DELETE CASCADE`, so a ride dies with its
+-- organizer's account — deliberate, because a ride is one person's plan.
+--
+-- Chain a cascade onto that and **rider A deleting their account destroys rider
+-- B's postcards**, because B once tagged one to A's ride. That is not an
+-- analogy to 029, it is the same defect: CLAUDE.md's `clubs` row records that
+-- `clubs.owner_id` cascading into `postcards.club_id` would have "destroyed
+-- every postcard every OTHER member ever posted there — 009 reasoned that link
+-- out correctly for a club deleted BY its owner and never considered it
+-- arriving as a side effect of a third party's erasure." 029 is the migration
+-- that fixed that. A `ride_id` cascade re-creates it one migration later, on
+-- the table 029 was protecting.
+--
+-- The middle option — transfer the ride to a remaining crew member, as 029's
+-- `transfer_owned_clubs` does for clubs — is refused on CLAUDE.md's own ground:
+-- a club is a shared institution and a ride is one person's plan. There is
+-- nobody to give it to.
+--
+-- **`set null` carries no orphan trap here, and the reason is the whole
+-- change.** 029 treats `rides.club_id`'s `ON DELETE SET NULL` as a trap because
+-- a private club's ride left with `club_id` NULL and `is_public` false becomes
+-- visible to its organizer alone — nulling that column CHANGED THE AUDIENCE.
+-- Nulling `postcards.ride_id` changes the audience by exactly nothing, because
+-- `club_id` still decides and always did. If `set null` were dangerous here,
+-- that would be evidence the column had become an audience axis.
+--
+-- **The `set null` sweep runs PRIVILEGED, and that is not an inconsistency to
+-- fix.** A referential action is applied by the system, not under the deleting
+-- rider's row security, so it writes rows that rider can neither see nor
+-- update. The absent UPDATE grant below therefore does not gate it, and the
+-- UPDATE policy does not either. Written down because the apparent mismatch is
+-- exactly the kind a later session "repairs" by adding a policy.
+--
+-- The honest cost, stated rather than discovered: **a rider deleting their
+-- account silently empties the Journals of every ride they organised.** Other
+-- riders' postcards survive in the feeds they were posted to; only the grouping
+-- is lost, and nobody is told — the same reason CLAUDE.md already records for
+-- the crew of a cancelled ride.
+--
+-- ---------------------------------------------------------------------------
+-- The write gate is an INTERSECTION: ride-visible AND crew. Never either alone
+-- ---------------------------------------------------------------------------
+-- This is 034's rule in the write direction, and 034 shipped the leak in draft
+-- before adding the first half.
+--
+--   * **The EXISTS** runs under the CALLER's own row security, so it re-uses
+--     the `rides` SELECT policy rather than restating any of it. Without it a
+--     bare FK accepts a private club's ride the tagger cannot see — a FK is
+--     validated with RLS BYPASSED. The postcard would not leak, but the ride's
+--     Journal surface would gain a stranger's content, and the deferred
+--     notification would carry it to a crew the tagger cannot otherwise reach.
+--     That is an injection channel into a private club built out of a column
+--     that "only tags".
+--
+--   * **`private.is_ride_crew`** is what makes this a journal of the ride
+--     rather than a public wall on it. 034: "Seeing a ride is not being on it."
+--     `postcards` INSERT already works this way for the other FK — `club_id`
+--     requires `private.is_club_member(club_id)` — so this is that sentence
+--     applied to the second reference, not a new principle.
+--
+-- The two answer DIFFERENT questions — "may I see this ride" and "am I on it" —
+-- and neither implies the other. `is_ride_crew` is `security definer` with
+-- `search_path = ''`, so inside it there is no RLS at all: it will happily
+-- confirm the crew row of a rider who has blocked the organizer, or who left
+-- the private club the ride belongs to. A `ride_members` row outlives both.
+-- 034 measured both states. `private.is_club_member` has the identical shape
+-- and no such gap only because `clubs` carries no block predicate, which is
+-- what makes copying that shape verbatim the specific trap.
+--
+-- **What this gate is NOT.** For a public ride, crew membership is one RSVP
+-- away — `ride_members` INSERT requires only that the ride be visible. So it is
+-- a real boundary for private-club rides and for blocked riders, and for a
+-- public ride it is an opt-in rather than a wall. That is correct (pressing
+-- *Maybe* IS declaring participation, which is the question the gate asks) and
+-- it is recorded so that nothing anti-spam is ever built on top of it.
+--
+-- Nonexistent and invisible ride ids are refused identically, with 42501: the
+-- `EXISTS` returns no rows in both cases and RLS `WITH CHECK` is evaluated
+-- before the FK's `AFTER ROW` referential trigger, so `23503` is unreachable
+-- while the visibility conjunct stands. Measured 2026-08-09 on
+-- fpmrimzxadewsaiwpsel in a rolled-back transaction; asserted, because removing
+-- the conjunct would reintroduce the distinction as a real oracle telling a
+-- rider that a ride they cannot see exists.
+--
+-- ---------------------------------------------------------------------------
+-- THE UPDATE POLICY IS DELIBERATELY NOT TOUCHED — do not add the conjunct back
+-- ---------------------------------------------------------------------------
+-- Read this before "fixing" the asymmetry with `club_id`. An earlier revision
+-- of this change put the same conjunct in the UPDATE `with check` "so granting
+-- the column later cannot open a hole by omission", reasoning it was
+-- unreachable while the column grant was withheld. **That reasoning is wrong**,
+-- and it is the one a careful reader reconstructs from first principles:
+--
+--   **A column privilege gates the SET list. An RLS `WITH CHECK` is evaluated
+--   over the WHOLE NEW ROW.** They are independent mechanisms. Withholding
+--   `UPDATE (ride_id)` stops `set ride_id = ...`; it does nothing to stop a
+--   `with check` from re-reading the row's EXISTING `ride_id` during a
+--   `set caption = ...`.
+--
+-- So the "unreachable" conjunct fires on a CAPTION edit: an author tags ride R
+-- while on its crew, later leaves the crew (or blocks the organizer, or the
+-- club goes private), edits their caption, and is refused with 42501 by a
+-- condition about somebody else's ride, with no error message that could
+-- explain it.
+--
+-- The repo has already measured this exact mechanism on this exact policy.
+-- rls_test.sql:719-727 asserts "an author who left a club cannot edit their
+-- postcard in it", and 009's comment above that policy records the lockout as a
+-- DELIBERATELY ACCEPTED side effect — accepted because `club_id` **is**
+-- updatable, so its `with check` conjunct is the only thing stopping a rider
+-- moving a photo into any private club whose id they can guess.
+--
+-- **`ride_id` does not have that justification.** It is not updatable, so the
+-- same conjunct would prevent nothing and cost an identical lockout:
+--
+--                                 club_id            ride_id
+--   UPDATE column grant           held               WITHHELD
+--   Conjunct in UPDATE with check required           NONE — no move to guard
+--   Author who left edits caption refused (asserted) SUCCEEDS (asserted)
+--
+-- The second assertion is the point: a caption edit on a TAGGED postcard by an
+-- author who has left the crew must succeed, and that is what goes red the day
+-- somebody adds the conjunct back for symmetry.
+--
+-- What replaces the discarded "safety net" is not a dormant policy line but a
+-- live tripwire: the suite asserts
+-- `has_column_privilege('authenticated','public.postcards','ride_id','UPDATE')`
+-- is false, so re-granting the column turns the suite red and forces whoever
+-- does it to write the gate deliberately. That is strictly stronger than a
+-- conjunct nobody would remember was load-bearing.
+--
+-- The cost, stated: **a mis-tag is uncorrectable.** The remedy is deleting the
+-- postcard, which the DELETE policy already allows its author. Acceptable at
+-- this stage and the first thing to revisit if riders complain. Relaxing this
+-- later is one `grant`; retracting a grant riders have used is not.
+--
+-- ---------------------------------------------------------------------------
+-- Why the grant work is needed at all: the column is NOT additive
+-- ---------------------------------------------------------------------------
+-- `postcards` grants are TABLE-level, not per-column — measured on
+-- fpmrimzxadewsaiwpsel 2026-08-09 immediately before writing this file
+-- (`aclexplode(c.relacl)` = SELECT/INSERT/UPDATE/DELETE for authenticated,
+-- `pg_attribute.attacl` empty on all seven columns).
+--
+-- So `add column ride_id` grants `authenticated` INSERT **and UPDATE** on it in
+-- the same statement. A one-line migration would ship a column any signed-in
+-- rider can point at any ride in the database, including rides they cannot see,
+-- and can repoint afterwards for ever. That surface arrives by default rather
+-- than by decision, which is why the revoke-and-regrant below is not optional.
+--
+-- **The seven columns are read off the database at write time, never off a
+-- document.** Omitting one silently retracts a grant the app relies on, and the
+-- failure surfaces as a rider unable to edit something, with no error anyone
+-- can trace back to a migration. The suite asserts all seven individually so an
+-- omission fails in CI rather than in production.
+--
+-- **This inverts the default for every column added to `postcards` after this
+-- one.** Once UPDATE is column-level, a new column arrives with NO update grant
+-- rather than an automatic one. That direction fails closed and is the safer of
+-- the two, so it is not a problem to solve — it is a surprise to remove.
+-- Anyone adding a column here later and finding it read-only has found this
+-- decision, not a bug.
+--
+-- ---------------------------------------------------------------------------
+-- `created_at` is preserved, and that is NOT an endorsement — PD-163
+-- ---------------------------------------------------------------------------
+-- `postcards.created_at` is client-writable today: no trigger imposes it (the
+-- only BEFORE INSERT trigger on this table is `enforce_participation_gate`;
+-- `postcards_set_updated_at` is BEFORE UPDATE and touches `updated_at` alone),
+-- a DEFAULT applies only when the column is OMITTED, and PostgREST lets a
+-- client name it. It is the feed's sort key AND its pagination cursor, so an
+-- author can pin a postcard to the top of every feed permanently and break the
+-- `before` cursor for everyone.
+--
+-- **That is a live defect, it is filed as PD-163, and it is deliberately not
+-- fixed here.** The re-grant below includes `created_at` so that this change
+-- alters no column it did not come to alter. PD-163 and this change both
+-- rewrite `postcards` grants, and landing two grant rewrites on one table
+-- concurrently is how one silently undoes the other.
+--
+-- The suite's `created_at` grant assertion is labelled as PINNING A KNOWN
+-- DEFECT rather than as an invariant, so fixing PD-163 is a deliberate edit to
+-- a labelled line rather than a surprise failure.
+--
+-- ---------------------------------------------------------------------------
+-- Not built here, each with its reason
+-- ---------------------------------------------------------------------------
+--   the `postcard_on_ride` notification .. needs a SEVENTH fan-out trigger on a
+--       shipped write path (036's whole DEV-exercise gate) and a new
+--       (candidate, club) helper, because `private.is_club_member` reads
+--       auth.uid() INTERNALLY and computes the ACTOR's membership at fan-out.
+--       036's two CHECK constraints refuse the new type until both are amended
+--       — `notifications_subject_shape` is a CASE with `else false` and no arm
+--       permits postcard_id and ride_id both non-NULL. Its recipient set is a
+--       THREE-way intersection (ride-visible, crew, postcard-visible); see
+--       design.md §D6 before writing a line of it
+--   a CHECK tying ride_id to club_id .. the tag-becomes-audience mistake in
+--       disguise, and not expressible as a CHECK anyway (it references another
+--       table). A club postcard tagged to an unrelated public ride is LEGAL and
+--       renders for that club's members only — design.md §D4
+--   a denormalised journal count on rides .. the correct count is per-viewer,
+--       counted under RLS. 009's reasoning for likes, unchanged
+--   a per-ride unread watermark .. 015's `feed_reads` is keyed
+--       (user_id, club_id) — an AUDIENCE watermark, and ride_id is not an
+--       audience. A tagged postcard keeps its club_id, so club_unread_counts()
+--       counts it exactly where it already did and this file moves no badge
+--   backfilling ride_id on existing rows .. there is no signal to derive it
+--       from. Every existing row stays NULL
+
+-- ---------------------------------------------------------------------------
+-- §1. The column
+-- ---------------------------------------------------------------------------
+-- Nullable, no CHECK, no uniqueness, and no constraint tying it to `club_id`:
+-- a ride has many postcards and a postcard has at most one ride.
+alter table public.postcards
+  add column ride_id uuid references public.rides(id) on delete set null;
+
+comment on column public.postcards.ride_id is
+  'A TAG, never the audience — club_id still decides who sees the row (NULL = app-wide feed, set = that club''s members). Set once at INSERT and never editable: authenticated holds SELECT and INSERT on this column and deliberately no UPDATE (041). Tagging requires BOTH that the tagger can see the ride under their own RLS AND private.is_ride_crew — neither alone, because a FK is validated with RLS bypassed and the crew helper is security definer. ON DELETE SET NULL, because rides.organizer_id cascades: a cascade here would mean one rider deleting their account destroys other riders'' postcards.';
+
+-- Leading column serves the `set null` sweep (an UPDATE keyed on ride_id, which
+-- would otherwise scan the whole table once per deleted ride); the pair serves
+-- the Journal query. Shape copied exactly from postcards_club_id_idx.
+create index postcards_ride_id_idx on public.postcards (ride_id, created_at desc)
+  where ride_id is not null;
+
+-- ---------------------------------------------------------------------------
+-- §2. The write gate
+-- ---------------------------------------------------------------------------
+-- The three existing conjuncts are preserved VERBATIM from 010; only the fourth
+-- is new. Policies for the same command are OR'd, so this is a drop-and-recreate
+-- rather than a second policy — a leftover would undo the gate entirely, which
+-- is the shape of the bug 008 was written to fix.
+drop policy if exists "Riders can post as themselves, into their own clubs" on public.postcards;
+
+create policy "Riders can post as themselves, into their own clubs"
+  on public.postcards for insert to authenticated
+  with check (
+    author_id = auth.uid()
+    and (
+      club_id is null
+      or private.is_club_member(club_id)
+    )
+    and image_path like ('postcards/' || auth.uid()::text || '/%')
+    -- Both halves, never either alone. The EXISTS runs under the CALLER's row
+    -- security and answers "may I see this ride"; is_ride_crew is security
+    -- definer and answers "am I on it" with no opinion about blocks or private
+    -- clubs. A ride_members row outlives both — see the header.
+    and (
+      ride_id is null
+      or (
+        exists (select 1 from public.rides r where r.id = ride_id)
+        and private.is_ride_crew(ride_id)
+      )
+    )
+  );
+
+comment on policy "Riders can post as themselves, into their own clubs" on public.postcards is
+  'You author as yourself, you cannot post into a club you are not a member of, your image_path is inside your own Storage folder (010), and you may only tag a ride you can SEE (an EXISTS under your own RLS) AND are on the CREW of (private.is_ride_crew) — 041. The last two are one conjunct and neither half may be dropped: a foreign key is validated with RLS bypassed so the EXISTS is the only thing refusing an invisible ride, and is_ride_crew is security definer so a ride_members row that outlives blocking the organizer or leaving the club is the only thing it can see. 034 shipped that leak in draft.';
+
+-- The UPDATE policy is deliberately NOT recreated here. See the header: a
+-- ride_id conjunct in its with_check would fire on caption edits and lock out an
+-- author who has left the crew, buying nothing, because the column carries no
+-- UPDATE grant. rls_test.sql asserts both the absent grant and the successful
+-- caption edit; those two are the tripwire that replaces it.
+
+-- ---------------------------------------------------------------------------
+-- §3. The grant — revoke the table-level UPDATE, re-grant it per column
+-- ---------------------------------------------------------------------------
+-- The seven columns below are the ones holding UPDATE on 2026-08-09, read from
+-- pg_attribute/pg_class in the same session this file was written. `ride_id` is
+-- absent on purpose and `created_at` is present on purpose (PD-163, header).
+--
+-- SELECT, INSERT and DELETE stay table-level and are untouched, so `ride_id` is
+-- readable and insertable like every other column.
+revoke update on public.postcards from authenticated;
+grant update (id, author_id, club_id, image_path, caption, created_at, updated_at)
+  on public.postcards to authenticated;
+
+-- No grant of any kind is issued to `anon` by this file — decision #1, and 007
+-- revoked the last of them. `is_public` means "visible to any signed-in rider",
+-- never "visible to the internet".
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+-- 1. The column, its FK action, and the index. Expected: uuid | YES | a | 6.
+--    `confdeltype = 'a'` is NO ACTION, 'c' is CASCADE, 'n' is SET NULL — this
+--    must read 'n', and reading it as anything else is the defect this file's
+--    header is mostly about.
+--
+--   select a.atttypid::regtype::text, not a.attnotnull as nullable,
+--          (select confdeltype from pg_constraint
+--            where conrelid = 'public.postcards'::regclass and contype = 'f'
+--              and conkey = array[a.attnum]) as fk_delete_action
+--     from pg_attribute a
+--    where a.attrelid = 'public.postcards'::regclass and a.attname = 'ride_id';
+--   select count(*) from pg_indexes
+--    where schemaname = 'public' and tablename = 'postcards';   -- 6, was 5
+--
+-- 2. **The SELECT policy is byte-identical.** Capture md5(qual) BEFORE applying
+--    and compare. On fpmrimzxadewsaiwpsel before this file it was
+--    c8fb49b026866743283b3d7ecfbc5122. A prose claim does not discharge this.
+--
+--   select cmd, md5(coalesce(qual,'')) , md5(coalesce(with_check,''))
+--     from pg_policies where schemaname='public' and tablename='postcards'
+--    order by cmd;
+--
+-- 3. The INSERT with_check gained exactly one conjunct, and the UPDATE
+--    with_check gained none. Expected t | f — the second is the whole §D3
+--    decision, and a `t` there is the lockout.
+--
+--   select bool_or(with_check like '%is_ride_crew%') filter (where cmd='INSERT') as insert_has_it,
+--          bool_or(with_check like '%is_ride_crew%') filter (where cmd='UPDATE') as update_has_it
+--     from pg_policies where schemaname='public' and tablename='postcards';
+--
+-- 4. The grants, scoped to their grantee — 015's footer counted a privilege
+--    table-wide and read 2 against a correct database, because postgres and
+--    service_role hold everything by Supabase default. Expected: seven names,
+--    ride_id absent, and the table-level answer now FALSE while every column
+--    answer stays true (the shape `notifications` already has).
+--
+--   select string_agg(column_name, ',' order by column_name)
+--     from information_schema.column_privileges
+--    where table_schema='public' and table_name='postcards'
+--      and grantee='authenticated' and privilege_type='UPDATE';
+--   -- caption,author_id,club_id,created_at,id,image_path,updated_at
+--
+--   select has_table_privilege('authenticated','public.postcards','update')            as table_level,  -- f
+--          has_column_privilege('authenticated','public.postcards','ride_id','UPDATE') as tag_writable, -- f
+--          has_column_privilege('authenticated','public.postcards','ride_id','INSERT') as tag_settable, -- t
+--          has_column_privilege('authenticated','public.postcards','ride_id','SELECT') as tag_readable, -- t
+--          has_column_privilege('authenticated','public.postcards','caption','UPDATE') as caption_edit; -- t
+--
+--   select count(*) from information_schema.column_privileges
+--    where table_schema='public' and table_name='postcards' and grantee='anon';  -- 0
+--
+-- 5. The behavioural probe, in a transaction that is ROLLED BACK. Three
+--    outcomes from one shape: a crew member tags, a rider who can see the ride
+--    but is not on it is refused 42501, and a non-member of a private club is
+--    refused 42501 for that club's ride. Run as `authenticated` with the
+--    rider's own id in request.jwt.claims — that is the HOSTED idiom;
+--    supabase/tests/ redefines auth.uid() to read `test.uid` and setting the
+--    claims there is read by nothing.
+--
+-- 6. The advisors must still return the documented eight. This file adds no
+--    function and no view, so a new WARN means a function landed in `public` or
+--    a revoke did not.
