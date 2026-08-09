@@ -760,14 +760,16 @@ items each rated 8/Y pass every gate above individually while collectively tripl
   Parity was sized against a gate that admitted only what the story was broken without, and those
   still travel at any size: a test the new code needs is not optional. An adjacent bug or a
   tidy-up is a **choice**, and two large ones clear "at most two, smaller than the story" while
-  turning the PR into something else. Over the third, fold the smaller and file the rest.
+  turning the PR into something else.
 - **Anything the folded-in work itself turns up is a story, always**, whatever it rates. One
   level deep, no chaining.
 
 Over the **count** or the **parity** bound, **file everything and build none of it.** Do not pick
 the best two — the count is the signal that the triage has gone wrong, not a quota to spend.
 **The discretionary third is the one bound with a partial remedy**, because there the excess is by
-definition the optional half: fold the smaller and file the rest.
+definition the optional half — it is computed over discretionary fold-ins only, so anything over
+it is discretionary and dropping it cannot leave the story merged and incomplete. Fold what fits
+under the third and file the rest, which resolves a single over-large tidy-up to "file it".
 
 ### Where each one gets filed — decided here, written at STEP 5
 
@@ -786,8 +788,7 @@ Never `Queued (AI)` — that is the owner's column and the only start signal.
 | **`Todo AI`** | A session could build it, and you would recommend building it (**Recommendation** ≥ 4/10) |
 | **Nowhere** | A session could have built it *and* you rated it below 4/10 — write it in the PR body and let it go |
 
-**Read the rows in order — the owner-only row is matched before the rating is consulted.** An
-owner action can rate 2/10 and still has to be filed: `CLAUDE.md` §Keep it current requires a new
+An owner action can rate 2/10 and still has to be filed: `CLAUDE.md` §Keep it current requires a new
 one in Linear *the moment it is found*, and nobody in a session will ever pick it up off a PR
 body. Only work a session could have done itself is eligible to be dropped.
 
@@ -1063,7 +1064,7 @@ for scope creep*. The rule has two halves, and **STEP 4b is where they are appli
 Both directions cost — a filed test the new code needed leaves the story merged and incomplete,
 and a filed 2/10 thought leaves the owner a row to read for ever. **The merged-and-incomplete
 cost is the one nobody has watched happen here; do not let a later revision promote it into
-history.** The over-filing one has been watched, which is why this section changed.
+history.** The over-filing one has been watched.
 
 The boundary is worth being able to say in one line, because everything above is downstream of
 it: is this **this build, done properly** — or **the next build, started early?** The first

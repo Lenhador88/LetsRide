@@ -371,9 +371,10 @@ does more than its issue describes:
 - **Check the breadth cap** — at most two fold-ins, together smaller than the story's own diff,
   and the **discretionary** ones together under a *third* of it. Discretionary means any fold-in
   whose relatedness sentence does not say the story was broken without it: an adjacent bug, a
-  tidy-up. That sentence is required and is in the PR body, so the classification is read rather
-  than judged. All of it needs the two commit ranges from the caller; a single combined diff
-  cannot tell you which lines were the story. Missing ranges is itself the finding.
+  tidy-up. That sentence is required and the caller hands it to you — or it is in the PR body's
+  `## Folded in` section — so the classification is read rather than judged. All of it needs the
+  two commit ranges from the caller; a single combined diff cannot tell you which lines were the
+  story. Missing ranges is itself the finding.
 - **Say so when a fold-in should have been a story.** The author is a scheduled session with
   nobody watching; a "this is fine, but it belongs in its own PR" is a real finding here in a
   way it would not be for a human author who can be asked.
