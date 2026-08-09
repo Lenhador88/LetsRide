@@ -7,7 +7,7 @@
 
 LetsRide is a mobile-first app for motorcycle riders to organise rides, join clubs, and connect with other riders — client-rendered, and headed for a native iOS/Android build. Built with Next.js 16 App Router, Supabase, and Tailwind v4. Targeting thousands of users — prioritise correctness, security, and clean code over cleverness.
 
-(**"Friends" is not a concept here** — `013` dropped `friendships` on 2026-08-04 and there is no Friends tab. The social graph is clubs plus blocking. This line said "connect with friends" long after that, which is how a dropped table gets designed back in.)
+(**"Friends" is not a concept here** — `013` dropped `friendships` on 2026-08-04 and there is no Friends tab. The social graph is clubs plus blocking. A dropped table gets designed back in by exactly this route: prose that still names it.)
 
 ## Working With the Product Owner
 
@@ -45,37 +45,20 @@ where it will actually be seen: a PR comment, the commit message, or the handoff
 the top of its final report and the main thread does the holding. An agent that hits a genuine
 mistake mid-task reports it — it does not build around it and mention it in passing.
 
-**This section was lost for a week and restored on 2026-08-08, and the mechanism is worth
-knowing because it can eat anything.** It was written 2026-08-01 on
-`claude/session-feedback-clarification-4hvfwb`, which never opened a PR. The repo's history was
-then **rewritten on 2026-08-04** — `main` and `development` root at `0ea7054` ("the comments UI
-(#26)"), not at the original `78530d7` ("Initial commit", 2026-06-02) — so everything that had
-already merged survived *as files* while every branch that had not was left on an orphaned root
-with **no merge base to `development` at all**. `git merge` cannot reach those commits; only
-`git show <sha> -- <path>` can. **Eight** branches sit there. Six had their tips merged through
-PRs #1–#15 before the rewrite; the two that never opened a PR are this one and
-`figma-api-token-config-ykcx6i`, whose `scripts/figma.sh` and `docs/figma-api.md` were
-superseded by the `scripts/figma/*` pipeline. Check for the trap rather than trust this
-paragraph — the first draft of it said six branches, counting by date from a table instead of
-running the second command:
+**Branch cleanup is an owner action, and the branches on the orphaned root must never be
+deleted.** The repo's history was rewritten on 2026-08-04, so `main` and `development` root at
+`0ea7054` and every branch that had not merged by then sits on a root with **no merge base to
+`development` at all** — `git merge` cannot reach those commits, only `git show <sha> -- <path>`
+can. Deleting such a branch destroys the only copy of whatever was in flight that day. `PD-143`
+carries the do-not-touch list.
 
-```bash
-git rev-list --max-parents=0 origin/development   # 0ea7054 — one root, dated 2026-08-04
-git merge-base origin/development origin/<branch> # empty output = orphaned, unmergeable
-```
-
-**Those eight must never be deleted, and that is the whole reason the recovery above still
-works.** An orphan's commits are reachable from no other ref, so deleting the branch makes
-`git show c773173` fail and turns this paragraph into a description of a door with no handle.
-They cost nothing and they are the only copy of anything that was in flight on 2026-08-04.
-`PD-143` asks the owner to clear the merged branches and carries the do-not-touch list.
-
-**But "is it an orphan" is the wrong safety question, and a first draft of this paragraph asked
-only that.** Orphan-ness explains why a branch is *unmergeable*; it says nothing about whether
-its content ever landed, and three of the branches carrying unlanded work are **not** orphans.
-The property that matters is *unmerged content*, and it is the one to re-derive before deleting
-anything — `git merge-tree` answers it without needing a merge base, where an ahead-count and
-`git cherry` both report every commit of a squash-merged branch as unlanded for ever:
+**"Is it an orphan" is the wrong safety question.** Orphan-ness explains why a branch is
+*unmergeable*; it says nothing about whether its content ever landed, and branches carrying
+unlanded work are not all orphans. The property that matters is *unmerged content* — and an
+ahead-count or `git cherry` both report every commit of a squash-merged branch as unlanded for
+ever, so re-derive it with `merge-tree`, which needs no merge base. **The answer is a snapshot**:
+it is stale the moment another session pushes, so run this immediately before deleting anything,
+including against the list in `PD-143`:
 
 ```bash
 devtree=$(git rev-parse origin/development^{tree})
@@ -87,17 +70,10 @@ for b in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin |
 done
 ```
 
-**And the answer is a snapshot, not a fact.** A concurrent session pushed a branch carrying
-migration `037` *while the 2026-08-08 audit was being reviewed*. Any list of branches to delete
-is stale the moment another session pushes, so re-run the loop immediately before deleting
-rather than trusting a list written earlier — including the one in `PD-143`.
-
-**A session cannot delete a branch here, tested 2026-08-08 rather than assumed.** `git push
-origin --delete` returns **HTTP 403** from GitHub while ordinary pushes to the same remote in
-the same session succeed, including `--force-with-lease` — and the agent proxy is not the cause
-(`$HTTPS_PROXY/__agentproxy/status` reports `recentRelayFailures: []`). The GitHub MCP server
-exposes `create_branch` and no delete counterpart, so there is no second route. Branch cleanup
-is therefore an **owner action**; do not spend a session rediscovering this.
+**No session can delete a branch here** — `git push origin --delete` returns **HTTP 403** from
+GitHub while ordinary pushes in the same session succeed, including `--force-with-lease`, and the
+GitHub MCP server exposes `create_branch` with no delete counterpart. Do not spend a session
+rediscovering this.
 
 ## Stack
 
@@ -114,18 +90,17 @@ is therefore an **owner action**; do not spend a session rediscovering this.
 ## Technology Decisions
 
 *What* we build is under Architectural Decisions. This is *how* — the tooling questions that
-otherwise get answered differently in every epic. Drafted 2026-08-02; edit freely, but edit
-here rather than deciding again inside a PR.
+otherwise get answered differently in every epic. Edit freely, but edit here rather than
+deciding again inside a PR.
 
 **Dependencies are added deliberately.** **Nine** runtime dependencies today, and that is a
-feature — `lucide-react` came out with the last v1 page rather than lingering unused, and
-`@supabase/ssr` came out with the server render. Count rather than trust that number:
+feature — `lucide-react` and `@supabase/ssr` both came out with the code that needed them rather
+than lingering unused. Count rather than trust that number:
 `node -p "Object.keys(require('./package.json').dependencies).length"`. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
 
-**It read seven until 2026-08-07, and the two that moved it are the native shell's**, both
-runtime by necessity rather than by preference — app code imports them at runtime, so neither
-can be a devDependency:
+**Two of the nine are the native shell's**, and both are runtime by necessity rather than by
+preference — app code imports them at runtime, so neither can be a devDependency:
 
 - **`@capacitor/core`** — the shell. Nothing reaches a native API without it.
 - **`@aparajita/capacitor-secure-storage`** — the keychain/keystore behind
@@ -140,11 +115,10 @@ permission prompt, a review question and a supply-chain surface, and each needs 
 one-sentence justification like the two above.
 
 **Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
-functions — `getRide(id)`, `getClubMembers(clubId)` — that own their query shape. Server
-components call them directly; they use the server client internally. This exists because 29
-`.from()` calls spread across 14 files means a renamed column is 29 places to find, which is
-exactly the trap `003` sets by dropping `full_name`. (Counts move — re-derive with
-`git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'` rather than trusting this line.)
+functions — `getRide(id)`, `getClubMembers(clubId)` — that own their query shape. This exists
+because `.from()` calls scattered across a dozen files mean a renamed column is a dozen places to
+find, which is exactly the trap `003` set by dropping `full_name`. Re-derive the spread with
+`git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'`.
 
 **Writes go through `src/lib/actions/`**, one function per mutation — plain async functions in
 the browser, not Server Actions. The boundary is the point: one place that writes, named and
@@ -156,26 +130,24 @@ first is why it must never be dissolved back into components:
    them into the database as a CHECK, a trigger or a grant, which is what made client-side
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
-   **Say "them", not "every one of them" — the gate is narrower than it reads.** `023` put
-   `enforce_participation_gate` on eight tables and `034` added a ninth, so it is now
-   `postcards`, `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`,
-   `postcard_likes`, `postcard_reports` and `ride_messages`. Count it rather than read it —
+   **The participation gate is narrower than "every write", and stating it broader is how a gap
+   gets inherited as covered.** `enforce_participation_gate` is on nine tables — `postcards`,
+   `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
+   `postcard_reports`, `ride_messages` — and **not** on `profiles` UPDATE, `profile_countries`,
+   `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy, which check the path
+   prefix only. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
+   calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
+   `terms_accepted_at` NULL**. Count it rather than read it, because a table added without one
+   looks exactly like this list being right:
    `select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not
-   tgisinternal` — because a table added without one looks exactly like this list being right.
-   It is **not** on
-   `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads` or any
-   `storage.objects` policy — those check the path prefix only. So an account created by calling
-   GoTrue's `/auth/v1/signup` directly, never calling `accept_terms()`, can still set a username,
-   write a bio and upload an avatar with `terms_accepted_at` NULL. That path predates the render
-   migration and `signUp`'s consent write was never the enforcement — but the claim is about
-   *participation*, and stating it broader than that is how a gap gets inherited as covered.
+   tgisinternal`.
 2. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
    it works exactly the same with a plain async function as with a Server Action, which is why
    moving the writes into the browser changed no call site.
 
-   *(The third argument was that auth flows have to set cookies, which only a Server Action or
-   Route Handler could do. It expired when the browser client started setting its own session.
-   Noted because it is the one that otherwise gets re-argued from first principles.)*
+   *(A third argument — that auth flows have to set cookies, which only a Server Action or Route
+   Handler could do — expired when the browser client started setting its own session. Noted
+   because it is the one that otherwise gets re-argued from first principles.)*
 
 A component never calls `supabase.from()` directly — that was the v1 pattern, paired with
 `router.refresh()`, and none of it survives. Keep the second half of the pipe; the bare grep
@@ -196,27 +168,22 @@ from it** — the backend stays Supabase, and a handful of Edge Functions arrive
 needing a secret, a schedule or elevated rights (push delivery, ride reminders, account
 deletion).
 
-**The refresh token is JS-readable, and always was.** Worth stating plainly because it reads
-like something the bundle caused: `@supabase/ssr` set `sb-<ref>-auth-token` with
-`httpOnly=false`, because the browser client had to read the session back out of
-`document.cookie`. Measured with a real sign-in. The *store* moved to
-`src/lib/supabase/session-store.ts`; the exposure did not change, and it closes for real only
-when `window.__letsrideSecureStore` is implemented over a platform keychain.
+**The refresh token is JS-readable, and always was** — `@supabase/ssr` set
+`sb-<ref>-auth-token` with `httpOnly=false` because the browser client had to read the session
+back out of `document.cookie`. The client bundle did not cause this and does not worsen it; the
+store moved to `src/lib/supabase/session-store.ts` and the exposure closes for real only when
+`window.__letsrideSecureStore` runs over a platform keychain.
 
 **The SSR shell is the one piece of the server render still standing.** Next server-renders
 client components on first load, and that goes with the native shell rather than with the
 render model — it is the `native` agent's work.
 
-**"Until it is gone" was the wrong framing, and this line carried it.** It read *"Until it is
-gone, the read in an effect rule below is load-bearing rather than stylistic"*, which invites
-the reading that the rule lifts when the shell lands. It does not, and it never will:
-`output: 'export'` — the only fully-static bundle Next 16 offers, and therefore what a
-Capacitor `webDir` is built from — **still runs the same prerender pass, once, at build time**.
-What the bundle removes is the *runtime* server, not the pass. A component body still executes
-somewhere with no `localStorage` and no session, so **the *read in an effect* rule below is
-permanent**, and `resolve.browser.ts`'s tripwire keeps earning its place. Corrected 2026-08-07
-after `.claude/agents/native.md` was corrected on the same point; do not let the two drift
-apart again.
+**Retiring that shell does not lift the *read in an effect* rule below — the rule is
+permanent.** `output: 'export'` — the only fully-static bundle Next 16 offers, and therefore what
+a Capacitor `webDir` is built from — **still runs the same prerender pass, once, at build time**.
+What the bundle removes is the *runtime* server, not the pass, so a component body still executes
+somewhere with no `localStorage` and no session and `resolve.browser.ts`'s tripwire keeps earning
+its place. `.claude/agents/native.md` says the same; do not let the two drift apart.
 
 Re-derive the scope rather than trusting a number here — it grows with every epic:
 
@@ -239,25 +206,21 @@ Two rules follow: **a directive is only a directive on line one** (hence the `^`
 counting a retired pattern, exclude comment lines and verify the filter both ways — that it
 reads 0 now *and* that it still catches a real instance.
 
-**One rule, and it is load-bearing rather than anticipatory now that the client owns writes:**
-
 **No new integrity rule may live only in a Zod schema.** Anything not expressed as a CHECK,
 trigger or policy is advisory, because a rider can simply not run your validation. `003`, `012`
 and `023` cover onboarding and consent; `018` covers the text bounds, including `bio`,
 `bike_model` and `location`.
 
 **`lib/data/` and `lib/actions/` are the only places that touch Supabase, and both resolve
-their client through `src/lib/supabase/resolve.ts`.** One name, one doorway — which is what
-made the render migration a change to one file instead of twenty-nine `.from()` call sites, and
-is the reason to keep the indirection now that it resolves to a single implementation.
+their client through `src/lib/supabase/resolve.ts`.** One name, one doorway — which is what made
+the render migration a change to one file instead of every `.from()` call site, and is the reason
+to keep the indirection now that it resolves to a single implementation.
 
-The measurement behind it is worth carrying even though the server half is deleted, because it
-will otherwise be rediscovered expensively: `lib/supabase/server.ts` imported `next/headers`,
-and Next refuses to bundle that into a client graph **whether or not the branch importing it
-can be taken**. A `typeof document` guard around a dynamic `import()` does not help — the
-bundler resolves the specifier statically. That is why the split was ever a build-time export
-condition rather than a runtime `if`, and it is the thing to remember before anyone reaches for
-a "just check at runtime" fix to a bundling problem.
+**Do not reach for a "just check at runtime" fix to a bundling problem.** Next refuses to bundle
+`next/headers` into a client graph **whether or not the branch importing it can be taken**, and a
+`typeof document` guard around a dynamic `import()` does not help because the bundler resolves
+the specifier statically. That is why this split was ever a build-time export condition rather
+than a runtime `if`.
 
 **Read in an effect or an event handler, never during render.** A `'use client'` component is
 *still server-rendered* by Next on first load, and in that pass the browser client has no
@@ -269,11 +232,10 @@ runs the SSR pass, so a page that gets it wrong fails `next build` with the mess
 
 **Reads in a client component go through `useQuery`, and every key is spelled in
 `src/lib/query/keys.ts`** — a key written inline in a component is a bug even when the string
-happens to be right. The 33 `revalidatePath` claims the actions used to make are that file's
-whole reason to exist, and its header now carries the table reconciling every one of them
-against the key that replaced it. `keys.ts` also owns `filterSegment`, because a feed filter is
-two fields flattened into one key segment, and five screens plus one action have to build the
-same string.
+happens to be right. That file's header carries the table reconciling all 33 `revalidatePath`
+claims the actions used to make against the key that replaced each one. `keys.ts` also owns
+`filterSegment`, because a feed filter is two fields flattened into one key segment and five
+screens plus one action have to build the same string.
 
 **Gate a screen on its data, never on `isLoading`.** `useQuery` starts its fetch in an effect,
 so on the first render pass there is no data *and* no fetch in flight — `isLoading` is `false`
@@ -304,57 +266,49 @@ Formik; the forms in this app are one to three fields.
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
 
-**Chromium in this container cannot reach Supabase, and that now matters.** Measured
-2026-08-06: `curl -x $HTTPS_PROXY https://<ref>.supabase.co/auth/v1/health` returns 401 — tunnel
-open, host allowed — while the same fetch from a Chromium page launched with
+**Chromium in this container cannot reach Supabase**, and since the browser is now the Supabase
+client that takes sign-in and the whole walk with it. `curl -x $HTTPS_PROXY .../auth/v1/health`
+returns 401 — tunnel open, host allowed — while the same fetch from a Chromium page launched with
 `--proxy-server=$HTTPS_PROXY` hangs until aborted, with no response, no `requestfailed`, and no
-entry in the agent proxy's own failure log, where a genuinely blocked host *does* appear. Bare,
-`--ignore-certificate-errors`, `--disable-quic` and `--disable-http2` all hang identically. It
-used to cost only blank photos, because the dev server was the Supabase client; now the browser
-is, so it takes sign-in and the whole walk with it. `scripts/supabase-relay.mjs` is the fix —
-read its header before running the walk.
+entry in the agent proxy's failure log where a genuinely blocked host *does* appear. Bare,
+`--ignore-certificate-errors`, `--disable-quic` and `--disable-http2` all hang identically.
+`scripts/supabase-relay.mjs` is the fix — read its header before running the walk.
 
 **Versions.** `package-lock.json` is committed and CI runs `npm ci`, so what ships is already
 pinned — this policy governs what moves on a routine `npm install`. Pin exact for anything
 the framework or auth depends on: `next`, `eslint-config-next`, `react`, `react-dom`,
 `@supabase/supabase-js`. Caret is fine for leaves (`clsx`, `tailwind-merge`).
 Supabase is on that list because a minor bump that changes **session storage or the auth flow
-type** breaks sessions silently — the same hazard the old note gave for cookie handling, moved
-to where it now lives. `@supabase/ssr` is off the list because it is uninstalled.
+type** breaks sessions silently.
 
-**Every Capacitor package is pinned exact too, added 2026-08-07, and the rule that put them
-there is the Supabase one rather than a new one.** `@aparajita/capacitor-secure-storage` **is**
-session storage — it holds the refresh token — so "a minor bump that changes session storage
-breaks sessions silently" names it exactly; a changed key prefix or a changed default keychain
-access class would strand every signed-in rider with no error to read. The other four
-(`@capacitor/core`, `cli`, `ios`, `android`) are pinned because Capacitor requires its packages
-to move together, so a caret on one is a version skew waiting for whichever `npm install` runs
-first. Caret on any of them would also silently change what a `cap add` generates.
+**Every Capacitor package is pinned exact for that same reason rather than a new one.**
+`@aparajita/capacitor-secure-storage` **is** session storage — it holds the refresh token — and a
+changed key prefix or default keychain access class would strand every signed-in rider with no
+error to read. The other four (`@capacitor/core`, `cli`, `ios`, `android`) are pinned because
+Capacitor requires its packages to move together, so a caret on one is a version skew waiting for
+whichever `npm install` runs first, and would also silently change what a `cap add` generates.
 
 **Dates: `Intl` only, no date library.** All in `src/lib/utils.ts`, and every formatter is
 **named for the screen it serves** — `formatPostcardDate`, `formatRideDate`,
 `formatRideDateLong`, `formatRideTime` — because each design draws a genuinely different
-shape. There is deliberately no generic `formatDate`/`formatDateTime`: both existed, both
-hardcoded `en-US`, and by 2026-08-05 they had one caller between them. Deleting them
-resolved the two-locale split this section used to describe. Write the screen's own
-formatter and let its name say where it belongs.
+shape. There is deliberately no generic `formatDate`/`formatDateTime` — both existed, both
+hardcoded `en-US`, and a generic formatter is how a two-locale split gets back in. Write the
+screen's own formatter and let its name say where it belongs.
 
-**Ride times are pinned to `APP_TIME_ZONE`** (`Europe/Amsterdam`), and the client render did
-not lift that. The pin arrived because the `formatRide*` helpers ran server-side and drew a
-20:00 Amsterdam departure as 18:00 in Vercel's UTC. **The SSR pass still runs on Vercel**, so
-an unpinned formatter would render the server's zone into the HTML and the rider's zone on
-hydration — the viewer's own zone is not the answer for exactly that reason, it is a hydration
-mismatch. It stays a documented **interim**: the correct model is wall-clock at the meeting
-point, which needs a zone column on `rides`. `formatRelativeTime` needs no zone (it measures
-elapsed instants) and keeps `en-US` because it produces English prose, not a date format.
+**Ride times are pinned to `APP_TIME_ZONE`** (`Europe/Amsterdam`), and the client render did not
+lift that. **The SSR pass still runs on Vercel**, so an unpinned formatter renders the server's
+zone into the HTML and the rider's zone on hydration — the viewer's own zone is not the answer
+for exactly that reason, it is a hydration mismatch. It stays a documented **interim**: the
+correct model is wall-clock at the meeting point, which needs a zone column on `rides`.
+`formatRelativeTime` needs no zone (it measures elapsed instants) and keeps `en-US` because it
+produces English prose, not a date format.
 
 **`wallClockToUtc` is the write-side half of the same rule.** A `datetime-local` input sends a
-zone-less string, and `new Date(that)` resolves in whatever zone the runtime is in — which is
-now always the rider's browser, so the same typed time means a different instant for an
-organizer in Lisbon than for one in Berlin, and neither matches what `formatRideTime` draws
-back. The v1 create-ride form did exactly that. It resolves the string as wall-clock in
-`APP_TIME_ZONE`, in two passes so the two DST days a year are right, and its tests assert
-offsets rather than strings — `TZ=UTC` in `vitest.config.ts` would let a naive
+zone-less string, and `new Date(that)` resolves in whatever zone the runtime is in — now always
+the rider's browser, so the same typed time means a different instant for an organizer in Lisbon
+than for one in Berlin, and neither matches what `formatRideTime` draws back. It resolves the
+string as wall-clock in `APP_TIME_ZONE`, in two passes so the two DST days a year are right, and
+its tests assert offsets rather than strings — `TZ=UTC` in `vitest.config.ts` would let a naive
 implementation pass.
 
 **Deliberately undecided** — raise these rather than inventing an answer: error tracking,
@@ -439,18 +393,14 @@ openspec/                   # config.yaml, plus:
 └── settings.json           # Hooks, permissions, and the autoMode classifier rules
 ```
 
-**The per-directory contents above are a hand-copied `ls` and go stale silently** — the `ui/`
-line was edited during the rides epic and still omitted three files, which is worse than
-stale, because a freshly-touched line looks verified. Check it rather than trust it:
+**The per-directory contents above are a hand-copied `ls` and go stale silently** — a
+freshly-touched line looks verified and is not. Check it rather than trust it:
 
 ```bash
 for d in src/components/*/; do echo "$d: $(ls "$d" | sed 's/\.tsx\?$//' | tr '\n' ' ')"; done
 ```
 
-`src/lib/{data,actions,validation,auth}`, `app/auth/*`, `app/onboarding/*` and `app/legal/*`
-were all created by the login epic, which is shipped. **Nothing under `app/(app)/*` is v1 any
-more** — the last page migrated 2026-08-05. This line tracked the migration screen by screen
-and was wrong within a day of each edit; check rather than read it —
+**Nothing under `app/(app)/*` is v1 any more** — check rather than read it:
 `grep -rn "text-white\|zinc-\|orange-500" src/app/ | wc -l`.
 
 ## Critical: the route guard is a client component, not middleware
@@ -460,8 +410,7 @@ and was wrong within a day of each edit; check rather than read it —
 framework detail is still true and the file may come back for something else. If it ever does,
 the exported function must be named `proxy`, and do not add a `middleware.ts`.
 
-Routing decisions now live in **three** places, split so the decision can be tested. It said two
-until 2026-08-07, when PD-111 split the *reading* out of the component:
+Routing decisions live in **three** places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
   `null` means stay; a string is where to go. 36 cases in `__tests__/guard.test.ts`.
@@ -574,7 +523,7 @@ migration, and CI has no path that would catch it.
 | `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; **`024` dropped it, applied 2026-08-05**. Five query sites embedded `clubs(id, name, avatar_url)`; the three that draw an image could only ever draw initials, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
-| `places` | The self-hosted location provider for ride meeting points, added by `037` — **the only table here that is not rider content**. Reference data extracted from Overture Maps and loaded out of band, so it has no owner column, no author, and the repo's first `using (true)` SELECT policy: every signed-in rider sees every row, which is correct precisely because the table references no person. `authenticated` holds **SELECT and nothing else** — the load runs as the table owner, which is what lets an operator write while nothing reachable through PostgREST can. Query it through `search_places(q, near_lat, near_lon)`, never an ad-hoc `ILIKE`: the function carries the guard that keeps a query off a sequential scan, and that guard is `term ~ '[[:alnum:]]{3}'` rather than a length check because `char_length(term) >= 3` accepts `'%%%%'`, which escapes to a pattern with no extractable trigram — measured at 1,443 ms, under the 8 s statement timeout and therefore silent. **`039` widened what it matches and this line said `name` and `brand` only until 2026-08-08**: it is now `name`, `brand`, `street` and `locality`, matched **per token and ANDed** against a generated `search_text` column, so `Jumbo Maastricht` reaches a Jumbo whose locality is Maastricht and adding a word always narrows. `postcode` stays out. Widening needs a ranking rule, so a place the query **names** outranks one it merely **locates** — `Amsterdam` puts the place called that above the thousands sitting there. The guard is unchanged and is already per-token, because an alphanumeric run of three cannot span whitespace. `039` also **drops** `places_name_trgm_idx` and `places_brand_trgm_idx` for one GIN index over `search_text`. **The table exists on BOTH projects with 0 rows** until someone runs the load, and an empty index is indistinguishable from a working search that finds nothing. **Attribution is an OPEN question, not a settled one** — a census of 527,725 rows names Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap, so the ODbL credit this repo first assumed is wrong and the commercial sources' terms are unread (their hosts are egress-blocked). Settle it before any screen renders a result. |
+| `places` | The self-hosted location provider for ride meeting points, added by `037` — **the only table here that is not rider content**. Reference data extracted from Overture Maps and loaded out of band, so it has no owner column, no author, and the repo's first `using (true)` SELECT policy: every signed-in rider sees every row, which is correct precisely because the table references no person. `authenticated` holds **SELECT and nothing else** — the load runs as the table owner, which is what lets an operator write while nothing reachable through PostgREST can. Query it through `search_places(q, near_lat, near_lon)`, never an ad-hoc `ILIKE`: the function carries the guard that keeps a query off a sequential scan, and that guard is `term ~ '[[:alnum:]]{3}'` rather than a length check because `char_length(term) >= 3` accepts `'%%%%'`, which escapes to a pattern with no extractable trigram — measured at 1,443 ms, under the 8 s statement timeout and therefore silent. `039` widened what it matches to `name`, `brand`, `street` and `locality`, matched **per token and ANDed** against a generated `search_text` column, so `Jumbo Maastricht` reaches a Jumbo whose locality is Maastricht and adding a word always narrows. `postcode` stays out. Widening needs a ranking rule, so a place the query **names** outranks one it merely **locates** — `Amsterdam` puts the place called that above the thousands sitting there. The guard is unchanged and is already per-token, because an alphanumeric run of three cannot span whitespace. `039` also **drops** `places_name_trgm_idx` and `places_brand_trgm_idx` for one GIN index over `search_text`. **The table exists on BOTH projects with 0 rows** until someone runs the load, and an empty index is indistinguishable from a working search that finds nothing. **Attribution is an OPEN question, not a settled one** — a census of 527,725 rows names Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap, so the ODbL credit this repo first assumed is wrong and the commercial sources' terms are unread (their hosts are egress-blocked). Settle it before any screen renders a result. |
 | `ride_messages` | Per-ride group chat, added by `034`. **Its audience is an INTERSECTION and neither half alone is it** — riders who can see the ride (an `EXISTS` against `rides` under the caller's RLS) *and* who are on its crew (`private.is_ride_crew`: organizer, or any `ride_members` row of either status). Using the crew helper on its own is the trap this table already fell into once: it is `security definer`, so it steps past the block and private-club arms of the `rides` policy, and a `ride_members` row outlives both — an ex-club-member kept reading a private ride's chat. INSERT is granted **per column** so `created_at` cannot be client-written (a `default` only applies when the column is omitted, and ordering is the product here). No UPDATE policy and no UPDATE grant. In the `supabase_realtime` publication, which is what makes a subscription fire at all. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
@@ -583,9 +532,7 @@ migration, and CI has no path that would catch it.
 here because it is not secret — the ref ships in the client bundle as part of the Supabase URL
 — and because not knowing it cost real time.
 
-**There are two projects as of 2026-08-06, and this line used to insist there was one.** It
-read *"There is exactly one, and every environment points at it"*, which was true and is the
-sentence the environment split had to change. `letsride-dev` is the DEV database: Vercel's
+**There are two projects.** `letsride-dev` is the DEV database: Vercel's
 Preview and Development targets and the GitHub Actions secrets point at it, Production points
 at `letsride`. **`docs/ENVIRONMENTS.md` is the contract** — which branch maps to which target
 to which database, the apply order for a migration, and the settings that are dashboard-only
@@ -607,176 +554,67 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 40 files, and DEV and PROD AGREE for the first time since `035` — both at
-`040`, measured 2026-08-08.** `letsride-dev` and `letsride` each have 40 rows ending
-`locality_centroid`. There is **no gap**, so the standing *"unapplied migrations are drift"* rule
-has nothing outstanding to point at.
+**Applied state: 40 files, and DEV and PROD AGREE — both at `040`.** Do not read that number
+here — it has been wrong in both directions. Run `list_migrations` against
+`ls supabase/migrations/` instead.
 
-**Do not restore a gap by accident.** Every paragraph this section used to carry — `036` held
-back, `038` on an owner decision, `037`+`039` merely unshipped — described a state that no longer
-exists. They are gone rather than edited, because a stale "held back" note is what makes a session
-hesitate over something already applied. The history is in PR #122 and in each migration's header.
-
-**`036` was the gated one, and its gate was discharged rather than waived.** It hangs six fan-out
-triggers off five **already-shipped** write paths — `postcard_likes`, `postcard_comments`,
-`ride_members`, `rides`, `club_members` — so from the moment it applies, every like, comment, RSVP,
-ride creation and club join runs new code inside the rider's own transaction, and **a trigger that
-raises takes that rider's write down with it.** The precondition was to exercise all five by hand
-on DEV first. Done, in a rolled-back transaction: each path fired its trigger, produced exactly one
-notification, none raised. It then went to PROD *before* the promotion, deliberately reversing its
-own deploy-then-apply order, because the promotion ships the notifications UI and `/notifications`
-would otherwise have errored for real riders until someone applied it.
-
-**How a large migration gets applied when nothing can pipe a file into `apply_migration`.** The
-tool takes SQL as a string and `036` is 61 KB, so applying meant reproducing it — which risks a
+**Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string
+and nothing can pipe a file into it, so a 61 KB file (`036`) has to be reproduced — which risks a
 silent transcription error in production DDL. The technique that made it safe, and the one to
-reuse:
+reuse: reduce the file to its executing statements **preserving comments inside `$$` bodies**
+(stripping those changes `prosrc`), apply the reduction, then **prove it by diffing the resulting
+objects against the database that already has the file applied correctly** — `md5(string_agg(...))`
+over `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`, `information_schema.columns`,
+`pg_indexes` and the grants. That is *stronger* than comparing the text that produced them.
 
-1. Reduce the file to the statements that execute, **preserving comments inside `$$` bodies** —
-   stripping those changes `prosrc`, which would make the applied function differ from DEV's and
-   defeat step 3. `036` went 61 KB to 13.9 KB, with all 45 statements verified present.
-2. Apply the reduction.
-3. **Prove it by diffing the result against DEV**, which already had the migration applied
-   correctly: `md5(string_agg(...))` over `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`,
-   `information_schema.columns`, `pg_indexes` and the grants. Every hash matched.
+**The cost, and it reads exactly like drift: PROD's recorded statement for `036`–`040` is the
+reduced form, so `md5(statements[1])` on those five will NOT equal `md5sum` of the file.**
+Expected. DEV carries one asymmetry of the same class on `034`; `docs/HANDOFF.md` has the
+reconciliation SQL.
 
-That is *stronger* than the recorded-statement md5 convention it gives up, because it compares the
-objects rather than the text that produced them. **The cost is real: PROD's recorded statement for
-`036`-`040` is the reduced form, so `md5(statements[1])` on those five will NOT equal `md5sum` of
-the file.** Expected, not drift.
+**A migration that hangs triggers off an already-shipped write path needs a hand-exercise gate
+before it applies.** `036` is the worked example: six fan-out triggers on five live write paths,
+so from the moment it applies every like, comment, RSVP, ride creation and club join runs new code
+inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
+it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-`034` (ride chat) and `035` (the comment whitespace floor) landed on both the same day.
-
-**This line read `001`–`032` while `033` was already applied, and TWO sessions caught it
-independently within an hour** — which is this paragraph's own warning coming true, and the
-reason the fix is a command rather than a better number. Run `list_migrations` against
-`ls supabase/migrations/`; do not read either figure here.
-
-**`034` went to PROD ahead of the promotion, and that IS the documented order rather than an
-exception to it.** It is purely additive — a new function, a new table with its policies, and a
-publication entry for that new table; the only touch on anything pre-existing is a
-`comment on function`. `docs/ENVIRONMENTS.md` §Order of operations is apply-then-deploy for
-additive, so a table sitting unused until `main` carries the code is exactly right, and the
-five-step sequence's "PROD at step 5" describes the common case rather than forbidding this one.
-Deploy-then-apply remains the rule for anything destructive.
-
-**One asymmetry survives and is DEV's, not PROD's.** `034` was corrected twice after review; the
-second correction went onto DEV as a delta (`alter constraint`, `drop`/`create policy`) rather
-than a re-apply, so **DEV's schema matches the file while its recorded statement is one revision
-behind.** PROD got the file verbatim — `md5(statements[1])` there equals `md5sum` of the file,
-`4a3e605891b8ab49db1a5d614bcb9a84` — so the canonical record is correct and DEV is the disposable
-one. `docs/HANDOFF.md` carries the reconciliation SQL.
-
-`029`–`032` landed 2026-08-06 as the
-database half of account deletion, and every one is additive — no column, table or grant
-removed, no SELECT policy touched — which is why they could land before the flow exists.
-`028` before them was comment-only, correcting a `003` column comment that still named the
-deleted `proxy.ts` as what gates every app route. (A database comment is the `data` agent's
-first read via `list_tables`, so it is the one piece of documentation no edit to this file can
-reach.) The `SKIP_MIGRATIONS` machinery that modelled the once-held-back pair is **gone**,
-along with the three `rls_test_pending_*.sql` files; the full chain applies on every run.
-Suite **958** assertions — re-derive rather than trust it, and note it read **908** here until
-2026-08-08, when a run measured 958 against a chain nobody had changed since. That gap is the
-section's own point landing on itself: `040` added assertions and the number beside the command
-was not the thing anyone re-ran.
-`PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read **641** here while the true
-figure was **647**, and stayed wrong through several sessions because the command beside it was
-never run — then `036` added 100, `037` added 61 and `038` moved it by 35. A number with its own
-verification command next to it is still a number nobody checked.) **`038`'s 35 is +36 new and −1
-relabelled, which is exactly why a count is the wrong comparison** — it renamed a `036` assertion
-whose *setup* used the very defect `038` closes, so the label set moved in both directions while
-the count moved once. (It read 527 for a few hours, from
-a parallel session that folded the same three files independently; the two were reconciled by
-comparing *label sets* rather than counts, which is the only comparison that shows whether an
-assertion was lost.)
+Suite **958** assertions — re-derive rather than trust it:
+`PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
+counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
+what `038` did to one of `036`'s assertions.
 
 **`031` exists because `029` shipped a function nothing could call, and that is the reusable
 lesson.** `029` put its worker in `private` and revoked EXECUTE from the client roles, assuming
 the deletion Edge Function would reach it as `service_role`. It could not: `service_role` holds
 no USAGE on `private`, and **PostgREST routes only to `public`**, so supabase-js's
-`.schema('private')` is refused before it reaches Postgres. `005` put the helpers there
-precisely so PostgREST could not publish them — it worked exactly as designed, against the one
-caller we wanted. Nothing caught it, because **the RLS suite runs as the table owner, for whom
-neither barrier exists.** The assertions that would have caught it name a *role*
-(`has_function_privilege('service_role', …)`) rather than calling the function, and that is the
-shape to copy whenever a non-client role is meant to reach something.
+`.schema('private')` is refused before it reaches Postgres. Nothing caught it, because **the RLS
+suite runs as the table owner, for whom neither barrier exists.** The assertion that would have
+caught it names a *role* — `has_function_privilege('service_role', …)` — rather than calling the
+function, and that is the shape to copy whenever a non-client role is meant to reach something.
 
-**The sequencing lesson is the durable part, and it outlives these two files.** `023` and `025`
-could not be applied before their code deployed, and `021`'s accessors could not be applied
-after. The order that works — additive first, deploy, destructive last — is a property of the
-split, not of these migrations, and it is why `021` had to become two files.
+**The sequencing lesson is the durable part, and it outlives the files that taught it.** `023` and
+`025` could not be applied before their code deployed, and `021`'s accessors could not be applied
+after. The order that works — **additive first, deploy, destructive last** — is a property of the
+split, not of those migrations.
 
-**`021` was split on 2026-08-05 because it contained a deployment deadlock**, and the split is
-the general lesson rather than a one-off. It held both the accessor functions and the revoke
-that makes them necessary; those must apply at *different times relative to the code deploy*,
-and no ordering of a single file satisfies both. It is now
-`021_onboarding_state_accessors.sql` (additive, applied) and
-`025_profile_column_privileges.sql` (the revoke, unapplied). **Filename order equals apply
-order** — `run.sh` applies by filename, so a file whose local order differs from its hosted
-order is a trap this repo has already sprung.
+**`021` was split on 2026-08-05 because a single file contained a deployment deadlock**, and that
+is the general lesson rather than a one-off: it held both the accessor functions and the revoke
+that makes them necessary, and those must apply at *different times relative to the code deploy*.
+It is now `021_onboarding_state_accessors.sql` (additive) and `025_profile_column_privileges.sql`
+(the revoke). **Filename order equals apply order** — `run.sh` applies by filename, so a file
+whose local order differs from its hosted order is a trap this repo has already sprung.
+Both are applied; the ordering above is the record of how, not a thing still to do.
 
-**Do not apply `025` before the code that stops selecting those columns has deployed** — it is
-an instant outage, for the four reasons its own §DEFECT 2 enumerates. `023_participation_gate`
-refuses writes from riders whose consent stamp is NULL, so it needs the consent prompt deployed
-first; that shipped 2026-08-05 as `/onboarding/terms`. **Both are applied**, and the ordering
-above is the record of how, not a thing still to do.
+**Three own-row RPCs own the two profile stamps**, because `025` takes the client's grant away:
+`my_onboarding_state()` (the route guard's one round trip — both stamps plus `has_username`),
+`accept_terms()` and `complete_onboarding(location)`. **Each restates the invariants its triggers
+carry, and must.** Inside a `security definer` function `current_user` is the *owner*, so `003`'s
+and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
+short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Three own-row RPCs now own the two profile stamps**, because `025` takes the client's grant
-away: `my_onboarding_state()` (the route guard's one round trip — both stamps plus
-`has_username`), `accept_terms()` and `complete_onboarding(location)`. **Each restates the
-invariants its triggers carry, and must.** Inside a `security definer` function `current_user`
-is the *owner*, so `003`'s and `012`'s guards — which begin
-`if current_user <> 'authenticated' then return new` — short-circuit and never run. CHECK
-constraints do still fire. Measured on Postgres 16, not recalled.
-
-`024` was applied 2026-08-05, in the order its header demands: PR #52 merged, Vercel deployment
-`READY` at `b60618a`, *then* the drop. Doing it the other way is an instant outage, because the
-code before that commit still selected the column. Verified live — both columns absent, 0
-policies and 0 procs naming them, both `avatar_path` columns present with their 8 path CHECKs,
-neither `avatar_path` comment still referring to the dropped column, and advisors reporting only
-the two known findings. Also probed through PostgREST: the old selects now return `42703` and
-every select `main` ships returns `42501`.
-
-**Do not apply `021` or `023` without reading its header.** `021_profile_column_privileges` revokes
-column grants that `proxy.ts` reads on *every authenticated request*. **This paragraph is
-history — both are applied, and `021` no longer contains the revoke at all.** It is kept because
-the failure it describes is the one the split exists to prevent, and because the pair really was
-mutually incompatible until `021`'s `accept_terms()` and `complete_onboarding()` gave the
-database the write path `025` takes away from the client.
-
-This line has been wrong in both directions — it said `016` for a day after `017` landed, then
-`017` for an hour after four more did. Run `list_migrations` against `ls supabase/migrations/`
-rather than reading it. `016` (club media) was
-applied 2026-08-05 and verified live: 6 new `storage.objects` policies (3 each for
-`club-avatars/` and `club-covers/`), 15 in total across five upload surfaces, 0 targeting
-anything but `authenticated`, 0 UPDATE policies, 4 path CHECKs on `clubs`, and both columns
-present. The policies were also exercised against the live project with `curl`: an upload into
-your own folder returns 200, into another rider's 400, and a malformed path 400.
-
-**Applied state before that: `001`–`015`.** `015` (`feed_reads`) was
-applied 2026-08-05 and verified live: 3 policies, all `to authenticated`, 0 `anon` grants,
-`authenticated` holding no DELETE, `indnullsnotdistinct` true, `prosecdef` false on
-`club_unread_counts`, RLS on, and the new `rides (club_id, created_at desc)` index present.
-`rides` had carried **no index a `club_id` lookup could use** since `001` — only `rides_pkey` —
-which the badge's rides half would have turned into a sequential scan on every Clubs load.
-(This line said "no indexes at all" until review checked `pg_indexes`; the conclusion held and
-the superlative did not.) The advisors reported nothing new *at that time* — the count has
-since grown to eight as `021` and `026` added their accessors; see the advisor table below. One
-footer query in `015` was wrong on the first pass and is worth copying the fix rather than the
-mistake: it counted DELETE grants table-wide and read 2 against a correct database, because
-`postgres` and `service_role` hold everything by Supabase default. Scope a grant assertion to
-its grantee, or use `has_table_privilege`. `014` was applied
-2026-08-05 and every number its footer predicts was confirmed live: 9 storage.objects
-policies (3 each for `postcards/`, `avatars/`, `covers/`), 0 of them targeting anything but
-`authenticated`, 0 UPDATE policies on `storage.objects` or `profile_countries`, 0 `anon`
-grants and 0 `authenticated` UPDATE grant on `profile_countries`, both new `profiles`
-columns present with 4 path constraints, and RLS enabled. Verify with `list_migrations`
-against `ls supabase/migrations/` rather than trusting this paragraph — it is the exact line
-that has been wrong before.
-
-**Security advisors: eight as of 2026-08-06, and only one is outstanding.** Re-derive rather
-than trust the number — `get_advisors(security)` — but the *shape* is durable, because seven of
-the eight are things this repo chose:
+**Security advisors: eight, and only one is outstanding.** Re-derive rather than trust the number
+— `get_advisors(security)` — but the *shape* is durable, because seven of the eight are things
+this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
@@ -784,36 +622,11 @@ the eight are things this repo chose:
 | 1 | `rls_enabled_no_policy` on `password_reset_grants` (INFO) | Correct by design: `026` revokes everything on it from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
-**This line read "two" for a day after `021` and `026` added six**, which is why the table
-above names each one: a bare count cannot tell a session whether a new WARN is expected. `026`
-§footer predicts its two and `021` the rest, so an unexpected advisor is one *not* in this
-table. `list_migrations` on
-2026-08-04 returns thirteen rows ending in `drop_friendships` (`20260804162819`). `012`
-(consent stamp guard) and `013` (drop `friendships`) were applied that day after sitting
-written-but-unapplied; `013`'s pre-flight returned **0 rows**, so nothing was destroyed, and
-every number its footer predicts was confirmed live (`to_regclass` NULL, 0 friendships
-policies, total 40 -> 36). Verify with `list_migrations` against `ls supabase/migrations/`
-rather than trusting this paragraph, which is exactly the line that has been wrong before: it
-said `001`–`010` for a day after `011` landed, and a session obeying *Unapplied migrations are
-drift* would have re-run `011` against tables that already exist. `009_postcards_and_blocks`
-was applied 2026-08-02 and verified live: 32 policies, all `to authenticated`, exactly one
-SELECT policy per table, `anon` holds zero grants, and `private.is_blocked` is absent from
-`public` so PostgREST does not publish it. `003_onboarding` was
-applied 2026-08-02 and verified against the live database, not just CI: the five negative
-cases from its own footer all hold (completion refused while `location` is NULL, completion
-one-way once set, reserved / too-short / uppercase usernames all rejected with `23514`),
-22 policies exist and every one is `to authenticated`, and `anon` holds zero table grants.
-The security advisors report nothing new — only the pre-existing leaked-password toggle.
+An unexpected advisor is one **not** in that table.
 
-Verify against the live database rather than trusting this line; it is the exact claim that
-was wrong before.
-
-`004`–`007` reached the database before `002` did, because two chains were written in
-parallel and each recreated the policies the other did. `008` reconciles them: `to
-authenticated` from `002`, the visibility predicates from `004`. Verified by diffing the
-live policy set against a database built from the migration chain — they match exactly.
-Both databases now agree; the file order and the historical apply order do not, and that
-is recorded here rather than left to be rediscovered.
+**Scope a grant assertion to its grantee**, or use `has_table_privilege`: a table-wide DELETE-grant
+count reads 2 against a correct database, because `postgres` and `service_role` hold everything by
+Supabase default. `015`'s footer got this wrong on its first pass.
 
 **The project is on the free tier, which auto-pauses after ~7 days idle.** A paused project
 serves nothing, so the deployed app goes down with no alert. This needs to be on Pro before
@@ -956,12 +769,11 @@ Do not port them; resolve to the v2 token nearest in intent.
 | `Poppins/20/Medium` | 20 / 30 | 500 | 1 |
 | `Poppins/40/Semibold` | 40 / 60 | 600 | 1 |
 
-**`Poppins/32/Semibold` (32/48, w600) does exist** — style `503:6020`, and it is what every
-screen title in the login epic uses. A previous revision of this file claimed it did not,
-almost certainly because the counts above were taken from the Components page, where it is
-unused; a style can exist in the library without appearing there. Verified 2026-08-02 by
-resolving the Login title node, which reports `fontSize 32, lineHeight 48, weight 600`.
-`--text-display` in `globals.css` is correct. The other display sizes are 24/36 and 40/60.
+**`Poppins/32/Semibold` (32/48, w600) exists** — style `503:6020`, and it is what every screen
+title in the login epic uses. It is absent from the table above because **a style can exist in
+the library without appearing on the Components page**, which is where those counts come from;
+never read that table as the full style list. `--text-display` in `globals.css` is correct. The
+other display sizes are 24/36 and 40/60.
 
 **Layout:** 390px mobile frame, single column, mobile-first. Fixed top header + fixed
 bottom tab bar. Use `.pb-safe` for notch devices.
@@ -970,9 +782,8 @@ bottom tab bar. Use `.pb-safe` for notch devices.
 corner radius `4` (147), `100` (110, i.e. pill), `8` (85), `5` (52), `12` (15);
 padding-left `16` (99), `8` (43), `24` (21); item spacing `8` (86), `4` (66), `16` (40).
 
-**Icons: 53 exported**, under `Element / Icon / *` — more than the 44 counted from the
-Components page, which is where that older number came from. They are in `design/icons/` as
-SVG and, more usefully, as typed React components:
+**Icons: 53 exported**, under `Element / Icon / *`. They are in `design/icons/` as SVG and,
+more usefully, as typed React components:
 
 ```bash
 npm run figma -- icons        # list them
@@ -991,12 +802,11 @@ Filled/Outline, Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailb
 Mute, Options, Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search,
 Share.
 
-**`lucide-react` is gone** — uninstalled 2026-08-05 with `/rides/new`, the last v1 page. Don't
-re-add it and don't substitute lookalikes. The four matches
-`grep -rn lucide-react src/` still returns are prose inside comments; the importer count is
-`grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l` and it is **0**. That command
-has reported 15, 12 and 11 at various points, which is why the command is the answer and the
-number beside it is the liability.
+**`lucide-react` is gone** — uninstalled 2026-08-05 with the last v1 page. Don't re-add it and
+don't substitute lookalikes. The four matches
+`grep -rn lucide-react src/` still returns are prose inside comments (see *the comment trap*);
+the importer count is
+`grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l` and it is **0**.
 
 **The library scale**, for planning: 52 component sets covering 213 variants, plus 88
 standalone components, 2,447 nodes on the Components page.
@@ -1036,10 +846,9 @@ npm run figma -- tokens Grey         # token tables
 npm run figma -- icons               # the exported icon set
 ```
 
-**Screen names repeat across flows** — six frames are called `Home - Postcards - All new`,
-across five flows, two of them inside `Home / Create postcard` itself. Qualify with the
-flow, as above; an ambiguous name prints every match with its flow and node id, so the next
-command is copy-pasteable.
+**Screen names repeat across flows** — six frames are called `Home - Postcards - All new`, so
+qualify with the flow as above. An ambiguous name prints every match with its flow and node id,
+so the next command is copy-pasteable.
 
 **`tree` and `text` hide layers Figma has toggled off** — a component instance carries every
 variant slot it does not use, so the Home header still *contains* the back button it hides.
@@ -1090,41 +899,18 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 openspec → reviewer → data → design-system → feature → test → reviewer → PR
 ```
 
-**`reviewer` runs twice, and the first pass is the cheaper one.** A proposal is the only
-artifact in this pipeline with *no* automated gate: `openspec/` sits in the CI denylist
-(`ci.yml`), so a proposal-only PR runs zero jobs, and the RLS suite can only assert what
-someone thought to write down. `openspec/config.yaml` names the stake exactly — a visibility
-decision left unstated "does not fail loudly, it silently becomes whatever the migration author
-assumed." By the time that reaches the second `reviewer` pass it has become a migration, a
-policy and an assertion that all agree with each other. Same lesson as *run `reviewer` before
-merging, not after*, one stage earlier.
+**`reviewer` runs twice, on two different artifacts.** The first pass reads the **proposal** —
+the only artifact in this pipeline with *no* automated gate, since `openspec/` sits in the CI
+denylist and the RLS suite can only assert what someone thought to write down.
+`openspec/config.yaml` names the stake exactly: a visibility decision left unstated *"does not
+fail loudly, it silently becomes whatever the migration author assumed."* The second pass reads
+the **final diff**, once, immediately before the PR — never twice, because a pass taken before a
+step that commits is superseded by construction.
 
-**Twice, not three times — and the second pass is one pass on the *final* diff.** A queue firing
-used to review after the build and again after the fold-in triage; that collapsed on 2026-08-08
-into a single pass at `.claude/commands/queue-pickup.md` STEP 4c, because the earlier one was
-superseded by construction the moment STEP 4b committed anything. **The proposal pass was not
-touched** — it gates a different artifact, and it is the one with no automated coverage at all.
-
-**Each pass is also scoped to what the diff touches now**, mirroring `ci.yml`'s denylist: the
+**Each pass is scoped to what the diff touches**, mirroring `ci.yml`'s denylist: the
 data-exposure and client-bundle passes cannot fire on a diff confined to `docs/`, `design/`,
-`openspec/`, `.claude/` or a root `*.md`. **Half of this repo's commits are exactly that** —
-re-derive rather than trust it, and note the two predicates are different and give different
-answers, which is how the first draft of this line quoted 63% for the narrower one:
-
-```bash
-# This sentence's predicate — commits confined ENTIRELY to the denylist: 47/94 = 50%
-git rev-list --no-merges -n 94 origin/development | while read c; do
-  git show --name-only --format= "$c" | grep -qvE '^(docs/|design/|openspec/|\.claude/|[^/]*\.md$)' || echo "$c"
-done | wc -l
-
-# reviewer.md's DIFFERENT predicate — commits touching no src/ and no supabase/:
-# 53/94 = 56%, but 19/30 = 63% over the last 30. Quote the window or the number is noise.
-git rev-list --no-merges -n 94 origin/development | while read c; do
-  git show --name-only --format= "$c" | grep -qE '^(src/|supabase/)' || echo "$c"
-done | wc -l
-```
-
-The documentation-claims pass does *not* narrow — a docs-only diff is entirely claims — and
+`openspec/`, `.claude/` or a root `*.md`, and roughly half of this repo's commits are exactly
+that. The documentation-claims pass does *not* narrow — a docs-only diff is entirely claims — and
 neither does the scope pass on anything from a queue pickup. **Four things override the scoping
 entirely** and `.claude/agents/reviewer.md` §classify is the list: a diff that **removes** a
 guard, the two `.claude/` cases below, and contrast on any new colour pairing.
@@ -1142,23 +928,15 @@ every component already exists. Swap in `realtime` or `media` for `feature` when
 chat/notifications or images. Always run `reviewer` on someone else's output, never on its own
 work — the value is in the fresh eyes.
 
-**`openspec` replaced `spec` on 2026-08-05.** Two specification systems meant neither was used:
-OpenSpec was adopted and never run, while `spec` produced one document
-(`docs/specs/login-onboarding.md`, kept as history, not a template). The old brief also told
-agents to call the Figma API, which §What Not To Do forbids.
+**There is one specification system, `openspec`, and that is deliberate** — it sat beside a
+second one (`spec`) and the result was that neither was used. `docs/specs/login-onboarding.md` is
+what `spec` produced: history, not a template.
 
-**`native` landed on 2026-08-06, when the client-render migration finished.** It was
-deliberately absent until then — "it lands with the native shell, not before, so the squad does
-not carry a brief nothing can follow" — and the shell is now the next epic, so it has work to
-follow. It owns Capacitor config, plugins, permission strings, deep links, secure storage,
-signing, store upload, and anything gated on a store review guideline. **It also owns retiring
-the SSR pass**, which is the last piece of the server render and belongs to the shell rather
-than to the render model.
-
-`rider-ux` got its rewrite at the same time, as that note promised. Its PWA-first priorities
-are gone — no manifest, no service worker, no Web Push — and the split with `native` is that
-`rider-ux` owns behaviour *inside* the shell (offline read, geolocation, push UX, glove
-targets) while `native` owns the shell itself.
+**`native` owns the shell itself** — Capacitor config, plugins, permission strings, deep links,
+secure storage, signing, store upload, and anything gated on a store review guideline, **plus
+retiring the SSR pass**, which is the last piece of the server render. **`rider-ux` owns
+behaviour *inside* the shell** — offline read, geolocation, push UX, glove targets. Neither owns
+PWA work: no manifest, no service worker, no Web Push.
 
 ### When to delegate — the agent decides
 
@@ -1172,12 +950,9 @@ It is a judgement, not a default in either direction. What follows is the judgem
 licence to fan out.
 
 **Always delegate `reviewer`, before the PR opens.** This is the one that is not a judgement
-call. Its entire value is that it did not write the code, so the author cannot substitute for
-it by reading their own diff more carefully. The record is unambiguous: three of the four
-epics before the Clubs one had `reviewer` find real defects the author missed, including an
-app-wide type-scale bug; the one time it ran *after* the merge, all four of its findings cost
-a second PR. The Clubs epic shipped without it, which is the mistake this section exists to
-stop repeating.
+call. Its entire value is that it did not write the code, so the author cannot substitute for it
+by reading their own diff more carefully — and every time it has run *after* a merge instead, its
+findings have cost a second PR.
 
 **Also delegate when:**
 
@@ -1189,22 +964,17 @@ stop repeating.
 - **The task is bounded, well-specified, and has its own tooling** — a migration with a crisp
   schema question is `data`'s, and it holds the Supabase tools.
 
-**Do it yourself when the accumulated context is the asset.** This is the case that argues
-against delegating, and it is real rather than theoretical. Building the Clubs epic in one
-thread is what surfaced the design's epic-status trap on the *first* screen —
-`Explore clubs v2` is **On hold** despite sitting further right in the file, and `Create club`
-and `Create ride` are both **To do** with OLD-stylesheet frames. A `feature` agent starting
-fresh on screen three would very likely have built Create club from a v1 frame and called it
-measured. A vertical slice where each screen teaches the next is one agent's work.
+**Do it yourself when the accumulated context is the asset.** A vertical slice where each screen
+teaches the next is one agent's work: the design's epic-status trap — `Explore clubs v2` is
+**On hold** despite sitting further right in the file, `Create club` and `Create ride` are both
+**To do** with OLD-stylesheet frames — is the kind of thing a fresh agent on screen three builds
+straight past and calls measured. Also yours: small mechanical edits, and anything where writing
+the brief costs more than the task.
 
-Also yours: small mechanical edits, and anything where writing the brief costs more than the
-task.
-
-**The failure mode in each direction is different, and worth naming.** Over-delegating
-scatters context and produces work that is individually correct and collectively inconsistent.
-Under-delegating — the Clubs epic — produces work with no fresh eyes on it, where every
-assumption the author made at the start survives to the end unchallenged. The second is the
-one this repo has actually suffered from.
+**The failure mode in each direction is different.** Over-delegating scatters context and
+produces work that is individually correct and collectively inconsistent. Under-delegating
+produces work with no fresh eyes on it, where every assumption the author made at the start
+survives to the end unchallenged. The second is the one this repo has actually suffered from.
 
 ## Architectural Decisions
 
@@ -1220,25 +990,29 @@ Settled. Don't reopen these without an explicit decision to change them.
 
 **5. Onboarding is required and not skippable.** No skip affordance on any step. A user who hasn't completed onboarding cannot reach any app route — the route guard (`src/lib/auth/guard.ts`) redirects them back into the wizard, and `023` refuses their content writes regardless of what the guard does. The schema carries the incomplete state so an abandoned signup resumes where it left off.
 
-**6. Email confirmation is ON, and this decision has said the opposite since it was written.**
-Measured 2026-08-06 against the live project — `GET /auth/v1/settings` reports
-`"mailer_autoconfirm": false`, which is GoTrue for *confirmation required*. It is a dashboard
+**6. Email confirmation is ON for PROD and OFF for DEV**, which is the intended per-environment
+split and is what both projects actually report. Verify rather than trust — it is a dashboard
 setting with no file behind it (`docs/ENVIRONMENTS.md` §Auth configuration), so nothing in this
-repo ever made the old claim true and nothing noticed when it wasn't.
+repo can make it true and nothing here notices when it changes:
+
+```bash
+curl -s "https://<ref>.supabase.co/auth/v1/settings" -H "apikey: <publishable>" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["mailer_autoconfirm"])'
+# false = confirmation required (PROD) · true = autoconfirm (DEV, so fixtures can be made)
+```
 
 **The durable rule: an architectural decision about a dashboard setting is an *intention*, and
-code must read the setting rather than trust the sentence.** Three places in `src/` treated the
-old text as a fact and drove real behaviour off it; `signUp` now branches on `data.session` and
-is correct under either configuration. The post-mortem of what each one assumed is in
-`docs/HANDOFF.md` §Signup — it does not need to be carried into every session.
+code must read the setting rather than trust the sentence.** This one said "off" for the
+project's whole life while PROD was "on", and three places in `src/` drove real behaviour off the
+sentence. `signUp` now branches on `data.session` and is correct under either configuration.
 
-**A second setting behind the same door is still broken**, and it is worse: `letsride`'s Site
-URL is `http://localhost:3000` and neither the production origin nor the preview alias is on
-the redirect allowlist, so every link the app emails lands on a dead local address. Owner
-action — `docs/ENVIRONMENTS.md` §Owner setup items 8 and 9.
-
-DEV wants confirmation **off** so fixtures can be made, PROD wants it **on**. There is one
-project today, so there is no per-environment answer to give yet.
+**A second setting behind the same door has the same property**, and it is worse when wrong: if
+`letsride`'s Site URL is `http://localhost:3000` and the production origin is off the redirect
+allowlist, every link the app emails lands on a dead address. **`http://localhost:3000/**` was
+still honoured on PROD's redirect allowlist at the last probe — a permanently open redirect
+target on a production auth server, and the half most likely to be forgotten once the dead-link
+half is fixed.** Re-run the credential-free probe in `docs/ENVIRONMENTS.md` §The redirect
+allowlist rather than trusting this line; that file holds the dated result.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 
@@ -1273,14 +1047,8 @@ because that is three levels down and this is where a session reads its operatin
 sessions start with a harness line like *"do not call the Agent tool unless the user requested
 it"* — the product owner granted the squad in advance, in writing, on 2026-08-05, precisely so
 that line resolves in favour of delegating. **`reviewer` before every PR is the non-negotiable
-one**; the rest is judgement.
-
-This failed in practice on 2026-08-07: a session read the harness line, deferred to it, shipped
-PD-100 unreviewed, and only ran `reviewer` after the merge when the owner asked why not. It found
-a false claim the author had written into a file the author had *already edited*, plus a
-miscount inside the very sentence warning about miscounts. Both were exactly what a fresh pass
-is for, and both cost a follow-up PR — the same lesson §The Agent Squad records from the Clubs
-epic, learned again at the same price.
+one**; the rest is judgement. A session has already deferred to that harness line, shipped
+unreviewed, and paid for it in a follow-up PR.
 
 **Fix the tool, don't route around it.** This app is being built for the long term. When a
 connector is down, a quota is exhausted, or a credential is missing, the default is to
@@ -1305,13 +1073,9 @@ human — cannot be restored from inside a session. **Say so the moment you hit 
 voice, as a thing you need them to do.** Then carry on with everything the block does not
 touch; do not sit idle waiting for an answer.
 
-The failure mode this exists to prevent is not silence, it is *volume without a request*. On
-2026-08-05 a session wrote "this container cannot reach `supabase.co`" five times across a
-PR body, a handoff and three replies, never once wrote "please grant it", and only tested the
-claim when the owner finally asked what it meant. Access was granted within a minute of being
-asked for. Three PRs had merged unverified by then.
-
-Two rules that follow:
+The failure mode this exists to prevent is not silence, it is *volume without a request* — a
+block described five times across a PR body, a handoff and three replies, never once phrased as
+"please grant it", and granted within a minute of finally being asked for. Two rules follow:
 
 - **Test the block before reporting it.** That claim was inherited from these docs and
   repeated for a whole session without a single `curl`. An unverified blocker is just another
@@ -1324,19 +1088,13 @@ Two rules that follow:
 **Run the SQL. Do not stop to ask.** Standing grant from the product owner, 2026-08-06:
 `execute_sql` and `apply_migration` are pre-authorized — DDL, DML, and against production.
 
-**The grant now lives in the Supabase connector, not in this repo — moved by the owner on
-2026-08-07, and that is why nothing here grants it any more.** The project's copy came out in the
-same change: the twelve `mcp__Supabase__*` names in `permissions.allow` and the two
-`autoMode.allow` prose rules that said the same thing are **deleted from
-`.claude/settings.json`**. The decision is unchanged; only where it is expressed moved. This
-paragraph exists so the deletion does not read as an oversight — `settings.json` carries a rule
-saying the absence is deliberate, because the obvious "helpful" repair is to put it back.
-
-**Two mechanisms for one grant is how one of them goes stale.** Same lesson §The Agent Squad
-records for the two specification systems, and the reason the project copy was deleted rather
-than kept as belt-and-braces. It also retires the connector-rename hazard for Supabase outright:
-a setting attached to the connector cannot stop matching when the connector's tool ids rotate,
-which is exactly what the `mcp__Supabase__*` rules did (`docs/HANDOFF.md` §Constraints).
+**The grant lives in the Supabase connector, not in this repo**, so `.claude/settings.json`
+holds no `mcp__Supabase__*` entries and no `autoMode.allow` prose rule for them. **That absence
+is deliberate and re-adding them is a regression** — `settings.json` carries a rule saying so,
+because the obvious "helpful" repair is to put them back. Two mechanisms for one grant is how one
+of them goes stale (same lesson as the two specification systems), and a connector-level setting
+cannot stop matching when the connector's tool ids rotate — which is exactly what the
+`mcp__Supabase__*` rules did (`docs/HANDOFF.md` §Constraints).
 
 **The connector setting is the owner's, and no session can read or change it.** So if a Supabase
 call prompts anyway, the answer is to **report it** — not to re-add a project rule, not to edit
@@ -1364,30 +1122,23 @@ session can test it.** Assume it does, act as if those four are blocked under an
 the absence of a prompt as permission.
 
 **Notify when the work is done and the owner may not be watching.** Standing request from the
-product owner, 2026-08-05, restated and tightened 2026-08-06: send a push notification when a
-session's work is finished, in the form `Done ; ) <name of the session>` — the name being what
-the session was *about*, so a notification read on a phone hours later identifies itself without
-opening anything. **Every session that changed something, not just the long ones.** One at the
-end, not per milestone; a notification they did not need is annoying in a way that accumulates.
+product owner: a push notification when a session's work is finished, in the form
+`Done ; ) <name of the session>` — the name being what the session was *about*, so a notification
+read on a phone hours later identifies itself without opening anything. **Every session that
+changed something, not just the long ones.** One at the end, after the PR is merged, so it can
+say what actually landed; a notification they did not need is annoying in a way that accumulates.
+`.claude/hooks/session-wrapup-check.sh` is a backstop rather than the trigger — it can only fire
+once the branch is committed, pushed and ahead of `development`.
 
-It is the last step of the wrap-up, after the PR is merged, so the message can say what actually
-landed. `.claude/hooks/session-wrapup-check.sh` reminds you — but treat the reminder as a
-backstop and not as the trigger, because it can only fire once the branch is committed, pushed
-and ahead of `development`, and a session that ends without ever reaching that state gets no
-prompt at all.
+**Say less while building.** Progress feedback during a build is a line or two — what landed,
+what is next, what broke. Not a recap of the reasoning, not a restatement of the plan, not a
+summary of a file that was just read. The owner is watching the work happen; narrating it twice
+buries the one line that actually needed reading.
 
-**Say less while building.** Standing request from the product owner, 2026-08-06: progress
-feedback during a build is a line or two — what landed, what is next, what broke. Not a
-recap of the reasoning, not a restatement of the plan, not a summary of a file that was just
-read. The owner is watching the work happen; narrating it twice is the cost, and it buries the
-one line that actually needed reading.
-
-Three things stay long no matter how brief the running commentary gets, because each is a
-*decision* rather than a status: **the rating block below**, a **blocked capability** (the
-product owner has to act on it, so it needs the ask spelled out), and **anything inferred
-rather than measured** — an unlabelled guess is the failure this file's own principles exist
-to prevent, and "short" is never the reason one goes unlabelled. Brevity is about the
-narration, not about the record.
+Three things stay long however brief the commentary gets, because each is a *decision* rather
+than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,
+so the ask needs spelling out), and **anything inferred rather than measured**. Brevity is about
+the narration, never about the record.
 
 **Rate every suggestion on four lines, always in this order.** Whenever you propose optional
 work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
@@ -1398,13 +1149,8 @@ with numbers buried in it; the point is that the reader can skim four lines and 
 > **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
 > **This session** N — wants its own branch, and the open PR should land first
 
-**Recommendation goes first, and that order is the product owner's — set 2026-08-06.** It is
-the line that answers *should we*, so it is the one being looked for; the other three exist to
-justify it. The block used to open with Complexity, which made two cost lines the price of
-reaching the verdict. Blocks written in the old order survive in `docs/HANDOFF.md`'s history
-and in archived proposals — the order above is the one to write.
-
-What each one means:
+**Recommendation goes first** — it is the line that answers *should we*, so it is the one being
+looked for; the other three exist to justify it. What each one means:
 
 - **Recommendation** — how strongly you actually advise doing it, independent of how much fun
   it is to build.
@@ -1413,46 +1159,32 @@ What each one means:
   urgency here is conditional rather than scheduled: "low now, high the day real riders sign
   up" is the whole content, and the bare number would have hidden it.
 - **This session** — **Y or N, never a number**, plus the half-line of why. It answers "should
-  *this* session pick it up next", which is a question about the session rather than about the
-  work: what context is already loaded, whether a branch is open, whether it is blocked on an
-  answer, and whether it is even the agent's to do. An owner-only item is **N** — "not mine" —
-  which is the single most useful thing this line does, because those are exactly the items
-  that otherwise sit in a list of build tasks looking actionable.
+  *this* session pick it up next", which is about the session rather than the work: what context
+  is loaded, whether a branch is open, whether it is blocked on an answer, and whether it is even
+  the agent's to do. An owner-only item is **N** — "not mine" — which is the single most useful
+  thing this line does, because those are exactly the items that otherwise sit in a list of build
+  tasks looking actionable.
 
 **None of the four are correlated, and that is the entire reason there are four.** A 1/10
-complexity item can be a 9/10 recommendation. A clever 6/10 build can be a 2/10
-recommendation. Urgency moves independently of both — the deck-skip bug fixed on 2026-08-05
-sat at 6/10 recommendation with near-zero urgency for weeks, then became urgent the moment the
-overflow menu shipped the block button that could reach it. Nothing about its complexity or
-its value changed; only *when* did.
+complexity item can be a 9/10 recommendation; a clever 6/10 build can be a 2/10 one. **9/10 with
+`This session` N is an ordinary pairing**, not a contradiction — the leaked-password toggle is a
+dashboard click nobody in a session can make. So is its inverse: a 3/10 worth **Y** because the
+files are already open and it costs two minutes. Answer `This session` from where the session
+actually is, not from how good the idea is.
 
-**This session is the one that moves fastest, and it is the one a stale answer misleads on.**
-9/10 recommendation and **N** is a perfectly ordinary pairing — the leaked-password toggle is
-a dashboard click nobody in a session can make. So is its inverse: a 3/10 recommendation
-worth **Y** because the files are already open and it costs two minutes, where the same item
-next week costs an hour of reloading context. Answer it from where the session actually is,
-not from how good the idea is.
+Rate your own ideas honestly, including low — an unrated suggestion reads as advocacy, and the
+reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so in the
+number.
 
-Rate your own ideas honestly, including low — an unrated suggestion reads as advocacy, and
-the reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so
-in the number.
+**Letter them — A), B), C) — whenever you offer more than one**, so the reply can be "do A and
+C" instead of a quoted sentence. One letter per thing that can be independently said yes to; a
+single suggestion needs no letter. **Say who does each one** — an owner-only item mixed into a
+list of build tasks hides the one nobody but them can do.
 
-**Letter them — A), B), C) — whenever you offer more than one.** A rated list is only half
-useful if the reader has to quote a sentence back to pick from it; a letter makes the reply
-"do A and C" instead. Number the *choices*, not the paragraphs, and keep one letter per thing
-that can be independently said yes to.
-
-Two things that make the list actually decidable:
-
-- **Say who does each one.** Some items are the owner's alone — a dashboard toggle, a
-  designer question, loading a page against the real database — and mixing them into a list
-  of build tasks hides the ones nobody but them can do.
-- **A single suggestion needs no letter.** `A)` on its own is ceremony.
-
-**Give every lettered option its own blockquote — and keep the letter and its description
-*outside* the bar.** Product owner's instruction, 2026-08-06, revising the same day's earlier
-one. The letter and its one-line description sit on their own line above the block; only the
-four ratings go inside the `>`. Two options means two headings and two bars:
+**Give every lettered option its own blockquote, with the letter and its description *outside*
+the bar.** The bar groups the ratings so a reader scanning three options can see where each one
+ends; the description is the thing being chosen between, and inside the bar it reads as a fifth
+rating line instead of a heading. Two options means two headings and two bars:
 
 **A) Drop the dead column.**
 
@@ -1468,18 +1200,8 @@ four ratings go inside the `>`. Two options means two headings and two bars:
 > **Urgency** 4/10 — low now, high the day real riders sign up
 > **This session** N — owner-only, nobody in a session can click it
 
-**The bar groups the ratings; the heading names the option.** Four ratings loose under a letter
-read as four more bullets in one long list, so a reader scanning three options has to work out
-where each one ends before they can compare them — one bar per option makes that boundary
-visual. But the *description* is the thing being chosen between, and inside the bar it reads as
-the first of five rating lines instead of as a heading. Outside it, at full width, the eye picks
-up the letters on one pass and the ratings on another. It matters most exactly when it is most
-needed — a list of three or more, where "do A and C" is the reply you are hoping for.
-
 Do **not** put the ratings outside the bar, and do **not** put several options in one shared
-blockquote. Both defeat the grouping. The earlier version of this rule put the letter and its
-description inside the bar as well; blocks written that way survive in `docs/HANDOFF.md`'s
-history and in archived proposals — the shape above is the one to write.
+blockquote. Both defeat the grouping.
 
 **Committed and pushed is not shipped.** A branch that is green, pushed and reviewed still
 changes nothing until it merges — and the gap between "I opened the PR" and "it landed" is where
@@ -1488,12 +1210,10 @@ looks finished. Before ending a session, merge it or say plainly that it is open
 is not hypothetical: a handoff rewrite sat in an unmerged PR while `main` told the next session
 a shipped epic was half-finished.
 
-**"Counts" has two thresholds, and this line said only the second until 2026-08-08.** It read
-*"Work only counts when it is on `main`"*, which no session can satisfy — production promotion
-is manual and the owner's. **A session's unit of done is a merged PR on `development`**, which
-is where a queue firing ends (`Deployed to DEV`). Reaching riders is the owner's promotion to
-`main`, and `Done (in production)` is the status that asserts it. Both thresholds are real; only
-the first is yours.
+**"Counts" has two thresholds and only the first is yours.** **A session's unit of done is a
+merged PR on `development`**, which is where a queue firing ends (`Deployed to DEV`). Reaching
+riders is the owner's manual promotion to `main`, and `Done (in production)` is the status that
+asserts it — never write "shipped" for the first and mean the second.
 
 **A claim about state needs the command that checks it.** `docs/HANDOFF.md` describes things
 that move on their own — what is deployed, what is applied, how many tests there are. Write
@@ -1526,29 +1246,26 @@ rather than checking it against this list, which is not exhaustive:
   obituaries, so the obvious command returns a wrong number that looks measured.
 - **`^`-anchored `git grep -L`** (same paragraph) — unanchored, a doc comment mentioning
   `'use client'` counts as the directive, so real server-rendered pages drop out of the list.
-- **The team-scoped lock** (§The queue is drained by a scheduled Routine, step 2) — a
-  team-scoped `list_issues` is the natural query and is held permanently by years-old issues
-  outside this project.
+- **The team-scoped lock** (`.claude/commands/queue-pickup.md` STEP 1) — a team-scoped
+  `list_issues` is the natural query and is held permanently by years-old issues outside this
+  project.
 
 `.claude/agents/reviewer.md` §The necessity gate enforces this, and carries a line budget so
 prose growth is measured rather than argued about.
 
 **Unapplied migrations are drift.** A migration in the repo that has not run against the
-database means the schema in git and the schema in Postgres disagree. Apply them before
-adding another; a queue of unapplied migrations fails in the order nobody tested. Check
-rather than trust this line — `mcp__Supabase__list_migrations` against the hosted project,
-against `ls supabase/migrations/`. (It said "two are outstanding" while the true count was
-first zero and then one.)
+database means the schema in git and the schema in Postgres disagree. Apply them before adding
+another; a queue of unapplied migrations fails in the order nobody tested. Check rather than
+trust this line — `mcp__Supabase__list_migrations` against the hosted project, against
+`ls supabase/migrations/`.
 
 ## Product Scope (from Figma)
 
 The built app covers a fraction of the design. **Four nav tabs — Home, Rides, Clubs,
-Profile** — against the design's five: **Inbox was removed on 2026-08-07** (PD-100) rather
-than shipped as the disabled stub it had been, because a tab that goes nowhere is an App
-Store guideline 4.2 question and a disabled one still reads as broken. It returns with the
-Inbox epic. This line said "Five nav tabs" and named Inbox among them, which is the reading
-to be careful of: **the design is not the code here, deliberately** — check with Figma second and
-the code first:
+Profile** — against the design's five: **Inbox was removed on 2026-08-07** (PD-100) rather than
+shipped as the disabled stub it had been, because a tab that goes nowhere is an App Store
+guideline 4.2 question and a disabled one still reads as broken. It returns with the Inbox epic.
+**The design is not the code here, deliberately** — check the code first and Figma second:
 
 ```bash
 sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep -c "href:"
@@ -1556,10 +1273,9 @@ sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep 
 
 **Scope the range before counting.** A bare `grep -c "href:"` on that file reads **9**: the four
 nav rows, four `STICKY_ACTIONS` entries, and — the one that catches people twice — the `href:
-string` in the `Record` type annotation declaring the map. This paragraph previously recommended
-`grep -c "Icon: "`, which returns the right 4 today but is unguarded: the file's own docstring
-already writes `MailboxIcon` twice, so one future sentence containing "the `Icon: ` field"
-inflates it silently. Scoping to the array cannot over-match from prose at all.
+string` in the `Record` type annotation declaring the map. Counting `Icon: ` instead returns the
+right 4 today but is unguarded, because the file's own docstring already writes `MailboxIcon`
+twice; scoping to the array cannot over-match from prose at all.
 
 There is no "Friends" tab either, for a different reason: `013` dropped the `friendships`
 table on 2026-08-04, and the route and components went earlier. The social graph is clubs
@@ -1567,11 +1283,11 @@ plus blocking.
 
 | Domain | Status in code |
 |---|---|
-| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **Built and verified against the design** as of 2026-08-04: the swipeable card deck and filter bar at `/postcards`, the composer at `/postcards/new`, one card plus its thread at `/postcards/[id]`. The home screen is a **card stack you swipe**, not a scrolling feed. **Share is a link share** (Web Share API, clipboard fallback) — the reading that needs no schema; a repost is still an open product question. Two design elements are blocked on schema, not design: unread badges and photo location. The hide/block/report menu was listed here as a third and that was wrong twice over — it needed no schema (`009` and `011` built every table) and it shipped 2026-08-05. See `docs/FIGMA-FIDELITY-TODO.md` |
+| **Postcards** — photo feed, likes/comments/shares, club-scoped, is the *home screen* | **Built and verified against the design** as of 2026-08-04: the swipeable card deck and filter bar at `/postcards`, the composer at `/postcards/new`, one card plus its thread at `/postcards/[id]`. The home screen is a **card stack you swipe**, not a scrolling feed. **Share is a link share** (Web Share API, clipboard fallback) — the reading that needs no schema; a repost is still an open product question. Two design elements are blocked on schema, not design: unread badges and photo location. The hide/block/report menu shipped 2026-08-05 over the RLS `009` and `011` already had. See `docs/FIGMA-FIDELITY-TODO.md` |
 | **Inbox** — DMs, per-ride group chat, notifications | **Notifications shipped 2026-08-07 (PD-118) and the other two have not.** The tab is still gone (PD-100), so notifications live at their own route, `/notifications`, reached from a `MailboxIcon` + unread dot in the header of the four tab-root screens. `036` adds the `notifications` table, written **only** by six `private` fan-out triggers — `authenticated` holds no INSERT and no DELETE grant. Per-ride group chat shipped separately as `034`. What is left of this epic is **DMs**, and the tab itself: when it returns, `/notifications` becomes `/inbox/notifications` and the header icon becomes the tab. See `.claude/agents/realtime.md` |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. **Account deletion has its database half and no flow** (2026-08-06): `029`–`032` and `supabase/functions/delete-account/` are in, the Edge Function is **written, not deployed and never run**, and nothing in `src/` points at it. `/legal/account-deletion` is public and live. What remains is `openspec/changes/add-account-deletion/` groups 3 and 4 |
-| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs** — an earlier revision of this line said "Plan/Journal/Crew tabs", which had the right three and the wrong mechanism, and missed that Chat is a fourth. **Ride plan, Crew and Chat are built; Journal needs `postcards.ride_id`.** Chat shipped 2026-08-07 (`034`, Linear PD-115) and did **not** need the Inbox epic, which this line asserted for months — a per-ride chat needs a ride and a crew, both of which existed. Inbox owns DMs and notifications and is still parked. **Chat is reached from the switcher *and* the header's chat-bubble icon; the switcher row is a deliberate deviation and both entry points are crew-only** — see `docs/FIGMA-FIDELITY-TODO.md` §Ride detail for the measurement that added it, and `034` for what "crew" means, which is narrower than a `ride_members` row and must be read there rather than restated here. The chat is the app's only Realtime subscription, so `.claude/agents/realtime.md`'s rules have a worked example now rather than only a brief. `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
+| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs**: Ride plan, Crew and Chat are built, and Journal needs `postcards.ride_id`. Chat shipped 2026-08-07 (`034`, Linear PD-115) and did **not** need the Inbox epic — a per-ride chat needs a ride and a crew, both of which existed. Inbox owns DMs and notifications and is still parked. **Chat is reached from the switcher *and* the header's chat-bubble icon; the switcher row is a deliberate deviation and both entry points are crew-only** — see `docs/FIGMA-FIDELITY-TODO.md` §Ride detail for the measurement that added it, and `034` for what "crew" means, which is narrower than a `ride_members` row and must be read there rather than restated here. The chat is the app's only Realtime subscription, so `.claude/agents/realtime.md`'s rules have a worked example now rather than only a brief. `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
 | **Clubs** — public/private, Overview/Rides/Members/Posts tabs | **Built 2026-08-05**, all of it v2. `/clubs` and `/clubs/explore` are two sub-pages behind the header's dropdown, with `List / Club` rows carrying the type chip, the rider collage, the club images and the unread counter. `/clubs/[id]` is four sub-pages — Timeline, Rides, Members, About — built from the **private club** frames, which are the ones marked Done; both public-club epics are On hold. `/clubs/new` is a client page with an image upload (`016`). Two things remain unbuilt and both are logged: the Timeline's **activity feed** (no table behind joins/leaves) and **member invitations with an Admin role** (drawn on the v1 create frame; `club_members.role` has had `admin` since `001` and nothing writes it). Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. **Create club has no v2 design** — that epic reads To do, so its composition is ours |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
@@ -1594,27 +1310,17 @@ from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
 
 ## The roadmap lives in Linear
 
-Adopted 2026-08-07. The workspace is **`lets-ride`**, the team is **Pedro & Dave (`PD`)**, and
-the project is **[Let's ride (AI)](https://linear.app/lets-ride/project/lets-ride-ai-10cb543bcb9d)**.
-`PD-86`–`PD-103` were the first seeding.
+Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**, project **Let's ride (AI)**. **Pass the
+project id — `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it contains a curly
+apostrophe, and the straight-quote version silently fuzzy-matches the *deprecated* `Let's Ride`
+project or drops the field entirely. `save_issue` returns a successful-looking payload either
+way, so **read the field you set back off the response**.
 
-**There is a second project called `Let's Ride`, and it is deprecated.** 27 issues from 2024–2025
-describing a Thunkable/Firebase build that no longer exists — `Connect Thunkable to Firebase`,
-`Decide on database engine and services`, both marked Done against a stack this repo replaced.
-Nothing in it describes the current app, so **it is not a source of truth and no work is planned
-there**. Read it for history if you like.
-
-The product owner's first instruction was to leave it entirely alone; that was **relaxed on
-2026-08-07 to "deprecated, don't worry about it"**, which is a weaker claim and changes exactly
-one thing — it no longer constrains team-level settings that happen to touch it. Recorded because
-the earlier wording was load-bearing for a day: it is why the status trim was first planned as
-renames rather than deletes.
+**There is a second project called `Let's Ride` and it is deprecated** — 27 issues from 2024–2025
+describing a Thunkable/Firebase build that no longer exists. Not a source of truth; no work is
+planned there.
 
 ### Why this does not become the fifth planning system
-
-That is the actual risk, and this repo has already lost that bet once — §The Agent Squad records
-that *"two specification systems meant neither was used"* when OpenSpec sat beside `spec`. So the
-boundary is a rule rather than a preference, and it is one line:
 
 > **Linear holds order, owner and status. The repo holds everything else, and Linear points at it.**
 
@@ -1624,627 +1330,98 @@ boundary is a rule rather than a preference, and it is one line:
 | **`openspec/`** | The contract — every state and every negative case | Scheduling, priority, assignment |
 | **`docs/HANDOFF.md`** | Current position, each claim beside the command that verifies it | The queue |
 
-An issue body is a pointer and a reason: `docs/HANDOFF.md` §Owner actions 3, plus one sentence
-on why it matters. **A Linear issue that grows a specification is a bug** — that belongs in a
-proposal, where `openspec/config.yaml`'s rules apply and a missing visibility rule fails loudly
-rather than silently.
+An issue body is a pointer and a reason. **A Linear issue that grows a specification is a bug** —
+that belongs in a proposal, where `openspec/config.yaml`'s rules apply and a missing visibility
+rule fails loudly rather than silently.
 
-### The statuses, and why the board does not mirror the squad
+### The statuses — re-derive them, never type them from memory
 
-The board was trimmed on 2026-08-07, the day after it was seeded, and the reason is worth
-keeping because it is the same reason the boundary above exists. It briefly carried ten
-statuses — `Idea (AI)`, `Testing (AI)`, `Quality control (AI)`, `Review Dev (Human)` among
-them — one per stage of §The Agent Squad's order. The product owner's objection settled it:
-*"I dont think i care if they are being developed tested or quality control etc. our squad
-already takes care of that"*. Exactly right. That order is enforced by **this file**, and a
-board mirroring it is an agent narrating its own internals to a column nobody reads.
+The board's status names have changed twice without anything in the repo noticing, and a
+`save_issue` naming a status that no longer exists comes back **looking successful with the field
+silently dropped**. `.claude/commands/queue-pickup.md` §The status names carries the live table
+and the two traps in its `Type` column; run this before the first status write of a session:
 
-**A status is only worth a column when someone changes behaviour based on it.**
-
-**Applied by the product owner 2026-08-07 and read back off the live board the same day** —
-`list_issue_statuses` on team `PD`. Names below are the real ones, and they are *not* the ones
-this file proposed; re-derive rather than trust it, because renaming a status is a two-click
-change nothing in the repo can see:
-
-```bash
+```
 # via the Linear MCP: list_issue_statuses team=Pedro & Dave
 ```
 
-| Status | Type | Means | Who moves it |
-|---|---|---|---|
-| `Backlog AI` | backlog | Captured, not triaged | Either |
-| `Todo Human` | unstarted | Triaged; **owner chores live here** | Either |
-| `Todo AI` | unstarted | Triaged, and a session could do it — but see below, it is *not* a start signal | Either |
-| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
-| **`Queued (AI)`** | started | **Approved to build. The queue an agent pulls from** | **Owner** |
-| `Development (AI)` | started | An agent has picked it up | Agent |
-| `Needs help` | started | An agent stopped and needs the owner before it can go on | Agent |
-| **`Deployed to DEV`** | started | **Merged to `development`, green, live on DEV. Where a firing ends** | Agent |
-| `Done (in production)` | completed | Promoted to `main` and live for riders | **Owner** |
+Three rules that outlive any rename:
 
-`Canceled` and `Duplicate` also survive. The four squad-mirroring statuses are gone —
-`Idea (AI)`, `Testing (AI)`, `Quality control (AI)`, `Review Dev (Human)`.
+- **`Queued (AI)` is the only start signal.** Not priority, not the milestone, not a comment, not
+  the `DEV` label, and **not `Todo AI`** — that name reads like permission and is not one. A
+  session that picks its own work from another column has taken the one decision this board exists
+  to give the owner.
+- **`Development (AI)` and `Needs help` are the concurrency lock — two *names*, never "any
+  `started` issue".** `Queued (AI)` and `Deployed to DEV` are typed `started` too, so the wider
+  version is held by every queued and every shipped story: the queue freezes permanently while
+  looking like a healthy job behind a busy column. Never park work in `Development (AI)` by hand
+  — staged work belongs in `Todo AI`.
+- **A session's unit of done is `Deployed to DEV`** — merged to `development`, green, live on DEV.
+  **No session ever sets `Done (in production)`**; that asserts riders have the feature, and only
+  the owner's manual promotion to `main` makes it true. A blocker counts as cleared at
+  `Deployed to DEV` for the same reason.
 
-**This table said `Todo` — one row — until 2026-08-07, when `list_issue_statuses` returned
-`Todo Human` and `Todo AI` instead.** Which is the paragraph above proving itself: renaming or
-splitting a status is a two-click change nothing in the repo can see. **`Todo AI` is the row to
-be careful with** — the name reads like permission and it is not one. `Queued (AI)` is still the
-only start signal, and an issue sitting in `Todo AI` is triaged, not released.
-
-**Then it happened again on 2026-08-08, to three rows at once**, which is why the command above
-the table is the answer and the table is the liability: `Backlog` became **`Backlog AI`**, `Done`
-became **`Done (in production)`**, and **`Deployed to DEV` was added**. Nothing failed; a
-`save_issue` naming a status that no longer exists comes back looking successful with the field
-dropped, exactly like the `project` trap below.
-
-**Five files went stale, not three, and the blast radius is the part to re-derive.** The obvious
-three are `CLAUDE.md`, `.claude/commands/queue-pickup.md` and `docs/HANDOFF.md` — but
-**`openspec/changes/*/tasks.md` carried dead status names in unchecked, executable tasks**, in
-changes that had merged and never been archived. A first draft of this very sentence listed only
-the three. Grep the tree rather than trusting any list:
-
-```bash
-grep -rn '`Backlog`\|`Done`' --include="*.md" . | grep -v node_modules   # then read each hit
-```
-
-**The split of `Done` into two is a workflow change, not a rename, and it is the one to
-internalise.** A firing's unit of done is a **merged PR on `development`**, which is
-`Deployed to DEV`. **Promotion to production is manual and the owner's**, done in a separate
-session at their own timing (2026-08-08), so **no session ever sets `Done (in production)`** —
-that status asserts riders have the feature, and only the promotion makes it true.
-
-**Two traps hide in the `Type` column, and both fail silently:**
-
-- **`Deployed to DEV` is typed `started`, and so is `Queued (AI)`.** The concurrency lock is
-  therefore **two names — `Development (AI)` and `Needs help`** — and must never be rewritten as
-  "any `started` issue". That version is held by every queued and every shipped story, freezing
-  the queue permanently while looking like a healthy job behind a busy column. Same recurring
-  shape as the team-scoped lock and the buried stall alarm: a guard that can never pass,
-  indistinguishable from success. **Do not number these** — a count that mixes observed failures
-  with hypothetical ones ends up with two different "third instance"s, which has already
-  happened here.
-- **A blocker counts as cleared at `Deployed to DEV`**, not at `Done (in production)`. Firings
-  branch off `development`, so work merged there is already available to build on; requiring the
-  promotion would block every dependent story behind a manual step on the owner's schedule.
-
-**Two live traps when writing to the board through the MCP, both hit on 2026-08-07:**
-
-- **The active project's name contains a curly apostrophe — `Let’s ride (AI)`, not `Let's`.**
-  Passing the straight-quote version does not fail; it fuzzy-matches the *deprecated* `Let's
-  Ride` project, or silently drops the field and creates the issue with no project at all. Both
-  happened in one batch. **Pass the project id — `88f3f224-ecf0-46f0-a032-c86b7a12f81c`.**
-- **`save_issue` reports the result, so read it back.** Every one of those four returned a
-  perfectly successful-looking payload with `project` simply absent. Check the field you set is
-  in the response rather than checking the call did not error.
-
-**`Queued (AI)` is how the owner chooses what gets built, and it is a *status*, not a label.**
-Nothing else is a start signal — not priority, not the milestone, not a comment, and not the
-`DEV` label.
-
-**The fold-in qualifies this sentence and does not weaken it** — noted here because an
-unannotated absolute is how the two drift apart. A firing may finish the story it was *given*
-properly, including the test or the caller that story needs; it may never start a story it was
-not given. Starting new work still requires this column, and the relatedness test is what keeps
-the distinction enforceable rather than rhetorical.
-
-**The two lists are numbered independently and the numbers do not correspond.** Nothing derives
-one from the other; they were written at different times and each is internally ordered. The
-mapping, so a cross-reference can be followed rather than guessed:
-
-| This file's list, below | `.claude/commands/queue-pickup.md` |
-|---|---|
-| step 5 — build | STEP 4 |
-| step 5b — triage | **STEP 4b** |
-| step 5c — review, PR, merge, `Deployed to DEV` | STEP 4c, then STEP 5 |
-
-**So "step 5" here and "STEP 5" there are different steps**, which is the collision most likely
-to mislead: this file's step 5 is the build, that file's STEP 5 is the wrap-up. That file is the
-procedure and wins on any disagreement; this is the summary. **Take the top of that column by priority, and if it is empty, ask rather than
-choosing for them.** A session that picks its own work from `Backlog AI` has quietly taken the
-one decision this whole board exists to give the owner.
-
-**`Needs help` is the escape hatch, and using it is not a failure.** An agent that is unsure —
-an ambiguous requirement, a visibility rule nobody wrote down, a migration whose ordering it
-cannot verify — moves the issue there with a comment saying exactly what it needs, and stops.
-That is strictly better than guessing and merging, and this file's own §Working Principles
-already forbids letting an unlabelled guess pass as a known value.
-
-**`Development (AI)` is the one in-progress status, and it exists because the owner reads it.**
-With several issues released at once it is what says which one is being worked *right now* — and
-no other signal carries that, because agents are not Linear users here, so every issue shows the
-owner as its creator and nothing is ever assigned to a session. Move it on pickup, not at the
-end. **It is also the concurrency lock:** if anything sits in `Development (AI)` or `Needs help`,
-another session must not start a second story.
-
-**So never park work there by hand — it is a lock, not a staging area.** On 2026-08-07 four
-issues sat in `Development (AI)` at once (`PD-115`, `PD-116`, `PD-117`, `PD-119`, the Ride chat
-cluster) with **no branch behind any of them** — `git branch -r` showed only `main`,
-`development` and one unrelated feature branch. That froze the hourly Routine completely: it
-checks the lock first and exits, so it changed nothing and said nothing, every hour. Staged work
-belongs in `Todo AI`; `Queued (AI)` releases it; `Development (AI)` means an agent has it *now*.
-
-Labels are the cross-cut: **`Owner only`** is the filter for what no session can do, and
-`App` / `Database` / `Native shell` / `Design` / `Website` say where. `Chore` is the type
-`Bug`/`Feature`/`Improvement` leaves out. The eleven pre-existing labels — `DEV`, `UX/UI`,
-`Paperwork`, `Discuss`, `OnHold`, `Marketing` among them — are still on the team and still
-unused; retiring them is an owner action nobody has needed yet.
-
-**Configuring statuses is an owner action, and the MCP cannot do it.** The Linear MCP exposes
-`list_issue_statuses` and `get_issue_status` and nothing that writes one. Two notes left from
-applying it, because both will recur:
-
-- **`Queued (AI)` is typed `started`, so queued-but-untouched work counts as work-in-progress.**
-  Deliberate or not, it means project progress and cycle charts read high. Retyping it
-  `unstarted` is a two-click fix whenever that starts to matter; nothing depends on it.
-- **A deleted status leaves its issues reporting a status that no longer exists.** `PD-85` still
-  reads `Idea (AI)` after that status was removed. Harmless for one sample issue, and worth
-  knowing before assuming a `list_issues` status string is always one `list_issue_statuses`
-  returns.
+Labels are the cross-cut: **`Owner only`** filters what no session can do; `App` / `Database` /
+`Native shell` / `Design` / `Website` say where; `Chore` is the type `Bug`/`Feature`/`Improvement`
+leaves out. Configuring statuses is an owner action — the MCP can list them and not write one.
 
 ### Sequencing — the queue order is not the order you dragged them in
 
-**`Queued (AI)` is a set, not a list**, and that is the trap. The Routine takes the highest
-priority and breaks ties by **oldest `createdAt`** — so within a priority band the queue order is
-*when the issue was filed*, which the board does not display and which dragging it into the
-column does not change. Queue `PD-114` ahead of `PD-104` and `PD-104` still goes first, because
-it was filed 51 minutes earlier. Measured 2026-08-07 on exactly those two, which is also what
-prompted this section.
-
-**Linear has five priority buckets — `0` None, `1` Urgent, `2` High, `3` Medium, `4` Low — and
-they mean importance, not order.** Four issues at Medium have no expressible order between them
-at all beyond their filing times, so priority cannot carry a build sequence and must not be bent
-into one: raising an issue to High so it goes first also tells the owner it matters more than it
-does, and from then on the two claims disagree with each other permanently.
-
-**So the sequencing mechanism is the *column*, not anything inside it:**
+**`Queued (AI)` is a set, not a list.** The Routine takes the highest priority and breaks ties by
+**oldest `createdAt`**, which the board does not display and dragging does not change. Priority
+means importance, not order: bending it into a sequence tells the owner an issue matters more than
+it does, permanently.
 
 > **Only queue what is buildable now.** `Queued (AI)` means *eligible today*, not *approved
-> eventually* — so everything in it is order-independent by construction and the weak ordering
-> above stops mattering. Work that must wait for another issue waits in `Todo AI`, and the owner
-> queues it when its blocker reaches `Deployed to DEV`.
+> eventually* — so everything in it is order-independent by construction. Work that must wait
+> waits in `Todo AI`, and the owner queues it when its blocker reaches `Deployed to DEV`.
 
-That is the only mechanism a session can both write **and** read: status is what
-`list_issues` returns, and it is already the signal the Routine and the concurrency lock are
-built on. Two rules follow, in the order to reach for them:
+- **One issue per feature.** Split only when the halves ship **independently** — each mergeable on
+  its own, in either order, neither leaving the other half-built. When a feature genuinely is too
+  big, use **sub-issues of one parent** (`parentId` is both a `save_issue` parameter and a
+  `list_issues` field). Siblings still have no order between them.
+- **When a split really is ordered, only the first part goes in `Queued (AI)`.**
+- **`blockedBy` is readable, but only per issue** — `get_issue` with `includeRelations: true`
+  returns `relations.blockedBy` / `.blocks` / `.relatedTo`; the flag is off by default, which is
+  why this was once recorded as write-only. `list_issues` still cannot filter or return relations,
+  so relations are a **backstop that catches a mistake**, never the mechanism that makes queuing
+  blocked work safe. The column rule above is the mechanism.
 
-1. **One issue per feature.** The product owner's rule, 2026-08-07, and the one that prevents
-   the problem instead of managing it. A feature split across several issues has to be
-   re-sequenced every time any of them moves, using the weakest signal on the board. Split only
-   when the halves ship **independently** — each mergeable on its own, in either order, neither
-   leaving the other half-built. `PD-112` and `PD-113` are a fair split (two unrelated postcard
-   surfaces); `PD-104` and `PD-114` are not (one set of coordinate columns, two designs for it).
+### The queue is drained by a scheduled Routine
 
-   **When a feature genuinely is too big for one issue, split it into sub-issues of one parent.**
-   `parentId` is a `save_issue` parameter *and* a `list_issues` field, so a session can group a
-   cluster without guessing from titles.
+**`trig_01WJkMVXGzUVGDcC1njNmaan`**, hourly, firing into **`session_01B2mxc642tG8vZ15wysQpqM` —
+the Development session** — rather than spawning a fresh one. **The procedure is
+[`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read it there.** The
+trigger's prompt says little more than *read that file and follow it*, because a prompt is
+re-injected on every firing where a file is read once, and a file can be reviewed in a PR.
 
-   **`blockedBy` IS readable, and this paragraph said it was not.** Measured 2026-08-07:
-   `get_issue` takes an **`includeRelations: true`** flag, off by default, and returns
-   `relations.blockedBy` / `.blocks` / `.relatedTo` — verified on `PD-120`, which came back
-   naming `PD-116` and `PD-117`. The claim was true of the *default* response and was written
-   from it. Check rather than trust either version:
+What has to be known outside that file:
 
-   ```bash
-   # via the Linear MCP: get_issue id=PD-120 includeRelations=true  ->  .relations.blockedBy
-   ```
-
-   That does **not** demote the column rule above, and it must not be read as licence to queue
-   blocked work. `list_issues` still cannot filter or return relations, so the queue as a *set*
-   is only order-independent because the owner keeps it that way; relations are a per-issue
-   lookup you can only do once you have already picked something. They are a **backstop that
-   catches a mistake**, not a mechanism that makes the mistake safe — which is why the Routine
-   now checks them after picking rather than sequencing from them. `PD-115` (Ride chat) is the worked
-   example: five sub-issues hanging off one parent. Note what it still does **not** buy you —
-   siblings have no order between them, so rule 2 applies inside the parent exactly as it does
-   outside it.
-
-   **`PD-115`'s cluster also shows the trap this section exists to name.** Its parts run Urgent,
-   High, Medium, Low, Low — the table before the screen before Realtime before the badge. That is
-   a build order wearing priority's clothes, and it costs twice: `Urgent` now means "the first
-   step of ride chat" rather than "drop everything", and nothing else on the board can outrank a
-   migration for one unshipped feature. Priorities are global; a sequence is local. Never spend
-   the first on the second.
-2. **When a split really is ordered, only the first part goes in `Queued (AI)`.** Every other
-   part waits in `Todo AI` with a line in its body naming what unblocks it, and the owner queues
-   it when that lands. This is the rule the priority paragraph above forbids the shortcut to.
-
-**Write the `blockedBy` relation too — for the human, not for the machine.** `save_issue` takes
-`blocks` and `blockedBy` (append-only; `removeBlocks` / `removeBlockedBy` undo them) and the
-Linear UI draws them, which is where the owner reads the board. **But measured 2026-08-07: it is
-write-only through this MCP.** Setting `PD-104` `blockedBy: ["PD-114"]` moved both `updatedAt`
-stamps, so it landed — and `get_issue` on *either* side returns no relations field at all, nor
-does `list_issues` offer one. `parentId` is the only issue-to-issue link that is readable.
-
-Two things follow, and the second is the general one:
-
-- **Never build automation on a blocking relation here.** A Routine cannot skip what it cannot
-  read, so a "skip blocked issues" rule would be decorative — which is the exact failure
-  §The Agent Squad records for the two specification systems. Hence the column rule above.
-- **A field that writes without erroring is not a field you can verify.** §Do not ask permission
-  already says to read `save_issue`'s result back; this is the case where reading it back is
-  *impossible*, and the honest response is to pick a different mechanism rather than to trust the
-  write. Same class as the `project` field that silently went missing, one step worse.
-
-### The queue is drained by a scheduled Routine, not by a human starting a session
-
-Created 2026-08-07 at the product owner's request. **`trig_01WJkMVXGzUVGDcC1njNmaan`** — and as of
-later the same day it **fires into one long-lived session rather than spawning a fresh one**. That
-session is `session_01B2mxc642tG8vZ15wysQpqM`, **the Development session**, and the reuse is the
-whole point: connectors attach to a *session*, so a firing that lands in a session which already
-holds Linear cannot lose Linear. `list_triggers` is the live view; this is the contract.
-
-**Its prompt is a pointer, not the procedure.** The procedure lives in
-**`.claude/commands/queue-pickup.md`** and the trigger says little more than *read that file and
-follow it*. Two reasons, and the second is the one that only matters once the session is reused: a
-prompt is re-injected into the conversation on **every** firing where a file is read once and can
-be skipped, and a file can be reviewed in a PR where a trigger prompt cannot. Read that file for
-the steps; what follows here is why it is shaped the way it is.
-
-What it does, in order — and the order is the design:
-
-0.5. **Is the session idle? Gather, do not exit.** New with the reuse, and the cost it pays for.
-   A fresh session was idle by construction; this one is not. The firing message queues behind
-   whatever the session is doing and lands the moment that finishes — possibly mid-conversation
-   with the owner. Seven checks: an unfinished owner request in the conversation, a dirty tree, a
-   branch with commits not on `development`, an open PR **whose head is the current branch**,
-   **low Claude usage headroom**, **any other Claude Code session currently RUNNING**, and
-   **the owner having touched any session in the last 15 minutes**.
-   **(1) and (5) need judgement and (1) is the one that matters**; (2), (3), (4), (6) and (7) are
-   mechanical — a `git` command or one `list_sessions` call. (2), (3) and (4) are the backstop
-   that catches a session which died mid-build; (6) and (7) detect something *live* instead.
-   **The owner's work always wins** — the queue waits an hour, which costs nothing.
-
-   **The last two are the product owner's, 2026-08-08:** pick up a story only *"IF there are no
-   other sessions active / doing work in claude code And I'm AFK for >15 mins."* Both come from
-   one `list_sessions mine=true` call — `session_status` for the first, `max(updated_at)` for the
-   second — and **both must exclude the calling session's own id**, or the firing holds its own
-   gate and the queue never runs. The AFK half is explicitly a **proxy**: it sees Claude Code
-   activity and nothing else, so an owner reading the app or sitting in Linear reads as away.
-   It also slows the effective cadence well below hourly, which is the intent rather than a
-   fault.
-
-   **The usage check is deliberately weaker than what was asked for, and that is the honest
-   shape rather than a shortfall to be fixed.** The request (2026-08-07) was *"if any Claude
-   usage limit is above 80%, skip the run"*. **There is no number a session can read**: `claude`
-   has no `usage` subcommand (`/usage` is interactive only), nothing under `~/.claude` carries
-   it, no env var does, and no MCP tool exposes it — all checked. So the gate is *"exit if a
-   usage warning is visible in this session"*, which the reuse actually helps with, since a
-   warning from an earlier turn is still in the conversation. **Writing it as a numeric
-   threshold would produce a gate that can never fire** — the same silently-failing shape as the
-   team-scoped lock and the buried stall alarm — the same recurring shape, which this file
-   deliberately does not number. Reaching
-   for the OAuth credential to query an undocumented endpoint is worse, not better: it would
-   break silently and *look* like it worked. The lever that works is the owner's —
-   `update_trigger enabled: false` pauses the Routine in one call.
-
-   Two traps, both found by `reviewer` before this merged, and both of the shape this file keeps
-   warning about — a guard that fails silently and therefore looks like success:
-
-   - **Scope the PR check to the current branch, never repo-wide.** `list_pull_requests` returns
-     every open PR in the repo, including other sessions' — `#101` and `#102` came from a
-     different session — so a repo-wide check hands any concurrent session a permanent veto.
-   - **Nothing exits at 0.5.** Every reason to stop is collected and acted on at **1.5**. An
-     early return here sits in front of the stall notification at 1.5 and makes the one alarm
-     that detects a frozen queue unreachable — self-reinforcingly, because the `Needs help` path
-     deliberately leaves an open PR behind, which would trip 0.5 for ever.
-0.6. **Start each story in a clean context.** Product owner, 2026-08-08: *"everytime a new story
-   is about to be picked up, session should be compacted or cleared if possible before starting
-   to build a new story."* **It is not possible from inside a session, and that is measured
-   rather than assumed** — no tool compacts or clears the caller's own context, no hook
-   *initiates* a compact (`PreCompact`/`PostCompact` are reactive only), `/clear` and `/compact`
-   are built-in **CLI commands the owner types** and explicitly are not skills, `--autocompact`
-   sets a startup threshold that cannot fire mid-session, and no env var or `settings.json` key
-   exposes it.
-
-   **So the substitute is a fresh subagent per story**, which does start empty: its file reads,
-   greps, diffs and test logs never enter this conversation. Gates, the triage decision, the
-   Linear writes and the PR stay inline — they are a dozen cheap calls carrying no file content;
-   **the build is one subagent**, `reviewer` a separate one. Never a full diff, test log or file
-   in the main thread. The owner is told when a `/clear` is safe, in the STEP 5 push
-   notification. `.claude/commands/queue-pickup.md` STEP 0.6 carries the evidence table and the
-   subagent-grant probe.
-1. **Prove it can see the board.** If the Linear tools are absent, notify and stop. It must fail
-   loudly, because *a job that silently does nothing looks exactly like an empty queue*.
-2. **Check the lock.** If **any** issue is in `Development (AI)` or `Needs help`, exit
-   immediately — no changes, no comment. One story at a time. **Scope the query to the project,
-   never to the team**: measured 2026-08-07, a team-scoped `list_issues` on `Development (AI)`
-   also returns `PD-82`, `PD-83` and `PD-41` — 2022–2025 issues, two in the deprecated `Let's
-   Ride` project and one with no project at all, which have sat in that status for years. A
-   team-scoped lock is held **permanently**, and looks exactly like a healthy job behind a busy
-   queue. Carry the answer to 1.5 rather than exiting here.
-1.5. **The only exit, and the stall alarm.** If nothing blocks, go to 2. Otherwise check how long
-   the *oldest blocking reason* has been true — the lock (`get_issue` →
-   `stateHistory[].startedAt`), a dirty tree's newest file mtime, the in-flight branch's tip, the
-   open PR's `createdAt`, **and another session left `RUNNING`** — and **if it is 3–4 hours old,
-   send one push notification naming it**, then stop. Outside that window, exit silently.
-   **The RUNNING-session entry is the one most likely to freeze the queue silently from now on**,
-   because unlike a lock or a branch there is nothing on the board pointing at it — so the
-   notification has to name the session's title.
-
-   **Three blocking reasons have no alarm, and the third is the interesting one.** The owner's
-   unfinished request and low usage headroom are excluded because both are live conditions the
-   owner can already see. **The AFK gate is excluded because no clock can reach it**: it is
-   *defined* as `now − max(updated_at) < 15 min`, so whenever it is held that value is under 15
-   minutes by construction and can never land in a 3–4 hour window, and a stateless firing has no
-   history to measure instead. A draft wrote the alarm anyway; it was **worse than none**, because
-   it claimed cover that did not exist. **Do not reintroduce it** — gate (6) is what catches the
-   dangerous case, since a session touching itself every few minutes is almost certainly RUNNING.
-   `.claude/commands/queue-pickup.md` STEP 1.5 is the procedure and it wins; this summary has
-   already been the stale half twice.
-   Without this a condition nobody is holding freezes the queue for ever while every firing exits
-   quietly — the exact failure step 1 exists to prevent. The window is narrow so it fires roughly
-   once rather than hourly. **The alarm covers every blocking reason, not just the lock**, and
-   the exit is funnelled through one step, because scattering it across the gates is what let an
-   early return bury it.
-3. **Take the top of `Queued (AI)` by priority**, ties to oldest. Empty queue exits silently.
-   Never `Backlog AI`, never `Todo Human` or `Todo AI`, never `Needs decision`. **A parent issue
-   is skipped**: an epic outranks its own children on priority, so a container in the column
-   would be picked before any of the work under it.
-3b. **Check `blockedBy` on what it picked** — `get_issue` with `includeRelations: true` — and if
-   any blocker is not `Deployed to DEV`, `Done (in production)`, `Canceled` or `Duplicate`,
-   comment and take the next candidate. `Duplicate` belongs in that set for the same reason
-   `Canceled` does — a blocker closed as a duplicate will never reach any other status, so
-   omitting it parks the dependent story for ever. This line used
-   to read "It does **not** check dependencies, and cannot"; that was written from the default
-   `get_issue` response and is wrong (§Sequencing has the measurement). It is a **backstop**, not
-   the mechanism: `list_issues` still cannot filter on relations, so the check only runs after a
-   pick, and what keeps the order right is still that nothing blocked is in the column.
-4. **Move it to `Development (AI)` before starting**, because that status is the lock the next
-   firing reads. Claiming late is how two sessions start the same story.
-5. Build under this file's standing instructions, in subagents per STEP 0.6. **The
-   non-negotiable `reviewer` pass on the code runs at 5c, not here** — once, on the final diff.
-5b. **Triage what the build turned up — *before* the PR opens, which is what makes "the same PR"
-   mean anything.** Changed 2026-08-07 at the product owner's request; the old rule filed every
-   follow-up to `Backlog`, so the test a new function needed was future work rather than done.
-   **Two questions and the order is the design.** First, relatedness: is this *the story done
-   properly*, or *the next story started early*? That gates whether something may **travel**,
-   never whether it is worth doing — **everything gets rated either way**, because the filing
-   columns are chosen by rating and an unrated item has nowhere to go. Then rate it on
-   §Working Principles' four lines and let the block decide — travels *and* **Recommendation
-   ≥ 7/10 *and* `This session` Y** → build it now, same branch, same PR, reviewed before the
-   merge. Anything else → a story: `Todo AI` if a session could build it, `Todo Human` +
-   `Owner only` if not, `Backlog AI` if you rated it below 4/10. **Never `Queued (AI)`.**
-   **Search the board before filing** — where an issue already covers it, update that one with a
-   comment and the ratings rather than opening a second (product owner, 2026-08-08: issues
-   *"created or updated"*). A duplicate reads to the owner as two pieces of work.
-
-   **Both halves, never either — that is what stops a firing choosing its own work.** 9/10 with
-   `This session` **N** is an ordinary pairing here, not a contradiction; the leaked-password
-   toggle is exactly that. Four things force **N** however good the idea is: real domain rules,
-   an order-sensitive migration, an owner decision, or a diff bigger than one review can
-   honestly cover. **`This session` is read more narrowly in a firing than §Working Principles
-   defines it above** — *on this branch, before this PR merges* — because an unattended run has
-   nobody watching to say "not that". `.claude/commands/queue-pickup.md` STEP 4b is the procedure, including the
-   breadth cap (at most two, and never larger than the story's own diff).
-5c. **Run `reviewer` on the final diff — always, once, and here.** Changed 2026-08-08: the build
-   step used to review too, and this step re-reviewed only *if* something was folded in. Two
-   passes where the earlier one is superseded by construction — a fold-in commits after it — is
-   the same diff read twice at full cost, and the conditional made a merge on a review older
-   than the last commit reachable. One pass at the end makes that impossible instead of
-   forbidden. **The proposal pass in §The Agent Squad is a separate gate and is untouched.**
-   *Then* PR to `development`, drive green, merge, move to
-   **`Deployed to DEV`** — never to `Done (in production)`, which is the owner's and means
-   promoted to `main`. Uncertain about anything → `Needs help` with a comment saying what it
-   needs. **File every rated follow-up before stopping, on every exit path** — a follow-up rated
-   and then dropped is worse than one never noticed, because the rating made it look handled.
-
-**It is hourly, not every ten minutes, and that is a server limit rather than a choice.** The ask
-was ten. Measured, not assumed — `create_trigger` rejects it outright:
-`cron expression "*/10 * * * *" fires more frequently than once per hour; minimum interval is 1 hour`.
-**It fires on the hour, and getting there took a workaround worth keeping.** The stored expression
-is **`0 0-23 * * *`**, set 2026-08-07 at the product owner's request — 12:00, 13:00, 14:00.
-
-The obvious `0 * * * *` does not work: an hourly cron at minute 0 is **rewritten server-side to the
-minute you submitted it**, so Routines spread across the hour instead of stampeding at :00. That is
-where the original `37 * * * *` came from — nobody chose 37. Submitting `0 * * * *` at 11:14 stored
-`14 * * * *`, measured, not recalled. `0 0-23 * * *` is semantically identical and is stored
-**verbatim**, because the anchoring matches the `* ` hour field rather than the schedule's meaning.
-
-Two things follow. **Read the response back** — `update_trigger` returns the stored
-`cron_expression` and `next_run_at`, and a silently rewritten schedule looks exactly like a
-successful one. And **the spreading is deliberate**: :00 is the busiest minute on the platform, so
-an on-the-hour Routine is the owner's call to make, not a default to reach for.
-
-**Read the two fields for different things, though — `next_run_at` is not the schedule, and a
-never-fired Routine's `next_run_at` is the least trustworthy number here.** The replacement Routine
-was created at 19:32 with `0 0-23 * * *`; it stored that **verbatim** and came back
-`next_run_at: 20:05:35`. Rewriting the same expression at 19:53 did **not** clear the offset —
-`20:05:51`, so it is sticky rather than recomputed from the edit.
-
-**The offset is a per-trigger constant. It survives firing, and it is not the schedule.** Settled
-2026-08-07 by watching the first firing land:
-
-| When | `next_run_at` |
-|---|---|
-| before the first firing | `20:05:51.185148522` |
-| after it (`last_fired_at 20:13:52`) | `21:05:51.**185148522**` |
-
-**Identical to the sub-second, plus exactly one hour.** So each trigger draws a fixed offset it
-keeps for life: this one drew `+5m51.185s`, and `trig_01Gzy8eCiaXUUa1knvJnNpwy` drew `+0.667s`,
-which is the entire reason the old Routine looked like it fired on the hour and this one does not.
-**Delivery latency is a second, separate thing** — that firing was scheduled 20:05:51 and arrived
-20:13:52, eight minutes later.
-
-**Two hypotheses died here, and the second is the instructive one.** The first revision called the
-offset "scheduler jitter, up to 10% of the period" — the 10% figure is documented for the
-*session-local* `CronCreate` scheduler, a different system, and it was reached for because it was
-the nearest available number. The second revision called it a *first-run* property, from two
-Routines where the exact one had fired and the offset one had not. **That reading was consistent
-with every observation available at the time and still wrong**, because the variable it blamed
-(has it fired?) happened to correlate with the one that mattered (which offset did it draw?). One
-more firing separated them. Do not treat a two-sample correlation as a mechanism; wait for the
-event that can falsify it.
-
-**Consequence: you cannot schedule a Routine onto an exact minute from a session.** `0 0-23 * * *`
-is minute 0 and stores verbatim, and the offset is applied on top with no parameter to clear it.
-Rewriting the expression does not re-roll it — measured, `20:05:35` → `20:05:51`, still `:05`. The
-only lever is a new trigger id, which draws a new offset and is therefore a lottery rather than a
-fix. Worth it only for the self-bound Routine, which is disposable; never for the connector-holding
-one. It is not the minute-anchoring rewrite described above in any case — the tell is
-that `cron_expression` still reads `0 0-23`, where an anchored one would read `32 * * * *`. Check
-`cron_expression` to see whether the schedule survived; `next_run_at` will wander by a few minutes
-either way and reading it as the anchoring bug leads to a "fix" that introduces one.
-
-### Why the reuse — connectors attach to sessions, not to work
-
-**A trigger cannot be given connectors from a session, and that is what drove the whole design.**
-`create_trigger` refuses the `connectors` parameter for this organization — *"not available for
-this organization"*, measured 2026-08-07 and re-tested the same day — and `update_trigger` has no
-such field either, so neither creating nor editing reaches it. The **fresh-session** Routine only
-ever had Supabase, Linear and Vercel because the owner attached them by hand in the claude.ai
-Routines UI. That made every rebuild of it one bad call away from a permanently connector-less job.
-
-**Firing into an existing session sidesteps the problem rather than solving it.** The session holds
-its own connections, so the firing is just a message arriving in a conversation that can already
-reach Linear.
-
-**`create_trigger` warns anyway, and the warning is a false alarm for this shape — measured, not
-assumed.** It emits *"this trigger stores no MCP connectors, so the sessions it fires will run
-without connector tools"*, which is written for the spawn case and describes a session a self-bound
-trigger never creates. Tested 2026-08-07 by firing a real trigger into this session and calling one
-tool per connector from the fired turn: **Linear, Supabase and GitHub all succeeded, with no prompt
-and no denial.** Do not "fix" that warning by rebuilding the Routine.
-
-**What that test does NOT cover, and nothing in a session can:** it ran minutes after the session
-was last active, so the container was warm. **Whether the grants survive a container reclaim across
-an idle hour is unproven.** The reclaim itself is documented — the environment reclaims a
-container after a period of inactivity — but *what a firing lands on afterwards*, and whether the
-connectors come back with it, is inferred rather than observed. Treat it as an open question rather
-than a settled one; STEP 0 is the detector and the disabled Routine is the fallback.
-
-**`list_triggers` reports the connectors a trigger does hold**, in `job_config.…mcp_connections`,
-keyed by `connector_uuid` — Supabase `d217aba8-…`, Linear `a55a164a-…`, Vercel `8d8457e7-…`, each
-matching the `installedServerId` that `ListConnectors` returns. Check rather than assume:
-
-```bash
-# via the CCR MCP: list_triggers -> job_config.ccr… mcp_connections[].name
-#   and:          list_triggers -> persistent_session_id   (absent = spawns fresh)
-```
-
-**Never DELETE a Routine — disable it.** The rule used to read "never delete and recreate" and the
-reason has got stronger rather than weaker. `update_trigger` has **no `persistent_session_id`
-parameter**, so rebinding a Routine to a session is impossible in place: the switch had to be a new
-trigger. The old one is therefore *disabled*, not deleted, and it is the fallback — it still holds
-the three hand-attached connectors, and `update_trigger enabled: true` restores it whole in one
-call. Delete it and only the owner can rebuild it.
-
-**The rule protects connectors, so it does not cover the self-bound Routine — that one is
-disposable.** `trig_01WJkMVXGzUVGDcC1njNmaan` holds no `mcp_connections` and needs none, because
-they come from the session it fires into. Deleting and recreating it costs one `create_trigger`
-call and nothing else, so it is a fair move when there is a reason — a stuck `next_run_at`, say.
-Keep the distinction straight: **`…Gzy8e` is irreplaceable, `…WJkMV` is cheap.** Reading "never
-delete a Routine" as covering both is how the cheap one becomes untouchable for no reason, and
-reading it as covering neither is how the irreplaceable one gets destroyed.
-
-**`enabled: false` serialises as an ABSENT field, not `"enabled": false`.** Measured on exactly
-this change: the disabled Routine's `list_triggers` row has no `enabled` key at all while both live
-ones carry `"enabled":true`. So read the disable back by checking the field is **gone** — looking
-for `false` finds nothing and reads as "the disable did not apply".
-
-**A self-bound Routine cannot carry push notifications.** The server rejects the `notifications`
-parameter for any trigger bound to a persistent session; only `create_new_session_on_fire: true`
-Routines may set it. The fresh-session Routine had `notifications.channel.push` — the replacement
-cannot, so **the session sends its own** with the `PushNotification` tool, at STEP 0 (cannot reach
-Linear) and STEP 5 (done). Nothing else changes, but a firing that forgets is silent where the old
-one was not.
-
-STEP 0 survives all of this and should stay: it proves the session can see the board before it does
-anything, and notifies if it cannot. A scheduled job that silently does nothing is
-indistinguishable from an empty queue, and connectors are exactly the kind of setting that can be
-revoked without anything here noticing — which is more true, not less, now that they come from a
-session that has been resumed across an idle hour.
-
-**Do not "improve" the guard into a queue drainer.** Draining several issues per firing, or
-skipping past a `Needs help` issue to find workable ones, both defeat the point: `Needs help`
-parks the queue *deliberately*, so that a story needing the owner blocks the ones behind it
-rather than burying itself under three merged PRs.
-
-**A *spawned* session is not configured like an interactive one, and the reuse is what retires
-that whole class of problem.** This is history now rather than a live constraint, and it is kept
-because it is the argument for the reuse and because it comes straight back if anyone switches the
-Routine to `create_new_session_on_fire`.
-
-Measured 2026-08-07 by diffing `list_triggers` against `list_sessions`. Every interactive session
-on this project carries `model: claude-opus-5`, `effort_level: xhigh`, `permission_mode: auto`.
-The Routine's `session_context` carried **none of the three** — just an `allowed_tools` list
-holding **zero `mcp__*` entries** — and, the one that mattered, **no `sources` either**.
-
-**A session that is resumed rather than spawned keeps all four for free**, because they are
-properties of the session and nothing re-derives them per firing. That is what makes the reuse
-worth its two new costs (STEPs 0.5 and 0.6) rather than a lateral move: it fixes the model gap,
-the effort gap, the permission-mode gap, the repo gap and the connector gap in one stroke, and
-none of those five had a fix a session could apply. **`PD-110` — set the Routine's model, refused
-by `update_trigger` with `model_update_disabled` — is moot while the Routine stays self-bound**,
-since the session's own `claude-opus-5` is what runs.
-
-Compare the two before assuming a fired session is configured like the session you are reading
-this in:
-
-```bash
-# via the CCR MCP: list_triggers -> job_config.ccr.session_context
-#   vs list_sessions -> session_context
-# Look for: sources (the repo), permission_mode, model, effort_level
-```
-
-Two consequences, neither of which a session could fix — **which is exactly why the fix was to
-stop spawning sessions rather than to keep configuring them**:
-
-- **The model cannot be set from a session.** `update_trigger` with a `model` fails
-  `model_update_disabled`, and `create_trigger` has no model parameter. Owner action in the
-  claude.ai Routines UI — `PD-110`, now moot per above.
-- **Connector tools prompted on every firing, and a scheduled session has nobody to answer.**
-  **Root cause: the Routine had no repository attached** — `session_context.sources` was empty.
-  Found by the product owner on 2026-08-07 and fixed in the Routines UI; `PD-109` chased the
-  connector instead and was wrong.
-
-**A Routine with no `sources` is not "a session missing its repo" — it is a session with no
-project at all**, and that is the shape of this bug worth carrying. Every symptom pointed
-somewhere else:
-
-| Symptom | What it looked like | What it actually was |
-|---|---|---|
-| Linear tools loaded fine | connectors are healthy, so permissions must be the issue | true, and irrelevant — connectors attach per session, independent of the repo |
-| `mcp__Linear__*` in `permissions.allow` did nothing | the connector ids must have rotated | `.claude/settings.json` was never read; there was no checkout |
-| `defaultMode: "auto"` did nothing | the pin does not apply to fired sessions | same — the file holding it did not exist |
-| The prompt offered "Allow once" but **never "Allow always"** | a quirk of the unattended UI | **the actual tell** — "always" needs a project settings file to write to |
-
-That last row is the cheapest diagnostic in the whole story. **A permission dialog with no
-"always" option means there is no project settings file**, which means no repo. Check
-`session_context.sources` before theorising about permission layers.
-
-And the damage was never only permissions: this Routine's prompt opens with *"Read `CLAUDE.md`
-fully before acting"*. With no checkout that instruction is unfollowable, so the job was inert
-rather than merely noisy.
-
-**Editing the Routine in the UI re-anchors its cron.** Adding the repo silently rewrote
-`0 0-23 * * *` to `24 * * * *` — the save minute, exactly the anchoring described above. So after
-*any* UI edit, re-read `cron_expression` and set it back. The workaround does not survive on its
-own.
-
-### The Development session is infrastructure — do not archive it
-
-`session_01B2mxc642tG8vZ15wysQpqM`. The hourly Routine delivers into it, so **archiving or
-abandoning it stops the queue**, silently and with no error anywhere. There is no self-healing
-path: `update_trigger` cannot re-point a Routine at a different session, so recovering means
-creating a *third* trigger bound to a new session and disabling this one — the same dance
-documented above, and one only worth doing deliberately.
-
-Two things follow for any session that is *not* it:
-
-- **A firing you receive is only yours if you are that session.** Check the id before acting on a
-  queue-pickup message: `list_sessions` (or the session URL). A pickup prompt arriving anywhere
-  else is a misrouted message, not a work order.
-- **Its context is a shared resource.** Anything that bloats it — a pasted diff, a full test log,
-  a large file read into the main thread — is paid for by every later firing, not just by the turn
-  that did it. `.claude/commands/queue-pickup.md` STEP 0.6 is the discipline; it applies to
-  interactive work in that session too.
-
-**Its container is reclaimed after a period of inactivity**, so an hourly firing is also what keeps
-it warm. A resumed session gets a fresh container, and whether the connector grants survive that
-resume is the one thing about this design that no session can prove in advance — it can only be
-observed after an idle hour. STEP 0 is the detector: if a firing finds Linear missing, it says so
-rather than exiting quietly, and the fallback is one `update_trigger enabled: true` on
-`trig_01Gzy8eCiaXUUa1knvJnNpwy`.
+- **Do not archive or abandon the Development session.** Archiving it stops the queue silently,
+  with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so
+  recovery means a *third* trigger bound to a new session. **A queue-pickup message arriving in
+  any other session is misrouted, not a work order**: check the session id before acting on one.
+- **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the disabled fresh-session Routine, and the
+  fallback. `create_trigger` refuses the `connectors` parameter for this organization, so its
+  three hand-attached connectors (Supabase, Linear, Vercel) cannot be recreated from a session;
+  `update_trigger enabled: true` restores it whole. **`…WJkMV` is cheap and `…Gzy8e` is
+  irreplaceable** — keep the two straight in both directions. A disabled trigger's
+  `list_triggers` row has **no `enabled` key at all** rather than `"enabled": false`, so read a
+  disable back by checking the field is gone.
+- **Connectors attach to a session, not to a trigger**, which is the whole reason for the reuse.
+  Switching the Routine back to `create_new_session_on_fire` loses five things at once, none of
+  which a session can restore: the repo (`session_context.sources`), the model, the effort level,
+  the permission mode and the connectors.
+- **Hourly is a server minimum** — `create_trigger` rejects anything more frequent. The stored
+  expression is `0 0-23 * * *` rather than `0 * * * *`, because an hourly cron at minute 0 is
+  **rewritten server-side to the minute you submitted it**. **Any UI edit re-anchors it** (adding
+  the repo silently rewrote it to `24 * * * *`), so re-read `cron_expression` after one. Read the
+  response back on every write — a silently rewritten schedule looks exactly like a successful
+  one. `next_run_at` carries a separate per-trigger constant offset that nothing can clear; it is
+  not the schedule.
+- **Do not "improve" the guard into a queue drainer.** One story per firing, and `Needs help`
+  parks the queue *deliberately* — skipping past it to find workable stories buries a story that
+  needs the owner under three merged PRs.
 
 ### Do not ask permission to touch Linear
 
@@ -2256,22 +1433,15 @@ between statuses are all pre-authorized, encoded in `.claude/settings.json` unde
 `defaultMode` now pins.
 
 One thing it does **not** cover: deleting anything a human authored — an issue, a comment, a
-document, or a label that is in use. Ask first. (The old `Let's Ride` project was a second
-carve-out until it was deprecated on 2026-08-07; it needs no permission rule now, because nothing
-is planned there and nothing there is read as true.)
+document, or a label that is in use. Ask first.
 
 ### Keep it current, or it rots like the docs did
 
-- **Moving an issue is part of doing the work, not paperwork after it.** Move to
-  `Development (AI)` when you start and `Deployed to DEV` when the PR merges — in the same
-  session. `Done (in production)` is the owner's, and it follows their manual promotion.
-- **Verify before you write.** The first seeding checked each claim against the live system and
-  found `PD-93` already fixed by PR #80 and its CLAUDE.md prose still saying otherwise. Same rule
-  as *a claim about state needs the command that checks it*: an issue asserting a stale fact is
-  worse than no issue, because a tracker reads as current by construction.
-- **A new owner action goes in Linear the moment it is found**, labelled `Owner only`. Two —
-  the Site URL and `defaultMode` — sat outside `docs/HANDOFF.md` §Owner actions because they were
-  discovered elsewhere and written down where they were discovered. That is the gap this fixes.
+- **Moving an issue is part of doing the work, not paperwork after it.** `Development (AI)` when
+  you start, `Deployed to DEV` when the PR merges, in the same session.
+- **Verify before you write.** An issue asserting a stale fact is worse than no issue, because a
+  tracker reads as current by construction.
+- **A new owner action goes in Linear the moment it is found**, labelled `Owner only`.
 
 ## Testing
 
@@ -2300,9 +1470,9 @@ chain to a scratch database and asserts what each role can reach.
   changes with the domain** — `ShareButton`, `signUp` and `requestPasswordReset` all build URLs
   from `window.location.origin`, so a hardcoded origin anywhere in `src/` is a bug that would
   only surface in email: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0.
-- **Branch off `development`, and open PRs against `development` — not `main`.** This line said
-  `main` until 2026-08-06 and it is the one an agent will get wrong by habit. `main` receives
-  exactly one kind of PR: the promotion from `development`, which is what ships to riders.
+- **Branch off `development`, and open PRs against `development` — not `main`.** This is the one
+  an agent gets wrong by habit. `main` receives exactly one kind of PR: the promotion from
+  `development`, which is what ships to riders.
 - **Never promote a Vercel preview to production**, and never merge `main` into a feature
   branch. Full reasoning in `docs/ENVIRONMENTS.md`; the short version is that
   `NEXT_PUBLIC_SUPABASE_*` is inlined at build time and Vercel's promote does not rebuild.
@@ -2316,23 +1486,15 @@ chain to a scratch database and asserts what each role can reach.
 - **CI is scoped to what a PR can actually break**, decided by a `changes` job that
   diffs against the merge base:
   - **`Type Check, Lint & Build`** (tsc → ESLint → Vitest → `next build`) runs unless
-    *every* changed file is under `docs/`, `design/`, `openspec/`, `.claude/` or a
-    root `*.md`. That is a **denylist**, like the route guard's public paths — a new
-    top-level directory runs CI by default, so forgetting to list something costs
-    one green run rather than a missed break.
-    **`.claude/agents/` and `.claude/commands/` are carved back out of it** (2026-08-08):
-    they are executable process rather than prose — a brief is the only thing a fresh
-    subagent reads — and three of ten briefs were materially wrong at once with nothing
-    to catch it. `src/__tests__/agent-briefs.test.ts` is the tripwire, and it only helps
-    if a `.claude/` change runs the job. The rest of `.claude/` still runs zero jobs.
-    **`docs/` and root `*.md` are carved back out too** (2026-08-09, PD-155): `docs:check`'s
-    registry (`scripts/docs/registry.mjs`) anchors `CLAUDE.md` and `docs/HANDOFF.md` prose with
-    regexes that depend on exact wording and line-wrapping — 24 of its 28 claims live in files
-    this carve-out covers (the other 4 are in `.claude/agents/design-system.md`, already covered
-    by the carve-out above). `scripts/docs/__tests__/registry.test.mjs`'s locate-integrity sweep
-    is the tripwire, and it only helps if a `docs/` or root-`*.md` change runs the job.
-    **`design/` and `openspec/` are NOT carved out** — a PR touching only those two still runs
-    zero jobs.
+    *every* changed file is under `docs/`, `design/`, `openspec/`, `.claude/` or a root `*.md`.
+    That is a **denylist**, like the route guard's public paths — a new top-level directory runs
+    CI by default, so forgetting to list something costs one green run rather than a missed
+    break. **Two carve-outs run the job anyway**, each for its own tripwire:
+    `.claude/agents/` + `.claude/commands/` (`src/__tests__/agent-briefs.test.ts`, because a
+    brief is executable process that no other job reads), and `docs/` + root `*.md`
+    (`scripts/docs/__tests__/registry.test.mjs`, because `docs:check`'s anchors depend on exact
+    wording). **So a PR touching only `design/`, `openspec/` or the rest of `.claude/` runs zero
+    jobs.**
   - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
     changes — the migration chain and the assertions are its only inputs.
   - A push to either long-lived branch always runs both. Each is a deploy gate.
@@ -2350,16 +1512,10 @@ instruction from the product owner, 2026-08-05: do not ask permission to open on
 matter and the second is the one that gets dropped.
 
 **Wrapping up a session *means* a PR to `development`, whenever the session changed anything.**
-Restated by the product owner 2026-08-06 as the definition rather than a step: if the tree
-differs from `development`, the session is not wrapped up until that difference is a PR. It
-applies to every kind of change, not only features — a docs-only or `.claude/`-only session
-still opens one, and those are still the cheapest PRs to get green, though **not zero-job any
-more for `docs/` or root `*.md`**: `openspec/`, `design/` and most of `.claude/` are in the CI
-denylist and run zero jobs, but a `docs/` or root-`*.md` change now runs `Type Check, Lint &
-Build` for `docs:check`'s own anchor-integrity sweep (PD-155, 2026-08-09) — cheap because that
-job is fast on a docs-only diff, not because it is skipped. The one case that needs no PR is a
-session that changed nothing, and *that* is worth saying out loud rather than leaving the
-reader to infer it from silence.
+The product owner's definition rather than a step: if the tree differs from `development`, the
+session is not wrapped up until that difference is a PR. It applies to every kind of change, not
+only features — a docs-only or `.claude/`-only session still opens one, and those are still the
+cheapest to get green. The one case that needs no PR is a session that changed nothing.
 
 - **Open it at the end, not per milestone.** A session is usually one coherent unit of work, and
   a PR per commit fragments the reasoning across reviews that each see a third of it. Commit and
@@ -2370,11 +1526,7 @@ reader to infer it from silence.
   say so plainly as the **last thing in the session**, with the reason.
 - **A follow-up PR is fine when a fact only becomes true after the merge.** Applying a migration
   that must land after its code deploys is the standard case: the "applied" line cannot be
-  written truthfully in the PR that deploys the code. Docs-only follow-ups are cheap either way —
-  `openspec/`, `design/` and most of `.claude/` are in the CI denylist and run zero jobs;
-  `docs/` and root `*.md` run `Type Check, Lint & Build` for `docs:check`'s anchor sweep
-  (PD-155) but that job is fast on a docs-only diff, so the PR stays cheap even though it is
-  no longer zero-job.
+  written truthfully in the PR that deploys the code.
 - **Restarting a merged branch:** the designated branch name is reused, so once its PR merges,
   `git fetch origin development && git checkout -B <branch> origin/development` before the next
   change. Never stack new commits on merged history. **Note the base is `development`, not
@@ -2390,16 +1542,12 @@ reader to infer it from silence.
 - Don't query Supabase from inside a component — reads belong in `lib/data/`, writes in `lib/actions/`.
 - Don't introduce a service-role key into the app. It bypasses every RLS policy; see decision #8.
 - Don't add new UI libraries (no shadcn, Radix, MUI) — extend the existing custom primitives.
-- Don't create a `middleware.ts` or a `proxy.ts`. This is Next.js 16, where the file would be
-  `proxy.ts` — but routing decisions belong in `src/lib/auth/guard.ts`, and the app deliberately
-  ships no middleware at all.
+- Don't create a `middleware.ts` or a `proxy.ts` — routing decisions belong in
+  `src/lib/auth/guard.ts` and the app deliberately ships no middleware at all.
 - Don't re-add `@supabase/ssr`, a service worker, or a web app manifest. All three belong to
-  render models this app has left: the first went with the server render, the other two were
-  planned while the web was the destination rather than a native bundle.
+  render models this app has left.
 - Don't run `playwright install` — Chromium is pre-installed at `/opt/pw-browsers`.
-- Don't call the Figma API to answer a design question — read `design/`. Refreshing the
-  snapshot is a deliberate monthly job, not something a feature task does.
-- Don't poll a Figma 429 — read its `Retry-After` instead. It is a real countdown in seconds
-  that requests do not reset, and waits have been measured in days.
+- Don't call the Figma API to answer a design question — read `design/`.
+- Don't poll a Figma 429 — read its `Retry-After` instead.
 - Don't convert the Figma styles to variables — it would move the whole token layer behind
   the Enterprise-only Variables API, which 403s permanently on this plan.

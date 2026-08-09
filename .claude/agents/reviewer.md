@@ -76,8 +76,8 @@ rather than reproducing its regex from memory here.
 
 **Read only the files a pass actually needs.** The doc-claims pass names four files to check
 claims against; that is a list of *where to look when a claim is in play*, never an instruction
-to read all four up front. Grep for the claim the diff could falsify. `CLAUDE.md` alone is
-~44,000 tokens.
+to read all four up front. Grep for the claim the diff could falsify — `CLAUDE.md` alone runs to
+tens of thousands of tokens, and it is auto-loaded into your caller as well.
 
 **Four things are never skipped, whatever the classification.** The first draft of this section
 listed two, and `reviewer` — reviewing this very change — found the two that were missing. Both
