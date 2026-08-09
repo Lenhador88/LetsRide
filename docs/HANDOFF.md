@@ -694,8 +694,23 @@ dropping a `places` index is a deliberate act again.
 
 ## Known issues, roughly by cost to fix
 
+**A tracked item carries its PD-id inline; the rest are unfiled on purpose.** Product owner,
+2026-08-09: *"If it seems within the context of the build, and recommended, just do it."* The
+group marked **absorb on contact** below is that instruction applied — fix those in the next
+branch that touches the file, rather than opening a story. The board is why:
+
+```
+# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c limit=250 fields=["status"]
+#   2026-08-09 -> 53 open · 27 ever reached DEV or production
+# Open is every status EXCEPT Done (in production), Deployed to DEV, Canceled and Duplicate —
+# bucket on the NAME, since Deployed to DEV is typed `started` and a statusType split scores it open.
+```
+
+Twice as many rows waiting as have ever been delivered, so a row costs the owner more than
+most of these fixes do.
+
 - **`createClub` and `createRide` do two inserts with no transaction, and the hand-rolled
-  rollback stopped being one.** Found by review of the render migration. As Server Actions,
+  rollback stopped being one.** `PD-103`. Found by review of the render migration. As Server Actions,
   both inserts and the compensating delete ran inside one server request that finished whether
   or not the tab survived; they run in the browser now, so closing the tab between the two
   leaves a club with an owner and no membership row — or a ride whose organizer is not on its
@@ -742,8 +757,9 @@ dropping a `places` index is a deliberate act again.
   > 3 blocking questions, two of them product-owner decisions (may an owner leave their own
   > club? may an organizer leave their own crew?)
 
-- **Two riders deleting at the same moment can still destroy a third's postcards.** The narrow
-  race `032` §3 documents and deliberately does not close. `private.transfer_owned_clubs` locks
+- **Two riders deleting at the same moment can still destroy a third's postcards.** `PD-175`, a
+  sub-issue of `PD-102` rather than a peer, because it sits inside the deletion deliverable. The
+  narrow race `032` §3 documents and deliberately does not close. `private.transfer_owned_clubs` locks
   the successor's `profiles` row, but that lock dies with the RPC transaction — well before the
   Edge Function's Storage sweep and `deleteUser`. So: B's transfer commits (B owns nothing), A's
   transfer picks B as successor for club C, then B's own deletion reaches `deleteUser` and C
@@ -775,10 +791,10 @@ dropping a `places` index is a deliberate act again.
   > **This session** N  
   > it is a design choice between two mechanisms, and the flow it protects does not exist yet
 
-- **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are tested,
+- **No edit or delete UI anywhere.** `PD-101`. The `update`/`delete` RLS policies exist and are tested,
   but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments are
   the exception: deletable, not editable, which `011` forbids by design. **Store blocker 4.**
-- **Account deletion has a database half and no flow.** `029`–`032` are applied, the Edge
+- **Account deletion has a database half and no flow.** `PD-102`. `029`–`032` are applied, the Edge
   Function is written at `supabase/functions/delete-account/` and has **never been deployed or
   run**, and nothing in `src/` calls it. What is left is groups 3 (the flow: sheet row,
   confirmation, re-auth, impact summary, sign-out) and 4 (the four screens where "this rider is
@@ -827,6 +843,10 @@ dropping a `places` index is a deliberate act again.
   **The design still draws five**, so the tab's absence looks like an omission to anyone
   reading Figma rather than this file. `Navbar.tsx`'s own docstring carries the reason at the
   point of temptation; that is the copy to keep current, not this one.
+**Absorb on contact — the five below are deliberately unfiled.** Each is a few lines in a file
+someone will open anyway. Fix one when a branch already has that file open and say so in the PR
+body; do not open a story for it.
+
 - **There is no `clubIdSchema`.** `/postcards/[id]` parses its id before issuing anything, so it
   can read in parallel and 404 a malformed segment; `/clubs/[id]` cannot, so its two content
   reads are serialised behind the club. Adding the schema and parallelising is a small, clear
@@ -841,14 +861,19 @@ dropping a `places` index is a deliberate act again.
   today (0 private clubs); live the moment someone makes one.
 - **`club_members` holds a table-level UPDATE grant nothing uses.** Promotion is blocked only by
   the *absence* of a policy, so RLS filters to zero rows rather than raising. Asserted both ways.
+
+**Filed, because each needs something a branch cannot supply** — a proposal, or the designer:
+
 - **`max_riders` has never been enforced** — not by an action, a policy or a trigger, since
-  `001`. `018` bounds the *value* (1–999); nothing counts `ride_members` against it.
+  `001`. `018` bounds the *value* (1–999); nothing counts `ride_members` against it. `PD-174`,
+  and it wants a proposal first: the negative cases are the whole content.
 - **The swipe deck only moves forward.** A swipe in either direction advances, per the product
-  owner, so there is no way back except "Start over".
+  owner, so there is no way back except "Start over". **Decided, not a defect** — no issue.
 - **Both RSVP pills fail WCAG AA**, and two more pairings besides — the Maybe pill at 2.54:1,
   `Accent Brand/100` with white at 3.52:1, the ride-host label at 4.10:1, the unselected RSVP
   label at 4.17:1. Left exactly as drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md`.
-  **A live question for the designer** — the green is used well beyond one screen.
+  **A live question for the designer** — the green is used well beyond one screen. `PD-176`,
+  `Owner only`.
 
 ---
 
