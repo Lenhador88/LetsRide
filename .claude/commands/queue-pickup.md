@@ -622,7 +622,8 @@ catches it at STEP 2b instead.
 **If you got far enough into the build to have a STEP 4b triage list, file it before you
 stop** — same rule as §If you get stuck. This exit is named there as one of the two that leave
 without reaching STEP 5, and STEP 4b deliberately creates nothing, so a follow-up rated on the
-way here is lost unless this step writes it out.
+way here is lost unless this step writes it out. **Put the sub-4 items in the `Needs help`
+comment**, since there is no PR body here to hold them.
 
 ---
 
@@ -763,8 +764,10 @@ items each rated 8/Y pass every gate above individually while collectively tripl
 - **Anything the folded-in work itself turns up is a story, always**, whatever it rates. One
   level deep, no chaining.
 
-Over either bound, **file everything and build none of it.** Do not pick the best two — the
-count is the signal that the triage has gone wrong, not a quota to spend.
+Over the **count** or the **parity** bound, **file everything and build none of it.** Do not pick
+the best two — the count is the signal that the triage has gone wrong, not a quota to spend.
+**The discretionary third is the one bound with a partial remedy**, because there the excess is by
+definition the optional half: fold the smaller and file the rest.
 
 ### Where each one gets filed — decided here, written at STEP 5
 
@@ -772,8 +775,8 @@ count is the signal that the triage has gone wrong, not a quota to spend.
 whichever exit path you take if you never reach it (§If you get stuck, STEP 2c) — creating them
 here *and* there is how the same follow-up gets filed twice, and a duplicate reads to the owner
 as two pieces of work. End this step holding a short list: for each item, its relatedness
-verdict, its five ratings, and where the table below sends it — which for a sub-4 item is
-nowhere.
+verdict, its five ratings, and where the table below sends it — which for a sub-4 item a session
+could have built itself is nowhere.
 
 Never `Queued (AI)` — that is the owner's column and the only start signal.
 
@@ -788,7 +791,8 @@ owner action can rate 2/10 and still has to be filed: `CLAUDE.md` §Keep it curr
 one in Linear *the moment it is found*, and nobody in a session will ever pick it up off a PR
 body. Only work a session could have done itself is eligible to be dropped.
 
-**Below 4/10 a firing files nothing at all**, where it used to open a `Backlog AI` row. A sub-4
+**Below 4/10 a firing files nothing it could have built itself**, where it used to open a
+`Backlog AI` row — an owner action is out of that by the row above, whatever it rates. A sub-4
 idea is a real thought and it is still not work, and a column of them is a large part of what the
 owner means by too many stories. The PR body is a durable enough record: a thought worth having
 twice gets had again by whichever session next opens that file, with better context than the row
@@ -938,9 +942,10 @@ filed is worse than one that was never noticed, because the rating made it look 
 that must already exist, and the DEV-deploy check gates the status move rather than following it.
 That is why they are numbered and cross-referenced by number.
 
-1. **File or update every STEP 4b follow-up its table sent to a column** — sub-4 items go
-   nowhere and are already recorded in the PR body. First, because bullet 4 links them, and per
-   STEP 4b's search rule some are updates to issues that already exist rather than new ones.
+1. **File or update every STEP 4b follow-up its table sent to a column** — a sub-4 item a session
+   could have built itself goes nowhere and is already recorded in the PR body; a sub-4 *owner
+   action* is still filed. First, because bullet 4 links them, and per STEP 4b's search rule some
+   are updates to issues that already exist rather than new ones.
 2. **Return to `development` and pull**, so the next firing's STEP 0.5 passes and so bullet 3
    has the merge commit to check against.
 
@@ -1020,7 +1025,8 @@ stop. Leave the branch and any PR open and say so in the comment.
 
 **File any follow-up you already rated before you stop — every exit path owes that, not just
 STEP 5's.** STEP 4b decides where each one goes but deliberately creates nothing, so this path
-and STEP 2c are the two that leave with a triage list and no STEP 5 to write it out. Rating
+and STEP 2c are the two that leave with a triage list and no STEP 5 to write it out. **Put the
+sub-4 items in the `Needs help` comment**, since there is no PR body here to hold them. Rating
 something and then dropping it is worse than never noticing it, because the rating is what made
 it look handled.
 
@@ -1049,13 +1055,15 @@ for scope creep*. The rule has two halves, and **STEP 4b is where they are appli
   *and* rates ≥ 7/10 with `This session` **Y**. Same branch, same PR, same `reviewer` pass.
 - **Work outside it becomes a story** in `Todo AI` or `Todo Human` — or an update to the issue
   that already covers it, per STEP 4b's search rule — and the owner decides when it gets built.
-  Below 4/10 it becomes a line in the PR body and nothing else.
+  Below 4/10, work a session could have built itself becomes a line in the PR body and nothing
+  else; an owner action is filed whatever it rates.
 
 **Filing *everything* is the failure this shape avoids.** The product owner read the board on
 2026-08-09 and said so: too many stories, build the ones that sit in the context of the work.
 Both directions cost — a filed test the new code needed leaves the story merged and incomplete,
-and a filed 2/10 thought leaves the owner a row to read for ever. Neither cost is a graded
-version of the other; do not let a later revision promote either into history.
+and a filed 2/10 thought leaves the owner a row to read for ever. **The merged-and-incomplete
+cost is the one nobody has watched happen here; do not let a later revision promote it into
+history.** The over-filing one has been watched, which is why this section changed.
 
 The boundary is worth being able to say in one line, because everything above is downstream of
 it: is this **this build, done properly** — or **the next build, started early?** The first
