@@ -25,16 +25,17 @@ owner alone.
 
 **A path is not a permission.** Object paths in this app are constructed from uids and row ids,
 both of which are visible to riders in ordinary API responses, so a folder protected only by its
-prefix is protected by nothing. All six SELECT policies carry the `EXISTS`; the six INSERT and six
-DELETE policies check the prefix and the caller's uid **only**, which is correct for a write and
+prefix is protected by nothing. Every SELECT policy carries the `EXISTS`; every INSERT and DELETE
+policy checks the prefix and the caller's uid **only**, which is correct for a write and
 catastrophic if copied into a read.
 
-**Two shapes are in use and both are permitted — measured 2026-08-09, and the distinction is the
-subject of the own-folder requirement below.** Four SELECT policies are
-`own-folder OR EXISTS(parent)` (`avatars`, `covers`, `club-avatars`, `club-covers`); `postcards` is
-the bare `EXISTS`; `ride-maps` is `own-folder OR EXISTS(rides)`. The disjunction is safe **only**
-where the folder's uid segment identifies the same rider the owning row is about — which is why
-this requirement legislates that condition rather than banning the arm outright.
+**Two shapes are in use and both are permitted.** *Measured 2026-08-09, before `042`:* fifteen
+policies across five folders, of which four SELECT policies are `own-folder OR EXISTS(parent)`
+(`avatars`, `covers`, `club-avatars`, `club-covers`) and `postcards` is the bare `EXISTS`. *Added
+by `042`, and therefore an intention until it applies:* `ride-maps`, as
+`own-folder OR EXISTS(rides)`. The disjunction is safe **only** under the condition the own-folder
+requirement below states, which is why this capability legislates that condition rather than
+banning the arm outright.
 
 #### Scenario: The read policy defers to the parent row's policy
 - **WHEN** a SELECT policy is written for any folder
@@ -65,21 +66,32 @@ this requirement legislates that condition rather than banning the arm outright.
 - **AND** the reason SHALL be recorded: an object nobody can name is an object nobody can delete,
   so removing that arm converts a cleanup affordance into permanent invisible retention
 
-#### Scenario: The own-folder arm is permitted only where the folder identifies the row's subject
+#### Scenario: The own-folder arm is permitted only where the parent policy already admits that rider unconditionally
 - **WHEN** a SELECT policy adds an `own-folder OR …` arm
-- **THEN** it SHALL be permitted only where the folder's uid segment identifies the **same rider
-  the owning row is about** — their own profile, a club they own, a ride they organise
-- **AND** it SHALL be forbidden where the folder's uid identifies a rider who is merely the
-  *uploader* of content whose audience belongs to someone else or to a group, because there the arm
-  grants reach the parent row deliberately withheld
-- **AND** this SHALL be recognised as describing the live schema rather than contradicting it: the
-  four folders carrying the arm are all of the first kind, and `postcards` — where an image's
-  audience is its club rather than its author — correctly omits it
+- **THEN** it SHALL be permitted only where the **owning row's own SELECT policy admits the
+  folder's uid unconditionally** — an arm such as `owner_id = auth.uid()` that no other predicate
+  qualifies
+- **AND** it SHALL be forbidden otherwise, because there the arm hands the folder's rider content
+  the parent policy deliberately withheld
+- **AND** the test SHALL be applied by reading the parent policy, so that it is decidable for a
+  folder that does not exist yet
+- **AND** it SHALL NOT be restated as "the folder's uid identifies the rider the row is about",
+  which is not decidable and does not predict the live schema: `postcards` SELECT
+  (`author_id = auth.uid() OR …`) and `rides` SELECT (`organizer_id = auth.uid() OR …`) have the
+  same shape, so any test resting on which rider a row is "about" either permits the arm on both or
+  forbids it on both
+
+#### Scenario: A folder may decline a safe arm, and declining is not a violation
+- **WHEN** a folder whose parent policy would permit the arm omits it — as `postcards` does
+- **THEN** that SHALL be a compliant choice rather than a defect
+- **AND** the arm SHALL be added only where a folder needs its riders able to find and delete their
+  own unreferenced objects, since that is the only thing it does
 
 #### Scenario: The rule is not read as condemning the four policies that predate it
 - **WHEN** a later audit compares the live `storage.objects` policies against this capability
 - **THEN** `avatars`, `covers`, `club-avatars` and `club-covers` SHALL be found **compliant**, not
-  defective
+  defective, because each one's parent policy carries an unconditional arm for that folder's uid —
+  self for `profiles`, and `owner_id = auth.uid()` for `clubs`
 - **AND** no migration SHALL be written to strip their own-folder arms on the strength of this
   requirement, because doing so would remove a rider's ability to read and clean up their own
   superseded uploads — a behaviour change nobody has decided

@@ -36,14 +36,11 @@ storage indefinitely, serving it to multiple end users, with no active-subscript
 architecture is **render once, store in Supabase Storage, never call the vendor from a rider's
 device**, which answers offline read, per-view cost, per-view IP leak and key exposure together.
 
-- **Seven new columns on `public.rides`** — `latitude double precision`,
-  `longitude double precision`, `geocode_confidence real`, the two Storage object paths
-  `map_card_path text` / `map_detail_path text`, and the two spend-control columns
-  `map_render_count integer` / `map_render_window_start timestamptz`. The first five are nullable
-  and NULL is the normal state and the designed fallback, not an error. **Count them from this
-  list rather than from a total written in prose** — an earlier revision of this bullet said
-  "four" above a list of five, and the two counter columns were absent from the inventory while
-  being required by the spec.
+- **Five new columns on `public.rides`** — `latitude double precision`,
+  `longitude double precision`, `geocode_confidence real`, and the two Storage object paths
+  `map_card_path text` / `map_detail_path text`. All nullable; NULL is the normal state and the
+  designed fallback, not an error. **Count them from this list rather than from a total written in
+  prose** — an earlier revision of this bullet said "four" above a list of five.
 - **Three CHECK constraints**, and the middle one is deliberately one-directional. A coordinate may
   not exist without a confidence at or above the floor (§The confidence floor); a **tile path may
   not exist without a coordinate**, while a coordinate **may** exist without a tile path, because a
@@ -62,12 +59,13 @@ device**, which answers offline read, per-view cost, per-view IP leak and key ex
   **The same trigger is why the caller must delete the superseded objects *before* it issues that
   UPDATE.** Clearing the columns destroys the only record of the old object names, and this
   change builds no privileged sweeper that could find them afterwards. See §Orphaned objects.
-- **The spend control is owned by the database and overwritten, not merely defaulted.** A second
-  `BEFORE UPDATE` trigger owns `map_render_count` and `map_render_window_start` outright: it
-  derives both from their `OLD` values and discards whatever the client supplied, which is `034`'s
-  `created_at` ruling applied to a counter. Without that, the counter is client-writable — `rides`
-  carries a **table-level** UPDATE grant that this change deliberately keeps — and the organizer
-  could reset the ceiling that exists to bound the organizer.
+- **The spend control is an append-only ledger, `public.ride_map_render_attempts`** — one row per
+  **attempted** vendor call, `ride_id` cascading from `rides`, and an `attempted_at` written by a
+  `BEFORE INSERT` trigger rather than a DEFAULT, so a client cannot backdate a row out of the
+  window. `authenticated` holds **INSERT and SELECT only**: no UPDATE grant, no UPDATE policy, no
+  DELETE grant, no DELETE policy. The ceiling lives in the INSERT policy's `WITH CHECK`, counting
+  the caller's rows inside a rolling window. See §Bounding the spend for why a counter column on
+  `rides` cannot do this job.
 - **A sixth Storage folder, `ride-maps/<organizer uid>/<uuid>.jpg`**, with three policies. INSERT
   and DELETE take the ordinary own-folder shape. **The SELECT policy is modelled on
   `Riders read postcard images their audience predicate allows` specifically, not on "the five
@@ -184,11 +182,9 @@ already use.
 **That "within their authority" argument covers the tile columns and does NOT cover the spend
 control, and the asymmetry is the reason the two decisions cannot share a rationale.** A
 coordinate, a path and an address are the organizer's own data, and a rider corrupting their own
-ride harms only their own ride. `map_render_count` is not their data — it is a limit on **our**
+ride harms only their own ride. The **spend control** is not their data — it is a limit on **our**
 vendor bill, and the organizer is the party it is aimed at. A control the adversary can reset is
-not a control. So the two counter columns are owned by a trigger that overwrites whatever the
-client sends (§What Changes), which is `034`'s ruling on `created_at`: a DEFAULT is not a rule when
-the client can name the column.
+not a control, which is why it does not live on `rides` at all. §Bounding the spend.
 
 The alternative — revoking the table-level UPDATE and re-granting per column, the way
 `025` did for `profiles` — buys protection against a rider vandalising their own ride and costs a
@@ -209,15 +205,21 @@ Three steps, in this order, and each exists because of a specific failure:
 1. **Pre-flight the club-membership arm before spending anything.** Having read the ride, the
    function checks `club_id IS NULL OR <caller holds a club_members row for it>` under the caller's
    own JWT. If that fails, it stops **before** the geocode. This is the whole remedy for the
-   left-the-club path above: the money is spent at step 2, so the check belongs at step 1.
+   left-the-club path above: the money is spent at step 3, so the check belongs first.
    `private.is_club_member` is unreachable — PostgREST routes only to `public` — so the function
    reads `club_members` directly, which RLS already scopes correctly.
-2. **Geocode, render, upload.** The object names are generated by the function, so it holds them
-   in memory from here on. That fact is load-bearing at step 3.
-3. **Write the columns; on refusal, delete the objects it just uploaded.** A membership change
-   landing between step 1 and step 3 still refuses the write, and this is the **one moment in the
+2. **Insert the ledger row.** Refused at the ceiling, and a refusal here costs nothing because
+   nothing has been spent yet. Succeeding records the attempt *before* its outcome is known, which
+   is the only ordering under which a failed geocode still counts.
+3. **Geocode, render, upload.** The object names are generated by the function, so it holds them
+   in memory from here on. That fact is load-bearing at step 4.
+4. **Write the columns; on refusal, delete the objects it just uploaded.** A membership change
+   landing between step 1 and step 4 still refuses the write, and this is the **one moment in the
    entire design when the orphan's path is still known**. The compensating delete is therefore
    mandatory rather than tidy-up.
+
+**Steps 2 and 4 are deliberately on different tables.** The ceiling can refuse step 2 without ever
+touching `rides`, so no ride write is ever aborted by a spend control.
 
 Writing the columns *before* uploading was considered and rejected: it trades an orphaned object
 for a row naming an object that does not exist, which renders as a broken image to every rider who
@@ -269,20 +271,51 @@ politeness:
   the work rather than an `if` in the function.
 - **Nobody else.** A crew member, a club admin, a club owner, a non-member, a blocked rider and a
   signed-out caller all get nothing. Enumerated per role in `specs/ride-map-tiles/spec.md`.
-- **Bounded per ride, by a counter the organizer cannot reset.** An organizer editing
-  `meeting_point` in a loop bills us on every pass, so the ceiling is aimed squarely at the one
-  role that *is* allowed to render. `map_render_count` and `map_render_window_start` are therefore
-  **owned by a trigger that overwrites whatever the client supplies**, not merely defaulted — a
-  counter sitting in a client-writable column is satisfied on paper and absent in fact, and the
-  symptom is a vendor bill with no rider-visible signal. The function also reads the counter and
-  refuses **before** the vendor call, so the ceiling costs nothing to enforce; the trigger is the
-  backstop that a direct PostgREST caller cannot evade.
-- **The window is a fixed 24-hour window, not a rolling one, and the difference is stated.**
-  `map_render_window_start` plus a count is two columns; a genuinely rolling window needs one row
-  per render. The cost of the cheap version is that an organizer can spend the ceiling at the end
-  of one window and again at the start of the next — worst case 2× the ceiling across a boundary.
-  Accepted, and named, because "rolling" was the word in the original question and a reader would
-  otherwise assume the stronger guarantee.
+- **Bounded per ride, by a ledger the organizer can only ever add to.** See §Bounding the spend.
+
+## Bounding the spend
+
+An organizer editing `meeting_point` in a loop bills us on every pass, so the ceiling is aimed
+squarely at the one role that *is* allowed to render. Two properties are required of it and they
+pull in opposite directions, which is what makes the obvious design wrong:
+
+1. **The organizer must not be able to lower it.** `rides` carries a table-level UPDATE grant this
+   change deliberately keeps, so a counter column on `rides` would be client-writable — one
+   `PATCH` setting it back to zero resets the ceiling that exists to bound the resetter.
+2. **The organizer's own function call must be able to raise it.** The function runs as
+   `authenticated` under the forwarded JWT. Anything `authenticated` cannot write, the function
+   cannot write either.
+
+A trigger owning a counter column satisfies (1) by discarding client-supplied values — and thereby
+breaks (2), because it leaves no writer at all. **The only remaining writer is an `UPDATE` on
+`rides`, and every failing render issues no `UPDATE`**: an empty geocode, a sub-floor confidence, a
+city-level match, a vendor outage and a quota rejection all leave the columns NULL and save the
+ride normally. So the count would rise only when a render *succeeded* — and the money is spent at
+the geocode, not at the path write. The ceiling would bind exactly the organizers who were never
+the threat, and miss the one who edits "the usual spot" ten times because the map will not appear.
+
+**An append-only ledger satisfies both, and the reason is the direction of the adversary's
+interest.** `authenticated` holds INSERT and SELECT on `ride_map_render_attempts` and nothing else.
+The organizer can therefore only ever make the count go **up**, which is self-harm rather than an
+attack; the operation they want — making it go down — has no grant and no policy behind it.
+
+Three details carry the design:
+
+- **The row is inserted *before* the vendor call.** A refused INSERT costs nothing, and a
+  successful one has already recorded the attempt whether the geocode then returns a building, a
+  city, or a 503. This is what makes it count **attempts**, not successes.
+- **`attempted_at` is written by a `BEFORE INSERT` trigger, not a DEFAULT** — `034`'s ruling. A
+  DEFAULT applies only when the column is omitted, and a client that can backdate rows outside the
+  window has no ceiling.
+- **The window is genuinely rolling**, because one row per attempt is exactly what a rolling window
+  needs. An earlier revision stored a count and a window-start on `rides` and had to concede a
+  worst case of 2× the ceiling across a boundary; the ledger removes that concession rather than
+  documenting it.
+
+**The ceiling refusal lands on the ledger's INSERT and never on the `rides` UPDATE.** That is not
+incidental — it is what keeps the guarantee that a refused render never fails a ride write. An
+organizer at their ceiling can still edit their own ride's address all day; they simply get no new
+tile.
 
 ## Capabilities
 
@@ -377,9 +410,10 @@ unapplied and belongs to the active `tag-postcards-to-rides` change. **Do not re
 off `CLAUDE.md`**, which says 40 files and both projects at `040`; the file count moved when that
 change wrote its migration and the applied count did not.
 
-The migration is **purely additive**: **seven columns** (five nullable tile columns, two spend
-counters), **three CHECKs**, **two triggers** (stale-tile, counter-ownership), three
-`storage.objects` policies, one index. Nothing is dropped, no existing policy is altered, no grant
+The migration is **purely additive**: **five nullable columns** on `rides`, **three CHECKs**, the
+stale-tile trigger, **one new table** (`ride_map_render_attempts`) with its INSERT and SELECT
+policies, its `attempted_at` trigger and its participation-gate trigger, three `storage.objects`
+policies, and two indexes. Nothing is dropped, no existing policy is altered, no grant
 is revoked. It is therefore safe to apply **before** the code that uses it deploys, and there is
 no additive/destructive split to sequence — which is what makes §Deploy reality workable.
 
@@ -391,8 +425,10 @@ either. **A new WARN means a `revoke` did not land.**
 
 **The participation gate.** `rides` already carries `enforce_participation_gate` (measured
 2026-08-09 — `rides` has three non-internal triggers: the gate, `enforce_ride_club_audience`, and
-`notify_ride_created_in_club`). The four new columns are covered by it on INSERT and UPDATE
-through the existing trigger with no change. The `storage.objects` policies are **not** covered —
+`notify_ride_created_in_club`). The five new columns are covered by it on INSERT and UPDATE
+through the existing trigger with no change. **`ride_map_render_attempts` joins the gate**, taking
+it from nine tables to ten — it is a table `authenticated` can INSERT into, which is the gate's
+whole criterion. The `storage.objects` policies are **not** covered —
 per `CLAUDE.md`, no `storage.objects` policy carries the gate and all of them check the path
 prefix only. That is stated in the spec as a known property rather than quietly inherited.
 

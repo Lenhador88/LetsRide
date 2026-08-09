@@ -218,44 +218,62 @@ with no rider-visible symptom.
   refusing after it defeats the point
 
 #### Scenario: Renders per ride are capped by the database
-- **WHEN** a ride has already caused the ceiling number of renders within the stated window
+- **WHEN** a ride has already caused the ceiling number of render **attempts** within the rolling
+  window
 - **THEN** further renders SHALL be refused
-- **AND** the counter SHALL live in the database and be enforced by a trigger or constraint, not
-  by the function counting for itself, because the function is stateless and a client may call it
-  concurrently
-- **AND** the refusal SHALL leave the existing tile in place rather than clearing it
+- **AND** the ceiling SHALL be enforced by the ledger's INSERT policy rather than by the function
+  counting for itself, because the function is stateless and a client may call it concurrently
+- **AND** the refusal SHALL leave any existing tile in place rather than clearing it
 
-#### Scenario: The counter is not writable by the role it exists to bound
-- **WHEN** the ride's organizer issues any UPDATE naming `map_render_count` or
-  `map_render_window_start` — including a direct PostgREST call setting the count to zero
-- **THEN** the supplied value SHALL be discarded and the stored value SHALL be derived from its
-  `OLD` value by a `BEFORE UPDATE` trigger
-- **AND** the mechanism SHALL be stated in the migration, because `rides` carries a **table-level**
-  UPDATE grant that this change deliberately retains, so the columns are otherwise client-writable
-  the moment `alter table` runs
+#### Scenario: The ledger counts ATTEMPTS, and is written before the outcome is known
+- **WHEN** the function is about to issue a vendor call
+- **THEN** it SHALL insert a `ride_map_render_attempts` row **first**, and SHALL abandon the render
+  if that insert is refused
+- **AND** the row SHALL NOT be conditional on the render succeeding, because the money is spent at
+  the geocode and not at the path write
+- **AND** a render that ends in an empty geocode, a sub-floor confidence, a rejected granularity, a
+  vendor outage or a quota rejection SHALL be counted identically to one that produces a tile
+- **AND** the reason SHALL be recorded: every one of those outcomes leaves the ride's columns NULL
+  and issues **no `UPDATE` on `rides` at all**, so any counter that rises on a column write would
+  count successes only and would miss the organizer editing an unresolvable address in a loop —
+  the exact rider the ceiling exists to bound
+
+#### Scenario: The count can only ever be raised by the role it bounds
+- **WHEN** the ride's organizer attempts to lower their own count — deleting ledger rows, updating
+  an `attempted_at`, or any equivalent
+- **THEN** every such statement SHALL be refused, because `authenticated` holds **INSERT and SELECT
+  only** on the ledger: no UPDATE grant, no UPDATE policy, no DELETE grant, no DELETE policy
+- **AND** the asymmetry SHALL be recorded as the reason the design works — the organizer's own
+  function call must be able to *raise* the count, so the table cannot be one they are locked out
+  of, and the only operation they want is the one with no grant behind it
+- **AND** raising their own count SHALL be recognised as self-harm rather than an attack, and SHALL
+  therefore need no defence
+
+#### Scenario: A client cannot backdate an attempt out of the window
+- **WHEN** a caller inserts a ledger row naming `attempted_at` with any value
+- **THEN** the stored value SHALL be server time, written by a `BEFORE INSERT` trigger
 - **AND** a column DEFAULT SHALL NOT be treated as the enforcement, matching the ruling already
-  made for a conversation's `created_at`: a DEFAULT applies only when the column is omitted, and
-  the client may name it
-- **AND** the reason this differs from the coordinate and path columns SHALL be recorded — those
-  are the organizer's own data and corrupting them harms only their own ride, whereas the counter
-  limits **our** vendor spend and the organizer is the party it is aimed at
+  made for a conversation's `created_at`: a DEFAULT applies only when the column is omitted
+- **AND** the reason SHALL be recorded: a client that can backdate rows has no ceiling at all
 
-#### Scenario: The ceiling refuses before the money is spent
-- **WHEN** a render is requested for a ride already at its ceiling
-- **THEN** the function SHALL refuse **before** issuing the geocode or render call
-- **AND** the trigger SHALL independently refuse the column write, so that a caller bypassing the
-  function gains nothing
-- **AND** neither layer SHALL be described as sufficient alone: the function's check saves the
-  money, and the trigger's is the one that cannot be evaded
+#### Scenario: The window is genuinely rolling
+- **WHEN** the ceiling is evaluated
+- **THEN** it SHALL count ledger rows whose `attempted_at` falls inside a rolling window ending now
+- **AND** it SHALL NOT be a fixed window reset on first use, so there SHALL be no boundary at which
+  an organizer can spend the ceiling twice in quick succession
+- **AND** this SHALL be recognised as a property the ledger gives for free, one row per attempt
+  being exactly what a rolling window requires
 
-#### Scenario: The window is fixed, not rolling, and the difference is stated
-- **WHEN** the ceiling's window is documented
-- **THEN** it SHALL be described as a **fixed** window anchored on `map_render_window_start`, reset
-  on the first render after the window elapses
-- **AND** it SHALL NOT be described as rolling, because a rolling window requires one row per
-  render and this design stores a count and a start
-- **AND** the worst case SHALL be stated: an organizer may spend the ceiling at the end of one
-  window and again at the start of the next, so the true bound is 2× the ceiling across a boundary
+#### Scenario: The ceiling refuses the ledger insert and never a ride write
+- **WHEN** an organizer at their ceiling edits their ride's `meeting_point`
+- **THEN** the `UPDATE` on `rides` SHALL succeed, the stale-tile trigger SHALL clear the tile
+  columns, and the rider SHALL see the fallback with no error
+- **AND** only the ledger insert SHALL be refused
+- **AND** no spend control SHALL ever abort a statement against `rides`, because a `BEFORE UPDATE`
+  trigger that raises takes the rider's whole edit down with it — including the columns it was
+  never concerned with
+- **AND** this SHALL be asserted, because "the organizer cannot edit their own ride for the rest of
+  the day" is the failure it prevents and it is invisible from the ledger's own tests
 
 #### Scenario: A refused render never fails the ride write
 - **WHEN** a render is refused for any reason — entitlement, ceiling, or vendor failure
@@ -583,6 +601,15 @@ of where somebody will be is the same class of record.
 - **AND** because nothing deletes a past ride, retention SHALL be understood as indefinite
 - **AND** this SHALL be an open question owned by the product owner with a stated default, not an
   omission
+
+#### Scenario: The render ledger is readable only by the ride's organizer and dies with the ride
+- **WHEN** any rider other than the ride's organizer reads `ride_map_render_attempts`
+- **THEN** zero rows SHALL be returned, because the ledger records when an identified rider was
+  editing a meeting point and is nobody else's business
+- **AND** its `ride_id` SHALL cascade from `rides`, so the ledger dies with the ride and with the
+  organizer's account
+- **AND** rows older than the window SHALL be recorded as serving no further purpose, with the fact
+  that **nothing prunes them today** stated rather than left implied
 
 #### Scenario: Indefinite retention covers orphans too, and they are counted
 - **WHEN** retention is stated

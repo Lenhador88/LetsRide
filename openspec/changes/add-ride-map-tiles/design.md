@@ -53,7 +53,7 @@ The path checked in order, and the three facts that had to hold:
    columns, and **nothing clears `rides.club_id` when a rider leaves a club** — measured
    2026-08-09, `club_members` carries only `enforce_participation_gate` and `notify_club_joined`.
    An organizer who left the club their ride sits in can read the ride and upload the objects and
-   still have the column write refused. §D9 is the ordering that keeps that from costing money and
+   still have the column write refused. §D8 is the ordering that keeps that from costing money and
    leaving litter.
 3. **Will the bucket accept it?** Only as JPEG. `media` is private with
    `allowed_mime_types = ['image/jpeg']` and a 5 MB ceiling. A PNG upload fails at the bucket,
@@ -85,23 +85,9 @@ it.
 **The "within their authority" argument has a hard edge, and the spend counter is on the other side
 of it.** Everything above reasons that an organizer corrupting their own ride's coordinate or path
 harms only their own ride, so a client-writable column is acceptable. That argument covers data the
-organizer authored. It does **not** cover `map_render_count`, which is not the organizer's data at
+organizer authored. It does **not** cover the spend control, which is not the organizer's data at
 all — it is a limit on our vendor bill, and the organizer is precisely the party it is aimed at. A
-control its adversary can reset is decoration. So the two counter columns are **owned by a
-`BEFORE UPDATE` trigger that derives them from their `OLD` values and discards whatever the client
-sent**, which is `034`'s `created_at` ruling applied to a counter rather than a timestamp.
-
-Chosen over the alternative of moving the counter to a table whose grants this change controls: the
-function runs as `authenticated` under the forwarded JWT, so a table that `authenticated` cannot
-write is a table the function cannot write either — the same bind as the confidence floor. It would
-have forced a `security definer` RPC purely to hold an integer. The trigger keeps the counter beside
-the row it bounds, uses a mechanism §D5 already relies on, and needs no new grant surface.
-
-**Window representation.** `map_render_window_start timestamptz` plus a count — a **fixed** window
-that resets on the first render after it elapses, not a rolling one. A true rolling window needs one
-row per render, which is an audit table nobody asked for. The honest cost is 2× the ceiling across a
-window boundary, and the spec states that rather than letting "rolling" imply the stronger
-guarantee.
+control its adversary can reset is decoration. §D10 is where that lands.
 
 **The fallback if a later constraint refuses the direct write** — a bucket-level restriction, or a
 decision to lock the columns down: a narrow `security definer` RPC in `public` that takes the
@@ -174,7 +160,7 @@ place is the problem geocoding exists to solve, and an over-eager clear costs on
 
 **The trigger's one hazard is that it forgets.** Clearing the path columns destroys the only record
 of the superseded object names, so the delete has to happen *before* the UPDATE that fires it —
-§D9.
+§D8.
 
 ## D6 — Attribution, and the case where it cannot fit
 
@@ -213,7 +199,7 @@ and each of the three `storage.objects` policies.
   checking it — the least-guarded code in the repo, and a second pair of eyes on that file is worth
   more than a test that cannot run.
 
-## D9 — Orphaned objects: one mechanism, and why the own-folder arm flipped
+## D8 — Orphaned objects: one mechanism, and why the own-folder arm flipped
 
 Two failures end identically — an object in Storage that no row names:
 
@@ -251,7 +237,7 @@ to say so, extending the retention statement to an unbounded invisible set, and 
 ordinary use — correcting a typo in an address — silently accretes undeletable location data. That
 is not a trade worth taking to save one `OR`.
 
-## D10 — The own-folder arm, and the rule that does not condemn four live policies
+## D9 — The own-folder arm, and the rule that does not condemn four live policies
 
 The rule in `stored-media-visibility` was first written to forbid the own-folder arm outright.
 Measured, **four of the five existing SELECT policies contain it** — `avatars`, `covers`,
@@ -260,19 +246,87 @@ bare `EXISTS`. An absolute rule would have archived into the standing set as a c
 schema violates in four places, inviting a later session either to strip the arms (a behaviour
 change nobody decided) or to spend a review cycle filing four non-defects.
 
-**Picked: narrow the rule rather than grandfather the exceptions.** The arm is permitted where the
-folder's uid segment identifies **the same rider the owning row is about**, and forbidden where it
-identifies a mere uploader whose content belongs to a wider audience.
+**Picked: narrow the rule rather than grandfather the exceptions.** The test is:
+**does the owning row's own SELECT policy admit the folder's uid unconditionally?** Where it does,
+the own-folder arm grants that rider nothing they could not already reach, so it is safe. Where it
+does not, the arm hands them content the parent policy deliberately withheld, and it is forbidden.
 
-That line is not a rationalisation of the status quo — it predicts it. `avatars` and `covers`:
-folder uid *is* the profile subject, arm present. `club-avatars`/`club-covers`: folder uid is the
-club owner, arm present. `postcards`: a postcard's audience is its **club**, not its author, so the
-folder uid identifies an uploader rather than the subject — and `010` omitted the arm. `ride-maps`:
-folder uid is `organizer_id`, the ride's own subject, so the arm is permitted, which is what D9
-needs. Five folders, one rule, no exceptions list.
+Measured 2026-08-09, that test predicts every folder in the bucket:
 
-Grandfathering was the alternative and was rejected because an exceptions list is a thing that has
-to be maintained, and the four entries on it would have been indistinguishable from four bugs.
+| Folder | Folder uid | Owning row's SELECT policy | Arm safe? | Arm present? |
+|---|---|---|---|---|
+| `avatars`, `covers` | profile id | self, unconditionally | ✔ | ✔ |
+| `club-avatars`, `club-covers` | club owner | `is_public OR owner_id = auth.uid() OR is_club_member(id)` | ✔ | ✔ |
+| `postcards` | author | `author_id = auth.uid() OR (…club audience…)` | ✔ | ✘ — by choice |
+| `ride-maps` | organizer | `organizer_id = auth.uid() OR (…club/public audience…)` | ✔ | ✔ — §D8 needs it |
+
+**An earlier draft used a different test — "does the folder's uid identify the rider the row is
+about" — and it does not survive measurement.** It explained `postcards` as a folder whose uid
+identifies a mere uploader, since a postcard's audience is its club rather than its author. But
+`postcards` SELECT is `((author_id = auth.uid()) OR (…))` and `rides` SELECT is
+`((organizer_id = auth.uid()) OR (…))` — the same shape, an unconditional owner arm plus a group
+audience. A postcard is "about" its author exactly as much as a ride is "about" its organizer, and
+by that phrasing §D1 argues a ride's audience is its club and every signed-in rider rather than its
+organizer. Applied consistently the old test either permitted the arm on `postcards`, making "one
+rule, no exceptions" false, or forbade it on `ride-maps`, contradicting §D8. It was a
+rationalisation of the status quo wearing the words of a prediction.
+
+The replacement test is decidable from the parent policy alone, which is what makes it usable on a
+folder that does not exist yet — and `stored-media-visibility` names three of those (the ride cover
+photo, club media, and the Journal's ride-scoped postcards). The last is exactly the case where
+"which rider is this row about" has no answer and "does the parent policy admit the uploader
+unconditionally" still does.
+
+**`postcards` omits a safe arm, and that is a choice rather than a violation.** The rule permits it
+and does not require it; nothing in this change adds it, because nothing in this change needs an
+orphan sweep for that folder.
+
+Grandfathering was the alternative and was rejected because an exceptions list has to be
+maintained, and its four entries would have been indistinguishable from four bugs.
+
+## D10 — The spend control is an append-only ledger, not a counter column
+
+Two requirements, pulling opposite ways, and the obvious design satisfies exactly one:
+
+1. **The organizer must not be able to lower the count.** `rides` carries a table-level UPDATE
+   grant this change keeps (§D2), so a counter column on `rides` is client-writable.
+2. **The organizer's own function call must be able to raise it.** The function runs as
+   `authenticated` under the forwarded JWT — anything `authenticated` cannot write, it cannot write.
+
+**A trigger owning a counter column was the first answer and it is wrong**, which is worth writing
+down because it looked right and survived a round of review. It satisfies (1) by discarding
+client-supplied values, and in doing so satisfies (2) by leaving **no writer at all**. The only
+remaining writer is an `UPDATE` on `rides` — and every *failing* render issues no `UPDATE`: an
+empty geocode, a sub-floor confidence, a rejected granularity, a vendor outage and a quota
+rejection all leave the columns NULL and save the ride normally. The count would rise only on
+success, while the money is spent at the geocode. The ceiling would have bound the organizers whose
+addresses resolve cleanly and missed the one editing "the usual spot" ten times *because the map
+will not appear* — §D3's own worked example of a rejected match, and precisely the rider who
+retries.
+
+**Picked: `ride_map_render_attempts`, append-only.** `authenticated` holds **INSERT and SELECT
+only** — no UPDATE grant, no UPDATE policy, no DELETE grant, no DELETE policy. The ceiling is a
+`WITH CHECK` on the INSERT policy counting the caller's rows in a rolling window.
+
+**This does not contradict the earlier rejection of "move the counter to another table"; it
+refines it.** That rejection was of a table `authenticated` *cannot* write, which the function
+cannot write either. The ledger is a table `authenticated` *can* write — but only **append** to.
+The trick is the direction of the adversary's interest: the organizer wants the count **down**, and
+down is the direction with no grant behind it. Up is self-harm and needs no defence.
+
+Three consequences worth keeping:
+
+- **Insert before the vendor call.** A refused insert costs nothing; a successful one has recorded
+  the attempt before its outcome exists. That ordering is the entire reason it counts attempts.
+- **`attempted_at` by `BEFORE INSERT` trigger, not DEFAULT** — `034` again. A client that can
+  backdate rows out of the window has no ceiling.
+- **The refusal lands on a different table from the ride.** This is what preserves *"a refused
+  render never fails the ride write"*. A `BEFORE UPDATE` trigger on `rides` that raises at the
+  ceiling aborts the whole statement — so an organizer at their ceiling could not edit their own
+  ride's address at all for the rest of the window, a far worse failure than a missing map, and one
+  the guarantee explicitly names.
+- **The window becomes genuinely rolling**, so the 2×-across-a-boundary concession the counter
+  design had to document simply disappears. One row per attempt is what a rolling window is.
 
 ## D11 — Rejected alternatives
 

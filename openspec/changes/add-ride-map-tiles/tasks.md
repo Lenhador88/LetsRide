@@ -10,15 +10,18 @@
   | `profiles` grants | `dDxtm` table-level + 8 per-column ACLs — the `025` revoke-and-regrant precedent |
   | Storage buckets | **one**, `media`, **private**, `allowed_mime_types = ['image/jpeg']`, 5 MB |
   | `storage.objects` policies | **15** across 5 folders — 5 SELECT, 5 INSERT, 5 DELETE, all `authenticated`, **none UPDATE** |
-  | The 5 SELECT policies' shape | folder pin **plus** `EXISTS` against the parent row, under caller RLS |
+  | The 5 SELECT policies' shape | **4 are `own-folder OR EXISTS(parent)` — a disjunction**; only `postcards` is the bare `EXISTS`. None is prefix-only |
   | The 5 INSERT/DELETE policies' shape | folder prefix and caller uid **only** |
+  | `postcards` / `clubs` SELECT | `author_id = auth.uid() OR (…)` and `is_public OR owner_id = auth.uid() OR is_club_member(id)` — an **unconditional owner arm** in each, which is the test §D9 uses |
   | `rides` non-internal triggers | `enforce_participation_gate`, `enforce_ride_club_audience`, `notify_ride_created_in_club` |
   | `propagate_club_privacy_to_rides` | `update public.rides set is_public = false where club_id = new.id and is_public` — `is_public` only |
   | Migration files / applied | **41 files / 40 applied** — `041_postcard_ride_tag.sql` is unapplied and belongs to `tag-postcards-to-rides`. **`042` is this change's number** |
   | Security advisors | **8**, matching `CLAUDE.md`'s table |
 
-  Two of these change the shape of the work. The **table-level grant** means the four new columns
-  arrive client-writable (design.md §D2). The **SELECT/INSERT policy asymmetry** corrects the brief
+  Three of these change the shape of the work. The **table-level grant** means the five new columns
+  arrive client-writable (design.md §D2) — and is the reason the spend ledger is a separate
+  append-only table rather than a counter column (§D10). The **SELECT/INSERT policy asymmetry**
+  corrects the brief
   this change was written from: `CLAUDE.md` says Storage policies here check the path prefix only,
   which is true of writes and **false of reads** — the instrument this change needs already exists
   and must be copied from a SELECT policy, never from an INSERT one.
@@ -33,11 +36,10 @@
   Default: a 14px bar across the bottom, `Grey/70%` scrim, `Poppins/10/Medium` in `White/100`,
   leaving 80×134 of map. If the answer is that it cannot be made legible, the strip renders no tile
   — that is the specified negative case, not a failure.
-- [ ] 0.4 **Q3 — product owner, non-blocking.** Render ceiling per ride. Default: **10 renders per
-  ride per fixed 24-hour window**, enforced by the trigger-owned counter in task 1.4. High enough
-  that no honest organizer meets it, low enough to bound a loop. **Fixed, not rolling** — a rolling
-  window needs one row per render; the cheap version's worst case is 2× the ceiling across a window
-  boundary (`design.md` §D2).
+- [ ] 0.4 **Q3 — product owner, non-blocking.** Render ceiling per ride. Default: **10 render
+  attempts per ride per rolling 24 hours**, enforced by the append-only ledger in task 1.4. High
+  enough that no honest organizer meets it, low enough to bound a loop. The window is genuinely
+  rolling — one row per attempt is what a rolling window is (`design.md` §D10).
 - [ ] 0.5 **Q4 — product owner, non-blocking.** Signed-URL TTL for tiles. Default: **the shortest
   TTL already used for images in this app** — match it rather than inventing a second number, and
   record what it is. This bounds the revocation window in `stored-media-visibility`.
@@ -58,10 +60,9 @@
 - [ ] 1.1 Write `supabase/migrations/042_ride_map_tiles.sql`. **Header must state the grant level
   read from `relacl` and `attacl`** and that the table-level grant is deliberately left in place —
   the columns arrive client-writable and that is accepted, per `design.md` §D2.
-- [ ] 1.2 Add **seven** columns to `public.rides`: `latitude double precision`,
+- [ ] 1.2 Add **five** nullable columns to `public.rides`: `latitude double precision`,
   `longitude double precision`, `geocode_confidence real`, `map_card_path text`,
-  `map_detail_path text` (all nullable — NULL is the normal state, not an error), plus
-  `map_render_count integer not null default 0` and `map_render_window_start timestamptz`.
+  `map_detail_path text`. NULL is the normal state, not an error.
 - [ ] 1.3 Add the constraints:
   - the **coupling + floor** CHECK — either all of `latitude`/`longitude`/`geocode_confidence` are
     NULL, or all are present with the coordinates in range and `geocode_confidence >= <floor>`;
@@ -70,23 +71,33 @@
   - a **path-pinning** CHECK on both path columns —
     `like 'ride-maps/' || organizer_id::text || '/%'` plus the filename shape, matching the pinning
     `profiles` and `clubs` already use.
-- [ ] 1.4 Add the counter-ownership `BEFORE UPDATE` trigger. It **derives `map_render_count` and
-  `map_render_window_start` from their `OLD` values and discards whatever the client supplied**,
-  resets the window when it has elapsed, and refuses the write when the ceiling (Q3) is reached.
-  **A DEFAULT is not the enforcement** — `rides` carries a table-level UPDATE grant this change
-  deliberately retains, so without the trigger the organizer can `PATCH {"map_render_count": 0}`
-  and reset the ceiling that exists to bound the organizer.
-- [ ] 1.5 Add the stale-tile `BEFORE UPDATE` trigger clearing the **five tile columns** (not the two
-  counters), scoped `WHEN (old.meeting_point IS DISTINCT FROM new.meeting_point)`. **The scope is
-  not optional** — `propagate_club_privacy_to_rides` bulk-updates `rides` and an unscoped trigger
-  wipes every tile in a club when it turns private. Revoke EXECUTE on both trigger functions from
-  `public, anon, authenticated` so they produce no security advisor.
+- [ ] 1.4 Add `public.ride_map_render_attempts` — the append-only spend ledger (`design.md` §D10).
+  `id uuid` PK, `ride_id uuid → rides(id) on delete cascade`, `attempted_at timestamptz`.
+  - **Grants: `authenticated` gets INSERT and SELECT and nothing else.** No UPDATE grant, no UPDATE
+    policy, no DELETE grant, no DELETE policy — the organizer must be able to raise their own count
+    and must not be able to lower it.
+  - INSERT policy: the caller organises the ride, **and** their row count inside the rolling window
+    is below the ceiling (Q3). This `WITH CHECK` **is** the ceiling.
+  - SELECT policy: rows for rides the caller organises, and nobody else's.
+  - `attempted_at` written by a `BEFORE INSERT` trigger, **not** a DEFAULT — a client that can
+    backdate a row out of the window has no ceiling (`034`'s ruling).
+  - Join `enforce_participation_gate`, taking it from nine tables to ten.
+  - Index `(ride_id, attempted_at desc)` so the ceiling's count never scans.
+  - **The ceiling must never be enforced by a trigger on `rides`.** A `BEFORE UPDATE` trigger that
+    raises aborts the whole statement, so an organizer at their ceiling could not edit their own
+    ride's address at all — see task 1.8b.
+- [ ] 1.5 Add the stale-tile `BEFORE UPDATE` trigger clearing the five tile columns, scoped
+  `WHEN (old.meeting_point IS DISTINCT FROM new.meeting_point)`. **The scope is not optional** —
+  `propagate_club_privacy_to_rides` bulk-updates `rides` and an unscoped trigger wipes every tile in
+  a club when it turns private. It is the **only** trigger this change puts on `rides`, and it
+  clears columns rather than raising, so no ride write can be aborted by it. Revoke EXECUTE on every
+  trigger function from `public, anon, authenticated` so they produce no security advisor.
 - [ ] 1.6 Add the three `storage.objects` policies for `ride-maps/`. **Copy the SELECT shape from
   `Riders read postcard images their audience predicate allows`, not from any INSERT policy and not
   from "the five folders" generally** — four of the five carry an `own-folder OR EXISTS(parent)`
   disjunction. The policy is `EXISTS` against `rides` under caller RLS, matching `map_card_path` or
   `map_detail_path`, plus the uid-segment pin to `organizer_id`, **plus a deliberate own-folder arm**
-  (`design.md` §D9/§D10) so an orphan stays listable and deletable by its organizer. INSERT and
+  (`design.md` §D8/§D9) so an orphan stays listable and deletable by its organizer. INSERT and
   DELETE take the ordinary own-folder shape.
 - [ ] 1.7 Add an index supporting the storage SELECT policy's lookup by path, so a tile fetch does
   not sequentially scan `rides`.
@@ -97,10 +108,19 @@
   directions, club owner, club admin, and the object no row names — asserting for that last one
   that **another** rider is refused **and** that the organizer is not. Also assert all three CHECKs,
   the stale-tile trigger firing on an address change and **not** firing on an `is_public` bulk
-  update, and the counter trigger discarding a client-supplied `map_render_count`.
+  update, and the ledger's `attempted_at` trigger discarding a client-supplied timestamp.
 - [ ] 1.8a Assert the **left-the-club** path directly: an organizer whose ride keeps a `club_id`
   they are no longer a member of can SELECT the ride and is refused the UPDATE by the policy's
   `WITH CHECK` arm. This is the silent-failure path in `design.md` §D2 and nothing else covers it.
+- [ ] 1.8b Assert the ledger, and assert the thing it must **not** do:
+  - an organizer at the ceiling is refused a ledger INSERT;
+  - the same organizer, in the same state, **successfully updates their ride's `meeting_point`** —
+    this is the guarantee that a spend control never aborts a ride write, and it is invisible from
+    the ledger's own tests;
+  - DELETE and UPDATE on the ledger are refused for the organizer's own rows, asserted by naming
+    the **role**'s privilege rather than by calling it, since the suite runs as the table owner for
+    whom no barrier exists;
+  - another rider reads zero ledger rows for a ride they do not organise.
 - [ ] 1.9 Assert the storage policies **per folder**, not by reusing another folder's coverage, per
   `stored-media-visibility`.
 - [ ] 1.10 `PGPASSWORD=postgres npm test` green. Reconcile by **label set**, not by count — a count
@@ -157,8 +177,11 @@ exactly what they render today.** That is the intended intermediate state.
   and stop before the geocode if it fails. `private.is_club_member` is unreachable — PostgREST
   routes only to `public` — so read `club_members` directly. Without this, an organizer who left
   the club pays for a geocode and two renders and then has the column write refused.
-- [ ] 4.4b **Read the render counter and refuse before the vendor call** if the ride is at its
-  ceiling. The trigger is the backstop; this is the layer that saves the money.
+- [ ] 4.4b **Insert the ledger row before the vendor call**, and abandon the render if that insert
+  is refused. Inserting first is what makes the ceiling count **attempts** rather than successes: a
+  geocode that returns nothing, returns a city, or times out writes no columns and issues no ride
+  UPDATE at all, so a count that rose on a column write would never see it — and that organizer,
+  retrying an address that will not resolve, is exactly the one the ceiling exists to bound.
 - [ ] 4.5 Geocode, then apply the granularity gate and then the numeric floor. Below either: write
   nothing, return success, do not render — a render costs a call for an image that must not be
   shown.
@@ -185,7 +208,7 @@ exactly what they render today.** That is the intended intermediate state.
 - [ ] 5.1a **Delete the existing tile objects BEFORE issuing the UPDATE that changes
   `meeting_point`.** The stale-tile trigger NULLs the path columns in that same statement, so
   afterwards nothing knows their names. Same ordering as the ride-delete path — objects first, then
-  the row that names them (`design.md` §D9).
+  the row that names them (`design.md` §D8).
 - [ ] 5.1b Same ordering in the ride **delete** action: remove both objects, then delete the row.
 - [ ] 5.2 Invalidate `rides.all()` and `rides.detail(id)` when a render reports that it wrote paths.
   No new key — the paths ride on rows those keys already cover.
