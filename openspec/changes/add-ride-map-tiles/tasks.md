@@ -77,8 +77,26 @@
     policy, no DELETE grant, no DELETE policy — the organizer must be able to raise their own count
     and must not be able to lower it.
   - INSERT policy: the caller organises the ride, **and** their row count inside the rolling window
-    is below the ceiling (Q3). This `WITH CHECK` **is** the ceiling.
+    is below the ceiling (Q3). This `WITH CHECK` **is** the ceiling — bounded as described below,
+    not exactly.
+  - **This is the first policy in this repo whose predicate is an aggregate over its own table, and
+    it overshoots under concurrency. Measure it rather than assume it when writing `042`.** Under
+    READ COMMITTED two concurrent inserts each evaluate the `count(*)` before either commits, both
+    see `ceiling − 1`, both pass, and the window ends with `ceiling + 1` rows. **The failure is
+    permissive, not restrictive**, which is the direction that does not announce itself. The
+    overshoot is bounded by the number of genuinely concurrent callers — one extra geocode for a
+    double-tapped button — and is accepted at that size. Note the tension it resolves rather than
+    removes: the ceiling lives in the policy *because* the function is stateless and may be called
+    concurrently, so concurrency is the reason for the design and also its one soft edge. Tightening
+    it needs `SERIALIZABLE` or an advisory lock, and neither is worth one geocode.
+  - **The RLS suite cannot demonstrate this** — it runs serially, so an assertion written there will
+    pass whatever the concurrent behaviour is. Do not read a green suite as evidence about it.
   - SELECT policy: rows for rides the caller organises, and nobody else's.
+  - **The ceiling's correctness depends on this SELECT policy, and the coupling is silent.** The
+    `count(*)` inside `WITH CHECK` runs under the caller's own RLS, so it counts only rows SELECT
+    admits. Today they coincide — the caller is the organizer and SELECT is organizer-scoped — so
+    the count is right. **Narrowing SELECT later, for any unrelated reason, silently under-counts
+    and widens the ceiling, with no test failing.** Any change to it must re-check the ceiling.
   - `attempted_at` written by a `BEFORE INSERT` trigger, **not** a DEFAULT — a client that can
     backdate a row out of the window has no ceiling (`034`'s ruling).
   - Join `enforce_participation_gate`, taking it from nine tables to ten.

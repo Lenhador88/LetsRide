@@ -314,6 +314,23 @@ cannot write either. The ledger is a table `authenticated` *can* write — but o
 The trick is the direction of the adversary's interest: the organizer wants the count **down**, and
 down is the direction with no grant behind it. Up is self-harm and needs no defence.
 
+**Two soft edges, both stated here because the shape is new to this repo and neither announces
+itself.** This is the first policy here whose predicate is an aggregate over its own table.
+
+- **It overshoots under concurrency, permissively.** Under READ COMMITTED two concurrent inserts
+  each evaluate the `count(*)` before either commits, both see `ceiling − 1`, and the window ends
+  one row over. The overshoot is bounded by the number of genuinely concurrent callers — one extra
+  geocode for a double-tapped button — and is accepted at that size. The tension is worth naming
+  rather than hiding: the ceiling lives in the policy *because* the function is stateless and may
+  be called concurrently, so concurrency is both the reason for this design and its one soft edge.
+  **The RLS suite runs serially and cannot demonstrate it either way**, so a green suite is not
+  evidence here.
+- **The count is only as wide as the ledger's SELECT policy.** The aggregate runs under the caller's
+  own RLS, so it counts only rows SELECT admits. Today they coincide and the count is right.
+  Narrowing SELECT later, for any unrelated reason, silently under-counts and *widens* the ceiling
+  with nothing failing. The dependency is recorded because it is invisible at the point where
+  someone would change it.
+
 Three consequences worth keeping:
 
 - **Insert before the vendor call.** A refused insert costs nothing; a successful one has recorded

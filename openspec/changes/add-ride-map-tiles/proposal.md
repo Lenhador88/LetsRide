@@ -200,7 +200,7 @@ out of scope rather than as a later task.
 
 ## Ordering inside the function
 
-Three steps, in this order, and each exists because of a specific failure:
+Four steps, in this order, and each exists because of a specific failure:
 
 1. **Pre-flight the club-membership arm before spending anything.** Having read the ride, the
    function checks `club_id IS NULL OR <caller holds a club_members row for it>` under the caller's
@@ -493,5 +493,5 @@ world-readable folder.
 - **No alerting when the vendor fails or quota runs out.** Error tracking is deliberately
   undecided; this change declines to invent it. The rider-visible behaviour is fully specified and
   the owner-visible behaviour is a function log nobody reads.
-- **No rate limit beyond the per-ride render counter.** Consistent with the rest of the app, which
+- **No rate limit beyond the per-ride render ledger.** Consistent with the rest of the app, which
   rate-limits nothing.

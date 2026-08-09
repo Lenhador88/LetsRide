@@ -239,10 +239,17 @@ with no rider-visible symptom.
   the exact rider the ceiling exists to bound
 
 #### Scenario: The count can only ever be raised by the role it bounds
-- **WHEN** the ride's organizer attempts to lower their own count — deleting ledger rows, updating
-  an `attempted_at`, or any equivalent
+- **WHEN** the ride's organizer attempts to lower their own count by any statement **against the
+  ledger itself** — deleting ledger rows, or updating an `attempted_at`
 - **THEN** every such statement SHALL be refused, because `authenticated` holds **INSERT and SELECT
   only** on the ledger: no UPDATE grant, no UPDATE policy, no DELETE grant, no DELETE policy
+- **AND** the claim SHALL be scoped to the ledger rather than stated absolutely, because **deleting
+  the ride cascades its ledger rows away** and that is deliberate: `ride_id` is
+  `on delete cascade`, and an organizer may delete their own ride. Stating it absolutely would be
+  falsified by a mechanism this same change mandates
+- **AND** that route SHALL be recorded as costing nothing, because the ceiling is **per ride** —
+  creating a second ride is a cheaper reset than deleting the first, so the spend bound is
+  unchanged and the gap is the already-recorded absence of a global rate limit
 - **AND** the asymmetry SHALL be recorded as the reason the design works — the organizer's own
   function call must be able to *raise* the count, so the table cannot be one they are locked out
   of, and the only operation they want is the one with no grant behind it
