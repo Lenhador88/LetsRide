@@ -102,6 +102,108 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('rounding a device GPS fix to ~1 km before it enters the app (PD-151)', () => {
+  async function deviceFix(lat: number, lon: number) {
+    const geolocation = fakeGeolocation({ kind: 'success', lat, lon })
+    installNavigator(nav({ geolocation, permission: 'prompt' }))
+    return requestDeviceLocation()
+  }
+
+  it('rounds rather than truncates a southern-hemisphere latitude', async () => {
+    // -33.8765 * 100 = -3387.65 — nearer to -3388 (round) than -3387 (trunc).
+    // Truncation would read -33.87: CLOSER to the equator than the true fix,
+    // a systematic bias rather than a blur.
+    const result = await deviceFix(-33.8765, 0)
+    expect(result?.lat).toBe(-33.88)
+  })
+
+  it('rounds rather than truncates a western-hemisphere longitude', async () => {
+    // -58.3762 * 100 = -5837.62 — nearer to -5838 (round) than -5837 (trunc).
+    // Truncation would read -58.37: CLOSER to the prime meridian than the
+    // true fix.
+    const result = await deviceFix(0, -58.3762)
+    expect(result?.lon).toBe(-58.38)
+  })
+
+  it('rounds a positive lat/lon fix to two decimal places', async () => {
+    const result = await deviceFix(52.372159, 4.895168)
+    expect(result).toEqual({ lat: 52.37, lon: 4.9, source: 'device' })
+  })
+
+  it('applies on the silent path too, not only the explicit "use my location" tap', async () => {
+    const geolocation = fakeGeolocation({ kind: 'success', lat: 52.372159, lon: 4.895168 })
+    installNavigator(nav({ geolocation, permission: 'granted' }))
+
+    const result = await resolveRiderLocation()
+
+    expect(result).toEqual({ lat: 52.37, lon: 4.9, source: 'device' })
+  })
+
+  it('does not round the profile fallback — it is a geocoded locality centroid, not a live device fix', async () => {
+    installNavigator(nav({})) // no geolocation at all — straight to the profile source
+    getMyLocationText.mockResolvedValue('Utrecht')
+    getLocalityCentroid.mockResolvedValue({ lat: 52.0907006, lon: 5.1214201 })
+
+    const result = await resolveRiderLocation()
+
+    expect(result).toEqual({ lat: 52.0907006, lon: 5.1214201, source: 'profile' })
+  })
+
+  /**
+   * The honest substitute for "the search bias still selects the same rows
+   * for a representative point," which PD-151 asked for and this suite
+   * refuses to write against `public.places`: that table holds 0 rows on
+   * BOTH projects until the Overture load runs (CLAUDE.md's `places` entry),
+   * so a same-rows assertion today compares an empty result to an empty
+   * result and passes without testing anything.
+   *
+   * What IS honestly testable with no database: the rounding error is
+   * bounded, and that bound is small next to `search_places()`'s own
+   * ~0.25 deg x 0.40 deg proximity box (`037_places_index.sql`,
+   * `039_places_address_search.sql`) — so the box computed from a rounded
+   * point can only disagree with the box computed from the true point in a
+   * sliver at the box's own edge, for every point below.
+   */
+  const REPRESENTATIVE_POINTS = [
+    { name: 'Amsterdam', lat: 52.372159, lon: 4.895168 },
+    { name: 'Sydney', lat: -33.86882, lon: 151.20929 },
+    { name: 'Buenos Aires', lat: -34.603722, lon: -58.381592 },
+    { name: 'London, near the prime meridian', lat: 51.507351, lon: -0.127758 },
+    { name: 'Quito, near the equator', lat: -0.180653, lon: -78.467834 },
+  ]
+
+  // Half of one unit in the 2nd decimal place — the maximum possible error
+  // from rounding to LOCATION_PRECISION_DP=2. Deliberately not imported from
+  // the module (there is no test-only export for it, matching this file's
+  // existing style of testing through the public functions only), so a
+  // change to that constant must be a conscious edit here too rather than
+  // one this literal silently follows.
+  const MAX_ROUNDING_ERROR_DEG = 0.5 * 10 ** -2
+  // search_places()'s own half-widths — 037/039.
+  const BOX_HALF_WIDTH_LAT_DEG = 0.25
+  const BOX_HALF_WIDTH_LON_DEG = 0.4
+
+  it.each(REPRESENTATIVE_POINTS)(
+    'shifts $name by no more than the claimed ~1 km, on both axes',
+    async ({ lat, lon }) => {
+      const result = await deviceFix(lat, lon)
+
+      expect(result).not.toBeNull()
+      expect(Math.abs(result!.lat - lat)).toBeLessThanOrEqual(MAX_ROUNDING_ERROR_DEG)
+      expect(Math.abs(result!.lon - lon)).toBeLessThanOrEqual(MAX_ROUNDING_ERROR_DEG)
+    }
+  )
+
+  it('that bound is a small fraction of the proximity box half-width, on both axes', () => {
+    // A property of the constant, not of any one coordinate — the worst
+    // case is the same 0.005 deg everywhere, so this needs no per-point
+    // case. 0.005 / 0.25 is exactly 2% — the narrower (latitude) box edge —
+    // so the bound is <=2%, not <2%.
+    expect(MAX_ROUNDING_ERROR_DEG / BOX_HALF_WIDTH_LAT_DEG).toBeLessThanOrEqual(0.02)
+    expect(MAX_ROUNDING_ERROR_DEG / BOX_HALF_WIDTH_LON_DEG).toBeLessThanOrEqual(0.02)
+  })
+})
+
 describe('during a server render', () => {
   it('resolveRiderLocation refuses, loudly, rather than reading an anonymous device', () => {
     delete globals.document
