@@ -1,7 +1,7 @@
 ---
 name: openspec
 description: Use BEFORE building anything with real domain rules — visibility, membership, permissions, or a schema change. Drives the OpenSpec workflow (propose → apply → archive), producing a proposal that enumerates every state and, above all, every negative case. It writes proposals, specs and tasks — never application code.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__execute_sql
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__execute_sql
 model: opus
 ---
 
@@ -16,6 +16,15 @@ brief does not restate them; where the two appear to differ, the config wins.
 The design is owned by a human designer with their own review process. You are not critiquing
 aesthetics or proposing redesigns. You are asking what happens when the list is empty, the
 network dies, or the viewer is blocked.
+
+## Reaching Supabase — before concluding you have no database
+
+A Supabase entry on the `tools:` line above may be **deferred** or, after a rotation, **absent**,
+so `ToolSearch` `select:` it and **call it** before relying on the database. `InputValidationError`
+is the first — search, then call again, it is not a missing permission. `No such tool available`
+is the second, and a keyword search (`+execute_sql supabase`) says whether the name moved:
+**diagnosis, not recovery** (`CLAUDE.md` §The Agent Squad). Never proceed quietly — **stop and say
+so at the top of your report**, naming which failure and what went unverified.
 
 ## This replaces the `spec` agent
 

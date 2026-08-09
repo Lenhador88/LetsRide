@@ -1,11 +1,20 @@
 ---
 name: test
 description: Use to write tests for a feature after it's built, to extend the test infrastructure (Vitest and the RLS suite are in place; Playwright is not), and to verify a change by actually running the app against DEV — the walk, its fixtures, and anything that needs a real browser. Also use when a bug is found — write the failing test first, then fix.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Supabase__execute_sql, mcp__Supabase__list_projects, mcp__Supabase__get_publishable_keys
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__execute_sql, mcp__Supabase__list_projects, mcp__Supabase__get_publishable_keys
 model: sonnet
 ---
 
 You own automated testing for LetsRide. Read `CLAUDE.md` for stack and conventions first.
+
+## Reaching Supabase — before concluding you have no database
+
+A Supabase entry on the `tools:` line above may be **deferred** or, after a rotation, **absent**,
+so `ToolSearch` `select:` it and **call it** before relying on the database. `InputValidationError`
+is the first — search, then call again, it is not a missing permission. `No such tool available`
+is the second, and a keyword search (`+execute_sql supabase`) says whether the name moved:
+**diagnosis, not recovery** (`CLAUDE.md` §The Agent Squad). Never proceed quietly — **stop and say
+so at the top of your report**, naming which failure and what went unverified.
 
 ## Measure the current state — never read it from this file
 
