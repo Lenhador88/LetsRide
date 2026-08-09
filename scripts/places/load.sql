@@ -72,10 +72,12 @@ select set_config('places.force', :'force', true);
 -- The "previous run" the band compares against is simply what is in the table
 -- right now, so there is no state file to keep and nothing to go stale. On the
 -- first load this is 0, which selects the absolute floor instead of the band.
-create temp table _places_load_state on commit drop as
-  select count(*)::bigint                              as prev_rows,
-         pg_total_relation_size('public.places')::bigint as prev_bytes
-    from public.places;
+--
+-- Deliberately NOT `on commit drop`: the reindex decision after the commit reads
+-- it back. A temp table lives for the session either way, so it still cannot
+-- outlive this psql invocation.
+create temp table _places_load_state as
+  select count(*)::bigint as prev_rows from public.places;
 
 delete from public.places;
 
@@ -231,18 +233,39 @@ begin
 
   -- §4. Did `analyze` above actually give the planner what it needs? Skipping it
   -- costs an order of magnitude, intermittently, and nothing else in this file
-  -- would notice. Explained against the pattern rather than through
-  -- `search_places` because a SQL function's plan may or may not be inlined, and
-  -- this has to be the same answer either way.
+  -- would notice.
   --
-  -- Gated on size because it is a statement about the planner's choice, not
-  -- about correctness: on a small table a sequential scan IS the right plan, so
-  -- an ungated version would fail every smoke-sized load.
+  -- ** Asserted as "statistics exist", NOT as "the planner chose the index". **
+  -- The second is the tempting version and it is the wrong contract to fail a
+  -- load on: a plan is a costing judgement against `random_page_cost`,
+  -- `effective_cache_size` and the parallel-worker settings, and this script was
+  -- only ever measured on local PG 16.13 while both targets are Supabase PG 17.6
+  -- with their own values. Worse, the probe necessarily runs INSIDE the load
+  -- transaction, where the heap still carries every pre-delete tuple — so a
+  -- sequential scan is priced higher here than it will be a minute later, which
+  -- biases the check toward passing in the state it was tested in and toward
+  -- failing in the state nobody has tested. A false failure would roll back a
+  -- good 736k-row load with no override, since `force` deliberately does not
+  -- reach this far.
+  --
+  -- Statistics on `search_text` are what `analyze` is actually here to produce,
+  -- they are what their absence would cost, and their presence is a fact rather
+  -- than a judgement.
+  select count(*) into n
+    from pg_stats
+   where schemaname = 'public' and tablename = 'places' and attname = 'search_text';
+  if n = 0 then
+    raise exception 'ANALYZE produced no statistics for places.search_text — the planner would be choosing between the trigram bitmap and a sequential scan blind, which costs an order of magnitude intermittently';
+  end if;
+
+  -- The plan is still worth SEEING, so it is reported and not asserted. Gated on
+  -- size because below it a sequential scan is genuinely the right answer and the
+  -- warning would be noise.
   if loaded >= 100000 then
     execute 'explain (format json) select 1 from public.places where search_text ilike ''%kerkstraat%'''
        into plan;
     if plan::text not like '%places_search_text_trgm_idx%' then
-      raise exception 'the trigram index is not being chosen for a substring search after ANALYZE — plan was %', plan::text;
+      raise warning 'the trigram index was NOT chosen for a substring search. Not fatal — the load is correct and this is a planner judgement, measured inside a transaction still holding the pre-delete tuples — but if searches are slow after this, start here. Plan: %', plan::text;
     end if;
   end if;
 
@@ -283,10 +306,22 @@ vacuum (analyze) public.places;
 --
 -- CONCURRENTLY because the plain form takes ACCESS EXCLUSIVE and would block
 -- every rider's search for the length of the rebuild — the same objection that
--- rules out `truncate` at the top of this file. It is unconditional rather than
--- refresh-only: on a first load it is ~30 s of work that still takes the GIN
--- index from 85 MB to 72 MB, and a branch nobody exercises is worth less than
--- the seconds it saves.
+-- rules out `truncate` at the top of this file.
+--
+-- ** SKIPPED ON A FIRST LOAD, and that is a disk-space decision rather than a
+-- tidiness one. ** `REINDEX TABLE CONCURRENTLY` advances every index of the
+-- table through each phase together, so all four new indexes exist alongside all
+-- four old ones at the peak. On the measured numbers that peak is
+-- 162 heap + 175 old + 141 new = 478 MB, and against the free tier's 500 MB
+-- database cap a first load would exhaust the quota DURING the rebuild — after
+-- the commit, so the rows would be live, the project restricted, and an invalid
+-- index left on disk.
+--
+-- Skipping it costs nothing, because a first load has no bloat to reclaim: the
+-- indexes were just built by the `\copy` itself. It buys 85 MB -> 72 MB on the
+-- GIN index and nothing else. Bloat is a property of the delete-and-reload
+-- cycle, so the rebuild belongs exactly where the cycle is — see the measured
+-- table above, where four cycles take the table from 337 MB to 533 MB.
 --
 -- ** The one hazard, and it is quiet: a FAILED concurrent reindex leaves an
 -- invalid `*_ccnew` index behind. ** The planner ignores it, so search keeps
@@ -295,7 +330,21 @@ vacuum (analyze) public.places;
 --
 --   select indexrelid::regclass from pg_index
 --    where not indisvalid and indrelid = 'public.places'::regclass;
+--
+-- The 30 s `lock_timeout` set at the top of this file is still in force here and
+-- would be the wrong bound: a rebuild that has to wait behind one long-lived
+-- reader would abort AFTER the swap committed, which is the messiest place to
+-- fail. Widened for this statement only.
+set lock_timeout = '5min';
+
+select case when prev_rows = 0 then 'off' else 'on' end as do_reindex
+  from _places_load_state \gset
+
+\if :do_reindex
 reindex table concurrently public.places;
+\else
+\echo '(first load — skipping the reindex: freshly built indexes carry no bloat, and the concurrent rebuild would double index disk to reclaim nothing)'
+\endif
 
 -- §Cost — printed rather than described, because these are the first real
 -- numbers this table will ever have. Every size in 037, 039 and 040 comes from a

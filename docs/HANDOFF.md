@@ -665,17 +665,29 @@ working search that finds nothing:
 `.github/workflows/places-load.yml` (Actions → Load places index) runs the extractor and
 `scripts/places/load.sql` on a runner, which has the Postgres egress no session does. It needs
 `PLACES_DEV_DATABASE_URL` / `PLACES_PROD_DATABASE_URL` — the Supabase **session pooler** string,
-because GitHub runners have no IPv6 and the direct host needs the IPv4 add-on. Until one of those
-is pasted the workflow fails at its pre-flight naming the missing secret; nothing else about it is
-unproven. **The whole pipeline was run end to end locally** against the real extract and the full
-migration chain on 2026-08-09 — 736,538 rows, both detector rejections exercised — so what the
-first real run adds is the connection, not the confidence. `scripts/places/README.md` §Loading has
-the measured cost table.
+because GitHub runners have no IPv6 and the direct host needs the IPv4 add-on. Until one is pasted
+the workflow fails at its pre-flight naming the missing secret. **The whole pipeline was run end to
+end locally** against the real extract and the full migration chain on 2026-08-09 — 736,538 rows,
+both detector rejections exercised, and both the first-load and refresh branches — so what the
+first real run adds is the connection, not the confidence.
 
-**Refreshes are blocked on `PD-87`, which is new information rather than a restatement.** One load
-is 303 MB measured; a refresh transiently holds old rows, new rows and a second copy of each index,
-which is over the free tier's 500 MB database cap. A first load fits (DEV was 13 MB before it) and
-a second one does not.
+**Scope those secrets to the `places-dev` / `places-prod` environments rather than to the
+repository, and put a deployment branch policy on `places-prod`.** The job declares
+`environment: places-<target>` so there is somewhere for the rule to attach. This is not
+housekeeping: the string is a `postgres`-role credential, which owns every table and therefore
+bypasses RLS more completely than the service-role key that `CLAUDE.md` keeps in
+`autoMode.hard_deny`. A plain repo secret is readable by a workflow on **any** branch, and
+`workflow_dispatch` runs the definition from the ref it is dispatched against — so every guard in
+that file lives inside the job, after injection, where a pushed branch can delete it. With no
+protection rule configured, the real bound is who has push access.
+
+**Refreshes are blocked on `PD-87`, which is new information rather than a restatement.** Measured
+on the real extract: a first load is 337 MB and lands DEV at ~346 MB against the free tier's 500 MB
+database cap, so it fits. A refresh measures **465 MB** before the reindex peak or WAL — the heap
+doubles once (`delete` leaves the dead tuples in place and `vacuum` makes the space reusable
+without returning it) and index bloat needs a rebuild that briefly holds two copies of all four
+indexes. So the first load is the only one that fits, and `load.sql` skips the reindex on a first
+load precisely so that one does. `scripts/places/README.md` §Loading has the full table.
 
 **`039`'s index swap was free only because the table is empty**; once the extract is loaded,
 dropping a `places` index is a deliberate act again.

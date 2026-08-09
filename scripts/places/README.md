@@ -168,24 +168,33 @@ re-measure here**, so these supersede them. Local PostgreSQL 16.13, 736,538 rows
 | | heap | GIN over `search_text` | all indexes | total |
 |---|---|---|---|---|
 | one clean load | 162 MB | 85 MB | 175 MB | **337 MB** |
-| after four load cycles | 162 MB | 207 MB | 372 MB | 533 MB |
-| reindexed | 162 MB | 72 MB | 141 MB | **303 MB** |
+| four reload cycles, `vacuum` each, no reindex | 162 MB | 207 MB | 372 MB | 533 MB |
+| the same table reindexed | 162 MB | 72 MB | 141 MB | **303 MB** |
+| one refresh over a full table, as `load.sql` runs it | 324 MB | — | 141 MB | **465 MB** |
 
-Extract 54 s (~476 MB fetched); load, verify, vacuum and reindex 53 s.
+Extract 54 s (~476 MB fetched); load, verify and vacuum 53 s, plus ~30 s of
+reindex on a refresh.
 
-**Two things follow, and the second is a blocker rather than a note.**
+**The heap doubles on the first refresh and then stops.** `delete` leaves 736k
+dead tuples at the front of the file and the new rows are appended after them, so
+`vacuum` marks that space reusable without returning it — 162 MB becomes 324 MB
+once, and the refresh after that reuses it rather than growing again. That is why
+the four-cycle row above still shows a 162 MB heap: its second cycle loaded a
+deliberately short 400k CSV, leaving free space the next full load fitted into.
 
-`vacuum` reclaims the heap and does *not* reclaim index bloat, so every refresh
-grows the indexes and only a rebuild recovers them — which is why `load.sql` ends
-with `reindex table concurrently` rather than leaving the table to double over a
-year of refreshes.
+**Indexes are the half `vacuum` does not fix**, which is why `load.sql` ends with
+`reindex table concurrently` — but only on a refresh. A first load has no bloat
+to reclaim, and skipping the rebuild there is a disk decision rather than a
+tidiness one: `REINDEX TABLE CONCURRENTLY` advances every index through each
+phase together, so all four new indexes coexist with all four old ones, and
+162 + 175 + 141 = 478 MB against a 500 MB cap is a quota exhaustion *after* the
+commit.
 
-**303 MB does not fit a refresh on the Supabase free tier, which caps the whole
-database at 500 MB.** A first load does fit — DEV was 13 MB before it — but a
-refresh transiently holds the old rows and the new ones together, plus a second
-copy of each index during the concurrent reindex, and that peak is over the cap.
-So `PD-87` (move off the free tier) stops being only a launch concern and becomes
-this pipeline's precondition for refreshes.
+**So the free tier fits the first load and nothing after it.** DEV was 13 MB
+before, and a first load lands it at ~346 MB against the 500 MB database cap. A
+refresh measures 465 MB before counting the reindex peak or WAL. **`PD-87` (move
+off the free tier) is therefore this pipeline's precondition for refreshes**, not
+only a launch concern — the first load is the only one that fits.
 
 ## Refreshing
 

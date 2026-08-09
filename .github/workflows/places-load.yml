@@ -61,12 +61,20 @@ on:
         type: string
         default: ''
 
-# One load at a time per database. Two concurrent runs against the same target
-# would each delete the other's rows inside their own transaction, and the second
-# to commit wins — with both jobs green.
+# One load at a time per database. Two concurrent runs would contend for the same
+# rows — the second one's `delete` blocks on the first's row locks and then
+# proceeds against whatever that one committed — and the outcome depends on an
+# interleaving nobody should have to reason about. The guard removes the question
+# rather than answering it; do not add `cancel-in-progress` on the strength of a
+# predicted failure mode, because a cancelled run mid-`\copy` is a different
+# question again.
 concurrency:
   group: places-load-${{ inputs.target }}
   cancel-in-progress: false
+
+# The job needs no GitHub API at all. Least privilege matters more here than in
+# most workflows, because of what the job DOES hold — see §Credential reach.
+permissions: {}
 
 jobs:
   load:
@@ -74,11 +82,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
+    # ---------------------------------------------------------------------
+    # §Credential reach — read this before pasting either secret
+    # ---------------------------------------------------------------------
+    # The connection string is a `postgres`-role credential. That role OWNS every
+    # table, so it bypasses RLS entirely — strictly more reach than the
+    # service-role key that CLAUDE.md keeps in `autoMode.hard_deny`, and the
+    # first database credential any workflow in this repo has held.
+    #
+    # ** A plain repo secret is readable by a workflow on ANY branch. **
+    # `workflow_dispatch` runs the workflow definition from the ref it is
+    # dispatched against, so every guard below is inside the job — i.e. after the
+    # secret is injected — and anyone who can push a branch can delete them.
+    # Naming an environment here is what moves the decision to a point the job
+    # cannot edit: scope the secrets to these environments rather than to the
+    # repository, and add a deployment branch policy (and required reviewers, if
+    # the plan offers them) on `places-prod`.
+    #
+    # ** With no protection rules configured this is a label and not a control. **
+    # The real bound is then who has push access. The narrower fix is a dedicated
+    # least-privileged loader role instead of `postgres`, which needs a migration
+    # — `REINDEX`, `VACUUM` and `ANALYZE` all want table ownership — and is filed
+    # rather than assumed here.
+    environment: places-${{ inputs.target }}
+
     env:
-      # Chosen by the input rather than indexed dynamically out of `secrets`, so
-      # the mapping is readable in the diff. Both refs are already in the client
-      # bundle as part of the Supabase URL, so neither is a secret.
-      DATABASE_URL: ${{ inputs.target == 'prod' && secrets.PLACES_PROD_DATABASE_URL || secrets.PLACES_DEV_DATABASE_URL }}
+      # Both project refs already ship in the client bundle as part of the
+      # Supabase URL, so neither is a secret. Safe as a `&&`/`||` expression
+      # because both arms are non-empty literals — unlike the connection string,
+      # which is selected in the shell below for exactly that reason.
       EXPECTED_REF: ${{ inputs.target == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
 
     steps:
@@ -86,23 +118,47 @@ jobs:
 
       # Every gate that can be checked before spending 476 MB of egress and ~15
       # minutes of extract, checked first.
+      #
+      # ** Every input reaches the shell through `env:`, never through `${{ }}`
+      # inline. ** An interpolated `${{ inputs.release }}` is substituted into the
+      # script BEFORE bash parses it, so a release of
+      # `x"; psql "$DATABASE_URL" -c 'select id, email from auth.users'; #` runs
+      # against the selected database and prints the result into the run log. As
+      # `$RELEASE` it is data. This is why the confirmation test below compares a
+      # variable rather than a substitution: a `confirm` value containing a quote
+      # could otherwise break the test's own quoting and fall through the gate.
       - name: Pre-flight
+        env:
+          TARGET: ${{ inputs.target }}
+          CONFIRM: ${{ inputs.confirm }}
+          # Both are read here and exactly one is chosen, in shell. NOT
+          # `target == 'prod' && secrets.PROD || secrets.DEV`: GitHub's `&&`/`||`
+          # return values with empty-string falsy, so an unset PROD secret makes
+          # `true && ''` falsy and the `||` arm quietly supplies the DEV string —
+          # a PROD-targeted run holding a DEV credential, with the empty-secret
+          # check below unable to fire and the ref check reporting "one of the two
+          # secrets holds the wrong string" about a DEV secret that is correct.
+          DEV_URL: ${{ secrets.PLACES_DEV_DATABASE_URL }}
+          PROD_URL: ${{ secrets.PLACES_PROD_DATABASE_URL }}
         run: |
           set -euo pipefail
 
-          if [ "${{ inputs.target }}" = "prod" ]; then
-            if [ "${{ inputs.confirm }}" != "load-prod" ]; then
+          if [ "$TARGET" = "prod" ]; then
+            secret=PLACES_PROD_DATABASE_URL
+            url=$PROD_URL
+            if [ "$CONFIRM" != "load-prod" ]; then
               echo "::error::Loading PROD needs confirm=load-prod. Two things to have settled first, neither of which this workflow can check:"
               echo "::error::  1. PD-150 — a 49-character term costs ~5.9 s of database CPU. That is 0 ms today only because the table is empty; this load is what arms it."
               echo "::error::  2. Attribution — the credit string is unsettled (README §Attribution). Loading rows is safe; rendering one is not."
               exit 1
             fi
             echo "PROD load confirmed. PD-150 and attribution are asserted by the person who typed the confirmation, not by this job."
+          else
+            secret=PLACES_DEV_DATABASE_URL
+            url=$DEV_URL
           fi
 
-          if [ -z "${DATABASE_URL:-}" ]; then
-            secret=PLACES_DEV_DATABASE_URL
-            [ "${{ inputs.target }}" = "prod" ] && secret=PLACES_PROD_DATABASE_URL
+          if [ -z "$url" ]; then
             echo "::error::$secret is not set. That secret is the entire owner action for this workflow — see the header of this file for which string to paste and why the session pooler rather than the direct connection."
             exit 1
           fi
@@ -115,16 +171,22 @@ jobs:
           #
           # Fails closed on an unreadable ref rather than guessing, so a custom
           # host has to be added here deliberately.
-          ref=$(printf '%s' "$DATABASE_URL" | grep -oE '(postgres\.|db\.)[a-z]{20}' | head -1 | sed -E 's/^(postgres\.|db\.)//' || true)
+          ref=$(printf '%s' "$url" | grep -oE '(postgres\.|db\.)[a-z]{20}' | head -1 | sed -E 's/^(postgres\.|db\.)//' || true)
           if [ -z "$ref" ]; then
-            echo "::error::Could not read a Supabase project ref out of the connection string, so there is nothing to check it against. Refusing to load rather than guessing which database this is."
+            echo "::error::Could not read a Supabase project ref out of $secret, so there is nothing to check it against. Refusing to load rather than guessing which database this is."
             exit 1
           fi
           if [ "$ref" != "$EXPECTED_REF" ]; then
-            echo "::error::target=${{ inputs.target }} expects project $EXPECTED_REF but the secret points at $ref. One of the two secrets holds the wrong string."
+            echo "::error::target=$TARGET expects project $EXPECTED_REF but $secret points at $ref."
             exit 1
           fi
-          echo "target=${{ inputs.target }} -> project $ref"
+          echo "target=$TARGET -> project $ref"
+
+          # Masked as well as scoped: `add-mask` covers the case where a later
+          # step echoes it, since only repo/environment secrets are masked
+          # automatically and this has now passed through a shell variable.
+          echo "::add-mask::$url"
+          echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
@@ -152,10 +214,12 @@ jobs:
           fi
 
       - name: Extract
+        env:
+          RELEASE: ${{ inputs.release }}
         run: |
           set -euo pipefail
           args=()
-          [ -n "${{ inputs.release }}" ] && args+=(--release "${{ inputs.release }}")
+          [ -n "$RELEASE" ] && args+=(--release "$RELEASE")
           python3 scripts/places/extract-nl.py --out nl-places.csv "${args[@]}"
           ls -lh nl-places.csv
 
@@ -163,25 +227,58 @@ jobs:
       # delete, the \copy, the ANALYZE and the detector, so a failed assertion
       # rolls the table back to exactly what it was. Read its header rather than
       # this step — the reasoning lives with the SQL.
+      #
+      # Teed to a log because the summary has to distinguish a failure BEFORE the
+      # commit (nothing landed) from one after it (the rows are live and only the
+      # vacuum or the reindex failed). `pipefail` keeps psql's exit code rather
+      # than tee's — the trap docs/HANDOFF.md names, where a pipeline's last
+      # command reports success for a failed one.
       - name: Load and verify
+        env:
+          FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
           args=(-v ON_ERROR_STOP=1)
-          [ "${{ inputs.force }}" = "true" ] && args+=(-v force=1)
-          psql "$DATABASE_URL" "${args[@]}" -f scripts/places/load.sql < nl-places.csv
+          [ "$FORCE" = "true" ] && args+=(-v force=1)
+          psql "$DATABASE_URL" "${args[@]}" -f scripts/places/load.sql < nl-places.csv 2>&1 | tee load.log
 
+      # "A failed run changed nothing" is TRUE of everything up to the commit and
+      # FALSE after it — `vacuum` and `reindex table concurrently` both run
+      # post-commit, and either can fail on a quota, a dropped connection or a
+      # lock. Stating it unconditionally would send an operator to re-run a load
+      # that already landed, where `prev` is no longer 0 so the band applies
+      # instead of the first-load floor. So the log is read rather than assumed.
       - name: Summary
         if: always()
+        env:
+          TARGET: ${{ inputs.target }}
+          RELEASE: ${{ inputs.release }}
+          FORCE: ${{ inputs.force }}
+          STATUS: ${{ job.status }}
         run: |
+          set -uo pipefail
+
+          if grep -qx 'COMMIT' load.log 2>/dev/null; then
+            landed='**The swap committed** — the rows are live. Any failure after this point is `vacuum` or `reindex`, so re-run those alone rather than the whole load; a re-run would compare against the new row count instead of the first-load floor.'
+          else
+            landed='The swap did **not** commit, so the table is exactly what it was — the load is one transaction. Nothing to clean up.'
+          fi
+
           {
-            echo "### places load — ${{ inputs.target }} (\`$EXPECTED_REF\`)"
+            echo "### places load — $TARGET (\`$EXPECTED_REF\`)"
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| release | \`${{ inputs.release || 'extractor default' }}\` |"
-            echo "| band override | \`${{ inputs.force }}\` |"
-            echo "| result | \`${{ job.status }}\` |"
+            echo "| release | \`${RELEASE:-extractor default}\` |"
+            echo "| band override | \`$FORCE\` |"
+            echo "| result | \`$STATUS\` |"
             echo
-            echo "Row counts, table size and database size are in the *Load and verify* step's output."
-            echo "A failed run leaves the table exactly as it was — the load is one transaction."
+            echo "$landed"
+            echo
+            echo "Row counts and sizes are in the *Load and verify* step's output."
+            if grep -q '_ccnew' load.log 2>/dev/null; then
+              echo
+              echo "> A concurrent reindex may have left an invalid index. Check:"
+              echo "> \`select indexrelid::regclass from pg_index where not indisvalid and indrelid = 'public.places'::regclass;\`"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
