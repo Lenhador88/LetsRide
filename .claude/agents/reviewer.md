@@ -361,9 +361,15 @@ Given that material, or a PR body that has a `## Folded in` section, or a diff t
 does more than its issue describes:
 
 - **Check each fold-in against its stated relatedness sentence.** STEP 4b requires one line
-  saying why the picked issue is *incomplete* without it. If that line is missing, or it is
-  really an argument that the change is a good idea, the fold-in is out of scope — that is the
-  finding, and it stands even when the code is correct.
+  saying how the item sits inside the same build — the code this story touches, not a different
+  subsystem. If that line is missing, or it is really an argument that the change is a good idea,
+  the fold-in is out of scope — that is the finding, and it stands even when the code is correct.
+
+  **The bar moved on 2026-08-09 and it moved one way only.** It used to be that the picked issue
+  had to be *incomplete* without the item; the owner widened it to the context of the build, so
+  an adjacent fix in a file the diff already opens is now in scope and is not a finding. What did
+  not move: a different table, a different screen, a different subsystem. Read the current STEP
+  4b rather than this summary if the two ever disagree.
 - **Check the ratings were applied, not decorated.** The bar is Recommendation ≥ 7/10 *and*
   `This session` **Y**, and four things force **N** regardless: real domain rules, a migration
   whose apply order relative to the deploy matters, anything owner-only, and a diff bigger than

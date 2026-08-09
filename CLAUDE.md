@@ -1461,6 +1461,28 @@ it does, permanently.
 > eventually* — so everything in it is order-independent by construction. Work that must wait
 > waits in `Todo AI`, and the owner queues it when its blocker reaches `Deployed to DEV`.
 
+- **Not everything you notice is a story.** Product owner, 2026-08-09: *"It seems we are creating
+  too many stories. If it seems within the context of the build, and recommended, just do it."*
+  So the first question about a finding is not which column it belongs in — it is whether the
+  build in front of you can absorb it. In the context of what you are already building, and you
+  would recommend it? **Build it.** The story was never the deliverable.
+
+  One still earns its place when a session cannot do the work (`Owner only`), when it carries real
+  domain rules and wants a proposal, or when it genuinely does not fit the open branch. Below that
+  bar, **say it in the PR body and let it go** — filing costs the owner a row to read for ever,
+  and a thought worth having twice will be had again by the session that trips over it.
+
+  **Measure the board rather than sensing it**, because "too many" is invisible one issue at a
+  time:
+
+  ```
+  list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  limit=250  fields=["status"]
+  ```
+
+  2026-08-09: **51 open against 26 that ever reached DEV or production**, 16 of the 51 filed that
+  day. A board growing several times faster than it drains is an archive, not a queue.
+  `.claude/commands/queue-pickup.md` STEP 4b is where a firing applies this.
+
 - **One issue per deliverable — a thing that can be *delivered*, not a step toward one.** The
   unit is what somebody gets when it closes: *"rides show a map"*, *"the native shell builds"*.
   Provider choice, key procurement, terms review and the build are **one** story, not four.
