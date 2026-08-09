@@ -1,0 +1,188 @@
+-- 042: `authenticated` loses the unused DELETE grant on public.profiles.
+--
+-- Linear PD-145. Filed by 038 as design.md §Follow-ups A, deliberately not
+-- bundled into that trigger change: a grant change folded into a body change
+-- makes both harder to review and to roll back.
+--
+-- ---------------------------------------------------------------------------
+-- What is wrong
+-- ---------------------------------------------------------------------------
+-- Deleting your own profile row is the OTHER way to vanish from every other
+-- rider's view — the same outcome 038 closed for `username = null`, by a
+-- different door. 038 measured both halves of that door and shut only one:
+--
+--   own_delete_rows=0     the delete affects zero rows today
+--   has_table_privilege('authenticated','public.profiles','DELETE') --> true
+--   pg_policies where tablename='profiles' and cmd='DELETE'         --> 0
+--
+-- So the refusal rests on the ABSENCE OF A POLICY, not on the absence of a
+-- grant. That is protection by omission, and omission is not a boundary: the
+-- day anyone adds a DELETE policy on `profiles` for an unrelated reason — an
+-- account-deletion UI, a moderation tool, a "leave" affordance — the grant is
+-- already sitting there and self-erasure becomes reachable again, silently and
+-- with no line of the new migration mentioning it.
+--
+-- 038's suite asserts the grant is present precisely so that pairing is visible.
+-- This file removes the grant and repoints that assertion, so the protection
+-- becomes structural: a future DELETE policy on `profiles` grants reach to
+-- nobody unless its author also writes a GRANT, which is a second deliberate act
+-- rather than an inherited default.
+--
+-- Where the grant came from: nothing in this repo issued it. It is Supabase's
+-- project default (`grant all on all tables in schema public` to anon,
+-- authenticated and service_role). 002 and 007 stripped `anon` outright; 025
+-- revoked SELECT/INSERT/UPDATE from `authenticated` and re-granted them per
+-- column, and left DELETE alone on the reasoning quoted verbatim from its §1:
+--
+--   "DELETE is untouched: `profiles` rows are deleted by the cascade from
+--    auth.users, and account deletion is a Phase 2 dependency with its own
+--    design."
+--
+-- That reasoning was right and its dependency has since landed — 029-032 and
+-- supabase/functions/delete-account/. The cascade is still how the row goes, so
+-- the grant has no remaining caller and this is the file 025 was pointing at.
+--
+-- ---------------------------------------------------------------------------
+-- The account-deletion path is unaffected — confirmed, not assumed
+-- ---------------------------------------------------------------------------
+-- Three independent reasons, each measured 2026-08-09 rather than reasoned from
+-- the documentation:
+--
+-- 1. **Nothing deletes `public.profiles` directly.** The Edge Function calls
+--    `admin.auth.admin.deleteUser(uid, false)` (index.ts:304), which removes the
+--    `auth.users` row; `profiles.id references auth.users(id) on delete cascade`
+--    (001) reaps the profile behind it. `private.transfer_owned_clubs` deletes
+--    from club_members, rides and clubs — never profiles. Checked against
+--    pg_proc on DEV: of the six routines whose body mentions `profiles`, zero
+--    contain a `delete from ... profiles`.
+--
+-- 2. **A referential action does not consult table privileges at all.** Proved
+--    on DEV in a rolled-back DO block against a scratch schema rather than
+--    recalled from the manual — a child table with the role's privileges fully
+--    revoked, whose parent row is then deleted:
+--
+--      PD145-CASCADE-PROBE child_delete_priv=f child_rows_after_parent_delete=0
+--
+--    The cascade reaped the child with no DELETE privilege in play. So even if
+--    the deletion path ran as `authenticated` — it does not — this revoke could
+--    not break it.
+--
+-- 3. **The deletion path runs as `service_role`, whose grant is untouched.**
+--    This file names `authenticated` and only `authenticated`. `service_role`
+--    and `postgres` keep DELETE on `public.profiles` by Supabase default, which
+--    is also the operator escape hatch 038 §6 depends on. Confirmed on DEV after
+--    applying: authenticated f, service_role t, postgres t, anon f.
+--
+--    ** That last fact is verified against the HOSTED project and NOT by the RLS
+--    suite, deliberately. ** harness.sql reproduces Supabase's broad default
+--    table grants for `anon` and `authenticated` only; `service_role` exists
+--    there purely so 031's explicit grants apply and holds nothing by default,
+--    with the harness's own instruction being that "the suite never assumes it".
+--    So `has_table_privilege('service_role','public.profiles','DELETE')` reads
+--    FALSE locally against a hosted database where it is TRUE, and granting it
+--    in the harness first would manufacture the fact the assertion then proves.
+--    What the suite asserts instead is the MECHANISM — that deleting an
+--    `auth.users` row still reaps the profile — which is what account deletion
+--    actually relies on and is not a proxy for it. See rls_test.sql §038.8/042.
+--
+-- Nothing in `src/` deletes a profile row either: `grep -rn "\.delete()" src/`
+-- returns ten call sites, across rides, postcards, postcard_likes,
+-- profile_countries, postcard_comments, postcard_hides, blocks and clubs. None
+-- is `profiles`.
+--
+-- ---------------------------------------------------------------------------
+-- Scope: a grant, and nothing else
+-- ---------------------------------------------------------------------------
+-- No policy is added, changed or dropped. `profiles` keeps its three policies
+-- (select, insert, update) and still has no DELETE policy — this file removes
+-- the second half of a pair, it does not substitute one half for the other. A
+-- DELETE policy would be the thing that granted reach, which is the same
+-- reasoning 026 recorded for `password_reset_grants`.
+--
+-- Not `revoke all`: SELECT, INSERT and UPDATE are 025's per-column allowlist and
+-- a table-level `revoke all` would silently take the column grants with it and
+-- black-screen every signed-in rider. This names DELETE alone.
+--
+-- No `alter default privileges` clause, deliberately: that governs tables
+-- created in the future, and this is one existing table. A future table's grants
+-- are its own migration's business.
+--
+-- ---------------------------------------------------------------------------
+-- Ordering and rollback
+-- ---------------------------------------------------------------------------
+-- Applies before or after any code deploy, in either order — nothing in `src/`
+-- exercises this grant, so there is no deploy deadlock of the kind that split
+-- 021 from 025. It is destructive in the privilege sense and inert in the data
+-- sense: it writes no rows and reads none.
+--
+-- **DEV only.** Applied to letsride-dev 2026-08-09 and NOT to letsride. That
+-- leaves DEV at 042 and PROD at 040, two ahead: 041_postcard_ride_tag is also
+-- DEV-only, pending the owner's call. Promoting either is the owner's decision;
+-- this file is independent of 041 — one adds a column to `postcards`, the other
+-- revokes a grant on `profiles` — so either order works and neither blocks the
+-- other. PROD was measured at the same starting state DEV had (authenticated
+-- DELETE true, service_role DELETE true, zero DELETE policies), so it will
+-- behave identically when it goes.
+--
+-- Rollback is one statement, and it is worth stating because the revoke looks
+-- irreversible at a glance:
+--
+--   grant delete on public.profiles to authenticated;
+
+revoke delete on public.profiles from authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+-- 1. The grant is gone for the client role and intact for the two that need it.
+--    Expected: f | t | t | f. Scoped to each grantee, per 015's recorded footer
+--    bug — `postgres` and `service_role` hold everything by Supabase default, so
+--    a table-wide count reads wrong against a correct database.
+--
+--   select has_table_privilege('authenticated','public.profiles','DELETE') as authenticated,
+--          has_table_privilege('service_role','public.profiles','DELETE')  as service_role,
+--          has_table_privilege('postgres','public.profiles','DELETE')      as postgres,
+--          has_table_privilege('anon','public.profiles','DELETE')          as anon;
+--
+-- 2. Nothing else on profiles moved. Expected 3 | 0 | t | t | t — three policies
+--    as before, still no DELETE policy, and 025's column grants untouched. The
+--    last three are what a careless `revoke all` would have taken out.
+--
+--   select (select count(*) from pg_policies
+--            where schemaname='public' and tablename='profiles')                  as policies,
+--          (select count(*) from pg_policies
+--            where schemaname='public' and tablename='profiles' and cmd='DELETE') as delete_policies,
+--          has_column_privilege('authenticated','public.profiles','username','select') as still_readable,
+--          has_column_privilege('authenticated','public.profiles','username','update') as still_writable,
+--          has_column_privilege('authenticated','public.profiles','username','insert') as still_insertable;
+--
+-- 3. The rider's own delete still affects zero rows — now for two reasons rather
+--    than one. Runs as `authenticated` with the row's own id in
+--    request.jwt.claims and raises at the end so the block rolls back; the raise
+--    IS the rollback, not a failure. This is 038's probe with its username half
+--    removed. Substitute a real onboarded id.
+--
+--   do $probe$
+--   declare
+--     uid constant text := '<an onboarded profile id>';
+--     del_rows int;
+--   begin
+--     execute 'set local role authenticated';
+--     perform set_config('request.jwt.claims', '{"sub":"<the same id>"}', true);
+--     delete from public.profiles where id = uid::uuid;
+--     get diagnostics del_rows = row_count;
+--     raise exception 'PD145-PROBE own_delete_rows=%', del_rows;
+--   end $probe$;
+--
+--    After this migration the statement no longer reaches the row-count stage at
+--    all: it is refused outright with 42501 `permission denied for table
+--    profiles`. Either outcome — 42501, or own_delete_rows=0 — is a pass; the
+--    42501 is the point of the change, because it is the one that survives
+--    someone adding a DELETE policy later.
+--
+-- 4. The advisors must still return the documented eight (CLAUDE.md §Supabase
+--    Rules). This changes no policy, adds no function and alters no function's
+--    security attributes, so a new WARN means something other than this was
+--    applied. A revoke cannot raise `rls_enabled_no_policy` on profiles, which
+--    keeps its three policies.
