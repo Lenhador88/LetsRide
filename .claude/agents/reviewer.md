@@ -361,16 +361,20 @@ Given that material, or a PR body that has a `## Folded in` section, or a diff t
 does more than its issue describes:
 
 - **Check each fold-in against its stated relatedness sentence.** STEP 4b requires one line
-  saying why the picked issue is *incomplete* without it. If that line is missing, or it is
-  really an argument that the change is a good idea, the fold-in is out of scope — that is the
-  finding, and it stands even when the code is correct.
+  saying how the item sits inside the same build — the code this story touches, not a different
+  subsystem. If that line is missing, or it is really an argument that the change is a good idea,
+  the fold-in is out of scope — that is the finding, and it stands even when the code is correct.
 - **Check the ratings were applied, not decorated.** The bar is Recommendation ≥ 7/10 *and*
   `This session` **Y**, and four things force **N** regardless: real domain rules, a migration
   whose apply order relative to the deploy matters, anything owner-only, and a diff bigger than
   one review can honestly cover. A fold-in that trips one of those was mis-rated.
-- **Check the breadth cap** — at most two fold-ins, and together smaller than the story's own
-  diff. That comparison needs the two commit ranges from the caller; a single combined diff
-  cannot tell you which lines were the story. Missing ranges is itself the finding.
+- **Check the breadth cap** — at most two fold-ins, together smaller than the story's own diff,
+  and the **discretionary** ones together under a *third* of it. Discretionary means any fold-in
+  whose relatedness sentence does not say the story was broken without it: an adjacent bug, a
+  tidy-up. That sentence is required and the caller hands it to you — or it is in the PR body's
+  `## Folded in` section — so the classification is read rather than judged. All of it needs the
+  two commit ranges from the caller; a single combined diff cannot tell you which lines were the
+  story. Missing ranges is itself the finding.
 - **Say so when a fold-in should have been a story.** The author is a scheduled session with
   nobody watching; a "this is fine, but it belongs in its own PR" is a real finding here in a
   way it would not be for a human author who can be asked.
