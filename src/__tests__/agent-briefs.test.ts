@@ -167,6 +167,16 @@ describe('agent briefs do not describe a world that has moved on', () => {
      * seven, docs/HANDOFF.md's seven, or reviewer.md's two. Only queue-pickup.md
      * defines headings — every other file here is a pure consumer.
      *
+     * **Known gap, accepted rather than overlooked:** ci.yml's carve-out is
+     * `^\.claude/(agents|commands)/`, so a PR confined to `CLAUDE.md` or
+     * `docs/HANDOFF.md` sets `app=false` and never runs this test. The case that
+     * matters is covered — *renaming a heading* touches `queue-pickup.md`, which
+     * does trigger it, and it then validates all 16 cross-file references at
+     * once. What escapes is a bad reference newly written in a docs-only PR.
+     * Widening the denylist to catch that would run the whole app job on every
+     * documentation change, which is the cost the scoping change exists to
+     * remove, so this is a deliberate trade rather than an oversight.
+     *
      * Case-sensitive on purpose: CLAUDE.md's own list uses lowercase `step 5`
      * for a DIFFERENT step, and conflating the two is the documented collision.
      */

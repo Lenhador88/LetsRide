@@ -187,16 +187,30 @@ the route guard to a client component would have removed the only thing holding 
 >
 > **Two** other changes modified this same requirement — `add-ride-chat` and
 > `add-notifications` — and both archived on 2026-08-08. (`forbid-username-removal` archived the
-> same day but is **not** a claimant: its delta is `ADDED Requirements` only.) On that date the
-> prose and the three *inherited* scenarios here were re-synced against the standing text; the
-> four deletion scenarios at the end are this change's own and were not touched.
+> same day but is **not** a claimant: its delta is `ADDED Requirements` only.)
 >
-> **`openspec archive` guards scenarios but NOT prose, and the difference is the whole hazard.**
-> It refused `add-notifications` outright rather than drop a scenario the `add-ride-chat` archive
-> had added — so a lost scenario fails loudly. A prose paragraph silently replaced by an older
-> version does not, and this block had four such reversions before the re-sync. This is also how
-> to read the banner at the top of this file: "silently discards the first one's edit" is true of
-> prose, and the scenario half is caught.
+> **What this block contains: 7 scenarios inherited from the standing text, plus 4 of this
+> change's own about deletion.** On 2026-08-08 the prose and 3 of the 7 inherited ones were
+> re-synced (the other 4 were already identical), and one of the 4 own ones was corrected off a
+> stale eight-table count. **Re-verify all 11 rather than trusting that split** — it is a
+> hand-written record of one day's edits, and the check below is cheap.
+>
+> **`openspec archive` catches a DROPPED scenario and nothing else. Not prose, and — the part
+> that is easy to get wrong — not a scenario's BODY.** Read the source rather than trusting a
+> summary: `findMissingCurrentScenarios` in
+> `node_modules/@fission-ai/openspec/dist/core/specs-apply.js` parses both sides into
+> `{ name, raw }` and compares **`name` only**; `raw` is never looked at, and the requirement
+> block is then replaced wholesale. So a scenario whose body was reverted to an older version is
+> exactly as silent as a reverted paragraph. This block is the proof: before the re-sync, two
+> same-named scenarios here carried older bodies that would have dropped two normative `AND`
+> clauses from the standing text, with a successful exit and no warning.
+>
+> An earlier draft of this banner said "the scenario half is caught", which is the sentence that
+> would have stopped the next archiver from checking bodies at all. The banner at the top of this
+> file is right without qualification: **whichever change archives second silently discards the
+> first one's edit**, unless that edit added or removed a whole scenario.
+>
+> So the pre-archive check is: diff **prose and every scenario body** against the standing text.
 >
 > **Verify the sole-claimant claim rather than trusting it** — it is a hand-copied fact and this
 > requirement's own prose argues against those:
