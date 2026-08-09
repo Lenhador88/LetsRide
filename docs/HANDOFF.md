@@ -90,10 +90,10 @@ so they are "checked by a human, not by CI" rather than unchecked.
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 7 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 775/775 across 32 files
+npm run test:unit                     # 839/839 across 35 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 908 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 958 assertions, 0 failures
 ```
 
 **Two traps met while doing that, both of which produced a confident wrong answer first:**
@@ -445,8 +445,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **908** (843 before `039`'s address search; 808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
-| Unit tests | `npm run test:unit` — **775 across 32 files on a clean tree**, measured 2026-08-08 (773 at `development`; `037`'s branch adds the two `scripts/places/` source files) after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **958**, measured 2026-08-08 against the full chain on local Postgres 16 (CI runs 17). It read 908 here and in `CLAUDE.md` until that run, against a chain nobody had changed — `040`'s assertions were never counted in. 908 before `040`'s locality centroid; 843 before `039`'s address search; 808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
+| Unit tests | `npm run test:unit` — **839 across 35 files on a clean tree**, measured 2026-08-08. Decomposition, because the arithmetic is not obvious: **833 across 34 at `origin/development`**, plus `agent-briefs.test.ts`'s 5 `it()` blocks, plus 1 — `no-service-role-key.test.ts` scans that new file too, so its `it.each` gains a case. (`037`'s two `scripts/places/` source files used to be named here as a pending delta; `037` has merged, so they are already inside the 833.) **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -694,24 +694,29 @@ object against DEV** — function, trigger, policy, column, index and grant hash
 `md5(statements[1])` on PROD will NOT equal `md5sum` of those five files. Expected, not drift, and
 the object diff is the stronger check.
 
-**`039` (places address search, PD-141) is applied to DEV and is additive in `034`'s class**, so
-it could go to PROD ahead of its code — except that `037` has not gone to PROD either, and `039`
-requires it. The pair travels together or not at all. It widens `search_places()` to match
-`street` and `locality` per token, and it **drops** `places_name_trgm_idx` and
-`places_brand_trgm_idx` in favour of one GIN index over a generated `search_text` column — the
-only non-additive thing in it, and safe only because `places` holds 0 rows on DEV and does not
-exist on PROD. That safety does not survive a data load; after one, dropping an index is a
-deliberate act again.
+**`037`–`040` are on BOTH projects. This block described them as PROD-outstanding until
+2026-08-08, and three of its claims were false by the time anyone read them** — re-measured with
+`list_migrations` against both refs, which is the command that settles it:
 
-**`038` closes a live hole that is still open on PROD.** A rider can `PATCH
-/rest/v1/profiles?id=eq.<me>` with `{"username": null}` and vanish from every other rider's
-`profiles` read — the SELECT policy's second arm requires `username IS NOT NULL`. Reproduced on DEV
-before the apply and again after it, both inside a `DO` block that raised so it rolled back:
-`before=devrider093453 after=<NULL>` became `after_update=devrider093453
-after_upsert=devrider093453`. **PROD is unchanged by this session** and the hole is open there
-until the owner answers Q3 — the recommended default is `037` then `038`, leaving only the
-deliberately-gated `036` behind. `openspec/changes/forbid-username-removal/proposal.md` §Deployment
-ordering has all three rows and the cost of each.
+```
+DEV  (fpmrimzxadewsaiwpsel): 40 rows, ending 20260808204829 040_locality_centroid
+PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 040_locality_centroid
+```
+
+So: `places` **exists on PROD** (`037`), `039`'s index swap has already happened there, and
+**`038`'s username hole is CLOSED on PROD** — it is not "open until the owner answers Q3", and
+that question is moot. The `034`-class ordering argument those paragraphs made was sound; only
+their premise about what had shipped went stale, which is the failure mode this whole file is
+supposed to guard against and the reason the sentences are gone rather than annotated.
+
+What survives from them is worth keeping. `039` **drops** `places_name_trgm_idx` and
+`places_brand_trgm_idx` for one GIN index over a generated `search_text` column — the only
+non-additive thing in the pair, and it was safe only because `places` holds 0 rows on **both**
+projects. **That safety does not survive the data load**, so once `PD-140`'s extract is loaded,
+dropping a `places` index is a deliberate act again rather than a free one. And the hole `038`
+closed is worth knowing as history: a rider could `PATCH /rest/v1/profiles?id=eq.<me>` with
+`{"username": null}` and vanish from every other rider's `profiles` read, because the SELECT
+policy's second arm requires `username IS NOT NULL`.
 
 DEV's `038` was applied byte-identical to the file: `md5(statements[1])` is
 `2d4ef85b74923ca18a702f88d2657997`, which equals `md5sum` of
@@ -767,13 +772,19 @@ action — a 99 MB `\copy` needing a direct Postgres connection no session holds
 (`scripts/places/README.md` §Loading). An empty index is indistinguishable from a working search
 that finds nothing.
 
-**Do not apply `036` to PROD to "clear the drift".** The standing *unapplied migrations are drift*
-rule is what makes that the obvious move, and it is wrong here — read `036`'s own header first. It
-hangs six fan-out triggers off five **already-shipped** write paths (`postcard_likes`,
-`postcard_comments`, `ride_members`, `rides`, `club_members`), so the instant it applies, every
-like, comment, RSVP, ride creation and club join runs new code inside the rider's own transaction,
-and a trigger that raises takes that write down with it. All five paths were exercised by hand on
-DEV and all five still succeed; PROD goes after the code deploys.
+**`036` is applied to PROD — this paragraph told you not to apply it until 2026-08-08.** It read
+*"Do not apply `036` to PROD to 'clear the drift'"*, which was right while the gate was open and
+became a stale instruction the moment it was discharged. It went to PROD **before** the promotion,
+deliberately reversing its own deploy-then-apply order, because the promotion ships the
+notifications UI and `/notifications` would otherwise have errored for real riders.
+
+The gate itself is worth carrying, because it is the shape to re-apply to the next migration like
+it: `036` hangs six fan-out triggers off five **already-shipped** write paths (`postcard_likes`,
+`postcard_comments`, `ride_members`, `rides`, `club_members`), so from the moment it applies,
+every like, comment, RSVP, ride creation and club join runs new code inside the rider's own
+transaction — and **a trigger that raises takes that rider's write down with it**. The
+precondition was to exercise all five by hand on DEV first, in a rolled-back transaction. Done:
+each fired its trigger, produced exactly one notification, none raised.
 
 PROD's `034` was applied byte-identical to the file — `md5(statements[1])` equals `md5sum` of
 `supabase/migrations/034_ride_messages.sql`, `4a3e605891b8ab49db1a5d614bcb9a84` — and every

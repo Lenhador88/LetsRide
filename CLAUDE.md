@@ -674,7 +674,10 @@ deleted `proxy.ts` as what gates every app route. (A database comment is the `da
 first read via `list_tables`, so it is the one piece of documentation no edit to this file can
 reach.) The `SKIP_MIGRATIONS` machinery that modelled the once-held-back pair is **gone**,
 along with the three `rls_test_pending_*.sql` files; the full chain applies on every run.
-Suite **908** assertions — re-derive rather than trust it:
+Suite **958** assertions — re-derive rather than trust it, and note it read **908** here until
+2026-08-08, when a run measured 958 against a chain nobody had changed since. That gap is the
+section's own point landing on itself: `040` added assertions and the number beside the command
+was not the thing anyone re-ran.
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. (It read **641** here while the true
 figure was **647**, and stayed wrong through several sessions because the command beside it was
 never run — then `036` added 100, `037` added 61 and `038` moved it by 35. A number with its own
@@ -1074,7 +1077,7 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | `rider-ux` | Offline, geolocation, push UX, static map + deeplink, glove targets |
 | `native` | The shell — Capacitor, plugins, permission strings, deep links, signing, store upload, store guidelines |
 | `test` | Vitest/Playwright infra and tests, **and running the app against DEV** — the walk, its fixtures, anything needing a real browser |
-| `reviewer` | Pre-merge review + mandatory RLS/data-exposure audit + documentation-claims audit |
+| `reviewer` | Pre-merge review. Which passes run is scoped to what the diff touches (2026-08-08) — RLS/data-exposure on `src/` or `supabase/`, documentation-claims on everything including docs-only diffs |
 
 **Standard order for a feature:**
 
@@ -1090,6 +1093,42 @@ decision left unstated "does not fail loudly, it silently becomes whatever the m
 assumed." By the time that reaches the second `reviewer` pass it has become a migration, a
 policy and an assertion that all agree with each other. Same lesson as *run `reviewer` before
 merging, not after*, one stage earlier.
+
+**Twice, not three times — and the second pass is one pass on the *final* diff.** A queue firing
+used to review after the build and again after the fold-in triage; that collapsed on 2026-08-08
+into a single pass at `.claude/commands/queue-pickup.md` STEP 4c, because the earlier one was
+superseded by construction the moment STEP 4b committed anything. **The proposal pass was not
+touched** — it gates a different artifact, and it is the one with no automated coverage at all.
+
+**Each pass is also scoped to what the diff touches now**, mirroring `ci.yml`'s denylist: the
+data-exposure and client-bundle passes cannot fire on a diff confined to `docs/`, `design/`,
+`openspec/`, `.claude/` or a root `*.md`. **Half of this repo's commits are exactly that** —
+re-derive rather than trust it, and note the two predicates are different and give different
+answers, which is how the first draft of this line quoted 63% for the narrower one:
+
+```bash
+# This sentence's predicate — commits confined ENTIRELY to the denylist: 47/94 = 50%
+git rev-list --no-merges -n 94 origin/development | while read c; do
+  git show --name-only --format= "$c" | grep -qvE '^(docs/|design/|openspec/|\.claude/|[^/]*\.md$)' || echo "$c"
+done | wc -l
+
+# reviewer.md's DIFFERENT predicate — commits touching no src/ and no supabase/:
+# 53/94 = 56%, but 19/30 = 63% over the last 30. Quote the window or the number is noise.
+git rev-list --no-merges -n 94 origin/development | while read c; do
+  git show --name-only --format= "$c" | grep -qE '^(src/|supabase/)' || echo "$c"
+done | wc -l
+```
+
+The documentation-claims pass does *not* narrow — a docs-only diff is entirely claims — and
+neither does the scope pass on anything from a queue pickup. **Four things override the scoping
+entirely** and `.claude/agents/reviewer.md` §classify is the list: a diff that **removes** a
+guard, the two `.claude/` cases below, and contrast on any new colour pairing.
+
+`.claude/agents/*.md` and `.claude/commands/*.md` are reviewed as **logic** rather than prose —
+those two are carved out of `ci.yml`'s denylist so `src/__tests__/agent-briefs.test.ts` runs on
+them. **The rest of `.claude/` still runs zero jobs**, and `settings.json` and `hooks/*.sh` are
+the permission and execution surface, so a diff touching them is a **security** review with no
+other gate behind it.
 
 Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
 Requiring a proposal for everything is how process gets ignored, and skipping `openspec` skips
@@ -1915,8 +1954,8 @@ What it does, in order — and the order is the design:
    pick, and what keeps the order right is still that nothing blocked is in the column.
 4. **Move it to `Development (AI)` before starting**, because that status is the lock the next
    firing reads. Claiming late is how two sessions start the same story.
-5. Build under this file's standing instructions, in subagents per STEP 0.6, with the
-   non-negotiable `reviewer` pass on the diff.
+5. Build under this file's standing instructions, in subagents per STEP 0.6. **The
+   non-negotiable `reviewer` pass on the code runs at 5c, not here** — once, on the final diff.
 5b. **Triage what the build turned up — *before* the PR opens, which is what makes "the same PR"
    mean anything.** Changed 2026-08-07 at the product owner's request; the old rule filed every
    follow-up to `Backlog`, so the test a new function needed was future work rather than done.
@@ -1925,7 +1964,7 @@ What it does, in order — and the order is the design:
    never whether it is worth doing — **everything gets rated either way**, because the filing
    columns are chosen by rating and an unrated item has nowhere to go. Then rate it on
    §Working Principles' four lines and let the block decide — travels *and* **Recommendation
-   ≥ 7/10 *and* `This session` Y** → build it now, same branch, same PR, re-reviewed before the
+   ≥ 7/10 *and* `This session` Y** → build it now, same branch, same PR, reviewed before the
    merge. Anything else → a story: `Todo AI` if a session could build it, `Todo Human` +
    `Owner only` if not, `Backlog AI` if you rated it below 4/10. **Never `Queued (AI)`.**
    **Search the board before filing** — where an issue already covers it, update that one with a
@@ -1940,9 +1979,13 @@ What it does, in order — and the order is the design:
    defines it above** — *on this branch, before this PR merges* — because an unattended run has
    nobody watching to say "not that". `.claude/commands/queue-pickup.md` STEP 4b is the procedure, including the
    breadth cap (at most two, and never larger than the story's own diff).
-5c. **Re-run `reviewer` if anything was folded in after step 5's pass** — code added after the
-   review has not been reviewed, and that review is the whole safety argument for building
-   fold-ins unattended. *Then* PR to `development`, drive green, merge, move to
+5c. **Run `reviewer` on the final diff — always, once, and here.** Changed 2026-08-08: the build
+   step used to review too, and this step re-reviewed only *if* something was folded in. Two
+   passes where the earlier one is superseded by construction — a fold-in commits after it — is
+   the same diff read twice at full cost, and the conditional made a merge on a review older
+   than the last commit reachable. One pass at the end makes that impossible instead of
+   forbidden. **The proposal pass in §The Agent Squad is a separate gate and is untouched.**
+   *Then* PR to `development`, drive green, merge, move to
    **`Deployed to DEV`** — never to `Done (in production)`, which is the owner's and means
    promoted to `main`. Uncertain about anything → `Needs help` with a comment saying what it
    needs. **File every rated follow-up before stopping, on every exit path** — a follow-up rated
@@ -2240,6 +2283,11 @@ chain to a scratch database and asserts what each role can reach.
     root `*.md`. That is a **denylist**, like the route guard's public paths — a new
     top-level directory runs CI by default, so forgetting to list something costs
     one green run rather than a missed break.
+    **`.claude/agents/` and `.claude/commands/` are carved back out of it** (2026-08-08):
+    they are executable process rather than prose — a brief is the only thing a fresh
+    subagent reads — and three of ten briefs were materially wrong at once with nothing
+    to catch it. `src/__tests__/agent-briefs.test.ts` is the tripwire, and it only helps
+    if a `.claude/` change runs the job. The rest of `.claude/` still runs zero jobs.
   - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
     changes — the migration chain and the assertions are its only inputs.
   - A push to either long-lived branch always runs both. Each is a deploy gate.

@@ -30,9 +30,20 @@ Both suites exist and both gate PRs, path-scoped — see `CLAUDE.md` §Branching
 
 ## The one genuine gap
 
-**Playwright is not installed** — no dependency, no config, no `test:e2e` script. That is
-deliberate: `CLAUDE.md` defers E2E *"until a flow is stable enough to be worth maintaining."*
-Confirm it is still absent before standing it up:
+**`playwright-core` IS installed; the *test runner* is not.** This brief said "Playwright is not
+installed — no dependency" until 2026-08-08, while `playwright-core` sat in `devDependencies` and
+`npm run walk` drove a browser with it. Say it precisely, because the two halves have opposite
+answers:
+
+- **`playwright-core` — present**, a devDependency, and it is what `scripts/walk.mjs` uses. It
+  drives a browser; it has no runner, no fixtures and no assertions.
+- **`@playwright/test` — absent.** No config, no `test:e2e` script, no spec files. That is the
+  deliberate gap: `CLAUDE.md` defers E2E *"until a flow is stable enough to be worth
+  maintaining."*
+
+So "add a Playwright test" here means adding the **runner**, not the dependency — and the walk
+already covers "does every screen render", which is the half an E2E suite would otherwise
+duplicate first. Confirm which of the two you are missing before standing anything up:
 
 ```bash
 node -e "const p=require('./package.json');const d={...p.dependencies,...p.devDependencies};console.log(Object.keys(d).filter(x=>x.includes('playwright')).join(', ')||'none')"

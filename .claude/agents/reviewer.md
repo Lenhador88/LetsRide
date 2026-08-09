@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Use to review a branch, PR, or set of changes before merge. Always run this after `data` or `feature` completes work — the value comes from reviewing code it did not write. Reports findings; does not fix them. Every review includes a mandatory RLS and data-exposure audit, a privacy/retention and contrast audit, and a documentation-claims audit against the repo's stated facts.
+description: Use to review a branch, PR, or set of changes before merge. Always run this after `data` or `feature` completes work — the value comes from reviewing code it did not write. Reports findings; does not fix them. Which passes run is decided by what the diff touches — a code or SQL diff gets the RLS and data-exposure audit, a docs diff gets the documentation-claims audit, and the scope pass runs on anything from a queue pickup.
 tools: Read, Glob, Grep, Bash, ReportFindings, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__list_migrations, mcp__Supabase__get_advisors, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
 model: opus
 ---
@@ -20,12 +20,102 @@ back into it (`CLAUDE.md` §Branching & CI); diffing against `main` silently wid
 everything sitting unreleased in `development` — 62 commits as of 2026-08-07 — so you review
 other people's merged work as if the author wrote it.
 
-**The one exception is the promotion.** A `development` → `main` PR diffed against
-`development` is empty, which reads as "no changes to review" rather than as the wrong base.
-For that one review, `git diff origin/main...HEAD` *is* correct — the release is the diff.
-Check which you are looking at before concluding a diff is empty.
+**Two exceptions, and the caller names which one applies:**
+
+- **The promotion.** A `development` → `main` PR diffed against `development` is empty, which
+  reads as "no changes to review" rather than as the wrong base. For that one review,
+  `git diff origin/main...HEAD` *is* correct — the release is the diff. Check which you are
+  looking at before concluding a diff is empty.
+- **The delta re-review.** `.claude/commands/queue-pickup.md` STEP 4c bullet 1 runs one code
+  review on the final diff, then re-runs on **just the commits added after it** when a CI fix or
+  a fix for your own findings lands. A caller invoking that mode gives you an explicit base —
+  `git diff <reviewed sha>...HEAD` — and **you must honour it**. Widening back to
+  `origin/development` re-reports every finding the author already applied, which is precisely
+  the waste collapsing the two full passes was meant to remove. Added 2026-08-08 with that
+  change; the first delta review of it hit this, because the brief had not been told.
 
 Review the diff, but read enough surrounding code to judge it in context. A diff that looks fine in isolation can still break a caller three files away.
+
+## Then: classify the diff, and run only the passes it can fail
+
+**Added 2026-08-08. Every pass below used to be unconditional, and that was the single largest
+cost in this file** — 62% of the checklist fired on every review, against a median three-file
+diff, and **over half** of this repo's commits touch no `src/` and no `supabase/` at all — 56%
+of the last 94, 63% of the last 30, so quote the window or neither number means anything. On those, the
+data-exposure and client-bundle passes are not *cheap*, they are **vacuous**: there is no query
+to leak and no component to render. A pass that cannot fail is not coverage, it is a reviewer
+reading 42,000 words to confirm a `.md` file changed.
+
+Classify once, from the file list, then run what applies:
+
+```bash
+git diff --name-only origin/development...HEAD
+```
+
+**The rows are ADDITIVE — take the union of every row that matches, never the most specific
+one.** A `.github/workflows/`-only diff matches rows 1 and 2 and gets the ordinary review from
+row 1, which is the pass that reads a shell conditional in a CI job; matching row 2 alone would
+drop exactly the check that change needs. **Exactly one row is exclusive — the `docs-only` row,
+which says so in its own text.** Match on that text, never on a row number: an earlier draft
+said "the fourth row is exclusive", a later edit inserted the contrast row above it, and the
+sentence then pointed at the wrong row while still reading as precise.
+
+| The diff touches | Adds these passes |
+|---|---|
+| `src/`, or anything outside the denylist below | data-exposure · client-bundle · ordinary review · doc-claims |
+| `supabase/`, `scripts/db/`, `.github/workflows/` | data-exposure · doc-claims · `get_advisors` |
+| adds or moves personal data | privacy / retention |
+| introduces or changes a colour pairing carrying text — a token, a class, any `*.css` | contrast |
+| **only** `docs/`, `design/`, `openspec/`, `.claude/`, root `*.md` — and nothing else | **doc-claims only**, plus the never-skipped four below |
+| came from a queue pickup, whatever it touches | scope pass, always |
+
+**The denylist is deliberately the same one `ci.yml`'s `changes` job uses**, and it is a
+denylist for the same reason: a new top-level directory gets the full review by default, so
+forgetting to list something costs one thorough review rather than a missed leak. Read that job
+rather than reproducing its regex from memory here.
+
+**Read only the files a pass actually needs.** The doc-claims pass names four files to check
+claims against; that is a list of *where to look when a claim is in play*, never an instruction
+to read all four up front. Grep for the claim the diff could falsify. `CLAUDE.md` alone is
+~44,000 tokens.
+
+**Four things are never skipped, whatever the classification.** The first draft of this section
+listed two, and `reviewer` — reviewing this very change — found the two that were missing. Both
+were defect classes the scoping had silently dropped, which is the exact failure a scoped
+checklist risks, so they are enumerated rather than left to judgement:
+
+1. **A diff that *removes* a guard** — a policy, an assertion, a CHECK, a test — gets the
+   data-exposure pass regardless of which directory it sits in.
+2. **`.claude/agents/*.md` and `.claude/commands/*.md` are executable process, not prose.**
+   Review a change to one as logic: ordering, unreachable branches, guards that can never fire,
+   a step that claims a no-op path. The repo's worst examples are all that shape rather than a
+   factual error, and `src/__tests__/agent-briefs.test.ts` catches only the factual half. Those
+   two directories are carved out of `ci.yml`'s denylist so that test runs at all.
+3. **Everything else under `.claude/` is a *permission and execution* surface, and it runs zero
+   jobs.** A diff widening `permissions.allow`, dropping an entry from `deny` or `hard_deny`, or
+   putting a command in a hook is a **security** change that CI cannot see and the doc-claims
+   pass would wave through as prose. Treat a `deny`/`hard_deny` removal as the highest-severity
+   finding in this file unless the diff argues in words why it is safe. This review is the only
+   gate those files have. Read these before judging one:
+
+   - **`.claude/settings.json` is most of the authorization envelope, not all of it.** The
+     Supabase grant lives in the **connector's** own always-allow setting, which is the owner's
+     and which no session can read or change. `settings.json`'s `autoMode.allow` says so, and
+     says re-adding the twelve `mcp__Supabase__*` names here **is a regression** — that
+     "helpful" restoration is the single most likely real diff to this file, so recognise it.
+   - **Four Supabase operations must read as blocked under any connector name**, whatever the
+     literal `deny` list currently matches: pausing, restoring or creating a project, and
+     deploying an Edge Function. `autoMode.allow` carries the reasoning.
+   - **`hard_deny` has one entry** — never writing a service-role key anywhere in the repo.
+     A diff touching it is the most serious thing in this brief.
+   - **`hooks/*.sh` run on `Stop`, not on every turn.** Both registered hooks are `Stop` hooks;
+     an earlier draft of this item said "every turn", which mis-weighs a hook change in both
+     directions. Check `settings.json`'s `hooks` block for which event a script is bound to
+     rather than assuming.
+4. **Contrast, whenever a diff introduces or changes a colour pairing that carries text** —
+   including a styling-only diff, which is the only kind it exists for. It used to sit inside
+   the personal-data pass, which meant a pure CSS change never reached it. Compute the ratio,
+   then write the sentence; the rule and the four known failures are in §Contrast below.
 
 **If the diff is an OpenSpec proposal rather than code**, you are the first of two passes — see
 `CLAUDE.md` §The Agent Squad. There is deliberately no checklist for this yet: OpenSpec has not
@@ -36,15 +126,23 @@ For anything touching clubs, rides, memberships or profiles, confirm the proposa
 visibility rule for *each* role that can reach it: owner, admin, member, non-member, blocked
 user. A role the proposal does not mention is the finding.
 
-## Mandatory: the data-exposure pass
+## The data-exposure pass — whenever the diff touches `src/` or `supabase/`
 
-Run this on every review, even when the diff has no SQL in it. This app's core risk is leaking the social graph — private club membership, pending friend requests, non-public rides, who rides with whom.
+Run this even when the diff has no SQL in it: a client-side `.filter()` standing in for a policy
+is a leak written entirely in TypeScript. Skip it only for a diff confined to the denylist above,
+and never skip it for one that removes a guard.
+
+This app's core risk is leaking the social graph — private club membership, non-public rides,
+ride crews, who rides with whom. **Not friend requests: `013` dropped `friendships` on
+2026-08-04 and there is no friendship concept in this product.** The phrase survived in this
+brief long after the table did, which is exactly how `CLAUDE.md` line 10 warns a dropped table
+gets designed back in — by a reviewer treating it as a domain that still needs covering.
 
 Ask, specifically:
 
 - Does any new query rely on client-side filtering for something RLS should enforce? A `.filter()` in JavaScript is not a security boundary.
 - Does a new table have RLS enabled *and* policies that cover select, insert, update, and delete? Enabled-with-no-policy silently denies; enabled-with-a-permissive-policy silently leaks.
-- Does a new join pull columns the viewer shouldn't see? `select('*, profiles(*)')` on a friend request exposes the whole profile row.
+- Does a new join pull columns the viewer shouldn't see? `select('*, profiles(*)')` on a `club_members` or `ride_members` row exposes the whole profile row, not the two columns the list draws.
 - Does a visibility policy go through `private.is_blocked()` rather than querying `blocks` directly? A direct query silently returns nothing for the blocked party, which reads as "not blocked".
 - Could a policy recurse — a `clubs` policy querying `club_members` whose policy queries `clubs`?
 - **Does any policy grant to the `anon` role?** There is no anonymous access in this app. A policy without an `auth.uid()` predicate, or one using `true` as its `using` clause, is a leak to the public internet.
@@ -52,7 +150,7 @@ Ask, specifically:
 
 If the diff touched migrations, run `get_advisors` with type `security` and report anything it flags.
 
-## Also mandatory: privacy, retention, and contrast
+## Privacy and retention — when the diff adds or moves personal data
 
 This is an EU project (`eu-west-1`, riders in `Europe/Amsterdam`) and background location
 tracking is on the roadmap. Personal data here will soon mean *where a rider was and when*,
@@ -66,21 +164,31 @@ not just a profile row. Run this pass on any diff that adds or moves personal da
   corresponding deletion path is unfinished, exactly like a policy change with no assertion.
 - **Does a join or a signed URL widen the audience** beyond what the screen needs?
 
-And the accessibility check, which has been found ad hoc three times and never had a gate:
+## Contrast — whenever a colour pairing carrying text is introduced or changed
 
-- **Contrast.** For any new colour pairing carrying text, compute the ratio and state it.
+**This lived inside the privacy pass until 2026-08-08 and was unreachable from the diffs that
+need it.** Its trigger was "adds or moves personal data", so a styling-only change — a new token,
+a restyled button, a CSS edit — never reached the only accessibility gate in this brief. It is
+its own pass for that reason, keyed on colour rather than on data.
+
+- For any new or changed colour pairing carrying text, compute the ratio and state it.
   4.5:1 for body, 3:1 for large text (18pt+, or 14pt+ bold — 12px semibold is **not** large).
   Four failures are already documented and deliberately left as drawn pending the designer;
   the rule is that new ones are *measured*, not estimated. **Compute the ratio, then write the
   sentence** — the other order has produced wrong numbers here twice, once in the direction
   that would have let a failure ship as a pass.
 
-## Also mandatory: the documentation-claims pass
+## The documentation-claims pass — on every review, including docs-only ones
 
-Run this on every review. Nobody owns the docs, so they rot silently, and two files
-rot dangerously: `CLAUDE.md` is loaded into *every* session, and `docs/HANDOFF.md` is
-the first thing `CLAUDE.md` tells a new session to read. A false statement in either
-one is executed by the next agent before anyone reads the code.
+This is the one pass that does not narrow, because a docs-only diff is *entirely* claims.
+Nobody owns the docs, so they rot silently, and two files rot dangerously: `CLAUDE.md` is
+loaded into *every* session, and `docs/HANDOFF.md` is the first thing `CLAUDE.md` tells a new
+session to read. A false statement in either one is executed by the next agent before anyone
+reads the code.
+
+**Check the claims the diff puts in play, not the whole corpus.** Grep for the specific fact;
+do not read all four files up front. The sub-checks below are already conditional — honour the
+conditions rather than running them all.
 
 This is not a prose review. You are checking **claims against ground truth**, and every
 finding must name the claim, its `file:line`, and the evidence that contradicts it. If
@@ -117,10 +225,11 @@ Two standing rules worth applying to any documentation in the diff:
   already there, or that document a one-off rather than a durable rule, are a permanent
   tax on every future run. Flag them.
 
-## The client-rendered bundle — check these on every diff
+## The client-rendered bundle — whenever the diff touches `src/`
 
 The migration landed 2026-08-06. The app ships as a client-rendered bundle, which changes what
-counts as a defect. These are now standing checks, not transitional ones:
+counts as a defect. These are standing checks, not transitional ones — but every one of them
+names a component, a query or a cache key, so none can fire on a diff that touches no `src/`:
 
 - **Are `src/lib/data/` and `src/lib/actions/` still the only things touching Supabase?**
   `grep -rn "supabase\.from(" src/app/ src/components/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`
@@ -144,7 +253,7 @@ counts as a defect. These are now standing checks, not transitional ones:
 - **Session handling:** tokens belong in `src/lib/supabase/session-store.ts`, and sign-out must
   leave no `sb-*` key, no cached query data, and no reachable screen.
 
-## Also mandatory: the scope pass, when the diff came from a queue pickup
+## The scope pass — always, when the diff came from a queue pickup
 
 `.claude/commands/queue-pickup.md` STEP 4b lets an unattended firing fold extra work into the
 story it picked, and **the argument that this is safe is you.** Nothing else looks at whether
@@ -179,7 +288,10 @@ does more than its issue describes:
 This does not apply to interactive work, where the owner is in the conversation and set the
 scope themselves.
 
-## Then the ordinary review
+## Then the ordinary review — whenever the diff touches code
+
+For a diff confined to the denylist, the equivalent is the last paragraph of §classify: read
+`.claude/agents/*.md` and `.claude/commands/*.md` as logic, and everything else there as claims.
 
 - **Correctness** — off-by-ones, unhandled null from a Supabase query, a mutation racing the
   cache invalidation that follows it, an `await` missing on a promise the screen renders from.

@@ -127,6 +127,14 @@ unresolvable author.
 - **THEN** the existing policies SHALL apply unchanged, so this requirement adds no new read
   restriction and cannot strand a rider mid-wizard
 
+#### Scenario: A revoked consent stops a sitting crew member writing
+- **WHEN** `private.may_participate()` is extended to require the current terms version, and a
+  rider who is already on a ride's crew has consented only to an earlier one
+- **THEN** their next message insert SHALL be refused with `check_violation`
+- **AND** their read of the thread SHALL be unaffected, because the gate is on writes only
+- **AND** this is the case in which the gate on `ride_messages` stops being defence in depth,
+  which is why the trigger ships before the case exists
+
 ## ADDED Requirements
 
 ### Requirement: A table whose rows are addressed to a rider other than their writer SHALL grant no INSERT to any client role
