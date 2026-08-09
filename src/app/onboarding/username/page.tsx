@@ -69,6 +69,15 @@ export default function OnboardingUsernamePage() {
   const tooShort = normaliseUsername(username).length < USERNAME_MIN_LENGTH
   const verdict = usernameVerdict(username, checked, state.refused)
 
+  // Whether the field is, right now, showing the refusal the last submit
+  // produced — which is narrower than "the last submit was refused" and has to
+  // be, or suppressing the duplicate below leaves the rider with no message at
+  // all. The field speaks only about what is currently in it, so a rider who
+  // edits between pressing Next and the response landing (`roadking` ->
+  // `roadkings`, or down below the length floor) has no verdict to read and
+  // would have had the button's message hidden as well.
+  const fieldShowsRefusal = !tooShort && verdict?.available === false && verdict.value === state.taken
+
   useEffect(() => {
     if (tooShort) return
 
@@ -94,12 +103,12 @@ export default function OnboardingUsernamePage() {
           <div className="flex flex-col gap-6">
             <Pagination total={2} current={0} />
             <div className="flex flex-col gap-2">
-              {/* The taken case is rendered at the field instead, where it
-                  replaces the "available" the live check is still showing.
+              {/* Suppressed only when the field is already carrying it, where
+                  it replaces the "available" the live check is still showing.
                   Repeating it here would say the same sentence twice, in two
-                  places, one of which is the one the rider has just been given
-                  a reason to distrust. */}
-              <FormError message={state.taken ? null : state.error} />
+                  places, one of which the rider has just been given a reason to
+                  distrust. */}
+              <FormError message={fieldShowsRefusal ? null : state.error} />
               <Button type="submit" size="lg" loading={pending}>
                 Next
               </Button>
