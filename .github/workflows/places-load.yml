@@ -1,0 +1,187 @@
+name: Load places index
+
+# Loads public.places from Overture Maps — the half of PD-140 that never shipped.
+#
+# **Why this is a workflow and not a documented command.** scripts/places/README.md
+# §Loading gives a `psql \copy` of a 99 MB CSV, and no agent session can run it:
+# the build container holds no database credentials and `\copy` needs a direct
+# Postgres connection. A GitHub runner has Python, egress to Supabase and psql, so
+# it can do the whole job unattended. The one thing it does not have is a
+# connection string — see §The owner action below.
+#
+# Deliberately `workflow_dispatch` only, with no `schedule:`. Overture releases
+# monthly and the index goes stale on its own, but a scheduled run would need to
+# discover the latest release itself (the extractor pins one), and an unattended
+# PROD load is wrong while PD-150 is open and the attribution credit is unsettled.
+# Add the schedule when both are closed; the detector that makes a schedule safe
+# is already here.
+#
+# ---------------------------------------------------------------------------
+# §The owner action — one secret per database, pasted once
+# ---------------------------------------------------------------------------
+# Settings -> Secrets and variables -> Actions:
+#
+#   PLACES_DEV_DATABASE_URL   -> Letsride-dev (fpmrimzxadewsaiwpsel)
+#   PLACES_PROD_DATABASE_URL  -> letsride     (zwprydcyryvudhurbnye)
+#
+# Use the **Session pooler** string from Supabase -> Project Settings -> Database,
+# with `?sslmode=require`:
+#
+#   postgresql://postgres.<ref>:<password>@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require
+#
+# NOT the direct `db.<ref>.supabase.co` string: Supabase serves that over IPv6
+# unless the IPv4 add-on is bought, and GitHub-hosted runners have no IPv6. That
+# reasoning is from the platforms' own documentation rather than measured here, so
+# if a paste cannot connect it is the first thing to change. Transaction mode
+# (port 6543) is the other thing to avoid — session mode gives the load its own
+# connection for the whole `\copy`.
+#
+# The load must run as the table owner. 037 §4b revokes every write from
+# `authenticated` and grants no INSERT to anyone, so `postgres` writing this table
+# while nothing reachable through PostgREST can is the design, not a workaround.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which database to load
+        type: choice
+        options: [dev, prod]
+        default: dev
+      release:
+        description: Overture release (blank = the extractor's pinned default)
+        type: string
+        default: ''
+      force:
+        description: Accept a row count outside the detector's band (the landmark probes still apply)
+        type: boolean
+        default: false
+      confirm:
+        description: 'target=prod ONLY: type load-prod. PD-150 must have landed first.'
+        type: string
+        default: ''
+
+# One load at a time per database. Two concurrent runs against the same target
+# would each delete the other's rows inside their own transaction, and the second
+# to commit wins — with both jobs green.
+concurrency:
+  group: places-load-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  load:
+    name: Extract and load (${{ inputs.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      # Chosen by the input rather than indexed dynamically out of `secrets`, so
+      # the mapping is readable in the diff. Both refs are already in the client
+      # bundle as part of the Supabase URL, so neither is a secret.
+      DATABASE_URL: ${{ inputs.target == 'prod' && secrets.PLACES_PROD_DATABASE_URL || secrets.PLACES_DEV_DATABASE_URL }}
+      EXPECTED_REF: ${{ inputs.target == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every gate that can be checked before spending 476 MB of egress and ~15
+      # minutes of extract, checked first.
+      - name: Pre-flight
+        run: |
+          set -euo pipefail
+
+          if [ "${{ inputs.target }}" = "prod" ]; then
+            if [ "${{ inputs.confirm }}" != "load-prod" ]; then
+              echo "::error::Loading PROD needs confirm=load-prod. Two things to have settled first, neither of which this workflow can check:"
+              echo "::error::  1. PD-150 — a 49-character term costs ~5.9 s of database CPU. That is 0 ms today only because the table is empty; this load is what arms it."
+              echo "::error::  2. Attribution — the credit string is unsettled (README §Attribution). Loading rows is safe; rendering one is not."
+              exit 1
+            fi
+            echo "PROD load confirmed. PD-150 and attribution are asserted by the person who typed the confirmation, not by this job."
+          fi
+
+          if [ -z "${DATABASE_URL:-}" ]; then
+            secret=PLACES_DEV_DATABASE_URL
+            [ "${{ inputs.target }}" = "prod" ] && secret=PLACES_PROD_DATABASE_URL
+            echo "::error::$secret is not set. That secret is the entire owner action for this workflow — see the header of this file for which string to paste and why the session pooler rather than the direct connection."
+            exit 1
+          fi
+
+          # A check on the string this job will actually connect with — not on a
+          # sibling variable that merely describes the intent. The walk's fixture
+          # guard learned this the expensive way: RELAY_UPSTREAM configured a
+          # different process, so validating it proved nothing about what the run
+          # was pointed at.
+          #
+          # Fails closed on an unreadable ref rather than guessing, so a custom
+          # host has to be added here deliberately.
+          ref=$(printf '%s' "$DATABASE_URL" | grep -oE '(postgres\.|db\.)[a-z]{20}' | head -1 | sed -E 's/^(postgres\.|db\.)//' || true)
+          if [ -z "$ref" ]; then
+            echo "::error::Could not read a Supabase project ref out of the connection string, so there is nothing to check it against. Refusing to load rather than guessing which database this is."
+            exit 1
+          fi
+          if [ "$ref" != "$EXPECTED_REF" ]; then
+            echo "::error::target=${{ inputs.target }} expects project $EXPECTED_REF but the secret points at $ref. One of the two secrets holds the wrong string."
+            exit 1
+          fi
+          echo "target=${{ inputs.target }} -> project $ref"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install extractor dependencies
+        run: python3 -m pip install "fsspec[http]" aiohttp pyarrow
+
+      - name: Ensure psql is available
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+
+          # `\copy ... with (format csv, header match)` needs PG 16 on both ends.
+          # scripts/places/load.sql explains why HEADER MATCH rather than HEADER
+          # TRUE: it is the only guard against a silently column-shifted load.
+          # Both Supabase projects report 17.x; ubuntu-latest ships 16.
+          major=$(psql --version | grep -oE '[0-9]+' | head -1)
+          if [ "$major" -lt 16 ]; then
+            echo "::error::psql $major cannot send HEADER MATCH; install postgresql-client-16 or newer."
+            exit 1
+          fi
+
+      - name: Extract
+        run: |
+          set -euo pipefail
+          args=()
+          [ -n "${{ inputs.release }}" ] && args+=(--release "${{ inputs.release }}")
+          python3 scripts/places/extract-nl.py --out nl-places.csv "${args[@]}"
+          ls -lh nl-places.csv
+
+      # scripts/places/load.sql is the whole load: one transaction holding the
+      # delete, the \copy, the ANALYZE and the detector, so a failed assertion
+      # rolls the table back to exactly what it was. Read its header rather than
+      # this step — the reasoning lives with the SQL.
+      - name: Load and verify
+        run: |
+          set -euo pipefail
+          args=(-v ON_ERROR_STOP=1)
+          [ "${{ inputs.force }}" = "true" ] && args+=(-v force=1)
+          psql "$DATABASE_URL" "${args[@]}" -f scripts/places/load.sql < nl-places.csv
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### places load — ${{ inputs.target }} (\`$EXPECTED_REF\`)"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| release | \`${{ inputs.release || 'extractor default' }}\` |"
+            echo "| band override | \`${{ inputs.force }}\` |"
+            echo "| result | \`${{ job.status }}\` |"
+            echo
+            echo "Row counts, table size and database size are in the *Load and verify* step's output."
+            echo "A failed run leaves the table exactly as it was — the load is one transaction."
+          } >> "$GITHUB_STEP_SUMMARY"
