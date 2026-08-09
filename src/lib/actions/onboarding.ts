@@ -1,12 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
-import {
-  USERNAME_TAKEN_MESSAGE,
-  checkUsername,
-  locationSchema,
-  usernameSchema,
-} from '@/lib/validation/profile'
+import { USERNAME_TAKEN_MESSAGE, checkUsername, locationSchema } from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
 import type { ActionState } from '@/lib/actions/auth'
 
@@ -51,8 +46,12 @@ export async function setUsername(
   _prev: ActionState,
   formData: FormData
 ): Promise<UsernameActionState> {
-  const parsed = usernameSchema.safeParse(formData.get('username'))
-  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  // `String(... ?? '')` rather than handing the raw entry to Zod: a missing
+  // field would otherwise surface Zod's own "expected string, received null"
+  // at a rider, where an empty one gets the length message the field already
+  // shows while they type.
+  const parsed = checkUsername(String(formData.get('username') ?? ''))
+  if (!parsed.ok) return { error: parsed.error }
 
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
@@ -64,7 +63,7 @@ export async function setUsername(
   // is redirected back to step 1 forever while every screen reports success.
   const { data: updated, error } = await supabase
     .from('profiles')
-    .update({ username: parsed.data })
+    .update({ username: parsed.username })
     .eq('id', user.id)
     .select('id')
     .maybeSingle()
@@ -82,7 +81,7 @@ export async function setUsername(
     // 2026-08-09 — HTTP 409, code 23505). Returning the value as well as the
     // message is what lets the field stop saying the opposite.
     if (error.code === '23505') {
-      return { error: USERNAME_TAKEN_MESSAGE, taken: parsed.data }
+      return { error: USERNAME_TAKEN_MESSAGE, taken: parsed.username }
     }
     // 23514 is a CHECK constraint — charset, length, or the reserved denylist.
     // Only reachable if something bypassed the schema above.

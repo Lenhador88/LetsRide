@@ -118,8 +118,13 @@ export const profileEditSchema = z.object({
 
 /**
  * Shared by the live availability check and the onboarding action, so the
- * field-level message a rider sees while typing is the same one the server
+ * field-level message a rider sees while typing is the same one the submit
  * would produce.
+ *
+ * Both really do call it — `checkUsernameAvailability` and `setUsername`, in
+ * `src/lib/actions/onboarding.ts`. It sat here with no caller outside its own
+ * test for long enough that the sentence above was aspirational; if a boundary
+ * ever parses `usernameSchema` itself again, this claim goes with it.
  */
 export function checkUsername(value: string): { ok: true; username: string } | { ok: false; error: string } {
   const result = usernameSchema.safeParse(value)
