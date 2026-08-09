@@ -6731,26 +6731,79 @@ select assert_rejected($$update profiles set username = E'ok\nname'
   '23514', '038: ... and one carrying a newline');
 
 -- ---------------------------------------------------------------------------
--- 038.8 — deleting the row is the OTHER way to vanish, and it is left as it is
+-- 038.8 / 042 — deleting the row is the OTHER way to vanish, and it is now shut
 -- ---------------------------------------------------------------------------
--- Asserted rather than assumed, and both halves: the grant is live and the
--- refusal rests entirely on the absence of a DELETE policy. The pair is what
--- detects a future permissive policy reopening this by another route. The revoke
--- is a follow-up of its own, deliberately not bundled into a trigger change.
+-- 038 asserted both halves of this door and shut neither: the delete affected
+-- zero rows, but only because no DELETE policy existed for a live grant to use.
+-- Protection by omission. 042 removes the grant, so the refusal is structural —
+-- a future DELETE policy on profiles, added for any unrelated reason, no longer
+-- reopens self-erasure on its own.
+--
+-- ** The grant assertion below is 038's, REPOINTED rather than deleted. ** Its
+-- label and its expected value both flipped when 042 applied; deleting it would
+-- have removed the only thing watching this grant. The zero-rows assertion above
+-- it is 038's, unchanged and still load-bearing: it is the behavioural half, and
+-- it must keep passing whichever way the refusal is delivered.
 select set_config('test.uid', '00000000-0000-0000-0000-000000038001', false);
 savepoint own_delete_038;
-delete from profiles where id = auth.uid();
+-- Wrapped, because 042 changed HOW this is refused and the suite must not care.
+-- Before 042 the statement succeeded and touched zero rows; after it, the role
+-- has no DELETE privilege at all, so Postgres refuses it outright with 42501
+-- before RLS is ever consulted. The row surviving is the assertion — an
+-- exception here would abort the transaction and take the rest of the suite with
+-- it, so it is caught and swallowed on purpose.
+do $$
+begin
+  delete from profiles where id = auth.uid();
+exception when insufficient_privilege then
+  null;
+end $$;
 select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000038001'),
   1, '038: a rider deleting their OWN profiles row affects zero rows');
 rollback to savepoint own_delete_038;
 
 reset role;
 select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'delete'),
-  true, '038: ... and authenticated DOES hold the table-level DELETE grant, so the refusal is the policy''s absence');
+  false, '042: authenticated holds NO DELETE grant on profiles — the refusal is structural, not the policy''s absence');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'profiles' and cmd = 'DELETE'),
   0, '038: ... and there is no DELETE policy on profiles for that grant to use');
+
+-- Account deletion must survive 042, and this asserts the MECHANISM rather than
+-- a proxy for it. delete-account/index.ts calls `auth.admin.deleteUser(sub)`;
+-- nothing anywhere issues `delete from profiles`. The profile row goes because
+-- `profiles.id references auth.users(id) on delete cascade` (001), and a
+-- referential action does not consult table privileges at all — so revoking a
+-- grant cannot reach it. Exercised end to end, not reasoned about.
+--
+-- ** The obvious assertion here — has_table_privilege('service_role', ...) —
+-- cannot be made in THIS suite, and that is a harness property rather than an
+-- oversight. ** harness.sql reproduces Supabase's broad default table grants for
+-- `anon` and `authenticated` only; `service_role` exists there purely so 031's
+-- explicit grants apply, and it deliberately holds nothing by default. So the
+-- assertion would read `false` locally against a hosted database where it is
+-- `true`, and granting it in the harness first would manufacture the very fact
+-- the assertion then "proves". It is verified against the hosted project instead
+-- — 042's §Verification item 1, confirmed on letsride-dev after applying.
+reset role;
+savepoint cascade_042;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000042001', 'pd145-cascade@example.com');
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000042001'),
+  1, '042: precondition — the signup trigger created a profiles row to cascade');
+delete from auth.users where id = '00000000-0000-0000-0000-000000042001';
+select assert_eq((select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000042001'),
+  0, '042: deleting the auth.users row still reaps the profile — account deletion (029-032) does not use the revoked grant');
+rollback to savepoint cascade_042;
+
+-- The revoke named DELETE alone. A table-level `revoke all` here would have
+-- silently taken 025's per-column allowlist with it and black-screened every
+-- signed-in rider, which no assertion above would have caught.
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'username', 'select'),
+  true, '042: ... and 025''s column grants survive it — select');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'username', 'update'),
+  true, '042: ... and update, so the revoke was scoped to DELETE and did not become a revoke all');
 
 -- ---------------------------------------------------------------------------
 -- 038.9 — another rider's row, and the upsert route into your own
