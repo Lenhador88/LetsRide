@@ -182,10 +182,70 @@ was the *only* thing holding decision #5 — no policy prevented a rider whose
 joining anything, because `003`'s trigger guards the *stamp*, not the participation. Demoting
 the route guard to a client component would have removed the only thing holding it.
 
-**The gate is narrower than the requirement above reads**, and that is worth carrying: `023`
-puts it on eight tables — `postcards`, `clubs`, `rides`, `club_members`, `ride_members`,
-`postcard_comments`, `postcard_likes`, `postcard_reports` — and **not** on `profiles` UPDATE,
-`profile_countries`, `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy.
+> **Coordination note — read before archiving this change.** This block is a `MODIFIED`
+> requirement, so archiving replaces the standing text **wholesale**.
+>
+> **Two** other changes modified this same requirement — `add-ride-chat` and
+> `add-notifications` — and both archived on 2026-08-08. (`forbid-username-removal` archived the
+> same day but is **not** a claimant: its delta is `ADDED Requirements` only.)
+>
+> **What this block contains: 7 scenarios inherited from the standing text, plus 4 of this
+> change's own about deletion.** On 2026-08-08 the prose and 3 of the 7 inherited ones were
+> re-synced (the other 4 were already identical), and one of the 4 own ones was corrected off a
+> stale eight-table count. **Re-verify all 11 rather than trusting that split** — it is a
+> hand-written record of one day's edits, and the check below is cheap.
+>
+> **`openspec archive` catches a DROPPED scenario and nothing else. Not prose, and — the part
+> that is easy to get wrong — not a scenario's BODY.** Read the source rather than trusting a
+> summary: `findMissingCurrentScenarios` in
+> `node_modules/@fission-ai/openspec/dist/core/specs-apply.js` parses both sides into
+> `{ name, raw }` and compares **`name` only**; `raw` is never looked at, and the requirement
+> block is then replaced wholesale. So a scenario whose body was reverted to an older version is
+> exactly as silent as a reverted paragraph. This block is the proof: before the re-sync, two
+> same-named scenarios here carried older bodies that would have dropped two normative `AND`
+> clauses from the standing text, with a successful exit and no warning.
+>
+> An earlier draft of this banner said "the scenario half is caught", which is the sentence that
+> would have stopped the next archiver from checking bodies at all. The banner at the top of this
+> file is right without qualification: **whichever change archives second silently discards the
+> first one's edit**, unless that edit added or removed a whole scenario.
+>
+> So the pre-archive check is: diff **prose and every scenario body** against the standing text.
+>
+> **Verify the sole-claimant claim rather than trusting it** — it is a hand-copied fact and this
+> requirement's own prose argues against those:
+>
+> ```bash
+> grep -rl "Onboarding completion SHALL gate participation" openspec/changes --include=spec.md \
+>   | grep -v /archive/     # this file only == still the sole claimant
+> ```
+
+**The gate is narrower than the requirement above reads, and its scope SHALL be counted rather
+than enumerated.** Earlier revisions listed the gated tables by name and asserted "thirteen
+tables carry an INSERT policy and this gate names eight of them". Both numbers went stale within
+a day — `034` added `ride_messages` as a ninth gated table, and `036` added `notifications` as a
+table carrying **no INSERT policy at all**, a third category the enumeration cannot express. A
+standing spec asserting a stale count is worse than one asserting nothing, because a table added
+without a gate looks exactly like the list being right. The scope is therefore a rule plus the
+command that measures it:
+
+```sql
+select count(*) from pg_trigger
+ where tgname = 'enforce_participation_gate' and not tgisinternal;
+```
+
+The rule, which does not go stale: **every table into which a rider inserts content another
+rider can see carries the gate.** Per-viewer tables that produce nothing anyone else can see do
+not — `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads`, and every
+`storage.objects` policy, which check the path prefix only.
+
+**A table no rider can insert into at all is a third case and needs no gate**, because the gate
+constrains *who may write* and there is nobody to constrain. `notifications` is the first of these:
+`authenticated` holds no INSERT grant and the table carries no INSERT policy, so its only writer is
+a `security definer` trigger. Adding the gate there would be worse than useless — inside a
+`security definer` function `current_user` is the owner, so the gate's own
+`WHEN (CURRENT_USER = 'authenticated')` clause is false and the trigger would never fire, which
+reads as coverage and is not.
 
 An un-onboarded rider also has a NULL `username`, which the `profiles` SELECT policy uses to
 hide them from other riders — so their content would appear to everyone else with an
@@ -203,27 +263,28 @@ window between a deletion and an access token's expiry is a measured property ra
 assumption.
 
 #### Scenario: An un-onboarded rider cannot create content
-- **WHEN** a rider whose `onboarding_completed_at` is NULL inserts into `postcards`, `clubs`,
-  `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes` or
-  `postcard_reports`
+- **WHEN** a rider whose `onboarding_completed_at` is NULL inserts into any table carrying
+  `enforce_participation_gate`
 - **THEN** the database SHALL reject the write
+- **AND** the set of such tables SHALL be verified by counting the trigger rather than by reading a
+  list, because a table added without one is indistinguishable from a correct list
 
 #### Scenario: Per-viewer tables are deliberately excluded
 - **WHEN** an un-onboarded rider inserts into `blocks`, `postcard_hides`, `feed_reads`,
   `profile_countries` or their own `profiles` row
 - **THEN** the write SHALL succeed, because none of these produces content another rider can
   see and `profiles` is the row the wizard itself writes
-- **AND** the exclusion SHALL be stated in the migration rather than left as silence: thirteen
-  tables carry an INSERT policy and this gate names eight of them
+- **AND** the exclusion SHALL be stated in the migration rather than left as silence
 
 #### Scenario: An un-onboarded rider cannot file moderation records
 - **WHEN** a rider who has not completed onboarding reports a postcard
 - **THEN** the write SHALL be refused
 - **AND** this SHALL hold regardless of whether an address is verified, because the gate is the
-  onboarding stamp and never the address. This said "specifically because email confirmation is
-  off (decision #6)"; that premise was measured false on 2026-08-06 — `mailer_autoconfirm: false`,
-  confirmation is required. The rule is unchanged and stronger without it: a verified address is
-  not evidence of onboarding, and no admin role exists to triage reports either way
+  onboarding stamp and never the address. The requirement previously justified itself by
+  "email confirmation is off (decision #6)"; that premise was measured false on 2026-08-06
+  (`mailer_autoconfirm: false` — confirmation is required). The rule is unchanged and its
+  justification is stronger without the premise: a verified address is not evidence of
+  onboarding, and no admin role exists to triage reports either way
 
 #### Scenario: Completing onboarding is still the only way through
 - **WHEN** the same rider sets a username and location and receives the completion stamp
@@ -236,9 +297,26 @@ assumption.
 - **THEN** the existing policies SHALL apply unchanged, so this requirement adds no new read
   restriction and cannot strand a rider mid-wizard
 
-#### Scenario: A caller with no profile row is refused by the gate on all eight tables
+#### Scenario: A table with no INSERT grant is a third category and carries no gate
+- **WHEN** a table exists into which no client role may insert — `notifications` is the first
+- **THEN** it SHALL carry no participation gate
+- **AND** the absence SHALL be recorded as deliberate in its migration, because the gate's
+  `WHEN (CURRENT_USER = 'authenticated')` clause is false inside a `security definer` writer and a
+  gate that never fires reads as coverage
+- **AND** the enforcement SHALL instead be that the gate on the **parent** table already refused
+  the event, so no un-onboarded rider's action can reach the fan-out at all
+
+#### Scenario: A revoked consent stops a sitting crew member writing
+- **WHEN** `private.may_participate()` is extended to require the current terms version, and a
+  rider who is already on a ride's crew has consented only to an earlier one
+- **THEN** their next message insert SHALL be refused with `check_violation`
+- **AND** their read of the thread SHALL be unaffected, because the gate is on writes only
+- **AND** this is the case in which the gate on `ride_messages` stops being defence in depth,
+  which is why the trigger ships before the case exists
+
+#### Scenario: A caller with no profile row is refused by the gate on every gated table
 - **WHEN** a caller holding a valid access token whose `profiles` row has been deleted inserts
-  into any of the eight gated tables
+  into any table carrying `enforce_participation_gate`
 - **THEN** the write SHALL be refused with `check_violation`
 - **AND** `private.may_participate()` SHALL return false for that caller rather than NULL or an
   error, which SHALL be asserted directly rather than inferred from the refusal

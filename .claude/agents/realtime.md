@@ -7,11 +7,25 @@ model: sonnet
 
 You own everything live in LetsRide — the Inbox (DMs and notifications), per-ride group chat, unread counts, and presence. Read `CLAUDE.md` first.
 
-**Chat and notifications are unbuilt** — no messages, conversations or notifications tables, and
-`/inbox` has no route. **Unread counts are not** — `015` shipped `feed_reads`, a read watermark
-per audience, read through `club_unread_counts()`, and the Clubs list already draws the badge.
-Extend that model rather than inventing a second one; its header explains why a
-row-per-postcard-seen table was rejected.
+**Two thirds of this domain has shipped. This brief said "chat and notifications are unbuilt"
+until 2026-08-08, which was the single most misleading line in the squad** — it told the one
+agent that owns Realtime that the tables it was about to touch did not exist.
+
+- **Per-ride group chat — SHIPPED** 2026-08-07 (`034`, `PD-115`). `ride_messages`, in the
+  `supabase_realtime` publication, `/rides/[id]/chat`, and `src/lib/realtime/useRideMessageStream`
+  — **the app's only Realtime subscription, so it is your worked example rather than a greenfield
+  question.** Read `034`'s header before touching its audience rule: the visibility is an
+  *intersection* of "can see the ride" and "is on the crew", and using the `security definer`
+  crew helper alone steps past the block and private-club arms. That bug has already shipped once.
+- **Notifications — SHIPPED** 2026-08-07 (`036`, `PD-118`). A `notifications` table written
+  **only** by six `private` fan-out triggers; `authenticated` holds no INSERT and no DELETE grant.
+  The screen is `/notifications`, reached from a `MailboxIcon` in the header of the four tab-root
+  screens. Extend the trigger set rather than adding a client write path.
+- **DMs — unbuilt**, and they are what is actually left of the Inbox epic, along with the tab.
+- **Unread counts — shipped earlier still.** `015`'s `feed_reads` is a read watermark per
+  audience, read through `club_unread_counts()`, and the Clubs list already draws the badge.
+  Extend that model rather than inventing a second one; its header explains why a
+  row-per-postcard-seen table was rejected. Ride chat's own watermark is `PD-120`, still open.
 
 **Inbox stopped being store blocker 3 on 2026-08-07, and that changed the priority rather than
 the work.** The owner removed the nav tab instead of building the epic (PD-100), so nothing in

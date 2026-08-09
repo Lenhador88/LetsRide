@@ -28,30 +28,21 @@ git diff --stat origin/main -- docs/HANDOFF.md    # is this file itself unmerged
 If the second prints anything, someone edited the handoff and it never reached `main` — which
 has happened, and is why a `Stop` hook warns about it (`.claude/hooks/handoff-landed-check.sh`).
 
+**The correction convention is retired — PD-156 adopted the rule, PD-157 cut the legacy
+passages out of this file, `CLAUDE.md` and `.claude/commands/queue-pickup.md`.** The rule is in
+`CLAUDE.md` §Working Principles: *write a claim beside its command, not beside its history*. A
+fact gets the one-liner that checks it; what the file used to say lives in `git log -p` and the
+commit message; a correction paragraph survives only where a reader would re-derive the wrong
+version from the same evidence. `.claude/agents/reviewer.md` §The necessity gate enforces it,
+with a 120-net-line budget on prose diffs.
+
 ---
 
-## ⚠ CI is triggering again, but it is NOT proven healthy — and a green tick still is not a check
+## A green tick is not a check — read the jobs, not the run
 
-**A draft of this section said "the outage is over, resolved ~23:36, it recovered on its own"
-and deleted the warning below. That was wrong, and review caught it.** The mistake is worth
-more than the correction, because it is a trap the next session will walk into the same way:
-**a run's `conclusion: success` says nothing about whether anything was tested.** Runs resumed
-~21:31 on 2026-08-06, and reading the run list alone — which is what the wrong draft did — they
-look fine.
-
-Two things the run list cannot show you:
-
-- **The original failure recurred *after* the apparent recovery.** Run `31128482019`, a push to
-  `development` at **21:41:55Z**, has `Detect what changed` **cancelled** after 15 minutes
-  (21:41:55 → 21:56:57) with `runner_id: 0` and an empty `runner_name` — runners never
-  assigned, the exact signature of the original outage — and both real jobs `skipped` behind it.
-- **The runs that did succeed tested nothing, by design.** Everything from 23:36 onward
-  (#79, #80 and the pushes around them) changed only `.claude/` and `docs/`, which are in
-  `ci.yml`'s denylist. So `Type Check, Lint & Build` and `RLS Policy Tests` were **`skipped`**
-  and the run still reports `success`. Verified on run `31132461220`. That proves the
-  dispatcher works. It does **not** prove a code change can get a runner.
-
-**So: do not read a green PR as a checked PR.** Check the *jobs*, not the run:
+**A run's `conclusion: success` says nothing about whether anything was tested.** Most of the CI
+denylist reports `success` with both real jobs `skipped`, so a `design/`- or `openspec/`-only PR
+goes green having tested nothing. Check the *jobs*:
 
 ```bash
 # via the GitHub MCP tools — the REST API 403s from this container's shell
@@ -61,48 +52,30 @@ Two things the run list cannot show you:
 # NOT skipped, and NOT a 15-minute cancelled "Detect what changed" above it.
 ```
 
-**That test has now run, and it passed.** PR **#82** (`claude/store-submission-prep-lwsurd`) was
-the first code-touching change since the outage began, so it was the first whose jobs could not
-be skipped by the denylist. Run `31134935301`, 2026-08-07:
+**A 15-minute `Detect what changed` cancelled with `runner_id: 0` and an empty `runner_name` is
+the signature of a runner-assignment outage**, not a repo problem, and it skips both real jobs
+behind it. That happened over 2026-08-06/07 and recurred *after* an apparent recovery, which is
+why the runs alone are not evidence. If it returns it is an **owner action**:
+<https://www.githubstatus.com>, then repo Settings → Actions and the account's Actions usage.
 
-| Job | Result |
-|---|---|
-| `Detect what changed` | `success` in **7s** (00:31:18 → 00:31:25) — not the 15-minute cancel |
-| `Type Check, Lint & Build` | **`success` in 57s** (00:31:28 → 00:32:25) — a real runner, really assigned |
-| `RLS Policy Tests` | `skipped`, correctly — no `supabase/**` in the diff |
-
-**So runners are being assigned again, and this is the first evidence that actually shows it.**
-State it that narrowly: it is one healthy code run after two failures, and the second failure
-came *after* an apparent recovery. Until a few more land, keep checking **jobs rather than
-runs** — the denylist means a docs-only PR goes green having tested nothing, which is the trap
-that produced the wrong "it is resolved" claim in the first place. If the 15-minute cancel with
-`runner_id: 0` comes back, it is an **owner action**: <https://www.githubstatus.com>, then repo
-Settings → Actions and the account's Actions usage.
-
-**The gap it already left does not heal with the runners.** Between 17:43 and 23:36 every merge
-landed without CI: PRs **#72, #73 and #74**, plus two direct pushes to `development`. Those were
-gated by hand at the time — the full local equivalent below, run against `3c9cc40`, all green —
-so they are "checked by a human, not by CI" rather than unchecked.
-
-**The hand-gate, which is still what to run when CI is unavailable:**
+**The hand-gate, which is what to run when CI is unavailable:**
 
 ```bash
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 7 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 775/775 across 32 files
+npm run test:unit                     # 946/946 across 37 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 908 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 958 assertions, 0 failures
 ```
 
-**Two traps met while doing that, both of which produced a confident wrong answer first:**
+**Two traps in running that, both of which produce a confident wrong answer first:**
 
 - **`node_modules` is not in a fresh container.** `npm ci` first, or `vitest: not found` reads
   as a broken suite rather than a missing install.
 - **`cmd 2>&1 | tail -5 && echo PASS` always prints PASS** — `tail` exits 0 no matter what the
   command did. Capture the exit code from the command itself, never from the end of a pipe.
-  This reported a passing type check on a tree with no dependencies installed.
 
 ## Branching, as of 2026-08-07 16:42 UTC
 
@@ -115,24 +88,20 @@ PGPASSWORD=postgres npm test          # 908 assertions, 0 failures
   removal and the native shell's first half.
 
   **`development` is normally AHEAD of `main`, and that is the steady state rather than drift.**
-  An earlier revision of this line said the two were "level" and gave a command expecting
-  `git rev-parse` to print identical shas — true for about four minutes, until the very next docs
-  merge, at which point the file asserted an equality its own command disproved. A §Branching line
-  that only holds in the minutes after a promotion is worse than a stale one, because the next
-  session reads it as an invariant. What *is* invariant: `main` moves only by promotion, and
-  everything else lands on `development` first.
+  Do not write an equality here: the two are level only in the minutes after a promotion, and a
+  §Branching line that holds for four minutes reads to the next session as an invariant. What
+  *is* invariant: `main` moves only by promotion, and everything else lands on `development`
+  first.
 
   ```bash
   git fetch origin main development
   git log --oneline origin/main..origin/development   # what is waiting for the next promotion
   ```
-- **Getting there went wrong once, and the correction is worth knowing.** `main` was *renamed*
-  to `Development` rather than the default *pointer* being moved to the existing `development`.
-  That left two branches differing only in case, no `main` at all, a Vercel Production Branch
-  pointing at a branch that no longer existed, and CI matching neither (GitHub branch filters
-  are case-sensitive). It was restored to `ce3204e`, its exact prior sha. **Rename and
-  "switch default branch" are different controls in different places** — Settings → General →
-  Default branch → ⇄ is the one that moves a pointer.
+- **Rename and "switch default branch" are different controls in different places**, and
+  reaching for the first is how this repo once ended up with two branches differing only in case,
+  no `main` at all, a Vercel Production Branch pointing at a branch that no longer existed, and
+  CI matching neither (GitHub branch filters are case-sensitive). Settings → General → Default
+  branch → ⇄ is the one that moves a pointer.
 
 ---
 
@@ -152,17 +121,9 @@ branches at the same SHA.
   *zero* jobs and shows no red mark, which is indistinguishable from having nothing to check.
 - `npm run db:drift`, `npm run db:seed:check` (also a CI step), `supabase/seeds/development.sql`.
 
-**The DEV database now exists — created 2026-08-06.** `Letsride-dev`, ref
-**`fpmrimzxadewsaiwpsel`**, `eu-west-1`, same org. Verified against production:
-
-| Check | Result |
-|---|---|
-| Migrations `001`–`032` | 32 applied, one `apply_migration` call each |
-| Stored SQL vs the files | **byte-identical, 32/32** (md5 of each file vs the stored statement) |
-| Drift (files / DEV / PROD) | **none** — name sets identical after `normalise()` |
-| Full schema fingerprint | **identical hash on both** — 14 tables all RLS-on, 43 policies, 15 storage policies, 69 constraints, 14 triggers, 33 indexes, 21 functions |
-| Security advisors | exactly the documented eight |
-| Auth config | confirmation **off** (`mailer_autoconfirm: true`), Site URL and both redirect entries verified |
+**The DEV database is `Letsride-dev`, ref `fpmrimzxadewsaiwpsel`**, `eu-west-1`, same org.
+Confirmation is **off** there (`mailer_autoconfirm: true`) and on for PROD, which is the intended
+split. §Migrations below is the live comparison.
 
 **The Vercel half is not done, and that is now the only gap.** `NEXT_PUBLIC_SUPABASE_URL` is
 still scoped **Production and Preview** against PROD, so previews still read and write the live
@@ -179,9 +140,8 @@ green-and-broken.
 
 Two rules that bite immediately, before any of the owner steps happen:
 
-- **PRs go to `development`, not `main`.** `CLAUDE.md` §Branching & CI said `main` until today
-  and it is the thing an agent gets wrong by habit. `main` takes exactly one kind of PR: the
-  promotion.
+- **PRs go to `development`, not `main`.** The thing an agent gets wrong by habit. `main` takes
+  exactly one kind of PR: the promotion.
 - **Never promote a Vercel preview to production.** `NEXT_PUBLIC_SUPABASE_*` is inlined at
   build time and Vercel's own API docs say promote *"does not rebuild the deployment"* — so it
   would ship DEV credentials to riders with a green deploy and no error.
@@ -219,40 +179,32 @@ npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes
 ```
 
 **Keep `┌` in that character class.** The route table's first row uses it, so the `├└│`-only
-version under-counts by one the day the first route is ever dynamic. It reads 7 correctly today
-only because `/` sorts first and is static — a filter that is right by luck.
+version under-counts by one the day the first route is ever dynamic — it is right today only
+because `/` sorts first and is static.
 
-**That count is 8 as of 2026-08-07, and it was 7 before the ride chat added
-`/rides/[id]/chat`** — it is the one the native epic actually needs, because every dynamic route
-is a route `output: 'export'` refuses without a `generateStaticParams()`. `next build` reports
-**20 static** and **8 dynamic** (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`,
-`/rides/[id]`, `/rides/[id]/crew`, `/rides/[id]/chat`). The static-export blocker below therefore
-grew by one; it did not change shape.
-Do not read the `Generating static pages (21/21)` line as the static route count — it is a
-different quantity, and 21 against 20 is exactly the kind of near-miss that gets copied.
-They are dynamic for their *segment*, not for any data. No `ƒ Proxy (Middleware)` line appears
-at all. Measured 2026-08-06 — re-run it rather than trusting the 7.
+**The dynamic count is the number the native epic needs**, because every dynamic route is one
+`output: 'export'` refuses without a `generateStaticParams()`. `next build` reports
+**22 static** and **8 dynamic** (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`, `/rides/[id]`,
+`/rides/[id]/crew`, `/rides/[id]/chat`). They are dynamic for their *segment*, not for any data,
+and no `ƒ Proxy (Middleware)` line appears at all.
+Do not read the `Generating static pages (23/23)` line as the static route count — it is a
+different quantity, and 23 against 22 is exactly the kind of near-miss that gets copied.
 
 ## The next epic: the native shell, and store submission
 
-This is now the whole roadmap, and it belongs to the **`native` agent** (added 2026-08-06 —
-`CLAUDE.md` said it would land with the shell, and the shell is next). `rider-ux` was rewritten
-at the same time and no longer points at PWA work.
-
-**Two seams were built and waiting**, which is why this is an epic and not a rewrite. **One of
-them is now filled in:**
+This is now the whole roadmap, and it belongs to the **`native` agent**. **Two seams were built
+and waiting**, which is why this is an epic and not a rewrite, and one is now filled in:
 
 - ~~`window.__letsrideSecureStore`~~ — **implemented 2026-08-07**,
   `src/lib/native/secure-store.ts`. See §The shell below for what that does and does not prove.
 - `src/lib/auth/guard.ts` is a pure function, so routing survives a webview unchanged.
 
-**One piece of the server render is still standing**, and what it is has been stated wrongly:
-Next server-renders client components on first load. A bundled app has no Node process, so the
-*runtime* half goes — but `output: 'export'` still runs the same prerender **at build time**,
-so a component body still executes in a pass with no `localStorage` and no session. **The
-*read in an effect, never during render* rule therefore stays load-bearing permanently**, and
-`resolve.browser.ts`'s tripwire keeps earning its place. `.claude/agents/native.md` said the
-rule could be relaxed once the SSR pass was retired; that was wrong and is corrected there.
+**One piece of the server render is still standing.** Next server-renders client components on
+first load; a bundled app has no Node process, so the *runtime* half goes — but `output: 'export'`
+still runs the same prerender **at build time**, so a component body still executes in a pass with
+no `localStorage` and no session. **The *read in an effect, never during render* rule therefore
+stays load-bearing permanently**, and `resolve.browser.ts`'s tripwire keeps earning its place.
+`CLAUDE.md` and `.claude/agents/native.md` say the same; they must not drift apart.
 
 ### The shell — started 2026-08-07
 
@@ -274,44 +226,22 @@ rule could be relaxed once the SSR pass was retired; that was wrong and is corre
   backup), and iCloud sync explicitly off (already the default — stated so a minor version
   cannot change it quietly).
 
-**A real defect was found and fixed on the way**, and it is the part worth reading:
-`clearSessionStore`'s prefix sweep ran only for `kind === 'local'`. That cost nothing while the
-secure store was an unimplemented seam and became a **leak the moment one existed** — sign-out
-would clear the tracked session and leave *yesterday's* keychain entry, which is precisely the
-case the sweep exists for, in the store where a leftover credential matters most. `SessionStore`
-now carries an optional `keys()`, and any store that can enumerate itself is swept. Four new
-assertions in `session-store.test.ts` cover it, including a store that omits `keys()` and one
-whose `keys()` throws.
+**Three invariants this module has already broken once, so do not undo them:**
 
-**Review found eight things and two were High**, both in the same place and both worth carrying
-because the error was *reasoning where measurement was available*:
-
-- **The module claimed a failure mode it did not have.** Its docstring said "supabase-js reads a
-  storage error as 'no session', so the rider sees a signed-out app". False: `auth-js`'s
-  `__loadSession` is `try/finally` with **no** `catch`, and the guard called `getSession()`
-  from a `.then()` with no `.catch()` — so a rejecting read hangs the splash **forever**, which
-  a rider cannot retry past. `getItem` now resolves to `null` on failure, which makes the
-  original sentence true by construction instead of by assumption.
-
-  *(That read left `RouteGuard` with PD-111 and lives in `src/lib/auth/guard-cache.ts` now. It
-  still has no `.catch()`, and the fix above is still what makes that safe. **A draft of this
-  line said the hang is no longer permanent, "so the next navigation retries it". Review caught
-  it and it was wrong in the way that matters:** the `.finally()` does clear the in-flight slot,
-  so a navigation would genuinely retry — but a rejected read notifies nothing, so nothing
-  re-renders, and the rider is looking at a full-screen splash with nothing to tap. There is no
-  navigation to be had. The hang is as permanent as it was; only a reload escapes it.)*
-- **`configured ??= applyPluginDefaults()` cached a *rejected* promise**, so one transient
-  plugin error would break every read and write for the rest of the app session with no retry.
-  The slot is cleared on failure now.
-
-The other six: the always-loaded `CLAUDE.md` still carried the *read in an effect* claim this
-commit corrected in `native.md` (fixed — they must not drift again), the repo-layout tree was
-missing `src/lib/native/` and `capacitor.config.ts` (fixed), the sweep followed only the
-resolved store so a token left in webview `localStorage` by an earlier build survived sign-out
-on a device (fixed), `keys` was feature-detected by truthiness where `Storage`'s named-property
-getter can make it a string (fixed), and the install-ordering invariant was documented on the
-call site that happens to satisfy it rather than on `resolveSessionStore()` itself (moved
-there). Five new assertions cover the behavioural ones.
+- **`clearSessionStore` sweeps any store that can enumerate itself**, via an optional `keys()` on
+  `SessionStore` — not just `kind === 'local'`. The narrower version leaves *yesterday's*
+  keychain entry behind on sign-out, in the store where a leftover credential matters most. Note
+  `keys` is feature-detected by *type*, not truthiness: `Storage`'s named-property getter can
+  make it a string. The sweep also covers webview `localStorage` regardless of which store
+  resolved, so a token left by an earlier build does not survive sign-out on a device.
+- **`getItem` resolves to `null` on a storage failure.** `auth-js`'s `__loadSession` is
+  `try/finally` with **no** `catch`, and `src/lib/auth/guard-cache.ts` calls `getSession()` from
+  a `.then()` with no `.catch()` — so a *rejecting* read hangs the splash permanently. A rejected
+  read notifies nothing, so nothing re-renders and there is no navigation to be had; only a
+  reload escapes it.
+- **The `applyPluginDefaults()` promise slot is cleared on failure.** `configured ??= …` caches
+  a *rejected* promise, so one transient plugin error breaks every read and write for the rest of
+  the app session with no retry.
 
 **What none of it proves:** nothing here has touched a keychain. The tests mock the plugin, so
 they assert the ordering, the overridden defaults, the failure modes and the forwarding —
@@ -320,7 +250,7 @@ iOS or Android behaviour. That needs a device.
 
 **The gate for everything else is the static export.** Measured 2026-08-07: with
 `output: 'export'`, `next build` fails with
-`Page "/postcards/[id]" is missing "generateStaticParams()"`. All seven dynamic routes hit it,
+`Page "/postcards/[id]" is missing "generateStaticParams()"`. All eight dynamic routes hit it,
 none can supply one (the ids are per-rider RLS-scoped content), and returning `[]` does not
 help because export forces `dynamicParams: false` so unknown ids 404. **`npx cap sync` has
 nothing to copy until this is resolved**, and resolving it is a routing change with real
@@ -344,8 +274,8 @@ build work, the rest are the owner's.
 | 1 | **The shell itself** | **Started 2026-08-07.** `capacitor.config.ts` and the secure store are in; `ios/` and `android/` are not, and cannot be generated here. **Gated on the static-export route decision** — see §The shell, below |
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
-| 4 | **No edit or delete UI for rides or clubs** | Create a ride, never cancel or correct it. **Narrower than "anywhere", corrected 2026-08-07** — postcards, comments and profile all have working delete/update UI. For rides and clubs there is no action *at all* (no `deleteRide`, `updateRide`, `deleteClub`, `updateClub`), while all four RLS policies exist live. So it is an empty action layer, not an unwired UI |
-| 5 | ~~**Email confirmation is off**~~ — **it is ON**, measured 2026-08-06 | Not a store blocker after all; the decision #6 text was wrong, not the setting. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below. **Owner** still decides whether DEV wants it off |
+| 4 | **No edit or delete UI for rides or clubs** | Create a ride, never cancel or correct it. Postcards, comments and profile all have working delete/update UI; for rides and clubs there is no action *at all* (no `deleteRide`, `updateRide`, `deleteClub`, `updateClub`) while all four RLS policies exist live. An empty action layer, not an unwired UI |
+| 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
 | 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
 
@@ -355,7 +285,7 @@ will not.
 ## Owner actions — nobody in a session can do these
 
 **Tracked in Linear as of 2026-08-07** — label `Owner only`, assigned, so they surface without
-anyone reading this far into a 767-line file. That is the whole reason the tracker exists. This
+anyone reading this far into the file. That is the whole reason the tracker exists. This
 section keeps the *detail*; Linear keeps the *queue*, and the mapping is:
 
 | | Linear | Verified against the live system 2026-08-07 |
@@ -367,23 +297,14 @@ section keeps the *detail*; Linear keeps the *queue*, and the mapping is:
 | 5 | `PD-86` Deploy `delete-account` + `PD-92` T&C version string | **still outstanding** — `list_edge_functions` returns `[]` |
 | 6 | `PD-94` Sweep the orphaned Storage objects | — |
 
-**Two more were found outside this section, which is exactly the failure the tracker fixes.**
-`PD-88` — the Site URL and redirect allowlist — and `PD-93`, pinning `defaultMode`, which turned
-out to be **already done** by PR #80 while `CLAUDE.md` still described it as outstanding.
+**Re-run the probe before quoting any row of that table.** Two `Owner only` issues in a row have
+been found already-fixed (`PD-88`, the Site URL and redirect allowlist; `PD-93`, pinning
+`defaultMode`), and that is a pattern rather than a coincidence: **a dashboard setting has no file
+to change, so nothing marks it done except someone re-measuring.** The credential-free probes are
+in `docs/ENVIRONMENTS.md` §The redirect allowlist.
 
-**`PD-88` is now done too, and it had been done for a while.** Re-measured 2026-08-07 with the
-credential-free probe in `docs/ENVIRONMENTS.md` §The redirect allowlist: a discarded
-`redirect_to` falls back to `https://letsrideapp.vercel.app/`, and the production origin is
-honoured. Three places in the repo were still calling it "the most urgent thing here" —
-this line, that section's heading, and §Owner setup items 8 and 9. **Two `Owner only` issues in
-a row found already-fixed is a pattern, not a coincidence**: a dashboard setting has no file to
-change, so nothing marks it done except someone re-running the probe. Re-run it before quoting
-any row of that table.
-
-The list below says "six" because that is what it said when written; the count is now Linear's
-job, not this file's. Every one is a dashboard click or a credential a human holds, so **ask for
-them rather than working around them** — the working principle in `CLAUDE.md` exists because a
-session once reported a block five times without once requesting the fix.
+Every one below is a dashboard click or a credential a human holds, so **ask for them rather than
+working around them.**
 
 1. **Exercise signup end to end.** Still never done on this database, and it is now the one
    remaining unproven path — `npm run walk` covers everything after it. The owner's account
@@ -393,11 +314,9 @@ session once reported a block five times without once requesting the fix.
 2. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. It is what
    actually closes the recovery hole `026` can only gate at the app's front door — GoTrue's
    `PUT /auth/v1/user` accepts a password change from any live session, measured.
-3. **Enable leaked-password protection** — one dashboard toggle. It is the only outstanding
-   security advisor that is not deliberate, but note `get_advisors(security)` now returns
-   **eight**, not the two an earlier revision of this file implied: six `security definer`
-   accessors from `021`/`026`/`011` and the `password_reset_grants` no-policy INFO are all
-   there on purpose. `CLAUDE.md` §Supabase Rules has the table naming each.
+3. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
+   security advisor that is not deliberate. `get_advisors(security)` returns **eight**; the other
+   seven are there on purpose and `CLAUDE.md` §Supabase Rules names each.
 4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
    serves nothing, with no alert. Needed before anything resembling launch. It also breaks
    account deletion specifically: a rider who cannot reach a paused project cannot delete their
@@ -445,18 +364,18 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **908** (843 before `039`'s address search; 808 before `038`'s username-durability section; 747 before `037`'s places index; 647 before `036`'s notifications section; 594 before `034`'s chat and `035`'s). `038`'s delta is +36 new and −1 relabelled, not +35 new: it renamed one `036` assertion whose setup used the very defect `038` closes. **Compare label sets rather than counts** when reconciling two runs — a count cannot tell a rename from a loss |
-| Unit tests | `npm run test:unit` — **775 across 32 files on a clean tree**, measured 2026-08-08 (773 at `development`; `037`'s branch adds the two `scripts/places/` source files) after PD-111's `guard-cache.test.ts` and the ride chat. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test — the chat added 6 source files. It also moves for an **untracked scratch script**, so a session that leaves `scripts/.tmp-probe.mjs` lying around reads one higher and looks like it gained a test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **958**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss, and `038` moved this by +36 new and −1 relabelled |
+| Unit tests | `npm run test:unit` — **946 across 37 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
+| Doc-claims sweep | `npm run docs:check` — PD-155. Runs the declared registry in `scripts/docs/registry.mjs` against measured ground truth (dependency/migration/test counts, contrast ratios, `next build` route counts) and reports every disagreement; a stale claim it doesn't yet cover is not proof the doc is right, only that nobody registered it. RLS-backed claims skip cleanly with no Postgres rather than reading as a false pass |
 
 ### The walk, and the relay it now needs
 
-**Point it at DEV, and note that this block used to name PROD's ref.** Corrected 2026-08-07:
-the walk signs in and writes, so aiming it at `letsride` means a real session against real
-riders' data. `Letsride-dev` is `fpmrimzxadewsaiwpsel`; both refs ship in the client bundle
-and neither is a secret.
+**Point it at DEV.** The walk signs in and writes, so aiming it at `letsride` means a real
+session against real riders' data. `Letsride-dev` is `fpmrimzxadewsaiwpsel`; both refs ship in
+the client bundle and neither is a secret.
 
 ```bash
 DEV=fpmrimzxadewsaiwpsel
@@ -470,13 +389,11 @@ WALK_EMAIL=... WALK_PASSWORD=... npm run walk
 
 #### The credentials are not a blocker any more, and no secret needs committing
 
-**DEV has email confirmation OFF, so a session can mint its own account in one call.** Measured
-2026-08-07 — `GET /auth/v1/settings` reports `"mailer_autoconfirm": true` on `Letsride-dev` and
-`false` on `letsride`. That is the per-environment split CLAUDE.md decision #6 says is wanted;
-what that decision still *says* is that there is one project and therefore no answer yet, which
-stopped being true on 2026-08-06.
+**DEV has email confirmation OFF, so a session can mint its own account in one call** —
+`GET /auth/v1/settings` reports `"mailer_autoconfirm": true` on `Letsride-dev` and `false` on
+`letsride`, which is the per-environment split decision #6 wants.
 
-This is why several sessions reported the walk as blocked on credentials it could have created:
+So the walk is never blocked on credentials — mint one:
 
 ```bash
 curl -sS -X POST "https://$DEV.supabase.co/auth/v1/signup" -H "apikey: $KEY" \
@@ -496,10 +413,10 @@ update profiles set username = '...', location = '...',
 account outside that domain exists, so a walk account on any other domain quietly blocks the
 seed. (It is blocked today regardless: `pedro88email@gmail.com` is a real DEV account.)
 
-`walk@letsride.dev` / username `walkrider` exists as of 2026-08-07, onboarded, owning one ride
-and one message. **Its password is deliberately not written down anywhere** — per CLAUDE.md,
-test-account credentials are never committed, and the recipe above makes a stored one
-unnecessary. Make a fresh account rather than hunting for this one's password.
+`walk@letsride.dev` / username `walkrider` exists, onboarded, owning one ride and one message.
+**Its password is deliberately not written down anywhere** — test-account credentials are never
+committed and the recipe above makes a stored one unnecessary. Make a fresh account rather than
+hunting for this one's password.
 
 **Chromium in this container cannot reach Supabase at all.** Measured 2026-08-06, and it is not
 a flake or a flag: `curl -x $HTTPS_PROXY .../auth/v1/health` returns 401 — tunnel open, host
@@ -508,19 +425,17 @@ hangs until aborted, with no response, no `requestfailed`, and no entry in the a
 `recentRelayFailures`, where a genuinely blocked host *does* appear. Bare,
 `--ignore-certificate-errors`, `--disable-quic` and `--disable-http2` all hang identically.
 
-This used to cost only blank photos, because the *dev server* was the Supabase client. Now the
-browser is, so it costs sign-in and therefore the entire walk. `scripts/supabase-relay.mjs`
-forwards one origin over the hop that works — real project, real RLS, real JWTs, no application
+Now that the *browser* is the Supabase client rather than the dev server, that costs sign-in and
+therefore the entire walk. `scripts/supabase-relay.mjs` forwards one origin over the hop that
+works — real project, real RLS, real JWTs, no application
 change. Its header carries the full measurement and the warning that it terminates TLS and must
 never become a development convenience.
 
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `19/19 guard, navigation and sign-out checks correct`.** It was 15/15 until
-PD-111, which added **four** client-side-navigation checks, not three — this line said 18/18
-and was corrected 2026-08-07 by reading a real run, which is the only way to get it right.
-Count them from the output rather than from here: `all N taps navigated`, `no stamp re-read`,
+**A clean run is `19/19 guard, navigation and sign-out checks correct`.** Count them from the
+output rather than from here: `all N taps navigated`, `no stamp re-read`,
 `the shell stayed mounted`, `the splash never painted`, then 6 signed-in guard rules, 4
 sign-out assertions and 5 signed-out guard rules. The walk discovers detail
 routes from the lists, checks eleven route-guard redirects in both signed-in and signed-out
@@ -532,12 +447,11 @@ reachable screen, and taps five bottom tabs to prove a navigation costs no
 discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
 `13/13` against a DEV with a club but no ride, `16/16` once the ride is there. **Read the `N/N`
 for equality, not for the value**, and read the skip notices above it for what was not covered.
-Deliberately no canonical number here: every value this line has ever carried went stale within
-a day, and `19/19` below is the pass/fail one.
+`19/19` above is the pass/fail one; there is deliberately no canonical screens number here.
 
-**So the walk provisions what it needs, as of 2026-08-07** — a shrunken figure looks exactly
-like success while meaning the ride detail was never opened, which is how PD-125 shipped a
-switcher nobody had seen:
+**So the walk provisions what it needs** — a shrunken figure looks exactly like success while
+meaning the ride detail was never opened, which is how PD-125 shipped a switcher nobody had
+seen:
 
 ```bash
 WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV.supabase.co \
@@ -552,23 +466,17 @@ creates nothing and still walks the same routes. The ride is dated a year out on
 the next run creates another that nothing lists and nothing removes — idempotence with an
 expiry date is not idempotence.
 
-**A fixture that was asked for and did not arrive fails the run.** The report comes from the
-re-read, never from the attempt: an earlier draft printed `+ created a ride` straight after the
-click and silenced the re-read's skip notice, so an RLS or validation refusal would have read
-`(no rides to open)` → `+ created a ride` → green → exit 0. That is the skip-reads-as-pass
-failure this whole section exists to close, reintroduced inside the fix for it.
+**A fixture that was asked for and did not arrive fails the run**, and the report comes from the
+**re-read, never from the attempt**. Printing `+ created a ride` straight after the click lets an
+RLS or validation refusal read `(no rides to open)` → `+ created a ride` → green → exit 0, which
+is the skip-reads-as-pass failure this whole section exists to close.
 
-**Writes are off by default, and the guard reads the session rather than an env var.** The walk
-signs in and, with fixtures on, posts as a real rider — and this file's own recipe named PROD
-until today, so aiming it wrong is a mistake the documentation invited.
-
-**The first version of that guard was worth nothing, and the reason generalises.** It required
-`RELAY_UPSTREAM` and refused PROD's ref in it — but that variable configures the *relay*, a
-sibling process, and nothing tied it to what the app under test was pointed at. With PROD in
-`.env.local` and a plain `npm run dev`, the documented
-`WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV...` command passed the guard and would have created
-public fixture rides in real riders' feeds. **A check on a value describing a different process
-is not a check.**
+**Writes are off by default, and the guard reads the session rather than an env var.** The first
+version of that guard required `RELAY_UPSTREAM` and refused PROD's ref in it — but that variable
+configures the *relay*, a sibling process, and nothing tied it to what the app under test was
+pointed at, so with PROD in `.env.local` the documented command passed the guard and would have
+created public fixture rides in real riders' feeds. **A check on a value describing a different
+process is not a check.**
 
 `authenticatedProjectRef()` reads the `iss` claim of the session the browser is actually
 holding — `https://<ref>.supabase.co/auth/v1`, minted by GoTrue from its own configuration, so
@@ -583,10 +491,10 @@ is not on an allowlist, and an unreadable ref refuses too, so it fails closed:
 **Realtime does not survive the relay, and this is the one gap the walk cannot close.**
 `scripts/supabase-relay.mjs` forwards HTTP and drops the `upgrade` header, so
 `ws://localhost:3001/realtime/v1/websocket` fails and the ride chat's subscription never
-connects. Measured 2026-08-07 while verifying PD-125: a message sent through the composer still
-appears, because the optimistic path draws it and the refetch confirms it — so a green walk
-proves the chat renders and sends, and proves **nothing** about live delivery. Teaching the
-relay to proxy the upgrade is the fix if that ever needs covering.
+connects. A message sent through the composer still appears, because the optimistic path draws it
+and the refetch confirms it — so a green walk proves the chat renders and sends, and proves
+**nothing** about live delivery. Teaching the relay to proxy the upgrade is the fix if that ever
+needs covering.
 
 **The walk suppresses that one console error and says so**, because `/rides/[id]/chat` is on
 the route list now and an always-red gate is a gate nobody reads. The filter is deliberately
@@ -648,135 +556,63 @@ membership is asserted, the *delivery* is not), and whether the composer's `cryp
 path is on a secure origin — it is over HTTPS, and the fallback exists for `http://<lan-ip>` device
 testing.
 
-
 Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-120 (the unread
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
 Inbox or push exists.
 
-**One inconsistency on DEV, deliberately left and recorded rather than hidden.** `034` was
-applied to DEV, then corrected twice after review — once for the audience conjunction, once for
-the whitespace floor and the DELETE conjunct. The first correction was a clean drop-and-re-apply,
-so the recorded statement matched. The second was applied as a **delta** (`alter constraint`,
-`drop`/`create policy`), so **DEV's schema matches `034` exactly while its recorded
-`supabase_migrations.schema_migrations` text is one revision behind the file.**
+## Migrations — DEV and PROD agree, and three things about that will read as drift
 
-That matters to exactly one check — the byte-identity of stored SQL against the files, which was
-verified once on 2026-08-06 and which nothing automates (`npm run db:drift` compares *names*).
-**PROD did receive the file verbatim** — `md5(statements[1])` there equals `md5sum` of
-`supabase/migrations/034_ride_messages.sql`, `4a3e605891b8ab49db1a5d614bcb9a84` — so the canonical
-record is correct and only the disposable database is out. Reconcile whenever convenient, from a
-session with the file open:
-
-```sql
--- then re-run apply_migration with the file's contents
-drop table public.ride_messages cascade;
-drop function private.is_ride_crew(uuid);
-delete from supabase_migrations.schema_migrations where name = 'ride_messages';
-```
-
-**FOUR migrations are on DEV and not on PROD as of 2026-08-08, for THREE DIFFERENT reasons —
-conflating any two is how the wrong one gets applied.** `036` is held back **deliberately** and
-must not be cleared on sight. `037` (the places index) and `039` (its address search) are merely
-unshipped: both purely additive, in `034`'s class, so they *could* go to PROD ahead of their code —
-they would just need a data load there. **`039` travels with `037` and is meaningless without it**,
-since it extends the table `037` creates. `038` (username durability, PD-127) is held on an **owner
-decision that has not been made**, not on a technical constraint: it carries no ordering constraint
-in either direction, but which of three PROD apply orders to use is `proposal.md` Q3 and is
-explicitly blocking. Verify rather than trust this line; it is exactly the kind that goes stale:
+**Both projects are at `040` with no gap.** Verify rather than trust it; this is exactly the kind
+of line that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 39 rows, ending 20260808131801 places_address_search
-#   PROD (zwprydcyryvudhurbnye): 35 rows, ending 035_comment_whitespace_floor
-ls supabase/migrations/ | wc -l          # 39
+#   DEV  (fpmrimzxadewsaiwpsel): 40 rows, ending 20260808204829 040_locality_centroid
+#   PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 040_locality_centroid
+ls supabase/migrations/ | wc -l          # 40
 ```
 
-**`039` (places address search, PD-141) is applied to DEV and is additive in `034`'s class**, so
-it could go to PROD ahead of its code — except that `037` has not gone to PROD either, and `039`
-requires it. The pair travels together or not at all. It widens `search_places()` to match
-`street` and `locality` per token, and it **drops** `places_name_trgm_idx` and
-`places_brand_trgm_idx` in favour of one GIN index over a generated `search_text` column — the
-only non-additive thing in it, and safe only because `places` holds 0 rows on DEV and does not
-exist on PROD. That safety does not survive a data load; after one, dropping an index is a
-deliberate act again.
+**Nothing automated compares the stored SQL against the files** — `npm run db:drift` compares
+migration *names* only — and three known mismatches will look like drift to anyone who checks by
+hand:
 
-**`038` closes a live hole that is still open on PROD.** A rider can `PATCH
-/rest/v1/profiles?id=eq.<me>` with `{"username": null}` and vanish from every other rider's
-`profiles` read — the SELECT policy's second arm requires `username IS NOT NULL`. Reproduced on DEV
-before the apply and again after it, both inside a `DO` block that raised so it rolled back:
-`before=devrider093453 after=<NULL>` became `after_update=devrider093453
-after_upsert=devrider093453`. **PROD is unchanged by this session** and the hole is open there
-until the owner answers Q3 — the recommended default is `037` then `038`, leaving only the
-deliberately-gated `036` behind. `openspec/changes/forbid-username-removal/proposal.md` §Deployment
-ordering has all three rows and the cost of each.
+- **PROD's recorded statements for `036`–`040` are comment-reduced, not the files.** Nothing can
+  pipe a file into `apply_migration`, so each was reduced to its executing statements (preserving
+  comments inside `$$` bodies, which are part of `prosrc`) and then verified by diffing every
+  resulting object against DEV — function, trigger, policy, column, index and grant hashes all
+  matched. The object diff is the stronger check.
+- **DEV's `034` statement is one revision behind the file** while its *schema* matches exactly:
+  the second post-review correction went on as a delta (`alter constraint`, `drop`/`create
+  policy`) rather than a re-apply. PROD got the file verbatim, so the canonical record is correct
+  and only the disposable database is out. Reconcile whenever convenient:
 
-DEV's `038` was applied byte-identical to the file: `md5(statements[1])` is
-`2d4ef85b74923ca18a702f88d2657997`, which equals `md5sum` of
-`supabase/migrations/038_username_is_not_removable.sql` with its trailing newline stripped.
+  ```sql
+  -- then re-run apply_migration with the file's contents
+  drop table public.ride_messages cascade;
+  drop function private.is_ride_crew(uuid);
+  delete from supabase_migrations.schema_migrations where name = 'ride_messages';
+  ```
 
-**"The MCP strips it" was the wrong conclusion, drawn from one sample — corrected 2026-08-08.**
-The MCP stores exactly the string the caller passes; `038`'s caller simply did not send the final
-newline. Measured across all three places migrations, recorded md5 against `md5sum` of the file
-**including** its trailing newline:
+- **`037` matches under no form**, because `039` edits its *comments* — the `SUPERSEDED BY 039`
+  banners and its verification footer — which changes the file and no SQL.
 
-| | recorded on DEV | file, newline kept | file, newline stripped |
-|---|---|---|---|
-| `037` | `1dcfa7d5…` | **neither matches** — see below | **neither matches** |
-| `038` | `2d4ef85b…` | `31924e1c…` | **matches** |
-| `039` | recompute — see below | recompute | recompute |
-
-So the instruction that used to close this paragraph — *check the stripped hash rather than the
-raw one* — is backwards for two of the three. **Compare the raw `md5sum` first**; only `038` needs
-the stripped form, and that is a property of how `038` was applied, not of the tool.
-
-**`037` matches under neither form as of 2026-08-08, and that is expected rather than drift:** `039`
-edits `037`'s *comments* — the `SUPERSEDED BY 039` banners at §3 and §5d, plus its verification
-footer — which changes the file and no SQL. `037`'s own banners record this so the mismatch is
-discoverable where it is found.
-
-**Do not write `037`'s file hash into this table.** The first attempt did, and both cells were
-wrong within the same commit, because the hash was computed before the banners the commit itself
-added. Any later comment edit moves it again. Recompute instead:
-
-```bash
-md5sum supabase/migrations/037_places_index.sql          # raw
-printf '%s' "$(cat supabase/migrations/037_places_index.sql)" | md5sum   # stripped
-```
-
-**`039` does not qualify either, and the commit that wrote this rule falsified its own `039` row
-within the same branch.** It recorded `68136ed3…`/**matches** before `039` was revised and
-re-applied; DEV now records `4c7ee462…`. The verdict survived by luck, the values did not.
-
-So the rule is narrower than first written: **a hash is only worth recording for a file nothing
-edits again — which in practice means a migration that has already shipped.** An unmerged one is
-still being revised by definition, and its own branch is what revises it. `038` qualifies; `037`
-and `039` did not, and both were wrong here before anyone read them. Recompute both:
+**Do not write a file hash into this file.** Any later comment edit moves it, and both attempts to
+record one were wrong within the same commit that wrote them. **A hash is only worth recording for
+a migration that has already shipped and nothing will edit again.** Recompute instead, and
+**compare the raw `md5sum` first** — only a caller that dropped the trailing newline needs the
+stripped form, which is a property of how that one was applied and not of the tool:
 
 ```bash
 md5sum supabase/migrations/0NN_*.sql                                # raw
 printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 # via the Supabase MCP: list_migrations -> md5(statements[1])
 ```
-Nothing automated depends on it — `npm run db:drift` compares migration *names* only.
 
-**`places` exists on DEV with 0 rows and does not exist on PROD at all.** Filling it is an owner
-action — a 99 MB `\copy` needing a direct Postgres connection no session holds
-(`scripts/places/README.md` §Loading). An empty index is indistinguishable from a working search
-that finds nothing.
-
-**Do not apply `036` to PROD to "clear the drift".** The standing *unapplied migrations are drift*
-rule is what makes that the obvious move, and it is wrong here — read `036`'s own header first. It
-hangs six fan-out triggers off five **already-shipped** write paths (`postcard_likes`,
-`postcard_comments`, `ride_members`, `rides`, `club_members`), so the instant it applies, every
-like, comment, RSVP, ride creation and club join runs new code inside the rider's own transaction,
-and a trigger that raises takes that write down with it. All five paths were exercised by hand on
-DEV and all five still succeed; PROD goes after the code deploys.
-
-PROD's `034` was applied byte-identical to the file — `md5(statements[1])` equals `md5sum` of
-`supabase/migrations/034_ride_messages.sql`, `4a3e605891b8ab49db1a5d614bcb9a84` — and every
-number that file's footer predicts was confirmed live, with advisors still at the documented
-eight. `035` tightened the `postcard_comments` floor on both; pre-flight was 3 comments and 0
-violations, and all 3 survive.
+**`places` exists on BOTH projects with 0 rows.** Filling it is an owner action — a 99 MB `\copy`
+needing a direct Postgres connection no session holds (`scripts/places/README.md` §Loading). An
+empty index is indistinguishable from a working search that finds nothing. **`039`'s index swap
+was free only because the table is empty**; once `PD-140`'s extract is loaded, dropping a `places`
+index is a deliberate act again.
 
 ## Known issues, roughly by cost to fix
 
@@ -800,14 +636,10 @@ violations, and all 3 survive.
     two places, which that page's own comment concedes. Same shape for an organizer via
     `setRideAttendance(rideId, null)`.
 
-    **A draft of this entry claimed the owner is shown a "Leave Club" button and one tap
-    orphans the club. That was wrong** — it came from grepping `isOwner` under
-    `src/components/clubs/` only and citing the line inside the guard rather than the guard.
-    Caught by review. Both doors need a hand-rolled request; neither is reachable by tapping.
+    **Both doors need a hand-rolled request; neither is reachable by tapping.**
 
-  Also corrected there: both call-site comments and this entry named a `security definer`
-  function *the client calls*. An RPC binds only its callers, and the publishable key ships in
-  the bundle — the shape that binds every writer is a trigger.
+  **The fix is a trigger, not a `security definer` RPC the client calls.** An RPC binds only its
+  callers, and the publishable key ships in the bundle.
 
   Live pre-flight, 2026-08-06, RLS bypassed: **0 orphan clubs, 0 orphan rides**, on 2 clubs and
   3 rides. Read that as "nobody has hit it on a tiny dataset", not as "the window is hard to
@@ -816,9 +648,8 @@ violations, and all 3 survive.
   > **Recommendation** 8/10 — the last place a client can leave the database in a state no
   > constraint forbids, and the invariant is unasserted in *two* places rather than one
   > **Complexity** 5/10 — two migrations, four triggers, a backfill, three deploy steps
-  > **Urgency** 4/10 — a draft said 6/10 on a refuted premise (see above); back to roughly
-  > where it was. Both doors need a hand-rolled request. Rises the day a real rider abandons a
-  > create, and sharply if create gets a retry affordance or the store build ships
+  > **Urgency** 4/10 — both doors need a hand-rolled request. Rises the day a real rider abandons
+  > a create, and sharply if create gets a retry affordance or the store build ships
   > **This session** N — 3 blocking questions, two of them product-owner decisions (may an
   > owner leave their own club? may an organizer leave their own crew?)
 
@@ -871,33 +702,22 @@ violations, and all 3 survive.
   written only by six `private` fan-out triggers, and a `/notifications` route reached from a
   `MailboxIcon` in the header of the four tab-root screens rather than from a tab. What is left of
   the epic is **DMs** and the tab itself; when the tab returns, `/notifications` becomes
-  `/inbox/notifications`. The owner
-  decided PD-100's open question — *build the epic, or hide the tab* — in favour of hiding it,
-  so the nav is **four tabs**: Home, Rides, Clubs, Profile. Verify rather than trust this line,
-  because it is the one that has been wrong twice already — and **scope the range before you
-  count**:
+  `/inbox/notifications`. The owner decided PD-100's open question — *build the epic, or hide the
+  tab* — in favour of hiding it, so the nav is **four tabs**: Home, Rides, Clubs, Profile. Verify
+  rather than trust this line, and **scope the range before you count**:
 
   ```bash
   sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep -c "href:"
   ```
 
   A bare `grep -c "href:"` on that file reads **9**, not 4: four nav rows, four `STICKY_ACTIONS`
-  entries, and the `href: string` inside the `Record` type annotation. **This note shipped
-  on 2026-08-07 claiming 8**, because its author measured `href: '` — with the quote — and then
-  wrote the unquoted form into the docs. A warning about miscounting, off by one, for the same
-  reason it was warning about. The `UNBUILT` set, the `aria-disabled`
-  span and the `MailboxIcon` import all went with it — there is no disabled-tab machinery left
-  to reuse, which is deliberate.
+  entries, and the `href: string` inside the `Record` type annotation. The `UNBUILT` set, the
+  `aria-disabled` span and the `MailboxIcon` import all went with the tab — there is no
+  disabled-tab machinery left to reuse, which is deliberate.
 
   **The design still draws five**, so the tab's absence looks like an omission to anyone
   reading Figma rather than this file. `Navbar.tsx`'s own docstring carries the reason at the
   point of temptation; that is the copy to keep current, not this one.
-
-  Two earlier revisions of this line were wrong, both worth keeping as the shape of the error:
-  it once said *"Inbox and Garage have no routes… a reviewer tapping five tabs finds two dead"*
-  — Garage is not a nav tab at all — and it then said Inbox *renders* disabled, which was true
-  only until the tab was removed. Garage remains unbuilt as a *domain*, per `CLAUDE.md`
-  §Product Scope, which is a different and much smaller claim.
 - **There is no `clubIdSchema`.** `/postcards/[id]` parses its id before issuing anything, so it
   can read in parallel and 404 a malformed segment; `/clubs/[id]` cannot, so its two content
   reads are serialised behind the club. Adding the schema and parallelising is a small, clear
@@ -931,18 +751,14 @@ violations, and all 3 survive.
 | `qa-verify@letsride.test` | `verify24321868` | Onboarded and consented. **SQL-inserted** originally |
 
 **Passwords are not in this repo and must never be.** `duskrider`'s lives with the product
-owner; `qa-verify`'s is in the git history of this file and should be treated as burned — which
-also makes it the credential `npm run walk` uses, since a burned password on a fixture marked
-for deletion is the right thing to hand a smoke test. Pass it in the environment, never on a
-command line that gets logged.
+owner; `qa-verify`'s is in the git history of this file and should be treated as burned. Pass one
+in the environment, never on a command line that gets logged.
 
 **DEV has its own two, and they are the ones to walk against** — `letsride-dev`
 (`fpmrimzxadewsaiwpsel`) holds `rider-1786033029156@letsride.dev` (consented, **no username, not
 onboarded** — the fixture for walking the wizard) and `rider-1786033088990@letsride.dev`
-(`devrider093453`, fully onboarded — the fixture for walking the app). Walking DEV rather than
-PROD is the better default: the seed guard in `supabase/seeds/development.sql` exists because
-that database is meant to be disposable, and a smoke walk that signs in as a real rider on the
-production project is a habit worth not forming.
+(`devrider093453`, fully onboarded — the fixture for walking the app). A smoke walk that signs in
+as a real rider on the production project is a habit worth not forming.
 
 **Their passwords are not recorded anywhere, deliberately — set one when you need it.** A
 session has `execute_sql` on DEV under the standing grant, so the credential is *derivable* in
@@ -973,35 +789,23 @@ delete from auth.users where email like '%@letsride.test';
 ```
 
 Two caveats: `.test` is an RFC 2606 reserved TLD that receives no mail, so neither account can
-sign up, recover a password or confirm anything — **and that day is today, not some future one:
-email confirmation is already on** (see §Signup below). Both accounts still sign in, because
-both were SQL-inserted with `email_confirmed_at` already set. And because they were SQL-inserted,
-**neither proves anything about the signup flow**. If you create another this way, set
+sign up, recover a password or confirm anything, and PROD has confirmation **on**. Both still
+sign in, because both were SQL-inserted with `email_confirmed_at` already set — and for that same
+reason **neither proves anything about the signup flow**. If you create another this way, set
 `confirmation_token`, `recovery_token`, `email_change` and the other token columns to `''`,
 never NULL — GoTrue scans them into non-nullable strings and a NULL turns every login into
 "do not match".
 
 There is also one **real** signup (a Gmail address, 2026-08-04) with no consent, no username, no
-onboarding and no sign-in. This was recorded as "the shape of `signUp`'s documented
-consent-failure path", which was right about the shape and wrong about the cause: it is not a
-Supabase error, it is confirmation being on. That rider confirmed their address 13 seconds after
-signing up (`email_confirmed_at` is set), hit *"we could not record your consent — sign in to
-continue"*, and never came back. **They are the proof, not an anomaly beside it.**
+onboarding and no sign-in. That rider confirmed their address 13 seconds after signing up, hit
+*"we could not record your consent — sign in to continue"*, and never came back — they are the
+live proof of the bug §Signup describes, not an anomaly beside it.
 
 ## Signup — the flow was broken on the live database, and is fixed
 
-Measured 2026-08-06, and the reason it went unnoticed for the project's life is worth more than
-the bug. `GET /auth/v1/settings` on `letsride` reports `"mailer_autoconfirm": false` — GoTrue
-for *confirmation required*. Decision #6 asserted the opposite, and three places in `src/`
-treated that sentence as a fact about the world:
-
-| Where | Assumed | Actually |
-|---|---|---|
-| `lib/actions/auth.ts` `signUp` | session live, so `accept_terms()` runs | no session; RPC runs as `anon`, which has no EXECUTE on it (`021`) |
-| `lib/auth/guard.ts` | the consent prompt is a legacy path | it is the ordinary path every new rider takes |
-| `signUp`'s duplicate-address comment | the leak is "a consequence of #6" | confirmation-on closes it — GoTrue returns success with empty `identities` |
-
-`signUp` now branches on `data.session` and returns `{ sent: true }` when there is none, and
+`signUp` assumed a live session, which confirmation-on does not give it: the RPC then ran as
+`anon`, which has no EXECUTE on `accept_terms()` (`021`). `signUp` now branches on `data.session`
+and returns `{ sent: true }` when there is none, and
 `/auth/signup` renders *"Check your email"* instead of navigating to an onboarding step the
 guard would bounce. **Consent is not lost**: the guard already sends any signed-in rider with a
 NULL stamp to `/onboarding/terms` ahead of the wizard, and `023` refuses their content writes
@@ -1051,23 +855,12 @@ seeding.
 
 ## Open questions for the product owner
 
-1. **Email confirmation is ON, not off — and that is a question for you, not a finding to file.**
-   Decision #6 said off for the project's whole life; `GET /auth/v1/settings` on `letsride`
-   reports `mailer_autoconfirm: false`, which is GoTrue for *required*. Nobody checked, because
-   nothing in the repo can: it is a dashboard setting with no file behind it.
-
-   The app half is fixed (§Signup below). **A first draft of this line said it "needs nothing
-   from you" — that was wrong, and review caught it.** Fixing `signUp` made the confirmation
-   email the whole flow, and the email is broken at the dashboard: `letsride`'s Site URL is
-   `http://localhost:3000` and neither the production origin nor the preview alias is on the
-   redirect allowlist, so **every link the app emails lands on a dead local address.** Measured,
-   with the one-line probe in `ENVIRONMENTS.md` §The redirect allowlist is broken. Two clicks,
-   §Owner setup items 8 and 9, and they are the most urgent items in this repo.
-
-   The **DEV** answer only becomes real once `letsride-dev` exists: `ENVIRONMENTS.md` wants it
-   **off on DEV** so fixtures can be created and **on for PROD**, which is where it already is.
-   Turning it off on the *one* project that exists today would weaken production to make testing
-   easier — so leave PROD alone and set DEV off at creation, as step 4 of §Owner setup says.
+1. **The Site URL and redirect allowlist on `letsride` — re-measure before assuming either way.**
+   Confirmation being on makes the emailed link the whole signup flow, and a Site URL of
+   `http://localhost:3000` with the production origin off the allowlist sends every one of those
+   links to a dead address. `PD-88` reports it fixed and the probe agreed on 2026-08-07, but a
+   dashboard setting has no file behind it and nothing marks it done except re-running the probe
+   — `docs/ENVIRONMENTS.md` §The redirect allowlist, one credential-free line.
 2. **Branch protection is not enabled on `main` — and now needs to cover `development` too**,
    which doubled the exposure rather than adding a second nicety: there are now two branches a
    stray push can land on, and one of them deploys to riders. An agent session cannot enable it
@@ -1097,11 +890,8 @@ Two traps, both live:
 - **Status does not track what is built.** Treat `Done` as "the designer considers this
   settled" — which is what you want before spending a day on it — not as a build log.
 
-Read the design from `design/`, never the API: `npm run figma -- tree "<screen>"`. Screen names
-repeat across flows, so qualify with the flow. `tree` and `text` hide layers Figma has toggled
-off; `--all` shows them. Refreshing the snapshot is a **monthly** job — `npm run figma:check`
-first, and if `/files/:key` or `/nodes` return 429, **stop and read `Retry-After`** rather than
-polling. It is a real countdown in seconds and waits have been measured in days.
+`CLAUDE.md` §Development Workflow has the commands and the refresh rules; the two traps above
+are the ones that only matter when choosing *what* to build.
 
 ---
 
@@ -1149,220 +939,35 @@ wider project rule. A UUID-scoped mirror belongs in `.claude/settings.local.json
 gitignored **because those ids are per-machine** — never commit them. There is no such file in
 this container today (`ls .claude/settings.local.json`).
 
-**The hourly Routine spent 2026-08-07 prompting for Linear on every firing, and the cause was
-none of the above — it had no repository attached.** `session_context.sources` was empty, so
-there was no checkout, so `.claude/settings.json` was never read, so neither `defaultMode: "auto"`
-nor any `permissions.allow` entry existed to match. The connector always-allow was set first and
-changed nothing, because connectors attach per session independently of the repo — Linear's tools
-loaded fine the whole time, which is what made it look like a permission-layer problem.
+**The hourly Routine once prompted for Linear on every firing, and the cause was none of the
+above — it had no repository attached.** `session_context.sources` was empty, so there was no
+checkout, so `.claude/settings.json` was never read, so neither `defaultMode: "auto"` nor any
+`permissions.allow` entry existed to match. The connector always-allow was set first and changed
+nothing, because connectors attach per session independently of the repo.
 
 **The cheap diagnostic, learned the expensive way: a permission dialog offering "Allow once" but
 no "Allow always" means there is no project settings file to persist a grant into — i.e. no
-repo.** Check `session_context.sources` before theorising about permission layers. `PD-109` chased
-the connector and was wrong. The owner fixed the source in the Routines UI.
+repo.** Check `session_context.sources` before theorising about permission layers.
 
-**`PD-110` (set the Routine's model, refused by `update_trigger` with `model_update_disabled`) is
-moot while the Routine stays self-bound** — a resumed session runs on its own `claude-opus-5`, so
-there is no per-firing model to set. It comes back the moment anyone switches the Routine to
-`create_new_session_on_fire`. This line said "still stands" until the switch landed.
-
-**Any UI edit to a Routine re-anchors its cron.** Attaching the repo silently rewrote
-`0 0-23 * * *` to `24 * * * *`, the save minute. Re-read `cron_expression` after every UI edit.
-
-**Never delete a Routine — disable it.** `create_trigger` still refuses the `connectors`
-parameter for this org (re-tested 2026-08-07), so a replacement comes back with no Supabase,
-Linear or Vercel, and only the owner can re-attach them by hand.
-
-**The Routine now fires into a reused session instead of spawning one — 2026-08-07.** The queue is
-drained by **`trig_01WJkMVXGzUVGDcC1njNmaan`**, hourly, delivering into
-**`session_01B2mxc642tG8vZ15wysQpqM` — the Development session**. Connectors attach to sessions, so
-a firing that lands in a session already holding Linear cannot lose it; that is the whole reason.
-The old fresh-session Routine `trig_01Gzy8eCiaXUUa1knvJnNpwy` is **disabled, not deleted**, and is
-the fallback — it still holds its three hand-attached connectors and one `update_trigger
-enabled: true` restores it.
+**The queue's own machinery — the two trigger ids, the never-delete rule, the reused session and
+the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the procedure is
+`.claude/commands/queue-pickup.md`.** Neither belongs here: they are settled contract, not
+current position.
 
 ```bash
 # via the CCR MCP: list_triggers
 #   -> trig_01WJkMVXGzUVGDcC1njNmaan  enabled:true  persistent_session_id: session_01B2mxc…
-#   -> trig_01Gzy8eCiaXUUa1knvJnNpwy  no `enabled` key at all  = disabled
+#   -> trig_01Gzy8eCiaXUUa1knvJnNpwy  no `enabled` key at all  = disabled (the fallback)
 ```
 
-Four measurements from making the switch, each of which will otherwise be rediscovered:
+**The one thing that design cannot prove in advance:** the connector test ran minutes after the
+session was active, so the container was warm. **Whether the grants survive a container reclaim
+across an idle hour is unproven**, and no session can test it — it is only observable after the
+fact. STEP 0 of the procedure is the detector; the fallback is re-enabling the old Routine.
 
-- **`update_trigger` has no `persistent_session_id`**, so rebinding is impossible in place. The
-  switch had to be create-new-then-disable-old, which is also why "never delete" now matters more.
-- **`enabled: false` serialises as an absent field**, not `"enabled": false`. Read the disable back
-  by checking the key is *gone*.
-- **The server rejects `notifications` on a self-bound trigger.** Push now comes from the session
-  itself via `PushNotification`, at STEP 0 and STEP 5 of the procedure.
-- **`next_run_at` carries a per-trigger constant offset, and you cannot schedule onto an exact
-  minute from a session.** `0 0-23 * * *` is minute 0 and stores verbatim; the offset is applied on
-  top. Settled by watching the first firing: `next_run_at` went `20:05:51.185148522` →
-  `21:05:51.185148522` — **identical to the sub-second, plus one hour**. So each trigger draws a
-  fixed offset for life (this one `+5m51.185s`; the old Routine `+0.667s`, which is why that one
-  looked exact). Rewriting the expression does not re-roll it (`20:05:35` → `20:05:51`). Delivery
-  latency is separate and larger: scheduled 20:05:51, arrived 20:13:52. The only lever is a new
-  trigger id — a lottery, not a fix, and worth it only for the disposable self-bound Routine.
-
-  **Two explanations died here and the second is the instructive one.** First "scheduler jitter, up
-  to 10% of the period" — that figure is `CronCreate`'s, a different scheduler. Then a **first-run**
-  property, inferred from two Routines where the exact one had fired and the offset one had not.
-  That reading fit every observation available and was still wrong: the variable it blamed (has it
-  fired?) happened to correlate with the one that mattered (which offset did it draw?). One more
-  firing separated them. **Do not treat a two-sample correlation as a mechanism.**
-- **The "never delete a Routine" rule protects connectors, so it covers `…Gzy8e` and not
-  `…WJkMV`.** The self-bound one holds no `mcp_connections` and needs none — they come from the
-  session — so recreating it costs one call. The connector-holding one is irreplaceable from a
-  session. Keep the two straight in both directions.
-
-**The procedure moved out of the trigger prompt and into
-[`.claude/commands/queue-pickup.md`](../.claude/commands/queue-pickup.md)** — the trigger now says
-little more than *read that file and follow it*. A prompt is re-injected on every firing where a
-file is read once, and a file can be reviewed in a PR. It gained two steps the fresh-session design
-did not need:
-
-- **STEP 0.5, the idle gate.** A fresh session was idle by construction; this one is not, and a
-  firing can land mid-conversation with the owner. Four checks — unfinished owner request, dirty
-  tree, branch ahead of `development`, and an open PR **whose head is the current branch**. The
-  owner's work wins. **It gathers; it does not exit** — every reason to stop is acted on at STEP
-  1.5, which owns the only exit and runs the stall alarm across all of them.
-
-  Both halves of that are `reviewer` findings on this very change, and both are the repo's
-  signature failure — a guard that fails silently and so looks like success. The PR check was
-  repo-wide, which hands any concurrent session a permanent veto (`#101`/`#102` came from a
-  different session). And STEP 0.5 exited early, in front of the 3–4h stall notification, so the
-  one alarm that detects a frozen queue could never fire — self-reinforcingly, since the
-  `Needs help` path deliberately leaves an open PR behind. **Never reintroduce an early return
-  above STEP 1.5**, including the tempting "cheap checks first, skip the Linear round trip".
-- **The usage-headroom check is weaker than it was asked to be, and cannot be strengthened from a
-  session.** Asked for 2026-08-07 as *"if any Claude usage limit is above 80%, skip the run"*.
-  **No number is readable**: `claude` has no `usage` subcommand (`/usage` is interactive only),
-  nothing under `~/.claude` carries it, no env var does, and no MCP tool exposes it — all checked
-  that day. So STEP 0.5 check (5) is *"exit if a usage warning is visible in this session"*, which
-  the reuse helps with because a warning from an earlier turn is still in the conversation.
-
-  Writing it as a numeric threshold would be a gate that can never fire — the third instance of
-  that shape in this one file, after the team-scoped lock and the buried stall alarm. Querying an
-  undocumented endpoint with the session's OAuth credential is worse: it breaks silently and
-  *looks* like it works. **The lever that works is the owner's** —
-  `update_trigger trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan enabled=false` pauses it in one call,
-  and a disabled trigger's row has **no `enabled` key at all** rather than `"enabled": false`.
-
-  ```bash
-  claude --help | sed -n '/^Commands:/,$p'   # no `usage` subcommand
-  ls ~/.claude; env | grep -iE 'usage|limit|quota'   # nothing
-  ```
-- **STEP 0.6, reduce the session.** Context accumulates across firings and **no tool available to a
-  session clears its own context**; `/clear` and `/compact` are CLI commands the owner types. The
-  mechanism is therefore delegation: gates inline, build in subagents, never a diff or a test log
-  in the main thread.
-
-  **Where the split falls is forced, not chosen.** No agent in `.claude/agents/` holds a single
-  `mcp__Linear__*` tool, none holds `create_pull_request` or `merge_pull_request`, and `gh` is not
-  installed in this container — so the Linear moves, the PR and the merge must stay in the main
-  thread, and only the building delegates. An earlier draft told the firing to run the whole
-  pickup in one subagent; it could not have worked. `general-purpose` and `claude` inherit every
-  tool and could in principle, but **whether an inherited MCP grant survives into a subagent here
-  is untested** — do not find that out mid-firing, after the issue is already claimed.
-
-  ```bash
-  grep -l "mcp__Linear__\|create_pull_request\|merge_pull_request" .claude/agents/*.md # expect none
-  command -v gh                                                                        # expect none
-  ```
-
-**A firing now folds strong follow-ups into the same PR instead of filing all of them — 2026-08-07,
-at the product owner's request.** The old §Scope discipline sent adjacent improvements to `Backlog`
-"or note them in the PR", which in practice means the test a new function needs and the doc line
-the change just falsified become future work rather than done, leaving the story merged and
-incomplete. **That is the failure the old default invites, not one anyone has watched happen** —
-the new rule was written 2026-08-07 and nothing has run under it yet. Do not let a later revision
-promote it into history: a plausible illustration and an observed event are not the same claim,
-and only the second earns the past tense. (A first draft of these files did exactly that,
-describing a two-minute fix filed to `Backlog` from a branch that was already open, green and
-under review — an event that never happened.)
-
-STEP 4b is the procedure, and it asks **two questions in a fixed order**:
-
-1. **Relatedness** — is this *the story done properly* or *the next story started early*? Only the
-   first is eligible to be rated at all, and a one-line justification goes in the PR body. The
-   first draft had no such test: the ≥7/Y bar encodes nothing about what you are building, so it
-   would have licensed any sufficiently good idea. `reviewer` caught that.
-2. **The rating block** — ≥ 7/10 *and* `This session` **Y** builds now, same branch, same PR, same
-   `reviewer` pass. Anything else is a story: `Todo AI`, `Todo Human` + `Owner only`, or `Backlog`
-   below 4/10.
-
-What carries the risk, and each is the point rather than a caveat:
-
-- **Both halves are required.** 9/10 with `This session` **N** is a story — the ordinary pairing
-  `CLAUDE.md` illustrates with the leaked-password toggle. Reading a high recommendation alone as
-  licence is how a firing starts choosing its own work.
-- **`This session` is read more narrowly in a firing** — *on this branch, before this PR merges* —
-  than §Working Principles defines it, where the canonical **Y** is a 3/10 two-minute fix. The
-  divergence is deliberate and the cost is real: a trivial related fix gets filed rather than made,
-  because an unattended run has nobody watching to say "not that".
-- **Four things force N** however good the idea is: real domain rules, an order-sensitive migration
-  (`021`/`025`), anything owner-only, and a diff larger than one `reviewer` pass can cover.
-- **A breadth cap, because "one level deep" bounds recursion and not width.** Five items each rated
-  8/Y pass every other gate. At most two, together smaller than the story's own diff; over either,
-  file them all and build none.
-
-**The safety argument is `reviewer`, so `reviewer` was told about it.** `.claude/agents/reviewer.md`
-gained a mandatory scope pass — check each fold-in against its relatedness sentence, check the
-ratings were applied rather than decorated, check the breadth cap — because the brief had zero
-mentions of scope and CI checks that a diff compiles, not that it was asked for. It also had
-`git diff main...HEAD` as its starting command, which widens every review by whatever sits
-unreleased in `development`; that is now `origin/development...HEAD`.
-
-**The failure mode to watch is a follow-up that gets rated and then never filed** — it looks
-handled precisely because it was rated. STEP 5 files the stories *before* it writes the `Done`
-comment that links them, and §If you get stuck now says every exit path owes the same, since
-`Needs help` and STEP 2c both leave without reaching STEP 5.
-
-**The delivery path is tested and the connectors survive it.** `create_trigger` warns *"this
-trigger stores no MCP connectors, so the sessions it fires will run without connector tools"* — a
-false alarm for a self-bound trigger, which spawns no session. Verified 2026-08-07 by firing a real
-trigger into this session and calling one tool per connector from the fired turn: **Linear
-(`list_issue_statuses`), Supabase (`list_migrations`, 35 rows) and GitHub (`list_pull_requests`) all
-succeeded, no prompt, no denial.** Do not rebuild the Routine to chase that warning.
-
-**The one thing this design cannot prove in advance:** that test ran minutes after the session was
-active, so the container was warm. **Whether the grants survive a container reclaim across an idle
-hour is unproven**, and no session can test it — it is only observable after the fact. STEP 0 is the
-detector — a firing that finds Linear missing notifies rather than exiting quietly — and the
-fallback is re-enabling the old Routine.
-
-**Do not archive `session_01B2mxc642tG8vZ15wysQpqM`.** Archiving it stops the queue with no error
-anywhere, and `update_trigger` cannot re-point the Routine at a replacement.
-
-**The lock check must be scoped to the project, and a team-scoped one is held for ever.** Found
-while making the switch, 2026-08-07: `list_issues` filtered by *team* and `Development (AI)` also
-returns `PD-82`, `PD-83` and `PD-41` — issues from 2022–2025, two in the deprecated `Let's Ride`
-project and one with no project at all, parked in that status for years. A firing that checks the
-lock team-wide exits silently every time, which is indistinguishable from a healthy job behind a
-busy queue. Always pass `project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`.
+**The board's live state is the fastest-moving thing in this file — do not read it here:**
 
 ```bash
 # via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
-#   -> statuses; anything in Development (AI) or Needs help holds the lock
+#   -> group by status; Queued (AI) is the queue, Development (AI) + Needs help are the lock
 ```
-
-**The board is empty as of 2026-08-07 22:15 UTC — `Queued (AI)`, `Development (AI)` and
-`Needs help` all have zero issues**, so every firing will exit silently at STEP 1.5 until the
-owner queues something. That is the designed idle state, not a fault. Re-derive rather than trust
-it, because this is the fastest-moving line in the file:
-
-```bash
-# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
-#   -> group by status; Queued (AI) is the queue, the other two are the lock
-```
-
-**The Routine has run for real and the whole path is proven.** Four firings on 2026-08-07: three
-exited on the lock (correctly — `PD-118` held it), and the fourth took **`PD-132`**, a
-deliberately empty test issue, through gates → lock → pick → claim → `Done` → push notification.
-`PD-132` closed with no code change and no PR, because the issue asked for none.
-
-**`PD-133` is open in `Needs decision`** — the owner's question about whether the column's manual
-order should replace the `priority` attribute. Note the thing to check first: no `list_issues`
-response this session carried an ordering field (`sortOrder`, `position`), so the idea may not be
-buildable through this MCP at all. `Needs decision` is typed `unstarted` and does **not** hold the
-lock.

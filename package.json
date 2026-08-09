@@ -20,7 +20,8 @@
     "openspec": "openspec",
     "walk": "node scripts/walk.mjs",
     "db:drift": "node scripts/db/check-migration-drift.mjs",
-    "db:seed:check": "./scripts/db/check-seed.sh"
+    "db:seed:check": "./scripts/db/check-seed.sh",
+    "docs:check": "node scripts/docs/check.mjs"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",
