@@ -1461,10 +1461,28 @@ it does, permanently.
 > eventually* — so everything in it is order-independent by construction. Work that must wait
 > waits in `Todo AI`, and the owner queues it when its blocker reaches `Deployed to DEV`.
 
-- **One issue per feature.** Split only when the halves ship **independently** — each mergeable on
-  its own, in either order, neither leaving the other half-built. When a feature genuinely is too
-  big, use **sub-issues of one parent** (`parentId` is both a `save_issue` parameter and a
-  `list_issues` field). Siblings still have no order between them.
+- **One issue per deliverable — a thing that can be *delivered*, not a step toward one.** The
+  unit is what somebody gets when it closes: *"rides show a map"*, *"the native shell builds"*.
+  Provider choice, key procurement, terms review and the build are **one** story, not four.
+  Split only when the halves ship **independently** — each mergeable on its own, in either
+  order, neither leaving the other half-built. When a deliverable genuinely is too big, use
+  **sub-issues of one parent** (`parentId` is both a `save_issue` parameter and a `list_issues`
+  field). Siblings still have no order between them.
+
+  Product owner, 2026-08-09: *"Unless it explicitly has substantial value to break into smaller
+  stories, I would rather have stories with a more clear goal / value that can be delivered."*
+  **The board drifted from this twice in the same way** — the map tile and the native shell each
+  reached three issues — and the mechanism was always the same: a blocker *inside* a deliverable
+  got filed as a *peer* of it. Filing is the moment to catch it, because a split is far cheaper
+  to avoid than to undo.
+
+- **A decision is never its own story.** When work stalls on a choice, write the choice into the
+  story that needs it — what is being decided, the options, what each costs — and move **that**
+  story to `Needs decision`. Do not open a second issue for the question. A decision issue cannot
+  be delivered, so it closes with nothing shipped, and until it does it leaves the real story
+  sitting in a build column looking ready while its answer lives somewhere else on the board.
+  **An owner action inside a deliverable works the same way**: label the story `Owner only` and
+  name the action in it, rather than splitting the story around the person who has to act.
 - **When a split really is ordered, only the first part goes in `Queued (AI)`.**
 - **`blockedBy` is readable, but only per issue** — `get_issue` with `includeRelations: true`
   returns `relations.blockedBy` / `.blocks` / `.relatedTo`; the flag is off by default, which is
