@@ -64,7 +64,7 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 7 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 965/965 across 37 files
+npm run test:unit                     # 966/966 across 37 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
 PGPASSWORD=postgres npm test          # 1047 assertions, 0 failures
@@ -365,7 +365,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1047**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false) |
-| Unit tests | `npm run test:unit` — **965 across 37 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **966 across 37 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It moved 965 → 966 for exactly that reason when PD-173 added `scripts/places/load.sql`, which is not a test and is not even TypeScript. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -653,11 +653,44 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 # via the Supabase MCP: list_migrations -> md5(statements[1])
 ```
 
-**`places` exists on BOTH projects with 0 rows.** Filling it is an owner action — a 99 MB `\copy`
-needing a direct Postgres connection no session holds (`scripts/places/README.md` §Loading). An
-empty index is indistinguishable from a working search that finds nothing. **`039`'s index swap
-was free only because the table is empty**; once `PD-140`'s extract is loaded, dropping a `places`
-index is a deliberate act again.
+**`places` exists on BOTH projects with 0 rows**, and an empty index is indistinguishable from a
+working search that finds nothing:
+
+```bash
+# via the Supabase MCP: execute_sql -> select count(*) from public.places;
+#   DEV  (fpmrimzxadewsaiwpsel): 0 · PROD (zwprydcyryvudhurbnye): 0
+```
+
+**The loader exists as of PD-173 and the owner action shrank to one secret per database.**
+`.github/workflows/places-load.yml` (Actions → Load places index) runs the extractor and
+`scripts/places/load.sql` on a runner, which has the Postgres egress no session does. It needs
+`PLACES_DEV_DATABASE_URL` / `PLACES_PROD_DATABASE_URL` — the Supabase **session pooler** string,
+because GitHub runners have no IPv6 and the direct host needs the IPv4 add-on. Until one is pasted
+the workflow fails at its pre-flight naming the missing secret. **The whole pipeline was run end to
+end locally** against the real extract and the full migration chain on 2026-08-09 — 736,538 rows,
+both detector rejections exercised, and both the first-load and refresh branches — so what the
+first real run adds is the connection, not the confidence.
+
+**Scope those secrets to the `places-dev` / `places-prod` environments rather than to the
+repository, and put a deployment branch policy on `places-prod`.** The job declares
+`environment: places-<target>` so there is somewhere for the rule to attach. This is not
+housekeeping: the string is a `postgres`-role credential, which owns every table and therefore
+bypasses RLS more completely than the service-role key that `CLAUDE.md` keeps in
+`autoMode.hard_deny`. A plain repo secret is readable by a workflow on **any** branch, and
+`workflow_dispatch` runs the definition from the ref it is dispatched against — so every guard in
+that file lives inside the job, after injection, where a pushed branch can delete it. With no
+protection rule configured, the real bound is who has push access.
+
+**Refreshes are blocked on `PD-87`, which is new information rather than a restatement.** Measured
+on the real extract: a first load is 337 MB and lands DEV at ~346 MB against the free tier's 500 MB
+database cap, so it fits. A refresh measures **465 MB** before the reindex peak or WAL — the heap
+doubles once (`delete` leaves the dead tuples in place and `vacuum` makes the space reusable
+without returning it) and index bloat needs a rebuild that briefly holds two copies of all four
+indexes. So the first load is the only one that fits, and `load.sql` skips the reindex on a first
+load precisely so that one does. `scripts/places/README.md` §Loading has the full table.
+
+**`039`'s index swap was free only because the table is empty**; once the extract is loaded,
+dropping a `places` index is a deliberate act again.
 
 ## Known issues, roughly by cost to fix
 

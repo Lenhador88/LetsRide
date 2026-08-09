@@ -1,0 +1,284 @@
+name: Load places index
+
+# Loads public.places from Overture Maps — the half of PD-140 that never shipped.
+#
+# **Why this is a workflow and not a documented command.** scripts/places/README.md
+# §Loading gives a `psql \copy` of a 99 MB CSV, and no agent session can run it:
+# the build container holds no database credentials and `\copy` needs a direct
+# Postgres connection. A GitHub runner has Python, egress to Supabase and psql, so
+# it can do the whole job unattended. The one thing it does not have is a
+# connection string — see §The owner action below.
+#
+# Deliberately `workflow_dispatch` only, with no `schedule:`. Overture releases
+# monthly and the index goes stale on its own, but a scheduled run would need to
+# discover the latest release itself (the extractor pins one), and an unattended
+# PROD load is wrong while PD-150 is open and the attribution credit is unsettled.
+# Add the schedule when both are closed; the detector that makes a schedule safe
+# is already here.
+#
+# ---------------------------------------------------------------------------
+# §The owner action — one secret per database, pasted once
+# ---------------------------------------------------------------------------
+# Settings -> Secrets and variables -> Actions:
+#
+#   PLACES_DEV_DATABASE_URL   -> Letsride-dev (fpmrimzxadewsaiwpsel)
+#   PLACES_PROD_DATABASE_URL  -> letsride     (zwprydcyryvudhurbnye)
+#
+# Use the **Session pooler** string from Supabase -> Project Settings -> Database,
+# with `?sslmode=require`:
+#
+#   postgresql://postgres.<ref>:<password>@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require
+#
+# NOT the direct `db.<ref>.supabase.co` string: Supabase serves that over IPv6
+# unless the IPv4 add-on is bought, and GitHub-hosted runners have no IPv6. That
+# reasoning is from the platforms' own documentation rather than measured here, so
+# if a paste cannot connect it is the first thing to change. Transaction mode
+# (port 6543) is the other thing to avoid — session mode gives the load its own
+# connection for the whole `\copy`.
+#
+# The load must run as the table owner. 037 §4b revokes every write from
+# `authenticated` and grants no INSERT to anyone, so `postgres` writing this table
+# while nothing reachable through PostgREST can is the design, not a workaround.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which database to load
+        type: choice
+        options: [dev, prod]
+        default: dev
+      release:
+        description: Overture release (blank = the extractor's pinned default)
+        type: string
+        default: ''
+      force:
+        description: Accept a row count outside the detector's band (the landmark probes still apply)
+        type: boolean
+        default: false
+      confirm:
+        description: 'target=prod ONLY: type load-prod. PD-150 must have landed first.'
+        type: string
+        default: ''
+
+# One load at a time per database. Two concurrent runs would contend for the same
+# rows — the second one's `delete` blocks on the first's row locks and then
+# proceeds against whatever that one committed — and the outcome depends on an
+# interleaving nobody should have to reason about. The guard removes the question
+# rather than answering it; do not add `cancel-in-progress` on the strength of a
+# predicted failure mode, because a cancelled run mid-`\copy` is a different
+# question again.
+concurrency:
+  group: places-load-${{ inputs.target }}
+  cancel-in-progress: false
+
+# The job needs no GitHub API at all. Least privilege matters more here than in
+# most workflows, because of what the job DOES hold — see §Credential reach.
+permissions: {}
+
+jobs:
+  load:
+    name: Extract and load (${{ inputs.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    # ---------------------------------------------------------------------
+    # §Credential reach — read this before pasting either secret
+    # ---------------------------------------------------------------------
+    # The connection string is a `postgres`-role credential. That role OWNS every
+    # table, so it bypasses RLS entirely — strictly more reach than the
+    # service-role key that CLAUDE.md keeps in `autoMode.hard_deny`, and the
+    # first database credential any workflow in this repo has held.
+    #
+    # ** A plain repo secret is readable by a workflow on ANY branch. **
+    # `workflow_dispatch` runs the workflow definition from the ref it is
+    # dispatched against, so every guard below is inside the job — i.e. after the
+    # secret is injected — and anyone who can push a branch can delete them.
+    # Naming an environment here is what moves the decision to a point the job
+    # cannot edit: scope the secrets to these environments rather than to the
+    # repository, and add a deployment branch policy (and required reviewers, if
+    # the plan offers them) on `places-prod`.
+    #
+    # ** With no protection rules configured this is a label and not a control. **
+    # The real bound is then who has push access. The narrower fix is a dedicated
+    # least-privileged loader role instead of `postgres`, which needs a migration
+    # — `REINDEX`, `VACUUM` and `ANALYZE` all want table ownership — and is filed
+    # rather than assumed here.
+    environment: places-${{ inputs.target }}
+
+    env:
+      # Both project refs already ship in the client bundle as part of the
+      # Supabase URL, so neither is a secret. Safe as a `&&`/`||` expression
+      # because both arms are non-empty literals — unlike the connection string,
+      # which is selected in the shell below for exactly that reason.
+      EXPECTED_REF: ${{ inputs.target == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every gate that can be checked before spending 476 MB of egress and ~15
+      # minutes of extract, checked first.
+      #
+      # ** Every input reaches the shell through `env:`, never through `${{ }}`
+      # inline. ** An interpolated `${{ inputs.release }}` is substituted into the
+      # script BEFORE bash parses it, so a release of
+      # `x"; psql "$DATABASE_URL" -c 'select id, email from auth.users'; #` runs
+      # against the selected database and prints the result into the run log. As
+      # `$RELEASE` it is data. This is why the confirmation test below compares a
+      # variable rather than a substitution: a `confirm` value containing a quote
+      # could otherwise break the test's own quoting and fall through the gate.
+      - name: Pre-flight
+        env:
+          TARGET: ${{ inputs.target }}
+          CONFIRM: ${{ inputs.confirm }}
+          # Both are read here and exactly one is chosen, in shell. NOT
+          # `target == 'prod' && secrets.PROD || secrets.DEV`: GitHub's `&&`/`||`
+          # return values with empty-string falsy, so an unset PROD secret makes
+          # `true && ''` falsy and the `||` arm quietly supplies the DEV string —
+          # a PROD-targeted run holding a DEV credential, with the empty-secret
+          # check below unable to fire and the ref check reporting "one of the two
+          # secrets holds the wrong string" about a DEV secret that is correct.
+          DEV_URL: ${{ secrets.PLACES_DEV_DATABASE_URL }}
+          PROD_URL: ${{ secrets.PLACES_PROD_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ "$TARGET" = "prod" ]; then
+            secret=PLACES_PROD_DATABASE_URL
+            url=$PROD_URL
+            if [ "$CONFIRM" != "load-prod" ]; then
+              echo "::error::Loading PROD needs confirm=load-prod. Two things to have settled first, neither of which this workflow can check:"
+              echo "::error::  1. PD-150 — a 49-character term costs ~5.9 s of database CPU. That is 0 ms today only because the table is empty; this load is what arms it."
+              echo "::error::  2. Attribution — the credit string is unsettled (README §Attribution). Loading rows is safe; rendering one is not."
+              exit 1
+            fi
+            echo "PROD load confirmed. PD-150 and attribution are asserted by the person who typed the confirmation, not by this job."
+          else
+            secret=PLACES_DEV_DATABASE_URL
+            url=$DEV_URL
+          fi
+
+          if [ -z "$url" ]; then
+            echo "::error::$secret is not set. That secret is the entire owner action for this workflow — see the header of this file for which string to paste and why the session pooler rather than the direct connection."
+            exit 1
+          fi
+
+          # A check on the string this job will actually connect with — not on a
+          # sibling variable that merely describes the intent. The walk's fixture
+          # guard learned this the expensive way: RELAY_UPSTREAM configured a
+          # different process, so validating it proved nothing about what the run
+          # was pointed at.
+          #
+          # Fails closed on an unreadable ref rather than guessing, so a custom
+          # host has to be added here deliberately.
+          ref=$(printf '%s' "$url" | grep -oE '(postgres\.|db\.)[a-z]{20}' | head -1 | sed -E 's/^(postgres\.|db\.)//' || true)
+          if [ -z "$ref" ]; then
+            echo "::error::Could not read a Supabase project ref out of $secret, so there is nothing to check it against. Refusing to load rather than guessing which database this is."
+            exit 1
+          fi
+          if [ "$ref" != "$EXPECTED_REF" ]; then
+            echo "::error::target=$TARGET expects project $EXPECTED_REF but $secret points at $ref."
+            exit 1
+          fi
+          echo "target=$TARGET -> project $ref"
+
+          # Masked as well as scoped: `add-mask` covers the case where a later
+          # step echoes it, since only repo/environment secrets are masked
+          # automatically and this has now passed through a shell variable.
+          echo "::add-mask::$url"
+          echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install extractor dependencies
+        run: python3 -m pip install "fsspec[http]" aiohttp pyarrow
+
+      - name: Ensure psql is available
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+
+          # `\copy ... with (format csv, header match)` needs PG 16 on both ends.
+          # scripts/places/load.sql explains why HEADER MATCH rather than HEADER
+          # TRUE: it is the only guard against a silently column-shifted load.
+          # Both Supabase projects report 17.x; ubuntu-latest ships 16.
+          major=$(psql --version | grep -oE '[0-9]+' | head -1)
+          if [ "$major" -lt 16 ]; then
+            echo "::error::psql $major cannot send HEADER MATCH; install postgresql-client-16 or newer."
+            exit 1
+          fi
+
+      - name: Extract
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          set -euo pipefail
+          args=()
+          [ -n "$RELEASE" ] && args+=(--release "$RELEASE")
+          python3 scripts/places/extract-nl.py --out nl-places.csv "${args[@]}"
+          ls -lh nl-places.csv
+
+      # scripts/places/load.sql is the whole load: one transaction holding the
+      # delete, the \copy, the ANALYZE and the detector, so a failed assertion
+      # rolls the table back to exactly what it was. Read its header rather than
+      # this step — the reasoning lives with the SQL.
+      #
+      # Teed to a log because the summary has to distinguish a failure BEFORE the
+      # commit (nothing landed) from one after it (the rows are live and only the
+      # vacuum or the reindex failed). `pipefail` keeps psql's exit code rather
+      # than tee's — the trap docs/HANDOFF.md names, where a pipeline's last
+      # command reports success for a failed one.
+      - name: Load and verify
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          args=(-v ON_ERROR_STOP=1)
+          [ "$FORCE" = "true" ] && args+=(-v force=1)
+          psql "$DATABASE_URL" "${args[@]}" -f scripts/places/load.sql < nl-places.csv 2>&1 | tee load.log
+
+      # "A failed run changed nothing" is TRUE of everything up to the commit and
+      # FALSE after it — `vacuum` and `reindex table concurrently` both run
+      # post-commit, and either can fail on a quota, a dropped connection or a
+      # lock. Stating it unconditionally would send an operator to re-run a load
+      # that already landed, where `prev` is no longer 0 so the band applies
+      # instead of the first-load floor. So the log is read rather than assumed.
+      - name: Summary
+        if: always()
+        env:
+          TARGET: ${{ inputs.target }}
+          RELEASE: ${{ inputs.release }}
+          FORCE: ${{ inputs.force }}
+          STATUS: ${{ job.status }}
+        run: |
+          set -uo pipefail
+
+          if grep -qx 'COMMIT' load.log 2>/dev/null; then
+            landed='**The swap committed** — the rows are live. Any failure after this point is `vacuum` or `reindex`, so re-run those alone rather than the whole load; a re-run would compare against the new row count instead of the first-load floor.'
+          else
+            landed='The swap did **not** commit, so the table is exactly what it was — the load is one transaction. Nothing to clean up.'
+          fi
+
+          {
+            echo "### places load — $TARGET (\`$EXPECTED_REF\`)"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| release | \`${RELEASE:-extractor default}\` |"
+            echo "| band override | \`$FORCE\` |"
+            echo "| result | \`$STATUS\` |"
+            echo
+            echo "$landed"
+            echo
+            echo "Row counts and sizes are in the *Load and verify* step's output."
+            if grep -q '_ccnew' load.log 2>/dev/null; then
+              echo
+              echo "> A concurrent reindex may have left an invalid index. Check:"
+              echo "> \`select indexrelid::regclass from pg_index where not indisvalid and indrelid = 'public.places'::regclass;\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

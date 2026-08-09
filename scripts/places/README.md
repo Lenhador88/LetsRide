@@ -97,23 +97,53 @@ expanding beyond NL.
 
 ## Loading
 
-**No session can do this step.** Bulk-loading 736k rows needs a direct Postgres
-connection, and the build container holds no database credentials — the Supabase
-MCP is fine for DDL but not for a load of this size.
+**Run the workflow — `.github/workflows/places-load.yml`, Actions → Load places
+index → Run workflow.** It picks the target database from an input (DEV by
+default), runs the extractor, and loads through `scripts/places/load.sql`.
+**The one thing it needs is a connection-string secret per database**, which is
+an owner action and a one-time paste; that workflow's header names both secrets
+and says which Supabase string to copy.
+
+**No session can run the `\copy` by hand**, and that part has not changed — it
+needs a direct Postgres connection and the build container holds no database
+credentials. What changed is that the runner *can*, so loading is no longer
+gated on someone being at a terminal.
+
+By hand, with a connection string, it is the same one command the workflow runs:
 
 ```bash
-psql "$DEV_DATABASE_URL" \
-  -c "\copy public.places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) FROM 'nl-places.csv' WITH (FORMAT csv, HEADER true)" \
-  -c "analyze public.places"
+python3 scripts/places/extract-nl.py --out nl-places.csv
+psql "$DEV_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/places/load.sql < nl-places.csv
 ```
 
-**The explicit column list is required** — a bare `\copy public.places FROM …`
-demands every column in table order instead.
+`load.sql` carries its own reasoning — read it there rather than here. Four
+things about it are worth knowing before you run it:
+
+- **It is one transaction**, so a failed load or a failed assertion leaves the
+  table byte-for-byte what it was. There is no half-loaded state to clean up.
+- **It never leaves search empty.** `delete` inside a transaction keeps every
+  concurrent reader on the pre-delete snapshot until `commit` — see §Refreshing
+  for why that replaces the fresh-table-and-swap this file used to specify.
+- **`ON_ERROR_STOP=1` is not optional.** Without it psql reports a failed
+  statement and carries on to `commit`.
+- **The detector fails the load closed**, and `-v force=1` downgrades exactly one
+  of its assertions — the row-count band — to a warning. The landmark probes are
+  never overridable.
+
+**The explicit column list is required**, and `load.sql` uses `HEADER MATCH`
+rather than the `HEADER true` this section used to give. A bare `\copy
+public.places FROM …` demands every column in table order, which now includes the
+generated `search_text`; and `HEADER true` merely *skips* the header rather than
+checking it, so an extractor that reorders `CSV_HEADER` loads longitudes into
+`lat` and only an out-of-range value would catch it. `HEADER MATCH` needs
+PostgreSQL 16 on both ends — both projects report 17.x, measured 2026-08-09.
 
 **So is the `analyze`.** A bulk-loaded table carries no statistics, and the
 planner picks between the trigram bitmap and a sequential scan from them. Skip it
 and the first searches after a load can be an order of magnitude slower,
-intermittently — about the hardest thing to diagnose after the fact.
+intermittently — about the hardest thing to diagnose after the fact. `load.sql`
+runs it inside the transaction and then *asserts* that the trigram index is
+actually chosen, so a missing `analyze` fails the load instead of degrading it.
 
 The load runs as the table owner, which is how it bypasses RLS and the absent
 INSERT grant. That asymmetry is deliberate: the operator can write, and nothing
@@ -125,7 +155,46 @@ schema; it cannot create the rows.
 
 **Loading is also what arms the open cost in §Searching.** Linear **PD-150** —
 ~5.9 s of database CPU per request from a 49-character term — is 0 ms today only
-because there is nothing to scan. Land it before this load reaches PROD.
+because there is nothing to scan. Land it before this load reaches PROD; the
+workflow's PROD arm requires a typed confirmation that says so, which is a human
+gate and not a check.
+
+### What it costs — measured on the real extract, 2026-08-09
+
+The first real numbers this table has ever had. **Every size in `037`, `039` and
+`040` is from a 750k-row synthetic bench and each of those files says to
+re-measure here**, so these supersede them. Local PostgreSQL 16.13, 736,538 rows:
+
+| | heap | GIN over `search_text` | all indexes | total |
+|---|---|---|---|---|
+| one clean load | 162 MB | 85 MB | 175 MB | **337 MB** |
+| four reload cycles, `vacuum` each, no reindex | 162 MB | 207 MB | 372 MB | 533 MB |
+| the same table reindexed | 162 MB | 72 MB | 141 MB | **303 MB** |
+| one refresh over a full table, as `load.sql` runs it | 324 MB | — | 141 MB | **465 MB** |
+
+Extract 54 s (~476 MB fetched); load, verify and vacuum 53 s, plus ~30 s of
+reindex on a refresh.
+
+**The heap doubles on the first refresh and then stops.** `delete` leaves 736k
+dead tuples at the front of the file and the new rows are appended after them, so
+`vacuum` marks that space reusable without returning it — 162 MB becomes 324 MB
+once, and the refresh after that reuses it rather than growing again. That is why
+the four-cycle row above still shows a 162 MB heap: its second cycle loaded a
+deliberately short 400k CSV, leaving free space the next full load fitted into.
+
+**Indexes are the half `vacuum` does not fix**, which is why `load.sql` ends with
+`reindex table concurrently` — but only on a refresh. A first load has no bloat
+to reclaim, and skipping the rebuild there is a disk decision rather than a
+tidiness one: `REINDEX TABLE CONCURRENTLY` advances every index through each
+phase together, so all four new indexes coexist with all four old ones, and
+162 + 175 + 141 = 478 MB against a 500 MB cap is a quota exhaustion *after* the
+commit.
+
+**So the free tier fits the first load and nothing after it.** DEV was 13 MB
+before, and a first load lands it at ~346 MB against the 500 MB database cap. A
+refresh measures 465 MB before counting the reindex peak or WAL. **`PD-87` (move
+off the free tier) is therefore this pipeline's precondition for refreshes**, not
+only a launch concern — the first load is the only one that fits.
 
 ## Refreshing
 
@@ -135,12 +204,42 @@ class this repo already treats as drift for unapplied migrations — so the refr
 needs a *detector*, not just a schedule: assert the row count is within a sane
 band of the previous run, and that a known landmark still resolves.
 
-CI is the natural runner, since GitHub Actions already holds DEV credentials and
-the extract needs only Python.
+CI is the runner, and the detector is built: `.github/workflows/places-load.yml`
+plus `scripts/places/load.sql`, which asserts the row count against a band and
+re-resolves three landmarks through `search_places()` and `locality_centroid()`
+before it commits.
 
-**Load into a fresh table and swap it in** — never `truncate` and reload. A
-truncate leaves search returning nothing for the length of a 99 MB `\copy`, which
-riders experience as the feature being broken.
+**GitHub Actions does not already hold database credentials, which is what this
+section claimed and is why this took a year to happen.** The only secrets any
+workflow referenced were the app's publishable pair — re-derive rather than trust
+either way:
+
+```bash
+grep -rho "secrets\.[A-Z_]*" .github/workflows/ | sort -u
+```
+
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` could never have done this job: `anon` holds
+`SELECT` and nothing else on `places`, by design (`037` §4b). The load needs the
+table owner, so it needs a Postgres connection string, and that is the one secret
+an owner still has to paste.
+
+**Never `truncate` and reload.** A truncate leaves search returning nothing for
+the length of a 99 MB `\copy`, which riders experience as the feature being
+broken — and worse, it holds ACCESS EXCLUSIVE, so readers block past the 8 s
+`statement_timeout` rather than merely seeing stale rows.
+
+**This section used to specify "load into a fresh table and swap it in", and
+`load.sql` meets the requirement by a different route** — one transaction holding
+the `delete` and the `\copy`. MVCC keeps every concurrent reader on the
+pre-delete snapshot until `commit`, so there is no empty window and no blocking,
+and nothing has to reproduce the real table's 11 columns, 5 CHECKs, generated
+column and 4 indexes in a staging copy that could drift from them. The
+requirement was never the fresh table; it was that search must never be
+observably empty. `load.sql`'s header carries the full comparison.
+
+**A refresh needs `PD-87` first** — see the cost table in §Loading. One load is
+303 MB and the free tier caps the database at 500 MB, so the second load is the
+one that runs out of room, not the first.
 
 ## Searching
 
