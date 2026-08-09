@@ -177,6 +177,46 @@ describe('no query names a dropped column', () => {
   })
 })
 
+/**
+ * PD-165: `041` added `postcards.ride_id`, and `POSTCARD_SELECT` used to open
+ * with `*`, so every postcard read shipped the raw uuid — a value comparable
+ * across postcards even by a viewer who cannot resolve any single ride it
+ * points at. The select-list fix is **payload hygiene, not a security
+ * boundary** (see the comment at `POSTCARD_SELECT` itself) — `authenticated`
+ * still holds the column-level SELECT grant PostgREST honours directly, so
+ * this test pins only what an explicit select list can actually promise: the
+ * app's own reads do not name the column.
+ *
+ * **Scoped to `lib/data/postcards.ts`, unlike the `avatar_url` sweep above.**
+ * `ride_id` is a legitimate column on `ride_messages`, `ride_members` and
+ * `notifications`, so banning the name across every query module would fail
+ * today on `rides.ts` and `ride-messages.ts` for selects that have nothing to
+ * do with this defect.
+ *
+ * **Checks for a bare `*` too, not only the literal name.** `ride_id` never
+ * appears as a substring of a wildcard select, so a name-only check would let
+ * `POSTCARD_SELECT` go back to `*` — reintroducing exactly this defect —
+ * without ever going red.
+ */
+describe('postcards reads never re-ship ride_id (PD-165)', () => {
+  const postcardsData = queryModules.find((m) => m.name === path.join('lib', 'data', 'postcards.ts'))
+
+  it('finds the module, so this cannot pass by scanning nothing', () => {
+    expect(postcardsData).toBeDefined()
+  })
+
+  const selects = postcardsData ? selectLiterals(postcardsData.source) : []
+
+  it('finds selects in the file, so this cannot pass by scanning nothing', () => {
+    expect(selects.length).toBeGreaterThan(0)
+  })
+
+  it.each(selects.map((select, i) => [i, select] as const))('select #%s', (_i, select) => {
+    expect(select).not.toMatch(/\bride_id\b/)
+    expect(select).not.toMatch(/\*/)
+  })
+})
+
 describe('selectLiterals', () => {
   it('catches the template literal that was actually there', () => {
     const source = 'const RIDE_SELECT = `\n  id, title,\n  club:clubs(id, name, avatar_url),\n`\n'
