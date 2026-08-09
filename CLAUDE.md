@@ -427,6 +427,7 @@ design/                     # Committed Figma snapshot — READ THIS, don't call
 └── icons/                  # index.json + exported SVGs
 scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
 scripts/places/             # The Overture extract behind the self-hosted place search (037)
+scripts/docs/               # docs:check — the numeric doc-claims registry + runner (PD-155)
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
 └── changes/                # Active proposals; archive/ holds shipped ones
@@ -991,7 +992,7 @@ Mute, Options, Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report
 Share.
 
 **`lucide-react` is gone** — uninstalled 2026-08-05 with `/rides/new`, the last v1 page. Don't
-re-add it and don't substitute lookalikes. The three matches
+re-add it and don't substitute lookalikes. The four matches
 `grep -rn lucide-react src/` still returns are prose inside comments; the importer count is
 `grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l` and it is **0**. That command
 has reported 15, 12 and 11 at various points, which is why the command is the answer and the
@@ -1013,6 +1014,10 @@ npm test         # RLS policy suite (needs Postgres + psql; see supabase/tests/R
 # Do the repo, DEV and PROD agree on the migration chain? See docs/ENVIRONMENTS.md
 PROD_DATABASE_URL=postgresql://... DEV_DATABASE_URL=postgresql://... npm run db:drift
 PGPASSWORD=postgres npm run db:seed:check   # does the DEV seed still apply, and still refuse?
+
+# Do the numeric claims in CLAUDE.md / docs / .claude/agents still match reality?
+# See scripts/docs/registry.mjs for the declared list — PD-155
+npm run docs:check
 
 # The only gate that renders anything — see supabase-relay.mjs's header first
 NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co node scripts/supabase-relay.mjs &
@@ -2288,6 +2293,14 @@ chain to a scratch database and asserts what each role can reach.
     subagent reads — and three of ten briefs were materially wrong at once with nothing
     to catch it. `src/__tests__/agent-briefs.test.ts` is the tripwire, and it only helps
     if a `.claude/` change runs the job. The rest of `.claude/` still runs zero jobs.
+    **`docs/` and root `*.md` are carved back out too** (2026-08-09, PD-155): `docs:check`'s
+    registry (`scripts/docs/registry.mjs`) anchors `CLAUDE.md` and `docs/HANDOFF.md` prose with
+    regexes that depend on exact wording and line-wrapping — 24 of its 28 claims live in files
+    this carve-out covers (the other 4 are in `.claude/agents/design-system.md`, already covered
+    by the carve-out above). `scripts/docs/__tests__/registry.test.mjs`'s locate-integrity sweep
+    is the tripwire, and it only helps if a `docs/` or root-`*.md` change runs the job.
+    **`design/` and `openspec/` are NOT carved out** — a PR touching only those two still runs
+    zero jobs.
   - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
     changes — the migration chain and the assertions are its only inputs.
   - A push to either long-lived branch always runs both. Each is a deploy gate.
@@ -2308,10 +2321,13 @@ matter and the second is the one that gets dropped.
 Restated by the product owner 2026-08-06 as the definition rather than a step: if the tree
 differs from `development`, the session is not wrapped up until that difference is a PR. It
 applies to every kind of change, not only features — a docs-only or `.claude/`-only session
-still opens one, and those are the cheapest possible PRs because `docs/`, `openspec/`,
-`.claude/` and root `*.md` are in the CI denylist and run zero jobs. The one case that needs no
-PR is a session that changed nothing, and *that* is worth saying out loud rather than leaving
-the reader to infer it from silence.
+still opens one, and those are still the cheapest PRs to get green, though **not zero-job any
+more for `docs/` or root `*.md`**: `openspec/`, `design/` and most of `.claude/` are in the CI
+denylist and run zero jobs, but a `docs/` or root-`*.md` change now runs `Type Check, Lint &
+Build` for `docs:check`'s own anchor-integrity sweep (PD-155, 2026-08-09) — cheap because that
+job is fast on a docs-only diff, not because it is skipped. The one case that needs no PR is a
+session that changed nothing, and *that* is worth saying out loud rather than leaving the
+reader to infer it from silence.
 
 - **Open it at the end, not per milestone.** A session is usually one coherent unit of work, and
   a PR per commit fragments the reasoning across reviews that each see a third of it. Commit and
@@ -2322,8 +2338,11 @@ the reader to infer it from silence.
   say so plainly as the **last thing in the session**, with the reason.
 - **A follow-up PR is fine when a fact only becomes true after the merge.** Applying a migration
   that must land after its code deploys is the standard case: the "applied" line cannot be
-  written truthfully in the PR that deploys the code. Docs-only follow-ups are cheap — `docs/`,
-  `openspec/`, `.claude/` and root `*.md` are in the CI denylist, so they run zero jobs.
+  written truthfully in the PR that deploys the code. Docs-only follow-ups are cheap either way —
+  `openspec/`, `design/` and most of `.claude/` are in the CI denylist and run zero jobs;
+  `docs/` and root `*.md` run `Type Check, Lint & Build` for `docs:check`'s anchor sweep
+  (PD-155) but that job is fast on a docs-only diff, so the PR stays cheap even though it is
+  no longer zero-job.
 - **Restarting a merged branch:** the designated branch name is reused, so once its PR merges,
   `git fetch origin development && git checkout -B <branch> origin/development` before the next
   change. Never stack new commits on merged history. **Note the base is `development`, not

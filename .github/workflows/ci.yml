@@ -64,18 +64,42 @@ jobs:
             app=false
           fi
 
-          # ...with one carve-out from the denylist, added 2026-08-08. The squad
-          # briefs and the queue-pickup procedure are EXECUTABLE process, not
-          # prose: a brief is the only thing a fresh subagent reads, and it has no
-          # conversation history to correct it. Three of ten were materially wrong
-          # at once — one told the Realtime agent that the tables it was about to
-          # touch did not exist — and nothing caught it, because the highest
-          # blast-radius-per-line files in the repo were the only ones no job ever
-          # looked at. src/__tests__/agent-briefs.test.ts is the tripwire, and it
-          # only helps if a .claude/ change actually runs it.
+          # ...with two carve-outs from the denylist.
+          #
+          # The first, added 2026-08-08: the squad briefs and the queue-pickup
+          # procedure are EXECUTABLE process, not prose: a brief is the only
+          # thing a fresh subagent reads, and it has no conversation history to
+          # correct it. Three of ten were materially wrong at once — one told
+          # the Realtime agent that the tables it was about to touch did not
+          # exist — and nothing caught it, because the highest
+          # blast-radius-per-line files in the repo were the only ones no job
+          # ever looked at. src/__tests__/agent-briefs.test.ts is the tripwire,
+          # and it only helps if a .claude/ change actually runs it.
           if echo "$files" | grep -qE '^\.claude/(agents|commands)/'; then
             app=true
             echo "-> .claude/agents or .claude/commands touched: running the app job for the brief tripwire"
+          fi
+
+          # The second, added by PD-155's review: scripts/docs/registry.mjs
+          # anchors CLAUDE.md, docs/HANDOFF.md and docs/FIGMA-FIDELITY-TODO.md
+          # prose with regexes that embed the current line wrapping — 24 of
+          # its 28 claims live in files a docs-only PR edits (the other 4 are
+          # in .claude/agents/design-system.md, already covered by the
+          # carve-out above), and none of it touches src/ or supabase/.
+          # Review rewrapped one line, changed no number, and got a silent
+          # SKIP with no red anywhere, because this exact class of PR was
+          # denylisted out of the job that runs
+          # scripts/docs/__tests__/registry.test.mjs's locate-integrity sweep.
+          # This is NOT "gate on docs:check" — the live measurements
+          # (Postgres, a full build) stay out of CI on purpose — it is making
+          # the anchor-integrity unit test run for the PR class that breaks
+          # anchors. Re-derive rather than trust these two numbers — count
+          # `file:` occurrences per path in registry.mjs — since this comment
+          # is exactly the kind of citation that goes stale as claims are
+          # added.
+          if echo "$files" | grep -qE '^docs/|^[^/]*\.md$'; then
+            app=true
+            echo "-> docs/ or a root *.md touched: running the app job for the doc-claim anchor sweep"
           fi
 
           # The database job's inputs are the migration chain, the assertions,
