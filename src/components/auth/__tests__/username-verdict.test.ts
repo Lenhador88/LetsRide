@@ -5,7 +5,7 @@ import {
   usernameVerdict,
   type UsernameCheck,
 } from '@/components/auth/username-verdict'
-import { USERNAME_TAKEN_MESSAGE } from '@/lib/validation/profile'
+import { USERNAME_TAKEN_MESSAGE, usernameSchema } from '@/lib/validation/profile'
 
 const free = (value: string): UsernameCheck => ({ value, available: true, error: null })
 const taken = (value: string): UsernameCheck => ({
@@ -112,6 +112,26 @@ describe('rememberRefusal', () => {
   it('round-trips with usernameVerdict', () => {
     const refused = rememberRefusal([], normaliseUsername('  RoadKing  '))
     expect(usernameVerdict('roadking', free('roadking'), refused)?.available).toBe(false)
+  })
+})
+
+/**
+ * The invariant the whole mechanism rests on, and the one thing neither module's
+ * own tests can see.
+ *
+ * `setUsername` writes the refused key as `usernameSchema`'s output;
+ * `usernameVerdict` reads it back through `normaliseUsername`. Nothing but this
+ * ties the two, and the test above cannot catch a divergence because it uses the
+ * *reader* on both sides. Add any step to the schema — an NFKC pass, a stripped
+ * separator — and the refusal is stored under one string and looked up under
+ * another: the field flips straight back to green for a name that can never be
+ * saved, PD-146 reintroduced with every other test still passing.
+ */
+describe('normaliseUsername against usernameSchema', () => {
+  const cases = ['roadking', '  RoadKing  ', 'ROADKING', 'road_king_99', '\tnightrider\n']
+
+  it.each(cases)('produces exactly what the schema stores for %j', (raw) => {
+    expect(normaliseUsername(raw)).toBe(usernameSchema.parse(raw))
   })
 })
 

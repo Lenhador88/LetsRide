@@ -69,14 +69,27 @@ export default function OnboardingUsernamePage() {
   const tooShort = normaliseUsername(username).length < USERNAME_MIN_LENGTH
   const verdict = usernameVerdict(username, checked, state.refused)
 
-  // Whether the field is, right now, showing the refusal the last submit
-  // produced — which is narrower than "the last submit was refused" and has to
-  // be, or suppressing the duplicate below leaves the rider with no message at
-  // all. The field speaks only about what is currently in it, so a rider who
-  // edits between pressing Next and the response landing (`roadking` ->
-  // `roadkings`, or down below the length floor) has no verdict to read and
-  // would have had the button's message hidden as well.
-  const fieldShowsRefusal = !tooShort && verdict?.available === false && verdict.value === state.taken
+  // Whether the field has anything to say right now — `verdict` is exactly what
+  // it renders. This is what decides where a refusal is drawn, and both of the
+  // simpler rules are wrong in a way worth recording, because each looks
+  // obviously right until the other case shows up:
+  //
+  //   - Suppress at the button whenever the last submit was refused, and a
+  //     rider who edits the field between pressing Next and the response
+  //     landing gets no message anywhere. The field only ever speaks about what
+  //     is currently in it, so it has nothing to say about the value that was
+  //     submitted, and the button has been silenced on its behalf.
+  //   - Suppress only while the field is showing that same refusal, and the
+  //     button keeps a message about a name the rider has already abandoned.
+  //     Refused `roadking`, type a free `nightrider`, and it reads green at the
+  //     field and red at the button — PD-146's own shape, moved onto the next
+  //     name, and it persists until the next submit rather than clearing.
+  //
+  // So: the field owns the refusal whenever it can draw one, and the button
+  // carries it only in the gap where the field is blank. Everything else in
+  // `state.error` — a network failure, a lost session — is about the submit
+  // rather than about a value, and always belongs at the button.
+  const fieldSilent = tooShort || !verdict
 
   useEffect(() => {
     if (tooShort) return
@@ -103,12 +116,9 @@ export default function OnboardingUsernamePage() {
           <div className="flex flex-col gap-6">
             <Pagination total={2} current={0} />
             <div className="flex flex-col gap-2">
-              {/* Suppressed only when the field is already carrying it, where
-                  it replaces the "available" the live check is still showing.
-                  Repeating it here would say the same sentence twice, in two
-                  places, one of which the rider has just been given a reason to
-                  distrust. */}
-              <FormError message={fieldShowsRefusal ? null : state.error} />
+              {/* A refusal is suppressed here whenever the field can draw one,
+                  whether about this name or another — see `fieldSilent`. */}
+              <FormError message={state.taken && !fieldSilent ? null : state.error} />
               <Button type="submit" size="lg" loading={pending}>
                 Next
               </Button>
