@@ -706,8 +706,8 @@ your head.
 
 ### Second: rate it, and let the block decide
 
-**Rate it with `CLAUDE.md` §Working Principles' four-line block** — the vocabulary already
-exists and two of its four lines are this question:
+**Rate it with `CLAUDE.md` §Working Principles' five-rating block** — the vocabulary already
+exists and two of its five ratings are this question:
 
 | Relatedness | Rating | What happens |
 |---|---|---|
@@ -760,15 +760,20 @@ count is the signal that the triage has gone wrong, not a quota to spend.
 whichever exit path you take if you never reach it (§If you get stuck, STEP 2c) — creating them
 here *and* there is how the same follow-up gets filed twice, and a duplicate reads to the owner
 as two pieces of work. End this step holding a short list: for each item, its relatedness
-verdict, its four ratings, and the column below it belongs in.
+verdict, its five ratings, and the column below it belongs in.
 
 Never `Queued (AI)` — that is the owner's column and the only start signal.
 
 | Where | When |
 |---|---|
-| **`Todo AI`** | A session could build it, and you would recommend building it (≥ 4/10) |
+| **`Todo AI`** | A session could build it, and you would recommend building it (**Recommendation** ≥ 4/10) |
 | **`Todo Human`** + `Owner only` | Nobody in a session can do it |
-| **`Backlog AI`** | You rated it below 4/10 — a real thought, not a triaged one |
+| **`Backlog AI`** | You rated it **Recommendation** below 4/10 — a real thought, not a triaged one |
+
+**The threshold reads `Recommendation` and nothing else.** There are two 0–10 axes now, and
+**Customer value** is the wrong one to route on: it scores 0–2 for most correctness, migration
+and tooling work, which is precisely what a firing files. Routing on it would send every such
+item to `Backlog AI` — burying the findings this step exists to surface.
 
 **`Backlog AI` is not banned.** `Todo AI` means *triaged*, and the owner reads it to choose
 work; filling it with 2/10 ideas devalues exactly the column this whole step depends on.
@@ -784,7 +789,7 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  query=<a
 ```
 
 - **Something already covers it** → update that issue instead. Add a comment with what this
-  build learned, the four ratings and the PR it surfaced from; raise the priority or move the
+  build learned, the five ratings and the PR it surfaced from; raise the priority or move the
   status only if this build genuinely changed the picture. **Never move an existing issue into
   `Queued (AI)`** — that is still the owner's column, and promoting one from inside a firing is
   the same overreach as picking work from it.
@@ -800,7 +805,7 @@ certainly written from a different angle, and a query built from your title will
 the owner files, and a loose top-level story is the shape that rule exists to prevent.
 
 The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
-the four-line rating block, **the relatedness verdict** — which for a filed item is the line
+the five-rating block, **the relatedness verdict** — which for a filed item is the line
 saying why it is *separate* work, not a justification for travel it never claimed — and the
 issue or PR it came out of. **A story that grows a specification is a bug** — that belongs in
 a proposal.
@@ -816,7 +821,7 @@ The owner did not get to make this call, so the call has to be visible without o
 
 - **The PR body** gets a `## Folded in` section — one heading per item with its relatedness
   sentence and its ratings, in the shape §Working Principles specifies: the letter and
-  description *outside* the bar, the four ratings *inside* it.
+  description *outside* the bar, the five ratings *inside* it.
 - **The STEP 5 Linear comment** names what was folded in and links every story filed.
 
 An unrated fold-in reads as advocacy and cannot be cheaply declined, which is the entire reason
@@ -859,7 +864,7 @@ live RLS hole letting any signed-in rider post a ride into any club.
 
    **Its prompt must carry the scope material, because it runs before the PR exists and so
    cannot read the PR body.** Pass: the issue being built, each fold-in with its one-line
-   relatedness justification and its four ratings, and the two commit ranges — the story's own
+   relatedness justification and its five ratings, and the two commit ranges — the story's own
    commits versus the fold-ins'. Without those, `reviewer.md`'s scope pass cannot check the
    breadth cap at all, and is briefed to report that rather than guess the boundary from the
    diff.
