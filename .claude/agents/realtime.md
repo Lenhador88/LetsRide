@@ -1,7 +1,7 @@
 ---
 name: realtime
 description: Use for anything that updates without a page load — direct messages, per-ride group chat, the notification feed, unread counters, and presence. Also use when a screen shows stale data that should have refreshed, or when a Supabase Realtime subscription leaks or fires twice.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_logs, mcp__Supabase__get_advisors, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_logs, mcp__Supabase__get_advisors, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs
 model: sonnet
 ---
 
@@ -41,6 +41,15 @@ its docstring says so at the point of temptation. The only other `inbox` in `src
 reserved-username list in `src/lib/validation/profile.ts`, which must **stay** — `003`'s
 `profiles_username_not_reserved` CHECK still lists it and migrations are append-only, so dropping
 it from the Zod schema would let the client accept a username Postgres rejects.
+
+## Reaching Supabase — before concluding you have no database
+
+A Supabase entry on the `tools:` line above may be **deferred** or, after a rotation, **absent**,
+so `ToolSearch` `select:` it and **call it** before relying on the database. `InputValidationError`
+is the first — search, then call again, it is not a missing permission. `No such tool available`
+is the second, and a keyword search (`+execute_sql supabase`) says whether the name moved:
+**diagnosis, not recovery** (`CLAUDE.md` §The Agent Squad). Never proceed quietly — **stop and say
+so at the top of your report**, naming which failure and what went unverified.
 
 ## The subscription rules
 

@@ -893,6 +893,23 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | `test` | Vitest/Playwright infra and tests, **and running the app against DEV** — the walk, its fixtures, anything needing a real browser |
 | `reviewer` | Pre-merge review. Which passes run is scoped to what the diff touches (2026-08-08) — RLS/data-exposure on `src/` or `supabase/`, documentation-claims on everything including docs-only diffs |
 
+**A brief's `tools:` line is an exact-name allowlist, and an entry on it is neither guaranteed
+loaded nor guaranteed present.** Reading one failure as the other invents a blocker:
+`InputValidationError` means the schema arrived **deferred** — `ToolSearch select:<name>` *and
+then call it*, as `.claude/commands/queue-pickup.md` STEP 0 does. `No such tool available` means
+the name is **absent**, which is what a rotation does: on 2026-08-08 every MCP server
+re-registered under a UUID prefix and `mcp__Supabase__*` stopped resolving, silently, an absent
+tool being no error. A keyword search (`+execute_sql supabase`) tells them apart and **buys
+diagnosis, not recovery** — probed 2026-08-09, a tool absent from the allowlist is refused
+outright, so a UUID-prefixed name it finds is very likely refused too (untested against a real
+rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
+restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
+§Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
+database gets both; `design-system` is out, its connector being Figma and its answers coming from
+the committed `design/` snapshot with the API forbidden.
+`src/__tests__/agent-briefs.test.ts` enforces it — `grep -L ToolSearch` cannot, since every such
+block names the tool in prose and reads clean with the entry stripped.
+
 **Standard order for a feature:**
 
 ```

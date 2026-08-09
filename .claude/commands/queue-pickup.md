@@ -300,10 +300,12 @@ subagent: `mcp__Linear__list_issue_statuses`, `mcp__github__get_me`,
 `mcp__github__list_pull_requests` and `mcp__Supabase__list_projects` all returned real data as
 `Lenhador88` with **zero prompts and zero denials**, and `git ls-remote origin` worked.
 
-- **The schemas are deferred, not preloaded.** Every one needed a `ToolSearch` `select:<name>`
-  lookup first. A subagent that calls `mcp__Linear__save_issue` straight off fails on
+- **Preloading is not guaranteed by the `tools:` line either. Brief subagents to `ToolSearch`
+  first.** A subagent that calls `mcp__Linear__save_issue` straight off fails on
   `InputValidationError` — **which looks exactly like a missing permission and is not one.**
-  Brief subagents to `ToolSearch` first.
+  Declaring a tool does not establish its schema is loaded: probed 2026-08-09 (`PD-154`), all
+  four Supabase tools on `reviewer`'s **own** `tools:` line arrived deferred while
+  `mcp__Supabase__list_tables` on `data`'s answered a direct call — same session, opposite ways.
 - **Only reads were probed. The writes — `save_issue`, `create_pull_request`,
   `merge_pull_request`, `git push` — remain unverified**, and four clean reads are not evidence
   about writes.
@@ -844,7 +846,9 @@ live RLS hole letting any signed-in rider post a ride into any club.
    **A commit made AFTER this pass is not covered by it, and two are routine here:** a CI fix
    at bullet 3, and any fix for `reviewer`'s own findings. The bound is *one pass covers
    everything up to it*, so — **re-run `reviewer` on the delta alone** (`git diff <reviewed
-   sha>...HEAD`) when what you added after it is non-trivial: anything touching `src/`,
+   sha> HEAD` — **two dots**, because a finding fixed by amending leaves a *sibling* of the
+   reviewed commit, and `...` then silently widens the range to the whole branch) when what you
+   added after it is non-trivial: anything touching `src/`,
    `supabase/`, a policy, a guard, a permission, **`.claude/agents/*.md`, `.claude/commands/*.md`
    or `CLAUDE.md`**. Those last three are on the list because `reviewer.md` calls them
    *executable process* whose only gate is this review — fixing a review finding by editing a
