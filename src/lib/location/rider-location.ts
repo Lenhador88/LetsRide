@@ -178,8 +178,58 @@ function getPositionOnce(arm: boolean): Promise<GeolocationPosition | null> {
   })
 }
 
+/**
+ * The precision, in decimal places, a device GPS fix is rounded to before it
+ * becomes a `RiderLocation` — applied once, in `toRiderLocation` below, which
+ * is the single point both `resolveFromDeviceSilently` and
+ * `requestDeviceLocation` already funnel a raw `GeolocationPosition` through.
+ * A future third caller of a device fix inherits the rounding for free by
+ * routing through here rather than by remembering to call a helper itself.
+ *
+ * **Defence in depth, not de-identification.** A device fix is read live and
+ * repeatedly (the silent path on every load where permission is already
+ * granted, the explicit tap on demand), so a sequence of ~1 km-rounded fixes
+ * still traces where a rider lives and rides. This constant blurs the single
+ * value that reaches `search_places()` as a proximity bias; it is not the
+ * privacy answer, and persisting an approximate rider location anywhere
+ * needs its own decision, not an inference from this one.
+ *
+ * Two decimal places of LATITUDE is ~1.11 km everywhere — a degree of
+ * latitude is ~111 km regardless of where on Earth it is measured. The same
+ * two decimal places of LONGITUDE is not a uniform kilometre: a degree of
+ * longitude shrinks with `cos(latitude)`, so at Amsterdam's ~52°N it is
+ * closer to ~0.68 km, narrowing further toward the poles and only matching
+ * latitude's ~1.11 km at the equator. "Roughly a kilometre" is the honest
+ * claim this constant supports — never "exactly 1 km on both axes."
+ *
+ * Well inside `search_places()`'s own ~0.25° × 0.40° proximity box (`037`,
+ * `039`): the largest shift rounding can introduce is half of 10^-2°, i.e.
+ * 0.005°, which is at most 2% of the box's narrower (latitude) half-width. It
+ * cannot move a candidate place from inside the box to outside it except
+ * right at the box's own edge.
+ */
+const LOCATION_PRECISION_DP = 2
+
+/**
+ * Rounds to the nearest `LOCATION_PRECISION_DP` decimal places — never
+ * truncates. `Math.trunc` always moves a value's magnitude toward zero,
+ * which would bias every southern-hemisphere latitude toward the equator
+ * and every western-hemisphere longitude toward the prime meridian: a
+ * systematic shift in one direction, not a blur centred on the true fix.
+ * `Math.round` has no such bias for either sign — see this file's own test
+ * for both a negative-latitude and a negative-longitude case.
+ */
+function roundToLocationPrecision(value: number): number {
+  const factor = 10 ** LOCATION_PRECISION_DP
+  return Math.round(value * factor) / factor
+}
+
 function toRiderLocation(position: GeolocationPosition): RiderLocation {
-  return { lat: position.coords.latitude, lon: position.coords.longitude, source: 'device' }
+  return {
+    lat: roundToLocationPrecision(position.coords.latitude),
+    lon: roundToLocationPrecision(position.coords.longitude),
+    source: 'device',
+  }
 }
 
 /** Source 1 — silent, never prompts. See the module header. */
