@@ -1,7 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
-import { locationSchema, usernameSchema } from '@/lib/validation/profile'
+import { USERNAME_TAKEN_MESSAGE, checkUsername, locationSchema } from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
 import type { ActionState } from '@/lib/actions/auth'
 
@@ -9,20 +9,49 @@ import type { ActionState } from '@/lib/actions/auth'
  * Live availability check for the username field. Advisory only — it can go
  * stale between the keystroke and the submit, which is why setUsername still
  * handles the unique violation.
+ *
+ * **It can also be wrong in one direction permanently**, which no amount of
+ * re-checking fixes: it reads through the block-aware SELECT policy while the
+ * unique index is global, so to a rider blocked by a name's holder this reports
+ * "free" for a name that is not. `usernameVerdict` is what reconciles the two on
+ * screen; see its header for why the fix is not here.
  */
 export async function checkUsernameAvailability(
   value: string
 ): Promise<{ available: boolean; error: string | null }> {
-  const parsed = usernameSchema.safeParse(value)
-  if (!parsed.success) return { available: false, error: parsed.error.issues[0].message }
+  const parsed = checkUsername(value)
+  if (!parsed.ok) return { available: false, error: parsed.error }
 
-  const taken = await isUsernameTaken(parsed.data)
-  return { available: !taken, error: taken ? 'That username is taken.' : null }
+  const taken = await isUsernameTaken(parsed.username)
+  return { available: !taken, error: taken ? USERNAME_TAKEN_MESSAGE : null }
 }
 
-export async function setUsername(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = usernameSchema.safeParse(formData.get('username'))
-  if (!parsed.success) return { error: parsed.error.issues[0].message }
+/**
+ * `setUsername`'s state, and the extra field is the submit boundary's half of
+ * PD-146.
+ */
+export type UsernameActionState = ActionState & {
+  /**
+   * The exact (normalised) value the unique index refused, when it did.
+   *
+   * Carried separately from `error` so the screen can put the refusal on the
+   * *field*, replacing the "available" the live check is still showing, rather
+   * than beside the submit button contradicting it. Matching on the message
+   * text would work today and break the first time the copy is edited.
+   */
+  taken?: string
+}
+
+export async function setUsername(
+  _prev: ActionState,
+  formData: FormData
+): Promise<UsernameActionState> {
+  // `String(... ?? '')` rather than handing the raw entry to Zod: a missing
+  // field would otherwise surface Zod's own "expected string, received null"
+  // at a rider, where an empty one gets the length message the field already
+  // shows while they type.
+  const parsed = checkUsername(String(formData.get('username') ?? ''))
+  if (!parsed.ok) return { error: parsed.error }
 
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
@@ -34,7 +63,7 @@ export async function setUsername(_prev: ActionState, formData: FormData): Promi
   // is redirected back to step 1 forever while every screen reports success.
   const { data: updated, error } = await supabase
     .from('profiles')
-    .update({ username: parsed.data })
+    .update({ username: parsed.username })
     .eq('id', user.id)
     .select('id')
     .maybeSingle()
@@ -44,7 +73,16 @@ export async function setUsername(_prev: ActionState, formData: FormData): Promi
     // the availability check on the same name in the same instant; this is the
     // check that actually decides, so it must produce the field message rather
     // than a raw Postgres error.
-    if (error.code === '23505') return { error: 'That username is taken.' }
+    //
+    // The race is not the only way here, and the other way is not transient:
+    // the index is global while the availability check is block-aware, so a
+    // rider blocked by the name's holder is told "free" every single time and
+    // refused every single time (PD-146, measured through PostgREST on DEV
+    // 2026-08-09 — HTTP 409, code 23505). Returning the value as well as the
+    // message is what lets the field stop saying the opposite.
+    if (error.code === '23505') {
+      return { error: USERNAME_TAKEN_MESSAGE, taken: parsed.username }
+    }
     // 23514 is a CHECK constraint — charset, length, or the reserved denylist.
     // Only reachable if something bypassed the schema above.
     if (error.code === '23514') return { error: 'That username is not available.' }
