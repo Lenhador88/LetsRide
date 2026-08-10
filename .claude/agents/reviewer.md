@@ -96,12 +96,25 @@ of truth.** A queue firing builds one at `.claude/commands/queue-pickup.md` STEP
 ranges. Use it — it exists so that the base is decided once, by the session that knows which
 commits are the story's, rather than guessed here.
 
-**Then spend one command checking it**, because a packet built from the wrong base is the same
+**Then spend two commands checking it**, because a packet built from the wrong base is the same
 defect as choosing the wrong base yourself, now wearing a label saying it was checked:
 
 ```bash
+git merge-base origin/development HEAD     # must equal the packet's base, on a full review
 git diff --name-only <packet base> HEAD    # must equal the packet's file list
 ```
+
+**Both commands, and the first is the one that is easy to leave out.** The second is computed
+*from the packet's own base*, so it can only prove the packet is internally consistent — a packet
+built entirely from one wrong base agrees with itself perfectly and sails through. Only comparing
+the base against an independently derived one catches that, and it is the failure C exists to
+prevent, so checking the half that cannot see it is worse than not checking at all.
+
+**On a delta re-review the bases are *supposed* to differ** — that packet's base is the reviewed
+sha, not the merge base, and demanding they match would reject every correct delta packet. Check
+`git merge-base --is-ancestor <packet base> HEAD` instead: the reviewed sha must be reachable
+from `HEAD`, and when a finding was fixed by amending it is not, which is the one case where the
+caller must rebuild the packet before you can review anything.
 
 Three outcomes, and none of them is "trust the packet":
 

@@ -567,14 +567,22 @@ export const claims = [
   // so the check would fail on day one and get "fixed" by editing the doc to
   // a number that no longer means what the sentence says. The measurement is
   // rules-this-repo-wrote, which is what "has one entry" is counting.
+  //
+  // The `test("service-role")` half exists because counting alone measures
+  // the wrong thing. Review found it: a count of 1 is satisfied by ONE entry,
+  // never by the RIGHT one, so replacing the rule's text with anything at all
+  // — the exact edit this is here to catch — kept the check green. Requiring
+  // the surviving entry to still name the rule turns that swap into 0 ≠ 1.
+  // It pins the subject, not the wording: a reworded rule that still says
+  // service-role passes, which is the intended latitude.
   {
     id: 'hard-deny-entries',
     file: '.claude/agents/reviewer.md',
     pattern: /\*\*`hard_deny` has (\w+) entry\*\*/,
     extractStated: extractWord(),
     kind: 'shell',
-    cmd: `jq '[.permissions.autoMode.hard_deny[] | select(. != "$defaults")] | length' .claude/settings.json`,
-    about: 'reviewer.md §never-skipped four: the service-role-key rule is hard_deny\'s only entry',
+    cmd: `jq '[.permissions.autoMode.hard_deny[] | select(. != "$defaults") | select(test("service-role"))] | length' .claude/settings.json`,
+    about: 'reviewer.md §never-skipped four: hard_deny\'s one entry, and that it still names the service-role rule',
   },
 ]
 

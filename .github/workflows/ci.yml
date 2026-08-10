@@ -162,6 +162,19 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      # The claims whose ground truth is a grep, a jq, a one-file vitest or a
+      # contrast ratio — everything that needs neither Postgres nor a second
+      # full build. `registry.test.mjs` (in the step above) proves each claim's
+      # anchor still LOCATES; this proves the number it locates is still TRUE.
+      # Those are different failures: a rewrapped line breaks the first, a
+      # dependency added without touching the docs breaks only the second.
+      #
+      # Deliberately before the build, like the unit tests and for the same
+      # reason: it is seconds, and a stale count should not wait behind two
+      # minutes of Next.
+      - name: Doc claims (cheap)
+        run: npm run docs:check:cheap
+
       - name: Build
         run: npm run build
         env:

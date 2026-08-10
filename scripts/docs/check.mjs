@@ -383,6 +383,37 @@ export function decideExitCode({ passed, failed, skipped }) {
   return 0
 }
 
+/**
+ * The claims a run should attempt, given `--cheap`.
+ *
+ * Three kinds re-run something the CI job already has, or cannot supply at
+ * all: `rls` wants a scratch Postgres (it lives in the *other* workflow),
+ * `build` wants a second full `next build`, and `vitest` wants a second full
+ * `npm run test:unit` — the last two on top of steps the same job runs a
+ * minute earlier. That expense was the stated reason `ci.yml` gates on
+ * `registry.test.mjs`'s anchor sweep rather than on this script, and it only
+ * ever applied to those three. Everything else is a grep, a `jq`, a one-file
+ * vitest or arithmetic on two hex values, which is why `--cheap` can run on
+ * every PR.
+ *
+ * The split is by cost, not by importance: the unit-test counts are checked
+ * as thoroughly as ever by a full `npm run docs:check`, which is what a
+ * session runs locally and what the doc-claims review pass still has.
+ *
+ * Filtering rather than skipping, deliberately: a skip is a *loud* outcome
+ * here (PD-155's contract), and eleven permanent skips printed on every green
+ * CI run is how the whole report stops being read. A cheap run reports only
+ * what it genuinely attempted.
+ *
+ * Pure and exported so the split is pinned by a test rather than by reading
+ * a workflow file.
+ */
+export const CHEAP_KINDS = new Set(['shell', 'contrast'])
+
+export function selectClaims(claims, { cheap = false } = {}) {
+  return cheap ? claims.filter((c) => CHEAP_KINDS.has(c.kind)) : claims
+}
+
 export function main(claims = defaultClaims) {
   const fileCache = makeCache()
   const measureCache = makeCache()
@@ -401,5 +432,5 @@ export function main(claims = defaultClaims) {
 // Only when invoked directly, so `runClaim`/`main` can be imported and pinned
 // by a test without this file spawning `npm test` or `next build`.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main()
+  main(selectClaims(defaultClaims, { cheap: process.argv.includes('--cheap') }))
 }

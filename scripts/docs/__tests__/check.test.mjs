@@ -2,8 +2,16 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runClaim, decideExitCode, parseCountOutput, evaluateRlsRun, shellFailureReason } from '../check.mjs'
-import { extractWord } from '../registry.mjs'
+import {
+  runClaim,
+  decideExitCode,
+  parseCountOutput,
+  evaluateRlsRun,
+  shellFailureReason,
+  selectClaims,
+  CHEAP_KINDS,
+} from '../check.mjs'
+import { claims as realClaims, extractWord } from '../registry.mjs'
 
 /**
  * These exercise the full pipeline (locate -> measure -> compare) against a
@@ -334,5 +342,47 @@ describe('shellFailureReason', () => {
     // must win rather than quoting a half-finished build log.
     const res = { timedOut: true, timeoutMs: 8_000, stdout: 'partial nonsense', stderr: '' }
     expect(shellFailureReason(res)).not.toContain('partial nonsense')
+  })
+})
+
+/**
+ * `--cheap` is what makes `ci.yml`'s "Doc claims (cheap)" step runnable on
+ * every PR. The split it depends on is the whole contract: a claim kind that
+ * needs Postgres or a full build must never end up inside it, because the CI
+ * step has neither and the claim would fail rather than be absent.
+ */
+describe('selectClaims — the --cheap split', () => {
+  it('is a no-op without the flag', () => {
+    expect(selectClaims(realClaims)).toBe(realClaims)
+    expect(selectClaims(realClaims, {})).toBe(realClaims)
+  })
+
+  it('drops exactly the kinds that need an external service', () => {
+    const cheap = selectClaims(realClaims, { cheap: true })
+    expect(cheap.every((c) => CHEAP_KINDS.has(c.kind))).toBe(true)
+    expect(cheap.some((c) => c.kind === 'rls')).toBe(false)
+    expect(cheap.some((c) => c.kind === 'build')).toBe(false)
+  })
+
+  it('keeps every claim the expensive kinds do not own', () => {
+    const cheap = selectClaims(realClaims, { cheap: true })
+    const expensive = realClaims.filter((c) => !CHEAP_KINDS.has(c.kind))
+    expect(cheap.length + expensive.length).toBe(realClaims.length)
+  })
+
+  // The point of the CI step, stated as an assertion rather than a comment in
+  // a workflow file: if this ever selects nothing, `decideExitCode` returns 2
+  // ("nothing could be measured") and the step goes red for a reason that has
+  // nothing to do with the docs.
+  it('selects a non-empty set from the real registry', () => {
+    expect(selectClaims(realClaims, { cheap: true }).length).toBeGreaterThan(0)
+  })
+
+  // A kind added to the registry without a decision about which side it falls
+  // on defaults to expensive — absent from CI — which is the safe direction
+  // but a silent one. This fails when that happens, so the choice gets made.
+  it('has a declared side for every kind the registry actually uses', () => {
+    const known = new Set(['shell', 'contrast', 'rls', 'build', 'vitest'])
+    for (const c of realClaims) expect(known.has(c.kind)).toBe(true)
   })
 })
