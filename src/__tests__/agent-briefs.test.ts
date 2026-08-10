@@ -329,6 +329,80 @@ describe('agent briefs do not describe a world that has moved on', () => {
     ])
   })
 
+  it('every connector probe names a tool the brief itself holds', () => {
+    /*
+     * PD-184's actual lesson, and the reason that issue read as a live outage
+     * for a day. A subagent was asked to probe Supabase with `list_projects`,
+     * got `No such tool available`, and reported the database lost. The
+     * connector was fine — `list_projects` is simply not on any brief's `tools:`
+     * line here, so the refusal was SCOPING. Measured 2026-08-10: `execute_sql`
+     * answered from the same subagent, under its unchanged name.
+     *
+     * The two failures are byte-identical at the call site — same string, and
+     * nothing else to look at — so the only defence is to probe with a name the
+     * brief actually declares. That is mechanically checkable, which is what
+     * earns this a test rather than the prose rule alone: the prose says why,
+     * and this says the examples still obey it.
+     *
+     * Scope matches the file's charter — a single unambiguous ground truth in
+     * the repo (the `tools:` line two dozen lines above the probe). It cannot
+     * judge whether a probe is a GOOD choice, only that it is a real one.
+     *
+     * Suffix match, not equality: briefs write the bare `execute_sql` in a
+     * keyword search and the qualified `mcp__Supabase__execute_sql` in a
+     * `select:`, and both are correct usage of ToolSearch.
+     *
+     * The both-ways half is `probes.length`. Without it every regex here could
+     * stop matching — a brief rewording `+execute_sql supabase` into prose, say
+     * — and the test would pass by examining nothing, which is this repo's
+     * signature failure sitting inside the fix for it. Asserting each brief
+     * yielded at least one probe closes that, and the `checked` list closes the
+     * same hole one level up.
+     */
+    const KEYWORD = /`\+([a-z_]+) (?:supabase|linear)`/gi
+    const SELECT = /select:(mcp__\w+__\w+)/g
+
+    const checked: string[] = []
+    for (const { name, body } of briefs()) {
+      const frontmatter = body.split('\n---')[0]
+      const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
+      const connectors = declared.filter((t) => t.startsWith('mcp__'))
+      if (connectors.length === 0) continue
+      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      checked.push(name)
+
+      const probes = [
+        ...[...body.matchAll(KEYWORD)].map((m) => m[1]),
+        ...[...body.matchAll(SELECT)].map((m) => m[1]),
+      ]
+
+      expect(
+        probes.length,
+        `${name} tells the agent to probe its connector but names no tool to probe with — the rule cannot be followed`,
+      ).toBeGreaterThan(0)
+
+      for (const probe of probes) {
+        expect(
+          connectors.some((t) => t === probe || t.endsWith(`__${probe}`)),
+          `${name} probes with \`${probe}\`, which is not on its own tools: line — a refusal there is scoping, indistinguishable from a rotation, and gets reported as a lost connector (PD-184)`,
+        ).toBe(true)
+      }
+    }
+
+    expect(
+      checked.sort(),
+      'the guard examined a different set of briefs than expected — a `tools:` line it can no longer parse skips silently',
+    ).toEqual([
+      'data.md',
+      'feature.md',
+      'media.md',
+      'openspec.md',
+      'realtime.md',
+      'reviewer.md',
+      'test.md',
+    ])
+  })
+
   it('every brief still declares a name and a model', () => {
     // Frontmatter damage is silent: an agent with no `name` is simply unreachable.
     for (const { name, body } of briefs()) {

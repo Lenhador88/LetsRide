@@ -34,11 +34,15 @@ to the doc-claims pass and fails the same silent way. `get_issue` and `list_issu
 unresolved. Measured 2026-08-09: a review asked to check six ids reached none of them, and the
 diff it passed asserted a status for every one.
 
-**Expect them to be absent today.** `PD-184`: the Supabase and Linear servers re-registered under
-UUID prefixes, the allowlist is exact-name, and a UUID name that is not on it is refused at name
-resolution — measured 2026-08-10, so this is the known state rather than a new fault. The entries
-above are what makes the pass work the day the connector is restored; until then the honest
-degraded report *is* the deliverable for that pass.
+**Probe rather than expect.** An earlier version of this block said to *expect* both connectors
+absent, citing `PD-184`. Re-measured 2026-08-10 from a fresh session: `mcp__Supabase__*` and
+`mcp__Linear__*` both resolve under their original prefixes, and the subagent probe that produced
+the "absent" reading had asked for `list_projects` — a name **no brief here carries**, so its
+`No such tool available` was *scoping* rather than a rotation. The two are byte-identical, which
+is why the rule is to **probe with a name off your own `tools:` line** and why a standing
+expectation is the wrong shape for this: it survives the condition it describes, and a reviewer
+told to expect no database files a degraded report without ever calling the tool. That is the
+false-degraded failure this section already warns about, arriving by the other door.
 
 Diagnosis is enough, and it must be *reported*: **a review whose database-dependent passes never
 ran still produces findings and is indistinguishable from one that passed** — every other agent's

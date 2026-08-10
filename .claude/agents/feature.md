@@ -16,6 +16,12 @@ is the second, and a keyword search (`+execute_sql supabase`) says whether the n
 **diagnosis, not recovery** (`CLAUDE.md` §The Agent Squad). Never proceed quietly — **stop and say
 so at the top of your report**, naming which failure and what went unverified.
 
+**Probe with a name off your own `tools:` line, never a plausible-sounding one.** A tool absent
+because this brief never listed it is *scoping*, and it is byte-identical to a rotation — same
+`No such tool available`, same silence around it. Measured 2026-08-10: a subagent probed
+`list_projects`, which no brief here carries, and reported the database lost while `execute_sql`
+answered under its unchanged name.
+
 ## Start by reading the neighbours
 
 Before writing anything, read the two or three closest existing files — the nearest page under
