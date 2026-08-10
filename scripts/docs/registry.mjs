@@ -469,6 +469,113 @@ export const claims = [
     hexB: '#F2ECE6', // Grey/5
     about: 'FIGMA-FIDELITY-TODO §Notifications: NotificationDot, Warning/100 on Grey/5',
   },
+
+  // ---- Route guard case count (two locations) ------------------------------
+  //
+  // The measurement runs vitest on the one file rather than counting `it(`
+  // lines, and that is not fastidiousness: `guard.test.ts` uses `it.each`, so
+  // the literal call count is 26 and the real case count is 36. A `grep -c`
+  // here would have "verified" the docs against a number ten short and read
+  // as measured — the static-count version of the comment trap.
+  //
+  // The `&&` gates the parse on a clean exit. A failing run still prints
+  // `Tests  30 passed | 6 failed`, and grepping that yields a confident 30
+  // that FAILs the claim, pointing at the docs when the fault is a broken
+  // test. No output at all is a SKIP, which is the honest outcome: the case
+  // count could not be measured. `npm run test:unit` is CI's gate for the
+  // suite being green, not this.
+  {
+    id: 'guard-cases-claude',
+    file: 'CLAUDE.md',
+    pattern: /`null` means stay; a string is where to go\. (\d+) cases in `__tests__\/guard\.test\.ts`/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `out=$(npx vitest run src/lib/auth/__tests__/guard.test.ts 2>&1) && echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
+    about: '§Critical: the route guard — "36 cases in __tests__/guard.test.ts"',
+  },
+  {
+    id: 'guard-cases-claude-table',
+    file: 'CLAUDE.md',
+    pattern: /`src\/lib\/auth\/guard\.ts` \((\d+) cases, replacing the untestable/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `out=$(npx vitest run src/lib/auth/__tests__/guard.test.ts 2>&1) && echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
+    about: '§Technology Decisions, Tests table: the same count, restated in the Units row',
+  },
+
+  // ---- Guard-cache invalidators --------------------------------------------
+  //
+  // CLAUDE.md: "Miss one and the rider finishes a step and is sent straight
+  // back into it." The failure mode is a FIFTH writer added without the call,
+  // which this cannot see — it counts calls, not writers. What it does catch
+  // is the opposite and commoner drift: a call deleted in a refactor while
+  // the prose still says four.
+  //
+  // Three filters, each load-bearing. `__tests__` because guard-cache's own
+  // tests call it four more times; the comment filter because this file's
+  // header explains why a doc comment naming the function must not count
+  // (guard-cache.ts has two, and they survive today only by lacking the
+  // parens); and the definition line, because
+  // `export function invalidateOnboardingState(): void` contains
+  // `invalidateOnboardingState()` as a substring of its own signature.
+  //
+  // That last filter names the whole declaration, NOT a bare `export
+  // function`. The bare version was written first and passed its own
+  // both-ways check — until the check was run with a call site added on a
+  // one-line exported wrapper, which it silently swallowed. A filter that
+  // drops a real call whenever it shares a line with any export is a check
+  // that reads 4 for ever.
+  {
+    id: 'guard-cache-invalidators',
+    file: 'CLAUDE.md',
+    pattern: /\*\*Any new writer of a stamp the decision reads must invalidate the cache\.\*\* There are (\w+)/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `grep -rn "invalidateOnboardingState()" src/ --include=*.ts | grep -v __tests__ | grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | grep -v "export function invalidateOnboardingState" | wc -l`,
+    about: '§Critical: the route guard — the four writers that invalidate the onboarding cache',
+  },
+
+  // ---- Hardcoded origin (must stay 0) --------------------------------------
+  //
+  // The claim exists because the domain move (2026-08-07) needs NO code
+  // change: ShareButton, signUp and requestPasswordReset all build URLs from
+  // window.location.origin. A hardcoded origin would surface only in an email
+  // a rider receives, which no other gate in this repo reads.
+  {
+    id: 'hardcoded-origin-src',
+    file: 'CLAUDE.md',
+    // The anchor wildcards the middle of the grep deliberately. The sentence
+    // quotes a shell command containing `\|` and `\.`, so pinning it
+    // character-for-character needs a regex whose every escape is itself
+    // escaped — the one shape in this file most likely to be "corrected" into
+    // silently matching nothing. Both ends are pinned and the pair is unique.
+    pattern: /only surface in email: `grep -rn "letsrideapp.+localhost:3000" src\/` is (\d+)\./,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `grep -rn "letsrideapp\\|vercel\\.app\\|localhost:3000" src/ | wc -l`,
+    about: '§Branching & CI: no hardcoded origin anywhere in src/ (must be 0)',
+  },
+
+  // ---- hard_deny entry count -----------------------------------------------
+  //
+  // `reviewer.md` calls a diff touching this "the most serious thing in this
+  // brief", and `.claude/settings.json` runs zero CI jobs — this claim and
+  // that review pass are the whole gate.
+  //
+  // `$defaults` is filtered out because it is the harness's own placeholder,
+  // not an authored rule: a bare `| length` reads 2 against a correct file,
+  // so the check would fail on day one and get "fixed" by editing the doc to
+  // a number that no longer means what the sentence says. The measurement is
+  // rules-this-repo-wrote, which is what "has one entry" is counting.
+  {
+    id: 'hard-deny-entries',
+    file: '.claude/agents/reviewer.md',
+    pattern: /\*\*`hard_deny` has (\w+) entry\*\*/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `jq '[.permissions.autoMode.hard_deny[] | select(. != "$defaults")] | length' .claude/settings.json`,
+    about: 'reviewer.md §never-skipped four: the service-role-key rule is hard_deny\'s only entry',
+  },
 ]
 
 // ---- Shared measured-value parsers (exported so tests can pin them) -------

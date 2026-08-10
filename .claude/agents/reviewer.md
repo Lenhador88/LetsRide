@@ -90,6 +90,40 @@ other people's merged work as if the author wrote it.
   and **you must honour it**. Widening back re-reports every finding the author already applied,
   which is the waste collapsing the two full passes was meant to remove.
 
+**The caller may hand you a review packet. It is a shortcut past the derivation, never a source
+of truth.** A queue firing builds one at `.claude/commands/queue-pickup.md` STEP 4c: a base
+**sha**, the file list at that base, the issue, each fold-in with its ratings, and the two commit
+ranges. Use it — it exists so that the base is decided once, by the session that knows which
+commits are the story's, rather than guessed here.
+
+**Then spend one command checking it**, because a packet built from the wrong base is the same
+defect as choosing the wrong base yourself, now wearing a label saying it was checked:
+
+```bash
+git diff --name-only <packet base> HEAD    # must equal the packet's file list
+```
+
+Three outcomes, and none of them is "trust the packet":
+
+- **It matches** — classify from that list and review. This is the ordinary case and it cost one
+  cheap command.
+- **It differs** — the packet is stale, which is routine: STEP 4c commits a CI fix after building
+  it. Re-derive from the command above, review what is actually there, and **say in your report
+  that the packet was stale and by how many files**. A stale packet that nobody reports is how
+  the next firing keeps building them from the wrong step.
+- **`git rev-list <packet base>..HEAD` is empty** — the base is wrong outright. Stop and report
+  that. An empty diff reviewed as "no findings" is the single worst output this file can produce,
+  because every downstream signal reads it as a clean review.
+
+**A packet's base is a sha for a reason worth knowing rather than obeying**: `origin/development`
+resolves at read time, so an unrelated merge landing between the build and this review silently
+widens the diff by work the author never wrote — the same defect as `main`-based diffing, arriving
+by a different route. If a caller hands you a branch name where a sha belongs, resolve it yourself
+with `git merge-base origin/development HEAD` and note it.
+
+**No packet is not a problem.** Derive the base from §Start here's first command and review
+normally; only the queue's own firings build one.
+
 Review the diff, but read enough surrounding code to judge it in context. A diff that looks fine in isolation can still break a caller three files away.
 
 ## Then: classify the diff, and run only the passes it can fail
