@@ -39,7 +39,7 @@ The live set as last read back off the board:
 | `Development (AI)` | started | An agent has it *now*. **The concurrency lock** | Agent |
 | `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
 | **`Deployed to DEV`** | started | **Merged to `development`, green, live on DEV. Where a firing ends** | Agent |
-| `Done (in production)` | completed | Promoted to `main` and live for riders. **Was `Done`** | **Owner** |
+| `Done (in production)` | completed | Promoted to `main` and live for riders. **Was `Done`** | **Whoever promoted** — never a firing |
 | `Canceled` / `Duplicate` | canceled / duplicate | Closed without shipping. **Both clear a blocker** (STEP 2b) | Either |
 
 `duplicate` really is what `list_issue_statuses` returns as `Duplicate`'s `type` — read back off
@@ -64,10 +64,12 @@ four times in one batch to the `project` field.
   never-clearing-guard shape as the team-scoped lock and the buried stall alarm. It is a
   recurring failure here, not a numbered series — do not give it a sequence number, because
   hypotheticals and observed events end up sharing one.)
-- **`Done (in production)` is the only `completed` status, and a session never sets it.**
-  Production promotion is manual and the owner's, done in their own session at their own timing
-  (§STEP 5). A firing that moves an issue there is claiming riders have the feature when they do
-  not.
+- **`Done (in production)` is the only `completed` status, and a FIRING never sets it** — because
+  a firing never promotes, not because a session may not write it. **The status follows the
+  deploy, not the role**: an owner-directed session that promotes to `main` itself sets it, and
+  `CLAUDE.md` §The roadmap lives in Linear carries that instruction and its wording. A *firing*
+  ends at `Deployed to DEV` and stops there (§STEP 5), so for this procedure the effect is
+  unchanged — moving an issue there from a firing claims riders have the feature when they do not.
 
 ---
 
@@ -977,7 +979,11 @@ session at my own will."* So:
 
 - **A firing never moves an issue to `Done (in production)`**, never opens a PR against `main`,
   and never merges one. That status is a claim that riders have the feature, and only the
-  promotion makes it true.
+  promotion makes it true — so it belongs to whoever performs the promotion, which is never this
+  procedure. (An owner-directed session that *is* asked to promote sets it, and must: see
+  `CLAUDE.md` §The roadmap lives in Linear. The three-way split — a firing stops at DEV, a
+  directed session that promotes closes the loop, the owner promotes on their own timing — is why
+  this reads as "never a firing" rather than "never a session".)
 - **`Deployed to DEV` is an honest end state, not a lesser one.** The work is merged, green and
   live on DEV. `CLAUDE.md` §Working Principles' *committed and pushed is not shipped* is
   satisfied by the merge — the queue's unit of done is a merged PR, and the release is a
