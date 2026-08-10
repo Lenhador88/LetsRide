@@ -2503,9 +2503,18 @@ select assert_eq(
 -- Scoped to the grantee. `postgres` and `service_role` hold everything by
 -- Supabase default, so a table-wide count of UPDATE grants reads 2 against a
 -- correct database — the mistake 015's footer made and documented.
+--
+-- **Repointed from has_table_privilege to has_column_privilege by 048**, which
+-- made this grant column-level. The intent is unchanged and is the reason the
+-- assertion survives rather than going: the promotion above must be refused by
+-- RLS rather than by a missing grant, or the test that follows it proves
+-- nothing. But the TABLE-level answer is false now, so the old form would have
+-- started failing while its label still claimed the grant was present — 045's
+-- trap, one table further along. `role` is the column a promotion feature would
+-- write, so it is the one the question has to be asked about.
 select assert_eq(
-  has_table_privilege('authenticated', 'public.club_members', 'update'),
-  true, 'the grant is present, so it is genuinely RLS refusing the promotion');
+  has_column_privilege('authenticated', 'public.club_members', 'role', 'UPDATE'),
+  true, 'the grant on `role` is present, so it is genuinely RLS refusing the promotion — asked per column since 048');
 
 -- ===========================================================================
 -- 020: a country code must be a country
@@ -9972,19 +9981,22 @@ select assert_eq(has_table_privilege('authenticated', 'public.grant_default_prob
   true, '047: a FRESH public table still inherits TRUNCATE from the reproduced Supabase default — so the assertions above measure 047''s revoke rather than a harness that never granted it');
 drop table public.grant_default_probe_047;
 
--- service_role and postgres must be UNAFFECTED. A `revoke ... from public`
--- would have taken both with it, and nothing else here would have noticed:
--- the deletion Edge Function runs as service_role, and postgres owns the tables.
-select assert_eq(
-  (select bool_and(has_table_privilege('service_role', t, 'TRUNCATE'))
-     from unnest(array['public.rides', 'public.clubs', 'public.club_members',
-                       'public.ride_members', 'public.profiles']) t),
-  true, '047: service_role keeps TRUNCATE on all five — the revoke named authenticated, not public');
+-- The revoke had to name `authenticated` and not `public`, or it would have
+-- stripped the owner and service_role with it. Only the owner half is assertable
+-- HERE: harness.sql creates service_role but deliberately grants it no table
+-- privileges — "the suite never assumes it, because on the hosted project
+-- service_role holds every privilege by Supabase default and an assertion made
+-- as service_role would pass for that reason rather than for the intended one".
+-- So `has_table_privilege('service_role', ...)` is false on this database by
+-- design and true on the hosted one, and asserting it here would fail for an
+-- environment reason rather than a real one. That half is verified against DEV
+-- in 047's §Verification step 2 instead, which is the split CLAUDE.md's Testing
+-- section describes: the suite cannot see Supabase role defaults.
 select assert_eq(
   (select bool_and(has_table_privilege('postgres', t, 'TRUNCATE'))
      from unnest(array['public.rides', 'public.clubs', 'public.club_members',
                        'public.ride_members', 'public.profiles']) t),
-  true, '047: ... and so does postgres, which owns them');
+  true, '047: the owner keeps TRUNCATE on all five — the revoke named authenticated, so a blanket `revoke ... from public` did not go out with it');
 
 -- The DML grants 047 must not have touched. Scoped to SELECT and DELETE
 -- because 045 already owns the INSERT/UPDATE column lists on rides and clubs.
@@ -10185,17 +10197,17 @@ select assert_eq(
 
 -- addComment, on a postcard the same rider authors.
 insert into postcards (id, author_id, image_path)
-values ('00000000-0000-0000-0000-0000000048p1', '00000000-0000-0000-0000-00000000000a',
+values ('00000000-0000-0000-0000-0000000048f1', '00000000-0000-0000-0000-00000000000a',
         'postcards/00000000-0000-0000-0000-00000000000a/048.jpg');
 insert into postcard_comments (postcard_id, author_id, body)
-values ('00000000-0000-0000-0000-0000000048p1', '00000000-0000-0000-0000-00000000000a', '048 comment');
+values ('00000000-0000-0000-0000-0000000048f1', '00000000-0000-0000-0000-00000000000a', '048 comment');
 select assert_eq(
   (select count(*)::int from postcard_comments
-    where postcard_id = '00000000-0000-0000-0000-0000000048p1'),
+    where postcard_id = '00000000-0000-0000-0000-0000000048f1'),
   1, '048: addComment''s three-column insert still lands');
 select assert_eq(
   (select created_at > now() - interval '1 minute' from postcard_comments
-    where postcard_id = '00000000-0000-0000-0000-0000000048p1'),
+    where postcard_id = '00000000-0000-0000-0000-0000000048f1'),
   true, '048: ... and its created_at came from the default, so it cannot be pinned to the top of the thread');
 
 -- And the writes the grants exist to refuse, in the same shapes.
@@ -10214,11 +10226,11 @@ select assert_denied($$update club_members set joined_at = '1970-01-01'
                         where club_id = '00000000-0000-0000-0000-0000000048c1'$$,
   '048: nor back-date their membership afterwards');
 select assert_denied($$insert into postcard_comments (postcard_id, author_id, body, created_at)
-                       values ('00000000-0000-0000-0000-0000000048p1',
+                       values ('00000000-0000-0000-0000-0000000048f1',
                                '00000000-0000-0000-0000-00000000000a', 'pinned', '1970-01-01')$$,
   '048: a comment cannot be INSERTED with a chosen created_at — the thread sorts ASC, so this is the top of the thread, above the comments it replies to');
 select assert_denied($$insert into postcard_comments (postcard_id, author_id, body, updated_at)
-                       values ('00000000-0000-0000-0000-0000000048p1',
+                       values ('00000000-0000-0000-0000-0000000048f1',
                                '00000000-0000-0000-0000-00000000000a', 'edited', '3000-01-01')$$,
   '048: nor be born claiming an edit, on a table that has no UPDATE path at all');
 
