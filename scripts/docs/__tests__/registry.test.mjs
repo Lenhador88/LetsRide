@@ -360,6 +360,84 @@ describe('the registry against the real repo', () => {
   })
 })
 
+describe('the rating block renders as five skimmable scores', () => {
+  // CLAUDE.md §Working Principles: the score goes on its own line, its reason
+  // on the next, so a reader can triage on the numbers alone. That only holds
+  // if the separator is a PARAGRAPH break — a blank `>` line.
+  //
+  // This used to be two trailing spaces, a markdown hard break. GitHub honours
+  // it; the product owner's client does not, so every block rendered as
+  // `**Recommendation** 7/10 a dead column that…` in the one place these files
+  // are read most, and nothing noticed because the convention's own guard grep
+  // only ever asked whether the two spaces were still THERE. Two invisible
+  // characters are also stripped silently by any whitespace-trimming editor.
+  //
+  // A blank `>` line survives both, and unlike the spaces it is visible in a
+  // diff. This is the assertion that keeps it that way.
+  const SCORE = /^(\s*>) \*\*(?:Recommendation|Complexity|Urgency|Customer value|This session)\*\*/
+
+  function gluedScoreLines(text) {
+    const lines = text.split('\n')
+    return lines.flatMap((line, i) => {
+      if (!SCORE.test(line)) return []
+      const next = lines[i + 1] ?? ''
+      return /^\s*>\s*$/.test(next) ? [] : [`${i + 1}: ${line.trim()}`]
+    })
+  }
+
+  it.each(['CLAUDE.md', 'docs/HANDOFF.md'])('%s separates every score from its reason', (file) => {
+    const text = readFileSync(join(repoRoot, file), 'utf8')
+    expect(gluedScoreLines(text)).toEqual([])
+  })
+
+  it('finds the blocks it claims to be checking — an empty scan is not a pass', () => {
+    // The `| wc -l` failure mode this file already guards three greps against:
+    // a detector pointed at nothing reports clean for ever. If the convention
+    // is renamed or the blocks move, this goes red instead of quietly passing.
+    //
+    // A bare floor is not enough, and review caught this: at `>= 5` against a
+    // real 15 per file, renaming ONE of the five labels leaves 12 — over the
+    // floor, so the scan stays green while a third of every block silently
+    // stops being checked. Asserting each label individually is what closes
+    // it; the floor then only has to catch wholesale deletion.
+    const LABELS = ['Recommendation', 'Complexity', 'Urgency', 'Customer value', 'This session']
+
+    for (const file of ['CLAUDE.md', 'docs/HANDOFF.md']) {
+      const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
+      const scored = lines.filter((l) => SCORE.test(l))
+      expect(scored.length, `${file} has no rating blocks — the scan above passed vacuously`).toBeGreaterThanOrEqual(15)
+
+      for (const label of LABELS) {
+        const seen = scored.filter((l) => l.includes(`**${label}**`)).length
+        expect(seen, `${file} has no "${label}" line — a renamed label drops out of the scan silently`).toBeGreaterThan(0)
+      }
+
+      // Every block carries all five, so the counts must agree. A block that
+      // lost one line reads as complete under a per-label presence check.
+      const perLabel = LABELS.map((l) => scored.filter((s) => s.includes(`**${l}**`)).length)
+      expect(new Set(perLabel).size, `${file} has an incomplete rating block — label counts ${perLabel} disagree`).toBe(1)
+    }
+  })
+
+  it('catches a real violation — the hard-break form it replaced', () => {
+    const glued = ['> **Recommendation** 7/10  ', '> a dead column that reads as live is a trap'].join('\n')
+    expect(gluedScoreLines(glued)).toHaveLength(1)
+  })
+
+  it('catches a violation in an indented block, where HANDOFF keeps its blocks', () => {
+    // Every real block in docs/HANDOFF.md sits inside a list item, so the
+    // quote marker carries two leading spaces. A detector anchored to a
+    // column-0 `>` would score all three of them as absent — clean, forever.
+    const glued = ['  > **Urgency** 4/10', '  > both doors need a hand-rolled request'].join('\n')
+    expect(gluedScoreLines(glued)).toHaveLength(1)
+  })
+
+  it('accepts the correct form', () => {
+    const ok = ['  > **This session** N', '  >', '  > wants its own branch'].join('\n')
+    expect(gluedScoreLines(ok)).toEqual([])
+  })
+})
+
 describe('mutation: a stale digit is read as the new (wrong) stated value', () => {
   // This is the shape PD-155 asks for directly: take a real claim, mutate
   // the doc text the way a careless edit would, and prove the extractor

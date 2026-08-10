@@ -64,7 +64,7 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1011/1011 across 38 files
+npm run test:unit                     # 1018/1018 across 38 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 10 dynamic routes
 PGPASSWORD=postgres npm test          # 1213 assertions, 0 failures
@@ -374,7 +374,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1213**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly) |
-| Unit tests | `npm run test:unit` — **1011 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **1018 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -895,22 +895,27 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   3 rides. Read that as "nobody has hit it on a tiny dataset", not as "the window is hard to
   hit". Re-run at apply time.
 
-  > **Recommendation** 8/10  
+  > **Recommendation** 8/10
+  >
   > the last place a client can leave the database in a state no constraint forbids, and the
   > invariant is unasserted in *two* places rather than one
   >
-  > **Complexity** 5/10  
+  > **Complexity** 5/10
+  >
   > two migrations, four triggers, a backfill, three deploy steps
   >
-  > **Urgency** 4/10  
+  > **Urgency** 4/10
+  >
   > both doors need a hand-rolled request. Rises the day a real rider abandons a create, and
   > sharply if create gets a retry affordance or the store build ships
   >
-  > **Customer value** 3/10  
+  > **Customer value** 3/10
+  >
   > a rider who abandons a create loses the club entirely — a private orphan is on no list and
   > reachable from no screen, including its owner's. Rare, and total for whoever hits it
   >
-  > **This session** N  
+  > **This session** N
+  >
   > 3 blocking questions, two of them product-owner decisions (may an owner leave their own
   > club? may an organizer leave their own crew?)
 
@@ -929,23 +934,28 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   invocation. **The RLS suite cannot see it either**: its idempotency assertion runs both calls
   inside one psql transaction, so it proves nothing about two.
 
-  > **Recommendation** 6/10  
+  > **Recommendation** 6/10
+  >
   > worth closing before the flow ships, not before the flow is built
   >
-  > **Complexity** 4/10  
+  > **Complexity** 4/10
+  >
   > an advisory lock is small; a marker column is a migration plus a recovery story for runs
   > that die holding it
   >
-  > **Urgency** 1/10 today  
+  > **Urgency** 1/10 today
+  >
   > genuinely conditional: it needs two riders deleting within seconds, in a club they share.
   > There are four accounts — `select count(*) from auth.users` on PROD, 4 as of 2026-08-09. It
   > rises with the user count, and sharply the day deletion is reachable from the UI at all
   >
-  > **Customer value** 3/10  
+  > **Customer value** 3/10
+  >
   > nobody sees it working; what it prevents is a club cascading away with every postcard every
   > *other* member ever posted there, for riders who did nothing and get no warning
   >
-  > **This session** N  
+  > **This session** N
+  >
   > it is a design choice between two mechanisms, and the flow it protects does not exist yet
 
 - **No edit or delete UI anywhere.** `PD-101`. The `update`/`delete` RLS policies exist and are tested,
@@ -963,21 +973,26 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   succeeds; another rider's id in the body still deletes only the caller; publishable key
   refused; no token refused) can only be proven live.
 
-  > **Recommendation** 8/10  
+  > **Recommendation** 8/10
+  >
   > the expensive half is done and the context is written down; it gets more expensive the
   > longer the function sits unexercised
   >
-  > **Complexity** 5/10  
+  > **Complexity** 5/10
+  >
   > the flow is four screens and one action; the risk is all in the function, which is written
   >
-  > **Urgency** 3/10  
+  > **Urgency** 3/10
+  >
   > nothing forces it until a store submission, which needs the shell first
   >
-  > **Customer value** 8/10  
+  > **Customer value** 8/10
+  >
   > a rider can leave and take their data with them, which they cannot do today by any route —
   > and App Store 5.1.1(v) makes it the difference between shipping and being rejected
   >
-  > **This session** N  
+  > **This session** N
+  >
   > needs the function deployed, which is an owner action
 - **Inbox still has no tab, but two thirds of it now exist.** Per-ride group chat shipped as `034`
   (PD-115) and **notifications shipped 2026-08-07 as `036` (PD-118)** — a `notifications` table
