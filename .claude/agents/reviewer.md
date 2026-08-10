@@ -364,12 +364,17 @@ does more than its issue describes:
   saying how the item sits inside the same build — the code this story touches, not a different
   subsystem. If that line is missing, or it is really an argument that the change is a good idea,
   the fold-in is out of scope — that is the finding, and it stands even when the code is correct.
-- **Check the ratings were applied, not decorated.** The bar is Recommendation ≥ 7/10 *and*
+- **Check the ratings were applied, not decorated.** The bar is Recommendation ≥ 4/10 *and*
   `This session` **Y**, and four things force **N** regardless: real domain rules, a migration
   whose apply order relative to the deploy matters, anything owner-only, and a diff bigger than
   one review can honestly cover. A fold-in that trips one of those was mis-rated.
 - **Check the breadth cap** — at most two fold-ins, together smaller than the story's own diff,
-  and the **discretionary** ones together under a *third* of it. Discretionary means any fold-in
+  and the **discretionary** ones together under a *third* of it. A partial fold is **not** a
+  finding — the procedure files the excess on both of those bounds. **What is a finding is a
+  necessary fold-in sitting in the filed excess**: the count folds necessary items first and fills
+  any remaining slot by Recommendation, so an item whose relatedness sentence says the story is
+  broken without it must never appear in the filed list. You hold every relatedness sentence, so
+  you are the only gate on that. Discretionary means any fold-in
   whose relatedness sentence does not say the story was broken without it: an adjacent bug, a
   tidy-up. That sentence is required and the caller hands it to you — or it is in the PR body's
   `## Folded in` section — so the classification is read rather than judged. All of it needs the
