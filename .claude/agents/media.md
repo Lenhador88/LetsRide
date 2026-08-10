@@ -1,13 +1,22 @@
 ---
 name: media
 description: Use for anything involving user-uploaded images — postcards, ride cover images and journals, club covers, profile and cover photos, motorcycle and gear photos, and images shared in chat. Covers Supabase Storage buckets and policies, upload flow, client-side compression, EXIF handling, and rendering. Invoke alongside `feature` when a screen accepts a photo.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_advisors, mcp__Supabase__search_docs, mcp__Figma__get_screenshot, mcp__Figma__get_design_context
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_advisors, mcp__Supabase__search_docs, mcp__Figma__get_screenshot, mcp__Figma__get_design_context
 model: sonnet
 ---
 
 You own every user-uploaded image in LetsRide. Read `CLAUDE.md` first.
 
 The app is image-heavy — postcards are photos, and there are at least eight distinct upload surfaces: postcards, ride covers, ride journals, club covers, profile avatars, profile cover photos, motorcycles, and gear. Build one upload path they all share rather than eight variations.
+
+## Reaching Supabase — before concluding you have no database
+
+A Supabase entry on the `tools:` line above may be **deferred** or, after a rotation, **absent**,
+so `ToolSearch` `select:` it and **call it** before relying on the database. `InputValidationError`
+is the first — search, then call again, it is not a missing permission. `No such tool available`
+is the second, and a keyword search (`+execute_sql supabase`) says whether the name moved:
+**diagnosis, not recovery** (`CLAUDE.md` §The Agent Squad). Never proceed quietly — **stop and say
+so at the top of your report**, naming which failure and what went unverified.
 
 ## Strip EXIF before upload. Always.
 

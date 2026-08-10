@@ -112,6 +112,34 @@ export const queryKeys = {
     mine: (): QueryKey => ['clubs', 'mine'],
     detail: (clubId: string): QueryKey => ['clubs', 'detail', clubId],
     members: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'members'],
+    /**
+     * PD-101. `getClubForEdit` returns a narrower shape than `getClub` — no
+     * `owner` embed, no `viewer_role` — so it gets its own leaf under
+     * `detail` rather than reusing that key: two shapes sharing one cache
+     * entry is exactly the collision `keys.ts`'s own header warns against,
+     * and `/clubs/[id]/edit` can be open at the same time as `/clubs/[id]`
+     * (a back-forward navigation) in a way that makes it observable.
+     */
+    edit: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'edit'],
+    /**
+     * The delete confirmation's live counts (`club-lifecycle`'s delete
+     * requirement). Nested under `detail` so `updateClub`/`deleteClub`'s
+     * existing `clubs.all()` invalidation reaches it for free, and read only
+     * while the confirmation panel is open — see `DeleteClubControl`.
+     */
+    deletionImpact: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'deletionImpact'],
+    /**
+     * How many of the club's rides are currently public — what the privacy
+     * toggle's one-directional warning names (`propagate_club_privacy_to_rides`,
+     * `022`). Read only when the owner is about to flip a public club
+     * private; see `EditClubForm`.
+     */
+    publicRideCount: (clubId: string): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'publicRideCount',
+    ],
   },
 
   /**
@@ -145,6 +173,12 @@ export const queryKeys = {
     filters: (): QueryKey => ['rides', 'filters'],
     detail: (rideId: string): QueryKey => ['rides', 'detail', rideId],
     crew: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'crew'],
+    /**
+     * PD-101. `getRideForEdit` returns a narrower shape than `getRide` — no
+     * `attendance`, no `is_crew`, no `is_upcoming` — so it gets its own leaf
+     * rather than sharing `detail`, the same reasoning `clubs.edit` carries.
+     */
+    edit: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'edit'],
     /**
      * The ride's chat thread (`034`). A child of the ride for the same reason
      * `crew` is: it is scoped to one ride and dies with it.

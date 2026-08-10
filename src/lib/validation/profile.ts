@@ -18,6 +18,23 @@ export const USERNAME_MIN_LENGTH = 3
 export const USERNAME_MAX_LENGTH = 20
 
 /**
+ * The one wording for "somebody already has this name", shared by the live
+ * availability check, the submit boundary that handles the unique violation,
+ * and the field verdict that renders whichever of the two spoke last.
+ *
+ * It is a constant rather than three string literals because those three
+ * disagree in the one case that matters. `profiles_username_lower_key` is a
+ * plain unique index on `lower(username)` — global, and neither partial nor
+ * RLS-aware — while `isUsernameTaken` reads through the block-aware `profiles`
+ * SELECT policy. So a rider blocked by the holder of a name is told it is free
+ * and is then refused `23505` on submit (PD-146; asserted from both sides in
+ * `supabase/tests/rls_test.sql` §038.3). The rider must not be able to tell
+ * that apart from an ordinary collision, and two literals that drift are
+ * exactly how they would.
+ */
+export const USERNAME_TAKEN_MESSAGE = 'That username is taken.'
+
+/**
  * Trims and lowercases before validating rather than rejecting on case. The
  * database enforces uniqueness on lower(username), so normalising here is
  * consistent with it, and a rider who types a capital gets their name rather
@@ -101,8 +118,13 @@ export const profileEditSchema = z.object({
 
 /**
  * Shared by the live availability check and the onboarding action, so the
- * field-level message a rider sees while typing is the same one the server
+ * field-level message a rider sees while typing is the same one the submit
  * would produce.
+ *
+ * Both really do call it — `checkUsernameAvailability` and `setUsername`, in
+ * `src/lib/actions/onboarding.ts`. It sat here with no caller outside its own
+ * test for long enough that the sentence above was aspirational; if a boundary
+ * ever parses `usernameSchema` itself again, this claim goes with it.
  */
 export function checkUsername(value: string): { ok: true; username: string } | { ok: false; error: string } {
   const result = usernameSchema.safeParse(value)

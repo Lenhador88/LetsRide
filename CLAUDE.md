@@ -323,8 +323,8 @@ src/
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── error.tsx       # The app's only error boundary
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
-│   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew, /rides/[id]/chat
-│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id] (Timeline) + /rides, /members, /about
+│   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew, /rides/[id]/chat, /rides/[id]/edit (PD-101)
+│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id] (Timeline) + /rides, /members, /about, /edit (PD-101)
 │   │   ├── notifications/  # /notifications — PD-118. Becomes /inbox/notifications when the tab returns
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
@@ -337,9 +337,9 @@ src/
 │   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ErrorState, ExpandableText, FilterTile, Input, ListUser, NotificationDot, NotificationRow, OfflineState, Pagination, SectionHeader, Skeleton, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
-│   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout)
-│   ├── rides/              # CreateRideForm, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap, RideChatThread, RideChatComposer
-│   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, JoinClubButton, MarkClubSeen
+│   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
+│   ├── rides/              # CreateRideForm, EditRideForm, DeleteRideControl, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap, RideChatThread, RideChatComposer
+│   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, EditClubForm, DeleteClubControl, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem
 │   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
@@ -380,7 +380,7 @@ design/                     # Committed Figma snapshot — READ THIS, don't call
 ├── components/*.json       # One pruned tree per component set
 └── icons/                  # index.json + exported SVGs
 scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
-scripts/places/             # The Overture extract behind the self-hosted place search (037)
+scripts/places/             # The Overture extract behind the self-hosted place search (037), plus load.sql — the transactional load and its detector (PD-173)
 scripts/docs/               # docs:check — the numeric doc-claims registry + runner (PD-155)
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
@@ -508,13 +508,13 @@ migration, and CI has no path that would catch it.
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone — `024`, applied 2026-08-05** after the code repair deployed. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. The name survives in `src/` as a *field on what `lib/data/` returns*, holding the signed URL — never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. **`username` is durable: once it holds a value, `authenticated` cannot return it to NULL** (`038`). The rule is **"once set, never unset", not "once onboarded"**, so a rider mid-wizard cannot free a taken name either; a rename is still permitted, unbuilt and unsurfaced rather than decided. |
-| `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. The organizer FK is `ON DELETE CASCADE`, so **a ride is cancelled by its organizer's account deletion** — deliberate (a ride is one person's plan), and the crew is not notified because there is nothing to notify them with. `club_id` is `ON DELETE SET NULL`, which `029` treats as a trap rather than a default: a private club's ride left with `club_id` NULL and `is_public` false is visible only to its organizer while its `ride_members` rows survive, so the transfer function deletes a club's rides with the club instead. |
+| `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone — `024`, applied 2026-08-05** after the code repair deployed. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. The name survives in `src/` as a *field on what `lib/data/` returns*, holding the signed URL — never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. **`username` is durable: once it holds a value, `authenticated` cannot return it to NULL** (`038`). The rule is **"once set, never unset", not "once onboarded"**, so a rider mid-wizard cannot free a taken name either; a rename is still permitted, unbuilt and unsurfaced rather than decided. **`authenticated` holds no DELETE grant (`042`)** — deleting your own row reaches the same invisibility `038` closed, by a different door, and until `042` it was refused only by the *absence of a DELETE policy*, so any future DELETE policy added for an unrelated reason would have reopened it silently. The row is still reaped by the cascade from `auth.users`, which is how account deletion removes it (`029`–`032`) and which consults no table grant at all. |
+| `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. The organizer FK is `ON DELETE CASCADE`, so **a ride is cancelled by its organizer's account deletion** — deliberate (a ride is one person's plan), and the crew is not notified because there is nothing to notify them with. `club_id` is `ON DELETE SET NULL`, which `029` treats as a trap rather than a default: a private club's ride left with `club_id` NULL and `is_public` false is visible only to its organizer while its `ride_members` rows survive, so the transfer function deletes a club's rides with the club instead. **Grants are per column as of `045`** — `insert` over ten columns, `update` over eight; `created_at` is server-owned (neither verb), and `id` and `organizer_id` are insertable but **not** updatable, so a hand-off is refused by the grant as well as by the UPDATE `with check`. **There is no `updated_at` column**, which is a known gap rather than a decision now that `updateRide` ships. Re-derive the lists from `information_schema.column_privileges` scoped to `grantee = 'authenticated'`. |
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
-| `clubs` | Clubs with `owner_id → profiles`. **A club outlives its owner as of `029`.** The FK is `ON DELETE CASCADE` and `postcards.club_id → clubs` cascades behind it, so deleting an owner would destroy every postcard every *other* member ever posted there — `009` reasoned that link out correctly for a club deleted *by* its owner and never considered it arriving as a side effect of a third party's erasure. `private.transfer_owned_clubs` hands the club to its longest-tenured remaining admin, else member, and only deletes it when nobody is left. Reached through `031`'s `service_role`-only wrapper, never by a client. |
+| `clubs` | Clubs with `owner_id → profiles`. **A club outlives its owner as of `029`.** The FK is `ON DELETE CASCADE` and `postcards.club_id → clubs` cascades behind it, so deleting an owner would destroy every postcard every *other* member ever posted there — `009` reasoned that link out correctly for a club deleted *by* its owner and never considered it arriving as a side effect of a third party's erasure. `private.transfer_owned_clubs` hands the club to its longest-tenured remaining admin, else member, and only deletes it when nobody is left. Reached through `031`'s `service_role`-only wrapper, never by a client. **An owner deletes their OWN club through `public.delete_owned_club(p_club_id uuid)` (`043`), never a bare `.delete()`**: the `rides` DELETE policy is `auth.uid() = organizer_id` with no club-owner arm, so a client delete leaves every private ride in the club detached by `SET NULL`, visible to its organizer alone, with its crew list and chat unreadable — and for a private club that is every ride. The RPC is `security definer`, re-checks `owner_id = auth.uid()` in its own body (RLS does not apply inside it), deletes the club's `is_public = false` rides with the club, and returns the club's own Storage object paths so the caller can delete the bytes. Cascade-deleted postcards' images belong to other riders and are permanently orphaned — `PD-94`. **Grants are per column as of `045`** — `insert` over seven columns, `update` over five; `created_at` is server-owned (neither verb), which matters more here than on `rides` because `getClubsToExplore` **sorts on it**, so while it was writable an owner could float their club to the top of Explore permanently. `id` and `owner_id` are insertable but **not** updatable, so a hand-off is refused by the grant as well as by the UPDATE `with check`. **There is no `updated_at` column** — the same known gap `rides` has. |
 | `club_members` | `(club_id, user_id)` composite PK. `role`: `owner` \| `admin` \| `member`. |
 | ~~`friendships`~~ | **Dropped by `013`, applied 2026-08-04.** Gone from the schema and from `src/`. A v1 leftover; the design has no friendship concept. Listed here only so its absence is not mistaken for an oversight. |
-| `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`. **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
+| `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`, optional `ride_id → rides` (`041`). **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. **`ride_id` is a TAG, not a second audience** — the SELECT policy does not mention it, so nulling it changes who can see the postcard by exactly nothing, which is the property that keeps it a tag. Tagging needs the ride visible to the caller **and** `private.is_ride_crew`; neither alone, because a FK is validated with RLS bypassed and a `ride_members` row outlives blocking the organizer. `authenticated` holds no UPDATE grant on it, so a tag is set once at insert — that, not a policy, is what refuses a retag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. **`created_at` and `updated_at` are SERVER-OWNED as of `044`** — `authenticated` holds SELECT and neither INSERT nor UPDATE on either, so the only value they can ever take is `default now()`. `created_at` is the home feed's sort key *and* its pagination cursor, so while it was writable an author could pin their own postcard to the top of every feed permanently (PD-163); a `default` is the value and the grant is the guarantee, because a default applies only when the column is omitted. Both verbs are now per column: `insert (id, author_id, club_id, image_path, caption, ride_id)` and `update (club_id, image_path, caption)` — re-derive with `information_schema.column_privileges` scoped to `grantee = 'authenticated'` rather than reading this list. **`author_id` and `id` lost UPDATE in `046`**, which is `045`'s rule applied to all three owner-bearing tables: **no ownership column on `postcards`, `rides` or `clubs` holds an UPDATE grant, and all three stay INSERTable** — you may declare yourself the author of a new row and may never reassign an existing one. `club_id` deliberately keeps UPDATE, because the audience is meant to be changeable and `041`'s `with check` conjunct is what guards it. |
 | `postcard_likes` | `(postcard_id, user_id)` composite PK. No denormalised count — the correct count is per-viewer, so it is counted under RLS. |
 | `blocks` | `(blocker_id, blocked_id)` composite PK. The row is **directional**, the effect **symmetric**. Never query it from a policy — go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row. |
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
@@ -523,7 +523,7 @@ migration, and CI has no path that would catch it.
 | `clubs` (media) | `016` adds `avatar_path` and `cover_image_path`, both Storage object paths under `club-avatars/<owner uid>/` and `club-covers/<owner uid>/`. Keyed on the **uploader**, not the club, because the object must land before the club row exists; a CHECK ties each path back to the row's `owner_id`. `avatar_url` was the legacy column nothing wrote; **`024` dropped it, applied 2026-08-05**. Five query sites embedded `clubs(id, name, avatar_url)`; the three that draw an image could only ever draw initials, because it was NULL on every row — see `CLUB_EMBED_COLUMNS`. |
 | `feed_reads` | The unread model, added by `015`. A **read watermark per audience**, not a row per postcard seen: `(user_id, club_id)` where `club_id` NULL is the app-wide feed, mirroring `postcards.club_id`. Its uniqueness is `unique nulls not distinct` — a plain UNIQUE treats two NULLs as different and would insert a second app-wide row on every visit. Row count is bounded by **membership**, so it never grows with content; the rejected `postcard_views` alternative grows as riders × postcards. Read it through `club_unread_counts()`, a `security invoker` function, so blocks and hides are excluded by the same policies the feed obeys. Only club rows have a writer today — the app-wide row lands with the postcard filter tiles. |
 | `postcard_reports` | `unique (reporter_id, postcard_id)` so a repeat report is a no-op rather than a brigading tool. **Write-only in practice**: no admin role exists, so only the reporter can read their own rows and nobody can triage. Recorded as a KNOWN GAP in `011`, not a feature. |
-| `places` | The self-hosted location provider for ride meeting points, added by `037` — **the only table here that is not rider content**. Reference data extracted from Overture Maps and loaded out of band, so it has no owner column, no author, and the repo's first `using (true)` SELECT policy: every signed-in rider sees every row, which is correct precisely because the table references no person. `authenticated` holds **SELECT and nothing else** — the load runs as the table owner, which is what lets an operator write while nothing reachable through PostgREST can. Query it through `search_places(q, near_lat, near_lon)`, never an ad-hoc `ILIKE`: the function carries the guard that keeps a query off a sequential scan, and that guard is `term ~ '[[:alnum:]]{3}'` rather than a length check because `char_length(term) >= 3` accepts `'%%%%'`, which escapes to a pattern with no extractable trigram — measured at 1,443 ms, under the 8 s statement timeout and therefore silent. `039` widened what it matches to `name`, `brand`, `street` and `locality`, matched **per token and ANDed** against a generated `search_text` column, so `Jumbo Maastricht` reaches a Jumbo whose locality is Maastricht and adding a word always narrows. `postcode` stays out. Widening needs a ranking rule, so a place the query **names** outranks one it merely **locates** — `Amsterdam` puts the place called that above the thousands sitting there. The guard is unchanged and is already per-token, because an alphanumeric run of three cannot span whitespace. `039` also **drops** `places_name_trgm_idx` and `places_brand_trgm_idx` for one GIN index over `search_text`. **The table exists on BOTH projects with 0 rows** until someone runs the load, and an empty index is indistinguishable from a working search that finds nothing. **Attribution is an OPEN question, not a settled one** — a census of 527,725 rows names Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap, so the ODbL credit this repo first assumed is wrong and the commercial sources' terms are unread (their hosts are egress-blocked). Settle it before any screen renders a result. |
+| `places` | The self-hosted location provider for ride meeting points, added by `037` — **the only table here that is not rider content**. Reference data extracted from Overture Maps and loaded out of band, so it has no owner column, no author, and the repo's first `using (true)` SELECT policy: every signed-in rider sees every row, which is correct precisely because the table references no person. `authenticated` holds **SELECT and nothing else** — the load runs as the table owner, which is what lets an operator write while nothing reachable through PostgREST can. Query it through `search_places(q, near_lat, near_lon)`, never an ad-hoc `ILIKE`: the function carries the guard that keeps a query off a sequential scan, and that guard is `term ~ '[[:alnum:]]{3}'` rather than a length check because `char_length(term) >= 3` accepts `'%%%%'`, which escapes to a pattern with no extractable trigram — measured at 1,443 ms, under the 8 s statement timeout and therefore silent. `039` widened what it matches to `name`, `brand`, `street` and `locality`, matched **per token and ANDed** against a generated `search_text` column, so `Jumbo Maastricht` reaches a Jumbo whose locality is Maastricht and adding a word always narrows. `postcode` stays out. Widening needs a ranking rule, so a place the query **names** outranks one it merely **locates** — `Amsterdam` puts the place called that above the thousands sitting there. The guard is unchanged and is already per-token, because an alphanumeric run of three cannot span whitespace. `039` also **drops** `places_name_trgm_idx` and `places_brand_trgm_idx` for one GIN index over `search_text`. **The table exists on BOTH projects with 0 rows** until someone runs the load, and an empty index is indistinguishable from a working search that finds nothing. **Loading it is `.github/workflows/places-load.yml`** (PD-173) — never a hand-written `insert`: `scripts/places/load.sql` is one transaction holding the `delete`, the `\copy`, the `analyze` and a detector that fails the load closed, so search is never observably empty and a short extract cannot land silently. **Attribution is an OPEN question, not a settled one** — a census of 527,725 rows names Overture, meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap, so the ODbL credit this repo first assumed is wrong and the commercial sources' terms are unread (their hosts are egress-blocked). Settle it before any screen renders a result. |
 | `ride_messages` | Per-ride group chat, added by `034`. **Its audience is an INTERSECTION and neither half alone is it** — riders who can see the ride (an `EXISTS` against `rides` under the caller's RLS) *and* who are on its crew (`private.is_ride_crew`: organizer, or any `ride_members` row of either status). Using the crew helper on its own is the trap this table already fell into once: it is `security definer`, so it steps past the block and private-club arms of the `rides` policy, and a `ride_members` row outlives both — an ex-club-member kept reading a private ride's chat. INSERT is granted **per column** so `created_at` cannot be client-written (a `default` only applies when the column is omitted, and ordering is the product here). No UPDATE policy and no UPDATE grant. In the `supabase_realtime` publication, which is what makes a subscription fire at all. |
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
@@ -554,9 +554,17 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 40 files, and DEV and PROD AGREE — both at `040`.** Do not read that number
-here — it has been wrong in both directions. Run `list_migrations` against
+**Applied state: 46 files, and DEV and PROD are LEVEL — both at `046`, 2026-08-10.** Do not
+read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
+
+**`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
+filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
+one. `044` grants `insert (… ride_id)`, a column `041` adds, so out of order it **errors**.
+`044` and `046` both issue an **absolute** `revoke update` + `grant update (…)` list rather than a
+delta, so running `046` first lets `044`'s list — which still names `id` and `author_id` — reinstate
+exactly what `046` removes, with **no error and nothing red**. `docs/HANDOFF.md` §Migrations carries
+the table.
 
 **Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string
 and nothing can pipe a file into it, so a 61 KB file (`036`) has to be reproduced — which risks a
@@ -578,7 +586,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **958** assertions — re-derive rather than trust it:
+Suite **1180** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -612,13 +620,13 @@ carry, and must.** Inside a `security definer` function `current_user` is the *o
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: eight, and only one is outstanding.** Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because seven of the eight are things
+**Security advisors: nine, and only one is outstanding.** Re-derive rather than trust the number
+— `get_advisors(security)` — but the *shape* is durable, because eight of the nine are things
 this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 6 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored. Narrowness is the defence |
+| 7 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns. Narrowness is the defence |
 | 1 | `rls_enabled_no_policy` on `password_reset_grants` (INFO) | Correct by design: `026` revokes everything on it from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
@@ -893,6 +901,23 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | `test` | Vitest/Playwright infra and tests, **and running the app against DEV** — the walk, its fixtures, anything needing a real browser |
 | `reviewer` | Pre-merge review. Which passes run is scoped to what the diff touches (2026-08-08) — RLS/data-exposure on `src/` or `supabase/`, documentation-claims on everything including docs-only diffs |
 
+**A brief's `tools:` line is an exact-name allowlist, and an entry on it is neither guaranteed
+loaded nor guaranteed present.** Reading one failure as the other invents a blocker:
+`InputValidationError` means the schema arrived **deferred** — `ToolSearch select:<name>` *and
+then call it*, as `.claude/commands/queue-pickup.md` STEP 0 does. `No such tool available` means
+the name is **absent**, which is what a rotation does: on 2026-08-08 every MCP server
+re-registered under a UUID prefix and `mcp__Supabase__*` stopped resolving, silently, an absent
+tool being no error. A keyword search (`+execute_sql supabase`) tells them apart and **buys
+diagnosis, not recovery** — probed 2026-08-09, a tool absent from the allowlist is refused
+outright, so a UUID-prefixed name it finds is very likely refused too (untested against a real
+rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
+restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
+§Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
+database gets both; `design-system` is out, its connector being Figma and its answers coming from
+the committed `design/` snapshot with the API forbidden.
+`src/__tests__/agent-briefs.test.ts` enforces it — `grep -L ToolSearch` cannot, since every such
+block names the tool in prose and reads clean with the entry stripped.
+
 **Standard order for a feature:**
 
 ```
@@ -1130,27 +1155,72 @@ say what actually landed; a notification they did not need is annoying in a way 
 `.claude/hooks/session-wrapup-check.sh` is a backstop rather than the trigger — it can only fire
 once the branch is committed, pushed and ahead of `development`.
 
-**Say less while building.** Progress feedback during a build is a line or two — what landed,
-what is next, what broke. Not a recap of the reasoning, not a restatement of the plan, not a
-summary of a file that was just read. The owner is watching the work happen; narrating it twice
-buries the one line that actually needed reading.
+**Say less. Every reply, not just the ones during a build.** Progress feedback is a line or
+two — what landed, what is next, what broke. Not a recap of the reasoning, not a restatement of
+the plan, not a summary of a file that was just read. The owner is watching the work happen;
+narrating it twice buries the one line that actually needed reading.
+
+**This rule used to say "while building", and that scoping is what made it fail.** Product
+owner, 2026-08-10: *"can you be more to the point and a bit shorter when talking to me? this is
+important."* The narration during the work had been short; the **close-out reports** were not —
+a merged PR would come back as a dozen paragraphs re-explaining findings already written into
+the commit message, the PR body and the Linear comment. Three copies of the same reasoning, and
+the owner reads the one on their phone. **A wrap-up is the failure mode this rule exists for**,
+not an exception to it: state what landed, what needs them, and stop.
+
+**The record is not the reply.** The commit message, the PR body and the Linear comment are
+where the reasoning belongs, and they stay as long as they need to be. Do not also paste it
+into chat — link it. If something is worth saying twice it is worth saying once, in the place
+that survives the session.
 
 Three things stay long however brief the commentary gets, because each is a *decision* rather
 than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,
 so the ask needs spelling out), and **anything inferred rather than measured**. Brevity is about
 the narration, never about the record.
 
-**Rate every suggestion on four lines, always in this order.** Whenever you propose optional
+**Rate every suggestion on five ratings, always in this order.** Whenever you propose optional
 work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
-with numbers buried in it; the point is that the reader can skim four lines and still decide.
+with numbers buried in it; the point is that the reader can skim five scores and still decide.
 
-> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
-> **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
-> **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
-> **This session** N — wants its own branch, and the open PR should land first
+**Break the line after each score.** The rating goes on its own line, its justification on the
+next, with a blank `>` between entries. The number and the reason are two different things a
+reader scans for — the numbers to triage, the reasons only for the ones that survive triage —
+and running them together on one line makes the block read as prose and defeats the skim it
+exists for.
+
+**Every score line ends with two trailing spaces, and they are load-bearing.** A bare newline
+inside a blockquote is a *soft* break: CommonMark and GitHub's `.md` renderer both collapse it
+to a space, so without them the block renders as `**Recommendation** 7/10 a dead column that…`
+— score and reason abutting with no separator at all, which is worse than the single line this
+shape replaced. Two trailing spaces are the markdown hard break that makes the split real.
+They are invisible in a diff and a whitespace-trimming editor or formatter will strip them
+silently, so check them before assuming the format is intact:
+
+```bash
+grep -cP '^\s*> \*\*(Recommendation|Complexity|Urgency|Customer value|This session)\*\*.*  $' CLAUDE.md
+grep -nP '^\s*> \*\*(Recommendation|Complexity|Urgency|Customer value|This session)\*\*.*[^ ]$' CLAUDE.md docs/HANDOFF.md
+```
+
+The first counts the intact ones; **the second is the one that matters** and must print
+nothing — it finds any score line whose hard break has been eaten.
+
+> **Recommendation** 7/10  
+> a dead column that reads as live is a trap for the next session
+>
+> **Complexity** 3/10  
+> one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
+>
+> **Urgency** 2/10  
+> nothing forces it; rises if anyone starts trusting the column
+>
+> **Customer value** 0/10  
+> no rider can see this column or notice it going; the whole gain is to the next session
+>
+> **This session** N  
+> wants its own branch, and the open PR should land first
 
 **Recommendation goes first** — it is the line that answers *should we*, so it is the one being
-looked for; the other three exist to justify it. What each one means:
+looked for; the other four exist to justify it. What each one means:
 
 - **Recommendation** — how strongly you actually advise doing it, independent of how much fun
   it is to build.
@@ -1158,6 +1228,18 @@ looked for; the other three exist to justify it. What each one means:
 - **Urgency** — *when*, not *whether*. **Name the trigger where one exists**, because most
   urgency here is conditional rather than scheduled: "low now, high the day real riders sign
   up" is the whole content, and the bare number would have hidden it.
+- **Customer value** — **what a rider gets, 0–10.** The one line written from outside the
+  codebase, and the only one that asks whether anybody outside this repo would notice. Name
+  *which* rider and *what changes for them*: "an organizer can finally cancel a ride" is the
+  content; "improves the product" is not. Where the value is a harm prevented rather than a
+  feature gained, rate the harm and name it — "stops any author pinning themselves to the top
+  of every feed" is a real 6, not a 0.
+
+  **A low score is not a criticism, and this is the line most likely to be misread as one.**
+  Most correctness, tooling, migration and documentation work here is a genuine 0–2 and still
+  earns a 9/10 **Recommendation**, because it protects riders instead of reaching them. Rate it
+  honestly at 0 rather than inflating it to justify the work — **Recommendation** already does
+  that job, and a customer-value number that never goes low tells the reader nothing.
 - **This session** — **Y or N, never a number**, plus the half-line of why. It answers "should
   *this* session pick it up next", which is about the session rather than the work: what context
   is loaded, whether a branch is open, whether it is blocked on an answer, and whether it is even
@@ -1165,12 +1247,14 @@ looked for; the other three exist to justify it. What each one means:
   thing this line does, because those are exactly the items that otherwise sit in a list of build
   tasks looking actionable.
 
-**None of the four are correlated, and that is the entire reason there are four.** A 1/10
+**None of the five are correlated, and that is the entire reason there are five.** A 1/10
 complexity item can be a 9/10 recommendation; a clever 6/10 build can be a 2/10 one. **9/10 with
 `This session` N is an ordinary pairing**, not a contradiction — the leaked-password toggle is a
 dashboard click nobody in a session can make. So is its inverse: a 3/10 worth **Y** because the
-files are already open and it costs two minutes. Answer `This session` from where the session
-actually is, not from how good the idea is.
+files are already open and it costs two minutes. **A 0/10 customer value beside a 9/10
+recommendation is equally ordinary** — a revoked grant no rider will ever notice is exactly that
+pairing, and reading the low number as a reason to decline inverts what the line is for. Answer
+`This session` from where the session actually is, not from how good the idea is.
 
 Rate your own ideas honestly, including low — an unrated suggestion reads as advocacy, and the
 reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so in the
@@ -1183,22 +1267,42 @@ list of build tasks hides the one nobody but them can do.
 
 **Give every lettered option its own blockquote, with the letter and its description *outside*
 the bar.** The bar groups the ratings so a reader scanning three options can see where each one
-ends; the description is the thing being chosen between, and inside the bar it reads as a fifth
-rating line instead of a heading. Two options means two headings and two bars:
+ends; the description is the thing being chosen between, and inside the bar it reads as a sixth
+rating instead of a heading. Two options means two headings and two bars:
 
 **A) Drop the dead column.**
 
-> **Recommendation** 7/10 — a dead column that reads as live is a trap for the next session
-> **Complexity** 3/10 — one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
-> **Urgency** 2/10 — nothing forces it; rises if anyone starts trusting the column
-> **This session** N — wants its own branch, and the open PR should land first
+> **Recommendation** 7/10  
+> a dead column that reads as live is a trap for the next session
+>
+> **Complexity** 3/10  
+> one migration, plus `PUBLIC_PROFILE_COLUMNS`, two types and a resolver
+>
+> **Urgency** 2/10  
+> nothing forces it; rises if anyone starts trusting the column
+>
+> **Customer value** 0/10  
+> no rider can see this column or notice it going; the whole gain is to the next session
+>
+> **This session** N  
+> wants its own branch, and the open PR should land first
 
 **B) Enable leaked-password protection.**
 
-> **Recommendation** 9/10 — the only security advisor that is not deliberate
-> **Complexity** 1/10 — one dashboard toggle
-> **Urgency** 4/10 — low now, high the day real riders sign up
-> **This session** N — owner-only, nobody in a session can click it
+> **Recommendation** 9/10  
+> the only security advisor that is not deliberate
+>
+> **Complexity** 1/10  
+> one dashboard toggle
+>
+> **Urgency** 4/10  
+> low now, high the day real riders sign up
+>
+> **Customer value** 4/10  
+> no rider sees it working, but it is what stops one of them reusing a breached password
+>
+> **This session** N  
+> owner-only, nobody in a session can click it
 
 Do **not** put the ratings outside the bar, and do **not** put several options in one shared
 blockquote. Both defeat the grouping.
@@ -1287,8 +1391,8 @@ plus blocking.
 | **Inbox** — DMs, per-ride group chat, notifications | **Notifications shipped 2026-08-07 (PD-118) and the other two have not.** The tab is still gone (PD-100), so notifications live at their own route, `/notifications`, reached from a `MailboxIcon` + unread dot in the header of the four tab-root screens. `036` adds the `notifications` table, written **only** by six `private` fan-out triggers — `authenticated` holds no INSERT and no DELETE grant. Per-ride group chat shipped separately as `034`. What is left of this epic is **DMs**, and the tab itself: when it returns, `/notifications` becomes `/inbox/notifications` and the header icon becomes the tab. See `.claude/agents/realtime.md` |
 | **Garage** — user's motorcycles, gear, badges, countries ridden | Not built |
 | **Trust & safety** — block account, report post, hide postcard, delete account | **Partially built 2026-08-05.** Block, report and hide ship in the postcard overflow menu, over the RLS that `009`/`011` already had. `unhidePostcard` and `unblockRider` still have no caller, so both are **one-way from the UI** — the design has no "blocked accounts" or "hidden postcards" screen to undo them from. **Account deletion has its database half and no flow** (2026-08-06): `029`–`032` and `supabase/functions/delete-account/` are in, the Edge Function is **written, not deployed and never run**, and nothing in `src/` points at it. `/legal/account-deletion` is public and live. What remains is `openspec/changes/add-account-deletion/` groups 3 and 4 |
-| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs**: Ride plan, Crew and Chat are built, and Journal needs `postcards.ride_id`. Chat shipped 2026-08-07 (`034`, Linear PD-115) and did **not** need the Inbox epic — a per-ride chat needs a ride and a crew, both of which existed. Inbox owns DMs and notifications and is still parked. **Chat is reached from the switcher *and* the header's chat-bubble icon; the switcher row is a deliberate deviation and both entry points are crew-only** — see `docs/FIGMA-FIDELITY-TODO.md` §Ride detail for the measurement that added it, and `034` for what "crew" means, which is narrower than a `ride_members` row and must be read there rather than restated here. The chat is the app's only Realtime subscription, so `.claude/agents/realtime.md`'s rules have a worked example now rather than only a brief. `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail |
-| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | **Built 2026-08-05**, all of it v2. `/clubs` and `/clubs/explore` are two sub-pages behind the header's dropdown, with `List / Club` rows carrying the type chip, the rider collage, the club images and the unread counter. `/clubs/[id]` is four sub-pages — Timeline, Rides, Members, About — built from the **private club** frames, which are the ones marked Done; both public-club epics are On hold. `/clubs/new` is a client page with an image upload (`016`). Two things remain unbuilt and both are logged: the Timeline's **activity feed** (no table behind joins/leaves) and **member invitations with an Admin role** (drawn on the v1 create frame; `club_members.role` has had `admin` since `001` and nothing writes it). Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. **Create club has no v2 design** — that epic reads To do, so its composition is ours |
+| **Rides** — cover image, static map + Google Maps deeplink, Ride plan / Journal / Crew / Chat, Going/Maybe/No, per-ride chat | Partially built. **`/rides` and `/rides/[id]` are v2 and built from the measured design** (2026-08-04). The detail is **four sub-pages behind a dropdown page switcher, not tabs**: Ride plan, Crew and Chat are built. **Journal has its column as of `041` and no screen yet** — the schema half of `PD-123` landed, nothing writes `ride_id`, and every row is NULL until the compose affordance ships. Chat shipped 2026-08-07 (`034`, Linear PD-115) and did **not** need the Inbox epic — a per-ride chat needs a ride and a crew, both of which existed. Inbox owns DMs and notifications and is still parked. **Chat is reached from the switcher *and* the header's chat-bubble icon; the switcher row is a deliberate deviation and both entry points are crew-only** — see `docs/FIGMA-FIDELITY-TODO.md` §Ride detail for the measurement that added it, and `034` for what "crew" means, which is narrower than a `ride_members` row and must be read there rather than restated here. The chat is the app's only Realtime subscription, so `.claude/agents/realtime.md`'s rules have a worked example now rather than only a brief. `/rides/new` is v2 as of 2026-08-05 and now offers `club_id`, which no screen had ever set. Cover images and map thumbnails are blocked on schema (no image column, no coordinates), not on design — see `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail. **Edit and delete shipped `PD-101`**: `/rides/[id]/edit`, reached from the header's Edit affordance (organizer-only), composition ours per no v2 frame existing — see `openspec/changes/add-ride-club-edit-delete/design.md` §D5 |
+| **Clubs** — public/private, Overview/Rides/Members/Posts tabs | **Built 2026-08-05**, all of it v2. `/clubs` and `/clubs/explore` are two sub-pages behind the header's dropdown, with `List / Club` rows carrying the type chip, the rider collage, the club images and the unread counter. `/clubs/[id]` is four sub-pages — Timeline, Rides, Members, About — built from the **private club** frames, which are the ones marked Done; both public-club epics are On hold. `/clubs/new` is a client page with an image upload (`016`). Two things remain unbuilt and both are logged: the Timeline's **activity feed** (no table behind joins/leaves) and **member invitations with an Admin role** (drawn on the v1 create frame; `club_members.role` has had `admin` since `001` and nothing writes it). Note the flow has two Explore designs — the row list is `Explore clubs — Done`, the 2-up grid is `Explore clubs v2 — On hold`. **Create club has no v2 design** — that epic reads To do, so its composition is ours. **Edit and delete shipped `PD-101`**: `/clubs/[id]/edit`, owner-only, reached from the header; delete goes through `delete_owned_club` (`043`) with a blast-radius confirmation, never a bare `.delete()` |
 
 **Blocking is a schema concern, not a feature.** A blocked user must disappear from feeds,
 chat, search, and ride crews simultaneously. It belongs in RLS policies, and every review
@@ -1376,10 +1480,53 @@ it does, permanently.
 > eventually* — so everything in it is order-independent by construction. Work that must wait
 > waits in `Todo AI`, and the owner queues it when its blocker reaches `Deployed to DEV`.
 
-- **One issue per feature.** Split only when the halves ship **independently** — each mergeable on
-  its own, in either order, neither leaving the other half-built. When a feature genuinely is too
-  big, use **sub-issues of one parent** (`parentId` is both a `save_issue` parameter and a
-  `list_issues` field). Siblings still have no order between them.
+- **Not everything you notice is a story.** Product owner, 2026-08-09: *"It seems we are creating
+  too many stories. If it seems within the context of the build, and recommended, just do it."*
+  So the first question about a finding is not which column it belongs in — it is whether the
+  build in front of you can absorb it. In the context of what you are already building, and you
+  would recommend it? **Build it.** The story was never the deliverable.
+
+  One still earns its place when a session cannot do the work (`Owner only`), when it carries real
+  domain rules and wants a proposal, or when it genuinely does not fit the open branch. Below that
+  bar, **say it in the PR body and let it go** — filing costs the owner a row to read for ever,
+  and a thought worth having twice will be had again by the session that trips over it.
+
+  **Measure the board rather than sensing it**, because "too many" is invisible one issue at a
+  time:
+
+  ```
+  list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  limit=250  fields=["status","createdAt"]
+  ```
+
+  **Open** is every status except `Done (in production)`, `Deployed to DEV`, `Canceled` and
+  `Duplicate` — bucket on the *name*, since `Deployed to DEV` is typed `started` and a
+  `statusType` split would score it as open. 2026-08-09: **51 open against 26 that ever reached
+  DEV or production**, 16 of the 51 created that day. A board growing several times faster than
+  it drains is an archive, not a queue. `.claude/commands/queue-pickup.md` STEP 4b is where a
+  firing applies this.
+
+- **One issue per deliverable — a thing that can be *delivered*, not a step toward one.** The
+  unit is what somebody gets when it closes: *"rides show a map"*, *"the native shell builds"*.
+  Provider choice, key procurement, terms review and the build are **one** story, not four.
+  Split only when the halves ship **independently** — each mergeable on its own, in either
+  order, neither leaving the other half-built. When a deliverable genuinely is too big, use
+  **sub-issues of one parent** (`parentId` is both a `save_issue` parameter and a `list_issues`
+  field). Siblings still have no order between them.
+
+  Product owner, 2026-08-09: *"Unless it explicitly has substantial value to break into smaller
+  stories, I would rather have stories with a more clear goal / value that can be delivered."*
+  **The board drifted from this twice in the same way** — the map tile and the native shell each
+  reached three issues — and the mechanism was always the same: a blocker *inside* a deliverable
+  got filed as a *peer* of it. Filing is the moment to catch it, because a split is far cheaper
+  to avoid than to undo.
+
+- **A decision is never its own story.** When work stalls on a choice, write the choice into the
+  story that needs it — what is being decided, the options, what each costs — and move **that**
+  story to `Needs decision`. Do not open a second issue for the question. A decision issue cannot
+  be delivered, so it closes with nothing shipped, and until it does it leaves the real story
+  sitting in a build column looking ready while its answer lives somewhere else on the board.
+  **An owner action inside a deliverable works the same way**: label the story `Owner only` and
+  name the action in it, rather than splitting the story around the person who has to act.
 - **When a split really is ordered, only the first part goes in `Queued (AI)`.**
 - **`blockedBy` is readable, but only per issue** — `get_issue` with `includeRelations: true`
   returns `relations.blockedBy` / `.blocks` / `.relatedTo`; the flag is off by default, which is
@@ -1432,8 +1579,23 @@ between statuses are all pre-authorized, encoded in `.claude/settings.json` unde
 §Working Principles: the `autoMode` half applies only while the session is in `AUTO`, which
 `defaultMode` now pins.
 
-One thing it does **not** cover: deleting anything a human authored — an issue, a comment, a
-document, or a label that is in use. Ask first.
+**Closing an issue is included, and does not want a confirmation round.** Product owner,
+2026-08-09: *"if you see these sort of situations, and you are sure about it feel free to wrap it
+up/close it straight away, no need to confirm with me. Just add a short comment to the story or
+so about it."* So when an issue is finished, superseded, or answered by something that already
+landed, **close it and leave a comment saying which** — asking first costs a round trip to
+confirm something already true.
+
+Two things bound it. **"Sure" means measured, not inferred** — read the issue's own body before
+closing it, because a satellite issue's status often lives in its parent and this has already
+gone wrong once in the other direction, an owner action reported as outstanding that had been
+answered in the parent hours earlier. And **`Done (in production)` is still off limits**: it
+asserts riders have the feature. `Duplicate` (with `duplicateOf`) closes a folded-in issue,
+`Canceled` closes one that should not be built, and both are a session's to set.
+
+The one thing this does **not** cover: deleting anything a human authored — an issue, a comment,
+a document, or a label that is in use. Closing is reversible and leaves the record; deleting is
+neither. Ask first.
 
 ### Keep it current, or it rots like the docs did
 

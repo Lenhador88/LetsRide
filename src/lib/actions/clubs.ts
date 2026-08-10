@@ -1,6 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
+import { MEDIA_BUCKET } from '@/lib/media/constants'
 import { clubSchema } from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
 
@@ -287,5 +288,163 @@ export async function leaveClub(clubId: string): Promise<ActionState> {
   if (error) return { error: 'You could not be removed from that club.' }
 
   invalidateClubMembership(clubId)
+  return { error: null }
+}
+
+/**
+ * Saves an owner's edit to their own club — PD-101, `club-lifecycle`.
+ *
+ * Bound to a specific `clubId` at the call site, the same shape `updateRide`
+ * uses and for the same reason: the form carries no field for it.
+ *
+ * **The `.update()` payload is an explicit field list, never a spread** — see
+ * `updateRide`'s own comment on this. It used to be the only thing keeping
+ * `created_at` and `owner_id` out of the statement; **`045` made it
+ * structural** (PD-163, 2026-08-10), granting UPDATE over these five columns
+ * and no others, so both are refused with `42501` whatever this function
+ * sends. `clubs.created_at` mattered more than `rides.created_at` did:
+ * `getClubsToExplore` sorts on it, so a writable column meant an owner could
+ * float their club to the top of Explore for every rider, permanently.
+ *
+ * `createClub` above is a **spread**, so this guarantee has never covered it —
+ * its safety comes from Zod stripping unknown keys.
+ *
+ * Reads the row **before** writing it to learn which image paths a
+ * replacement orphaned, swept the same way `setProfileImage` sweeps a
+ * replaced avatar.
+ *
+ * It no longer reads `is_public` to decide whether to invalidate
+ * `rides.all()`. That conditional was correct for 022's trigger — which
+ * fires only on a real public -> private flip — and wrong for the reason
+ * that turned up in review: `RIDE_SELECT` embeds `club:clubs(id, name)`, so
+ * *every* save can stale a ride card whether or not privacy moved. Both
+ * reasons land on the same key, so the unconditional call subsumes the
+ * conditional one.
+ */
+export async function updateClub(
+  clubId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const parsed = clubSchema.safeParse({
+    name: formData.get('name'),
+    description: formData.get('description'),
+    is_public: formData.get('is_public') === 'on',
+    avatar_path: (formData.get('avatar_path') as string) || null,
+    cover_image_path: (formData.get('cover_image_path') as string) || null,
+  })
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
+  }
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to edit a club.' }
+
+  const { data: previous } = await supabase
+    .from('clubs')
+    .select('avatar_path, cover_image_path')
+    .eq('id', clubId)
+    .maybeSingle()
+
+  const { data: club, error } = await supabase
+    .from('clubs')
+    .update({
+      name: parsed.data.name,
+      description: parsed.data.description,
+      is_public: parsed.data.is_public,
+      avatar_path: parsed.data.avatar_path,
+      cover_image_path: parsed.data.cover_image_path,
+    })
+    .eq('id', clubId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { error: 'That club could not be saved.' }
+  if (!club) return { error: 'That club is not yours to edit.' }
+
+  const stalePaths = [
+    previous?.avatar_path && previous.avatar_path !== parsed.data.avatar_path
+      ? previous.avatar_path
+      : null,
+    previous?.cover_image_path && previous.cover_image_path !== parsed.data.cover_image_path
+      ? previous.cover_image_path
+      : null,
+  ].filter((path): path is string => !!path)
+
+  if (stalePaths.length > 0) {
+    // Best-effort, swallowed on purpose — same reasoning as deletePostcard's
+    // ordering note: the row already saved, so a failed cleanup costs
+    // storage rather than the rider's edit.
+    await supabase.storage.from(MEDIA_BUCKET).remove(stalePaths)
+  }
+
+  invalidate(queryKeys.clubs.all())
+  // A club's name and avatar are EMBEDDED in three other domains' reads, and
+  // none of them sits under the ['clubs'] prefix: postcards.filters() signs
+  // club:clubs(id, name, avatar_path), RIDE_SELECT embeds club:clubs(id, name),
+  // and notifications carry CLUB_EMBED_COLUMNS. Renaming leaves the old name on
+  // ride cards; replacing the avatar is worse than stale, because the Storage
+  // object was just deleted above — the cached signed URL is non-null and dead,
+  // so the tile renders a broken image rather than falling back to initials.
+  invalidate(queryKeys.postcards.all())
+  invalidate(queryKeys.notifications.all())
+  // rides.all() is invalidated unconditionally for the embed above. The privacy
+  // flip is a second, independent reason: propagate_club_privacy_to_rides (022)
+  // rewrites ride rows this call never named, one-directionally, on an actual
+  // public -> private flip. Both land on the same key, so the embed covers it.
+  invalidate(queryKeys.rides.all())
+
+  return { error: null, redirectTo: `/clubs/${clubId}` }
+}
+
+/**
+ * Deletes an owner's own club — PD-101, `club-lifecycle`, `design.md` §D1.
+ *
+ * Calls `delete_owned_club(p_club_id)` (`043`) rather than a bare
+ * `.from('clubs').delete()`, because the client is structurally incapable of
+ * doing this safely: the `rides` DELETE policy has no club-owner arm, so an
+ * owner holds no grant to delete a ride another member organised in their
+ * club, and `rides.club_id`'s `ON DELETE SET NULL` would otherwise strand
+ * every private ride visible only to its organizer with its crew and chat
+ * unreadable. See `043`'s own comment and `design.md` §D1 for the two
+ * rejected alternatives.
+ *
+ * A refusal — not owner, or no such club — comes back as one `42501` by the
+ * function's own design, so this cannot and must not try to tell the two
+ * apart in its message.
+ */
+export async function deleteClub(clubId: string): Promise<ActionState> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to do that.' }
+
+  const { data: orphaned, error } = await supabase.rpc('delete_owned_club', {
+    p_club_id: clubId,
+  })
+
+  if (error) return { error: 'That club could not be deleted.' }
+
+  // The club's own avatar and cover, returned because they sit under the
+  // OWNER's uid prefix — the caller's own Storage policy reaches them.
+  // Cascade-deleted postcards' images belong to other riders and are
+  // permanently orphaned by design; that is PD-94's scope, not this
+  // action's, and no path for them is returned to delete.
+  const paths = ((orphaned ?? []) as { object_path: string }[])
+    .map((row) => row.object_path)
+    .filter(Boolean)
+  if (paths.length > 0) {
+    await supabase.storage.from(MEDIA_BUCKET).remove(paths)
+  }
+
+  invalidate(queryKeys.clubs.all())
+  // Not a route claim either of the two originals ever made: club_members,
+  // feed_reads and notifications are cascades under the `clubs` prefix
+  // already, but the function also deletes rides (rides.all()) and their
+  // cascade takes postcards.club_id with it (postcards.all()) — two domains
+  // this action never directly touched a row in.
+  invalidate(queryKeys.rides.all())
+  invalidate(queryKeys.postcards.all())
   return { error: null }
 }

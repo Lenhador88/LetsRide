@@ -1,0 +1,149 @@
+-- 046: `postcards.author_id` and `id` lose their UPDATE grant. PD-163.
+--
+-- **This file exists because 044 and 045 disagree, and 045 is right.**
+--
+-- 044 §"What this file does NOT do" kept `id` and `author_id` in the postcards
+-- UPDATE grant, on this reasoning, quoted from its own header:
+--
+--   "`id` and `author_id` keep UPDATE .. both were in 041's list and both are
+--    out of this story's scope. Neither is a leak — the UPDATE policy's
+--    `with check` pins `author_id = auth.uid()`, so a postcard cannot be
+--    handed to another rider"
+--
+-- 045, written hours later on the same branch, rejected exactly that argument
+-- for exactly this defect class, and its header says why:
+--
+--   "Ownership is refused today by a policy conjunct and by nothing else ...
+--    the conjunct exists for a DIFFERENT reason — it is there to pin the row to
+--    its owner during ordinary edits, not to guard a transfer. The day anyone
+--    relaxes a `with check` for an unrelated feature ... the transfer capability
+--    arrives free, silently, with no line of that migration mentioning
+--    ownership. A revoked grant is a second lock that a policy edit cannot open
+--    by accident."
+--
+-- That argument transfers verbatim to `postcards`, and 046 applies it back. The
+-- branch would otherwise ship a stated principle and a counter-example to it one
+-- migration apart, which teaches the next reader the principle is optional.
+--
+-- **Nothing is exposed today** — measured, not assumed. The postcards UPDATE
+-- policy is `using (author_id = auth.uid())` with a `with check` whose first
+-- conjunct is the same, so a hand-off already fails, and the suite has asserted
+-- that since 009. This is defence in depth, not a fix.
+--
+-- **What makes postcards worse than rides or clubs if that conjunct ever moves.**
+-- The foreseeable relaxation is the same on all three — a club-admin moderation
+-- arm ORed into the `with check`. On `rides` and `clubs` that would let an admin
+-- edit somebody's ride or club, which is what such a feature is FOR. On
+-- `postcards` the same edit yields **authorship transfer**: a rider planting
+-- content under another rider's byline, which every byline, notification and
+-- profile in the app then renders as true. The blast radius differs even though
+-- the mistake is identical, and that asymmetry is the argument for closing this
+-- one first rather than filing it.
+--
+-- ---------------------------------------------------------------------------
+-- The argument applied to EVERY column 044 and 045 granted, not just author_id
+-- ---------------------------------------------------------------------------
+-- The test is not "is this column sensitive" — it is **"does a client have any
+-- legitimate reason to update it, and if not, is a policy conjunct the only
+-- thing refusing it?"** Both halves, or the answer over-fires.
+--
+--   postcards.author_id   no legitimate update, refused by conjunct only  -> REVOKED
+--   postcards.id          no legitimate update, refused by nothing at all -> REVOKED
+--   postcards.club_id     LEGITIMATE — and this is the one the rule would
+--                         over-fire on. `club_id` IS the audience, and 041 §D3
+--                         records that it is updatable BY DESIGN and that its
+--                         `with check` conjunct is "the only thing stopping a
+--                         rider moving a photo into any private club whose id
+--                         they can guess". Revoking it would delete a designed
+--                         capability AND make that conjunct dead code. -> KEPT
+--   postcards.caption     legitimate: caption edits are the shipped use  -> KEPT
+--   postcards.image_path  legitimate: replacing the photo of your own postcard,
+--                         and 010's path CHECK plus the policy conjunct pin it
+--                         to the author's own Storage folder                -> KEPT
+--   rides.*, clubs.*      already done by 045 — organizer_id, owner_id and both
+--                         `id`s are out, and what remains on each is content
+--                         columns with live write paths. Re-measured against
+--                         information_schema at 046's write time rather than
+--                         assumed from 045's text: rides UPDATE is
+--                         club_id,departure_at,description,is_public,max_riders,
+--                         meeting_point,route_description,title and clubs UPDATE
+--                         is avatar_path,cover_image_path,description,is_public,
+--                         name. Nothing ownership-shaped remains        -> NO CHANGE
+--
+-- **INSERT is untouched on all three tables**, and that is the same test giving
+-- the opposite answer: `author_id`, `organizer_id` and `owner_id` must be
+-- insertable or nobody could author anything — every INSERT policy in this
+-- schema is `<owner column> = auth.uid()`, which requires the client to send it.
+-- The asymmetry is the point: you may declare yourself the author of a new row
+-- and may never reassign an existing one.
+--
+-- ---------------------------------------------------------------------------
+-- Cost, and what it does not cost
+-- ---------------------------------------------------------------------------
+-- Nothing in `src/` updates `postcards` at all — no postcard UPDATE path exists,
+-- which is what made 044 safe and makes this free. The suite's only writes to
+-- these two columns are the two `assert_denied` calls that exist to prove the
+-- refusal, and both keep passing; one of them swaps which layer refuses, exactly
+-- as 045 did to 043's pair, so its label is amended rather than left claiming a
+-- mechanism that no longer runs.
+--
+-- ORDERING: 046 MUST be applied after 044, and the failure is SILENT.
+--
+-- Both files issue an ABSOLUTE `revoke update` + `grant update (...)` list
+-- rather than a delta, so whichever runs last wins the whole surface. 044's
+-- list still contains `id` and `author_id` — the two columns this file exists
+-- to remove — so applying 046 first and 044 second reinstates exactly what 046
+-- revoked, with no error, nothing red, and a migrations table that looks
+-- complete. Measured both directions on Postgres, not reasoned:
+--
+--     046 then 044  ->  update = author_id, caption, club_id, id, image_path
+--     044 then 046  ->  update = caption, club_id, image_path        (correct)
+--
+-- The full PROD chain is therefore 041 -> 044 -> 046, and its two links fail
+-- differently. 041 -> 044 fails LOUDLY: 044 grants `insert (... ride_id)` and
+-- 041 is what adds that column, so out of order it errors outright. 044 -> 046
+-- is the dangerous one, because nothing announces it.
+--
+-- Filename order satisfies both links, so a full in-order promotion is always
+-- correct. This note exists for a PARTIAL one — see docs/HANDOFF.md §Migrations,
+-- which carries the same table.
+--
+-- Column existence is a separate and satisfied question: the re-grant list
+-- below names `club_id`, `caption` and `image_path`, all three of which exist
+-- on PROD's `postcards` today.
+--
+-- Retention and reach are unchanged: no table, no column, no personal data.
+
+-- ---------------------------------------------------------------------------
+-- §1. The grant
+-- ---------------------------------------------------------------------------
+-- A table-level revoke clears the column grants with it, so this list is the
+-- whole remaining surface rather than a delta. `created_at` and `updated_at`
+-- stay absent — 044 took them, and re-stating a re-grant list is exactly where
+-- a previous migration's revoke gets silently undone.
+revoke update on public.postcards from authenticated;
+grant update (club_id, image_path, caption) on public.postcards to authenticated;
+
+comment on column public.postcards.author_id is
+  'The byline, and NOT updatable: authenticated holds INSERT on this column and no UPDATE (046). You may declare yourself the author of a new postcard — every INSERT policy here is `<owner column> = auth.uid()`, which requires the client to send it — and may never reassign an existing one. Until 046 the hand-off was refused by the UPDATE policy''s `with check` conjunct alone, which is 045''s objection applied back to 044: the conjunct is there to pin the row during ordinary edits, so a club-admin moderation arm ORed into it later would hand over authorship free and silently. On rides and clubs the identical edit only lets an admin edit somebody''s ride; here it lets a rider plant content under another rider''s byline.';
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the project after applying
+-- ---------------------------------------------------------------------------
+--
+--   select string_agg(column_name, ',' order by column_name)
+--     from information_schema.column_privileges
+--    where table_schema='public' and table_name='postcards'
+--      and grantee='authenticated' and privilege_type='UPDATE';
+--   -- caption,club_id,image_path
+--
+--   select has_column_privilege('authenticated','public.postcards','author_id','UPDATE') as handoff, -- f
+--          has_column_privilege('authenticated','public.postcards','author_id','INSERT') as author,  -- t
+--          has_column_privilege('authenticated','public.postcards','id','UPDATE')        as rekey,   -- f
+--          has_column_privilege('authenticated','public.postcards','club_id','UPDATE')   as audience,-- t
+--          has_column_privilege('authenticated','public.postcards','caption','UPDATE')   as edit;    -- t
+--
+-- The policy must NOT have moved: md5(qual || with_check) on the UPDATE policy
+-- is ac4c46eb256cc388059ad524be0b90ae, the value 044 pinned. 046 is a grant
+-- change and the `author_id = auth.uid()` conjunct stays exactly where it was —
+-- two locks, not one replacing the other.

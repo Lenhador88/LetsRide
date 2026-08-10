@@ -378,9 +378,16 @@ describe('mutation: a stale digit is read as the new (wrong) stated value', () =
     const correctMatch = findOnce(real, claim.pattern)
     const correctStated = claim.extractStated(correctMatch)
 
+    // The mutation is built from the MATCHED SPAN rather than from a
+    // hardcoded sentence. Hardcoding it coupled this test to prose the
+    // pattern does not own: when 041 landed on DEV alone and the claim's
+    // sentence stopped saying "DEV and PROD AGREE", the replace silently
+    // stopped landing and the failure read as a broken extractor rather than
+    // as a stale literal. findOnce already guarantees the span is unique, so
+    // this is exactly as strict and has one less thing to keep in step.
     const mutated = real.replace(
-      `**Applied state: ${correctStated} files, and DEV and PROD AGREE`,
-      `**Applied state: ${correctStated + 1} files, and DEV and PROD AGREE`
+      correctMatch[0],
+      correctMatch[0].replace(`${correctStated} files`, `${correctStated + 1} files`)
     )
     expect(mutated).not.toBe(real) // the replace actually landed
 

@@ -5,6 +5,7 @@ import {
   formatRelativeTime,
   formatRideDate,
   formatRideDateLong,
+  formatRideDepartureInput,
   formatRideMessageDay,
   formatRideTime,
   notificationSection,
@@ -368,6 +369,37 @@ describe('wallClockToUtc', () => {
     // input in the year that does not round-trip.
     expect(wallClockToUtc('2026-03-29T02:30')).toBe('2026-03-29T01:30:00.000Z')
     expect(formatRideTime(wallClockToUtc('2026-03-29T02:30'))).toBe('03:30')
+  })
+})
+
+/**
+ * The read-side counterpart to `wallClockToUtc`, and the same trap applies:
+ * `TZ=UTC` on the runner would let a naive implementation (the browser's own
+ * zone, or a bare `toISOString().slice(0, 16)`) pass here and still be wrong on
+ * a rider's phone. Every assertion asserts an offset.
+ */
+describe('formatRideDepartureInput', () => {
+  it('renders a summer instant as CEST (UTC+2) wall-clock', () => {
+    expect(formatRideDepartureInput('2026-08-16T08:00:00.000Z')).toBe('2026-08-16T10:00')
+  })
+
+  it('renders a winter instant as CET (UTC+1) wall-clock', () => {
+    expect(formatRideDepartureInput('2026-11-16T09:00:00.000Z')).toBe('2026-11-16T10:00')
+  })
+
+  it('round-trips through wallClockToUtc, which is the whole reason it exists', () => {
+    // A rider re-opening the edit form must see back exactly what a save
+    // wrote — the round trip an edit screen has and a create screen cannot.
+    const stored = '2026-08-16T18:00:00.000Z'
+    expect(wallClockToUtc(formatRideDepartureInput(stored))).toBe(stored)
+
+    const winterStored = '2026-01-05T06:45:00.000Z'
+    expect(wallClockToUtc(formatRideDepartureInput(winterStored))).toBe(winterStored)
+  })
+
+  it('renders midnight as 00:00, not 24:00', () => {
+    // 2026-08-16T00:00 CEST is 2026-08-15T22:00Z.
+    expect(formatRideDepartureInput('2026-08-15T22:00:00.000Z')).toBe('2026-08-16T00:00')
   })
 })
 

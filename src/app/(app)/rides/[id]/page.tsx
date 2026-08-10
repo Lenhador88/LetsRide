@@ -86,7 +86,13 @@ export default function RidePage() {
           it goes in as `undefined` and `Header` draws a placeholder bar for it —
           an empty title reserves the header's space behind nothing, and a
           guessed one would be replaced in front of the rider. */}
-      <RideHeader rideId={id} title={ride.data?.title} current="plan" isCrew={isCrew} />
+      <RideHeader
+        rideId={id}
+        title={ride.data?.title}
+        current="plan"
+        isCrew={isCrew}
+        isOrganizer={ride.data?.is_organizer}
+      />
 
       {/* The shell reserves the 96px header; this screen's is the 120px variant,
           so it owes the 24px difference. Both paddings top up the shell's

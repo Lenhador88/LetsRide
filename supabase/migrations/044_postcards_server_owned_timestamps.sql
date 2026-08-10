@@ -1,0 +1,264 @@
+-- 044: `postcards.created_at` and `updated_at` become server-owned. PD-163.
+--
+-- Closes the defect 041's header filed and deliberately did not fix: the home
+-- feed's sort key is writable by the author of the row it sorts.
+--
+-- ---------------------------------------------------------------------------
+-- What is wrong
+-- ---------------------------------------------------------------------------
+-- `created_at` is simultaneously the feed's SORT KEY and its PAGINATION CURSOR
+-- — src/lib/data/postcards.ts orders `created_at desc` and pages with
+-- `.lt('created_at', before)` — and `authenticated` can write it.
+--
+-- So an author can PATCH their own postcard to a far-future `created_at` and
+-- sit at the top of every feed that includes them, app-wide or a club's,
+-- **permanently, for every viewer, and repeatably**. A distant enough value
+-- also falls outside every subsequent `before` page, so the row stops being
+-- reachable by scrolling past it. There is no remedy: `postcard_reports` is
+-- write-only in practice, no admin role exists, and only the author can delete.
+--
+-- **A `default now()` is the VALUE, never the GUARANTEE.** It applies only when
+-- the column is OMITTED, and PostgREST lets a client name any column it holds
+-- a grant on. 034 §4b relied on exactly that distinction for `ride_messages`,
+-- granting INSERT per column and leaving `created_at` out "because ordering is
+-- the product here". A postcard feed is the same claim: `postcards` simply
+-- never got the treatment, and 041 preserved the grant on purpose so that two
+-- rewrites of one table's grants would not land concurrently.
+--
+-- Measured on fpmrimzxadewsaiwpsel 2026-08-10, immediately before writing this
+-- file, from pg_class.relacl and pg_attribute.attacl rather than from 041's
+-- text — the second of two changes to one table's grants must read the live set
+-- rather than reconstruct it:
+--
+--   relacl                authenticated=ard/postgres   (INSERT, SELECT, DELETE
+--                                                       all TABLE-level)
+--   attacl, seven columns authenticated=w/postgres     (UPDATE, column-level:
+--                         id, author_id, club_id, image_path, caption,
+--                         created_at, updated_at — 041 left exactly this)
+--   attacl, ride_id       null                          (no UPDATE — 041)
+--
+-- The INSERT half is the one a reader of 041 would not predict: 041 made only
+-- UPDATE column-level, so INSERT is still table-level and therefore covers
+-- **every** column including `created_at`. Both verbs are the hole; closing only
+-- UPDATE would leave a rider able to post a postcard dated 3000 on the first try.
+--
+-- ---------------------------------------------------------------------------
+-- The grant, not a trigger — and what the trigger option actually costs
+-- ---------------------------------------------------------------------------
+-- 012 protects `profiles.terms_accepted_at` with a BEFORE UPDATE trigger that
+-- re-pins `old.terms_accepted_at`, and that shape was considered here. It is
+-- the weaker option for this column, for three reasons:
+--
+--   * **It silently rewrites what the client asked for.** A grant fails the
+--     write at the door with 42501, which is a bug report; a trigger accepts
+--     the request and quietly discards half of it, which is a support ticket
+--     nobody can reproduce. 034 §4b makes the same call for the same reason.
+--   * **It would need TWO triggers, not one.** A BEFORE UPDATE trigger does
+--     nothing about an INSERT naming `created_at`, and the INSERT half is live
+--     here (see above). A BEFORE INSERT trigger forcing `new.created_at :=
+--     now()` would also have to not fight `set_updated_at`.
+--   * **It is a function to keep in step.** 025 set the precedent on `profiles`
+--     that a column privilege is one statement with nothing to maintain.
+--
+-- 012's trigger exists because `terms_accepted_at` must be WRITABLE ONCE and
+-- then frozen — a rule no grant can express. `created_at` is never writable by
+-- a rider at all, so the grant expresses it exactly.
+--
+-- ---------------------------------------------------------------------------
+-- `updated_at` gets the same treatment, and it is not symmetry-for-its-own-sake
+-- ---------------------------------------------------------------------------
+-- The brief asked for a decision either way. It goes, on both verbs.
+--
+--   * On UPDATE the grant is already dead weight: `postcards_set_updated_at` is
+--     a BEFORE UPDATE trigger that assigns `new.updated_at := now()`
+--     unconditionally, so whatever a client sends is overwritten. Removing a
+--     grant that changes nothing today is cheap; leaving it is a live grant
+--     whose harmlessness depends on a trigger nothing forces to exist.
+--   * **On INSERT it is not dead at all.** No trigger touches `updated_at` on
+--     insert, so a client can name it freely — a postcard that has never been
+--     edited can be born claiming it was edited in the year 3000.
+--   * CLAUDE.md's offline-writes convention says `updated_at` exists "so a sync
+--     layer has something to resolve against". A conflict resolver reading a
+--     client-written timestamp resolves in favour of whichever client lies
+--     hardest. That is the column's whole purpose defeated before the sync
+--     layer is written, and it is much cheaper to close now than after there is
+--     data.
+--
+-- **Revoking UPDATE on `updated_at` does NOT stop the trigger stamping it**, and
+-- that is the one claim here that would be expensive to get wrong: a column
+-- privilege gates the statement's SET list, while a BEFORE trigger assigns to
+-- NEW after the privilege check. Measured on fpmrimzxadewsaiwpsel 2026-08-10 in
+-- a rolled-back transaction, on a throwaway table carrying `set_updated_at`,
+-- with `authenticated` holding UPDATE on the body column alone:
+--
+--   insert naming created_at ........ refused 42501
+--   update setting created_at ....... refused 42501
+--   update setting updated_at ....... refused 42501
+--   update setting body ............. SUCCEEDED, created_at preserved,
+--                                     updated_at stamped by the trigger
+--
+-- That probe is also where the harness lesson landed: the first run of it
+-- reported every write SUCCEEDING, because Supabase's default privileges
+-- (`alter default privileges in schema public grant all ... to authenticated`)
+-- had already granted the throwaway table everything, so the column grants were
+-- additive noise. `revoke all ... from anon, authenticated` first, or a probe
+-- of a per-column grant measures nothing. 034 §4 does the same revoke for the
+-- same reason.
+--
+-- ---------------------------------------------------------------------------
+-- One revoke clears the column grants too — measured, not assumed
+-- ---------------------------------------------------------------------------
+-- 041 issued `revoke update on public.postcards from authenticated` when the
+-- privilege was table-level only. It is column-level now, so the same statement
+-- had to be re-checked before being reused: if a table-level revoke left the
+-- seven column grants standing, re-granting five would leave `created_at`
+-- writable and this file would look applied while changing nothing.
+--
+--   begin;
+--   revoke update on public.postcards from authenticated;
+--   -- attacl on created_at --> null, has_column_privilege(caption) --> false
+--   rollback;
+--
+-- It cascades. So each verb below is one revoke and one grant, and the re-grant
+-- list is the whole surface — a column omitted from it holds no privilege.
+--
+-- ---------------------------------------------------------------------------
+-- What this file does NOT do
+-- ---------------------------------------------------------------------------
+--   no policy is touched ....... SELECT, INSERT, UPDATE and DELETE on
+--       `postcards` are byte-identical afterwards. This is a grant change only,
+--       and the suite diffs the SELECT qual's md5 to prove it
+--   no data repair ............. `select count(*) from postcards where
+--       created_at > now()` is 0 on DEV, so there is nothing to clamp. PROD is
+--       at 040 by the owner's decision (PD-168) and was deliberately not read
+--       by this session; if the hole was ever exercised there, the row survives
+--       this migration and needs a hand fix
+--   `id` and `author_id` keep UPDATE .. both were in 041's list and both are
+--       out of this story's scope. Neither is a leak — the UPDATE policy's
+--       `with check` pins `author_id = auth.uid()`, so a postcard cannot be
+--       handed to another rider, and re-keying your own row buys nothing. Noted
+--       rather than folded in: a grant change that quietly widens past its
+--       story is how the next one gets reviewed less carefully
+--   nothing on other tables .... `postcard_comments` carries the identical
+--       exposure and is a different story. `rides` too, named in the docstring
+--       of updateRide. Both are reported, neither is touched here
+--
+-- Retention and reach are unchanged: no table, no column and no personal data
+-- is added, and account deletion still reaches every postcard through
+-- `postcards.author_id`'s cascade from `profiles`.
+
+-- ---------------------------------------------------------------------------
+-- §1. INSERT — table-level today, per column from here
+-- ---------------------------------------------------------------------------
+-- Six columns. `created_at` and `updated_at` are absent on purpose and are the
+-- entire point of the file; every other column that was insertable stays
+-- insertable, read off attacl/relacl above rather than off any document.
+--
+--   id ......... deliberately client-suppliable, like `ride_messages.id` (034)
+--                and for the same reason: CLAUDE.md requires client-generated
+--                UUIDs for anything the client may create offline, so a
+--                replayed mutation lands as a 23505 rather than a duplicate
+--   author_id .. required — the INSERT policy is `author_id = auth.uid()`
+--   club_id .... the audience, chosen at compose time
+--   image_path . required, and pinned to the uploader's folder by the policy
+--   caption .... the rider's text
+--   ride_id .... the tag (041), settable once at insert and never updatable
+--
+-- SELECT and DELETE stay table-level and are untouched: `created_at` must stay
+-- readable, because the feed sorts and pages on it.
+revoke insert on public.postcards from authenticated;
+grant insert (id, author_id, club_id, image_path, caption, ride_id)
+  on public.postcards to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- §2. UPDATE — 041's seven columns, minus the two timestamps
+-- ---------------------------------------------------------------------------
+-- The revoke clears both the (absent) table-level privilege and all seven
+-- column grants, per the measurement above, so this list is the complete
+-- surface rather than a delta.
+revoke update on public.postcards from authenticated;
+grant update (id, author_id, club_id, image_path, caption)
+  on public.postcards to authenticated;
+
+-- No grant of any kind is issued to `anon` — decision #1, and 007 revoked the
+-- last of them. Asserted in the suite on every verb, by naming the role.
+
+-- ---------------------------------------------------------------------------
+-- §3. The column comments
+-- ---------------------------------------------------------------------------
+-- A database comment is the `data` agent's first read via `list_tables`, and it
+-- is the one piece of documentation no edit to CLAUDE.md can reach — 028 and
+-- 033 exist for exactly this.
+comment on column public.postcards.created_at is
+  'Server-owned since 044 (PD-163). `authenticated` holds SELECT and neither INSERT nor UPDATE, so the value can only ever come from `default now()`. This is the home feed''s sort key AND its pagination cursor (src/lib/data/postcards.ts orders created_at desc and pages with .lt), so while it was client-writable an author could pin their own postcard to the top of every feed permanently and push it outside every later cursor page. A `default now()` is the value, never the guarantee — it applies only when the column is omitted, and PostgREST lets a client name it. The grant is the guarantee.';
+
+comment on column public.postcards.updated_at is
+  'Server-owned since 044 (PD-163). `authenticated` holds SELECT and neither INSERT nor UPDATE. On UPDATE the `postcards_set_updated_at` BEFORE trigger assigns now() regardless — a column privilege gates the statement''s SET list, not what a trigger assigns to NEW, measured 2026-08-10 — so removing the grant costs the app nothing and stops the trigger being the only thing standing between a client and this value. On INSERT no trigger touched it at all, so an unedited postcard could be born claiming an edit in the year 3000. CLAUDE.md''s offline convention makes this the column a sync layer resolves against, which a client-written value defeats.';
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+-- 1. The two verbs, scoped to their grantee. 015's footer counted a privilege
+--    table-wide and read 2 against a correct database, because postgres and
+--    service_role hold everything by Supabase default.
+--
+--   select privilege_type, string_agg(column_name, ',' order by column_name)
+--     from information_schema.column_privileges
+--    where table_schema='public' and table_name='postcards'
+--      and grantee='authenticated' and privilege_type in ('INSERT','UPDATE')
+--    group by privilege_type;
+--   -- INSERT  author_id,caption,club_id,id,image_path,ride_id
+--   -- UPDATE  author_id,caption,club_id,id,image_path
+--
+--   select has_table_privilege('authenticated','public.postcards','insert')                as tbl_ins,   -- f
+--          has_table_privilege('authenticated','public.postcards','update')                as tbl_upd,   -- f
+--          has_table_privilege('authenticated','public.postcards','select')                as tbl_sel,   -- t
+--          has_table_privilege('authenticated','public.postcards','delete')                as tbl_del,   -- t
+--          has_column_privilege('authenticated','public.postcards','created_at','INSERT')  as ca_ins,    -- f
+--          has_column_privilege('authenticated','public.postcards','created_at','UPDATE')  as ca_upd,    -- f
+--          has_column_privilege('authenticated','public.postcards','created_at','SELECT')  as ca_sel,    -- t
+--          has_column_privilege('authenticated','public.postcards','updated_at','INSERT')  as ua_ins,    -- f
+--          has_column_privilege('authenticated','public.postcards','updated_at','UPDATE')  as ua_upd,    -- f
+--          has_column_privilege('authenticated','public.postcards','caption','UPDATE')     as cap_upd,   -- t
+--          has_column_privilege('authenticated','public.postcards','ride_id','INSERT')     as tag_ins;   -- t
+--
+-- 2. The defaults still supply the value the grant now reserves. If either of
+--    these were ever dropped, every insert would fail NOT NULL instead.
+--
+--   select attname, pg_get_expr(adbin, adrelid) from pg_attribute a
+--     join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
+--    where a.attrelid='public.postcards'::regclass
+--      and a.attname in ('created_at','updated_at');           -- both now()
+--
+-- 3. The trigger that stamps `updated_at` on edit is still there — it is what
+--    makes §2 free rather than a regression.
+--
+--   select tgname from pg_trigger where tgrelid='public.postcards'::regclass
+--     and not tgisinternal;   -- enforce_participation_gate, postcards_set_updated_at
+--
+-- 4. No policy moved. Capture before applying and compare; the SELECT qual's
+--    md5 was c8fb49b026866743283b3d7ecfbc5122 on fpmrimzxadewsaiwpsel, the same
+--    value 041 pinned.
+--
+--   select cmd, md5(coalesce(qual,'')), md5(coalesce(with_check,''))
+--     from pg_policies where schemaname='public' and tablename='postcards';
+--
+-- 5. anon holds nothing, in any verb, on either column.
+--
+--   select bool_or(has_column_privilege('anon','public.postcards',c,p))
+--     from unnest(array['created_at','updated_at']) c,
+--          unnest(array['SELECT','INSERT','UPDATE','REFERENCES']) p;   -- f
+--
+-- 6. The advisors. This file adds no function and no view, so the DEV count
+--    must stay at nine — the eight CLAUDE.md tabulates plus 043's
+--    `delete_owned_club`. Anything else means a revoke did not land.
+--
+-- 7. The compose path still works. `createPostcard` inserts
+--    (author_id, image_path, caption, club_id) and names neither timestamp —
+--    grepped across src/lib/actions/ and src/lib/data/ before this file was
+--    written, and the RLS suite's own ~40 `insert into postcards (...)`
+--    fixtures name neither either. Any client write that DID name one would
+--    start failing 42501 the moment this applies, which is the intended
+--    behaviour and the reason the grep is part of the change rather than after
+--    it.

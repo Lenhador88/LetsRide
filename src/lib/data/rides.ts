@@ -13,6 +13,7 @@ import type {
   RideFilter,
   RideFilterOption,
   RideFilters,
+  RideForEdit,
   RideListItem,
 } from '@/types'
 
@@ -322,6 +323,46 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     is_upcoming: new Date(row.departure_at).getTime() >= Date.now(),
     is_crew: isRideCrew(isOrganizer, ownRow?.status ?? null),
   }
+}
+
+/**
+ * One ride, for `/rides/[id]/edit` (PD-101). Narrower than `getRide` — no
+ * RSVP read, no `is_upcoming` — and returns the editable columns rather than
+ * the display shape.
+ *
+ * `null` is the same conflation `getRide` makes: no such ride, or one this
+ * viewer's RLS hides. `is_organizer` is computed here, the same way
+ * `getRide`'s is, so the edit screen can tell "not found" from "not yours"
+ * without a second `auth.getUser()` round trip — the ride SELECT policy
+ * already admits crew and club members who are not the organizer, so a row
+ * coming back is not by itself permission to edit it.
+ *
+ * `club` can be null while `club_id` is not: the ride's club policy is its
+ * own, and an organizer who has left a private club they still organise a
+ * ride in no longer satisfies it (`ride-lifecycle`'s ex-member requirement).
+ * The edit form must read that as "name unknown", never as "no club" — only
+ * `club_id` says which one it is.
+ */
+export async function getRideForEdit(id: string): Promise<RideForEdit | null> {
+  if (!rideIdSchema.safeParse(id).success) return null
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const result = await supabase
+    .from('rides')
+    .select(`
+      id, title, description, route_description, meeting_point, departure_at,
+      max_riders, is_public, club_id, organizer_id,
+      club:clubs(id, name)
+    `)
+    .eq('id', id)
+    .maybeSingle()
+
+  const row = unwrap(result, 'this ride') as unknown as Omit<RideForEdit, 'is_organizer'> | null
+  if (!row) return null
+
+  return { ...row, is_organizer: !!user && user.id === row.organizer_id }
 }
 
 /**

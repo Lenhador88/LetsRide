@@ -86,9 +86,10 @@ export default function RideChatPage() {
         rideId={id}
         title={ride.data?.title}
         current="chat"
-        // Never draws the button on the page it links to, but the prop is
-        // required so a sub-page cannot silently omit it — see RideHeader.
+        // Never draws either button on the page it links to, but both props
+        // are required so a sub-page cannot silently omit one — see RideHeader.
         isCrew={isCrew}
+        isOrganizer={ride.data?.is_organizer}
         ridersCount={crew ? crew.going.length + crew.maybe.length : undefined}
       />
 

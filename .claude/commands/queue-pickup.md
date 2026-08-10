@@ -300,10 +300,12 @@ subagent: `mcp__Linear__list_issue_statuses`, `mcp__github__get_me`,
 `mcp__github__list_pull_requests` and `mcp__Supabase__list_projects` all returned real data as
 `Lenhador88` with **zero prompts and zero denials**, and `git ls-remote origin` worked.
 
-- **The schemas are deferred, not preloaded.** Every one needed a `ToolSearch` `select:<name>`
-  lookup first. A subagent that calls `mcp__Linear__save_issue` straight off fails on
+- **Preloading is not guaranteed by the `tools:` line either. Brief subagents to `ToolSearch`
+  first.** A subagent that calls `mcp__Linear__save_issue` straight off fails on
   `InputValidationError` — **which looks exactly like a missing permission and is not one.**
-  Brief subagents to `ToolSearch` first.
+  Declaring a tool does not establish its schema is loaded: probed 2026-08-09 (`PD-154`), all
+  four Supabase tools on `reviewer`'s **own** `tools:` line arrived deferred while
+  `mcp__Supabase__list_tables` on `data`'s answered a direct call — same session, opposite ways.
 - **Only reads were probed. The writes — `save_issue`, `create_pull_request`,
   `merge_pull_request`, `git push` — remain unverified**, and four clean reads are not evidence
   about writes.
@@ -558,8 +560,8 @@ picking from anywhere else takes that decision away from them. `Todo AI` is the 
 careful with: the name reads like permission and it is not one.
 
 **STEP 4b qualifies that sentence in exactly one direction:** a firing may finish the story it
-was given, including work that story is incomplete without. It may never *start* one it was not
-given. If you find yourself reaching for 4b to justify building something in another column,
+was given, including anything in the context of that build. It may never *start* one it was not
+given. If you find yourself reaching for 4b to justify building something in another subsystem,
 that is the failure 4b's relatedness test exists to catch — the answer is a story.
 
 **An epic or parent issue is not work.** If the issue you picked has sub-issues, it is a
@@ -620,7 +622,8 @@ catches it at STEP 2b instead.
 **If you got far enough into the build to have a STEP 4b triage list, file it before you
 stop** — same rule as §If you get stuck. This exit is named there as one of the two that leave
 without reaching STEP 5, and STEP 4b deliberately creates nothing, so a follow-up rated on the
-way here is lost unless this step writes it out.
+way here is lost unless this step writes it out. **Put the sub-4 items in the `Needs help`
+comment**, since there is no PR body here to hold them.
 
 ---
 
@@ -683,29 +686,34 @@ A build always surfaces more than it was asked for. **Two questions, and the ord
 design — relatedness first, rating second.** Skipping straight to the rating is how a firing
 talks itself into a second story, because nothing in a rating block asks what you are building.
 
-### First: is this the story done properly, or the next story started early?
+### First: is this build done properly, or the next build started early?
 
 **Only the first is eligible to travel.** Note what this gate does and does not decide: it
-decides whether something *can be built now*, never whether it is worth doing. **Everything
+decides whether something *belongs in this build*, never whether it is worth doing. **Everything
 gets rated** — a failed relatedness test sends an item straight to the filing table below,
-which routes by rating, so an unrated item has nowhere to go. The test is not "is it good" or
-"is the branch open"; it is whether the picked issue is genuinely unfinished without it:
+which routes by rating, so an unrated item has nowhere to go.
 
-- **Travels** — the test the new code needs, the caller the new function has to have, the type
-  it must be added to, the doc line this change just made false, the obvious bug found *in the
-  code this story touched*.
-- **Filed** — anything else, however good, however cheap, however open the branch is. A defect
-  in a neighbouring file, an improvement you noticed in passing, a refactor the story merely
-  made visible. These are *new work*, and `Queued (AI)` is where the owner releases new work.
+**The test is the context of the build, not the letter of the story.** Product owner,
+2026-08-09: *"It seems we are creating too many stories. If it seems within the context of the
+build, and recommended, just do it."* That deliberately widens this gate. The test used to be
+whether the picked issue was *incomplete* without the item, which sent every cheap, obvious,
+adjacent fix to the board — on a branch already open over the very file it lived in.
 
-If you cannot say in one line why the picked issue is incomplete without it, it does not
-travel. **That sentence goes in the PR body**, so the claim is on the record rather than in
-your head.
+- **Travels** — anything inside the code this story touches: the test the new code needs, the
+  caller the new function has to have, the type it must be added to, the doc line this change
+  just made false, the obvious bug in a file the diff already opens, the tidy-up the story made
+  both visible and trivial.
+- **Filed** — a different subsystem, a different screen, a different table: work whose diff
+  would not overlap this one's. That is *new work*, and `Queued (AI)` is where the owner
+  releases new work.
+
+If you cannot say in one line how the item sits inside the same build, it does not travel.
+**That sentence goes in the PR body**, so the claim is on the record rather than in your head.
 
 ### Second: rate it, and let the block decide
 
-**Rate it with `CLAUDE.md` §Working Principles' four-line block** — the vocabulary already
-exists and two of its four lines are this question:
+**Rate it with `CLAUDE.md` §Working Principles' five-rating block** — the vocabulary already
+exists and two of its five ratings are this question:
 
 | Relatedness | Rating | What happens |
 |---|---|---|
@@ -713,13 +721,15 @@ exists and two of its four lines are this question:
 | Travels | Anything else | Record it for filing |
 | Filed | *(rate it anyway — the filing table routes by rating)* | Record it for filing |
 
-**Read `This session` narrowly here, and note that this IS narrower than `CLAUDE.md`'s
-definition** — there it answers "should this session pick it up **next**", with a 3/10
-two-minute fix as its worked **Y**; in a firing it means *on this branch, in this PR, before it
-merges*. An interactive session with the owner watching can take a cheap 3/10 on an open branch;
-an unattended one cannot, because nobody is there to say "not that". **The cost is real and
-stated rather than hidden:** a genuinely trivial, genuinely related 3/10 fix gets filed instead
-of made.
+**`This session` means *on this branch, in this PR, before it merges*** — `CLAUDE.md`'s reading
+of that axis, not a narrower one. **Do not re-narrow it on the grounds that a firing is
+unattended**; what bounds an unattended build is the breadth cap below, not a higher bar on each
+item.
+
+**That moves `This session` and leaves `Recommendation` exactly where it was.** Both halves still
+have to clear, so a related fix rated 6/10 is *not* built, and under the table below a sub-4 one
+is not even filed. `CLAUDE.md` illustrates the axis with a two-minute 3/10 **Y** — that example
+says what `This session` *means*, not what travels, and an item rated that low does not.
 
 **Both halves, never either.** A 9/10 recommendation with `This session` **N** is a story, not a
 build — an ordinary pairing here rather than a contradiction, and `CLAUDE.md` illustrates it
@@ -746,11 +756,20 @@ items each rated 8/Y pass every gate above individually while collectively tripl
   all and say so in the PR.
 - **The fold-ins together must stay smaller than the story's own diff.** If the extras are the
   larger half, the PR is no longer the story you were asked to build.
+- **The *discretionary* ones are capped harder — together under a third of the story's diff.**
+  Parity was sized against a gate that admitted only what the story was broken without, and those
+  still travel at any size: a test the new code needs is not optional. An adjacent bug or a
+  tidy-up is a **choice**, and two large ones clear "at most two, smaller than the story" while
+  turning the PR into something else.
 - **Anything the folded-in work itself turns up is a story, always**, whatever it rates. One
   level deep, no chaining.
 
-Over either bound, **file everything and build none of it.** Do not pick the best two — the
-count is the signal that the triage has gone wrong, not a quota to spend.
+Over the **count** or the **parity** bound, **file everything and build none of it.** Do not pick
+the best two — the count is the signal that the triage has gone wrong, not a quota to spend.
+**The discretionary third is the one bound with a partial remedy**, because there the excess is by
+definition the optional half — it is computed over discretionary fold-ins only, so anything over
+it is discretionary and dropping it cannot leave the story merged and incomplete. Fold what fits
+under the third and file the rest, which resolves a single over-large tidy-up to "file it".
 
 ### Where each one gets filed — decided here, written at STEP 5
 
@@ -758,18 +777,45 @@ count is the signal that the triage has gone wrong, not a quota to spend.
 whichever exit path you take if you never reach it (§If you get stuck, STEP 2c) — creating them
 here *and* there is how the same follow-up gets filed twice, and a duplicate reads to the owner
 as two pieces of work. End this step holding a short list: for each item, its relatedness
-verdict, its four ratings, and the column below it belongs in.
+verdict, its five ratings, and where the table below sends it — which for a sub-4 item a session
+could have built itself is nowhere.
 
 Never `Queued (AI)` — that is the owner's column and the only start signal.
 
 | Where | When |
 |---|---|
-| **`Todo AI`** | A session could build it, and you would recommend building it (≥ 4/10) |
-| **`Todo Human`** + `Owner only` | Nobody in a session can do it |
-| **`Backlog AI`** | You rated it below 4/10 — a real thought, not a triaged one |
+| **`Todo Human`** + `Owner only` | Nobody in a session can do it — **matched first, whatever it rates** |
+| **`Todo AI`** | A session could build it, and you would recommend building it (**Recommendation** ≥ 4/10) |
+| **Nowhere** | A session could have built it *and* you rated it below 4/10 — write it in the PR body and let it go |
 
-**`Backlog AI` is not banned.** `Todo AI` means *triaged*, and the owner reads it to choose
-work; filling it with 2/10 ideas devalues exactly the column this whole step depends on.
+An owner action can rate 2/10 and still has to be filed: `CLAUDE.md` §Keep it current requires a new
+one in Linear *the moment it is found*, and nobody in a session will ever pick it up off a PR
+body. Only work a session could have done itself is eligible to be dropped.
+
+**Below 4/10 a firing files nothing it could have built itself**, where it used to open a
+`Backlog AI` row — an owner action is out of that by the row above, whatever it rates. A sub-4
+idea is a real thought and it is still not work, and a column of them is a large part of what the
+owner means by too many stories. The PR body is a durable enough record: a thought worth having
+twice gets had again by whichever session next opens that file, with better context than the row
+would have carried. **`Backlog AI` stays the owner's to use** — they can park a real idea there;
+a firing cannot.
+
+**On the two exits that never reach a PR — STEP 2c and §If you get stuck — the `Needs help`
+comment is the PR body's stand-in.** Both leave with a triage list and no PR to write it into, so
+without this the sub-4 items go nowhere at all, which §If you get stuck rightly calls worse than
+never having noticed them.
+
+**The threshold reads `Recommendation` and nothing else.** There are two 0–10 axes now, and
+**Customer value** is the wrong one to route on: it scores 0–2 for most correctness, migration
+and tooling work, which is precisely what a firing files. Routing on it would drop every such
+item — burying the findings this step exists to surface.
+
+**Default to one filed story per build, and make a second argue for itself.** §Sequencing's *one
+issue per deliverable* governs what a firing files just as much as what the owner files, so four
+findings about one subsystem are one issue with four lines in it, not four issues. The board's
+one-day clusters are what the alternative looks like — `PD-159`, `PD-160` and `PD-161` are three
+Low `docs:check` follow-ups from a single build. A second issue needs its one-line reason, in the
+PR body, saying what makes it independently deliverable.
 
 ### Search before you file — update an existing issue rather than opening a second one
 
@@ -782,7 +828,7 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  query=<a
 ```
 
 - **Something already covers it** → update that issue instead. Add a comment with what this
-  build learned, the four ratings and the PR it surfaced from; raise the priority or move the
+  build learned, the five ratings and the PR it surfaced from; raise the priority or move the
   status only if this build genuinely changed the picture. **Never move an existing issue into
   `Queued (AI)`** — that is still the owner's column, and promoting one from inside a firing is
   the same overreach as picking work from it.
@@ -798,7 +844,7 @@ certainly written from a different angle, and a query built from your title will
 the owner files, and a loose top-level story is the shape that rule exists to prevent.
 
 The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
-the four-line rating block, **the relatedness verdict** — which for a filed item is the line
+the five-rating block, **the relatedness verdict** — which for a filed item is the line
 saying why it is *separate* work, not a justification for travel it never claimed — and the
 issue or PR it came out of. **A story that grows a specification is a bug** — that belongs in
 a proposal.
@@ -814,7 +860,7 @@ The owner did not get to make this call, so the call has to be visible without o
 
 - **The PR body** gets a `## Folded in` section — one heading per item with its relatedness
   sentence and its ratings, in the shape §Working Principles specifies: the letter and
-  description *outside* the bar, the four ratings *inside* it.
+  description *outside* the bar, the five ratings *inside* it.
 - **The STEP 5 Linear comment** names what was folded in and links every story filed.
 
 An unrated fold-in reads as advocacy and cannot be cheaply declined, which is the entire reason
@@ -844,7 +890,9 @@ live RLS hole letting any signed-in rider post a ride into any club.
    **A commit made AFTER this pass is not covered by it, and two are routine here:** a CI fix
    at bullet 3, and any fix for `reviewer`'s own findings. The bound is *one pass covers
    everything up to it*, so — **re-run `reviewer` on the delta alone** (`git diff <reviewed
-   sha>...HEAD`) when what you added after it is non-trivial: anything touching `src/`,
+   sha> HEAD` — **two dots**, because a finding fixed by amending leaves a *sibling* of the
+   reviewed commit, and `...` then silently widens the range to the whole branch) when what you
+   added after it is non-trivial: anything touching `src/`,
    `supabase/`, a policy, a guard, a permission, **`.claude/agents/*.md`, `.claude/commands/*.md`
    or `CLAUDE.md`**. Those last three are on the list because `reviewer.md` calls them
    *executable process* whose only gate is this review — fixing a review finding by editing a
@@ -855,7 +903,7 @@ live RLS hole letting any signed-in rider post a ride into any club.
 
    **Its prompt must carry the scope material, because it runs before the PR exists and so
    cannot read the PR body.** Pass: the issue being built, each fold-in with its one-line
-   relatedness justification and its four ratings, and the two commit ranges — the story's own
+   relatedness justification and its five ratings, and the two commit ranges — the story's own
    commits versus the fold-ins'. Without those, `reviewer.md`'s scope pass cannot check the
    breadth cap at all, and is briefed to report that rather than guess the boundary from the
    diff.
@@ -895,9 +943,10 @@ filed is worse than one that was never noticed, because the rating made it look 
 that must already exist, and the DEV-deploy check gates the status move rather than following it.
 That is why they are numbered and cross-referenced by number.
 
-1. **File or update every STEP 4b follow-up that did not get built.** First, because bullet 4
-   links them, and per STEP 4b's search rule some are updates to issues that already exist
-   rather than new ones.
+1. **File or update every STEP 4b follow-up its table sent to a column** — a sub-4 item a session
+   could have built itself goes nowhere and is already recorded in the PR body; a sub-4 *owner
+   action* is still filed. First, because bullet 4 links them, and per STEP 4b's search rule some
+   are updates to issues that already exist rather than new ones.
 2. **Return to `development` and pull**, so the next firing's STEP 0.5 passes and so bullet 3
    has the merge commit to check against.
 
@@ -977,7 +1026,8 @@ stop. Leave the branch and any PR open and say so in the comment.
 
 **File any follow-up you already rated before you stop — every exit path owes that, not just
 STEP 5's.** STEP 4b decides where each one goes but deliberately creates nothing, so this path
-and STEP 2c are the two that leave with a triage list and no STEP 5 to write it out. Rating
+and STEP 2c are the two that leave with a triage list and no STEP 5 to write it out. **Put the
+sub-4 items in the `Needs help` comment**, since there is no PR body here to hold them. Rating
 something and then dropping it is worse than never noticing it, because the rating is what made
 it look handled.
 
@@ -1002,20 +1052,23 @@ STEP 1.5 is the single exit for that reason.
 **The story in front of you is the scope**, and *a scheduled session is the worst possible place
 for scope creep*. The rule has two halves, and **STEP 4b is where they are applied**:
 
-- **Work that makes the picked story right travels with it** — when it passes the relatedness
-  test *and* rates ≥ 7/10 with `This session` **Y**. Same branch, same PR, same `reviewer` pass.
-- **Everything else becomes a story** in `Todo AI`, `Todo Human` or `Backlog AI` — or an update
-  to the issue that already covers it, per STEP 4b's search rule — and the owner decides when it
-  gets built.
+- **Work inside the context of the build travels with it** — when it passes the relatedness test
+  *and* rates ≥ 7/10 with `This session` **Y**. Same branch, same PR, same `reviewer` pass.
+- **Work outside it becomes a story** in `Todo AI` or `Todo Human` — or an update to the issue
+  that already covers it, per STEP 4b's search rule — and the owner decides when it gets built.
+  Below 4/10, work a session could have built itself becomes a line in the PR body and nothing
+  else; an owner action is filed whatever it rates.
 
-**Filing *everything* is the failure this shape avoids**, because the test a new function needs
-and the doc line the change just falsified are not future work — they leave the story merged and
-incomplete. That is a failure the blunt default invites, not one anyone has watched happen; do
-not let a later revision promote it into history.
+**Filing *everything* is the failure this shape avoids.** The product owner read the board on
+2026-08-09 and said so: too many stories, build the ones that sit in the context of the work.
+Both directions cost — a filed test the new code needed leaves the story merged and incomplete,
+and a filed 2/10 thought leaves the owner a row to read for ever. **The merged-and-incomplete
+cost is the one nobody has watched happen here; do not let a later revision promote it into
+history.** The over-filing one has been watched.
 
 The boundary is worth being able to say in one line, because everything above is downstream of
-it: is this **the story, done properly** — or **the next story, started early?** The first
-travels. The second is filed.
+it: is this **this build, done properly** — or **the next build, started early?** The first
+travels. The second is filed, or dropped.
 
 ---
 

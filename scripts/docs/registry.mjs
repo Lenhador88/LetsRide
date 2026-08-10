@@ -186,11 +186,27 @@ export const claims = [
   {
     id: 'migrations-count-claude',
     file: 'CLAUDE.md',
-    pattern: /\*\*Applied state: (\d+) files, and DEV and PROD AGREE/,
+    // The tail of this pattern tracks the DEV/PROD RELATIONSHIP, which has
+    // changed six times since 2026-08-09 — 041, 042, 043, 044, 045, 046, each
+    // applied to DEV by itself. Keep this list in step with the regex below when
+    // you move it: the comment stopped a migration short once already, which
+    // reads as the pin being stale when it was the prose that was.
+    // It is deliberately NOT relaxed to
+    // /Applied state: (\d+) files/: the numeric half is the only thing this
+    // entry verifies, so pinning the prose is what forces the next session to
+    // re-read the sentence when the relationship changes again (i.e. when PROD
+    // catches up) rather than leaving a stale "AGREE" behind a correct count.
+    // A pattern miss here is the check working, not breaking.
+    // 2026-08-10: PROD caught up, so the pinned prose moved from "DEV is SIX
+    // AHEAD of PROD" to "DEV and PROD are LEVEL". That transition is the one
+    // this entry's comment predicted, and it worked — the pattern stopped
+    // matching and the check reported SKIPPED rather than passing on a claim
+    // it was no longer reading.
+    pattern: /\*\*Applied state: (\d+) files, and DEV and PROD are LEVEL/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
-    about: '§Supabase Rules: "Applied state: N files"',
+    about: '§Supabase Rules: "Applied state: N files" + the DEV/PROD relationship',
   },
   {
     id: 'migrations-count-handoff',

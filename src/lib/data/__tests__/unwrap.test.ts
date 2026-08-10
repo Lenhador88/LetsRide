@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DataReadError, unwrap, unwrapList } from '@/lib/data/unwrap'
+import { DataReadError, unwrap, unwrapCount, unwrapList } from '@/lib/data/unwrap'
 
 describe('unwrapList', () => {
   it('returns the rows when the query succeeded', () => {
@@ -40,6 +40,30 @@ describe('unwrap', () => {
     expect(() => unwrap({ data: null, error: { message: 'boom' } }, 'that postcard')).toThrow(
       DataReadError,
     )
+  })
+})
+
+describe('unwrapCount', () => {
+  it('returns the count on success', () => {
+    expect(unwrapCount({ count: 4, error: null }, 'rides this club holds')).toBe(4)
+  })
+
+  it('treats a genuinely empty count as zero, not as a failure', () => {
+    expect(unwrapCount({ count: 0, error: null }, 'rides this club holds')).toBe(0)
+  })
+
+  /**
+   * The whole reason this exists rather than reusing `unwrap`: a `{ count:
+   * 'exact', head: true }` query has `data: null` on every successful call,
+   * so a failed read and an honest zero cannot be told apart by `data` alone
+   * the way `unwrap` tells them apart. A blast-radius confirmation reading a
+   * failed count as zero would show "this destroys nothing" for a club it
+   * cannot count at all.
+   */
+  it('throws rather than returning zero when the query failed', () => {
+    expect(() =>
+      unwrapCount({ count: null, error: { message: 'timeout' } }, 'rides this club holds'),
+    ).toThrow(DataReadError)
   })
 })
 

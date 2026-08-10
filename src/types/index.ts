@@ -206,6 +206,41 @@ export type RideDetail = {
  * it needs a `count` aggregate and a label that matches it — not a full read.
  */
 
+/**
+ * One ride, as `/rides/[id]/edit` renders it — PD-101. The editable field
+ * set only: `description D5` lists exactly these eight columns as what the
+ * schema actually has, against the five drawn fields the v1 frame has no
+ * column for.
+ */
+export type RideForEdit = {
+  id: string
+  title: string
+  description: string | null
+  route_description: string | null
+  meeting_point: string
+  departure_at: string
+  max_riders: number | null
+  is_public: boolean
+  club_id: string | null
+  /**
+   * `null` means either "no club" (`club_id` is null) or "a club this viewer
+   * cannot currently see" — the ex-member-of-a-private-club case
+   * `ride-lifecycle` names. Distinguish using `club_id`, which is never
+   * hidden by RLS the way the embed is: the edit form must never read a null
+   * `club` here as "detach the ride", or a save that touches nothing else
+   * would silently zombie it.
+   */
+  club: Pick<EmbeddedClub, 'id' | 'name'> | null
+  organizer_id: string
+  /**
+   * Whether the caller is this ride's organizer — computed here the same way
+   * `RideDetail.is_organizer` is, so the edit screen can tell "not found"
+   * from "not yours" (both are zero rows to a bare RLS-filtered read)
+   * without a second, separate `auth.getUser()` round trip.
+   */
+  is_organizer: boolean
+}
+
 export type RideCrewMember = {
   user_id: string
   profile: PublicProfile | null
@@ -414,6 +449,47 @@ export type ClubDetail = {
   owner: PublicProfile | null
   members_count: number
   viewer_role: 'owner' | 'admin' | 'member' | null
+}
+
+/**
+ * One club, as `/clubs/[id]/edit` renders it — PD-101. Narrower than
+ * `ClubDetail`: no `owner` embed, no `members_count`, no `viewer_role` — this
+ * screen needs the editable columns and nothing a member list or a byline
+ * would want.
+ */
+export type ClubForEdit = {
+  id: string
+  name: string
+  description: string | null
+  is_public: boolean
+  avatar_path: string | null
+  cover_image_path: string | null
+  avatar_url: string | null
+  cover_image_url: string | null
+  owner_id: string
+  /** Computed the same way `RideForEdit.is_organizer` is — see that type. */
+  is_owner: boolean
+}
+
+/**
+ * What deleting a club destroys, read under the OWNER's own RLS — a floor,
+ * never a total. A postcard or ride belonging to a rider who has blocked the
+ * owner is invisible to this read and is destroyed regardless; see
+ * `getClubDeletionImpact` and `club-lifecycle`'s delete requirement. A
+ * privileged, unfiltered count is deliberately not built — it would tell the
+ * owner exactly how much content a rider who blocked them holds, which is
+ * the thing blocking exists to withhold.
+ */
+export type ClubDeletionImpact = {
+  postcards: number
+  /**
+   * Only the club's **private** rides — `delete_owned_club` (`043`) leaves a
+   * public ride standing with `club_id` NULL, so it is never part of what
+   * this count discloses as "will be deleted".
+   */
+  ridesToDelete: number
+  /** Every member, including the owner — all of them lose the club. */
+  members: number
 }
 
 export type ClubRosterMember = {

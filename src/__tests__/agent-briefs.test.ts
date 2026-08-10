@@ -204,6 +204,66 @@ describe('agent briefs do not describe a world that has moved on', () => {
     expect(dangling, 'referenced but no such step heading in queue-pickup.md').toEqual([])
   })
 
+  it('every brief naming an mcp__ tool also lists ToolSearch in its frontmatter', () => {
+    /*
+     * PD-154's rule, and it needs a test rather than the obvious shell check.
+     * `grep -l "mcp__" .claude/agents/*.md | xargs grep -L ToolSearch` reads
+     * CLEAN with the frontmatter entry stripped, because every brief covered by
+     * the rule also writes `ToolSearch` in the prose that tells it what to do —
+     * measured, not feared. That is this repo's signature failure (a guard that
+     * silently stopped matching) sitting inside the fix for silent failure, so
+     * the assertion is scoped to the frontmatter block and to the parsed list.
+     *
+     * The trigger is the `mcp__` prefix rather than a connector name, because
+     * the ids rotating IS the defect: on 2026-08-08 every MCP server
+     * re-registered under a UUID prefix and `mcp__Supabase__*` stopped
+     * resolving, with no error, leaving the agent no way to look for one.
+     *
+     * The exemption is keyed on the PROPERTY that justifies it — every declared
+     * connector tool being Figma — never on a filename. `design-system` is out
+     * because CLAUDE.md forbids the Figma API for design questions in favour of
+     * the committed `design/` snapshot, so a rotation degrades an already-
+     * secondary path. A filename exemption outlives that rationale silently:
+     * measured, `EXEMPT_BRIEFS.has(name)` let design-system.md take a Supabase
+     * tool with no ToolSearch and still pass.
+     *
+     * `checked` is the both-ways half, and it is the reason this reads like
+     * `no-service-role-key.test.ts`: a guard that quietly stops matching passes
+     * for ever and looks exactly like a clean repo. Two ways this one could:
+     * the exemption above, and the `tools:` regex, which matches nothing if a
+     * brief is ever reformatted to YAML block style — `declared` becomes [''],
+     * every brief is skipped, and stripping ToolSearch from all seven still
+     * passes. Asserting WHICH briefs were examined closes both. Adding an
+     * eighth Supabase-reaching brief is meant to fail here: add it to the list.
+     */
+    const checked: string[] = []
+    for (const { name, body } of briefs()) {
+      const frontmatter = body.split('\n---')[0]
+      const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
+      const connectors = declared.filter((t) => t.startsWith('mcp__'))
+      if (connectors.length === 0) continue
+      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      checked.push(name)
+      expect(
+        declared,
+        `${name} declares an mcp__ tool but no ToolSearch — after a connector id rotation it cannot even find out why it has no database`,
+      ).toContain('ToolSearch')
+    }
+
+    expect(
+      checked.sort(),
+      'the guard examined a different set of briefs than expected — a `tools:` line it can no longer parse skips silently',
+    ).toEqual([
+      'data.md',
+      'feature.md',
+      'media.md',
+      'openspec.md',
+      'realtime.md',
+      'reviewer.md',
+      'test.md',
+    ])
+  })
+
   it('every brief still declares a name and a model', () => {
     // Frontmatter damage is silent: an agent with no `name` is simply unreachable.
     for (const { name, body } of briefs()) {

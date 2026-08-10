@@ -63,11 +63,11 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 ```bash
 npm ci
 npx tsc --noEmit                      # exit 0
-npm run lint                          # exit 0 — 7 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 946/946 across 37 files
+npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
+npm run test:unit                     # 1010/1010 across 38 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 958 assertions, 0 failures
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 10 dynamic routes
+PGPASSWORD=postgres npm test          # 1180 assertions, 0 failures
 ```
 
 **Two traps in running that, both of which produce a confident wrong answer first:**
@@ -175,7 +175,7 @@ Verify rather than trust, in one line each:
 git grep -L "^'use client'" -- 'src/app/**/page.tsx'   # zero server pages — prints nothing
 ls src/proxy.ts src/lib/supabase/server.ts             # both deleted — prints errors
 node -p "Object.keys(require('./package.json').dependencies).length"   # 9
-npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 8
+npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 10
 ```
 
 **Keep `┌` in that character class.** The route table's first row uses it, so the `├└│`-only
@@ -184,9 +184,10 @@ because `/` sorts first and is static.
 
 **The dynamic count is the number the native epic needs**, because every dynamic route is one
 `output: 'export'` refuses without a `generateStaticParams()`. `next build` reports
-**22 static** and **8 dynamic** (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`, `/rides/[id]`,
-`/rides/[id]/crew`, `/rides/[id]/chat`). They are dynamic for their *segment*, not for any data,
-and no `ƒ Proxy (Middleware)` line appears at all.
+**22 static** and **10 dynamic** (`/clubs/[id]` plus its four sub-pages including `edit`
+(PD-101), `/postcards/[id]`, `/rides/[id]`, `/rides/[id]/crew`, `/rides/[id]/chat`,
+`/rides/[id]/edit` (PD-101)). They are dynamic for their *segment*, not for any data, and no
+`ƒ Proxy (Middleware)` line appears at all.
 Do not read the `Generating static pages (23/23)` line as the static route count — it is a
 different quantity, and 23 against 22 is exactly the kind of near-miss that gets copied.
 
@@ -250,7 +251,7 @@ iOS or Android behaviour. That needs a device.
 
 **The gate for everything else is the static export.** Measured 2026-08-07: with
 `output: 'export'`, `next build` fails with
-`Page "/postcards/[id]" is missing "generateStaticParams()"`. All eight dynamic routes hit it,
+`Page "/postcards/[id]" is missing "generateStaticParams()"`. All ten dynamic routes hit it,
 none can supply one (the ids are per-rider RLS-scoped content), and returning `[]` does not
 help because export forces `dynamicParams: false` so unknown ids 404. **`npx cap sync` has
 nothing to copy until this is resolved**, and resolving it is a routing change with real
@@ -315,8 +316,9 @@ working around them.**
    actually closes the recovery hole `026` can only gate at the app's front door — GoTrue's
    `PUT /auth/v1/user` accepts a password change from any live session, measured.
 3. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
-   security advisor that is not deliberate. `get_advisors(security)` returns **eight**; the other
-   seven are there on purpose and `CLAUDE.md` §Supabase Rules names each.
+   security advisor that is not deliberate. `get_advisors(security)` returns **nine** against DEV and
+   **eight** against PROD — the gap is `043`'s `delete_owned_club`, applied to DEV only. Every other
+   one is there on purpose and `CLAUDE.md` §Supabase Rules names each.
 4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
    serves nothing, with no alert. Needed before anything resembling launch. It also breaks
    account deletion specifically: a rider who cannot reach a paused project cannot delete their
@@ -364,8 +366,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **958**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss, and `038` moved this by +36 new and −1 relabelled |
-| Unit tests | `npm run test:unit` — **946 across 37 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1180**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch) |
+| Unit tests | `npm run test:unit` — **1010 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -516,15 +518,15 @@ timeout:**
 
 ---
 
-## Two changes: one part-built, one ready to pick up
+## Three changes: two part-built, one ready to pick up
 
-Both were written 2026-08-06. `npm run openspec -- list --json` is the live view; this is the
-orientation.
+`npm run openspec -- list --json` is the live view; this is the orientation.
 
 | Change | State | What blocks starting |
 |---|---|---|
 | `enforce-creator-membership` | Proposed, 44 tasks, validates strict. **Not started** | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
 | `add-account-deletion` | **Groups 1, 2 and 5 built and applied** (`029`–`032`). **Store blocker 2** | Groups 3 and 4 are blocked on the Edge Function being deployed — an owner action. Q4 and Q7 still open, plus the postcard half of 1.6b |
+| `add-ride-club-edit-delete` (PD-101) | **Groups 1, 2 and 3 all built.** `043_delete_owned_club` is applied to DEV and asserted (62 RLS assertions), and `1.4b`'s ex-member-organizer case is pinned by 13 more labelled `017:` — suite **1122**, so CI's `RLS Policy Tests` job does fire on this PR. `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/[id]/edit` and `/clubs/[id]/edit` exist, the Edit affordance is in both headers, and both delete confirmations enumerate the floor-phrased blast radius `club-lifecycle` specifies. `tsc`/lint/`test:unit` (1010)/`build`/`docs:check` are all green | **`npm run walk` was not run** — the edit routes were added to `discoverDetailPaths()` but this session had no DEV credentials, so neither edit screen has been loaded against a real database. That is this change's one real coverage gap: it is compiled, built and asserted, never rendered. `PD-163`'s comment (task 3.7) is unlogged |
 
 **The 1.6b defect that PR #60 found while checking the proposal was found independently in
 review of the branch that built it, and is half fixed.** `account-erasure-cascade` claims a club
@@ -560,22 +562,177 @@ Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
 Inbox or push exists.
 
-## Migrations — DEV and PROD agree, and three things about that will read as drift
+## Migrations — DEV and PROD are LEVEL at `046`, and eight things will read as drift
 
-**Both projects are at `040` with no gap.** Verify rather than trust it; this is exactly the kind
-of line that goes stale:
+**`041` through `046` were applied to PROD on 2026-08-10**, on the owner's instruction, in strict
+filename order, each digest checked against its file. DEV, PROD and the repo all hold 46. The gap
+this section used to describe is closed; what remains below is the recording artefacts, which are
+permanent.
+
+**The order they were applied in still matters, because a *partial* apply can pick a failing one.**
+`041 → 044 → 046` is required. `041 → 044` fails **loudly** (`044` grants `insert (… ride_id)`,
+which `041` adds). **`044 → 046` fails SILENTLY**: both issue an absolute `revoke update` +
+`grant update (…)` list rather than a delta, and `044`'s list still names `id` and `author_id`, so
+running `046` first has it reinstated with no error and nothing red. Filename order satisfies both.
+
+**THE APPLY ORDER, which is what PD-168 executes from.** This list used to say every pending
+migration was independent. That stopped being true at `044`, so the order is written out rather
+than left to be re-derived:
+
+```
+041  ->  044  ->  046   REQUIRED CHAIN, all three on `postcards`, and the two links fail
+                        DIFFERENTLY:
+                        041 -> 044 fails LOUDLY. 044 grants `insert (… ride_id)`, the column
+                        041 adds, so 044 on a PROD without 041 errors outright.
+                        044 -> 046 fails SILENTLY, which is the dangerous one. Each file
+                        issues `revoke update` + an ABSOLUTE `grant update (…)` list, not a
+                        delta, so whichever runs LAST wins the whole surface. Run 046 then
+                        044 and 044's list — which still contains `id` and `author_id` —
+                        reinstates exactly what 046 exists to revoke. Nothing errors and
+                        nothing goes red; the database just quietly ends up at 044.
+042, 043, 045           independent — any position, any order, before or after the chain.
+```
+
+Filename order (`041 … 046`) satisfies the constraint, so **applying them in numeric order is
+always correct** and is the recommendation; the table exists so that a partial promotion — the
+owner taking three of the six — does not pick an order that fails or, worse, one that quietly
+undoes a revoke. `045` touches `rides` and `clubs` only and depends on none of the others. Verify
+rather than trust this; it is exactly the kind of line that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 40 rows, ending 20260808204829 040_locality_centroid
+#   DEV  (fpmrimzxadewsaiwpsel): 46 rows, ending 20260810022117 046_postcards_authorship_needs_a_grant
 #   PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 040_locality_centroid
-ls supabase/migrations/ | wc -l          # 40
+ls supabase/migrations/ | wc -l          # 46
 ```
 
+**Applying `046` to PROD needs no gate.** One revoke/grant pair and one column comment on
+`postcards`; it writes no rows and touches no policy. It is defence in depth rather than a fix —
+nothing is exposed today, because the UPDATE policy's `with check` already refuses a hand-off — so
+unlike `044`/`045` it carries no cost while it waits. Rollback is
+`grant update (id, author_id) on public.postcards to authenticated;`.
+
+**`044` and `045` are the two on this list with a live cost while they wait, and the only two that
+are security-relevant.** The other three are additive or inert. Both close halves of PD-163, and
+until they apply to PROD a rider there can `PATCH` a `created_at` they own and pin their own content
+to the top of a list every other rider reads: a postcard to the top of every feed (`044`, and
+outside every later `.lt('created_at', before)` cursor page), and a club to the top of
+`/clubs/explore` (`045`). Neither has a moderation path to undo it.
+
+**Applying `045` to PROD needs no gate and no ordering.** Four revoke/grant pairs and two column
+comments across `rides` and `clubs`; it writes no rows, touches no policy, and hangs nothing off a
+write path. **The one thing to re-read before applying is its §1 and §2** — the column lists must be
+re-derived against PROD from `pg_attribute.attacl`/`pg_class.relacl` at apply time rather than
+copied, for the same reason `041` §3 says so. PROD's starting state for these two tables is expected
+to be identical to DEV's was (`arwdDxtm` table-level, no column ACLs), because nothing in the chain
+has ever narrowed them — but that is an expectation, not a measurement, and `045` is the file whose
+whole point is that grants get measured rather than assumed. Unlike `044` it has a **live UPDATE
+path in front of it** (`updateRide`/`updateClub`, PD-101), so the four write-path shapes are worth
+re-running on PROD in a rolled-back transaction after applying. Rollback is
+`grant insert, update on public.rides, public.clubs to authenticated;`.
+
+**Applying `044` to PROD needs no gate and no ordering, and it is a two-statement-pair grant
+change.** `revoke insert` + `grant insert (six columns)`, `revoke update` + `grant update (five
+columns)`, plus two column comments. It writes no rows, touches no policy and hangs nothing off a
+write path, so unlike `036` it starts no new code inside a rider's transaction. It has no
+relationship to a code deploy in either direction: `createPostcard` names neither timestamp and
+nothing in `src/` ever has — grepped across `src/lib/actions/` and `src/lib/data/`. **The one thing
+to re-read before applying is `044`'s §1 and §2** — the column lists must be re-derived against
+PROD at apply time from `pg_attribute.attacl`/`pg_class.relacl` rather than copied, for the same
+reason `041`'s §3 says so, and PROD's starting state is *not* DEV's: PROD has never had `041`, so
+its `postcards` UPDATE grant is still table-level and it has no `ride_id` column at all. Applying
+`044` to PROD before `041` would therefore grant `insert (ride_id)` on a column that does not exist
+and fail; **`041` must go first**. That is the single ordering constraint on this list.
+Rollback is `grant insert, update on public.postcards to authenticated;`.
+
+**Applying `043` to PROD needs no gate and no ordering, and it is inert until `deleteClub` ships.**
+One `create or replace function`, its grants and its comment. It hangs nothing off an existing
+write path, so unlike `036` it starts no new code inside a rider's transaction and needs no
+hand-exercise first; and nothing in `src/` calls it, so unlike `023`/`025` it has no relationship
+to a code deploy in either direction. It costs PROD one expected advisor — a seventh
+`authenticated_security_definer_function_executable`, which `CLAUDE.md`'s table already names.
+Rollback is `drop function public.delete_owned_club(uuid);`.
+
+**Applying `042` to PROD needs no gate and no ordering either.** One statement — `revoke delete on
+public.profiles from authenticated` — writing no rows and touching no policy. PROD was measured at
+the same starting state DEV had (`authenticated` DELETE true, `service_role` DELETE true, zero
+DELETE policies), so it will behave identically. Nothing in `src/` deletes a profile row, so there
+is no relationship to a code deploy in either direction. Rollback is
+`grant delete on public.profiles to authenticated;`.
+
+**Applying `041` to PROD needs no gate and no ordering.** It is additive and *inert* — one column,
+one index, one FK, one INSERT-policy replacement and one revoke-and-regrant of UPDATE on
+`postcards`, with no trigger on any existing write path. So unlike `036` it starts no new code
+inside a rider's own transaction and needs no hand-exercise first, and unlike `023`/`025` it has no
+relationship to a code deploy: nothing in `src/` reads or writes `ride_id` yet. The one thing to
+re-read before applying is `041`'s §3 — the seven UPDATE columns must be re-derived against PROD at
+apply time rather than copied, because omitting one silently retracts a grant the app relies on.
+
 **Nothing automated compares the stored SQL against the files** — `npm run db:drift` compares
-migration *names* only — and three known mismatches will look like drift to anyone who checks by
+migration *names* only — and four known mismatches will look like drift to anyone who checks by
 hand:
 
+- **`npm run db:drift` no longer reports `041` through `046` missing from PROD** — they applied on
+  2026-08-10. Every remaining entry on this list is a recording artefact.
+- **DEV's `046` statement is NO LONGER byte-identical to its file, and PROD's IS.** This is the
+  inverse of the drift you would expect, and it is worth reading before concluding either database
+  is wrong. DEV recorded 8837 chars; the file is 9857, because the header comment **grew by 1020
+  chars after the DEV apply**, inside the squash-merged PR — so the intermediate version is in no
+  local commit. **The executing SQL is identical on both**: from `revoke update on public.postcards`
+  to EOF it is `744cad894a8f40115fa7a1e10340b96f`, 2228 chars. PROD ran the committed file, so
+  PROD's `md5(statements[1])` is `da47b0fa…` = `md5sum` of the file, and DEV's is `9ec9b7a2…`,
+  which is what the file used to be. Compare the *executing* slice, not the whole statement, when
+  a header has moved.
+- **DEV's `045` statement IS byte-identical to its file**, like `041` and `044`:
+  `md5(statements[1])` equals `md5sum supabase/migrations/045_rides_clubs_server_owned_created_at.sql`
+  — both `a8534fda14169b6bf2d024ea95983499` at apply time, 2026-08-10. Recompute rather than trusting
+  the hash; a later comment edit moves it.
+- **DEV's `044` statement IS byte-identical to its file**, like `041` and unlike `042`/`043`:
+  `md5(statements[1])` on DEV equals `md5sum supabase/migrations/044_postcards_server_owned_timestamps.sql`
+  — both `4bc4fc5b4f4d6db3d0821fef97537b5c` at apply time, 2026-08-10. The trailing-newline class
+  that `042` and `043` fell into is avoided by including the file's final `\n` in the string passed
+  to `apply_migration`, which is the whole difference; recompute rather than trusting this hash,
+  because a later comment edit to the file will move it and make the row look like the others.
+- **DEV's `043` statement is its file minus the final newline, and that was PROVEN rather than
+  assumed.** `apply_migration` takes a string and the argument cannot carry the file's trailing
+  `\n`, so this is `042`'s row again rather than a new class. Recompute both forms rather than
+  trusting a hash written here; the second is the one that matches
+  `md5sum supabase/migrations/043_delete_owned_club.sql`, and `octet_length(statements[1])` comes
+  back exactly one byte under `wc -c`:
+
+  ```sql
+  -- md5(statements[1])            -- raw: will NOT equal md5sum of the file
+  -- md5(statements[1] || chr(10)) -- this one does
+  ```
+
+  The stronger check was also run, and it is the one to copy: the OBJECT that landed was diffed
+  against the object the file produces. `md5(prosrc)`, `md5(pg_get_functiondef(oid))` and
+  `md5(obj_description(oid,'pg_proc'))` for `public.delete_owned_club(uuid)` are identical on DEV
+  and on the scratch database `npm test` builds by applying the file with `psql`, and `prosecdef`
+  is `t` with `proconfig[1] = 'search_path=""'` on both. That is stronger than comparing the text
+  that produced them, which is `036`'s lesson.
+- **DEV's `041` statement IS byte-identical to its file**, so it does **not** join the reduced-form
+  list below: `md5(statements[1])` on DEV equals `md5sum supabase/migrations/041_postcard_ride_tag.sql`
+  — both `28ac654156c67f8f1a668bba2eee70b2` at apply time, 2026-08-09. Recorded because the *absence*
+  of a mismatch is what someone re-deriving the pattern from `036`–`040` would not predict, and
+  because a later comment edit to that file will move the hash and make it look like the others.
+- **DEV's `042` statement differs from its file by exactly one trailing newline, and nothing else.**
+  `apply_migration` takes a string and the argument cannot carry the file's final `\n`, so the raw
+  comparison disagrees while the content is identical. Per the rule below, no hash is written here
+  — recompute both forms; it is the second that matches:
+
+  ```sql
+  -- md5(statements[1])            -- raw: will NOT equal md5sum of the file
+  -- md5(statements[1] || chr(10)) -- this one equals `md5sum supabase/migrations/042_*.sql`
+  ```
+
+  Two traps in the same row. `length(statements[1])` reads ~39 short of `wc -c` and that is **not**
+  a truncation — `length` counts characters, `wc -c` counts bytes, and the header is full of
+  em-dashes; use `octet_length`, which comes back exactly one byte under the file. And the row was
+  **re-applied once**, deliberately: the first apply carried a header sentence claiming the RLS
+  suite asserts `service_role`'s grant, which it does not and cannot (see `042` §3), so the row was
+  dropped and re-applied from the corrected file rather than left saying something untrue. That is
+  the `034` reconciliation shape, run immediately instead of deferred.
 - **PROD's recorded statements for `036`–`040` are comment-reduced, not the files.** Nothing can
   pipe a file into `apply_migration`, so each was reduced to its executing statements (preserving
   comments inside `$$` bodies, which are part of `prosrc`) and then verified by diffing every
@@ -608,16 +765,56 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 # via the Supabase MCP: list_migrations -> md5(statements[1])
 ```
 
-**`places` exists on BOTH projects with 0 rows.** Filling it is an owner action — a 99 MB `\copy`
-needing a direct Postgres connection no session holds (`scripts/places/README.md` §Loading). An
-empty index is indistinguishable from a working search that finds nothing. **`039`'s index swap
-was free only because the table is empty**; once `PD-140`'s extract is loaded, dropping a `places`
-index is a deliberate act again.
+**`places` exists on BOTH projects with 0 rows**, and an empty index is indistinguishable from a
+working search that finds nothing:
+
+```bash
+# via the Supabase MCP: execute_sql -> select count(*) from public.places;
+#   DEV  (fpmrimzxadewsaiwpsel): 0 · PROD (zwprydcyryvudhurbnye): 0
+```
+
+**The loader exists as of PD-173 and the owner action shrank to one secret per database.**
+`.github/workflows/places-load.yml` (Actions → Load places index) runs the extractor and
+`scripts/places/load.sql` on a runner, which has the Postgres egress no session does. It needs
+`PLACES_DEV_DATABASE_URL` / `PLACES_PROD_DATABASE_URL` — the Supabase **session pooler** string,
+because GitHub runners have no IPv6 and the direct host needs the IPv4 add-on. Until one is pasted
+the workflow fails at its pre-flight naming the missing secret. **The whole pipeline was run end to
+end locally** against the real extract and the full migration chain on 2026-08-09 — 736,538 rows,
+both detector rejections exercised, and both the first-load and refresh branches — so what the
+first real run adds is the connection, not the confidence.
+
+**Scope those secrets to the `places-dev` / `places-prod` environments rather than to the
+repository, and put a deployment branch policy on `places-prod`.** The job declares
+`environment: places-<target>` so there is somewhere for the rule to attach. This is not
+housekeeping: the string is a `postgres`-role credential, which owns every table and therefore
+bypasses RLS more completely than the service-role key that `CLAUDE.md` keeps in
+`autoMode.hard_deny`. A plain repo secret is readable by a workflow on **any** branch, and
+`workflow_dispatch` runs the definition from the ref it is dispatched against — so every guard in
+that file lives inside the job, after injection, where a pushed branch can delete it. With no
+protection rule configured, the real bound is who has push access.
+
+**Refreshes are blocked on `PD-87`, which is new information rather than a restatement.** Measured
+on the real extract: a first load is 337 MB and lands DEV at ~346 MB against the free tier's 500 MB
+database cap, so it fits. A refresh measures **465 MB** before the reindex peak or WAL — the heap
+doubles once (`delete` leaves the dead tuples in place and `vacuum` makes the space reusable
+without returning it) and index bloat needs a rebuild that briefly holds two copies of all four
+indexes. So the first load is the only one that fits, and `load.sql` skips the reindex on a first
+load precisely so that one does. `scripts/places/README.md` §Loading has the full table.
+
+**`039`'s index swap was free only because the table is empty**; once the extract is loaded,
+dropping a `places` index is a deliberate act again.
 
 ## Known issues, roughly by cost to fix
 
+**An item tracked in Linear carries its PD-id inline.** An item with no id is not untracked by
+oversight — the group marked **absorb on contact** is unfiled on purpose, per the product owner,
+2026-08-09: *"If it seems within the context of the build, and recommended, just do it."* Fix one
+in the next branch that already has the file open, say so in the PR body, and do not open a story
+for it. The census that justifies that, and the bucketing trap inside it, are in `CLAUDE.md`
+§Sequencing — run it there rather than trusting a second copy here.
+
 - **`createClub` and `createRide` do two inserts with no transaction, and the hand-rolled
-  rollback stopped being one.** Found by review of the render migration. As Server Actions,
+  rollback stopped being one.** `PD-103`. Found by review of the render migration. As Server Actions,
   both inserts and the compensating delete ran inside one server request that finished whether
   or not the tab survived; they run in the browser now, so closing the tab between the two
   leaves a club with an owner and no membership row — or a ride whose organizer is not on its
@@ -645,16 +842,28 @@ index is a deliberate act again.
   3 rides. Read that as "nobody has hit it on a tiny dataset", not as "the window is hard to
   hit". Re-run at apply time.
 
-  > **Recommendation** 8/10 — the last place a client can leave the database in a state no
-  > constraint forbids, and the invariant is unasserted in *two* places rather than one
-  > **Complexity** 5/10 — two migrations, four triggers, a backfill, three deploy steps
-  > **Urgency** 4/10 — both doors need a hand-rolled request. Rises the day a real rider abandons
-  > a create, and sharply if create gets a retry affordance or the store build ships
-  > **This session** N — 3 blocking questions, two of them product-owner decisions (may an
-  > owner leave their own club? may an organizer leave their own crew?)
+  > **Recommendation** 8/10  
+  > the last place a client can leave the database in a state no constraint forbids, and the
+  > invariant is unasserted in *two* places rather than one
+  >
+  > **Complexity** 5/10  
+  > two migrations, four triggers, a backfill, three deploy steps
+  >
+  > **Urgency** 4/10  
+  > both doors need a hand-rolled request. Rises the day a real rider abandons a create, and
+  > sharply if create gets a retry affordance or the store build ships
+  >
+  > **Customer value** 3/10  
+  > a rider who abandons a create loses the club entirely — a private orphan is on no list and
+  > reachable from no screen, including its owner's. Rare, and total for whoever hits it
+  >
+  > **This session** N  
+  > 3 blocking questions, two of them product-owner decisions (may an owner leave their own
+  > club? may an organizer leave their own crew?)
 
-- **Two riders deleting at the same moment can still destroy a third's postcards.** The narrow
-  race `032` §3 documents and deliberately does not close. `private.transfer_owned_clubs` locks
+- **Two riders deleting at the same moment can still destroy a third's postcards.** `PD-175`, a
+  sub-issue of `PD-102` rather than a peer, because it sits inside the deletion deliverable. The
+  narrow race `032` §3 documents and deliberately does not close. `private.transfer_owned_clubs` locks
   the successor's `profiles` row, but that lock dies with the RPC transaction — well before the
   Edge Function's Storage sweep and `deleteUser`. So: B's transfer commits (B owns nothing), A's
   transfer picks B as successor for club C, then B's own deletion reaches `deleteUser` and C
@@ -667,19 +876,29 @@ index is a deliberate act again.
   invocation. **The RLS suite cannot see it either**: its idempotency assertion runs both calls
   inside one psql transaction, so it proves nothing about two.
 
-  > **Recommendation** 6/10 — worth closing before the flow ships, not before the flow is built
-  > **Complexity** 4/10 — an advisory lock is small; a marker column is a migration plus a
-  > recovery story for runs that die holding it
-  > **Urgency** 1/10 now, and it is genuinely conditional: it needs two riders deleting within
-  > seconds, in a club they share. There are four accounts. It rises with the user count and
-  > sharply the day deletion is reachable from the UI at all
-  > **This session** N — it is a design choice between two mechanisms, and the flow it protects
-  > does not exist yet
+  > **Recommendation** 6/10  
+  > worth closing before the flow ships, not before the flow is built
+  >
+  > **Complexity** 4/10  
+  > an advisory lock is small; a marker column is a migration plus a recovery story for runs
+  > that die holding it
+  >
+  > **Urgency** 1/10 today  
+  > genuinely conditional: it needs two riders deleting within seconds, in a club they share.
+  > There are four accounts — `select count(*) from auth.users` on PROD, 4 as of 2026-08-09. It
+  > rises with the user count, and sharply the day deletion is reachable from the UI at all
+  >
+  > **Customer value** 3/10  
+  > nobody sees it working; what it prevents is a club cascading away with every postcard every
+  > *other* member ever posted there, for riders who did nothing and get no warning
+  >
+  > **This session** N  
+  > it is a design choice between two mechanisms, and the flow it protects does not exist yet
 
-- **No edit or delete UI anywhere.** The `update`/`delete` RLS policies exist and are tested,
+- **No edit or delete UI anywhere.** `PD-101`. The `update`/`delete` RLS policies exist and are tested,
   but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments are
   the exception: deletable, not editable, which `011` forbids by design. **Store blocker 4.**
-- **Account deletion has a database half and no flow.** `029`–`032` are applied, the Edge
+- **Account deletion has a database half and no flow.** `PD-102`. `029`–`032` are applied, the Edge
   Function is written at `supabase/functions/delete-account/` and has **never been deployed or
   run**, and nothing in `src/` calls it. What is left is groups 3 (the flow: sheet row,
   confirmation, re-auth, impact summary, sign-out) and 4 (the four screens where "this rider is
@@ -691,12 +910,22 @@ index is a deliberate act again.
   succeeds; another rider's id in the body still deletes only the caller; publishable key
   refused; no token refused) can only be proven live.
 
-  > **Recommendation** 8/10 — the expensive half is done and the context is written down; it
-  > gets more expensive the longer the function sits unexercised
-  > **Complexity** 5/10 — the flow is four screens and one action; the risk is all in the
-  > function, which is written
-  > **Urgency** 3/10 — nothing forces it until a store submission, which needs the shell first
-  > **This session** N — needs the function deployed, which is an owner action
+  > **Recommendation** 8/10  
+  > the expensive half is done and the context is written down; it gets more expensive the
+  > longer the function sits unexercised
+  >
+  > **Complexity** 5/10  
+  > the flow is four screens and one action; the risk is all in the function, which is written
+  >
+  > **Urgency** 3/10  
+  > nothing forces it until a store submission, which needs the shell first
+  >
+  > **Customer value** 8/10  
+  > a rider can leave and take their data with them, which they cannot do today by any route —
+  > and App Store 5.1.1(v) makes it the difference between shipping and being rejected
+  >
+  > **This session** N  
+  > needs the function deployed, which is an owner action
 - **Inbox still has no tab, but two thirds of it now exist.** Per-ride group chat shipped as `034`
   (PD-115) and **notifications shipped 2026-08-07 as `036` (PD-118)** — a `notifications` table
   written only by six `private` fan-out triggers, and a `/notifications` route reached from a
@@ -718,6 +947,13 @@ index is a deliberate act again.
   **The design still draws five**, so the tab's absence looks like an omission to anyone
   reading Figma rather than this file. `Navbar.tsx`'s own docstring carries the reason at the
   point of temptation; that is the copy to keep current, not this one.
+- **The swipe deck only moves forward.** A swipe in either direction advances, per the product
+  owner, so there is no way back except "Start over". **Decided, not a defect** — no issue, and
+  nothing to fix.
+
+**Absorb on contact — the five below are deliberately unfiled.** Each is a few lines in a file
+someone will open anyway.
+
 - **There is no `clubIdSchema`.** `/postcards/[id]` parses its id before issuing anything, so it
   can read in parallel and 404 a malformed segment; `/clubs/[id]` cannot, so its two content
   reads are serialised behind the club. Adding the schema and parallelising is a small, clear
@@ -732,14 +968,17 @@ index is a deliberate act again.
   today (0 private clubs); live the moment someone makes one.
 - **`club_members` holds a table-level UPDATE grant nothing uses.** Promotion is blocked only by
   the *absence* of a policy, so RLS filters to zero rows rather than raising. Asserted both ways.
+
+**Filed, because each needs something a branch cannot supply** — a proposal, or the designer:
+
 - **`max_riders` has never been enforced** — not by an action, a policy or a trigger, since
-  `001`. `018` bounds the *value* (1–999); nothing counts `ride_members` against it.
-- **The swipe deck only moves forward.** A swipe in either direction advances, per the product
-  owner, so there is no way back except "Start over".
+  `001`. `018` bounds the *value* (1–999); nothing counts `ride_members` against it. `PD-174`,
+  and it wants a proposal first: the negative cases are the whole content.
 - **Both RSVP pills fail WCAG AA**, and two more pairings besides — the Maybe pill at 2.54:1,
   `Accent Brand/100` with white at 3.52:1, the ride-host label at 4.10:1, the unselected RSVP
   label at 4.17:1. Left exactly as drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md`.
-  **A live question for the designer** — the green is used well beyond one screen.
+  **A live question for the designer** — the green is used well beyond one screen. `PD-176`,
+  `Owner only`.
 
 ---
 
