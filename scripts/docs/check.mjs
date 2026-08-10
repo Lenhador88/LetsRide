@@ -189,6 +189,16 @@ export function evaluateRlsRun({ ok, count }) {
  */
 function measure(claim, cache, root) {
   switch (claim.kind) {
+    // Measured exactly like 'shell'. The separate name is the whole point: it
+    // keeps a claim that SPAWNS VITEST out of CHEAP_KINDS, which two red CI
+    // runs argued for more convincingly than reasoning did. `npx vitest`
+    // failed on the runner in under a second, and after switching to the local
+    // binary the summary line the command greps for did not appear either —
+    // green locally both times, including under CI=true GITHUB_ACTIONS=true.
+    // A claim whose ground truth is a human-readable summary from a test
+    // runner is not "a local command" in the sense --cheap means, and the
+    // difference is not a thing to keep re-diagnosing from a CI log.
+    case 'vitest-file':
     case 'shell': {
       // `claim.timeoutMs` overrides runShell's 60s default, which was chosen
       // for greps. A claim that spawns a real process needs its own ceiling:
@@ -404,15 +414,18 @@ export function decideExitCode({ passed, failed, skipped }, { strict = false } =
 /**
  * The claims a run should attempt, given `--cheap`.
  *
- * Three kinds re-run something the CI job already has, or cannot supply at
- * all: `rls` wants a scratch Postgres (it lives in the *other* workflow),
- * `build` wants a second full `next build`, and `vitest` wants a second full
- * `npm run test:unit` — the last two on top of steps the same job runs a
- * minute earlier. That expense was the stated reason `ci.yml` gates on
- * `registry.test.mjs`'s anchor sweep rather than on this script, and it only
- * ever applied to those three. Everything else is a grep, a `jq`, a one-file
- * vitest or arithmetic on two hex values, which is why `--cheap` can run on
- * every PR.
+ * Four kinds are out. Three for cost — `rls` wants a scratch Postgres (it
+ * lives in the *other* workflow), `build` wants a second full `next build`,
+ * and `vitest` wants a second full `npm run test:unit`, the last two on top of
+ * steps the same job runs a minute earlier. That expense was the stated reason
+ * `ci.yml` gates on `registry.test.mjs`'s anchor sweep rather than on this
+ * script.
+ *
+ * The fourth, `vitest-file`, is out for a different and harder reason: it
+ * spawns a test runner and reads its human-readable summary, and that turned
+ * out not to be portable. Two CI runs failed on it while passing locally —
+ * see the `case` in `measure`. What is left is greps, `jq` and arithmetic on
+ * two hex values, which is why `--cheap` can run on every PR.
  *
  * The split is by cost, not by importance: the unit-test counts are checked
  * as thoroughly as ever by a full `npm run docs:check`, which is what a

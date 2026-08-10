@@ -362,6 +362,7 @@ describe('selectClaims — the --cheap split', () => {
     expect(cheap.every((c) => CHEAP_KINDS.has(c.kind))).toBe(true)
     expect(cheap.some((c) => c.kind === 'rls')).toBe(false)
     expect(cheap.some((c) => c.kind === 'build')).toBe(false)
+    expect(cheap.some((c) => c.kind === 'vitest-file')).toBe(false)
   })
 
   it('keeps every claim the expensive kinds do not own', () => {
@@ -396,7 +397,7 @@ describe('selectClaims — the --cheap split', () => {
   // on defaults to expensive — absent from CI — which is the safe direction
   // but a silent one. This fails when that happens, so the choice gets made.
   it('has a declared side for every kind the registry actually uses', () => {
-    const known = new Set(['shell', 'contrast', 'rls', 'build', 'vitest'])
+    const known = new Set(['shell', 'contrast', 'rls', 'build', 'vitest', 'vitest-file'])
     for (const c of realClaims) expect(known.has(c.kind)).toBe(true)
   })
 })

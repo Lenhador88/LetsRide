@@ -1343,10 +1343,15 @@ chain to a scratch database and asserts what each role can reach.
     permissions diff touches nothing else). **So a PR touching only `design/`, `.claude/hooks/`
     or the rest of `.claude/` runs zero jobs.**
   - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
-    is a grep, a `jq`, a one-file vitest or a contrast ratio — 23 of 33. The ones needing
-    Postgres or a second full build stay out of CI, so `npm run docs:check` locally is still the
-    complete answer. Under `--cheap` a *skip* fails the run: every claim in that set measures
-    with a local command, so a skip is a broken command rather than a missing service.
+    is a grep, a `jq` or a contrast ratio — 21 of 33. The ones needing Postgres, a second full
+    build or a **test runner** stay out, so `npm run docs:check` locally is still the complete
+    answer. That last exclusion was learned rather than designed: the two claims that spawn
+    `vitest` on one file passed locally — including under `CI=true GITHUB_ACTIONS=true` — and
+    failed twice on the runner, so they carry their own `kind` and are excluded by name. **A
+    claim whose ground truth is another tool's human-readable output does not belong in the
+    cheap set.** Under `--cheap` a *skip* fails the run, which is what makes that boundary
+    matter: every claim in that set measures with a grep, so a skip is a broken command rather
+    than a missing service.
   - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
     changes — the migration chain and the assertions are its only inputs.
   - A push to either long-lived branch always runs both. Each is a deploy gate.

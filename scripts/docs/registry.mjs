@@ -489,7 +489,7 @@ export const claims = [
     file: 'CLAUDE.md',
     pattern: /`null` means stay; a string is where to go\. (\d+) cases in `__tests__\/guard\.test\.ts`/,
     extractStated: (m) => Number(m[1]),
-    kind: 'shell',
+    kind: 'vitest-file',
     cmd: `out=$(./node_modules/.bin/vitest run src/lib/auth/__tests__/guard.test.ts 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo "$out" | tail -5 >&2; exit $rc; fi; echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
     // These two claims share one vitest process (check.mjs caches by cmd), and
     // it is the only real process any cheap claim spawns. 1s warm here, but a
@@ -515,7 +515,7 @@ export const claims = [
     file: 'CLAUDE.md',
     pattern: /`src\/lib\/auth\/guard\.ts` \((\d+) cases, replacing the untestable/,
     extractStated: (m) => Number(m[1]),
-    kind: 'shell',
+    kind: 'vitest-file',
     cmd: `out=$(./node_modules/.bin/vitest run src/lib/auth/__tests__/guard.test.ts 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo "$out" | tail -5 >&2; exit $rc; fi; echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
     // Same ceiling as the claim above, which shares this command.
     timeoutMs: 180_000,

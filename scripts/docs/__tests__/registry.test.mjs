@@ -338,7 +338,7 @@ describe('the registry against the real repo', () => {
     // A coverage smoke test: if a whole `kind` silently loses its only claim
     // (someone deletes the one contrast entry, say), that is worth noticing.
     const kinds = new Set(claims.map((c) => c.kind))
-    expect(kinds).toEqual(new Set(['shell', 'rls', 'vitest', 'build', 'contrast']))
+    expect(kinds).toEqual(new Set(['shell', 'rls', 'vitest', 'vitest-file', 'build', 'contrast']))
   })
 
   it.each(claims.map((c) => [c.id, c]))('%s locates its claim in the real file', (_id, claim) => {
