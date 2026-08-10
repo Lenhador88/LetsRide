@@ -479,8 +479,8 @@ filename order, so a full in-order apply is always correct — the chain matters
 one. `044` grants `insert (… ride_id)`, a column `041` adds, so out of order it **errors**.
 `044` and `046` both issue an **absolute** `revoke update` + `grant update (…)` list rather than a
 delta, so running `046` first lets `044`'s list — which still names `id` and `author_id` — reinstate
-exactly what `046` removes, with **no error and nothing red**. `docs/HANDOFF.md` §Migrations carries
-the table.
+exactly what `046` removes, with **no error and nothing red**.
+`docs/reference/migrations.md` §The ordering chain carries both links, and the rollback SQL.
 
 **Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string
 and nothing can pipe a file into it, so a 61 KB file (`036`) has to be reproduced — which risks a
