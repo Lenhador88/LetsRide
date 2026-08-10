@@ -562,11 +562,18 @@ Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
 Inbox or push exists.
 
-## Migrations — DEV is SIX AHEAD of PROD, and nine things will read as drift
+## Migrations — DEV and PROD are LEVEL at `046`, and eight things will read as drift
 
-**`041` through `046` are applied to DEV and deliberately NOT to PROD.** DEV is at `046`, PROD at
-`040`, and the repo holds 46 files. That gap is a decision, not a lapse: each was applied by the
-session that wrote it under a brief scoped to DEV, and promoting them is the owner's call.
+**`041` through `046` were applied to PROD on 2026-08-10**, on the owner's instruction, in strict
+filename order, each digest checked against its file. DEV, PROD and the repo all hold 46. The gap
+this section used to describe is closed; what remains below is the recording artefacts, which are
+permanent.
+
+**The order they were applied in still matters, because a *partial* apply can pick a failing one.**
+`041 → 044 → 046` is required. `041 → 044` fails **loudly** (`044` grants `insert (… ride_id)`,
+which `041` adds). **`044 → 046` fails SILENTLY**: both issue an absolute `revoke update` +
+`grant update (…)` list rather than a delta, and `044`'s list still names `id` and `author_id`, so
+running `046` first has it reinstated with no error and nothing red. Filename order satisfies both.
 
 **THE APPLY ORDER, which is what PD-168 executes from.** This list used to say every pending
 migration was independent. That stopped being true at `044`, so the order is written out rather
@@ -665,13 +672,17 @@ apply time rather than copied, because omitting one silently retracts a grant th
 migration *names* only — and four known mismatches will look like drift to anyone who checks by
 hand:
 
-- **`npm run db:drift` reports `041` through `046` missing from PROD, and that is TRUE rather than
-  a false positive.** They are the entries on this list a session should act on rather than explain
-  away — by applying them to PROD, once the owner decides to, in the order above. Every other entry
-  here is a recording artefact.
-- **DEV's `046` statement IS byte-identical to its file**, like `041`, `044` and `045`:
-  `md5(statements[1])` equals `md5sum supabase/migrations/046_postcards_authorship_needs_a_grant.sql`
-  — both `9ec9b7a2bd9d6b891a70daa846869c27` at apply time, 2026-08-10.
+- **`npm run db:drift` no longer reports `041` through `046` missing from PROD** — they applied on
+  2026-08-10. Every remaining entry on this list is a recording artefact.
+- **DEV's `046` statement is NO LONGER byte-identical to its file, and PROD's IS.** This is the
+  inverse of the drift you would expect, and it is worth reading before concluding either database
+  is wrong. DEV recorded 8837 chars; the file is 9857, because the header comment **grew by 1020
+  chars after the DEV apply**, inside the squash-merged PR — so the intermediate version is in no
+  local commit. **The executing SQL is identical on both**: from `revoke update on public.postcards`
+  to EOF it is `744cad894a8f40115fa7a1e10340b96f`, 2228 chars. PROD ran the committed file, so
+  PROD's `md5(statements[1])` is `da47b0fa…` = `md5sum` of the file, and DEV's is `9ec9b7a2…`,
+  which is what the file used to be. Compare the *executing* slice, not the whole statement, when
+  a header has moved.
 - **DEV's `045` statement IS byte-identical to its file**, like `041` and `044`:
   `md5(statements[1])` equals `md5sum supabase/migrations/045_rides_clubs_server_owned_created_at.sql`
   — both `a8534fda14169b6bf2d024ea95983499` at apply time, 2026-08-10. Recompute rather than trusting

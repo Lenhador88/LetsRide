@@ -554,15 +554,17 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 46 files, and DEV is SIX AHEAD of PROD — DEV at `046`, PROD at `040`.** Do not
+**Applied state: 46 files, and DEV and PROD are LEVEL — both at `046`, 2026-08-10.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead. `041`–`046` are applied to DEV only, deliberately; promoting
-them is the owner's call. **They are no longer all independent** — `044` grants
-`insert (… ride_id)`, a column `041` adds, and `046` re-grants what `044` left, so
-`041 → 044 → 046` is a required chain; `docs/HANDOFF.md` §Migrations carries the full order and
-what each one needs. **`044` and `045` are the two with a PROD consequence while they wait**: PROD
-is where riders are, and until they apply there an author can still pin their own postcard to the
-top of every feed, and a club owner their club to the top of Explore, by writing `created_at`.
+`ls supabase/migrations/` instead.
+
+**`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
+filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
+one. `044` grants `insert (… ride_id)`, a column `041` adds, so out of order it **errors**.
+`044` and `046` both issue an **absolute** `revoke update` + `grant update (…)` list rather than a
+delta, so running `046` first lets `044`'s list — which still names `id` and `author_id` — reinstate
+exactly what `046` removes, with **no error and nothing red**. `docs/HANDOFF.md` §Migrations carries
+the table.
 
 **Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string
 and nothing can pipe a file into it, so a 61 KB file (`036`) has to be reproduced — which risks a
@@ -624,7 +626,7 @@ this repo chose, and a bare count cannot tell a session whether a new WARN is ex
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 7 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043` — DEV only until PROD catches up, so PROD reads six here and nine total is DEV's number). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns. Narrowness is the defence |
+| 7 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns. Narrowness is the defence |
 | 1 | `rls_enabled_no_policy` on `password_reset_grants` (INFO) | Correct by design: `026` revokes everything on it from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
