@@ -1,5 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { bootRestoreTarget } from '@/lib/native/boot-restore'
+
 /**
  * `/` is a resolver, not a screen (Q7/Q18) — and it is now a resolver that
  * resolves nothing itself.
@@ -12,8 +16,8 @@
  * to bounce again). Duplicating that here would be a second copy of a rule with
  * its own opinion about the wizard.
  *
- * So this renders nothing, and nothing is ever seen: the guard shows the splash
- * until it has decided, and it has always decided to leave.
+ * So this renders nothing, and on the web nothing is ever seen: the guard shows
+ * the splash until it has decided, and it has always decided to leave.
  *
  * **The splash frame the original comment ruled out now exists**, and this is
  * what changed. That comment's reasoning — "the Figma splash is a timed loading
@@ -22,7 +26,37 @@
  * render and is exactly wrong for this one. Reading a session out of local
  * storage and fetching the onboarding stamp is a real boot window. It is drawn
  * by `RouteGuard`, not here, because every route has it and not just this one.
+ *
+ * ## The one thing it does do, and only inside the native shell
+ *
+ * Capacitor serves the **root** document for every extensionless path, so a cold
+ * start at a deep link boots `/`'s tree at somebody else's URL — and this
+ * component mounting is exactly how that is detected, because `/`'s page renders
+ * only when `/`'s tree is the tree that rendered. `bootRestoreTarget` carries the
+ * measurement and the negative cases; on the web it answers `null` every time,
+ * because a deployment serves `/`'s document for `/` and for nothing else.
  */
+
+/**
+ * One restore per document, so a target whose own payload cannot be fetched
+ * degrades to a blank screen rather than to a reload loop. Module scope rather
+ * than a ref: a second mount of `/` within the same document is the same boot.
+ */
+let restored = false
+
 export default function Home() {
+  const router = useRouter()
+
+  useEffect(() => {
+    if (restored) return
+    const target = bootRestoreTarget(window.location)
+    if (!target) return
+    restored = true
+    // `replace`, never `push`: the root document was never a screen the rider
+    // asked for, and leaving it in history puts a blank page behind the back
+    // button on the first thing they opened.
+    router.replace(target)
+  }, [router])
+
   return null
 }
