@@ -24,7 +24,7 @@ is mergeable on its own with neither leaving the other half-built.
       refusal arrives on a save that touched no club field. Show the Edit affordance, surface the
       refusal naming the club, and offer the two exits the policies already permit: delete the
       ride, or make it public and detach it from the club. Do **not** widen the policy.
-- [ ] 1.4b Add RLS assertions for it: an ex-member organizer's UPDATE is refused; their DELETE
+- [x] 1.4b Add RLS assertions for it: an ex-member organizer's UPDATE is refused; their DELETE
       succeeds; their `club_id → NULL` with `is_public = true` succeeds. **Not done in this
       session** — scoped to app code only (`supabase/**` untouched, RLS suite not run); the
       `updateRide` `42501` branch and the two `EditRideForm` copy checks are exercised by review

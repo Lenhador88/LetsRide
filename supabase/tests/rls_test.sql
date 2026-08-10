@@ -9211,6 +9211,265 @@ select assert_eq((select count(*)::int from ride_members
 
 rollback to savepoint owned_club_043;
 
+
+-- ===========================================================================
+-- 017. The EX-MEMBER ORGANIZER, and the two exits the UI now promises.
+--      PD-101 task 1.4b. The migration constrained is `017`, not `043`: it is
+--      that file's UPDATE policy, whose own header recorded this consequence
+--      and closed with "nothing edits rides today (there is no edit UI
+--      anywhere) ... revisit it with whatever screen adds one." The screen
+--      exists as of PD-101, so this is that revisit.
+-- ===========================================================================
+
+\echo ''
+\echo '# An organizer who left the club can no longer edit the ride, and has two exits (017)'
+
+-- `WITH CHECK` is evaluated on the post-image of EVERY update, not only ones
+-- that name `club_id`. So an organizer who left the ride's club is refused on a
+-- save that changes nothing but the title: `USING` passes (they are still
+-- `organizer_id`), the post-image fails `private.is_club_member(club_id)`.
+--
+-- `updateRide` now tells that rider, in copy, that they may "delete the ride,
+-- or make it public and remove it from the club". **Those two sentences are
+-- claims about policy, and until this section nothing pinned either.** Relax
+-- the `WITH CHECK`, or add a membership arm to the DELETE policy, and the
+-- message silently becomes wrong with no test going red.
+--
+-- Self-contained fixtures, per the README's rule that a section adding them
+-- owns them — and because seeding this on `seed.sql`'s riders would move
+-- expected values earlier in the file, and because an earlier section deletes
+-- seed rows outside any savepoint.
+--
+--   17a1a1  organizer of the ride, member of the club, and the rider who leaves
+--   17b1b1  owner of the private club, and the ride's one crew member
+savepoint ex_member_017;
+
+reset role;
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-00000017a1a1', 'exmemberorganizer@example.com'),
+  ('00000000-0000-0000-0000-00000017b1b1', 'exmemberclubowner@example.com');
+reset role;
+
+update profiles p
+   set username                = v.username,
+       location                = 'Groningen',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+    ('00000000-0000-0000-0000-00000017a1a1'::uuid, 'exmemberorganizer'),
+    ('00000000-0000-0000-0000-00000017b1b1'::uuid, 'exmemberclubowner')
+  ) v (id, username)
+ where p.id = v.id;
+
+-- PRIVATE, which is the case that bites: 022 pins its rides to
+-- `is_public = false`, so the ex-member cannot simply widen the audience and
+-- leave the ride attached — detaching is half of the second exit, not a
+-- decoration on it.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-00000017c1c1', 'Left Behind MC', false,
+   '00000000-0000-0000-0000-00000017b1b1');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000017c1c1', '00000000-0000-0000-0000-00000017b1b1', 'owner'),
+  ('00000000-0000-0000-0000-00000017c1c1', '00000000-0000-0000-0000-00000017a1a1', 'member');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000017d1d1', 'Ride I Organised', 'The Weir',
+   timestamptz '2026-09-01 09:00:00+00', false,
+   '00000000-0000-0000-0000-00000017c1c1', '00000000-0000-0000-0000-00000017a1a1');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-00000017d1d1', '00000000-0000-0000-0000-00000017b1b1', 'going');
+
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  'the 017 ex-member assertions run as authenticated, or they prove nothing');
+
+-- --------------------------------------------------------------------------
+-- 017.1  THE PRECONDITION, and without it the whole case passes vacuously.
+--        A refusal proves nothing if the rider could never edit this ride in
+--        the first place — that would pass just as green against a policy that
+--        refuses everybody. So the same rider makes the same edit WHILE STILL
+--        A MEMBER, and it has to succeed.
+--
+--        Written as the statement PostgREST actually emits: `updateRide` sends
+--        all eight editable columns and `.select('id')`, so the SET list and
+--        the RETURNING are both part of what Postgres plans and checks. A
+--        hand-narrowed `set title = ...` would be a different statement — the
+--        README's `addCountry` lesson.
+--
+--        **A must-succeed UPDATE cannot go through `assert_allowed`** — that
+--        helper refuses UPDATE and DELETE on purpose, because RLS filters them
+--        to zero rows rather than raising and it would pass against a policy
+--        permitting nothing. So the shape is its documented replacement: run
+--        the statement, then assert the effect. One consequence for whoever
+--        reads a red CI log: if the policy *refuses* one of these, it surfaces
+--        as an unlabelled `new row violates row-level security policy` at the
+--        statement rather than as a `FAIL <label>`, and the claim that broke is
+--        the assertion immediately below it.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-00000017a1a1', false);
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-00000017c1c1'
+                     and user_id = '00000000-0000-0000-0000-00000017a1a1'),
+  1, '017: the organizer starts as a member of the ride''s club ...');
+
+update rides
+   set title             = 'Edited while still a member',
+       description       = null,
+       route_description = null,
+       meeting_point     = 'The Weir',
+       departure_at      = timestamptz '2026-09-01 09:00:00+00',
+       max_riders        = null,
+       is_public         = false,
+       club_id           = '00000000-0000-0000-0000-00000017c1c1'
+ where id = '00000000-0000-0000-0000-00000017d1d1'
+returning id;
+select assert_eq((select title from rides where id = '00000000-0000-0000-0000-00000017d1d1'),
+  'Edited while still a member',
+  '017: ... and CAN edit it while the membership row exists — the precondition without which 017.2 passes against a policy that refuses everyone');
+
+-- --------------------------------------------------------------------------
+-- 017.2  Leaving, then the refusal. The membership row is removed by
+--        `leaveClub`'s OWN statement, through the policy, rather than deleted
+--        as the table owner — so what changes between 017.1 and 017.3 is a
+--        thing a rider can actually do from the app.
+-- --------------------------------------------------------------------------
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-00000017c1c1'
+   and user_id = '00000000-0000-0000-0000-00000017a1a1';
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-00000017c1c1'
+                     and user_id = '00000000-0000-0000-0000-00000017a1a1'),
+  0, '017: leaveClub''s own statement removes the membership row, under the policy rather than by fiat');
+
+-- --------------------------------------------------------------------------
+-- 017.3  THE REFUSAL. 42501 wears two meanings in this suite and the label has
+--        to say which: this is **a policy refusing a row on the post-image**,
+--        not a grant refusing a column (which fires at plan time, before any
+--        predicate) and not a `USING` miss (which filters to zero rows and
+--        raises nothing at all). 017.4 asserts the row is still visible and
+--        017.5 shows what the silent kind looks like, so all three readings
+--        are separated rather than assumed.
+--
+--        Note the statement changes nothing but the title: `club_id` and
+--        `is_public` are re-sent at their current values, which is exactly the
+--        save an organizer makes when correcting a typo.
+-- --------------------------------------------------------------------------
+select assert_denied($$
+  update rides
+     set title             = 'A typo fix that touches no club field',
+         description       = null,
+         route_description = null,
+         meeting_point     = 'The Weir',
+         departure_at      = timestamptz '2026-09-01 09:00:00+00',
+         max_riders        = null,
+         is_public         = false,
+         club_id           = '00000000-0000-0000-0000-00000017c1c1'
+   where id = '00000000-0000-0000-0000-00000017d1d1'
+  returning id$$,
+  '017: an ex-member organizer''s UPDATE is refused 42501 by the WITH CHECK on the post-image — a POLICY refusing a row, not a grant refusing a column, and it fires on a save that touches no club field (PD-101 1.4b)');
+
+-- --------------------------------------------------------------------------
+-- 017.4  Why that is a WITH CHECK failure and not an unreachable row: the
+--        organizer arm of the SELECT policy still hands them the ride, and the
+--        USING clause of the UPDATE policy is the same test. So the row is
+--        reachable and the refusal is about what it would BECOME.
+-- --------------------------------------------------------------------------
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-00000017d1d1'),
+  1, '017: ... while the ex-member organizer can still SEE the ride — so the refusal is the post-image, not an invisible row');
+select assert_eq((select count(*)::int from clubs where id = '00000000-0000-0000-0000-00000017c1c1'),
+  0, '017: ... and can no longer see the private club at all, which is why re-joining is not a third exit');
+
+-- --------------------------------------------------------------------------
+-- 017.5  The other refusal, for contrast: a non-organizer is filtered by
+--        USING and gets NO error. That is the branch `updateRide` reports as
+--        "not yours to edit"; reporting it as the ex-member message, or the
+--        ex-member case as this one, is the mix-up these two assertions pin.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-00000017b1b1', false);
+update rides
+   set title             = 'Renamed by the club owner',
+       description       = null,
+       route_description = null,
+       meeting_point     = 'The Weir',
+       departure_at      = timestamptz '2026-09-01 09:00:00+00',
+       max_riders        = null,
+       is_public         = false,
+       club_id           = '00000000-0000-0000-0000-00000017c1c1'
+ where id = '00000000-0000-0000-0000-00000017d1d1'
+returning id;
+select assert_eq((select title from rides where id = '00000000-0000-0000-0000-00000017d1d1'),
+  'Edited while still a member',
+  '017: a non-organizer''s UPDATE raises nothing and changes nothing — USING filters it to zero rows, which is a different refusal from 017.3 wearing no SQLSTATE at all');
+
+-- --------------------------------------------------------------------------
+-- 017.6  EXIT TWO, asserted first because it leaves the ride in place: make it
+--        public and detach it, in ONE statement, which is what the edit form
+--        sends. Both halves are required — 022 refuses a public ride in a
+--        private club, and the WITH CHECK refuses a club the caller has left —
+--        so neither field alone gets the rider out.
+-- --------------------------------------------------------------------------
+savepoint ex_member_detach_017;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000017a1a1', false);
+
+update rides
+   set title             = 'Ride I Organised',
+       description       = null,
+       route_description = null,
+       meeting_point     = 'The Weir',
+       departure_at      = timestamptz '2026-09-01 09:00:00+00',
+       max_riders        = null,
+       is_public         = true,
+       club_id           = null
+ where id = '00000000-0000-0000-0000-00000017d1d1'
+returning id;
+select assert_eq((select is_public and club_id is null from rides
+                   where id = '00000000-0000-0000-0000-00000017d1d1'),
+  true, '017: exit two — publishing and detaching in one statement SUCCEEDS, which is the second remedy updateRide''s message names');
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-00000017d1d1'),
+  1, '017: ... and the crew row survives it, so taking the exit does not silently drop the rider''s RSVPs');
+
+rollback to savepoint ex_member_detach_017;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000017a1a1', false);
+
+-- --------------------------------------------------------------------------
+-- 017.7  EXIT ONE, from the same refused state: the DELETE policy is
+--        `auth.uid() = organizer_id` with no membership arm, so leaving the
+--        club costs the rider the edit and not the ride. `deleteRide` emits
+--        `.delete().eq('id', …).select('id')`, and the RETURNING is part of it
+--        — a DELETE ... RETURNING is filtered by the SELECT policy too.
+-- --------------------------------------------------------------------------
+savepoint ex_member_delete_017;
+
+delete from rides where id = '00000000-0000-0000-0000-00000017d1d1' returning id;
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-00000017d1d1'),
+  0, '017: exit one — the ex-member organizer CAN still delete the ride, so the first remedy the message offers actually works');
+
+rollback to savepoint ex_member_delete_017;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000017a1a1', false);
+
+-- --------------------------------------------------------------------------
+-- 017.8  The policy text the copy depends on, pinned structurally. A migration
+--        that relaxes either of these turns `updateRide`'s message into a
+--        claim about a rule that no longer exists, and nothing behavioural
+--        above would notice: 017.3 would simply stop refusing.
+-- --------------------------------------------------------------------------
+reset role;
+select assert_eq(
+  (select with_check like '%is_club_member%' from pg_policies
+    where schemaname = 'public' and tablename = 'rides' and cmd = 'UPDATE'),
+  true, '017: the rides UPDATE with_check still carries the membership predicate — relaxing it is what would make updateRide''s "you have left this club" message false');
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'rides' and cmd = 'DELETE'),
+  '(auth.uid() = organizer_id)',
+  '017: ... and the DELETE policy is still organizer-only with no membership arm, which is what holds exit one open');
+
+rollback to savepoint ex_member_017;
+
 rollback;
 
 \echo ''
