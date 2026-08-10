@@ -568,12 +568,27 @@ export const claims = [
   // a number that no longer means what the sentence says. The measurement is
   // rules-this-repo-wrote, which is what "has one entry" is counting.
   //
-  // The `test("service-role")` half exists because counting alone measures
-  // the wrong thing. Review found it: a count of 1 is satisfied by ONE entry,
-  // never by the RIGHT one, so replacing the rule's text with anything at all
-  // — the exact edit this is here to catch — kept the check green. Requiring
-  // the surviving entry to still name the rule turns that swap into 0 ≠ 1.
-  // It pins the subject, not the wording: a reworded rule that still says
+  // Two failure shapes, and it took two review passes to keep both. Counting
+  // alone is satisfied by ONE entry rather than by the RIGHT one, so swapping
+  // the rule's text for anything at all kept the check green. Filtering to
+  // entries that name service-role and counting THOSE fixes the swap and
+  // breaks the other direction: a second, unrelated rule appended to the list
+  // no longer moves the number, so the doc goes on asserting "one entry"
+  // while the deny surface has two, and a reviewer reads it and under-counts.
+  //
+  // So: count the authored entries, and collapse to 0 when none of them names
+  // the rule. An addition reads 2, a swap reads 0, a deletion reads 0
+  // honestly, and only the correct file reads 1.
+  //
+  // 0 rather than -1 as the sentinel because `parseCountOutput` is
+  // digits-only on purpose — a negative would land as an unparseable SKIP
+  // instead of a FAIL, which is a weaker signal wearing a confusing message.
+  // 0 is safe here for a reason specific to this claim: the prose asserts a
+  // cardinality of one, so zero can never be its correct value, and the one
+  // state that legitimately measures 0 (the entry deleted outright) is
+  // exactly the state that should fail.
+  //
+  // It pins the subject, never the wording: a reworded rule that still says
   // service-role passes, which is the intended latitude.
   {
     id: 'hard-deny-entries',
@@ -581,7 +596,7 @@ export const claims = [
     pattern: /\*\*`hard_deny` has (\w+) entry\*\*/,
     extractStated: extractWord(),
     kind: 'shell',
-    cmd: `jq '[.permissions.autoMode.hard_deny[] | select(. != "$defaults") | select(test("service-role"))] | length' .claude/settings.json`,
+    cmd: `jq '[.permissions.autoMode.hard_deny[] | select(. != "$defaults")] as $e | if ($e | map(select(test("service-role"))) | length) == 0 then 0 else ($e | length) end' .claude/settings.json`,
     about: 'reviewer.md §never-skipped four: hard_deny\'s one entry, and that it still names the service-role rule',
   },
 ]

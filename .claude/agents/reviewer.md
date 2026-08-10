@@ -107,23 +107,38 @@ git diff --name-only <packet base> HEAD    # must equal the packet's file list
 **Both commands, and the first is the one that is easy to leave out.** The second is computed
 *from the packet's own base*, so it can only prove the packet is internally consistent — a packet
 built entirely from one wrong base agrees with itself perfectly and sails through. Only comparing
-the base against an independently derived one catches that, and it is the failure C exists to
-prevent, so checking the half that cannot see it is worse than not checking at all.
+the base against an independently derived one catches a wrong base at all, so running the half
+that cannot see it is worse than not checking: it produces a review labelled as verified.
 
 **On a delta re-review the bases are *supposed* to differ** — that packet's base is the reviewed
-sha, not the merge base, and demanding they match would reject every correct delta packet. Check
-`git merge-base --is-ancestor <packet base> HEAD` instead: the reviewed sha must be reachable
-from `HEAD`, and when a finding was fixed by amending it is not, which is the one case where the
-caller must rebuild the packet before you can review anything.
+sha, not the merge base, and demanding they match would reject every correct delta packet. Two
+conditions there, and **ancestry alone is not one of them**, because the merge base is an ancestor
+of `HEAD` too and would sail through a delta check that only asked that:
 
-Three outcomes, and none of them is "trust the packet":
+```bash
+git merge-base --is-ancestor <packet base> HEAD && echo reachable || echo REBUILD
+[ "$(git merge-base origin/development HEAD)" = "<packet base>" ] && echo NOT-A-DELTA || echo ok
+```
 
-- **It matches** — classify from that list and review. This is the ordinary case and it cost one
-  cheap command.
-- **It differs** — the packet is stale, which is routine: STEP 4c commits a CI fix after building
-  it. Re-derive from the command above, review what is actually there, and **say in your report
-  that the packet was stale and by how many files**. A stale packet that nobody reports is how
-  the next firing keeps building them from the wrong step.
+The first prints nothing on its own — it answers by exit code — which is why it is written with
+an `echo` on both sides. It fails when a finding was fixed by amending, leaving the reviewed
+commit a sibling rather than an ancestor, and the caller must rebuild the packet. The second is
+the inequality the paragraph above is actually about: a "delta" packet whose base *is* the merge
+base is a full re-review wearing a delta label, and reviewing it re-reports every finding the
+author already applied.
+
+Four outcomes, and none of them is "trust the packet":
+
+- **Both commands agree** — classify from that list and review. The ordinary case, and the two
+  commands cost less than one wrong base.
+- **The base disagrees with the independently derived one**, on a review not labelled a delta —
+  the packet is built on the wrong base. Do not review it. Re-derive the base from §Start here's
+  first command, review that, and report the packet as wrong rather than stale: stale is a
+  timing miss, this is a construction error, and the two need different fixes at STEP 4c.
+- **The base agrees but the file list differs** — the packet is stale, which is routine: STEP 4c
+  commits a CI fix after building it. Re-derive from the command above, review what is actually
+  there, and **say in your report that the packet was stale and by how many files**. A stale
+  packet that nobody reports is how the next firing keeps building them from the wrong step.
 - **`git rev-list <packet base>..HEAD` is empty** — the base is wrong outright. Stop and report
   that. An empty diff reviewed as "no findings" is the single worst output this file can produce,
   because every downstream signal reads it as a clean review.

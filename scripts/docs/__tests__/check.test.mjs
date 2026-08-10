@@ -370,12 +370,26 @@ describe('selectClaims — the --cheap split', () => {
     expect(cheap.length + expensive.length).toBe(realClaims.length)
   })
 
-  // The point of the CI step, stated as an assertion rather than a comment in
-  // a workflow file: if this ever selects nothing, `decideExitCode` returns 2
-  // ("nothing could be measured") and the step goes red for a reason that has
-  // nothing to do with the docs.
   it('selects a non-empty set from the real registry', () => {
     expect(selectClaims(realClaims, { cheap: true }).length).toBeGreaterThan(0)
+  })
+
+  // An earlier version of this block asserted the opposite in a comment — that
+  // an empty selection would exit 2 on its own, so this test was a second
+  // guard. It was not: `decideExitCode` read `passed.length === 0 && skipped
+  // .length > 0`, and an empty selection skips nothing, so it exited 0 and CI
+  // went green having checked nothing. Both halves are now real: the contract
+  // below, and this test above it.
+  it('exits 2 rather than 0 when the selection is empty', () => {
+    expect(decideExitCode({ passed: [], failed: [], skipped: [] })).toBe(2)
+  })
+
+  // --cheap selects only claims that measure with a local command, so a skip
+  // there is a broken command or a moved output format — never the absent
+  // Postgres a full run tolerates.
+  it('makes a skip fatal under strict, and only under strict', () => {
+    expect(decideExitCode({ passed: [1], failed: [], skipped: [1] })).toBe(0)
+    expect(decideExitCode({ passed: [1], failed: [], skipped: [1] }, { strict: true })).toBe(1)
   })
 
   // A kind added to the registry without a decision about which side it falls

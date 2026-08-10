@@ -1326,16 +1326,25 @@ chain to a scratch database and asserts what each role can reach.
   and every later promotion re-shows commits that already shipped.
 - **CI is scoped to what a PR can actually break**, decided by a `changes` job that
   diffs against the merge base:
-  - **`Type Check, Lint & Build`** (tsc → ESLint → Vitest → `next build`) runs unless
+  - **`Type Check, Lint & Build`** (tsc → ESLint → Vitest → `docs:check --cheap` → `next build`)
+    runs unless
     *every* changed file is under `docs/`, `design/`, `openspec/`, `.claude/` or a root `*.md`.
     That is a **denylist**, like the route guard's public paths — a new top-level directory runs
     CI by default, so forgetting to list something costs one green run rather than a missed
-    break. **Two carve-outs run the job anyway**, each for its own tripwire:
+    break. **Four carve-outs run the job anyway**, each for its own tripwire — count them in the
+    `changes` job rather than trusting this list, which has already been a carve-out behind:
     `.claude/agents/` + `.claude/commands/` (`src/__tests__/agent-briefs.test.ts`, because a
-    brief is executable process that no other job reads), and `docs/` + root `*.md`
+    brief is executable process that no other job reads), `docs/` + root `*.md`
     (`scripts/docs/__tests__/registry.test.mjs`, because `docs:check`'s anchors depend on exact
-    wording). **So a PR touching only `design/`, `openspec/` or the rest of `.claude/` runs zero
-    jobs.**
+    wording), `openspec/` (`crossrefs.test.mjs`, because a third of the repo's section pointers
+    live there), and `.claude/settings.json` (the `hard_deny` claim measures that file, and a
+    permissions diff touches nothing else). **So a PR touching only `design/`, `.claude/hooks/`
+    or the rest of `.claude/` runs zero jobs.**
+  - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
+    is a grep, a `jq`, a one-file vitest or a contrast ratio — 23 of 33. The ones needing
+    Postgres or a second full build stay out of CI, so `npm run docs:check` locally is still the
+    complete answer. Under `--cheap` a *skip* fails the run: every claim in that set measures
+    with a local command, so a skip is a broken command rather than a missing service.
   - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
     changes — the migration chain and the assertions are its only inputs.
   - A push to either long-lived branch always runs both. Each is a deploy gate.

@@ -377,9 +377,22 @@ function printReport(results, claims) {
  *     exit-code contract asks for them to be loud, not for them to block a
  *     merge on their own.
  */
-export function decideExitCode({ passed, failed, skipped }) {
+export function decideExitCode({ passed, failed, skipped }, { strict = false } = {}) {
   if (failed.length > 0) return 1
-  if (passed.length === 0 && skipped.length > 0) return 2
+  // Under --cheap a skip is a defect, not a shrug. The cheap set is BY
+  // DEFINITION the claims needing no external service, so there is no
+  // legitimate reason for one to be unmeasurable — a skip there means the
+  // command broke or its output format moved. Review found the concrete
+  // case: both guard-cases claims parse vitest's `Tests N passed` summary,
+  // so a vitest upgrade rewording it turns them into permanently green
+  // skips. The un-strict default keeps a hand-run's Postgres-absent skips
+  // non-fatal, which is what PD-155 asked for.
+  if (strict && skipped.length > 0) return 1
+  // `passed.length === 0` alone, not `&& skipped.length > 0`: an empty
+  // selection measured nothing either, and exiting 0 on it would make a CI
+  // step that checks NOTHING indistinguishable from one that checked
+  // everything and agreed.
+  if (passed.length === 0) return 2
   return 0
 }
 
@@ -414,16 +427,22 @@ export function selectClaims(claims, { cheap = false } = {}) {
   return cheap ? claims.filter((c) => CHEAP_KINDS.has(c.kind)) : claims
 }
 
-export function main(claims = defaultClaims) {
+export function main(claims = defaultClaims, { strict = false } = {}) {
   const fileCache = makeCache()
   const measureCache = makeCache()
   const results = claims.map((claim) => runClaim(claim, { root: ROOT, fileCache, measureCache }))
 
   const { passed, failed, skipped } = printReport(results, claims)
-  const code = decideExitCode({ passed, failed, skipped })
+  const code = decideExitCode({ passed, failed, skipped }, { strict })
 
   if (code === 2) {
     console.error('  Nothing could be measured. Check the environment (Postgres? node_modules?) and re-run.\n')
+  }
+  if (strict && skipped.length > 0 && failed.length === 0) {
+    console.error(
+      '  A claim skipped under --cheap. Every cheap claim measures with a local command,\n' +
+        '  so a skip here is a broken command or a changed output format, not a missing service.\n'
+    )
   }
 
   process.exit(code)
@@ -432,5 +451,6 @@ export function main(claims = defaultClaims) {
 // Only when invoked directly, so `runClaim`/`main` can be imported and pinned
 // by a test without this file spawning `npm test` or `next build`.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main(selectClaims(defaultClaims, { cheap: process.argv.includes('--cheap') }))
+  const cheap = process.argv.includes('--cheap')
+  main(selectClaims(defaultClaims, { cheap }), { strict: cheap })
 }

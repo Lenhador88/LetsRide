@@ -90,10 +90,12 @@ jobs:
           # SKIP with no red anywhere, because this exact class of PR was
           # denylisted out of the job that runs
           # scripts/docs/__tests__/registry.test.mjs's locate-integrity sweep.
-          # This is NOT "gate on docs:check" — the live measurements
-          # (Postgres, a full build) stay out of CI on purpose — it is making
-          # the anchor-integrity unit test run for the PR class that breaks
-          # anchors. Re-derive rather than trust these two numbers — count
+          # This carve-out is about ANCHORS, not measurements: it makes the
+          # anchor-integrity unit test run for the PR class that breaks
+          # anchors. The measurements are a separate question, and the answer
+          # changed — the "Doc claims (cheap)" step below now runs the claims
+          # whose ground truth is a grep or a jq, while the ones needing
+          # Postgres or a second full build stay out of CI as they always did. Re-derive rather than trust these two numbers — count
           # `file:` occurrences per path in registry.mjs — since this comment
           # is exactly the kind of citation that goes stale as claims are
           # added.
@@ -115,6 +117,21 @@ jobs:
           if echo "$files" | grep -qE '^docs/|^[^/]*\.md$'; then
             app=true
             echo "-> docs/ or a root *.md touched: running the app job for the doc-claim anchor sweep"
+          fi
+
+          # The fourth, added with the "Doc claims (cheap)" step below: that
+          # step's hard-deny-entries claim MEASURES .claude/settings.json, and
+          # a permissions change is exactly the diff that touches nothing else
+          # — a session editing its own envelope has no reason to go near src/.
+          # Without this the claim is re-evaluated on the next unrelated PR
+          # instead, so the diff that broke it merges green and someone else
+          # gets the red step. Deliberately settings.json alone and not all of
+          # .claude/: hooks/*.sh has no claim reading it, and running a job
+          # that checks nothing about the changed file is the same theatre in
+          # the other direction.
+          if echo "$files" | grep -qE '^\.claude/settings\.json$'; then
+            app=true
+            echo "-> .claude/settings.json touched: running the app job for the hard_deny claim"
           fi
 
           # The database job's inputs are the migration chain, the assertions,
