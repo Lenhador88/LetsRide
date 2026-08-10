@@ -387,10 +387,10 @@ export function decideExitCode({ passed, failed, skipped }, { strict = false } =
   // Under --cheap a skip is a defect, not a shrug. The cheap set is BY
   // DEFINITION the claims needing no external service, so there is no
   // legitimate reason for one to be unmeasurable — a skip there means the
-  // command broke or its output format moved. Review found the concrete
-  // case: both guard-cases claims parse vitest's `Tests N passed` summary,
-  // so a vitest upgrade rewording it turns them into permanently green
-  // skips. The un-strict default keeps a hand-run's Postgres-absent skips
+  // command broke, timed out, or its output format moved. Review found the
+  // concrete case: both guard-cases claims parse vitest's `Tests N passed`
+  // summary, so a vitest upgrade rewording it turns them into permanently
+  // green skips. Which of the three it was is in the skip line, never here. The un-strict default keeps a hand-run's Postgres-absent skips
   // non-fatal, which is what PD-155 asked for.
   if (strict && skipped.length > 0) return 1
   // `passed.length === 0` alone, not `&& skipped.length > 0`: an empty

@@ -491,7 +491,8 @@ export const claims = [
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `out=$(npx vitest run src/lib/auth/__tests__/guard.test.ts 2>&1) && echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
-    // The only cheap claim that spawns a real process. 1s warm here, but a
+    // These two claims share one vitest process (check.mjs caches by cmd), and
+    // it is the only real process any cheap claim spawns. 1s warm here, but a
     // cold two-core CI runner with no vite transform cache is plausibly 25s,
     // and runShell's 60s default was picked for greps. Under --cheap a
     // timeout is a red build rather than a green skip, so the ceiling has to
@@ -506,11 +507,7 @@ export const claims = [
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `out=$(npx vitest run src/lib/auth/__tests__/guard.test.ts 2>&1) && echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
-    // The only cheap claim that spawns a real process. 1s warm here, but a
-    // cold two-core CI runner with no vite transform cache is plausibly 25s,
-    // and runShell's 60s default was picked for greps. Under --cheap a
-    // timeout is a red build rather than a green skip, so the ceiling has to
-    // clear the slow case by a wide margin instead of by a little.
+    // Same ceiling as the claim above, which shares this command.
     timeoutMs: 180_000,
     about: '§Technology Decisions, Tests table: the same count, restated in the Units row',
   },
@@ -571,8 +568,12 @@ export const claims = [
   // ---- hard_deny entry count -----------------------------------------------
   //
   // `reviewer.md` calls a diff touching this "the most serious thing in this
-  // brief", and `.claude/settings.json` runs zero CI jobs — this claim and
-  // that review pass are the whole gate.
+  // brief". This claim is the only automated thing that reads
+  // `.claude/settings.json` at all, which is why `ci.yml`'s `changes` job has
+  // a carve-out putting a settings-only PR through the app job — without it
+  // the claim would be re-evaluated on somebody else's unrelated PR. Note the
+  // narrowness: what CI checks there is this cardinality, never the
+  // permission semantics. For those, the review pass is still the whole gate.
   //
   // `$defaults` is filtered out because it is the harness's own placeholder,
   // not an authored rule: a bare `| length` reads 2 against a correct file,
