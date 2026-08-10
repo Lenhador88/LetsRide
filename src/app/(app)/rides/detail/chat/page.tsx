@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { notFound, useParams } from 'next/navigation'
+import { notFound, useSearchParams } from 'next/navigation'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { RideChatComposer } from '@/components/rides/RideChatComposer'
@@ -13,6 +13,7 @@ import { getRideMessages, groupMessages } from '@/lib/data/ride-messages'
 import { sendRideMessage } from '@/lib/actions/ride-messages'
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import { useRideMessageStream } from '@/lib/realtime/useRideMessageStream'
 import type { RideChatMessage } from '@/types'
 
@@ -51,7 +52,19 @@ import type { RideChatMessage } from '@/types'
  * is a bounded roster read for one integer when it is not.
  */
 export default function RideChatPage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per ride — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <RideChatScreen />
+    </Suspense>
+  )
+}
+
+function RideChatScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const ride = useQuery(queryKeys.rides.detail(id), () => getRide(id))
   const messages = useQuery(queryKeys.rides.messages(id), () => getRideMessages(id))
@@ -225,7 +238,7 @@ function ChatBody({
         <p className="text-sm text-muted">
           Say you are going and you will be able to read and post here.
         </p>
-        <Link href={`/rides/${rideId}`} className="text-sm font-semibold text-accent">
+        <Link href={routes.ride(rideId)} className="text-sm font-semibold text-accent">
           Back to the ride
         </Link>
       </div>

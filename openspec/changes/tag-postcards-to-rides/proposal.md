@@ -276,7 +276,7 @@ found this decision, not a bug, and `041`'s header says so in as many words.
 `security definer`; `private.is_ride_crew` already exists and already carries `authenticated`'s
 EXECUTE. A new WARN means a function landed in `public` or a revoke did not.
 
-**Code.** New: `src/app/(app)/rides/[id]/journal/page.tsx`, `getRideJournal` in
+**Code.** New: `src/app/(app)/rides/detail/journal/page.tsx`, `getRideJournal` in
 `src/lib/data/postcards.ts`, a `journal` key in `keys.ts`. Changed: `RidePageMenu` gains the
 Journal row it has been omitting (and its doc comment loses the reason it was absent);
 `CreatePostcardForm` gains a ride select mirroring its club select; `createPostcard` and

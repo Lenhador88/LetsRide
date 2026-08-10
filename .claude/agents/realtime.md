@@ -12,7 +12,7 @@ until 2026-08-08, which was the single most misleading line in the squad** — i
 agent that owns Realtime that the tables it was about to touch did not exist.
 
 - **Per-ride group chat — SHIPPED** 2026-08-07 (`034`, `PD-115`). `ride_messages`, in the
-  `supabase_realtime` publication, `/rides/[id]/chat`, and `src/lib/realtime/useRideMessageStream`
+  `supabase_realtime` publication, `/rides/detail/chat?id=`, and `src/lib/realtime/useRideMessageStream`
   — **the app's only Realtime subscription, so it is your worked example rather than a greenfield
   question.** Read `034`'s header before touching its audience rule: the visibility is an
   *intersection* of "can see the ride" and "is on the crew", and using the `security definer`

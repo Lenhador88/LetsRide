@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { LocationFilledIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
+import { routes } from '@/lib/routes'
 import { cn, formatRideDate, formatRideTime } from '@/lib/utils'
 import type { RideAttendance, RideListItem } from '@/types'
 
@@ -43,7 +44,7 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
 
   return (
     <Link
-      href={`/rides/${ride.id}`}
+      href={routes.ride(ride.id)}
       className="flex gap-4 rounded-lg bg-surface p-1 pr-4 transition-colors active:bg-background"
     >
       <div className="relative w-20 shrink-0 self-stretch overflow-hidden rounded bg-border">

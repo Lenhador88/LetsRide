@@ -64,10 +64,19 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1059/1059 across 39 files
+npm run test:unit                     # 1094/1094 across 41 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 10 dynamic routes
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 32 static routes
+node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
 PGPASSWORD=postgres npm test          # 1213 assertions, 0 failures
+```
+
+**And the second build shape, which nothing above covers** — PD-142 left the repo with two, and
+exactly one of them may deploy:
+
+```bash
+npm run build:native                  # CAPACITOR_BUILD=1 next build, then the bundle check
+ls out/index.html                     # exists; .next-capacitor/ does not
 ```
 
 **Two traps in running that, both of which produce a confident wrong answer first:**
@@ -180,21 +189,24 @@ Verify rather than trust, in one line each:
 git grep -L "^'use client'" -- 'src/app/**/page.tsx'   # zero server pages — prints nothing
 ls src/proxy.ts src/lib/supabase/server.ts             # both deleted — prints errors
 node -p "Object.keys(require('./package.json').dependencies).length"   # 9
-npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 10
+npm run build 2>&1 | grep -cE '^[┌├└│ ]*[ƒ●] /'         # routes the export cannot emit — 0
 ```
+
+**Count `●` and `ƒ` together, and the older `ƒ`-only version is now a trap.** PD-142 moved every
+detail screen to `/rides/detail?id=…`, so there is no dynamic segment left and `ƒ` alone reads
+**0** — which is the right answer for the wrong reason, and would read 0 just as happily if
+somebody added a `generateStaticParams()` to a resurrected `[id]` segment, because declaring one
+reclassifies the route to `●` without removing the segment. What the native epic needs is
+"routes `output: 'export'` refuses to emit a document for", and only the pair measures that.
 
 **Keep `┌` in that character class.** The route table's first row uses it, so the `├└│`-only
 version under-counts by one the day the first route is ever dynamic — it is right today only
 because `/` sorts first and is static.
 
-**The dynamic count is the number the native epic needs**, because every dynamic route is one
-`output: 'export'` refuses without a `generateStaticParams()`. `next build` reports
-**22 static** and **10 dynamic** (`/clubs/[id]` plus its four sub-pages including `edit`
-(PD-101), `/postcards/[id]`, `/rides/[id]`, `/rides/[id]/crew`, `/rides/[id]/chat`,
-`/rides/[id]/edit` (PD-101)). They are dynamic for their *segment*, not for any data, and no
-`ƒ Proxy (Middleware)` line appears at all.
-Do not read the `Generating static pages (23/23)` line as the static route count — it is a
-different quantity, and 23 against 22 is exactly the kind of near-miss that gets copied.
+`next build` reports **32 static** and **0 dynamic**, and no `ƒ Proxy (Middleware)` line appears
+at all.
+Do not read the `Generating static pages (33/33)` line as the static route count — it is a
+different quantity, and 33 against 32 is exactly the kind of near-miss that gets copied.
 
 ## The next epic: the native shell, and store submission
 
@@ -254,14 +266,40 @@ they assert the ordering, the overridden defaults, the failure modes and the for
 everything *around* the plugin call, which is where this module can be wrong — and nothing about
 iOS or Android behaviour. That needs a device.
 
-**The gate for everything else is the static export.** Measured 2026-08-07: with
-`output: 'export'`, `next build` fails with
-`Page "/postcards/[id]" is missing "generateStaticParams()"`. All ten dynamic routes hit it,
-none can supply one (the ids are per-rider RLS-scoped content), and returning `[]` does not
-help because export forces `dynamicParams: false` so unknown ids 404. **`npx cap sync` has
-nothing to copy until this is resolved**, and resolving it is a routing change with real
-negative cases — deep links, the guard's public-path denylist, `notFound()` semantics — so it
-wants an OpenSpec proposal rather than a config tweak. **This is the next thing to pick up.**
+**The static export builds, and `webDir` now has something in it — PD-142, 2026-08-10.**
+
+```bash
+npm run build:native          # CAPACITOR_BUILD=1 next build, then the bundle check
+ls out/index.html             # exists; .next-capacitor/ does not
+```
+
+33 documents, 274 `__next.*.txt` RSC segment payloads, and the static assets — around 380 files
+in all. **Do not pin the total**: two builds of the same commit came back 384 and 383, because
+the JS chunk count moves by one or two. The two counts that are stable are the documents and the
+payloads, which is why `check-export.mjs` asserts a floor and those two being non-zero rather than
+an exact number.
+**Every document's rendered text is the empty string** — `RouteGuard` renders the splash instead
+of children during the prerender pass, and every detail screen reads in an effect anyway — which
+is the property `scripts/native/check-export.mjs` asserts rather than infers.
+
+**The ids left the path** (`/rides/detail?id=…`, `src/lib/routes.ts`), which is what made the
+export possible: `output: 'export'` refuses a dynamic segment without `generateStaticParams()`,
+none of these ids exists on the build machine, and `[]` does not rescue it because export forces
+`dynamicParams: false`. Product owner's decision, 2026-08-10, over the alternative of teaching
+each shell's native router to resolve the old paths — which is impossible on Android under
+Capacitor's defaults (`WebViewLocalServer.handleLocalRequest()` hands the route processor a
+hardcoded `"/index.html"` and discards the requested path). The old shape survives on the **web**
+as a `redirects()` entry, absent from the export by construction.
+
+**Two build shapes now exist and exactly one may deploy.** `scripts/native/assert-web-build.mjs`
+runs in CI after the Build step, because a leaked `CAPACITOR_BUILD` produces a **green** deploy
+of an app with no server. `CAPACITOR_BUILD` is set in no Vercel target — docs/ENVIRONMENTS.md
+§The native build flag.
+
+**What is still unverified, and it is most of the shell:** nothing here has run on a device, so
+the Capacitor claims above (root-`index.html` routing, the cold-start restore in
+`src/lib/native/boot-restore.ts`) are read out of the vendors' source and are **written and
+unverified**, not verified-on-device. `npx cap add` is still the Mac step.
 
 **`ios/` and `android/` were deliberately not generated.** This container has no Android SDK
 (`ANDROID_HOME` unset, no `sdkmanager`), no Xcode and no CocoaPods, so `npx cap add ios` cannot
@@ -277,10 +315,10 @@ build work, the rest are the owner's.
 
 | | Blocker | Why it blocks |
 |---|---|---|
-| 1 | **The shell itself** | **Started 2026-08-07.** `capacitor.config.ts` and the secure store are in; `ios/` and `android/` are not, and cannot be generated here. **Gated on the static-export route decision** — see §The shell, below |
+| 1 | **The shell itself** | **Started 2026-08-07; the `webDir` gate cleared 2026-08-10 (PD-142).** `capacitor.config.ts`, the secure store and a building `out/` are in; `ios/` and `android/` are not, and cannot be generated here. What is left needs a Mac |
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
-| 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/[id]/edit` and `/clubs/[id]/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
+| 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
 | 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
@@ -342,7 +380,7 @@ working around them.** Three carry detail worth having at hand:
 
 **Not an owner action, but the next thing a session should pick up if the shell is blocked:**
 verify the remaining Postcards screens against the design. `/postcards/new` and
-`/postcards/[id]` still carry inferred composition; the design has frames for both.
+the postcard thread still carry inferred composition; the design has frames for both.
 
 ## Running things in this container
 
@@ -352,7 +390,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1213**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly) |
-| Unit tests | `npm run test:unit` — **1059 across 39 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **1094 across 41 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -484,7 +522,7 @@ and the refetch confirms it — so a green walk proves the chat renders and send
 **nothing** about live delivery. Teaching the relay to proxy the upgrade is the fix if that ever
 needs covering.
 
-**The walk suppresses that one console error and says so**, because `/rides/[id]/chat` is on
+**The walk suppresses that one console error and says so**, because `/rides/detail/chat` is on
 the route list now and an always-red gate is a gate nobody reads. The filter is deliberately
 narrow — the relay's own origin and the Realtime path, nothing else — and the count is printed
 rather than swallowed:
@@ -947,10 +985,11 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
 **Absorb on contact — the five below are deliberately unfiled.** Each is a few lines in a file
 someone will open anyway.
 
-- **There is no `clubIdSchema`.** `/postcards/[id]` parses its id before issuing anything, so it
-  can read in parallel and 404 a malformed segment; `/clubs/[id]` cannot, so its two content
-  reads are serialised behind the club. Adding the schema and parallelising is a small, clear
-  win.
+- ~~**There is no `clubIdSchema`.**~~ **Added 2026-08-10 with PD-142**, in `getClub` and
+  `getClubForEdit` following `getRide`, so a malformed id reaches not-found instead of the error
+  boundary. The club timeline's two content reads are **still serialised** behind the club, and
+  that half is untouched on purpose: `getClubFeed` and `getRides` have no id guard of their own,
+  so parallelising them is a separate change with its own negative case.
 - **The legal pages lost their per-page `<title>`.** `export const metadata` and `'use client'`
   cannot coexist, and a rendered `<title>` is the second one in `<head>`. Four lines with
   `document.title` if it matters.

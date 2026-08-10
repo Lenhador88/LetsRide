@@ -9,9 +9,9 @@ src/
 │   ├── (app)/              # Authenticated route group — has Navbar
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── error.tsx       # The app's only error boundary
-│   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/[id] (one card + its comment thread)
-│   │   ├── rides/          # /rides, /rides/new, /rides/[id] (Ride plan), /rides/[id]/crew, /rides/[id]/chat, /rides/[id]/edit (PD-101)
-│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/[id] (Timeline) + /rides, /members, /about, /edit (PD-101)
+│   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/detail (one card + its comment thread)
+│   │   ├── rides/          # /rides, /rides/new, /rides/detail (Ride plan), /rides/detail/crew, /rides/detail/chat, /rides/detail/edit (PD-101)
+│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/detail (Timeline) + /rides, /members, /about, /edit (PD-101)
 │   │   ├── notifications/  # /notifications — PD-118. Becomes /inbox/notifications when the tab returns
 │   │   └── profile/        # /profile
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
@@ -41,8 +41,9 @@ src/
 │   ├── validation/         # Zod schemas, shared by client and server
 │   ├── media/              # Image compression + EXIF stripping, browser-only
 │   ├── auth/               # guard.ts (route rules, pure + tested), guard-cache.ts (what it reads, held per page load), recovery.ts (grant + safeNext)
-│   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore
+│   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore; boot-restore.ts — the shell's cold start (PD-142)
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
+│   ├── routes.ts           # every href that names a resource id — /rides/detail?id= and its nine siblings (PD-142)
 │   ├── realtime/           # useRideMessageStream — the app's only Supabase Realtime subscription
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
@@ -76,6 +77,7 @@ design/                     # Committed Figma snapshot — READ THIS, don't call
 scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
 scripts/places/             # The Overture extract behind the self-hosted place search (037), plus load.sql — the transactional load and its detector (PD-173)
 scripts/docs/               # docs:check — the numeric doc-claims registry + runner (PD-155)
+scripts/native/             # the two build-shape guards — the bundle carries no rider data, the web build is not an export (PD-142)
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
 └── changes/                # Active proposals; archive/ holds shipped ones

@@ -61,3 +61,21 @@ export const clubSchema = z.object({
 })
 
 export type ClubInput = z.infer<typeof clubSchema>
+
+/**
+ * A club id out of the URL, which is untrusted like any other query parameter.
+ *
+ * **This was the one detail read with no id guard, and the asymmetry was a real
+ * defect rather than an inconsistency.** `getRide` and the postcard thread each
+ * parse their id and answer "no such row"; `getClub` passed the segment straight
+ * to `.eq('id', …)`, so a malformed one reached Postgres as `22P02`, PostgREST
+ * turned it into a 400, `unwrap` threw, and the rider got the error boundary —
+ * a "Try again" button on a URL that can never succeed — where every other
+ * detail screen renders not-found. Added with PD-142 because moving the id into
+ * `?id=` makes it far easier to hand-edit into something that is not a uuid.
+ *
+ * Same reasoning as `rideIdSchema`: a malformed id means "no such club", and 404
+ * is the honest answer — which is also the answer a private club already gets,
+ * so this leaks nothing new.
+ */
+export const clubIdSchema = z.uuid()

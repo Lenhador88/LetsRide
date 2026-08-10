@@ -2,6 +2,7 @@ import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapCount, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
+import { clubIdSchema } from '@/lib/validation/clubs'
 import type {
   Club,
   ClubDeletionImpact,
@@ -295,6 +296,13 @@ export async function getExploreClubs(): Promise<ClubListItem[]> {
  * someone who cannot see it, which is the whole point of decision #1.
  */
 export async function getClub(id: string): Promise<ClubDetail | null> {
+  // Before `resolveSupabase()`, not after — following `getRide`, so no round
+  // trip is issued at all. A non-uuid id reaches `.eq('id', …)` as `22P02`,
+  // which PostgREST turns into a 400 and `unwrap` throws, and the rider gets the
+  // error boundary where every other detail screen renders not-found. This is
+  // the read that had no such guard until PD-142; see `clubIdSchema`.
+  if (!clubIdSchema.safeParse(id).success) return null
+
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -365,7 +373,7 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
 }
 
 /**
- * One club, for `/clubs/[id]/edit` (PD-101). Narrower than `getClub` — no
+ * One club, for `/clubs/detail/edit` (PD-101). Narrower than `getClub` — no
  * `owner` embed, no `members_count` — because the edit screen needs the
  * editable columns and nothing a byline or a member list would want.
  *
@@ -379,6 +387,9 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
  * read error — see that function's header.
  */
 export async function getClubForEdit(id: string): Promise<ClubForEdit | null> {
+  // The same guard `getClub` and `getRideForEdit` carry, for the same reason.
+  if (!clubIdSchema.safeParse(id).success) return null
+
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 

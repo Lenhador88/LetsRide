@@ -80,6 +80,44 @@ real riders — with a green deployment, no error, and no way to tell from the o
 Rolling back *within* production is fine: that artifact was built with production values.
 Crossing the boundary is not. **Promotion is a git merge that triggers a fresh build, always.**
 
+### The native build flag — `CAPACITOR_BUILD` belongs in no Vercel target
+
+Since PD-142 (2026-08-10) this repo produces **two** build shapes from one `next.config.ts`, and
+exactly one of them may deploy:
+
+| | `npm run build` | `npm run build:native` |
+|---|---|---|
+| Selected by | nothing | `CAPACITOR_BUILD=1` |
+| Output | a server build in `.next/` | a static export in `out/` |
+| Legacy `/postcards/<uuid>` links | redirected (307) | **do not resolve at all** |
+| `next/image` | optimised | `unoptimized: true` |
+| Who loads it | Vercel | `npx cap sync`, then a device |
+
+**Set it in Production, Preview or Development and the deployment becomes a static export with
+no server behind it.** Every legacy detail link 404s — the `redirects()` live in the web config,
+and an export has no server to run one — and images stop being optimised. The deploy goes
+**green**, which is the same failure shape as promoting a preview: nothing red anywhere, and the
+app is broken for riders.
+
+It is the same rule as the two Supabase variables one section up, for the same reason — a build
+carries what it was built with, permanently. Verify rather than trust the sentence:
+
+```bash
+npm run build && node scripts/native/assert-web-build.mjs
+```
+
+That reads the output the build just wrote rather than the config that was meant to produce it,
+and it runs in CI immediately after the Build step. **The Vercel side is an owner action** — a
+session can assert on output, never on a dashboard.
+
+**A bundle is this rule with the escape hatch removed.** A `.ipa` or `.aab` built from a feature
+branch or from `development` points **every install** at `letsride-dev` for ever: no promote, no
+redeploy, no dashboard toggle, only a new binary through a store review. DEV also runs
+`mailer_autoconfirm: true`, so such a build would let anyone sign up with an address they do not
+control. **A release bundle is built from `main`, against `letsride`, and the ref it carries is
+grepped out of the built output before submission** rather than inferred from which branch
+somebody was on.
+
 ### The hotfix rule
 
 If anything is ever committed to `main` that did not come through `development` — a

@@ -101,7 +101,7 @@ the decision and the two rejected alternatives.
 ### Rides — no schema change
 
 - **`updateRide(rideId, formData)`** and **`deleteRide(rideId)`** in `src/lib/actions/rides.ts`.
-- **`/rides/[id]/edit`**, a client page reusing `rideSchema` and `CreateRideForm`'s field set.
+- **`/rides/detail/edit`**, a client page reusing `rideSchema` and `CreateRideForm`'s field set.
 - **`departure_at` goes through `wallClockToUtc`** on the write, exactly as `createRide` does.
   A `datetime-local` input is zone-less and `new Date(that)` resolves in the rider's browser
   zone, so an unpinned edit silently moves a ride when an organizer in Lisbon corrects a typo in
@@ -128,7 +128,7 @@ the decision and the two rejected alternatives.
   another rider's content for no reason.
 - **`updateClub(clubId, formData)`** and **`deleteClub(clubId)`** in
   `src/lib/actions/clubs.ts`; `deleteClub` calls the RPC rather than `.from('clubs').delete()`.
-- **`/clubs/[id]/edit`**, a client page: name, description, privacy, avatar, cover.
+- **`/clubs/detail/edit`**, a client page: name, description, privacy, avatar, cover.
 
 ### The confirmations are part of the specification, not copy
 
@@ -142,7 +142,7 @@ again.
 ## Impact
 
 - **Affected code** — `src/lib/actions/{rides,clubs}.ts`, `src/lib/data/{rides,clubs}.ts`,
-  `src/lib/query/keys.ts`, `src/app/(app)/rides/[id]/edit/`, `src/app/(app)/clubs/[id]/edit/`,
+  `src/lib/query/keys.ts`, `src/app/(app)/rides/detail/edit/`, `src/app/(app)/clubs/detail/edit/`,
   `RideHeader`, `ClubDetailHeader`, `src/lib/validation/`.
 - **Affected schema** — one migration adding `public.delete_owned_club`. **No policy change**,
   which is why the four policies above are quoted rather than modified. `supabase/tests/` gains

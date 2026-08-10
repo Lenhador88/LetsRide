@@ -19,7 +19,7 @@ import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX, clubSchema } from '@/lib/validatio
 import type { ClubForEdit } from '@/types'
 
 /**
- * `/clubs/[id]/edit` — PD-101. Composition-is-ours for the same reason
+ * `/clubs/detail/edit` — PD-101. Composition-is-ours for the same reason
  * `CreateClubForm`'s is (that component's header carries the full argument),
  * and the image upload flow is copied from it unchanged — upload straight to
  * Storage, hold the path in state, submit it with everything else.

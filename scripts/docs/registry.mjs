@@ -384,13 +384,20 @@ export const claims = [
 
   // ---- next build route counts --------------------------------------------
   {
+    // `●` as well as `ƒ`, because PD-142 left `ƒ` alone measuring the wrong
+    // thing. There is no dynamic segment in the app any more, so `ƒ` is 0 —
+    // and it would still be 0 if a resurrected `[id]` segment declared a
+    // `generateStaticParams()`, which reclassifies the route to `●` without
+    // removing the segment. The quantity the native epic needs is "routes
+    // `output: 'export'` refuses to emit a document for", and only the pair
+    // measures it.
     id: 'dynamic-routes-count',
     file: 'docs/HANDOFF.md',
-    pattern: /grep -cE '\^\[┌├└│ \]\*ƒ \/'\s+# dynamic routes — (\d+)/,
+    pattern: /grep -cE '\^\[┌├└│ \]\*\[ƒ●\] \/'\s+# routes the export cannot emit — (\d+)/,
     extractStated: (m) => Number(m[1]),
     kind: 'build',
-    parseMeasured: (stdout) => countLines(stdout, /^[┌├└│ ]*ƒ \//m),
-    about: '§Technology Decisions verification block: dynamic route count',
+    parseMeasured: (stdout) => countLines(stdout, /^[┌├└│ ]*[ƒ●] \//m),
+    about: '§Technology Decisions verification block: unexportable route count',
   },
   {
     id: 'static-routes-count',

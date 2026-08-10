@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarIcon, LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
@@ -13,6 +14,7 @@ import { RideMap } from '@/components/rides/RideMap'
 import { getRide } from '@/lib/data/rides'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import { cn, formatRideDateLong, formatRideTime } from '@/lib/utils'
 import type { RideDetail } from '@/types'
 
@@ -41,7 +43,19 @@ import type { RideDetail } from '@/types'
  * version had no such distinction to make.
  */
 export default function RidePage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per ride — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <RideScreen />
+    </Suspense>
+  )
+}
+
+function RideScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
   const ride = useQuery(queryKeys.rides.detail(id), () => getRide(id))
 
   // Covers both "no such ride" and "not yours to see" — see getRide on why the
@@ -169,7 +183,7 @@ function RidePlan({ ride }: { ride: RideDetail }) {
           switcher is the specified route to Crew, and this is a second, more
           obvious one. */}
       <Link
-        href={`/rides/${ride.id}/crew`}
+        href={routes.rideCrew(ride.id)}
         className="px-6 text-sm font-semibold text-accent"
       >
         See who’s riding

@@ -9,7 +9,7 @@ import type { Postcard } from '@/types'
 type PostcardCardProps = {
   postcard: Postcard
   /**
-   * False on `/postcards/[id]`, where the card heads its own thread and the
+   * False on `/postcards/detail`, where the card heads its own thread and the
    * comment control would otherwise link to the page it is already on.
    */
   linkToThread?: boolean

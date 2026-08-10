@@ -66,7 +66,7 @@ omits the column and relies on the `'member'` default — which is a convention 
 a rule in the database, and PostgREST does not read our code. Any rider can already join any
 public club as `admin` today. The migration is where this is fixed, not where it begins.
 
-The roster screen renders the value — `/clubs/[id]/members` labels `owner` and `admin` and
+The roster screen renders the value — `/clubs/detail/members` labels `owner` and `admin` and
 draws an owner ring — so a forged role is visible to every member of the club.
 
 #### Scenario: A non-member joining a public club cannot arrive as owner or admin

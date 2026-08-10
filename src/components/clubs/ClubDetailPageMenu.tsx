@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ChevronDownIcon } from '@/components/icons/generated'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
+import { routes } from '@/lib/routes'
 
 export type ClubPage = 'timeline' | 'rides' | 'members' | 'about'
 
@@ -15,11 +16,11 @@ export type ClubPage = 'timeline' | 'rides' | 'members' | 'about'
  * every club sub-page reads something that already exists — `postcards` scoped
  * by `club_id`, `rides` by `club_id`, `club_members`, and the club row itself.
  */
-const pages: { key: ClubPage; label: string; segment: string }[] = [
-  { key: 'timeline', label: 'Timeline', segment: '' },
-  { key: 'rides', label: 'Rides', segment: '/rides' },
-  { key: 'members', label: 'Members', segment: '/members' },
-  { key: 'about', label: 'About', segment: '/about' },
+const pages: { key: ClubPage; label: string; href: (clubId: string) => string }[] = [
+  { key: 'timeline', label: 'Timeline', href: routes.club },
+  { key: 'rides', label: 'Rides', href: routes.clubRides },
+  { key: 'members', label: 'Members', href: routes.clubMembers },
+  { key: 'about', label: 'About', href: routes.clubAbout },
 ]
 
 export function ClubDetailPageMenu({
@@ -49,7 +50,7 @@ export function ClubDetailPageMenu({
         {pages.map((page) => (
           <ContextMenuItem
             key={page.key}
-            href={`/clubs/${clubId}${page.segment}`}
+            href={page.href(clubId)}
             selected={page.key === current}
             onClick={() => setOpen(false)}
           >

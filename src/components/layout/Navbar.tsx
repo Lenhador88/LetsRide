@@ -9,6 +9,7 @@ import {
   ProfileIcon,
 } from '@/components/icons/generated'
 import { Button } from '@/components/ui/Button'
+import { detailPaths } from '@/lib/routes'
 import { cn } from '@/lib/utils'
 
 /**
@@ -73,18 +74,21 @@ const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
  * tabs. Replacing versus stacking is a per-screen fact the design states, not a
  * rule about bars.
  *
- * A regex rather than a `Record` lookup because the path carries a ride id.
- * Anchored at both ends for the same reason the tab matcher below uses a `/`
- * boundary — an unanchored test would also hide the bar on a hypothetical
- * `/rides/x/chat/settings`, which should decide for itself.
+ * An exact list of pathnames. It was `/^\/rides\/[^\/]+\/chat$/` while the ride
+ * id was a path segment; PD-142 moved the id into `?id=`, so the path is now a
+ * constant and a wildcard segment would match `/rides/anything/chat` for no
+ * reason. It still needs to be a *list* rather than a set membership on the
+ * whole path, because a second barless screen is a matter of time — and equality
+ * rather than a prefix for the reason the old regex was anchored at both ends: a
+ * hypothetical `/rides/detail/chat/settings` should decide for itself.
  */
-const BARLESS = [/^\/rides\/[^/]+\/chat$/]
+const BARLESS: string[] = [detailPaths.rideChat]
 
 export function Navbar() {
   const pathname = usePathname()
   const action = STICKY_ACTIONS[pathname]
 
-  if (BARLESS.some((pattern) => pattern.test(pathname))) return null
+  if (BARLESS.includes(pathname)) return null
 
   return (
     <nav className="pb-safe fixed right-0 bottom-0 left-0 z-50 border-t border-border bg-background px-4">

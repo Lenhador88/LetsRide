@@ -197,7 +197,7 @@
   in the header table. `createPostcard` widens its existing invalidation to reach it. **No
   `feed_reads` key or watermark is touched** — the Journal has no unread concept, so `markFeedSeen`
   and `club_unread_counts()` are unchanged and the Journal writes no watermark on open.
-- [ ] 4.8 `src/app/(app)/rides/[id]/journal/page.tsx` — built from `Ride - Journal
+- [ ] 4.8 `src/app/(app)/rides/detail/journal/page.tsx` — built from `Ride - Journal
   (Postcards/Timeline)` (`2226:4865`), a scrolling list of `v2 / Component / Postcard` with the drawn
   divider. Gate on the data, never on `isLoading`; `null` is `notFound()`, `undefined` is a skeleton.
 - [ ] 4.9 All seven states from `ride-journal`: empty (crew and non-crew variants), loading, error with

@@ -175,8 +175,8 @@ on a decision this change has already taken the other way; see task 1.4a.
 **Code.** `src/components/profile/ProfileMenu.tsx` (the sheet currently ships one row of three),
 a new confirmation screen, `src/lib/actions/` gains one action that calls the Edge Function,
 `src/lib/data/` gains one read for the confirmation screen's impact summary,
-`src/app/legal/account-deletion/page.tsx`, and the empty-state copy on `/rides/[id]`,
-`/postcards/[id]`, `/clubs/[id]/members` and the profile byline route — because "this rider is
+`src/app/legal/account-deletion/page.tsx`, and the empty-state copy on `/rides/detail`,
+`/postcards/detail`, `/clubs/detail/members` and the profile byline route — because "this rider is
 gone" and "you are not allowed" are currently the same zero rows.
 
 **Supabase.** First Edge Function in the repo — there is no `supabase/functions/` directory
