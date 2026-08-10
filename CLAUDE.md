@@ -989,6 +989,25 @@ findings have cost a second PR.
 - **The task is bounded, well-specified, and has its own tooling** — a migration with a crisp
   schema question is `data`'s, and it holds the Supabase tools.
 
+**The break-even is roughly 40k tokens, because a subagent does not inherit your context — it
+re-pays it.** Every agent opens a fresh window and loads this file again, so delegating
+*multiplies* the fixed cost rather than moving it, which is the opposite of the intuition. Measure
+it rather than trust these numbers; both grow with the files:
+
+```bash
+node -p "Math.round(require('fs').statSync('CLAUDE.md').size/4)"                    # per agent
+node -p "Math.round(require('fs').statSync('.claude/agents/reviewer.md').size/4)"   # + its brief
+```
+
+So `reviewer` costs ~42k before it reads one line of the diff. **Delegate when the agent will read
+more than ~40k of material and return a paragraph.** `Explore` sweeping forty files for one
+conclusion clears that easily. A subagent that just runs the build does not — a green run is ~1k
+of output — `tsc` prints nothing, lint 3.4k, `test:unit` 0.6k — so it spends ~38k, its own brief
+included, to save ~1k.
+
+**`reviewer` is exempt from this arithmetic and is never skipped on cost.** Its value is that it
+did not write the code, and that cannot be bought more cheaply.
+
 **Do it yourself when the accumulated context is the asset.** A vertical slice where each screen
 teaches the next is one agent's work: the design's epic-status trap — `Explore clubs v2` is
 **On hold** despite sitting further right in the file, `Create club` and `Create ride` are both
@@ -1074,6 +1093,26 @@ it"* — the product owner granted the squad in advance, in writing, on 2026-08-
 that line resolves in favour of delegating. **`reviewer` before every PR is the non-negotiable
 one**; the rest is judgement. A session has already deferred to that harness line, shipped
 unreviewed, and paid for it in a follow-up PR.
+
+**Default to the session that is already open.** A session's fixed cost is ~54k tokens before it
+reads a line of code — this file, plus the handoff its first line tells you to read — and that
+cost is paid **per session, not per fix**. Five quick fixes in five parallel sessions is five
+copies of it; five fixes in one session is one:
+
+```bash
+cat CLAUDE.md docs/HANDOFF.md | wc -c    # /4 for tokens
+```
+
+**Spawn a second session only when the work is genuinely independent *and* long enough to earn
+that back.** The test is deliberately **not** "is this a quick fix" — you usually cannot tell
+before starting, and a rule needing that answer upfront does not survive contact. The test is
+whether the two tracks would block each other, and whether each is worth more than the ~54k it
+costs to start one.
+
+This is also the only lever that touches the collision problem at its root: `docs/HANDOFF.md` and
+this file are each touched by roughly two-thirds of recent commits, so two concurrent sessions
+racing on docs is the normal case rather than bad luck. Re-derive it —
+`git log --pretty=format: --name-only origin/development -40 | grep -v '^$' | sort | uniq -c | sort -rn | head`.
 
 **Fix the tool, don't route around it.** This app is being built for the long term. When a
 connector is down, a quota is exhausted, or a credential is missing, the default is to

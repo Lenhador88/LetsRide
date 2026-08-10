@@ -280,7 +280,7 @@ build work, the rest are the owner's.
 | 1 | **The shell itself** | **Started 2026-08-07.** `capacitor.config.ts` and the secure store are in; `ios/` and `android/` are not, and cannot be generated here. **Gated on the static-export route decision** — see §The shell, below |
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
-| 4 | **No edit or delete UI for rides or clubs** | Create a ride, never cancel or correct it. Postcards, comments and profile all have working delete/update UI; for rides and clubs there is no action *at all* (no `deleteRide`, `updateRide`, `deleteClub`, `updateClub`) while all four RLS policies exist live. An empty action layer, not an unwired UI |
+| 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/[id]/edit` and `/clubs/[id]/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
 | 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
@@ -290,49 +290,27 @@ will not.
 
 ## Owner actions — nobody in a session can do these
 
-**Tracked in Linear as of 2026-08-07** — label `Owner only`, assigned, so they surface without
-anyone reading this far into the file. That is the whole reason the tracker exists. This
-section keeps the *detail*; Linear keeps the *queue*, and the mapping is:
+**The queue is Linear's** — label `Owner only`, which is how these surface without anyone reading
+this far into a file. `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c label="Owner only"`
+is the live list; the table that used to sit here was a second copy of it and is gone. **This
+section keeps only what an issue body has no room for: the commands, and the two caveats that
+explain why an item is not optional.**
 
-| | Linear | Verified against the live system 2026-08-07 |
-|---|---|---|
-| 1 | `PD-91` Exercise signup end to end | — |
-| 2 | `PD-90` Enable `UpdatePasswordRequireCurrentPassword` | dashboard-only, not checkable via MCP |
-| 3 | `PD-89` Enable leaked-password protection | **still outstanding** — advisor present |
-| 4 | `PD-87` Move Supabase off the free tier | **still outstanding** — org plan reads `free` |
-| 5 | `PD-86` Deploy `delete-account` + `PD-92` T&C version string | **still outstanding** — `list_edge_functions` returns `[]` |
-| 6 | `PD-94` Sweep the orphaned Storage objects | — |
+**Re-measure before quoting any of them.** Two `Owner only` issues in a row have been found
+already-fixed (`PD-88`, the Site URL and redirect allowlist; `PD-93`, pinning `defaultMode`), and
+that is a pattern rather than a coincidence: **a dashboard setting has no file to change, so
+nothing marks it done except someone re-measuring.** The credential-free probes are in
+`docs/ENVIRONMENTS.md` §The redirect allowlist.
 
-**Re-run the probe before quoting any row of that table.** Two `Owner only` issues in a row have
-been found already-fixed (`PD-88`, the Site URL and redirect allowlist; `PD-93`, pinning
-`defaultMode`), and that is a pattern rather than a coincidence: **a dashboard setting has no file
-to change, so nothing marks it done except someone re-measuring.** The credential-free probes are
-in `docs/ENVIRONMENTS.md` §The redirect allowlist.
+Every one is a dashboard click or a credential a human holds, so **ask for them rather than
+working around them.** Three carry detail worth having at hand:
 
-Every one below is a dashboard click or a credential a human holds, so **ask for them rather than
-working around them.**
+1. **`PD-90` — enable `UpdatePasswordRequireCurrentPassword`.** Worth knowing *why* it is not
+   optional: it is what actually closes the recovery hole `026` can only gate at the app's front
+   door — GoTrue's `PUT /auth/v1/user` accepts a password change from any live session, measured.
 
-1. **Exercise signup end to end.** Still never done on this database, and it is now the one
-   remaining unproven path — `npm run walk` covers everything after it. The owner's account
-   predates the consent write, both `.test` fixtures were SQL-inserted because Supabase rejects
-   that TLD, and the one real attempt matches `signUp`'s own documented failure path. Needs an
-   email domain the owner controls.
-2. **Enable `UpdatePasswordRequireCurrentPassword`** in the Supabase dashboard. It is what
-   actually closes the recovery hole `026` can only gate at the app's front door — GoTrue's
-   `PUT /auth/v1/user` accepts a password change from any live session, measured.
-3. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
-   security advisor that is not deliberate. `get_advisors(security)` returns **nine against both**
-   — measured 2026-08-10, after `041`–`046` reached PROD. The gap this line used to describe was
-   `043`'s `delete_owned_club` being DEV-only, and it closed with that promotion; the two databases
-   now agree advisor for advisor. Every other one is there on purpose and `CLAUDE.md` §Supabase
-   Rules names each. `047` and `048` add none — both are grant-only, with no function and no view.
-4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
-   serves nothing, with no alert. Needed before anything resembling launch. It also breaks
-   account deletion specifically: a rider who cannot reach a paused project cannot delete their
-   account, and "I tried and it failed" is the complaint that reaches a store reviewer.
-
-5. **Deploy the `delete-account` Edge Function, and supply the T&C version string.** Two
-   separate asks that both land here:
+2. **`PD-86` / `PD-92` — deploy the `delete-account` Edge Function, and supply the T&C version
+   string.** Two separate asks that both land here:
 
    - There is no `supabase` CLI in the build container and the Supabase MCP server exposes no
      deploy tool, so **no session can deploy it**. It needs the CLI and a project access token:
@@ -347,7 +325,7 @@ working around them.**
      copy that disclaims being an agreement. **Replace it when the binding text lands** — one
      line in `private.current_terms_version()`, in a new migration. Consents already stamped
      keep the version they were given, which is the point of the column.
-6. **Sweep the orphaned Storage objects** — and note that **only the owner can**. Run
+3. **`PD-94` — sweep the orphaned Storage objects**, and note that **only the owner can**. Run
    2026-08-06 as `qa-verify`: *"0 object(s) in your folder, 0 referenced by a postcard. No
    orphans."* That settles nothing about the two objects (1.15 MB) the note refers to, because
    the sweeper signs in as a rider and `010`'s Storage policies scope it to
@@ -525,55 +503,51 @@ timeout:**
 
 ---
 
-## Three changes: two part-built, one ready to pick up
+## The open OpenSpec changes, and the collision between two of them
 
-`npm run openspec -- list --json` is the live view; this is the orientation.
+**`npm run openspec -- list --json` is the live view** — read it rather than a table here. Six
+are in flight as of 2026-08-10, and `add-ride-club-edit-delete` is one of them: `PD-101` shipped
+to production, but the change sits at 42/44 in `changes/` rather than `archive/`, so **archiving
+it is a real outstanding action** rather than a bookkeeping detail. Status per change belongs to
+Linear; the *content* belongs to the change directory. What follows is only what neither holds.
 
-| Change | State | What blocks starting |
-|---|---|---|
-| `enforce-creator-membership` | Proposed, 44 tasks, validates strict. **Not started** | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
-| `add-account-deletion` | **Groups 1, 2 and 5 built and applied** (`029`–`032`). **Store blocker 2** | Groups 3 and 4 are blocked on the Edge Function being deployed — an owner action. Q4 and Q7 still open, plus the postcard half of 1.6b |
-| `add-ride-club-edit-delete` (PD-101) | **Groups 1, 2 and 3 all built.** `043_delete_owned_club` is applied to DEV and asserted (62 RLS assertions), and `1.4b`'s ex-member-organizer case is pinned by 13 more labelled `017:` — suite **1122**, so CI's `RLS Policy Tests` job does fire on this PR. `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/[id]/edit` and `/clubs/[id]/edit` exist, the Edit affordance is in both headers, and both delete confirmations enumerate the floor-phrased blast radius `club-lifecycle` specifies. `tsc`/lint/`test:unit` (1010)/`build`/`docs:check` are all green | **`npm run walk` was not run** — the edit routes were added to `discoverDetailPaths()` but this session had no DEV credentials, so neither edit screen has been loaded against a real database. That is this change's one real coverage gap: it is compiled, built and asserted, never rendered. `PD-163`'s comment (task 3.7) is unlogged |
+**`add-account-deletion` carries an open product decision inside it — the postcard half of
+1.6b.** `account-erasure-cascade` claims a club with no members left holds postcards "entirely
+their own by construction"; a rider can leave a club while their postcards stay, so the branch
+designed to protect third-party content can destroy it. `032` fixed the *rides* half. The
+proposal's default for the postcards half hands the club to the author of the oldest surviving
+postcard — which gives a club to someone who never joined it. Decide it before group 3.
 
-**The 1.6b defect that PR #60 found while checking the proposal was found independently in
-review of the branch that built it, and is half fixed.** `account-erasure-cascade` claims a club
-with no members left holds postcards "entirely their own by construction"; a rider can leave a
-club while their postcards stay, so the branch designed to protect third-party content can
-destroy it. `032` fixed the *rides* half — the delete branch now removes only rides that
-`ON DELETE SET NULL` would strand. **The postcards half is a product decision and is open**: the
-proposal's default hands the club to the author of the oldest surviving postcard, which means
-giving a club to someone who never joined it.
-
-**They collide, and OpenSpec will not warn you.** Both carry a delta modifying
+**`enforce-creator-membership` and `add-account-deletion` collide, and OpenSpec will not warn
+you.** Both carry a delta modifying
 `database-enforced-integrity`'s *Club membership role SHALL NOT be self-assignable*, and
 archiving replaces a requirement wholesale — so **whichever archives second silently discards
 the first one's edit**. Both delta files now open with a coordination banner carrying the merged
 text they should converge on. Read it before archiving either.
 
-## Ride chat landed 2026-08-07 and is live in production
+## Ride chat is shipped but has never been loaded against production
 
-**Shipped to riders via #100 (`903dffb`), and here is the honest limit on that.** The screen is
-verified by CI, the RLS suite and live schema checks against PROD. **Nobody has loaded it against
-the production database** — this container cannot: Chromium here cannot reach `supabase.co` at all
-(§The walk), and Vercel's MCP fetch authenticates as the account owner, so a 200 from it is not
-evidence a rider can reach anything. The first real proof is the owner opening a ride they have
-RSVP'd to and sending a message.
+**`PD-115` and its sub-issues carry the status; this is the caveat they have no room for.** The
+screen is verified by CI, the RLS suite and live schema checks against PROD, and **nobody has
+loaded it against the production database** — this container cannot: Chromium here cannot reach
+`supabase.co` at all (§The walk), and Vercel's MCP fetch authenticates as the account owner, so a
+200 from it is not evidence a rider can reach anything. The first real proof is the owner opening
+a ride they have RSVP'd to and sending a message.
 
-Two things that would only show up on that first real load, so check them before assuming a bug is
-elsewhere: whether the Realtime socket actually delivers on the production project (the publication
-membership is asserted, the *delivery* is not), and whether the composer's `crypto.randomUUID`
-path is on a secure origin — it is over HTTPS, and the fallback exists for `http://<lan-ip>` device
-testing.
-
-Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-120 (the unread
-badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
-Inbox or push exists.
+Two things would only show up on that first real load, so check them before assuming a bug is
+elsewhere: whether the Realtime socket actually delivers on the production project (the
+publication membership is asserted, the *delivery* is not), and whether the composer's
+`crypto.randomUUID` path is on a secure origin — it is over HTTPS, and the fallback exists for
+`http://<lan-ip>` device testing.
 
 ## Migrations — DEV and PROD are LEVEL at `048`, and ten things will read as drift
 
 **`041` through `046` were applied to PROD on 2026-08-10**, on the owner's instruction, in strict
 filename order, each digest checked against its file. **`047` and `048` followed the same day**,
-DEV first and PROD after the review pass. DEV, PROD and the repo all hold 48. The gap this
+DEV first and PROD after the review pass. DEV, PROD and the repo all hold 48. The security
+advisors agree nine-for-nine across both databases — measured 2026-08-10 with
+`get_advisors(security)`, and `047`/`048` add none, both being grant-only with no function and no
+view. `CLAUDE.md` §Supabase Rules carries the count and the shape; the *parity* is only here. The gap this
 section used to describe is closed; what remains below is the recording artefacts, which are
 permanent.
 
@@ -866,34 +840,14 @@ in the next branch that already has the file open, say so in the PR body, and do
 for it. The census that justifies that, and the bucketing trap inside it, are in `CLAUDE.md`
 §Sequencing — run it there rather than trusting a second copy here.
 
-- **`createClub` and `createRide` do two inserts with no transaction, and the hand-rolled
-  rollback stopped being one.** `PD-103`. Found by review of the render migration. As Server Actions,
-  both inserts and the compensating delete ran inside one server request that finished whether
-  or not the tab survived; they run in the browser now, so closing the tab between the two
-  leaves a club with an owner and no membership row — or a ride whose organizer is not on its
-  own crew. **That state went from reachable only on a Supabase error to reachable on demand.**
-
-  **Proposed 2026-08-06 as `openspec/changes/enforce-creator-membership/` — read that, not
-  this.** Two things in the paragraph above are now known to be understatements:
-
-  - **"A UI orphan rather than a hidden row" is only true of a *public* orphan.** A private one
-    is on neither club list, so it is reachable from **no screen at all**, by anyone, including
-    its owner. (0 private clubs exist today — measured, not assumed.)
-  - **There is a second door of the same width: `leaveClub`.** `club_members` DELETE is
-    `auth.uid() = user_id` with no owner arm (read from `pg_policy`), and `leaveClub` deletes
-    unconditionally — so an owner can orphan their own club with a hand-rolled request. The UI
-    *does* guard it (`{!isOwner && …}` at `/clubs/[id]/about:103`), but in the weaker of the
-    two places, which that page's own comment concedes. Same shape for an organizer via
-    `setRideAttendance(rideId, null)`.
-
-    **Both doors need a hand-rolled request; neither is reachable by tapping.**
-
-  **The fix is a trigger, not a `security definer` RPC the client calls.** An RPC binds only its
-  callers, and the publishable key ships in the bundle.
-
-  Live pre-flight, 2026-08-06, RLS bypassed: **0 orphan clubs, 0 orphan rides**, on 2 clubs and
-  3 rides. Read that as "nobody has hit it on a tiny dataset", not as "the window is hard to
-  hit". Re-run at apply time.
+- **`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
+  is not on its own crew.** `PD-103`. Two inserts, no transaction, and a hand-rolled rollback that
+  stopped being one when the writes moved to the browser — closing the tab between them is now
+  enough. There is a second door of the same width in `leaveClub`, and the same shape via
+  `setRideAttendance(rideId, null)`; both need a hand-rolled request, neither is reachable by
+  tapping. **Read `openspec/changes/enforce-creator-membership/` rather than a summary here** — it
+  holds the mechanism, the negative cases and the three blocking questions, two of which are the
+  product owner's.
 
   > **Recommendation** 8/10
   >
@@ -919,20 +873,12 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   > 3 blocking questions, two of them product-owner decisions (may an owner leave their own
   > club? may an organizer leave their own crew?)
 
-- **Two riders deleting at the same moment can still destroy a third's postcards.** `PD-175`, a
-  sub-issue of `PD-102` rather than a peer, because it sits inside the deletion deliverable. The
-  narrow race `032` §3 documents and deliberately does not close. `private.transfer_owned_clubs` locks
-  the successor's `profiles` row, but that lock dies with the RPC transaction — well before the
-  Edge Function's Storage sweep and `deleteUser`. So: B's transfer commits (B owns nothing), A's
-  transfer picks B as successor for club C, then B's own deletion reaches `deleteUser` and C
-  cascades away with every postcard every other member posted into it. Which is the exact harm
-  the transfer exists to prevent, reached through it.
-
-  Not fixable in SQL — the window is between two HTTP calls in two processes. It needs either a
-  deletion-in-progress marker on `profiles` (a new column, a new state, and a new way to be
-  stuck if a run dies half way) or an advisory lock held across the whole Edge Function
-  invocation. **The RLS suite cannot see it either**: its idempotency assertion runs both calls
-  inside one psql transaction, so it proves nothing about two.
+- **Two riders deleting at the same moment can destroy a third rider's postcards.** `PD-175`, a
+  sub-issue of `PD-102` because it sits inside the deletion deliverable. The narrow race that
+  `032` §3 documents and deliberately leaves open: the successor lock dies with the RPC
+  transaction, well before the Edge Function's `deleteUser`. Not fixable in SQL — the window is
+  between two HTTP calls in two processes — and **the RLS suite cannot see it either**, since its
+  idempotency assertion runs both calls inside one psql transaction.
 
   > **Recommendation** 6/10
   >
@@ -958,20 +904,11 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   >
   > it is a design choice between two mechanisms, and the flow it protects does not exist yet
 
-- **No edit or delete UI anywhere.** `PD-101`. The `update`/`delete` RLS policies exist and are tested,
-  but nothing calls them — you can create a ride and never fix a typo or cancel it. Comments are
-  the exception: deletable, not editable, which `011` forbids by design. **Store blocker 4.**
-- **Account deletion has a database half and no flow.** `PD-102`. `029`–`032` are applied, the Edge
-  Function is written at `supabase/functions/delete-account/` and has **never been deployed or
-  run**, and nothing in `src/` calls it. What is left is groups 3 (the flow: sheet row,
-  confirmation, re-auth, impact summary, sign-out) and 4 (the four screens where "this rider is
-  gone" and "you are not allowed" are both zero rows). It gets larger once location tracks
-  exist. **Store blocker 2.**
-
-  **Deploy the function before building group 3**, not after — its own task list says a control
-  ships working or it does not ship, and the five negative cases in task 2.6 (second call
-  succeeds; another rider's id in the body still deletes only the caller; publishable key
-  refused; no token refused) can only be proven live.
+- **Account deletion has a database half and no flow.** `PD-102`. `029`–`032` are applied, the
+  Edge Function at `supabase/functions/delete-account/` has **never been deployed or run**, and
+  nothing in `src/` calls it. **Deploy it before building group 3**, not after: the five negative
+  cases in task 2.6 can only be proven live, and its own task list says a control ships working or
+  it does not ship. **Store blocker 2** — App Store 5.1.1(v).
 
   > **Recommendation** 8/10
   >
@@ -994,27 +931,14 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   > **This session** N
   >
   > needs the function deployed, which is an owner action
-- **Inbox still has no tab, but two thirds of it now exist.** Per-ride group chat shipped as `034`
-  (PD-115) and **notifications shipped 2026-08-07 as `036` (PD-118)** — a `notifications` table
-  written only by six `private` fan-out triggers, and a `/notifications` route reached from a
-  `MailboxIcon` in the header of the four tab-root screens rather than from a tab. What is left of
-  the epic is **DMs** and the tab itself; when the tab returns, `/notifications` becomes
-  `/inbox/notifications`. The owner decided PD-100's open question — *build the epic, or hide the
-  tab* — in favour of hiding it, so the nav is **four tabs**: Home, Rides, Clubs, Profile. Verify
-  rather than trust this line, and **scope the range before you count**:
 
-  ```bash
-  sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep -c "href:"
-  ```
-
-  A bare `grep -c "href:"` on that file reads **9**, not 4: four nav rows, four `STICKY_ACTIONS`
-  entries, and the `href: string` inside the `Record` type annotation. The `UNBUILT` set, the
-  `aria-disabled` span and the `MailboxIcon` import all went with the tab — there is no
-  disabled-tab machinery left to reuse, which is deliberate.
-
-  **The design still draws five**, so the tab's absence looks like an omission to anyone
-  reading Figma rather than this file. `Navbar.tsx`'s own docstring carries the reason at the
-  point of temptation; that is the copy to keep current, not this one.
+- **Inbox still has no tab, and DMs are what is left of the epic.** Per-ride chat (`034`, PD-115)
+  and notifications (`036`, PD-118) both shipped; the tab was dropped rather than built (PD-100),
+  so the nav is four tabs and `/notifications` will become `/inbox/notifications` when it returns.
+  **The design still draws five**, so its absence reads as an omission to anyone in Figma rather
+  than here — `Navbar.tsx`'s own docstring carries the reason at the point of temptation, and that
+  is the copy to keep current. `CLAUDE.md` §Product Scope holds the scoped grep that counts the
+  tabs, including why a bare `grep -c "href:"` reads 9.
 - **The swipe deck only moves forward.** A swipe in either direction advances, per the product
   owner, so there is no way back except "Start over". **Decided, not a defect** — no issue, and
   nothing to fix.
@@ -1160,25 +1084,16 @@ seeding.
 
 ---
 
-## Open questions for the product owner
+## Where the open questions live
 
-1. **The Site URL and redirect allowlist on `letsride` — re-measure before assuming either way.**
-   Confirmation being on makes the emailed link the whole signup flow, and a Site URL of
-   `http://localhost:3000` with the production origin off the allowlist sends every one of those
-   links to a dead address. `PD-88` reports it fixed and the probe agreed on 2026-08-07, but a
-   dashboard setting has no file behind it and nothing marks it done except re-running the probe
-   — `docs/ENVIRONMENTS.md` §The redirect allowlist, one credential-free line.
-2. **Branch protection is not enabled on `main` — and now needs to cover `development` too**,
-   which doubled the exposure rather than adding a second nicety: there are now two branches a
-   stray push can land on, and one of them deploys to riders. An agent session cannot enable it
-   — the GitHub MCP server has no branch-protection tool and the REST endpoint 403s. Needs a
-   human in the repo settings. Recommended for both: require a PR, require **`Type Check, Lint
-   & Build`** and **`RLS Policy Tests`** (the job `name:` values in `ci.yml`), require branches
-   up to date, no bypass. With agents pushing, this is what makes "CI is the safety net" true
-   rather than aspirational.
-3. **The 🟠-prefixed Figma sections** — are they dead explorations that can be deleted? They are
-   the OLD stylesheet marked "In progress", which makes them look newer than the `Done` v2 flows
-   beside them. Decision #4 says build from `v2 /` and ignore them.
+**Linear's `Needs decision` and `Todo Human` columns, not here** — that is the
+column's whole job, and a second copy is the one that goes stale. `PD-185` (branch protection on
+both long-lived branches) and `PD-186` (the 🟠-prefixed Figma sections) were moved there on
+2026-08-10; both had existed only in this file.
+
+One that is *not* a question and keeps getting re-asked: the Site URL and redirect allowlist on
+`letsride`. `PD-88` closed it, and a dashboard setting has no file behind it — so re-run the
+credential-free probe in `docs/ENVIRONMENTS.md` §The redirect allowlist rather than reopening it.
 
 ---
 
