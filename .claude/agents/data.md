@@ -22,9 +22,11 @@ an applied one, and nothing in CI can tell the difference.
 
 **Probe with a name off your own `tools:` line, never a plausible-sounding one.** A tool absent
 because this brief never listed it is *scoping*, and it is byte-identical to a rotation — same
-`No such tool available`, same silence around it. Measured 2026-08-10: a subagent probed
-`list_projects`, which no brief here carries, and reported the database lost while `execute_sql`
-answered under its unchanged name. `apply_migration` and `execute_sql` are the two you hold that
+`No such tool available`, same silence around it. Measured 2026-08-10: a subagent **on this brief**
+probed `list_projects`, which the `tools:` line above does not carry, and reported the database
+lost while `execute_sql` answered under its unchanged name. `list_projects` is a real tool and
+`test.md` holds it — "is it declared *here*" is the only question that decides this, so the rule
+is never "not `list_projects`". `apply_migration` and `execute_sql` are the two you hold that
 prove the most, since they are what a migration actually needs.
 
 ## Before you change anything

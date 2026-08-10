@@ -352,6 +352,20 @@ describe('agent briefs do not describe a world that has moved on', () => {
      * keyword search and the qualified `mcp__Supabase__execute_sql` in a
      * `select:`, and both are correct usage of ToolSearch.
      *
+     * **The counter-example's formatting is load-bearing.** Every brief's prose
+     * names `list_projects` as the name that was wrongly probed, and it stays
+     * invisible to this test only because it is written as a bare
+     * `` `list_projects` `` — no `+`, no `select:`. Reformat it into the keyword
+     * form the same paragraph demonstrates two lines above and the test starts
+     * asserting against the counter-example.
+     *
+     * That fails LOUDLY in six briefs and SILENTLY in test.md, which is the one
+     * that declares `mcp__Supabase__list_projects` — the suffix match just
+     * succeeds. So the dangerous edit is reformatting test.md ALONE; a sweep
+     * across all seven trips six red assertions and stops. Recorded because
+     * fixing test.md in isolation is precisely what the review of this commit
+     * asked for, so the next editor here is likelier than average to do it.
+     *
      * The both-ways half is `probes.length`. Without it every regex here could
      * stop matching — a brief rewording `+execute_sql supabase` into prose, say
      * — and the test would pass by examining nothing, which is this repo's

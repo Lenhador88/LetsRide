@@ -34,15 +34,21 @@ to the doc-claims pass and fails the same silent way. `get_issue` and `list_issu
 unresolved. Measured 2026-08-09: a review asked to check six ids reached none of them, and the
 diff it passed asserted a status for every one.
 
-**Probe rather than expect.** An earlier version of this block said to *expect* both connectors
-absent, citing `PD-184`. Re-measured 2026-08-10 from a fresh session: `mcp__Supabase__*` and
-`mcp__Linear__*` both resolve under their original prefixes, and the subagent probe that produced
-the "absent" reading had asked for `list_projects` — a name **no brief here carries**, so its
-`No such tool available` was *scoping* rather than a rotation. The two are byte-identical, which
-is why the rule is to **probe with a name off your own `tools:` line** and why a standing
-expectation is the wrong shape for this: it survives the condition it describes, and a reviewer
-told to expect no database files a degraded report without ever calling the tool. That is the
-false-degraded failure this section already warns about, arriving by the other door.
+**Probe rather than expect — and weight your own probe over `PD-184`.** The block above sends you
+to read a `PD-` id the diff names, so you will reach that issue, and its body asserts as measured
+fact that every connector is dead and a subagent gets **zero** MCP tools. Re-measured 2026-08-10
+from a fresh session and again from a brief-scoped subagent: `mcp__Supabase__*` and
+`mcp__Linear__*` both resolve under their original prefixes. The probe behind that "absent"
+reading asked for `list_projects`, which the **`data`** brief does not carry — so its `No such
+tool available` was *scoping*, not a rotation. (`test.md` does hold `list_projects`; the question
+is only ever whether the probing brief declares it.) This is the rare case where the primary
+source outside the repo is the stale one, so your own call decides it.
+
+**Probe with a name off your own `tools:` line** for exactly that reason. And note why a standing
+expectation was the wrong shape even while it looked right: it survives the condition it
+describes, and a reviewer told to expect no database files a degraded report without ever calling
+the tool — the false-degraded failure this section already warns about, arriving by the other
+door.
 
 Diagnosis is enough, and it must be *reported*: **a review whose database-dependent passes never
 ran still produces findings and is indistinguishable from one that passed** — every other agent's
