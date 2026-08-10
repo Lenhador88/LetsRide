@@ -1001,8 +1001,9 @@ node -p "Math.round(require('fs').statSync('.claude/agents/reviewer.md').size/4)
 
 So `reviewer` costs ~42k before it reads one line of the diff. **Delegate when the agent will read
 more than ~40k of material and return a paragraph.** `Explore` sweeping forty files for one
-conclusion clears that easily. A subagent that just runs the build does not — a green run is 2–4k
-of output, so it spends ~34k to save ~3k.
+conclusion clears that easily. A subagent that just runs the build does not — a green run is ~1k
+of output — `tsc` prints nothing, lint 3.4k, `test:unit` 0.6k — so it spends ~38k, its own brief
+included, to save ~1k.
 
 **`reviewer` is exempt from this arithmetic and is never skipped on cost.** Its value is that it
 did not write the code, and that cannot be bought more cheaply.
@@ -1093,7 +1094,7 @@ that line resolves in favour of delegating. **`reviewer` before every PR is the 
 one**; the rest is judgement. A session has already deferred to that harness line, shipped
 unreviewed, and paid for it in a follow-up PR.
 
-**Default to the session that is already open.** A session's fixed cost is ~55k tokens before it
+**Default to the session that is already open.** A session's fixed cost is ~54k tokens before it
 reads a line of code — this file, plus the handoff its first line tells you to read — and that
 cost is paid **per session, not per fix**. Five quick fixes in five parallel sessions is five
 copies of it; five fixes in one session is one:
@@ -1105,7 +1106,7 @@ cat CLAUDE.md docs/HANDOFF.md | wc -c    # /4 for tokens
 **Spawn a second session only when the work is genuinely independent *and* long enough to earn
 that back.** The test is deliberately **not** "is this a quick fix" — you usually cannot tell
 before starting, and a rule needing that answer upfront does not survive contact. The test is
-whether the two tracks would block each other, and whether each is worth more than the ~55k it
+whether the two tracks would block each other, and whether each is worth more than the ~54k it
 costs to start one.
 
 This is also the only lever that touches the collision problem at its root: `docs/HANDOFF.md` and

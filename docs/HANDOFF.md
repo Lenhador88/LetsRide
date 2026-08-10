@@ -280,7 +280,7 @@ build work, the rest are the owner's.
 | 1 | **The shell itself** | **Started 2026-08-07.** `capacitor.config.ts` and the secure store are in; `ios/` and `android/` are not, and cannot be generated here. **Gated on the static-export route decision** — see §The shell, below |
 | 2 | **Account deletion — database half done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, Edge Function **written but never deployed or run**. Nothing in `src/` points at it. Groups 3 and 4 of `openspec/changes/add-account-deletion/` remain |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
-| 4 | **No edit or delete UI for rides or clubs** | Create a ride, never cancel or correct it. Postcards, comments and profile all have working delete/update UI; for rides and clubs there is no action *at all* (no `deleteRide`, `updateRide`, `deleteClub`, `updateClub`) while all four RLS policies exist live. An empty action layer, not an unwired UI |
+| 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/[id]/edit` and `/clubs/[id]/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
 | 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
@@ -293,7 +293,8 @@ will not.
 **The queue is Linear's** — label `Owner only`, which is how these surface without anyone reading
 this far into a file. `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c label="Owner only"`
 is the live list; the table that used to sit here was a second copy of it and is gone. **This
-section keeps only what an issue body has no room for: the commands.**
+section keeps only what an issue body has no room for: the commands, and the two caveats that
+explain why an item is not optional.**
 
 **Re-measure before quoting any of them.** Two `Owner only` issues in a row have been found
 already-fixed (`PD-88`, the Site URL and redirect allowlist; `PD-93`, pinning `defaultMode`), and
@@ -302,7 +303,7 @@ nothing marks it done except someone re-measuring.** The credential-free probes 
 `docs/ENVIRONMENTS.md` §The redirect allowlist.
 
 Every one is a dashboard click or a credential a human holds, so **ask for them rather than
-working around them.** Two carry detail worth having at hand:
+working around them.** Three carry detail worth having at hand:
 
 1. **`PD-90` — enable `UpdatePasswordRequireCurrentPassword`.** Worth knowing *why* it is not
    optional: it is what actually closes the recovery hole `026` can only gate at the app's front
@@ -502,12 +503,13 @@ timeout:**
 
 ---
 
-## The two open OpenSpec changes, and the collision between them
+## The open OpenSpec changes, and the collision between two of them
 
-**`npm run openspec -- list --json` is the live view** — read it rather than a table here, which
-is how the previous one came to describe `add-ride-club-edit-delete` as in flight months after
-`PD-101` reached production. Status per change belongs to Linear; the *content* belongs to the
-change directory. What follows is only what neither of those two places holds.
+**`npm run openspec -- list --json` is the live view** — read it rather than a table here. Six
+are in flight as of 2026-08-10, and `add-ride-club-edit-delete` is one of them: `PD-101` shipped
+to production, but the change sits at 42/44 in `changes/` rather than `archive/`, so **archiving
+it is a real outstanding action** rather than a bookkeeping detail. Status per change belongs to
+Linear; the *content* belongs to the change directory. What follows is only what neither holds.
 
 **`add-account-deletion` carries an open product decision inside it — the postcard half of
 1.6b.** `account-erasure-cascade` claims a club with no members left holds postcards "entirely
@@ -516,7 +518,8 @@ designed to protect third-party content can destroy it. `032` fixed the *rides* 
 proposal's default for the postcards half hands the club to the author of the oldest surviving
 postcard — which gives a club to someone who never joined it. Decide it before group 3.
 
-**The two changes collide, and OpenSpec will not warn you.** Both carry a delta modifying
+**`enforce-creator-membership` and `add-account-deletion` collide, and OpenSpec will not warn
+you.** Both carry a delta modifying
 `database-enforced-integrity`'s *Club membership role SHALL NOT be self-assignable*, and
 archiving replaces a requirement wholesale — so **whichever archives second silently discards
 the first one's edit**. Both delta files now open with a coordination banner carrying the merged
@@ -541,7 +544,10 @@ publication membership is asserted, the *delivery* is not), and whether the comp
 
 **`041` through `046` were applied to PROD on 2026-08-10**, on the owner's instruction, in strict
 filename order, each digest checked against its file. **`047` and `048` followed the same day**,
-DEV first and PROD after the review pass. DEV, PROD and the repo all hold 48. The gap this
+DEV first and PROD after the review pass. DEV, PROD and the repo all hold 48. The security
+advisors agree nine-for-nine across both databases — measured 2026-08-10 with
+`get_advisors(security)`, and `047`/`048` add none, both being grant-only with no function and no
+view. `CLAUDE.md` §Supabase Rules carries the count and the shape; the *parity* is only here. The gap this
 section used to describe is closed; what remains below is the recording artefacts, which are
 permanent.
 
@@ -1078,9 +1084,9 @@ seeding.
 
 ---
 
-## Open questions for the product owner
+## Where the open questions live
 
-**These live in Linear's `Needs decision` and `Todo Human` columns, not here** — that is the
+**Linear's `Needs decision` and `Todo Human` columns, not here** — that is the
 column's whole job, and a second copy is the one that goes stale. `PD-185` (branch protection on
 both long-lived branches) and `PD-186` (the 🟠-prefixed Figma sections) were moved there on
 2026-08-10; both had existed only in this file.
