@@ -193,8 +193,23 @@ create publication supabase_realtime;
 -- execute on functions. Reproducing that is what makes a revoke test meaningful:
 -- an explicit grant needs an explicit revoke, and without these lines a test
 -- asserting "anon cannot call this" passes for the wrong reason.
+--
+-- **`grant all`, not the four DML verbs — widened for 047, and the narrower
+-- version made a whole class of assertion vacuous.** Supabase's project default
+-- is `alter default privileges in schema public grant all on tables to anon,
+-- authenticated`, and `all` is strictly wider than SELECT/INSERT/UPDATE/DELETE:
+-- it also carries TRUNCATE, REFERENCES and TRIGGER (and MAINTAIN on PG17+,
+-- which is why nothing here names privileges by relacl text — CI runs
+-- postgres:17 and a developer box may be 16).
+--
+-- 047 revokes TRUNCATE/REFERENCES/TRIGGER from the five tables 001 created. With
+-- the old four-verb line those three were never granted here in the first place,
+-- so every "authenticated cannot TRUNCATE" assertion passed on a database where
+-- the grant had never existed — measured 2026-08-10, all five reading false
+-- before 047 was written. That is the harness failing open: the assertion tests
+-- 047 only if the starting state is the hosted one.
 alter default privileges in schema public
-  grant select, insert, update, delete on tables to anon, authenticated;
+  grant all on tables to anon, authenticated;
 alter default privileges in schema public
   grant execute on functions to anon, authenticated;
 
