@@ -1,0 +1,359 @@
+-- 048: `postcard_comments.created_at`, `club_members.joined_at` and
+--      `ride_members.joined_at` become server-owned. PD-181.
+--
+-- The third instalment of the pattern `044`, `045` and `046` established: a
+-- timestamp a list SORTS on must not be writable by the rider it sorts. `044`
+-- did `postcards`, `045` did `rides` and `clubs`, and both named these three
+-- tables in their "what this file does NOT do" sections as the remainder.
+-- `045`'s footer is explicit — "`joined_at` orders the club roster and the ride
+-- crew off a client-writable column. Out of scope by the brief and filed
+-- separately". This is that file.
+--
+-- A grant-only migration. No policy, no table, no column, no trigger, no row.
+--
+-- ---------------------------------------------------------------------------
+-- The measured starting state — read at write time, not inherited
+-- ---------------------------------------------------------------------------
+-- Measured on fpmrimzxadewsaiwpsel 2026-08-10 from `pg_class.relacl` and
+-- `pg_attribute.attacl`, and cross-read against
+-- `information_schema.column_privileges` scoped to `grantee = 'authenticated'`.
+-- **All three tables are at the pre-`041` shape: everything table-level,
+-- `attacl` NULL on every column of all three.**
+--
+--   postcard_comments  relacl  authenticated=ard/postgres     (INSERT, SELECT,
+--                                                              DELETE — no UPDATE)
+--   club_members       relacl  authenticated=arwdDxtm/postgres
+--   ride_members       relacl  authenticated=arwdDxtm/postgres
+--
+-- So INSERT covers every column on all three, and UPDATE covers every column on
+-- the two membership tables. `postcard_comments` has no UPDATE grant at all.
+--
+-- **Both verbs are read, not just the one the story is about.** That is `044`'s
+-- lesson stated as a rule: `041` made only UPDATE column-level on `postcards`
+-- and left INSERT table-level, so `created_at` stayed writable and the row could
+-- still be *born* back-dated. Closing one verb alone is not closing the hole.
+--
+-- ---------------------------------------------------------------------------
+-- What each column actually does, and why this is worse than `045`'s half
+-- ---------------------------------------------------------------------------
+--   postcard_comments.created_at   `src/lib/data/comments.ts:32` orders
+--                                  `created_at` ASCENDING. A comment written
+--                                  with a back-dated value sits at the TOP of
+--                                  the thread — the reply position, above the
+--                                  comments it is answering — permanently, for
+--                                  every viewer.
+--   club_members.joined_at         `getClubMembers` (`src/lib/data/clubs.ts:499`)
+--                                  orders `joined_at` ASC.
+--   ride_members.joined_at         `getRideCrew` (`src/lib/data/rides.ts:423`)
+--                                  orders `joined_at` ASC.
+--
+-- **Both rosters are LIMIT-bounded, and that makes this sharper than a sort.**
+-- `CLUB_ROSTER_LIMIT` and `RIDE_CREW_LIMIT` are both 200, and each read is
+-- `.order('joined_at').limit(200)` with no pagination — the lists truncate
+-- rather than page, which their own docstrings record as the honest trade until
+-- pagination gets a design. So a rider writing `joined_at = '1970-01-01'` does
+-- not merely appear first: they guarantee themselves a place INSIDE the
+-- truncation window and push a genuine member out of it. On the ride crew,
+-- first place is also the avatar row on the ride card. `045`'s `rides.created_at`
+-- had no reader at all and was closed pre-emptively; all three of these have a
+-- live reader today.
+--
+-- **A `default now()` is the VALUE, never the GUARANTEE** — it applies only when
+-- the column is OMITTED, and PostgREST lets a client name any column it holds a
+-- grant on. All three columns already default `now()`; that is why the grant is
+-- the fix and no new default is needed.
+--
+-- ---------------------------------------------------------------------------
+-- Every live write path, read out of the source BEFORE the lists were written
+-- ---------------------------------------------------------------------------
+-- A missing column silently breaks a write, so each payload was read from
+-- `src/lib/actions/` and — where the statement had ever run on DEV — confirmed
+-- against the SQL PostgREST actually emitted, recovered from
+-- `pg_stat_statements`. That second step is not decoration; see the upsert below.
+--
+--   createComment (`addComment`, actions/comments.ts:46)
+--       .insert({ postcard_id, author_id, body })
+--   createClub    (actions/clubs.ts:126)  -- the owner's own membership row
+--       .insert({ club_id, user_id, role: 'owner' })
+--       emitted: INSERT INTO club_members("club_id","role","user_id")
+--   joinClub      (actions/clubs.ts:252)
+--       .upsert({ club_id, user_id }, { onConflict, ignoreDuplicates: true })
+--       `ignoreDuplicates` makes this ON CONFLICT DO NOTHING, so it needs NO
+--       update privilege. `role` is left to its default on purpose.
+--   leaveClub / setRideAttendance(null)   DELETE only — no grant involved
+--   createRide    (actions/rides.ts:125)  -- the organizer's own crew row
+--       .insert({ ride_id, user_id, status: 'going' })
+--   setRideAttendance (actions/rides.ts:186) -- an UPSERT, and the trap
+--       .upsert({ ride_id, user_id, status }, { onConflict: 'ride_id,user_id' })
+--
+-- **The upsert decides `ride_members`' UPDATE list, and reasoning about it would
+-- have got it wrong.** With no `ignoreDuplicates`, PostgREST emits
+-- `ON CONFLICT DO UPDATE` and puts **every column of the payload in the SET
+-- list, including the two conflict columns**. Recovered verbatim from
+-- `pg_stat_statements` on fpmrimzxadewsaiwpsel 2026-08-10:
+--
+--   INSERT INTO "public"."ride_members"("ride_id", "status", "user_id") ...
+--     ON CONFLICT("ride_id", "user_id")
+--     DO UPDATE SET "ride_id"  = EXCLUDED."ride_id",
+--                   "status"   = EXCLUDED."status",
+--                   "user_id"  = EXCLUDED."user_id"
+--
+-- So `ride_members` needs UPDATE on all three of `ride_id`, `user_id` and
+-- `status`. Granting only `status` — the intuitive "you may change your RSVP"
+-- list, and what a reader of the action's own payload would write — takes every
+-- repeat RSVP down with 42501 on the second tap. `joined_at` is the only column
+-- that comes out.
+--
+-- ---------------------------------------------------------------------------
+-- Is `ride_members.ride_id` safe to leave updatable? Measured, not assumed
+-- ---------------------------------------------------------------------------
+-- It has to stay for the upsert, so the question is whether that is a hole. The
+-- UPDATE policy is `using (auth.uid() = user_id)` `with check (auth.uid() =
+-- user_id)` and mentions the ride not at all — unlike the INSERT policy, which
+-- carries an `EXISTS` against `rides`. Read alone, that says a rider can PATCH
+-- their own crew row onto ANY ride id, including a private club's ride they
+-- cannot see, injecting themselves into its crew roster.
+--
+-- **They cannot, and the reason is the SELECT policy rather than the UPDATE
+-- one.** Probed on fpmrimzxadewsaiwpsel 2026-08-10 in rolled-back transactions
+-- with the hosted identity idiom:
+--
+--   swap own crew row onto a PUBLIC ride (visible) .............. SUCCEEDED
+--   swap own crew row onto own PRIVATE ride (visible) ........... SUCCEEDED
+--   swap own crew row onto ANOTHER rider's PRIVATE ride ......... 42501
+--       "new row violates row-level security policy for table ride_members"
+--
+-- The refusal tracks the NEW row's visibility under the `ride_members` SELECT
+-- policy, whose qual opens with `EXISTS (select 1 from rides r where r.id =
+-- ride_id)` evaluated under the caller's own RLS. So the ride-visibility check
+-- the UPDATE policy appears to be missing is supplied by the SELECT policy, and
+-- leaving `ride_id` updatable costs nothing today. Recorded because the next
+-- reader of that policy will have the same worry, and because it means the
+-- guarantee lives somewhere non-obvious: anyone narrowing the `ride_members`
+-- SELECT policy is also, silently, editing what an UPDATE may do.
+--
+-- ---------------------------------------------------------------------------
+-- `club_members` UPDATE: the grant is real and entirely dead
+-- ---------------------------------------------------------------------------
+-- `authenticated` holds a table-level UPDATE grant, and **there is no UPDATE
+-- policy on `club_members` at all** — so every client UPDATE is refused by RLS
+-- regardless of the grant, and no path in `src/` issues one. `036` §7.6 already
+-- relies on this: "there is NO UPDATE policy on the table at all — so nobody can
+-- insert an admin and nobody can promote one".
+--
+-- The list below therefore changes nothing observable. It is still narrowed,
+-- for `045`'s reason: the foreseeable UPDATE policy here is member promotion
+-- (`club_members.role` has held `admin` since `001` and nothing writes it, and
+-- invitations are a logged gap). The day that policy lands, a table-level grant
+-- hands it `joined_at` as well as `role` — seniority in a roster that sorts on
+-- it — with no line of that migration mentioning timestamps. Narrowing now means
+-- the later migration has to name what it wants.
+--
+-- `club_id` and `user_id` stay in the UPDATE list rather than being trimmed to
+-- `role` alone. Trimming them would be a second, unrelated decision about what a
+-- promotion feature may do, made in a file about timestamps and with no policy
+-- in existence to test it against; PD-181 is `joined_at`, so `joined_at` is what
+-- comes out. Named here so the restraint reads as a choice.
+--
+-- ---------------------------------------------------------------------------
+-- `postcard_comments.updated_at` comes out too
+-- ---------------------------------------------------------------------------
+-- Not in PD-181, and it is one column of the same INSERT list, so it is decided
+-- here rather than left for a fourth file.
+--
+--   * The table has **no UPDATE grant and no UPDATE policy** — editing a comment
+--     is not designed, and `011` says so. So `updated_at` can never legitimately
+--     move after insert.
+--   * `postcard_comments_set_updated_at` exists and is **BEFORE UPDATE ROW**
+--     (`tgtype` 19, measured) — so like `044`'s finding on `postcards`, nothing
+--     stamps it on INSERT. A client can name it freely today.
+--   * Which means the only value it can ever hold is the one supplied at birth,
+--     and a comment that can never be edited could be born claiming it was
+--     edited in the year 3000. That is not a sort key, so nothing renders it —
+--     it is simply a column that can only ever be false.
+--
+-- `id` STAYS insertable on all three tables that have one. CLAUDE.md requires
+-- client-generated UUIDs for anything the client may create offline, so a
+-- replayed mutation lands as a 23505 rather than a duplicate; `034`, `044` and
+-- `045` all keep it for that reason.
+--
+-- ---------------------------------------------------------------------------
+-- Nothing server-side is affected
+-- ---------------------------------------------------------------------------
+-- Every function and trigger that writes these three tables was enumerated
+-- (`pg_proc` scanned for the table names, `pg_trigger` for all three relations):
+--
+--   private.transfer_owned_clubs   UPDATEs club_members. `security definer`, so
+--                                  it runs as its OWNER and a grant on
+--                                  `authenticated` does not apply to it. `029`
+--                                  through `032` are untouched by this file.
+--   private.notify_club_joined     AFTER INSERT on club_members
+--   private.notify_ride_joined     AFTER INSERT on ride_members
+--   private.notify_postcard_commented  AFTER INSERT on postcard_comments
+--                                  All three `security definer`, all three write
+--                                  `notifications` and none of them writes the
+--                                  table it fires on. `036` is unaffected.
+--   enforce_participation_gate     BEFORE INSERT on all three (`tgtype` 7). It
+--                                  raises or returns NEW; it writes nothing, and
+--                                  the three tables stay covered — this file
+--                                  adds and removes no trigger.
+--   public.moderate_comment        DELETEs one comment. `security definer`,
+--                                  and DELETE grants are untouched anyway.
+--
+-- Retention and reach are unchanged: no table, no column and no personal data is
+-- added. Account deletion still reaches all three through the cascades from
+-- `profiles` that `029`–`032` rely on, none of which consults a table grant.
+
+-- ---------------------------------------------------------------------------
+-- §1. postcard_comments — INSERT only; there is no UPDATE grant to narrow
+-- ---------------------------------------------------------------------------
+-- A table-level revoke clears any column grants with it — measured on this
+-- database for `044` and relied on again — so each list below is the WHOLE
+-- surface rather than a delta. A column omitted from it holds no privilege.
+--
+--   id ............ client-suppliable, for the offline-UUID convention
+--   postcard_id ... required; the INSERT policy's EXISTS is on it
+--   author_id ..... required — the INSERT policy is `author_id = auth.uid()`
+--   body .......... the rider's text
+--   created_at .... ABSENT: the thread's ASC sort key. The point of the file
+--   updated_at .... ABSENT: see the header; the table has no UPDATE path at all
+--
+-- SELECT and DELETE stay table-level and are untouched. `created_at` must stay
+-- readable — the thread sorts on it and `formatRelativeTime` renders it — and
+-- DELETE is what `011`'s policy and `moderate_comment` both rest on.
+--
+-- **NO UPDATE GRANT IS ADDED.** `011` designed comment editing out, there is no
+-- UPDATE policy, and a `grant update (...)` here would be the thing that
+-- created the capability. Stated because the symmetry with §2 and §3 invites it.
+revoke insert on public.postcard_comments from authenticated;
+grant insert (id, postcard_id, author_id, body)
+  on public.postcard_comments to authenticated;
+
+comment on column public.postcard_comments.created_at is
+  'Server-owned since 048 (PD-181). `authenticated` holds SELECT and neither INSERT nor UPDATE, so the value can only come from `default now()` — a default applies solely when the column is OMITTED, and PostgREST lets a client name it, so the grant is the guarantee and the default is only the value. src/lib/data/comments.ts orders this column ASCENDING, so while it was writable a commenter could pin their comment to the TOP of a thread — above the comments it replies to — permanently and for every viewer. 044 closed the identical defect on postcards.created_at.';
+
+comment on column public.postcard_comments.updated_at is
+  'Server-owned since 048 (PD-181). `authenticated` holds SELECT and neither INSERT nor UPDATE. The table has no UPDATE grant and no UPDATE policy — editing a comment is not designed (011) — and `postcard_comments_set_updated_at` is BEFORE UPDATE only, so nothing ever stamped this on INSERT. While it was insertable, a comment that can never be edited could be born claiming an edit in the year 3000.';
+
+-- ---------------------------------------------------------------------------
+-- §2. club_members — both verbs
+-- ---------------------------------------------------------------------------
+-- INSERT covers `createClub`'s (club_id, role, user_id) and `joinClub`'s
+-- (club_id, user_id); `role` is required by the former and defaulted by the
+-- latter. `joined_at` is the roster's ASC sort key and comes out.
+revoke insert on public.club_members from authenticated;
+grant insert (club_id, user_id, role)
+  on public.club_members to authenticated;
+
+-- Dead today — no UPDATE policy exists, so RLS refuses every client UPDATE
+-- whatever this says. Narrowed anyway, so a future member-promotion policy
+-- cannot inherit `joined_at` for free. See the header.
+revoke update on public.club_members from authenticated;
+grant update (club_id, user_id, role)
+  on public.club_members to authenticated;
+
+comment on column public.club_members.joined_at is
+  'Server-owned since 048 (PD-181). `authenticated` holds SELECT and neither INSERT nor UPDATE. getClubMembers (src/lib/data/clubs.ts) orders this ASC and caps the read at CLUB_ROSTER_LIMIT = 200 with no pagination, so a back-dated value did not merely put a rider at the top of the roster — it guaranteed them a place inside the truncation window and pushed a genuine member out of it.';
+
+-- ---------------------------------------------------------------------------
+-- §3. ride_members — both verbs, and the UPDATE list is the upsert's
+-- ---------------------------------------------------------------------------
+-- INSERT covers `createRide`'s organizer crew row and any plain join.
+revoke insert on public.ride_members from authenticated;
+grant insert (ride_id, user_id, status)
+  on public.ride_members to authenticated;
+
+-- **All three columns are REQUIRED, not tidy.** `setRideAttendance` is an
+-- upsert, and PostgREST's `ON CONFLICT DO UPDATE` SET list contains every
+-- payload column including the two conflict columns — recovered verbatim from
+-- pg_stat_statements, quoted in the header. Granting only `status` here would
+-- fail every repeat RSVP with 42501.
+revoke update on public.ride_members from authenticated;
+grant update (ride_id, user_id, status)
+  on public.ride_members to authenticated;
+
+comment on column public.ride_members.joined_at is
+  'Server-owned since 048 (PD-181). `authenticated` holds SELECT and neither INSERT nor UPDATE. getRideCrew (src/lib/data/rides.ts) orders this ASC and caps the read at RIDE_CREW_LIMIT = 200 with no pagination, so a back-dated value guaranteed a place inside the truncation window ahead of genuine crew — and first place is also the avatar row on the ride card. The column is NOT in the UPDATE grant even though ride_id, user_id and status are: those three are required by setRideAttendance''s upsert, whose ON CONFLICT DO UPDATE SET list carries every payload column.';
+
+-- No grant of any kind is issued to `anon` by this file — decision #1, and 007
+-- revoked the last of them. Asserted in the suite by naming the role.
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+-- 1. Both verbs on all three tables, scoped to the grantee. A table-wide count
+--    reads wrong, because postgres and service_role hold everything by default.
+--
+--   select table_name, privilege_type,
+--          string_agg(column_name, ',' order by column_name)
+--     from information_schema.column_privileges
+--    where table_schema='public'
+--      and table_name in ('postcard_comments','club_members','ride_members')
+--      and grantee='authenticated' and privilege_type in ('INSERT','UPDATE')
+--    group by table_name, privilege_type order by table_name, privilege_type;
+--   -- club_members      INSERT  club_id,role,user_id
+--   -- club_members      UPDATE  club_id,role,user_id
+--   -- postcard_comments INSERT  author_id,body,id,postcard_id
+--   -- ride_members      INSERT  ride_id,status,user_id
+--   -- ride_members      UPDATE  ride_id,status,user_id
+--   -- (postcard_comments has NO UPDATE row — that is the correct output)
+--
+-- 2. The three timestamps, named by role on both verbs. Expect f, f, t each.
+--
+--   select t, has_column_privilege('authenticated', t, c, 'INSERT') as ins,
+--             has_column_privilege('authenticated', t, c, 'UPDATE') as upd,
+--             has_column_privilege('authenticated', t, c, 'SELECT') as sel
+--     from (values ('public.postcard_comments','created_at'),
+--                  ('public.postcard_comments','updated_at'),
+--                  ('public.club_members','joined_at'),
+--                  ('public.ride_members','joined_at')) v(t, c);
+--
+-- 3. No TABLE-level INSERT/UPDATE survives on any of the three.
+--
+--   select bool_or(has_table_privilege('authenticated', t, p))
+--     from unnest(array['public.postcard_comments','public.club_members',
+--                       'public.ride_members']) t,
+--          unnest(array['INSERT','UPDATE']) p;                        -- f
+--
+-- 4. The defaults still supply what the grant now reserves, or every insert
+--    fails NOT NULL instead of getting a wrong timestamp. All three now().
+--
+--   select attrelid::regclass::text, attname, pg_get_expr(adbin, adrelid)
+--     from pg_attribute a join pg_attrdef d
+--       on d.adrelid=a.attrelid and d.adnum=a.attnum
+--    where a.attrelid in ('public.postcard_comments'::regclass,
+--                         'public.club_members'::regclass,
+--                         'public.ride_members'::regclass)
+--      and a.attname in ('created_at','updated_at','joined_at');
+--
+-- 5. No policy moved. TEN policies across the three tables — club_members 3
+--    (SELECT/INSERT/DELETE), postcard_comments 3 (SELECT/INSERT/DELETE),
+--    ride_members 4 (those three plus UPDATE).
+--
+--   select tablename, cmd, md5(coalesce(qual,'')), md5(coalesce(with_check,''))
+--     from pg_policies where schemaname='public'
+--      and tablename in ('postcard_comments','club_members','ride_members')
+--    order by 1, 2;
+--
+-- 6. The live write paths, in a ROLLED-BACK transaction with the HOSTED idiom
+--    (`set local request.jwt.claims`), not the suite's `test.uid`. The upsert is
+--    the one that matters: run `setRideAttendance` TWICE for the same rider on
+--    the same ride, because the first is an insert and only the second exercises
+--    the ON CONFLICT DO UPDATE path this file's §3 grant list exists for.
+--
+-- 7. The advisors. This file adds no function and no view, so DEV must stay at
+--    NINE — anything else means a revoke did not land.
+--
+-- ROLLBACK, if this ever has to come out:
+--
+--   grant insert on public.postcard_comments to authenticated;
+--   grant insert, update on public.club_members to authenticated;
+--   grant insert, update on public.ride_members to authenticated;
+--
+-- ORDERING: none against 047, which touches only TRUNCATE/REFERENCES/TRIGGER and
+-- shares not one privilege with this file. Against 041–046 there is none either
+-- — no table here is touched by any of them. But note the class of trap `046`
+-- documented: this file issues ABSOLUTE `revoke` + `grant (...)` lists rather
+-- than deltas, so any LATER migration re-granting these tables must restate the
+-- full list or it will silently reinstate what this one removed.

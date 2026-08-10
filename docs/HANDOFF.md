@@ -64,10 +64,10 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1010/1010 across 38 files
+npm run test:unit                     # 1011/1011 across 38 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 10 dynamic routes
-PGPASSWORD=postgres npm test          # 1180 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 1213 assertions, 0 failures
 ```
 
 **Two traps in running that, both of which produce a confident wrong answer first:**
@@ -316,9 +316,11 @@ working around them.**
    actually closes the recovery hole `026` can only gate at the app's front door — GoTrue's
    `PUT /auth/v1/user` accepts a password change from any live session, measured.
 3. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
-   security advisor that is not deliberate. `get_advisors(security)` returns **nine** against DEV and
-   **eight** against PROD — the gap is `043`'s `delete_owned_club`, applied to DEV only. Every other
-   one is there on purpose and `CLAUDE.md` §Supabase Rules names each.
+   security advisor that is not deliberate. `get_advisors(security)` returns **nine against both**
+   — measured 2026-08-10, after `041`–`046` reached PROD. The gap this line used to describe was
+   `043`'s `delete_owned_club` being DEV-only, and it closed with that promotion; the two databases
+   now agree advisor for advisor. Every other one is there on purpose and `CLAUDE.md` §Supabase
+   Rules names each. `047` and `048` add none — both are grant-only, with no function and no view.
 4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
    serves nothing, with no alert. Needed before anything resembling launch. It also breaks
    account deletion specifically: a rider who cannot reach a paused project cannot delete their
@@ -366,8 +368,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1180**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch) |
-| Unit tests | `npm run test:unit` — **1010 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1213**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly) |
+| Unit tests | `npm run test:unit` — **1011 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -562,12 +564,37 @@ Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
 Inbox or push exists.
 
-## Migrations — DEV and PROD are LEVEL at `046`, and eight things will read as drift
+## Migrations — DEV and PROD are LEVEL at `048`, and ten things will read as drift
 
 **`041` through `046` were applied to PROD on 2026-08-10**, on the owner's instruction, in strict
-filename order, each digest checked against its file. DEV, PROD and the repo all hold 46. The gap
-this section used to describe is closed; what remains below is the recording artefacts, which are
+filename order, each digest checked against its file. **`047` and `048` followed the same day**,
+DEV first and PROD after the review pass. DEV, PROD and the repo all hold 48. The gap this
+section used to describe is closed; what remains below is the recording artefacts, which are
 permanent.
+
+**`047` and `048` need no gate and no ordering, against each other or against anything.** Both are
+grant-only — no policy, no table, no column, no trigger, no row — so neither starts new code inside
+a rider's transaction the way `036` did, and neither has a relationship to a code deploy in either
+direction. They share not one privilege: `047` touches TRUNCATE/REFERENCES/TRIGGER and `048`
+touches INSERT/UPDATE, on sets that overlap only in which tables they name.
+
+```
+047   revoke truncate, references, trigger on the five tables 001 created
+      ROLLBACK: grant truncate, references, trigger on public.rides, public.clubs,
+                public.club_members, public.ride_members, public.profiles to authenticated;
+048   per-column insert/update on postcard_comments, club_members, ride_members
+      ROLLBACK: grant insert on public.postcard_comments to authenticated;
+                grant insert, update on public.club_members to authenticated;
+                grant insert, update on public.ride_members to authenticated;
+```
+
+**`048` carries `046`'s trap forward to three more tables**: it issues ABSOLUTE `revoke` + `grant
+(…)` lists rather than deltas, so any later migration re-granting these three must restate the
+whole list or it silently reinstates what this one removed — with no error and nothing red.
+
+**Once `047`/`048` are on PROD, `git revert` of the squash commit is NOT the rollback path.** It
+would take the files out of the repo while the grants stay applied, which is precisely the drift
+`npm run db:drift` exists to catch. The rollback is the SQL above.
 
 **The order they were applied in still matters, because a *partial* apply can pick a failing one.**
 `041 → 044 → 046` is required. `041 → 044` fails **loudly** (`044` grants `insert (… ride_id)`,
@@ -601,9 +628,8 @@ rather than trust this; it is exactly the kind of line that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 46 rows, ending 20260810022117 046_postcards_authorship_needs_a_grant
-#   PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 040_locality_centroid
-ls supabase/migrations/ | wc -l          # 46
+#   both projects: 48 rows, ending 048_membership_timestamps_server_owned
+ls supabase/migrations/ | wc -l          # 48
 ```
 
 **Applying `046` to PROD needs no gate.** One revoke/grant pair and one column comment on
@@ -672,8 +698,30 @@ apply time rather than copied, because omitting one silently retracts a grant th
 migration *names* only — and four known mismatches will look like drift to anyone who checks by
 hand:
 
-- **`npm run db:drift` no longer reports `041` through `046` missing from PROD** — they applied on
-  2026-08-10. Every remaining entry on this list is a recording artefact.
+- **`npm run db:drift` reports nothing missing from either project** — `041`–`046` applied on
+  2026-08-10 and `047`/`048` later the same day. Every remaining entry on this list is a recording
+  artefact.
+- **`047` and `048` match their files on NEITHER project, and both are comment edits rather than
+  drift.** DEV ran each file verbatim and the recorded statement was byte-identical at apply time;
+  the pre-PR review then corrected one wrong sentence in each header — `048`'s policy count (nine,
+  measured ten) and `047`'s advisor arithmetic (8+1, where `delete_owned_club` is already inside
+  the nine) — so the files moved and the rows did not. This is `037`'s class, where `039` edited
+  its comments and changed no SQL.
+
+  **PROD's rows are additionally comment-REDUCED**, which is `036`–`040`'s class: nothing can pipe
+  a file into `apply_migration`, so each was reduced to its executing statements. Neither file has
+  a `$$` body, so no `prosrc` is at stake and the reduction is total. **It was proven by an object
+  diff rather than assumed** — the stronger check `036` established. Over `postcard_comments`,
+  `club_members`, `ride_members`, `rides`, `clubs` and `profiles`, a digest of every column ACL,
+  every table ACL and every column comment is **identical on both projects**:
+
+  ```sql
+  -- md5(string_agg(...)) over pg_attribute.attacl, pg_class.relacl and col_description
+  -- DEV and PROD both: 1f1b251f28288821e3cd621ddba8edd0   (2026-08-10)
+  ```
+
+  Recompute rather than trusting that hash — it moves the day anything re-grants those six tables,
+  which is the point of recording it.
 - **DEV's `046` statement is NO LONGER byte-identical to its file, and PROD's IS.** This is the
   inverse of the drift you would expect, and it is worth reading before concluding either database
   is wrong. DEV recorded 8837 chars; the file is 9857, because the header comment **grew by 1020

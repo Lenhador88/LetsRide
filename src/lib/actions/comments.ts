@@ -118,5 +118,12 @@ export async function deleteComment(commentId: string): Promise<ActionState> {
   // Unconditional, unlike the `revalidatePath` it replaces — see the note
   // above about the gap that closes.
   invalidateThread()
+  // PD-177, and on THIS action rather than in `invalidateThread()`, which
+  // `addComment` shares: a `postcard_commented` notification is addressed to
+  // the postcard's author and never to the commenter (`036` §7.3
+  // self-suppresses), so writing a comment cannot move the writer's own list —
+  // but deleting one can, on the moderation path above, where this rider IS
+  // that author and `notifications.comment_id` cascades the row away.
+  invalidate(queryKeys.notifications.all())
   return { error: null }
 }
