@@ -2,7 +2,11 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { bootRestoreTarget, restoreAlreadyAttempted } from '@/lib/native/boot-restore'
+import {
+  bootRestoreTarget,
+  clearRestoreAttempt,
+  restoreAlreadyAttempted,
+} from '@/lib/native/boot-restore'
 
 /**
  * `/` is a resolver, not a screen (Q7/Q18) — and it is now a resolver that
@@ -48,6 +52,16 @@ export default function Home() {
     // asked for, and leaving it in history puts a blank page behind the back
     // button on the first thing they opened.
     router.replace(target)
+
+    // **Unmounting is the success signal, and it is the only one available.**
+    // A client-side replace that works takes `/` off the screen, so this runs;
+    // the failure being guarded against — Next answering a missing payload with
+    // a hard navigation — destroys the document instead, and React cleanup does
+    // not run for that. So the record survives exactly the case it bounds and
+    // is cleared in every other, which is what stops a rider who opened a deep
+    // link, used the app, and opened the same link again from getting a blank
+    // screen on a link that worked a minute earlier.
+    return () => clearRestoreAttempt(window.sessionStorage)
   }, [router])
 
   return null

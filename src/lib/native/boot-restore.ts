@@ -99,6 +99,14 @@ const RESTORE_KEY = 'letsride:boot-restore'
  * **Fails open.** A webview with storage denied loses the guard, not the
  * restore: degrading to the pre-guard behaviour is better than a shell that
  * cannot open a deep link at all.
+ *
+ * **It records an *attempt*, and `clearRestoreAttempt` is what makes it not a
+ * ban.** Without the clear, the guard cannot tell a restore that failed from one
+ * that worked, and refuses the second — so a rider who opens a deep link, uses
+ * the app, and opens the same link again gets a blank screen on a link that
+ * worked a minute earlier. The record also outlives sign-out, since
+ * `clearSessionStore` sweeps `localStorage` and the resolved store and never
+ * touches `sessionStorage`.
  */
 export function restoreAlreadyAttempted(storage: Storage, target: string): boolean {
   try {
@@ -107,5 +115,22 @@ export function restoreAlreadyAttempted(storage: Storage, target: string): boole
     return false
   } catch {
     return false
+  }
+}
+
+/**
+ * Forget the recorded attempt, because it succeeded.
+ *
+ * The caller signals success by *unmounting* `/` — a client-side replace that
+ * works takes the root page off the screen, while the failure being bounded
+ * (a hard navigation onto a document that was never emitted) tears the document
+ * down without running React cleanup. So the record survives precisely the case
+ * it exists for.
+ */
+export function clearRestoreAttempt(storage: Storage): void {
+  try {
+    storage.removeItem(RESTORE_KEY)
+  } catch {
+    // Same direction as the write: a denied store loses the guard, not the app.
   }
 }

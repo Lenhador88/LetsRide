@@ -74,11 +74,15 @@ const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1'
  * swallow `/clubs/new` and `/clubs/explore`, and `/rides/:id` would swallow
  * `/rides/detail` itself — sending every detail screen to
  * `/rides/detail?id=detail` in a loop. Verified against the built app rather
- * than reasoned about: `checkRedirects` in `scripts/native/export-guards.mjs`
- * reads the `source` regexes out of `.next/routes-manifest.json` and asserts
- * both directions — that each matches a UUID and that none matches `/rides/new`,
- * `/rides/detail`, `/clubs/new`, `/clubs/explore` or `/postcards/new`. Its cases
- * are in `scripts/native/__tests__/export-guards.test.mjs`.
+ * than reasoned about: `assert-web-build.mjs` reads `.next/routes-manifest.json`
+ * and hands the entries to `checkRedirects` in `scripts/native/export-guards.mjs`,
+ * which matches on each entry's compiled `regex` — the manifest's, not this
+ * file's `source` string, so it tests what Next built rather than what was
+ * written. It asserts both directions: that every legacy shape redirects with a
+ * 307 to the right destination, and that none of `/rides/new`, `/rides/detail`,
+ * `/clubs/new`, `/clubs/explore` or `/postcards/new` is touched. Its cases,
+ * including planted failures for a dropped redirect and an unconstrained
+ * source, are in `scripts/native/__tests__/export-guards.test.mjs`.
  *
  * `permanent: false` (307) rather than 308: a 301/308 is cached by the browser
  * effectively for ever, and this shape has now moved once.

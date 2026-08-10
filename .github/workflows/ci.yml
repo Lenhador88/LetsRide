@@ -218,8 +218,12 @@ jobs:
       # assertion above and `docs:check:cheap` all green (the `[ƒ●]` census is
       # `kind: 'build'`, which the cheap run excludes by design) while
       # `build:native` fails — discovered by whoever next tries to cut a store
-      # binary. Last, because it is the slowest step and the only one whose
-      # failure blocks nobody's web deploy.
+      # binary.
+      #
+      # **Last is a correctness constraint, not a scheduling preference.** This
+      # writes `out/` and `.next/export-detail.json`, which are exactly the two
+      # conditions the step above fails on — so moving it earlier for speed
+      # turns `assert-web-build.mjs` into a permanent red on a good build.
       - name: Build the native bundle and walk it
         run: npm run build:native
         env:

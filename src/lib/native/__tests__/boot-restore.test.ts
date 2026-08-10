@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { bootRestoreTarget, restoreAlreadyAttempted } from '@/lib/native/boot-restore'
+import {
+  bootRestoreTarget,
+  clearRestoreAttempt,
+  restoreAlreadyAttempted,
+} from '@/lib/native/boot-restore'
 import { PUBLIC_PATHS, resolveDestination } from '@/lib/auth/guard'
 import { routes } from '@/lib/routes'
 
@@ -140,12 +144,37 @@ describe('restoreAlreadyAttempted', () => {
     expect(restoreAlreadyAttempted(s, '/rides/detail?id=x')).toBe(true)
   })
 
-  it('survives the document being replaced, which is what the loop does', () => {
-    // Storage outlives the document; a module-scope flag would not, and this is
-    // the case that distinguishes the two. Same storage, "new document".
+  it('reads and writes the storage it is given, which a module-scope flag cannot', () => {
+    // This is the case that actually discriminates the two implementations, and
+    // the reason it is phrased around *two* stores: a module-scope boolean
+    // ignores its `storage` argument entirely, so it would answer `true` for a
+    // fresh store and fail here. Asserting "same store says true twice" does
+    // not distinguish them — a flag passes that too.
+    const first = store()
+    const second = store()
+    restoreAlreadyAttempted(first, '/rides/detail?id=a')
+    expect(restoreAlreadyAttempted(first, '/rides/detail?id=a')).toBe(true)
+    expect(restoreAlreadyAttempted(second, '/rides/detail?id=a')).toBe(false)
+  })
+
+  it('forgets an attempt that succeeded, so the same link opens twice', () => {
+    // Without the clear the guard is a ban rather than a loop bound: a rider who
+    // opens a deep link, uses the app and opens the same link again in the same
+    // webview session gets a blank screen on a link that worked a minute ago.
     const s = store()
-    restoreAlreadyAttempted(s, '/rides/8d6e0001-0000-4000-8000-000000000001')
-    expect(restoreAlreadyAttempted(s, '/rides/8d6e0001-0000-4000-8000-000000000001')).toBe(true)
+    restoreAlreadyAttempted(s, '/rides/detail?id=a')
+    clearRestoreAttempt(s)
+    expect(restoreAlreadyAttempted(s, '/rides/detail?id=a')).toBe(false)
+  })
+
+  it('clearing is safe when nothing was recorded, and when storage throws', () => {
+    expect(() => clearRestoreAttempt(store())).not.toThrow()
+    const denied = {
+      removeItem: () => {
+        throw new Error('storage denied')
+      },
+    } as unknown as Storage
+    expect(() => clearRestoreAttempt(denied)).not.toThrow()
   })
 
   it('does not refuse a different target', () => {

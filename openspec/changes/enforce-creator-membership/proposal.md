@@ -45,8 +45,8 @@ recalled).
 **The UI does guard it, and a previous revision of this paragraph claimed otherwise. That claim
 was wrong and is retracted here rather than quietly deleted**, because it is the kind of error
 that gets re-derived: the owner branch is at the **call site**, not in the component.
-`src/app/(app)/clubs/detail/about/page.tsx:65` computes `const isOwner = viewer_role === 'owner'`
-and `:103` renders `{!isOwner && (<ClubMembershipButton … />)}`. The earlier draft cited `:104`
+`src/app/(app)/clubs/detail/about/page.tsx:79` computes `const isOwner = viewer_role === 'owner'`
+and `:117` renders `{!isOwner && (<ClubMembershipButton … />)}`. The earlier draft cited `:104`
 — the line *inside* that guard — having grepped for `isOwner` in `src/components/clubs/` only,
 where it correctly does not appear. The page's own doc comment states **"The owner is offered
 nothing."** in as many words, and `ClubMembershipButton` is rendered from exactly one place.
