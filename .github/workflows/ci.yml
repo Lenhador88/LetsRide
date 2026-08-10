@@ -97,6 +97,21 @@ jobs:
           # `file:` occurrences per path in registry.mjs — since this comment
           # is exactly the kind of citation that goes stale as claims are
           # added.
+          # The third, added 2026-08-10 with the cross-reference gate: openspec/
+          # is denylisted, and roughly a third of the repo's file-qualified
+          # "`file.md` §Section" pointers live inside it — every change cites
+          # its own proposal.md, design.md and tasks.md. So the PR class most
+          # able to break those pointers, an openspec-only change, ran zero
+          # jobs and could never turn
+          # scripts/docs/__tests__/crossrefs.test.mjs red. Same shape as the
+          # carve-out above and the same reason: the tripwire only helps if the
+          # diff that trips it runs the job. Count them rather than trusting the
+          # fraction — resolveAll() reports `checked`, and its sources are every
+          # tracked .md outside openspec/changes/archive/.
+          if echo "$files" | grep -qE '^openspec/'; then
+            app=true
+          fi
+
           if echo "$files" | grep -qE '^docs/|^[^/]*\.md$'; then
             app=true
             echo "-> docs/ or a root *.md touched: running the app job for the doc-claim anchor sweep"

@@ -935,7 +935,8 @@ add-notifications/tasks.md` §4.1–§4.7 — the row, the dot, `Header`'s secon
 - [x] **`NotificationRow`** (`src/components/ui/NotificationRow.tsx`) — 72px, two-line text
       block (`Poppins/16/Semibold` name + `Poppins/14/Regular` stamp on line one,
       `Poppins/14/Regular` copy on line two), optional trailing 56×56 thumbnail. A new
-      component, not a `ListUser` prop, per `design.md` §D9.
+      component, not a `ListUser` prop, per
+      `openspec/changes/archive/2026-08-08-add-notifications/design.md` §D9.
 - [ ] **The composite double-avatar leading treatment is not reproduced.** Two of the drawn
       types (`ride_joined`, `ride_created_in_club`) show two overlapping 36px avatars inside
       the 56px leading frame rather than one — the mock does not name whose second avatar it
@@ -962,7 +963,8 @@ add-notifications/tasks.md` §4.1–§4.7 — the row, the dot, `Header`'s secon
       not an invented one here.
 - [x] **`Header` gains `secondaryAction`** (`src/components/layout/Header.tsx`) — a second
       40×40 slot at `right-10` (x302), alongside the existing `action` at `right-0` (x342).
-      Per `design.md` §D9, taken as an architecture decision rather than reopened here. Both
+      Per `openspec/changes/archive/2026-08-08-add-notifications/design.md` §D9, taken as an
+      architecture decision rather than reopened here. Both
       existing `action` callers (`/profile`'s `<ProfileMenu />`, `RideHeader`'s chat button)
       are unchanged — verified by `next build` still producing the same route list and by
       `npx tsc --noEmit` / `npm run lint` / `npm run test:unit` staying green.

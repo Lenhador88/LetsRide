@@ -14,10 +14,16 @@
  *
  * ## Three outcomes, not two
  *
- * A claim either PASSES (measured equals stated), FAILS (measured, but
- * different), or is SKIPPED (could not be measured at all — no Postgres, a
- * build that would not complete, or the anchor text itself has moved so the
- * stated value can no longer be read). The contract PD-155 sets is explicit:
+ * A claim either PASSES (measured equals stated), FAILS, or is SKIPPED.
+ *
+ * FAILS covers two shapes: measured but different, and — since 2026-08-10 — a
+ * claim whose anchor cannot be located or whose file is missing. A vanished
+ * anchor is the repo's fault, not the environment's, which is the line between
+ * the two; `runClaim` carries the full reasoning.
+ *
+ * SKIPPED means could not be measured at all: no Postgres, a build that would
+ * not complete, or a stated *word* the number table cannot parse. The contract
+ * PD-155 sets is explicit:
  * a skip must never read as a pass. So the summary line reports all three
  * separately, and the exit code distinguishes "everything I could check
  * agreed" (0) from "something disagreed" (1) from "I could not check
@@ -270,9 +276,26 @@ function readClaimFile(claim, root, fileCache) {
  * without going through `main()`'s printing and `process.exit`.
  */
 export function runClaim(claim, { root = ROOT, fileCache = makeCache(), measureCache = makeCache() } = {}) {
+  // A missing file, or a claim whose anchor no longer matches, is a FAILURE.
+  //
+  // Both read as a skip until 2026-08-10, on the reasoning that a skip means
+  // "could not check". That is true of Postgres being down and false here, and
+  // the difference is whose fault it is: an unavailable measurement is the
+  // environment's, while a vanished anchor is the repo's — and the repo is what
+  // this script exists to police. It showed up under the CLAUDE.md split, where
+  // four claims moved to a new file: `docs:check` printed "0 failed" with them
+  // sitting quietly in the skip list, and only `registry.test.mjs`'s separate
+  // locate sweep went red. A hand-run must not be gentler than CI about the one
+  // thing it is uniquely placed to catch.
+  //
+  // ClaimExtractError deliberately stays a SKIP. That one is not the same
+  // animal: it fires when the *stated* text is a word the number table does not
+  // know ("a dozen", a typo), and PD-155's review asked for it explicitly so an
+  // unparseable word cannot take down the run. Failing it would push authors
+  // into a restricted vocabulary, which is a cost this check should not impose.
   const file = readClaimFile(claim, root, fileCache)
   if (!file.ok) {
-    return { id: claim.id, status: 'skip', reason: `could not read the file — ${file.reason}` }
+    return { id: claim.id, status: 'fail', reason: `could not read the file — ${file.reason}` }
   }
 
   let stated
@@ -281,7 +304,7 @@ export function runClaim(claim, { root = ROOT, fileCache = makeCache(), measureC
     stated = claim.extractStated(m)
   } catch (err) {
     if (err instanceof ClaimLocateError) {
-      return { id: claim.id, status: 'skip', reason: `could not locate the claim — ${err.message}` }
+      return { id: claim.id, status: 'fail', reason: `could not locate the claim — ${err.message}` }
     }
     if (err instanceof ClaimExtractError) {
       return { id: claim.id, status: 'skip', reason: `could not read the stated value — ${err.message}` }
@@ -308,12 +331,16 @@ function printReport(results, claims) {
   console.log()
 
   if (failed.length) {
-    console.log('  DISAGREEMENTS:')
+    console.log('  FAILURES:')
     for (const r of failed) {
       const c = byId.get(r.id)
       console.log(`    - [${r.id}] ${c.file}`)
       console.log(`        ${c.about}`)
-      console.log(`        stated ${r.stated}, measured ${r.measured}`)
+      // Two shapes of failure now land here. A disagreement has both numbers; a
+      // claim that could not be located has neither, only a reason — printing
+      // "stated undefined, measured undefined" for it would bury the one line
+      // that says what to do about it.
+      console.log(r.reason ? `        ${r.reason}` : `        stated ${r.stated}, measured ${r.measured}`)
     }
     console.log()
   }

@@ -66,12 +66,16 @@ describe('runClaim', () => {
       cmd: 'printf 7',
     }
     const result = runClaim(claim, { root })
-    expect(result.status).toBe('skip')
+    expect(result.status).toBe('fail')
     expect(result.reason).toMatch(/could not read the file/)
     expect(result.reason).toMatch(/DOES-NOT-EXIST\.md/)
   })
 
-  it('skips (not fails) when the anchor text cannot be found', () => {
+  // Flipped from skip to fail on 2026-08-10. A claim whose anchor has vanished
+  // is the repo's fault, not the environment's, and it is the exact signal the
+  // CLAUDE.md split produced four times while `docs:check` still printed
+  // "0 failed". See the comment on runClaim.
+  it('FAILS when the anchor text cannot be found', () => {
     writeDoc('DOC.md', 'The widgets have moved to a different sentence entirely.')
     const claim = {
       id: 'widgets',
@@ -82,11 +86,11 @@ describe('runClaim', () => {
       cmd: 'printf 9',
     }
     const result = runClaim(claim, { root })
-    expect(result.status).toBe('skip')
+    expect(result.status).toBe('fail')
     expect(result.reason).toMatch(/could not locate/)
   })
 
-  it('skips (not fails) when the anchor text is ambiguous', () => {
+  it('FAILS when the anchor text is ambiguous', () => {
     writeDoc('DOC.md', 'There are **7** widgets today. There are **7** widgets today.')
     const claim = {
       id: 'widgets',
@@ -97,7 +101,7 @@ describe('runClaim', () => {
       cmd: 'printf 7',
     }
     const result = runClaim(claim, { root })
-    expect(result.status).toBe('skip')
+    expect(result.status).toBe('fail')
     expect(result.reason).toMatch(/could not locate/)
   })
 

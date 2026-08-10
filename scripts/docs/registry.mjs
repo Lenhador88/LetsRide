@@ -10,9 +10,9 @@
  * share a digit, and a checker that cries wolf gets ignored — which is the
  * exact failure this replaces. So every claim below is hand-written: the file,
  * a regex that must match **exactly once** (so a later edit that removes the
- * sentence is reported as a loud SKIP — see `check.mjs`'s exit-code contract
- * — rather than silently checking nothing), and how to pull the stated
- * number out of what it matches.
+ * sentence FAILS the run — see `check.mjs`'s exit-code contract; it was a skip
+ * until 2026-08-10 — rather than silently checking nothing), and how to pull
+ * the stated number out of what it matches.
  *
  * ## The comment trap
  *
