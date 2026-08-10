@@ -39,6 +39,14 @@
  * malformed id parses as "no such row" and reaches `notFound()` through the id
  * schema the read already carries — `rideIdSchema`, `clubIdSchema`,
  * `postcardIdSchema` — rather than through a special empty-string case.
+ *
+ * **The boundaries are not what makes the export build, and that is worth
+ * knowing before someone removes them.** Measured 2026-08-10 by dropping one and
+ * building: the export still succeeds, because `RouteGuard` renders the splash
+ * *instead of* children until it has decided, so no page body — and therefore no
+ * `useSearchParams()` — executes during the prerender pass at all. They are here
+ * because that is a property of a different file, and the day `RouteGuard`
+ * changes, the absent boundary is a `next build` failure on ten routes at once.
  */
 
 /** The query parameter every detail route reads its id from. */
