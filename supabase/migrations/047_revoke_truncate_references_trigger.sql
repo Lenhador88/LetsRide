@@ -220,7 +220,8 @@ revoke truncate, references, trigger on public.profiles     from authenticated;
 --    order by 1, 2;
 --
 -- 6. The advisors. This file adds no function and no view, so the DEV count must
---    stay at NINE — the eight CLAUDE.md tabulates plus 043's delete_owned_club.
+--    stay at NINE — the nine CLAUDE.md tabulates, delete_owned_club included
+--    (it is inside that table's seven-row security-definer bucket, not extra).
 --    Anything else means a revoke did not land.
 --
 -- ROLLBACK, if this ever has to come out:

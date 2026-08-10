@@ -327,7 +327,9 @@ comment on column public.ride_members.joined_at is
 --                         'public.ride_members'::regclass)
 --      and a.attname in ('created_at','updated_at','joined_at');
 --
--- 5. No policy moved. Nine policies across the three tables.
+-- 5. No policy moved. TEN policies across the three tables — club_members 3
+--    (SELECT/INSERT/DELETE), postcard_comments 3 (SELECT/INSERT/DELETE),
+--    ride_members 4 (those three plus UPDATE).
 --
 --   select tablename, cmd, md5(coalesce(qual,'')), md5(coalesce(with_check,''))
 --     from pg_policies where schemaname='public'

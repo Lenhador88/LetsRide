@@ -183,12 +183,25 @@ describe('the invalidation claims keys.ts maps', () => {
   // here, because "does not mention a key" is what a forgotten call site looks
   // like too.
   it('claims a notifications key from every write that moves the actor’s own list', () => {
-    const claimants: Record<string, string[]> = {
-      'clubs.ts': ['invalidateClubMembership', 'updateClub', 'deleteClub'],
-      'rides.ts': ['updateRide', 'deleteRide'],
-      'postcards.ts': ['deletePostcard'],
-      'comments.ts': ['deleteComment'],
-      'notifications.ts': ['markNotificationsRead'],
+    // The VALUE is asserted, not just the presence of some notifications key.
+    // `all()` against `list()` is the whole content of the rule PD-177 adds to
+    // keys.ts — rows appearing or disappearing move the unread count, a changed
+    // embed does not — so a test matching any notifications key would stay green
+    // through exactly the flip the rule exists to prevent: `deleteRide` narrowed
+    // to `list()` leaves a stale badge counting a notification whose ride is gone.
+    const claimants: Record<string, Record<string, 'all' | 'list' | 'unread'>> = {
+      'clubs.ts': {
+        invalidateClubMembership: 'all', // resolvability — rows leave the list
+        updateClub: 'all', // privacy flip can strand an owner with no membership row
+        deleteClub: 'all', // cascade
+      },
+      'rides.ts': {
+        updateRide: 'list', // embedded title only; no row appears or vanishes
+        deleteRide: 'all', // cascade
+      },
+      'postcards.ts': { deletePostcard: 'all' },
+      'comments.ts': { deleteComment: 'all' },
+      'notifications.ts': { markNotificationsRead: 'unread' },
     }
 
     const missing: string[] = []
@@ -197,21 +210,29 @@ describe('the invalidation claims keys.ts maps', () => {
       const source = sources.find(([name]) => name === file)?.[1]
       expect(source, `${file} is gone — the audit moved and this list did not`).toBeDefined()
 
-      for (const fn of fns) {
+      for (const [fn, expected] of Object.entries(fns)) {
         // From the declaration to the next top-level one, which is where a
         // function's own invalidations live. `stripComments` already ran, so a
         // doc block naming the key cannot stand in for a call — the comment
         // trap CLAUDE.md documents four times over.
-        const start = source!.search(new RegExp(`(export )?(async )?function ${fn}\\b`))
+        const start = source!.search(new RegExp(`(export )?(async )?(function|const) ${fn}\\b`))
         if (start === -1) {
           missing.push(`${file}: ${fn} not found`)
           continue
         }
-        const next = source!.slice(start + 1).search(/\n(export )?(async )?function /)
+        // `const ` is in the boundary too, not only `function `. Converting any
+        // action to `export const deleteRide = async () => {}` would otherwise
+        // stop terminating the PREVIOUS claimant's body, which would run on and
+        // absorb this one's invalidations — leaving the earlier function green
+        // with no call of its own.
+        const next = source!.slice(start + 1).search(/\n(export )?(async )?(function|const) /)
         const body = next === -1 ? source!.slice(start) : source!.slice(start, start + 1 + next)
 
-        if (!/invalidate\(queryKeys\.notifications\./.test(body)) {
-          missing.push(`${file}: ${fn}`)
+        const claimed = [...body.matchAll(/invalidate\(queryKeys\.notifications\.(\w+)\(/g)].map(
+          (m) => m[1]
+        )
+        if (!claimed.includes(expected)) {
+          missing.push(`${file}: ${fn} claims [${claimed.join(', ') || 'nothing'}], wants ${expected}()`)
         }
       }
     }
