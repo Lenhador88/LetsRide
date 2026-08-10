@@ -199,6 +199,18 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
+      # PD-142 left the repo with two build shapes, and exactly one of them may
+      # deploy. `CAPACITOR_BUILD=1` produces a static export: no server, so every
+      # legacy `/postcards/<uuid>` link 404s (the redirects live in the web
+      # config, and an export cannot run one) and `next/image` stops being
+      # optimised. Nothing about that deploy looks red — it goes green — so
+      # "CAPACITOR_BUILD is set in no Vercel target" needs an assertion rather
+      # than a convention. This reads the output the step above just wrote, not
+      # next.config.ts: a config that says the right thing and a build that did
+      # it are different claims, and only the second one ships.
+      - name: Assert the build is the web app, not the native bundle
+        run: node scripts/native/assert-web-build.mjs
+
   rls:
     name: RLS Policy Tests
     needs: changes

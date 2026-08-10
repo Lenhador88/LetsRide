@@ -39,8 +39,100 @@ if (missingEnv.length > 0) {
   )
 }
 
-const nextConfig: NextConfig = {
-  /* config options here */
-};
+/**
+ * The two build shapes, and why they are two whole objects rather than one with
+ * fields spliced onto it.
+ *
+ * `CAPACITOR_BUILD=1` produces the static bundle `capacitor.config.ts`'s
+ * `webDir: 'out'` names; anything else produces the web app Vercel deploys. They
+ * are written as **alternatives** so the web build is unchanged by construction
+ * rather than by review — a spread with three conditional keys is one `??` away
+ * from shipping `output: 'export'` to production, and that failure is a green
+ * deploy of an app with no server behind it.
+ *
+ * `CAPACITOR_BUILD` is set in **no** Vercel target and must stay that way
+ * (docs/ENVIRONMENTS.md §The native build flag). `next build` writing `out/`
+ * instead of a server build is the observable symptom, and
+ * `scripts/native/assert-web-build.mjs` is what turns it red in CI rather than
+ * on a rider's phone.
+ */
+const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1'
 
-export default nextConfig;
+/**
+ * The route shapes that shipped before PD-142, kept alive for links already
+ * sitting in people's messages — `ShareButton` has been handing out
+ * `/postcards/<uuid>` since it was written.
+ *
+ * **Web only, and that is the point.** A static export has no server to run a
+ * redirect, and a redirect *page* in the bundle would be a dynamic segment
+ * again, which is the whole thing option B removed. So the old shape resolves on
+ * `app.letsride.social` and does not exist inside the app.
+ *
+ * **Each `source` is constrained to a UUID, and an unconstrained one would be a
+ * live bug rather than a loose end.** Redirects are matched before the
+ * filesystem, so `/rides/:id` would swallow `/rides/new`, `/clubs/:id` would
+ * swallow `/clubs/new` and `/clubs/explore`, and `/rides/:id` would swallow
+ * `/rides/detail` itself — sending every detail screen to
+ * `/rides/detail?id=detail` in a loop. Verified against the built app rather
+ * than reasoned about; `scripts/native/__tests__/legacy-redirects.test.mjs`
+ * asserts the matching both ways.
+ *
+ * `permanent: false` (307) rather than 308: a 301/308 is cached by the browser
+ * effectively for ever, and this shape has now moved once.
+ */
+const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+
+const LEGACY_DETAIL_REDIRECTS = [
+  ['/postcards', ''],
+  ['/rides', ''],
+  ['/rides', '/crew'],
+  ['/rides', '/chat'],
+  ['/rides', '/edit'],
+  ['/clubs', ''],
+  ['/clubs', '/rides'],
+  ['/clubs', '/members'],
+  ['/clubs', '/about'],
+  ['/clubs', '/edit'],
+].map(([base, tail]) => ({
+  source: `${base}/:id(${UUID})${tail}`,
+  destination: `${base}/detail${tail}?id=:id`,
+  permanent: false,
+}))
+
+const webConfig: NextConfig = {
+  async redirects() {
+    return LEGACY_DETAIL_REDIRECTS
+  },
+}
+
+const capacitorConfig: NextConfig = {
+  output: 'export',
+  /**
+   * `next/image`'s default loader is a server route, and there is no server in a
+   * bundle. Without this the export fails outright rather than degrading.
+   */
+  images: { unoptimized: true },
+  /**
+   * Deliberately **no `trailingSlash`** and **no `distDir`**, and both absences
+   * are load-bearing rather than defaults nobody got round to:
+   *
+   * - `trailingSlash: true` breaks `src/lib/auth/guard.ts`, whose public-path
+   *   list is exact-string matching, while `router.replace` normalises *towards*
+   *   the slash. The guard asks for `/auth/login`, the router delivers
+   *   `/auth/login/`, and `RouteGuard` renders the splash for as long as it has
+   *   a destination — a permanent green screen with no login form. All 36 guard
+   *   cases pass, because every one of them feeds a slashless path. It buys
+   *   nothing under Capacitor either: both platform routers short-circuit on the
+   *   file extension and never try `<path>/index.html`.
+   * - a custom `distDir` **becomes** the export directory under
+   *   `output: 'export'`, and `out/` is then never created at all — leaving
+   *   `capacitor.config.ts`'s `webDir` pointing at nothing, which `cap sync`
+   *   copies without complaint and which fails on a device as a white screen.
+   *
+   * `openspec/changes/add-static-export-bundle/design.md` §D2 and §D4 carry the
+   * measurements.
+   */
+}
+
+export default isCapacitorBuild ? capacitorConfig : webConfig
+
