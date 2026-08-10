@@ -218,5 +218,10 @@ export async function deletePostcard(postcardId: string): Promise<ActionState> {
 
   invalidate(queryKeys.postcards.all())
   if (existing?.club_id) invalidate(queryKeys.clubs.detail(existing.club_id))
+  // PD-177. Both `notifications.postcard_id` and `notifications.comment_id`
+  // cascade (`036` §1), and every notification carrying either is addressed to
+  // this postcard's author — so deleting it empties this rider's own list of
+  // every like and every comment it ever earned them, count included.
+  invalidate(queryKeys.notifications.all())
   return { error: null }
 }

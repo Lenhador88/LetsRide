@@ -1,0 +1,234 @@
+-- 047: `authenticated` loses TRUNCATE, REFERENCES and TRIGGER on the five
+--      tables `001` created. PD-180.
+--
+-- A grant-only migration. No policy, no table, no column, no trigger, no row.
+--
+-- ---------------------------------------------------------------------------
+-- What is wrong
+-- ---------------------------------------------------------------------------
+-- `authenticated` holds TRUNCATE, REFERENCES and TRIGGER on `rides`, `clubs`,
+-- `club_members`, `ride_members` and `profiles`. Nothing here granted them
+-- deliberately: they are the residue of Supabase's project-level
+-- `alter default privileges in schema public grant all on tables to anon,
+-- authenticated`, which applies to every table created before a migration
+-- narrows it.
+--
+-- **RLS does not apply to TRUNCATE.** A policy filters rows; TRUNCATE removes
+-- the relation's contents without reading a row, so not one of the four
+-- `club_members` policies is consulted. Measured on fpmrimzxadewsaiwpsel
+-- 2026-08-10, in a rolled-back transaction, with the hosted identity idiom:
+--
+--   set local role authenticated;
+--   set local request.jwt.claims = '{"sub":"<a real rider>","role":"authenticated"}';
+--   truncate public.club_members;      -- SUCCEEDED. rows after: 0
+--   rollback;                          -- rows after rollback: 2
+--
+-- That is every club membership in the product, gone, from a role every signed-in
+-- rider assumes. The same statement works on the other four.
+--
+-- ---------------------------------------------------------------------------
+-- The severity, stated in BOTH directions
+-- ---------------------------------------------------------------------------
+-- **It is not reachable through PostgREST today.** PostgREST exposes SELECT,
+-- INSERT, UPDATE and DELETE over HTTP and has no TRUNCATE verb, no DDL verb and
+-- no way to name a privilege at all. The browser holds a JWT and speaks HTTP to
+-- PostgREST; it does not hold a database credential and never opens a SQL
+-- connection. So no rider can reach this from the app as it is built, and this
+-- migration fixes nothing a rider could do yesterday. It is not an incident.
+--
+-- **And "unreachable through PostgREST" is a property of the API surface, not
+-- of the database.** The grant is on the role, and it becomes live the moment
+-- anything speaks SQL as `authenticated` — a pooler or direct-connection string
+-- issued to a client, a future admin or analytics surface, a `security invoker`
+-- function that takes SQL as a parameter, or any second API in front of the same
+-- database. The whole point of this repo's model is that RLS is the boundary and
+-- the API is not; a privilege that is safe only because of the shape of today's
+-- API is exactly the kind of thing that stops being safe without anyone editing
+-- it. `042` made the same argument about a DELETE grant refused only by the
+-- absence of a policy.
+--
+-- The other two are smaller and are measured rather than asserted:
+--
+--   REFERENCES  lets a rider create a foreign key pointing AT these tables. That
+--               is an existence oracle on ids they cannot SELECT (the FK either
+--               validates or raises 23503), and an FK they own can block deletes
+--               on rows they do not. It needs a SQL path and a table of their
+--               own, so it inherits the same reachability caveat.
+--   TRIGGER     lets a rider attach a trigger to a table they do not own. It is
+--               NOT arbitrary code execution here, and the reason is measured:
+--               `has_schema_privilege('authenticated','public','CREATE')` is
+--               FALSE, so they cannot define a trigger function, and
+--               `has_schema_privilege('authenticated','private','USAGE')` is
+--               FALSE, so the six `private` fan-out functions are unreachable.
+--               Exactly ONE trigger-returning function is both visible and
+--               executable to them — `public.enforce_onboarding_completion` —
+--               so the reachable ceiling is attaching that guard somewhere it
+--               does not belong and raising inside other riders' transactions.
+--               A denial of service on other people's writes, not an
+--               exfiltration. Recorded at its real size rather than inflated.
+--
+-- ---------------------------------------------------------------------------
+-- The measured starting state — EVERY table in `public`, not just the five
+-- ---------------------------------------------------------------------------
+-- Swept on fpmrimzxadewsaiwpsel 2026-08-10 immediately before writing this file,
+-- because the issue names five tables and a sweep is the only thing that can
+-- show a sixth. Seventeen tables; the five below carry all three, and the twelve
+-- underneath carry none:
+--
+--   club_members     t  t  t        blocks             f  f  f
+--   clubs            t  t  t        feed_reads         f  f  f
+--   profiles         t  t  t        notifications      f  f  f
+--   ride_members     t  t  t        password_reset_grants  f  f  f
+--   rides            t  t  t        places             f  f  f
+--                                   postcard_comments  f  f  f
+--                                   postcard_hides     f  f  f
+--                                   postcard_likes     f  f  f
+--                                   postcard_reports   f  f  f
+--                                   postcards          f  f  f
+--                                   profile_countries  f  f  f
+--                                   ride_messages      f  f  f
+--
+-- **No table beyond the five carries it, so nothing is widened here.** The
+-- issue's list is exactly right, and it is stated as a measurement rather than
+-- inherited: had a sixth turned up it would have been included and said so.
+--
+-- **The split is not arbitrary and the rule predicts it.** The five are exactly
+-- the tables `001` created. Every table from `009` onwards is created by a
+-- migration that issues `revoke all on public.<t> from anon, authenticated`
+-- before granting narrowly — `009` (postcards, postcard_likes, blocks), `011`,
+-- `015`, `034`, `036`, `037` all do. `001` issued no grants at all, and `002`
+-- revoked from `anon` only, never from `authenticated`. So this file is `009`'s
+-- convention applied retroactively to `001`'s tables, and after it the two
+-- groups agree.
+--
+-- `places` is on the "none" list for a different reason and is left alone: `037`
+-- grants it SELECT and nothing else, deliberately, because the loader runs as
+-- the table owner.
+--
+-- ---------------------------------------------------------------------------
+-- What this file does NOT do
+-- ---------------------------------------------------------------------------
+--   no policy is touched ....... every policy on all five tables is
+--       byte-identical afterwards. RLS never governed TRUNCATE in the first
+--       place, which is the defect rather than a thing to fix in a policy
+--   no DML grant moves ......... SELECT, INSERT, UPDATE and DELETE are untouched
+--       on all five, at table level and at column level. `045`'s per-column
+--       INSERT/UPDATE lists on `rides` and `clubs` survive unchanged, and this
+--       file deliberately issues no `revoke`/`grant` pair that would restate one
+--   `service_role` and `postgres` keep all three .. both hold `arwdDxtm` by
+--       Supabase default and both must: the deletion Edge Function runs as
+--       `service_role`, and `postgres` owns the tables. Only `authenticated` is
+--       named in the revokes below, and the suite asserts the other two are
+--       unaffected — a blanket `revoke ... from public` would have taken them
+--       with it
+--   `anon` is not named .......... `002` and `007` already left it holding
+--       nothing, and naming it here would imply it had something
+--   MAINTAIN is NOT revoked ...... **and it is the one thing found and not
+--       fixed.** The same five carry `m` in relacl on PG17 (VACUUM, ANALYZE,
+--       CLUSTER, REINDEX, REFRESH MATERIALIZED VIEW), from the same `grant all`
+--       default and with the same reachability caveat — `VACUUM FULL` takes an
+--       ACCESS EXCLUSIVE lock, so it is a resource-exhaustion primitive rather
+--       than a data one. It is left because PD-180 names three privileges and
+--       this file applies them exactly; widening a grant migration past its
+--       issue is how the next one gets reviewed less carefully. It is also
+--       PG17-only, so a file naming it would not replay on a PG16 developer box.
+--       Reported rather than folded in
+--
+-- Retention and reach are unchanged: no table, no column and no personal data is
+-- added, and account deletion's path is untouched — it runs as `service_role`,
+-- which keeps every privilege it had.
+
+-- ---------------------------------------------------------------------------
+-- §1. The revoke
+-- ---------------------------------------------------------------------------
+-- One statement per table rather than one over a list, so a future partial
+-- apply, a conflict or a hand-edit fails on the table it names instead of
+-- silently doing four of five. `revoke` on a privilege the role does not hold is
+-- a no-op, so this file is idempotent and safe to replay.
+--
+-- The role is named explicitly. `revoke ... from public` would strip
+-- `service_role` and `postgres` with it, which is the mistake this shape avoids.
+revoke truncate, references, trigger on public.rides        from authenticated;
+revoke truncate, references, trigger on public.clubs        from authenticated;
+revoke truncate, references, trigger on public.club_members from authenticated;
+revoke truncate, references, trigger on public.ride_members from authenticated;
+revoke truncate, references, trigger on public.profiles     from authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+-- 1. The three privileges, scoped to their grantee, across the whole schema.
+--    `015`'s footer counted a privilege table-wide and read 2 against a correct
+--    database, because postgres and service_role hold everything by default —
+--    so this names the role. Expect ZERO rows.
+--
+--   select c.relname,
+--          has_table_privilege('authenticated', c.oid, 'TRUNCATE')   as trunc,
+--          has_table_privilege('authenticated', c.oid, 'REFERENCES') as refs,
+--          has_table_privilege('authenticated', c.oid, 'TRIGGER')    as trig
+--     from pg_class c join pg_namespace n on n.oid = c.relnamespace
+--    where n.nspname = 'public' and c.relkind = 'r'
+--      and (has_table_privilege('authenticated', c.oid, 'TRUNCATE')
+--        or has_table_privilege('authenticated', c.oid, 'REFERENCES')
+--        or has_table_privilege('authenticated', c.oid, 'TRIGGER'))
+--    order by 1;      -- (0 rows)
+--
+-- 2. `service_role` and `postgres` are UNAFFECTED. This is the half a blanket
+--    revoke would have broken, and it is silent when wrong.
+--
+--   select bool_and(has_table_privilege('service_role', t, 'TRUNCATE')) as sr,
+--          bool_and(has_table_privilege('postgres',     t, 'TRUNCATE')) as pg
+--     from unnest(array['public.rides','public.clubs','public.club_members',
+--                       'public.ride_members','public.profiles']) t;   -- t, t
+--
+-- 3. The DML grants did NOT move — this file must change nothing `045` set.
+--
+--   select table_name, privilege_type,
+--          string_agg(column_name, ',' order by column_name)
+--     from information_schema.column_privileges
+--    where table_schema='public' and table_name in ('rides','clubs')
+--      and grantee='authenticated' and privilege_type in ('INSERT','UPDATE')
+--    group by table_name, privilege_type order by 1, 2;
+--   -- clubs INSERT  avatar_path,cover_image_path,description,id,is_public,name,owner_id
+--   -- clubs UPDATE  avatar_path,cover_image_path,description,is_public,name
+--   -- rides INSERT  club_id,departure_at,description,id,is_public,max_riders,
+--   --               meeting_point,organizer_id,route_description,title
+--   -- rides UPDATE  club_id,departure_at,description,is_public,max_riders,
+--   --               meeting_point,route_description,title
+--
+--   select bool_and(has_table_privilege('authenticated', t, 'SELECT'))
+--     from unnest(array['public.rides','public.clubs','public.club_members',
+--                       'public.ride_members']) t;                      -- t
+--   -- profiles is excluded from that one on purpose: 025 made its SELECT
+--   -- column-level, so the table-level answer is FALSE and always was.
+--
+-- 4. TRUNCATE is now refused, in the same rolled-back shape that proved it
+--    worked. Expect 42501.
+--
+--   begin;
+--   set local role authenticated;
+--   set local request.jwt.claims = '{"sub":"<a real rider>","role":"authenticated"}';
+--   truncate public.club_members;    -- ERROR: permission denied for table club_members
+--   rollback;
+--
+-- 5. No policy moved on any of the five.
+--
+--   select tablename, cmd, md5(coalesce(qual,'')), md5(coalesce(with_check,''))
+--     from pg_policies where schemaname='public'
+--      and tablename in ('rides','clubs','club_members','ride_members','profiles')
+--    order by 1, 2;
+--
+-- 6. The advisors. This file adds no function and no view, so the DEV count must
+--    stay at NINE — the nine CLAUDE.md tabulates, delete_owned_club included
+--    (it is inside that table's seven-row security-definer bucket, not extra).
+--    Anything else means a revoke did not land.
+--
+-- ROLLBACK, if this ever has to come out:
+--
+--   grant truncate, references, trigger on public.rides, public.clubs,
+--     public.club_members, public.ride_members, public.profiles to authenticated;
+--
+-- Nothing in `src/` is affected in either direction: no client path issues DDL
+-- or TRUNCATE, so there is no relationship to a code deploy and no ordering
+-- constraint against any other migration.
