@@ -754,9 +754,11 @@ guard, the two `.claude/` cases below, and contrast on any new colour pairing.
 
 `.claude/agents/*.md` and `.claude/commands/*.md` are reviewed as **logic** rather than prose —
 those two are carved out of `ci.yml`'s denylist so `src/__tests__/agent-briefs.test.ts` runs on
-them. **The rest of `.claude/` still runs zero jobs**, and `settings.json` and `hooks/*.sh` are
-the permission and execution surface, so a diff touching them is a **security** review with no
-other gate behind it.
+them. **`.claude/settings.json` runs the job too** — its own carve-out, because `docs:check`'s
+`hard_deny` claim measures that file — but the job checks one *number* in it, never the
+permission semantics. **`.claude/hooks/*.sh` and the rest of `.claude/` still run zero jobs.**
+So a diff touching the permission or execution surface is a **security** review with, at best, a
+cardinality check behind it.
 
 Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
 Requiring a proposal for everything is how process gets ignored, and skipping `openspec` skips

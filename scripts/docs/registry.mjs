@@ -491,6 +491,12 @@ export const claims = [
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `out=$(npx vitest run src/lib/auth/__tests__/guard.test.ts 2>&1) && echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
+    // The only cheap claim that spawns a real process. 1s warm here, but a
+    // cold two-core CI runner with no vite transform cache is plausibly 25s,
+    // and runShell's 60s default was picked for greps. Under --cheap a
+    // timeout is a red build rather than a green skip, so the ceiling has to
+    // clear the slow case by a wide margin instead of by a little.
+    timeoutMs: 180_000,
     about: '§Critical: the route guard — "36 cases in __tests__/guard.test.ts"',
   },
   {
@@ -500,6 +506,12 @@ export const claims = [
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `out=$(npx vitest run src/lib/auth/__tests__/guard.test.ts 2>&1) && echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
+    // The only cheap claim that spawns a real process. 1s warm here, but a
+    // cold two-core CI runner with no vite transform cache is plausibly 25s,
+    // and runShell's 60s default was picked for greps. Under --cheap a
+    // timeout is a red build rather than a green skip, so the ceiling has to
+    // clear the slow case by a wide margin instead of by a little.
+    timeoutMs: 180_000,
     about: '§Technology Decisions, Tests table: the same count, restated in the Units row',
   },
 

@@ -82,10 +82,10 @@ jobs:
 
           # The second, added by PD-155's review: scripts/docs/registry.mjs
           # anchors CLAUDE.md, docs/HANDOFF.md and docs/FIGMA-FIDELITY-TODO.md
-          # prose with regexes that embed the current line wrapping — 24 of
-          # its 28 claims live in files a docs-only PR edits (the other 4 are
-          # in .claude/agents/design-system.md, already covered by the
-          # carve-out above), and none of it touches src/ or supabase/.
+          # prose with regexes that embed the current line wrapping — 28 of
+          # its 33 claims live in files a docs-only PR edits (the other 5 are
+          # in .claude/agents/, already covered by the carve-out above), and
+          # none of it touches src/ or supabase/.
           # Review rewrapped one line, changed no number, and got a silent
           # SKIP with no red anywhere, because this exact class of PR was
           # denylisted out of the job that runs
@@ -95,7 +95,8 @@ jobs:
           # anchors. The measurements are a separate question, and the answer
           # changed — the "Doc claims (cheap)" step below now runs the claims
           # whose ground truth is a grep or a jq, while the ones needing
-          # Postgres or a second full build stay out of CI as they always did. Re-derive rather than trust these two numbers — count
+          # Postgres or a second full build stay out of CI as they always did.
+          # Re-derive rather than trust these two numbers — count
           # `file:` occurrences per path in registry.mjs — since this comment
           # is exactly the kind of citation that goes stale as claims are
           # added.

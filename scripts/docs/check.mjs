@@ -190,7 +190,12 @@ export function evaluateRlsRun({ ok, count }) {
 function measure(claim, cache, root) {
   switch (claim.kind) {
     case 'shell': {
-      const res = cache(`shell:${claim.cmd}`, () => runShell(claim.cmd, { cwd: root }))
+      // `claim.timeoutMs` overrides runShell's 60s default, which was chosen
+      // for greps. A claim that spawns a real process needs its own ceiling:
+      // under --cheap a timeout is no longer a green skip but a red build, so
+      // a 60s bound on a cold CI runner would turn a slow machine into a
+      // failed PR on a diff that changed nothing about the claim.
+      const res = cache(`shell:${claim.cmd}`, () => runShell(claim.cmd, { cwd: root, timeout: claim.timeoutMs }))
       if (!res.ok) return { skip: `command failed: ${shellFailureReason(res)}` }
       return parseCountOutput(res.stdout)
     }
@@ -439,10 +444,14 @@ export function main(claims = defaultClaims, { strict = false } = {}) {
     console.error('  Nothing could be measured. Check the environment (Postgres? node_modules?) and re-run.\n')
   }
   if (strict && skipped.length > 0 && failed.length === 0) {
-    console.error(
-      '  A claim skipped under --cheap. Every cheap claim measures with a local command,\n' +
-        '  so a skip here is a broken command or a changed output format, not a missing service.\n'
-    )
+    // Deliberately does NOT name the cause. Every cheap claim measures with a
+    // local command, so a skip is always a defect — but which defect is in the
+    // skip line above, which carries `shellFailureReason`'s actual reason
+    // (`timed out after 60s`, `command failed: …`). An earlier version
+    // asserted "a broken command or a changed output format" here and would
+    // have contradicted a timeout printed two lines up.
+    console.error('  A claim skipped under --cheap, where every claim measures with a local command.\n' +
+      '  Read the SKIPPED reason above: that is the defect, and it is not a missing service.\n')
   }
 
   process.exit(code)

@@ -120,25 +120,32 @@ git merge-base --is-ancestor <packet base> HEAD && echo reachable || echo REBUIL
 [ "$(git merge-base origin/development HEAD)" = "<packet base>" ] && echo NOT-A-DELTA || echo ok
 ```
 
-The first prints nothing on its own — it answers by exit code — which is why it is written with
-an `echo` on both sides. It fails when a finding was fixed by amending, leaving the reviewed
-commit a sibling rather than an ancestor, and the caller must rebuild the packet. The second is
-the inequality the paragraph above is actually about: a "delta" packet whose base *is* the merge
-base is a full re-review wearing a delta label, and reviewing it re-reports every finding the
-author already applied.
+The first fails when a finding was fixed by amending, leaving the reviewed commit a sibling
+rather than an ancestor, and the caller must rebuild the packet. The second is the inequality the
+paragraph above is actually about: a "delta" packet whose base *is* the merge base is a full
+re-review wearing a delta label, and reviewing it re-reports every finding the author already
+applied.
+
+**Read the two checks as independent questions, not as a sequence** — *is the base right for the
+mode I was told?* and *is the file list current?* The second is asked identically in both modes,
+and skipping it on a delta is the easy mistake: a delta packet is built at STEP 4c and then a CI
+fix commits after it, which is the ordinary way a delta re-review comes about in the first place.
 
 Four outcomes, and none of them is "trust the packet":
 
-- **Both commands agree** — classify from that list and review. The ordinary case, and the two
-  commands cost less than one wrong base.
-- **The base disagrees with the independently derived one**, on a review not labelled a delta —
-  the packet is built on the wrong base. Do not review it. Re-derive the base from §Start here's
-  first command, review that, and report the packet as wrong rather than stale: stale is a
-  timing miss, this is a construction error, and the two need different fixes at STEP 4c.
-- **The base agrees but the file list differs** — the packet is stale, which is routine: STEP 4c
-  commits a CI fix after building it. Re-derive from the command above, review what is actually
-  there, and **say in your report that the packet was stale and by how many files**. A stale
-  packet that nobody reports is how the next firing keeps building them from the wrong step.
+- **Both questions answer clean** — classify from that list and review. The ordinary case, and
+  the two commands cost less than one wrong base.
+- **The base is wrong for the mode** — it disagrees with the independently derived one on a full
+  review, or it *equals* the merge base on a delta, or `--is-ancestor` fails. Do not review it.
+  Re-derive the base from §Start here's first command, review that, and report the packet as
+  wrong rather than stale: stale is a timing miss, this is a construction error, and the two need
+  different fixes at STEP 4c.
+- **The base is right for the mode but the file list differs** — the packet is stale. Re-derive
+  from the command above, review what is actually there, and **say in your report that the packet
+  was stale and by how many files**. **This applies to a delta packet exactly as it does to a
+  full one**; the base disagreeing with the merge base is *expected* there and says nothing about
+  whether the list is current. A stale packet that nobody reports is how the next firing keeps
+  building them from the wrong step.
 - **`git rev-list <packet base>..HEAD` is empty** — the base is wrong outright. Stop and report
   that. An empty diff reviewed as "no findings" is the single worst output this file can produce,
   because every downstream signal reads it as a clean review.
@@ -209,12 +216,16 @@ checklist risks, so they are enumerated rather than left to judgement:
    a step that claims a no-op path. The repo's worst examples are all that shape rather than a
    factual error, and `src/__tests__/agent-briefs.test.ts` catches only the factual half. Those
    two directories are carved out of `ci.yml`'s denylist so that test runs at all.
-3. **Everything else under `.claude/` is a *permission and execution* surface, and it runs zero
-   jobs.** A diff widening `permissions.allow`, dropping an entry from `deny` or `hard_deny`, or
+3. **Everything else under `.claude/` is a *permission and execution* surface, and almost none of
+   it runs a job.** The one exception is narrow enough to be worth stating precisely:
+   `settings.json` has a `changes` carve-out, so a diff touching it runs the app job — but all
+   that job checks there is `docs:check`'s `hard_deny` **cardinality**, which cannot see a
+   widened `allow`, a reworded rule or a new hook. `hooks/*.sh` runs nothing at all.
+   A diff widening `permissions.allow`, dropping an entry from `deny` or `hard_deny`, or
    putting a command in a hook is a **security** change that CI cannot see and the doc-claims
    pass would wave through as prose. Treat a `deny`/`hard_deny` removal as the highest-severity
-   finding in this file unless the diff argues in words why it is safe. This review is the only
-   gate those files have. Read these before judging one:
+   finding in this file unless the diff argues in words why it is safe. For every property that
+   matters here, this review is the only gate. Read these before judging one:
 
    - **`.claude/settings.json` is most of the authorization envelope, not all of it.** The
      Supabase grant lives in the **connector's** own always-allow setting, which is the owner's
