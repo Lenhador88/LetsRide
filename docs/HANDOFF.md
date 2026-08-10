@@ -694,20 +694,12 @@ dropping a `places` index is a deliberate act again.
 
 ## Known issues, roughly by cost to fix
 
-**A tracked item carries its PD-id inline; the rest are unfiled on purpose.** Product owner,
-2026-08-09: *"If it seems within the context of the build, and recommended, just do it."* The
-group marked **absorb on contact** below is that instruction applied — fix those in the next
-branch that touches the file, rather than opening a story. The board is why:
-
-```
-# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c limit=250 fields=["status"]
-#   2026-08-09 -> 53 open · 27 ever reached DEV or production
-# Open is every status EXCEPT Done (in production), Deployed to DEV, Canceled and Duplicate —
-# bucket on the NAME, since Deployed to DEV is typed `started` and a statusType split scores it open.
-```
-
-Twice as many rows waiting as have ever been delivered, so a row costs the owner more than
-most of these fixes do.
+**An item tracked in Linear carries its PD-id inline.** An item with no id is not untracked by
+oversight — the group marked **absorb on contact** is unfiled on purpose, per the product owner,
+2026-08-09: *"If it seems within the context of the build, and recommended, just do it."* Fix one
+in the next branch that already has the file open, say so in the PR body, and do not open a story
+for it. The census that justifies that, and the bucketing trap inside it, are in `CLAUDE.md`
+§Sequencing — run it there rather than trusting a second copy here.
 
 - **`createClub` and `createRide` do two inserts with no transaction, and the hand-rolled
   rollback stopped being one.** `PD-103`. Found by review of the render migration. As Server Actions,
@@ -843,9 +835,12 @@ most of these fixes do.
   **The design still draws five**, so the tab's absence looks like an omission to anyone
   reading Figma rather than this file. `Navbar.tsx`'s own docstring carries the reason at the
   point of temptation; that is the copy to keep current, not this one.
+- **The swipe deck only moves forward.** A swipe in either direction advances, per the product
+  owner, so there is no way back except "Start over". **Decided, not a defect** — no issue, and
+  nothing to fix.
+
 **Absorb on contact — the five below are deliberately unfiled.** Each is a few lines in a file
-someone will open anyway. Fix one when a branch already has that file open and say so in the PR
-body; do not open a story for it.
+someone will open anyway.
 
 - **There is no `clubIdSchema`.** `/postcards/[id]` parses its id before issuing anything, so it
   can read in parallel and 404 a malformed segment; `/clubs/[id]` cannot, so its two content
@@ -867,8 +862,6 @@ body; do not open a story for it.
 - **`max_riders` has never been enforced** — not by an action, a policy or a trigger, since
   `001`. `018` bounds the *value* (1–999); nothing counts `ride_members` against it. `PD-174`,
   and it wants a proposal first: the negative cases are the whole content.
-- **The swipe deck only moves forward.** A swipe in either direction advances, per the product
-  owner, so there is no way back except "Start over". **Decided, not a defect** — no issue.
 - **Both RSVP pills fail WCAG AA**, and two more pairings besides — the Maybe pill at 2.54:1,
   `Accent Brand/100` with white at 3.52:1, the ride-host label at 4.10:1, the unselected RSVP
   label at 4.17:1. Left exactly as drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md`.
