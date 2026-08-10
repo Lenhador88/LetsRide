@@ -469,6 +469,159 @@ export const claims = [
     hexB: '#F2ECE6', // Grey/5
     about: 'FIGMA-FIDELITY-TODO §Notifications: NotificationDot, Warning/100 on Grey/5',
   },
+
+  // ---- Route guard case count (two locations) ------------------------------
+  //
+  // The measurement runs vitest on the one file rather than counting `it(`
+  // lines, and that is not fastidiousness: `guard.test.ts` uses `it.each`, so
+  // the literal call count is 26 and the real case count is 36. A `grep -c`
+  // here would have "verified" the docs against a number ten short and read
+  // as measured — the static-count version of the comment trap.
+  //
+  // The `&&` gates the parse on a clean exit. A failing run still prints
+  // `Tests  30 passed | 6 failed`, and grepping that yields a confident 30
+  // that FAILs the claim, pointing at the docs when the fault is a broken
+  // test. No output at all is a SKIP, which is the honest outcome: the case
+  // count could not be measured. `npm run test:unit` is CI's gate for the
+  // suite being green, not this.
+  {
+    id: 'guard-cases-claude',
+    file: 'CLAUDE.md',
+    pattern: /`null` means stay; a string is where to go\. (\d+) cases in `__tests__\/guard\.test\.ts`/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'vitest-file',
+    cmd: `out=$(./node_modules/.bin/vitest run src/lib/auth/__tests__/guard.test.ts 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo "$out" | tail -5 >&2; exit $rc; fi; echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
+    // These two claims share one vitest process (check.mjs caches by cmd), and
+    // it is the only real process any cheap claim spawns. 1s warm here, but a
+    // cold two-core CI runner with no vite transform cache is plausibly 25s,
+    // and runShell's 60s default was picked for greps. Under --cheap a
+    // timeout is a red build rather than a green skip, so the ceiling has to
+    // clear the slow case by a wide margin instead of by a little.
+    //
+    // Two things about the command's shape, both learned from a red CI run
+    // that was green locally. It calls ./node_modules/.bin/vitest rather than
+    // `npx vitest`: npx failed on the runner in under a second while the same
+    // line worked here, and the local bin needs no resolution step at all.
+    // And it re-emits the captured output on a non-zero exit instead of
+    // relying on `&&`, because `2>&1` INSIDE a command substitution swallows
+    // the diagnostic — the first version reported `command failed: no output`
+    // for what was really a resolution error, which is unactionable from a CI
+    // log and cost a round trip to diagnose.
+    timeoutMs: 180_000,
+    about: '§Critical: the route guard — "36 cases in __tests__/guard.test.ts"',
+  },
+  {
+    id: 'guard-cases-claude-table',
+    file: 'CLAUDE.md',
+    pattern: /`src\/lib\/auth\/guard\.ts` \((\d+) cases, replacing the untestable/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'vitest-file',
+    cmd: `out=$(./node_modules/.bin/vitest run src/lib/auth/__tests__/guard.test.ts 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo "$out" | tail -5 >&2; exit $rc; fi; echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
+    // Same ceiling as the claim above, which shares this command.
+    timeoutMs: 180_000,
+    about: '§Technology Decisions, Tests table: the same count, restated in the Units row',
+  },
+
+  // ---- Guard-cache invalidators --------------------------------------------
+  //
+  // CLAUDE.md: "Miss one and the rider finishes a step and is sent straight
+  // back into it." The failure mode is a FIFTH writer added without the call,
+  // which this cannot see — it counts calls, not writers. What it does catch
+  // is the opposite and commoner drift: a call deleted in a refactor while
+  // the prose still says four.
+  //
+  // Three filters, each load-bearing. `__tests__` because guard-cache's own
+  // tests call it four more times; the comment filter because this file's
+  // header explains why a doc comment naming the function must not count
+  // (guard-cache.ts has two, and they survive today only by lacking the
+  // parens); and the definition line, because
+  // `export function invalidateOnboardingState(): void` contains
+  // `invalidateOnboardingState()` as a substring of its own signature.
+  //
+  // That last filter names the whole declaration, NOT a bare `export
+  // function`. The bare version was written first and passed its own
+  // both-ways check — until the check was run with a call site added on a
+  // one-line exported wrapper, which it silently swallowed. A filter that
+  // drops a real call whenever it shares a line with any export is a check
+  // that reads 4 for ever.
+  {
+    id: 'guard-cache-invalidators',
+    file: 'CLAUDE.md',
+    pattern: /\*\*Any new writer of a stamp the decision reads must invalidate the cache\.\*\* There are (\w+)/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `grep -rn "invalidateOnboardingState()" src/ --include=*.ts | grep -v __tests__ | grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | grep -v "export function invalidateOnboardingState" | wc -l`,
+    about: '§Critical: the route guard — the four writers that invalidate the onboarding cache',
+  },
+
+  // ---- Hardcoded origin (must stay 0) --------------------------------------
+  //
+  // The claim exists because the domain move (2026-08-07) needs NO code
+  // change: ShareButton, signUp and requestPasswordReset all build URLs from
+  // window.location.origin. A hardcoded origin would surface only in an email
+  // a rider receives, which no other gate in this repo reads.
+  {
+    id: 'hardcoded-origin-src',
+    file: 'CLAUDE.md',
+    // The anchor wildcards the middle of the grep deliberately. The sentence
+    // quotes a shell command containing `\|` and `\.`, so pinning it
+    // character-for-character needs a regex whose every escape is itself
+    // escaped — the one shape in this file most likely to be "corrected" into
+    // silently matching nothing. Both ends are pinned and the pair is unique.
+    pattern: /only surface in email: `grep -rn "letsrideapp.+localhost:3000" src\/` is (\d+)\./,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `grep -rn "letsrideapp\\|vercel\\.app\\|localhost:3000" src/ | wc -l`,
+    about: '§Branching & CI: no hardcoded origin anywhere in src/ (must be 0)',
+  },
+
+  // ---- hard_deny entry count -----------------------------------------------
+  //
+  // `reviewer.md` calls a diff touching this "the most serious thing in this
+  // brief". This claim is the only automated thing that reads
+  // `.claude/settings.json` at all, which is why `ci.yml`'s `changes` job has
+  // a carve-out putting a settings-only PR through the app job — without it
+  // the claim would be re-evaluated on somebody else's unrelated PR. Note the
+  // narrowness: what CI checks there is this cardinality, never the
+  // permission semantics. For those, the review pass is still the whole gate.
+  //
+  // `$defaults` is filtered out because it is the harness's own placeholder,
+  // not an authored rule: a bare `| length` reads 2 against a correct file,
+  // so the check would fail on day one and get "fixed" by editing the doc to
+  // a number that no longer means what the sentence says. The measurement is
+  // rules-this-repo-wrote, which is what "has one entry" is counting.
+  //
+  // Two failure shapes, and it took two review passes to keep both. Counting
+  // alone is satisfied by ONE entry rather than by the RIGHT one, so swapping
+  // the rule's text for anything at all kept the check green. Filtering to
+  // entries that name service-role and counting THOSE fixes the swap and
+  // breaks the other direction: a second, unrelated rule appended to the list
+  // no longer moves the number, so the doc goes on asserting "one entry"
+  // while the deny surface has two, and a reviewer reads it and under-counts.
+  //
+  // So: count the authored entries, and collapse to 0 when none of them names
+  // the rule. An addition reads 2, a swap reads 0, a deletion reads 0
+  // honestly, and only the correct file reads 1.
+  //
+  // 0 rather than -1 as the sentinel because `parseCountOutput` is
+  // digits-only on purpose — a negative would land as an unparseable SKIP
+  // instead of a FAIL, which is a weaker signal wearing a confusing message.
+  // 0 is safe here for a reason specific to this claim: the prose asserts a
+  // cardinality of one, so zero can never be its correct value, and the one
+  // state that legitimately measures 0 (the entry deleted outright) is
+  // exactly the state that should fail.
+  //
+  // It pins the subject, never the wording: a reworded rule that still says
+  // service-role passes, which is the intended latitude.
+  {
+    id: 'hard-deny-entries',
+    file: '.claude/agents/reviewer.md',
+    pattern: /\*\*`hard_deny` has (\w+) entry\*\*/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `jq '[.permissions.autoMode.hard_deny[] | select(. != "$defaults")] as $e | if ($e | map(select(test("service-role"))) | length) == 0 then 0 else ($e | length) end' .claude/settings.json`,
+    about: 'reviewer.md §never-skipped four: hard_deny\'s one entry, and that it still names the service-role rule',
+  },
 ]
 
 // ---- Shared measured-value parsers (exported so tests can pin them) -------

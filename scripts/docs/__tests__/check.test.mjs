@@ -2,8 +2,16 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runClaim, decideExitCode, parseCountOutput, evaluateRlsRun, shellFailureReason } from '../check.mjs'
-import { extractWord } from '../registry.mjs'
+import {
+  runClaim,
+  decideExitCode,
+  parseCountOutput,
+  evaluateRlsRun,
+  shellFailureReason,
+  selectClaims,
+  CHEAP_KINDS,
+} from '../check.mjs'
+import { claims as realClaims, extractWord } from '../registry.mjs'
 
 /**
  * These exercise the full pipeline (locate -> measure -> compare) against a
@@ -334,5 +342,62 @@ describe('shellFailureReason', () => {
     // must win rather than quoting a half-finished build log.
     const res = { timedOut: true, timeoutMs: 8_000, stdout: 'partial nonsense', stderr: '' }
     expect(shellFailureReason(res)).not.toContain('partial nonsense')
+  })
+})
+
+/**
+ * `--cheap` is what makes `ci.yml`'s "Doc claims (cheap)" step runnable on
+ * every PR. The split it depends on is the whole contract: a claim kind that
+ * needs Postgres or a full build must never end up inside it, because the CI
+ * step has neither and the claim would fail rather than be absent.
+ */
+describe('selectClaims — the --cheap split', () => {
+  it('is a no-op without the flag', () => {
+    expect(selectClaims(realClaims)).toBe(realClaims)
+    expect(selectClaims(realClaims, {})).toBe(realClaims)
+  })
+
+  it('drops exactly the kinds that need an external service', () => {
+    const cheap = selectClaims(realClaims, { cheap: true })
+    expect(cheap.every((c) => CHEAP_KINDS.has(c.kind))).toBe(true)
+    expect(cheap.some((c) => c.kind === 'rls')).toBe(false)
+    expect(cheap.some((c) => c.kind === 'build')).toBe(false)
+    expect(cheap.some((c) => c.kind === 'vitest-file')).toBe(false)
+  })
+
+  it('keeps every claim the expensive kinds do not own', () => {
+    const cheap = selectClaims(realClaims, { cheap: true })
+    const expensive = realClaims.filter((c) => !CHEAP_KINDS.has(c.kind))
+    expect(cheap.length + expensive.length).toBe(realClaims.length)
+  })
+
+  it('selects a non-empty set from the real registry', () => {
+    expect(selectClaims(realClaims, { cheap: true }).length).toBeGreaterThan(0)
+  })
+
+  // An earlier version of this block asserted the opposite in a comment — that
+  // an empty selection would exit 2 on its own, so this test was a second
+  // guard. It was not: `decideExitCode` read `passed.length === 0 && skipped
+  // .length > 0`, and an empty selection skips nothing, so it exited 0 and CI
+  // went green having checked nothing. Both halves are now real: the contract
+  // below, and this test above it.
+  it('exits 2 rather than 0 when the selection is empty', () => {
+    expect(decideExitCode({ passed: [], failed: [], skipped: [] })).toBe(2)
+  })
+
+  // --cheap selects only claims that measure with a local command, so a skip
+  // there is a broken command or a moved output format — never the absent
+  // Postgres a full run tolerates.
+  it('makes a skip fatal under strict, and only under strict', () => {
+    expect(decideExitCode({ passed: [1], failed: [], skipped: [1] })).toBe(0)
+    expect(decideExitCode({ passed: [1], failed: [], skipped: [1] }, { strict: true })).toBe(1)
+  })
+
+  // A kind added to the registry without a decision about which side it falls
+  // on defaults to expensive — absent from CI — which is the safe direction
+  // but a silent one. This fails when that happens, so the choice gets made.
+  it('has a declared side for every kind the registry actually uses', () => {
+    const known = new Set(['shell', 'contrast', 'rls', 'build', 'vitest', 'vitest-file'])
+    for (const c of realClaims) expect(known.has(c.kind)).toBe(true)
   })
 })
