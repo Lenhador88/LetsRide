@@ -645,6 +645,10 @@ PGPASSWORD=postgres npm run db:seed:check   # does the DEV seed still apply, and
 # See scripts/docs/registry.mjs for the declared list — PD-155
 npm run docs:check
 
+# Do the repo's "`file.md` §Section" pointers still resolve? Runs inside test:unit,
+# not docs:check — scripts/docs/crossrefs.mjs. Moving a section is what breaks these.
+npx vitest run scripts/docs/__tests__/crossrefs.test.mjs
+
 # The only gate that renders anything — see supabase-relay.mjs's header first
 NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co node scripts/supabase-relay.mjs &
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
@@ -745,7 +749,7 @@ data-exposure and client-bundle passes cannot fire on a diff confined to `docs/`
 `openspec/`, `.claude/` or a root `*.md`, and roughly half of this repo's commits are exactly
 that. The documentation-claims pass does *not* narrow — a docs-only diff is entirely claims — and
 neither does the scope pass on anything from a queue pickup. **Four things override the scoping
-entirely** and `.claude/agents/reviewer.md` §classify is the list: a diff that **removes** a
+entirely** and `.claude/agents/reviewer.md` §Then: classify the diff is the list: a diff that **removes** a
 guard, the two `.claude/` cases below, and contrast on any new colour pairing.
 
 `.claude/agents/*.md` and `.claude/commands/*.md` are reviewed as **logic** rather than prose —

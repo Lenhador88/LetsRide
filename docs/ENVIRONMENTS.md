@@ -318,7 +318,7 @@ psql "$DEV_DATABASE_URL" -v ON_ERROR_STOP=1 \
 Idempotent — it resets rather than appends. It **refuses to run** against any database holding
 an account it did not create, which is what stops it ever reaching production; the guard runs
 before the delete, so a refused run changes nothing. The password is a required argument and
-never a literal, per `CLAUDE.md` §Test accounts.
+never a literal, per `docs/HANDOFF.md` §Test accounts.
 
 Postcard images are absent — SQL cannot upload a JPEG — so the deck shows broken thumbnails
 until someone posts one through the app. Doing that early is worthwhile anyway: it is the only
