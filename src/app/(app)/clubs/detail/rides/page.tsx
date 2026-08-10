@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { RideCard } from '@/components/rides/RideCard'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -9,6 +10,7 @@ import { getClub } from '@/lib/data/clubs'
 import { getRides } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM } from '@/lib/routes'
 
 /**
  * `Private club - Rides` (`2059:6390`).
@@ -27,7 +29,19 @@ import { filterSegment, queryKeys } from '@/lib/query/keys'
  * strip slices this list rather than asking for a shorter one.
  */
 export default function ClubRidesPage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per club — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <ClubRidesScreen />
+    </Suspense>
+  )
+}
+
+function ClubRidesScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
   // Enabled only once the club is known to exist and be visible. `getRides`

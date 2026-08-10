@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { PaperPlaneIcon } from '@/components/icons/generated'
 import { PostcardActionButton } from '@/components/postcards/PostcardAction'
+import { routes } from '@/lib/routes'
 
 /**
  * The design's third action (`Type=Share`, `Element / Icon / Paper Plane`).
@@ -25,7 +26,13 @@ export function ShareButton({ postcardId }: { postcardId: string }) {
   const [copied, setCopied] = useState(false)
 
   async function share() {
-    const url = `${window.location.origin}/postcards/${postcardId}`
+    // `window.location.origin` is still the origin, and in the native shell that
+    // is `https://localhost` — a link that is dead the moment it is shared. That
+    // is `design.md` §D7's separate problem and a separate change; PD-142 only
+    // moved the **path**, which is now `/postcards/detail?id=…`. The old shape
+    // survives as a `redirects()` entry in `next.config.ts` for links already in
+    // people's messages, so nothing here may keep generating it.
+    const url = `${window.location.origin}${routes.postcard(postcardId)}`
 
     if (navigator.share) {
       try {

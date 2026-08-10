@@ -42,6 +42,13 @@
  * claims narrowed and four widened, each for a reason recorded at its own call
  * site; the rest are direct translations.
  *
+ * **The paths in the left column are the strings those `revalidatePath` calls
+ * actually passed, and three of those routes no longer exist.** PD-142 moved the
+ * detail screens to `/rides/detail?id=…` and its siblings, so `` `/clubs/${id}` ``
+ * is history rather than a route to go and look at. It is left as written because
+ * the column is a record of what was replaced; `src/lib/routes.ts` is where the
+ * current shapes live.
+ *
  * | Was | Is now |
  * |---|---|
  * | `auth.signOut` — `('/', 'layout')` | `clearQueryCache()`. The one that must **destroy**, not refresh: refetching on a shared device repopulates rider A's screens while B signs in |
@@ -117,7 +124,7 @@ export const queryKeys = {
      * `owner` embed, no `viewer_role` — so it gets its own leaf under
      * `detail` rather than reusing that key: two shapes sharing one cache
      * entry is exactly the collision `keys.ts`'s own header warns against,
-     * and `/clubs/[id]/edit` can be open at the same time as `/clubs/[id]`
+     * and `/clubs/detail/edit` can be open at the same time as `/clubs/detail`
      * (a back-forward navigation) in a way that makes it observable.
      */
     edit: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'edit'],

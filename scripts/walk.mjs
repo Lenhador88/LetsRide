@@ -128,7 +128,7 @@ const problems = []
  *
  * `scripts/supabase-relay.mjs` forwards HTTP and drops the `upgrade` header, so
  * the ride chat's Realtime subscription cannot connect through it and Chromium
- * logs a failed WebSocket on every load of `/rides/[id]/chat`. Left unfiltered
+ * logs a failed WebSocket on every load of `/rides/detail/chat`. Left unfiltered
  * that makes the walk permanently red on a screen that renders perfectly — and
  * a gate that is always red is a gate nobody reads.
  *
@@ -191,37 +191,59 @@ if (landed.startsWith('/auth/login')) {
 async function discoverDetailPaths({ quiet = false } = {}) {
   const say = (m) => !quiet && console.log(m)
 
-  const firstHref = async (listPath, pattern) => {
+  /**
+   * **The id is a query parameter, not a path segment** (PD-142) — so this reads
+   * `?id=` off the first matching link rather than matching the whole pathname.
+   * The old version matched `^/rides/[0-9a-f-]{36}$`, which after the route move
+   * matches nothing at all: every detail link is `/rides/detail`, and a
+   * discovery that silently finds nothing prints a skip notice that reads
+   * exactly like a database with no rides in it.
+   */
+  const firstDetailId = async (listPath, detailPath) => {
     await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
     await page.waitForTimeout(800)
     return page.evaluate(
       (p) =>
         [...document.querySelectorAll('a[href]')]
-          .map((a) => new URL(a.href, location.origin).pathname)
-          .find((href) => new RegExp(p).test(href)) ?? null,
-      pattern
+          .map((a) => new URL(a.href, location.origin))
+          .filter((u) => u.pathname === p)
+          .map((u) => u.searchParams.get('id'))
+          .find((id) => id && /^[0-9a-f-]{36}$/.test(id)) ?? null,
+      detailPath
     )
   }
 
-  const ride = await firstHref('/rides', '^/rides/[0-9a-f-]{36}$')
-  if (!ride) say('  (no rides to open — /rides/[id] and its crew unwalked)')
+  const ride = await firstDetailId('/rides', '/rides/detail')
+  if (!ride) say('  (no rides to open — /rides/detail and its crew unwalked)')
 
-  const club = await firstHref('/clubs', '^/clubs/[0-9a-f-]{36}$')
-  if (!club) say('  (no clubs to open — /clubs/[id] and its sub-pages unwalked)')
+  const club = await firstDetailId('/clubs', '/clubs/detail')
+  if (!club) say('  (no clubs to open — /clubs/detail and its sub-pages unwalked)')
 
-  const postcard = await firstHref('/postcards', '^/postcards/[0-9a-f-]{36}$')
-  if (!postcard) say('  (no postcard thread link — /postcards/[id] unwalked)')
+  const postcard = await firstDetailId('/postcards', '/postcards/detail')
+  if (!postcard) say('  (no postcard thread link — /postcards/detail unwalked)')
+
+  const detail = (path, id) => `${path}?id=${id}`
 
   const paths = [
     // `edit` (PD-101) renders even for a rider who is not the organizer/owner
     // — it draws the "not yours" message rather than 404ing — but the walk's
     // fixtures are created through the UI by this same signed-in account, so
     // in the common case it is the real form that gets exercised.
-    ...(ride ? [ride, `${ride}/crew`, `${ride}/chat`, `${ride}/edit`] : []),
-    ...(club
-      ? [club, `${club}/rides`, `${club}/members`, `${club}/about`, `${club}/edit`]
+    ...(ride
+      ? ['/rides/detail', '/rides/detail/crew', '/rides/detail/chat', '/rides/detail/edit'].map(
+          (p) => detail(p, ride)
+        )
       : []),
-    ...(postcard ? [postcard] : []),
+    ...(club
+      ? [
+          '/clubs/detail',
+          '/clubs/detail/rides',
+          '/clubs/detail/members',
+          '/clubs/detail/about',
+          '/clubs/detail/edit',
+        ].map((p) => detail(p, club))
+      : []),
+    ...(postcard ? [detail('/postcards/detail', postcard)] : []),
   ]
   return { ride, club, postcard, paths }
 }

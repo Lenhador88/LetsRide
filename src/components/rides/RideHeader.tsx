@@ -3,6 +3,7 @@ import { ChatBubbleIcon, EditIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { RidePageMenu } from '@/components/rides/RidePageMenu'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { routes } from '@/lib/routes'
 
 /**
  * The chrome the three ride sub-pages share — title, back, and whatever the
@@ -85,7 +86,7 @@ export function RideHeader({
       // list — the plan and crew pages are the list's children, and chat is the
       // ride's. `Ride - Chat` draws the same arrow for both, which is exactly
       // the kind of thing a static frame cannot distinguish.
-      backHref={onChat ? `/rides/${rideId}` : '/rides'}
+      backHref={onChat ? routes.ride(rideId) : '/rides'}
       subRow={
         onChat ? (
           // `Ride - Chat` replaces the page switcher with a crew count
@@ -106,7 +107,7 @@ export function RideHeader({
       secondaryAction={
         !onChat && isOrganizer ? (
           <Link
-            href={`/rides/${rideId}/edit`}
+            href={routes.rideEdit(rideId)}
             aria-label="Edit ride"
             className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
           >
@@ -117,7 +118,7 @@ export function RideHeader({
       action={
         !onChat && isCrew ? (
           <Link
-            href={`/rides/${rideId}/chat`}
+            href={routes.rideChat(rideId)}
             aria-label="Ride chat"
             className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
           >

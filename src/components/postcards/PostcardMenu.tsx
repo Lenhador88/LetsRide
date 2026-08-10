@@ -14,6 +14,7 @@ import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { blockRider } from '@/lib/actions/blocks'
 import { hidePostcard, reportPostcard } from '@/lib/actions/moderation'
 import { deletePostcard } from '@/lib/actions/postcards'
+import { detailPaths } from '@/lib/routes'
 import { REPORT_REASON_WHEN_UNDRAWN } from '@/lib/validation/comments'
 
 /**
@@ -68,7 +69,14 @@ export function PostcardMenu({
    * card simply disappears, which is correct; on the thread the rider has to be
    * taken somewhere. `createPostcard` sets the precedent by redirecting.
    */
-  const onThisPostcardsThread = pathname === `/postcards/${postcardId}`
+  //
+  // The route alone answers it now that the id is a query parameter (PD-142),
+  // and it is exact rather than approximate: the thread screen draws exactly one
+  // card — the postcard named in its own URL — so any `PostcardMenu` rendered on
+  // this route belongs to that postcard. Reading `useSearchParams()` here
+  // instead would push a Suspense boundary onto `/postcards` and
+  // `/clubs/detail`, which render this menu too and have no id of their own.
+  const onThisPostcardsThread = pathname === detailPaths.postcard
 
   function run(
     action: () => Promise<{ error: string | null }>,

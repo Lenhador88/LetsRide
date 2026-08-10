@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { EditClubForm } from '@/components/clubs/EditClubForm'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -8,6 +9,7 @@ import { SkeletonForm } from '@/components/ui/Skeleton'
 import { getClubForEdit } from '@/lib/data/clubs'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 
 /**
  * `Edit club` — PD-101. No v2 frame exists for this screen either;
@@ -16,7 +18,7 @@ import { queryKeys } from '@/lib/query/keys'
  * destructive button reads "Delete ride". The field set here is exactly
  * `CreateClubForm`'s.
  *
- * Next still nests this under `clubs/[id]/layout.tsx`, whose
+ * Next still nests this under `clubs/detail/layout.tsx`, whose
  * `pt-header-sub-extra` is sized for the four sub-pages' shared switcher row
  * — a 24px top-up this screen's plain `Header` (no `subRow`) does not need
  * and there is no route-group escape from a shared ancestor layout for one
@@ -24,7 +26,19 @@ import { queryKeys } from '@/lib/query/keys'
  * never an overlap; noted here rather than silently accepted.
  */
 export default function EditClubPage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per club — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <EditClubScreen />
+    </Suspense>
+  )
+}
+
+function EditClubScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const club = useQuery(queryKeys.clubs.edit(id), () => getClubForEdit(id))
 
@@ -32,7 +46,7 @@ export default function EditClubPage() {
   // that is a 404; `undefined` is the effect not having answered yet.
   if (club.data === null) notFound()
 
-  const header = <Header title="Edit club" backHref={`/clubs/${id}`} />
+  const header = <Header title="Edit club" backHref={routes.club(id)} />
 
   if (club.error) {
     return (

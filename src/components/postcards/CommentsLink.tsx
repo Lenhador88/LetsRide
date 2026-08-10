@@ -1,5 +1,6 @@
 import { ChatBubbleIcon } from '@/components/icons/generated'
 import { PostcardActionLink, PostcardActionStatic } from '@/components/postcards/PostcardAction'
+import { routes } from '@/lib/routes'
 
 type CommentsLinkProps = {
   postcardId: string
@@ -30,6 +31,6 @@ export function CommentsLink({ postcardId, count, linkToThread = true }: Comment
   if (!linkToThread) return <PostcardActionStatic icon={icon} count={count} label={label} />
 
   return (
-    <PostcardActionLink href={`/postcards/${postcardId}`} icon={icon} count={count} label={label} />
+    <PostcardActionLink href={routes.postcard(postcardId)} icon={icon} count={count} label={label} />
   )
 }

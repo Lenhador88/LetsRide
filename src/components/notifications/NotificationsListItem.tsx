@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { NotificationRow } from '@/components/ui/NotificationRow'
+import { routes } from '@/lib/routes'
 import { formatNotificationStamp } from '@/lib/utils'
 import type { NotificationRow as NotificationRowData } from '@/types'
 
@@ -49,13 +50,13 @@ function describe(row: NotificationRowData): {
     case 'postcard_liked':
       return {
         copy: 'liked your postcard.',
-        href: row.postcard ? `/postcards/${row.postcard.id}` : null,
+        href: row.postcard ? routes.postcard(row.postcard.id) : null,
         trailing: postcardThumbnail(row),
       }
     case 'postcard_commented':
       return {
         copy: 'commented on your postcard.',
-        href: row.postcard ? `/postcards/${row.postcard.id}` : null,
+        href: row.postcard ? routes.postcard(row.postcard.id) : null,
         trailing: postcardThumbnail(row),
       }
     case 'ride_joined':
@@ -66,19 +67,19 @@ function describe(row: NotificationRowData): {
       // drawn string the day Q1 is answered the other way. No trailing
       // thumbnail: `rides` has no image column, so there is nothing to sign —
       // logged in docs/FIGMA-FIDELITY-TODO.md rather than a placeholder.
-      return { copy: 'joined your ride.', href: row.ride ? `/rides/${row.ride.id}` : null }
+      return { copy: 'joined your ride.', href: row.ride ? routes.ride(row.ride.id) : null }
     case 'ride_created_in_club':
       // Q2's default: the issue's own string, verbatim, in the same shape as
       // the drawn rows. Destination is the ride, not the club — the club is
       // context the copy names, per `036`'s comment on `notifications.club_id`.
       return {
         copy: `created a ride in ${row.club?.name ?? 'a club'}.`,
-        href: row.ride ? `/rides/${row.ride.id}` : null,
+        href: row.ride ? routes.ride(row.ride.id) : null,
       }
     case 'club_joined':
       return {
         copy: `joined club ${row.club?.name ?? 'a club'}.`,
-        href: row.club ? `/clubs/${row.club.id}` : null,
+        href: row.club ? routes.club(row.club.id) : null,
         trailing: row.club?.avatar_url ? (
           <img src={row.club.avatar_url} alt="" className="h-full w-full object-cover" />
         ) : undefined,

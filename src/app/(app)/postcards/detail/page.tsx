@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { CommentForm } from '@/components/postcards/CommentForm'
@@ -12,6 +13,7 @@ import { getPostcardComments } from '@/lib/data/comments'
 import { getCurrentProfile } from '@/lib/data/profile'
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM } from '@/lib/routes'
 import { postcardIdSchema } from '@/lib/validation/postcards'
 
 /**
@@ -37,7 +39,19 @@ import { postcardIdSchema } from '@/lib/validation/postcards'
  * read, so there was no state in which the answer had not arrived.
  */
 export default function PostcardThreadPage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per postcard — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <PostcardThread />
+    </Suspense>
+  )
+}
+
+function PostcardThread() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   // Before either read, not after: `id` reaches Postgres as a `uuid` and a
   // malformed segment comes back as 22P02 → 400 → a throw from `unwrap`, which

@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { EditRideForm } from '@/components/rides/EditRideForm'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -9,6 +10,7 @@ import { getMyClubs } from '@/lib/data/clubs'
 import { getRideForEdit } from '@/lib/data/rides'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 
 /**
  * `Edit ride` — PD-101. No v2 frame exists for this screen; `design.md` §D5
@@ -21,7 +23,19 @@ import { queryKeys } from '@/lib/query/keys'
  * disabled rather than take the whole screen down — see `EditRideForm`.
  */
 export default function EditRidePage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per ride — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <EditRideScreen />
+    </Suspense>
+  )
+}
+
+function EditRideScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const ride = useQuery(queryKeys.rides.edit(id), () => getRideForEdit(id))
   const clubs = useQuery(queryKeys.clubs.mine(), getMyClubs)
@@ -30,7 +44,7 @@ export default function EditRidePage() {
   // that is a 404; `undefined` is the effect not having answered yet.
   if (ride.data === null) notFound()
 
-  const header = <Header title="Edit ride" backHref={`/rides/${id}`} />
+  const header = <Header title="Edit ride" backHref={routes.ride(id)} />
 
   if (ride.error) {
     return (

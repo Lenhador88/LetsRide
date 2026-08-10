@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { MarkClubSeen } from '@/components/clubs/MarkClubSeen'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
@@ -12,6 +13,7 @@ import { getClubFeed } from '@/lib/data/postcards'
 import { getRides } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM } from '@/lib/routes'
 
 /**
  * How many upcoming rides the timeline strip **shows**. The design draws three
@@ -56,20 +58,33 @@ const CLUB_TIMELINE_RIDES = 5
  * `getClub`, could not do.
  */
 export default function ClubTimelinePage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per club — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <ClubTimelineScreen />
+    </Suspense>
+  )
+}
+
+function ClubTimelineScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
 
   /**
    * The two content reads wait for the club rather than running alongside it,
-   * which is the opposite call from `/postcards/[id]` and for a reason that
+   * which is the opposite call from the postcard thread and for a reason that
    * screen does not have. Both of these throw on a malformed uuid — Postgres
    * answers `22P02`, PostgREST turns it into a 400 and `unwrapList` raises —
-   * so issued eagerly they would turn `/clubs/not-a-uuid` from the 404 the
-   * server page returned into an error screen with a Try again button that can
-   * never succeed. `/postcards/[id]` buys its parallelism with a
-   * `postcardIdSchema` parse up front; there is no `clubIdSchema`, and adding
-   * one reaches outside this change.
+   * so issued eagerly they would turn `?id=not-a-uuid` into an error screen
+   * with a Try again button that can never succeed. The thread screen buys its
+   * parallelism with a `postcardIdSchema` parse up front; here the parse lives
+   * in `getClub` (`clubIdSchema`, PD-142), which answers `null` and so reaches
+   * the `notFound()` below — but the two content reads still have no guard of
+   * their own, which is what this gate is.
    *
    * A disabled query is exactly the "must not fetch and must not throw" state
    * `useQuery` documents for a null key, so nothing is issued until `getClub`

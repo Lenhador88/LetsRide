@@ -1,6 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { routes } from '@/lib/routes'
 import { rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
 import type { ActionState } from '@/lib/actions/state'
@@ -142,7 +143,7 @@ export async function createRide(
   // `revalidatePath('/rides')` never reached — `/rides/new` only began offering
   // `club_id` on 2026-08-05 and this claim was not extended with it.
   if (rest.club_id) invalidate(queryKeys.clubs.detail(rest.club_id))
-  return { error: null, redirectTo: `/rides/${ride.id}` }
+  return { error: null, redirectTo: routes.ride(ride.id) }
 }
 
 /**
@@ -330,7 +331,7 @@ export async function updateRide(
   // organizer arm of the `rides` SELECT policy (`022`) resolves this row for
   // this rider whatever `club_id` and `is_public` become.
   invalidate(queryKeys.notifications.list())
-  return { error: null, redirectTo: `/rides/${rideId}` }
+  return { error: null, redirectTo: routes.ride(rideId) }
 }
 
 /**
