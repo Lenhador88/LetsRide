@@ -264,6 +264,71 @@ describe('agent briefs do not describe a world that has moved on', () => {
     ])
   })
 
+  it('every connector brief still tells the agent to REPORT an unreachable tool', () => {
+    /*
+     * The companion to the test above, and the half that actually fires. That
+     * one keeps `ToolSearch` on the `tools:` line so an agent can *diagnose* a
+     * rotation; this one keeps the sentence that makes the agent *say so*.
+     *
+     * Diagnosis alone changes nothing the caller can see. CLAUDE.md §The Agent
+     * Squad settles it — a keyword search "buys diagnosis, not recovery", so
+     * "**the fix is therefore the *report***". Measured 2026-08-09: a reviewer
+     * subagent lost both Supabase and Linear, and the only reason the gap was
+     * visible at all is that its brief told it to lead with the passes that did
+     * not run. A review that stays quiet returns findings and is byte-identical
+     * to one that reached everything.
+     *
+     * This is prose, so it is exactly the kind of line a docs-tightening pass
+     * deletes as redundant — all seven briefs say the same thing in nearly the
+     * same words, which reads like duplication and is not. Nothing else in the
+     * repo would notice it going.
+     *
+     * `\s+` rather than a space in every pattern, because these files are
+     * hard-wrapped at ~95 columns and the phrase straddles the wrap in five of
+     * the seven. A single-line grep for `stop and say so` reports FIVE briefs
+     * missing the clause they in fact carry — measured while writing this test,
+     * twice. That is the same shape as CLAUDE.md's comment trap: the obvious
+     * command returns a confident wrong answer.
+     */
+    const DEGRADED_REPORT = /stop and say\s+so|emit a\s+FINDING/
+    const NAMES_BOTH_FAILURES = [/InputValidationError/, /No such tool\s+available/]
+
+    const checked: string[] = []
+    for (const { name, body } of briefs()) {
+      const frontmatter = body.split('\n---')[0]
+      const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
+      const connectors = declared.filter((t) => t.startsWith('mcp__'))
+      if (connectors.length === 0) continue
+      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      checked.push(name)
+
+      expect(
+        body,
+        `${name} never tells the agent to report an unreachable connector — a degraded run is indistinguishable from a clean one`,
+      ).toMatch(DEGRADED_REPORT)
+
+      for (const failure of NAMES_BOTH_FAILURES) {
+        expect(
+          body,
+          `${name} does not name both connector failures — reading a deferred schema as a missing permission produces a false degraded report, which is its own wrong answer`,
+        ).toMatch(failure)
+      }
+    }
+
+    expect(
+      checked.sort(),
+      'the guard examined a different set of briefs than expected — a `tools:` line it can no longer parse skips silently',
+    ).toEqual([
+      'data.md',
+      'feature.md',
+      'media.md',
+      'openspec.md',
+      'realtime.md',
+      'reviewer.md',
+      'test.md',
+    ])
+  })
+
   it('every brief still declares a name and a model', () => {
     // Frontmatter damage is silent: an agent with no `name` is simply unreachable.
     for (const { name, body } of briefs()) {

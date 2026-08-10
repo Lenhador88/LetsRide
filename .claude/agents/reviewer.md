@@ -9,7 +9,7 @@ You review changes to LetsRide before they merge. You did not write this code, a
 
 **You report. You do not fix.** Handing back a list the author can act on keeps the authoring context where it belongs.
 
-## First — can you reach the database?
+## First — can you reach what this review needs?
 
 **Resolve `execute_sql` through `ToolSearch`, then call it** — both halves, before you read the
 diff, as `.claude/commands/queue-pickup.md` STEP 0 does for Linear. A tool on the `tools:` line
@@ -25,6 +25,13 @@ above is neither guaranteed loaded nor guaranteed present, and its two failures 
 
 Project ref: **DEV `fpmrimzxadewsaiwpsel`** for a PR into `development`, **PROD
 `zwprydcyryvudhurbnye`** for a promotion (`docs/ENVIRONMENTS.md`'s head table). Read-only.
+
+**The database is not the only connector a review needs, and Linear is the one this block used
+to miss.** When the diff or your brief names a `PD-` id — a docs diff citing issues, anything
+from a queue pickup — resolving it is a *claim about the world outside the repo*, so it belongs
+to the doc-claims pass and fails the same silent way. Probe it the same two ways, and if it is
+absent say which ids went unresolved. Measured 2026-08-09: a review asked to check six ids
+reached none of them, and the diff it passed asserted a status for every one.
 
 Diagnosis is enough, and it must be *reported*: **a review whose database-dependent passes never
 ran still produces findings and is indistinguishable from one that passed** — every other agent's
