@@ -44,6 +44,17 @@ function invalidateClubMembership(clubId: string) {
   invalidate(queryKeys.clubs.all())
   invalidate(queryKeys.postcards.feed(filterSegment.club(clubId)))
   invalidate(queryKeys.rides.list(filterSegment.club(clubId)))
+  // PD-177, and the one entry here that is about VISIBILITY rather than
+  // content. `036` §3's SELECT policy carries a resolvability `EXISTS` per
+  // rendered resource, evaluated under the caller's own RLS — so membership
+  // decides whether a notification is returned at all. A `ride_created_in_club`
+  // row names a ride somebody else organised: leave the club and
+  // `private.is_club_member` turns false, the club arm and (for any ride that
+  // is not public) the ride arm both stop resolving, and the row leaves this
+  // rider's list and their unread count without a single notification row being
+  // written or deleted. Joining restores it. Nothing else in this file moves a
+  // notification — see `keys.ts`.
+  invalidate(queryKeys.notifications.all())
 }
 
 /**
@@ -389,6 +400,10 @@ export async function updateClub(
   // object was just deleted above — the cached signed URL is non-null and dead,
   // so the tile renders a broken image rather than falling back to initials.
   invalidate(queryKeys.postcards.all())
+  // `all()` and not `list()`, which PD-177's rule alone would give an embed
+  // change: the privacy toggle below propagates to this club's rides (022), and
+  // an owner holding no club_members row loses the arm that resolves them — so
+  // rows can leave the count as well as go stale in the list.
   invalidate(queryKeys.notifications.all())
   // rides.all() is invalidated unconditionally for the embed above. The privacy
   // flip is a second, independent reason: propagate_club_privacy_to_rides (022)
@@ -439,12 +454,19 @@ export async function deleteClub(clubId: string): Promise<ActionState> {
   }
 
   invalidate(queryKeys.clubs.all())
-  // Not a route claim either of the two originals ever made: club_members,
-  // feed_reads and notifications are cascades under the `clubs` prefix
-  // already, but the function also deletes rides (rides.all()) and their
-  // cascade takes postcards.club_id with it (postcards.all()) — two domains
-  // this action never directly touched a row in.
+  // Not a route claim either of the two originals ever made: club_members and
+  // feed_reads are cascades under the `clubs` prefix already, but the function
+  // also deletes rides (rides.all()) and their cascade takes postcards.club_id
+  // with it (postcards.all()) — two domains this action never directly touched
+  // a row in.
   invalidate(queryKeys.rides.all())
   invalidate(queryKeys.postcards.all())
+  // PD-177. `notifications` is NOT under the `clubs` prefix — the rows cascade
+  // in the database, the cache key does not. Deleting a club takes every
+  // `club_joined` addressed to this owner with it, plus every
+  // `ride_created_in_club` and every `postcard_liked`/`postcard_commented`
+  // riding on the rides and postcards that cascade behind it. Rows leave the
+  // list AND the unread count, so this is `all()` rather than `list()`.
+  invalidate(queryKeys.notifications.all())
   return { error: null }
 }

@@ -221,9 +221,57 @@ export const queryKeys = {
    * invalidation discipline — which is the only version of that guarantee that
    * survives someone adding a second caller.
    *
-   * No other action invalidates this table at all: a fan-out never addresses
-   * the actor who caused it (`036` §7), so no write a rider makes can produce
-   * a notification for that same rider.
+   * ## Which writes owe this key an invalidation — the PD-177 audit
+   *
+   * This block used to answer that in one sentence: *no other action
+   * invalidates this table at all — a fan-out never addresses the actor who
+   * caused it (`036` §7), so no write a rider makes can produce a notification
+   * for that same rider.* Every word of that is true and it answers the wrong
+   * question. Producing a notification is not the only thing that moves a list.
+   * **Two other mechanisms move it, and both are reachable by the rider's own
+   * writes:**
+   *
+   * 1. **Cascade.** All four subject columns are `on delete cascade` (`036`
+   *    §1), so deleting the subject deletes the notifications *about* it — and
+   *    the subject is normally a thing this rider owns, which is exactly who
+   *    those notifications were addressed to. `deleteClub`, `deleteRide`,
+   *    `deletePostcard` and `deleteComment`'s moderation path all do this.
+   * 2. **Resolvability.** `036` §3's SELECT policy carries an `EXISTS` per
+   *    rendered resource, evaluated under the caller's own RLS — so a row can
+   *    leave the list with nothing deleted anywhere. A `ride_created_in_club`
+   *    naming a private club's ride stops resolving the moment `leaveClub`
+   *    runs, and starts again on `joinClub`.
+   *
+   * A third mechanism moves only what is *drawn*: a notification embeds
+   * `CLUB_EMBED_COLUMNS`, `ride:rides(id, title)` and the postcard's
+   * `image_path`, so an edit to any of those leaves the old name, the old title
+   * or a dead signed URL on a row that is otherwise correct.
+   *
+   * **So the rule, and it is what decides `all()` against `list()` at every
+   * call site:** if rows can appear or disappear, name `all()` — the count is a
+   * count of rows, so it moved too. If only an embedded field changed, name
+   * `list()` — no row appeared or vanished, so `unread()` cannot have moved and
+   * refetching the count RPC buys nothing. That is the same reasoning that took
+   * `markNotificationsRead` down to `unread()` alone, applied in the other
+   * direction.
+   *
+   * **The writes that owe this key NOTHING, which is the half an audit gets
+   * wrong by omission.** Each was checked rather than assumed:
+   *
+   * | Write | Why it cannot move this rider's own list |
+   * |---|---|
+   * | `createRide`, `createClub`, `createPostcard`, `addComment`, `likePostcard` | The original sentence, and it holds for exactly these: every fan-out self-suppresses by rider id, so the actor is never the recipient |
+   * | `unlikePostcard` | `036` §7.2 retracts the row — from the postcard *author's* list, and a self-like was never notified to begin with |
+   * | `setRideAttendance` | `022`'s `rides` SELECT policy has **no `ride_members` arm**: crew membership is not what makes a ride visible, so joining or leaving a crew resolves nothing differently. No retraction trigger exists for an un-RSVP either |
+   * | `hidePostcard`, `unhidePostcard` | Every notification carrying a `postcard_id` is addressed to that postcard's author, and `009` made the author branch of the `postcards` SELECT policy unconditional — so hiding your own postcard is inert, and `011` deliberately keeps the hide predicate inside the *other* branch |
+   * | `updateProfile`, `setProfileImage` | The `actor` embed is always somebody else, for the self-suppression reason above. Your own username and avatar never render in your own list |
+   * | `blockRider`, `unblockRider` | Genuinely in the blast radius — a block stops the actor's `profiles` row resolving — and already covered by `invalidate(EVERYTHING)` |
+   *
+   * `updateClub` names `all()` rather than `list()`, which the rule alone would
+   * not give it: the privacy toggle is not only an embed change. Flipping a
+   * club private propagates to its rides (`022`), and an owner holding no
+   * `club_members` row — the orphan `enforce-creator-membership` exists to
+   * close — loses the membership arm that resolves them.
    *
    * `list` takes no filter segment, unlike `postcards.feed`/`rides.list`: the
    * design draws no per-type or read/unread filter, so there is only ever one

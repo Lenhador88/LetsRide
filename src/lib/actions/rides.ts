@@ -323,6 +323,13 @@ export async function updateRide(
   // filter segments — narrower invalidation would leave it visible in a list
   // it no longer belongs to.
   invalidate(queryKeys.rides.all())
+  // PD-177, and `list()` rather than `all()` on purpose: a notification embeds
+  // `ride:rides(id, title)`, so a rename leaves the old title on every
+  // `ride_joined` row this organizer holds — but no row appears or vanishes, so
+  // the unread count cannot have moved. The audience is unchanged too: the
+  // organizer arm of the `rides` SELECT policy (`022`) resolves this row for
+  // this rider whatever `club_id` and `is_public` become.
+  invalidate(queryKeys.notifications.list())
   return { error: null, redirectTo: `/rides/${rideId}` }
 }
 
@@ -357,5 +364,10 @@ export async function deleteRide(rideId: string): Promise<ActionState> {
   // postcards.ride_id is SET NULL by the cascade, so any postcard tagged to
   // this ride has changed even though this call never named one.
   invalidate(queryKeys.postcards.all())
+  // PD-177. `notifications.ride_id` cascades (`036` §1), so every `ride_joined`
+  // this organizer received for this ride is gone — a row leaving the list and
+  // the unread count with it, which is why this is `all()` and `updateRide`'s
+  // is `list()`.
+  invalidate(queryKeys.notifications.all())
   return { error: null }
 }

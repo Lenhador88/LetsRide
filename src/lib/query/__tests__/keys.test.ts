@@ -170,6 +170,54 @@ describe('the invalidation claims keys.ts maps', () => {
     // away from every screen that could show them, so it claims nothing.
     expect(writesWithoutInvalidation).toEqual(['onboarding.ts'])
   })
+
+  // PD-177. `notifications.list()` had no writer at all: `markNotificationsRead`
+  // was the table's only claimant and it names `unread()`. The gap is not
+  // visible from `keys.ts` — a key with no invalidator looks exactly like a key
+  // nothing makes stale — so the audit's conclusion is pinned here instead.
+  //
+  // Each name below is a write that moves this rider's OWN list, by cascading a
+  // subject row away (`036` §1) or by changing whether one resolves (`036` §3).
+  // The negative half — every write that deliberately claims nothing, and why —
+  // is the table in `keys.ts`'s `notifications` block; it cannot be asserted
+  // here, because "does not mention a key" is what a forgotten call site looks
+  // like too.
+  it('claims a notifications key from every write that moves the actor’s own list', () => {
+    const claimants: Record<string, string[]> = {
+      'clubs.ts': ['invalidateClubMembership', 'updateClub', 'deleteClub'],
+      'rides.ts': ['updateRide', 'deleteRide'],
+      'postcards.ts': ['deletePostcard'],
+      'comments.ts': ['deleteComment'],
+      'notifications.ts': ['markNotificationsRead'],
+    }
+
+    const missing: string[] = []
+
+    for (const [file, fns] of Object.entries(claimants)) {
+      const source = sources.find(([name]) => name === file)?.[1]
+      expect(source, `${file} is gone — the audit moved and this list did not`).toBeDefined()
+
+      for (const fn of fns) {
+        // From the declaration to the next top-level one, which is where a
+        // function's own invalidations live. `stripComments` already ran, so a
+        // doc block naming the key cannot stand in for a call — the comment
+        // trap CLAUDE.md documents four times over.
+        const start = source!.search(new RegExp(`(export )?(async )?function ${fn}\\b`))
+        if (start === -1) {
+          missing.push(`${file}: ${fn} not found`)
+          continue
+        }
+        const next = source!.slice(start + 1).search(/\n(export )?(async )?function /)
+        const body = next === -1 ? source!.slice(start) : source!.slice(start, start + 1 + next)
+
+        if (!/invalidate\(queryKeys\.notifications\./.test(body)) {
+          missing.push(`${file}: ${fn}`)
+        }
+      }
+    }
+
+    expect(missing).toEqual([])
+  })
 })
 
 describe('invalidate reaches what the keys promise', () => {
