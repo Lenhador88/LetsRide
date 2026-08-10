@@ -187,14 +187,17 @@ export const claims = [
     id: 'migrations-count-claude',
     file: 'CLAUDE.md',
     // The tail of this pattern tracks the DEV/PROD RELATIONSHIP, which has
-    // changed four times since 2026-08-09 — 041, then 042, then 043, then 044,
-    // each applied to DEV by itself. It is deliberately NOT relaxed to
+    // changed six times since 2026-08-09 — 041, 042, 043, 044, 045, 046, each
+    // applied to DEV by itself. Keep this list in step with the regex below when
+    // you move it: the comment stopped a migration short once already, which
+    // reads as the pin being stale when it was the prose that was.
+    // It is deliberately NOT relaxed to
     // /Applied state: (\d+) files/: the numeric half is the only thing this
     // entry verifies, so pinning the prose is what forces the next session to
     // re-read the sentence when the relationship changes again (i.e. when PROD
     // catches up) rather than leaving a stale "AGREE" behind a correct count.
     // A pattern miss here is the check working, not breaking.
-    pattern: /\*\*Applied state: (\d+) files, and DEV is FIVE AHEAD of PROD/,
+    pattern: /\*\*Applied state: (\d+) files, and DEV is SIX AHEAD of PROD/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
