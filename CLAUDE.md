@@ -1153,10 +1153,23 @@ say what actually landed; a notification they did not need is annoying in a way 
 `.claude/hooks/session-wrapup-check.sh` is a backstop rather than the trigger — it can only fire
 once the branch is committed, pushed and ahead of `development`.
 
-**Say less while building.** Progress feedback during a build is a line or two — what landed,
-what is next, what broke. Not a recap of the reasoning, not a restatement of the plan, not a
-summary of a file that was just read. The owner is watching the work happen; narrating it twice
-buries the one line that actually needed reading.
+**Say less. Every reply, not just the ones during a build.** Progress feedback is a line or
+two — what landed, what is next, what broke. Not a recap of the reasoning, not a restatement of
+the plan, not a summary of a file that was just read. The owner is watching the work happen;
+narrating it twice buries the one line that actually needed reading.
+
+**This rule used to say "while building", and that scoping is what made it fail.** Product
+owner, 2026-08-10: *"can you be more to the point and a bit shorter when talking to me? this is
+important."* The narration during the work had been short; the **close-out reports** were not —
+a merged PR would come back as a dozen paragraphs re-explaining findings already written into
+the commit message, the PR body and the Linear comment. Three copies of the same reasoning, and
+the owner reads the one on their phone. **A wrap-up is the failure mode this rule exists for**,
+not an exception to it: state what landed, what needs them, and stop.
+
+**The record is not the reply.** The commit message, the PR body and the Linear comment are
+where the reasoning belongs, and they stay as long as they need to be. Do not also paste it
+into chat — link it. If something is worth saying twice it is worth saying once, in the place
+that survives the session.
 
 Three things stay long however brief the commentary gets, because each is a *decision* rather
 than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,
