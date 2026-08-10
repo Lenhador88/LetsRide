@@ -185,9 +185,10 @@ is mergeable on its own with neither leaving the other half-built.
       `docs/HANDOFF.md` is updated to match.
 - [x] 3.6 Update `docs/HANDOFF.md`: the migration's applied state on DEV vs PROD, each claim
       beside the command that verifies it.
-- [ ] 3.7 Log the deferred hardening **on the existing `PD-163`** rather than as a new issue:
-      narrow the `rides`/`clubs` UPDATE grant per column so `created_at` is not client-writable
-      (`design.md` Q5). `PD-163` already covers the same defect class on `postcards`; add a
-      comment naming the two extra tables so its scope is complete. **Not done in this session —
-      no Linear tool was in this session's allowlist.**
+- [x] 3.7 ~~Log the deferred hardening on the existing `PD-163`~~ — **BUILT instead, 2026-08-10.**
+      `045_rides_clubs_server_owned_created_at` narrows INSERT *and* UPDATE per column on both
+      `rides` and `clubs`, so `created_at` is server-owned and `id`/`organizer_id`/`owner_id` are
+      no longer updatable (`design.md` Q5, updated with what it actually did). Applied to DEV;
+      PROD stays at `040` by PD-168. Logging it was never the point — the issue it would have been
+      logged on was being worked, so the note went into the migration and Q5 rather than a comment.
 - [ ] 3.8 Delegate `reviewer` on the final diff, immediately before the PR.

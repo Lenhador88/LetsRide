@@ -67,7 +67,7 @@ npm run lint                          # exit 0 — 9 pre-existing <img> warnings
 npm run test:unit                     # 1010/1010 across 38 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 10 dynamic routes
-PGPASSWORD=postgres npm test          # 1122 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 1180 assertions, 0 failures
 ```
 
 **Two traps in running that, both of which produce a confident wrong answer first:**
@@ -366,7 +366,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1122**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1180**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch) |
 | Unit tests | `npm run test:unit` — **1010 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
@@ -562,21 +562,81 @@ Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
 Inbox or push exists.
 
-## Migrations — DEV is THREE AHEAD of PROD, and six things will read as drift
+## Migrations — DEV is SIX AHEAD of PROD, and nine things will read as drift
 
-**`041`, `042` and `043` are applied to DEV and deliberately NOT to PROD.** DEV is at `043`, PROD
-at `040`, and the repo holds 43 files. That gap is a decision, not a lapse: each was applied by the
-session that wrote it under a brief scoped to DEV, and promoting them is the owner's call. **They
-are independent of each other** — `041` adds a column to `postcards`, `042` revokes a grant on
-`profiles`, `043` adds one function — so any order works and none blocks another. Verify rather
-than trust it; this is exactly the kind of line that goes stale:
+**`041` through `046` are applied to DEV and deliberately NOT to PROD.** DEV is at `046`, PROD at
+`040`, and the repo holds 46 files. That gap is a decision, not a lapse: each was applied by the
+session that wrote it under a brief scoped to DEV, and promoting them is the owner's call.
+
+**THE APPLY ORDER, which is what PD-168 executes from.** This list used to say every pending
+migration was independent. That stopped being true at `044`, so the order is written out rather
+than left to be re-derived:
+
+```
+041  ->  044  ->  046   REQUIRED CHAIN, all three on `postcards`, and the two links fail
+                        DIFFERENTLY:
+                        041 -> 044 fails LOUDLY. 044 grants `insert (… ride_id)`, the column
+                        041 adds, so 044 on a PROD without 041 errors outright.
+                        044 -> 046 fails SILENTLY, which is the dangerous one. Each file
+                        issues `revoke update` + an ABSOLUTE `grant update (…)` list, not a
+                        delta, so whichever runs LAST wins the whole surface. Run 046 then
+                        044 and 044's list — which still contains `id` and `author_id` —
+                        reinstates exactly what 046 exists to revoke. Nothing errors and
+                        nothing goes red; the database just quietly ends up at 044.
+042, 043, 045           independent — any position, any order, before or after the chain.
+```
+
+Filename order (`041 … 046`) satisfies the constraint, so **applying them in numeric order is
+always correct** and is the recommendation; the table exists so that a partial promotion — the
+owner taking three of the six — does not pick an order that fails or, worse, one that quietly
+undoes a revoke. `045` touches `rides` and `clubs` only and depends on none of the others. Verify
+rather than trust this; it is exactly the kind of line that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 43 rows, ending 20260809235652 delete_owned_club
+#   DEV  (fpmrimzxadewsaiwpsel): 46 rows, ending 20260810022117 046_postcards_authorship_needs_a_grant
 #   PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 040_locality_centroid
-ls supabase/migrations/ | wc -l          # 43
+ls supabase/migrations/ | wc -l          # 46
 ```
+
+**Applying `046` to PROD needs no gate.** One revoke/grant pair and one column comment on
+`postcards`; it writes no rows and touches no policy. It is defence in depth rather than a fix —
+nothing is exposed today, because the UPDATE policy's `with check` already refuses a hand-off — so
+unlike `044`/`045` it carries no cost while it waits. Rollback is
+`grant update (id, author_id) on public.postcards to authenticated;`.
+
+**`044` and `045` are the two on this list with a live cost while they wait, and the only two that
+are security-relevant.** The other three are additive or inert. Both close halves of PD-163, and
+until they apply to PROD a rider there can `PATCH` a `created_at` they own and pin their own content
+to the top of a list every other rider reads: a postcard to the top of every feed (`044`, and
+outside every later `.lt('created_at', before)` cursor page), and a club to the top of
+`/clubs/explore` (`045`). Neither has a moderation path to undo it.
+
+**Applying `045` to PROD needs no gate and no ordering.** Four revoke/grant pairs and two column
+comments across `rides` and `clubs`; it writes no rows, touches no policy, and hangs nothing off a
+write path. **The one thing to re-read before applying is its §1 and §2** — the column lists must be
+re-derived against PROD from `pg_attribute.attacl`/`pg_class.relacl` at apply time rather than
+copied, for the same reason `041` §3 says so. PROD's starting state for these two tables is expected
+to be identical to DEV's was (`arwdDxtm` table-level, no column ACLs), because nothing in the chain
+has ever narrowed them — but that is an expectation, not a measurement, and `045` is the file whose
+whole point is that grants get measured rather than assumed. Unlike `044` it has a **live UPDATE
+path in front of it** (`updateRide`/`updateClub`, PD-101), so the four write-path shapes are worth
+re-running on PROD in a rolled-back transaction after applying. Rollback is
+`grant insert, update on public.rides, public.clubs to authenticated;`.
+
+**Applying `044` to PROD needs no gate and no ordering, and it is a two-statement-pair grant
+change.** `revoke insert` + `grant insert (six columns)`, `revoke update` + `grant update (five
+columns)`, plus two column comments. It writes no rows, touches no policy and hangs nothing off a
+write path, so unlike `036` it starts no new code inside a rider's transaction. It has no
+relationship to a code deploy in either direction: `createPostcard` names neither timestamp and
+nothing in `src/` ever has — grepped across `src/lib/actions/` and `src/lib/data/`. **The one thing
+to re-read before applying is `044`'s §1 and §2** — the column lists must be re-derived against
+PROD at apply time from `pg_attribute.attacl`/`pg_class.relacl` rather than copied, for the same
+reason `041`'s §3 says so, and PROD's starting state is *not* DEV's: PROD has never had `041`, so
+its `postcards` UPDATE grant is still table-level and it has no `ride_id` column at all. Applying
+`044` to PROD before `041` would therefore grant `insert (ride_id)` on a column that does not exist
+and fail; **`041` must go first**. That is the single ordering constraint on this list.
+Rollback is `grant insert, update on public.postcards to authenticated;`.
 
 **Applying `043` to PROD needs no gate and no ordering, and it is inert until `deleteClub` ships.**
 One `create or replace function`, its grants and its comment. It hangs nothing off an existing
@@ -605,10 +665,23 @@ apply time rather than copied, because omitting one silently retracts a grant th
 migration *names* only — and four known mismatches will look like drift to anyone who checks by
 hand:
 
-- **`npm run db:drift` reports `041`, `042` and `043` missing from PROD, and that is TRUE rather
-  than a false positive.** They are the entries on this list a session should act on rather than explain
-  away — by applying them to PROD, once the owner decides to. Every other entry here is a recording
-  artefact.
+- **`npm run db:drift` reports `041` through `046` missing from PROD, and that is TRUE rather than
+  a false positive.** They are the entries on this list a session should act on rather than explain
+  away — by applying them to PROD, once the owner decides to, in the order above. Every other entry
+  here is a recording artefact.
+- **DEV's `046` statement IS byte-identical to its file**, like `041`, `044` and `045`:
+  `md5(statements[1])` equals `md5sum supabase/migrations/046_postcards_authorship_needs_a_grant.sql`
+  — both `9ec9b7a2bd9d6b891a70daa846869c27` at apply time, 2026-08-10.
+- **DEV's `045` statement IS byte-identical to its file**, like `041` and `044`:
+  `md5(statements[1])` equals `md5sum supabase/migrations/045_rides_clubs_server_owned_created_at.sql`
+  — both `a8534fda14169b6bf2d024ea95983499` at apply time, 2026-08-10. Recompute rather than trusting
+  the hash; a later comment edit moves it.
+- **DEV's `044` statement IS byte-identical to its file**, like `041` and unlike `042`/`043`:
+  `md5(statements[1])` on DEV equals `md5sum supabase/migrations/044_postcards_server_owned_timestamps.sql`
+  — both `4bc4fc5b4f4d6db3d0821fef97537b5c` at apply time, 2026-08-10. The trailing-newline class
+  that `042` and `043` fell into is avoided by including the file's final `\n` in the string passed
+  to `apply_migration`, which is the whole difference; recompute rather than trusting this hash,
+  because a later comment edit to the file will move it and make the row look like the others.
 - **DEV's `043` statement is its file minus the final newline, and that was PROVEN rather than
   assumed.** `apply_migration` takes a string and the argument cannot carry the file's trailing
   `\n`, so this is `042`'s row again rather than a new class. Recompute both forms rather than

@@ -688,10 +688,16 @@ select assert_eq((select count(*)::int from postcards where id = '00000000-0000-
   1, 'a rider cannot delete another rider''s postcard');
 
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+-- Which LAYER refuses this changed with 046: the missing UPDATE grant on
+-- author_id now fires before RLS, so the `with check` conjunct that used to be
+-- the only refusal is never reached. `assert_denied` recognises 42501 and
+-- nothing else and cannot tell the two apart, so the label says both rather than
+-- naming a mechanism that no longer runs. The policy half stays measured by
+-- 044's md5 pin on this policy's qual||with_check, which is exact text.
 select assert_denied($$
   update postcards set author_id = '00000000-0000-0000-0000-00000000000c'
   where id = '00000000-0000-0000-0000-0000000000e1'$$,
-  'an author cannot hand their postcard to another rider');
+  'an author cannot hand their postcard to another rider — the missing UPDATE grant on author_id refuses it first (046), and the WITH CHECK would refuse it anyway');
 -- c5, not c4: 000a OWNS c4, so the earlier form of this assertion permitted the
 -- write and was testing nothing. c5 is public and 000a is not a member, so this
 -- pins the refusal to membership rather than visibility.
@@ -8613,36 +8619,37 @@ select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'SELECT'),
   true, '041: ... and may SELECT it, or the Journal query could not filter on it');
 
+-- 041 kept both of these and 044 left them alone; 046 takes them, applying 045's
+-- own objection back to this table — "the policy, not the grant, is what refuses
+-- a hand-off" was the reasoning 045 rejected, so it could not stay standing here.
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'id', 'UPDATE'),
-  true, '041: the re-grant kept UPDATE on postcards.id');
+  false, '046: postcards.id holds NO update grant — 041 kept it, 046 took it, matching rides.id and clubs.id');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'author_id', 'UPDATE'),
-  true, '041: ... on author_id (the policy, not the grant, is what refuses a hand-off)');
+  false, '046: ... and NOT on author_id — the policy is no longer the ONLY thing refusing a hand-off, which is 045''s argument applied back to 044');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'club_id', 'UPDATE'),
   true, '041: ... on club_id (updatable by design — which is why ITS with_check conjunct is required)');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'image_path', 'UPDATE'),
   true, '041: ... on image_path');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'caption', 'UPDATE'),
   true, '041: ... on caption');
+-- The two timestamp columns were in 041's re-granted list and are NOT any more.
+-- 041's own comment here said "fixing PD-163 SHOULD edit this line deliberately"
+-- — 044 is that edit, so both lines flip to false and are relabelled 044 rather
+-- than deleted. The full 044 section lives further down; these two stay in place
+-- so that 041's enumeration of its own re-grant list still reads as a complete
+-- account of which columns hold UPDATE and which do not.
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'updated_at', 'UPDATE'),
-  true, '041: ... and on updated_at');
-
--- created_at, alone and labelled. THIS IS NOT AN INVARIANT — it records the
--- status quo of a live defect, PD-163: postcards.created_at is client-writable,
--- no trigger imposes it, and it is the feed's sort key AND its pagination
--- cursor, so an author can pin a postcard to the top of every feed for ever.
--- 041 preserves the grant so that this change alters no column it did not come
--- to alter; two concurrent rewrites of one table's grants is how one silently
--- undoes the other. Fixing PD-163 SHOULD edit this line deliberately.
+  false, '044: ... and NOT on updated_at — 041 re-granted it, 044 took it back, and postcards_set_updated_at stamps it anyway');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'created_at', 'UPDATE'),
-  true, '041: created_at KEEPS its UPDATE grant — status quo of PD-163, not an invariant. Fixing that defect edits this line on purpose');
+  false, '044: ... and NOT on created_at — 041 pinned this as a known defect (PD-163) and 044 is the deliberate edit that closes it');
 
 select assert_eq(
   (select string_agg(column_name, ',' order by column_name)
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'postcards'
       and grantee = 'authenticated' and privilege_type = 'UPDATE'),
-  'author_id,caption,club_id,created_at,id,image_path,updated_at',
-  '041: exactly seven columns hold UPDATE, and ride_id is not among them');
+  'caption,club_id,image_path',
+  '041/044/046: exactly three columns hold UPDATE — ride_id (041), created_at and updated_at (044), id and author_id (046) are not among them');
 
 -- 007 revoked the last of anon's reach and decision #1 keeps it that way. The
 -- column-level check is separate because a per-column grant does not appear in
@@ -9097,13 +9104,19 @@ select assert_eq(
 rollback to savepoint club_writes_043;
 set role authenticated;
 
--- Ownership cannot be handed over by a client: the UPDATE WITH CHECK is
--- `auth.uid() = owner_id`, so the new row fails it. The stated consequence is
--- that an owner cannot leave a club they own, and this change does not close it.
+-- Ownership cannot be handed over by a client. **Which LAYER refuses it changed
+-- with 045, and the label had to change with it**: `assert_denied` recognises
+-- 42501 and nothing else, and a missing column grant and a failed `with check`
+-- are both 42501 — so this line would have gone on passing while claiming the
+-- `with check` did the work, which stopped being what is measured. 045 revokes
+-- UPDATE on `clubs.owner_id`, so the grant now refuses first and the policy is
+-- never reached. The conjunct is still there and is pinned as text below, so
+-- both layers stay asserted rather than one silently replacing the other.
+-- The consequence is unchanged: an owner cannot leave a club they own.
 select set_config('test.uid', '00000000-0000-0000-0000-0000000430d1', false);
 select assert_denied($$update clubs set owner_id = '00000000-0000-0000-0000-0000000430e1'
                         where id = '00000000-0000-0000-0000-0000000430cb'$$,
-  '043: an owner cannot reassign their club — the WITH CHECK refuses the new row');
+  '043/045: an owner cannot reassign their club — the missing UPDATE grant on owner_id refuses it first (045), and the WITH CHECK would refuse it anyway');
 
 -- --------------------------------------------------------------------------
 -- 043.8  The rides half, and the middle assertion is the measurement the whole
@@ -9135,9 +9148,10 @@ rollback to savepoint ride_writes_043;
 set role authenticated;
 
 select set_config('test.uid', '00000000-0000-0000-0000-0000000430e1', false);
+-- Same layer swap as the clubs case above, and the same reason the label moved.
 select assert_denied($$update rides set organizer_id = '00000000-0000-0000-0000-0000000430d1'
                         where id = '00000000-0000-0000-0000-000000043f02'$$,
-  '043: an organizer cannot hand their ride to somebody else — the WITH CHECK names auth.uid()');
+  '043/045: an organizer cannot hand their ride to somebody else — the missing UPDATE grant on organizer_id refuses it first (045), and the WITH CHECK naming auth.uid() would refuse it anyway');
 
 -- What a bare client-side club delete does, asserted rather than argued. This is
 -- the state the RPC exists to prevent, so it is worth one savepoint to show it
@@ -9469,6 +9483,424 @@ select assert_eq(
   '017: ... and the DELETE policy is still organizer-only with no membership arm, which is what holds exit one open');
 
 rollback to savepoint ex_member_017;
+
+\echo ''
+\echo '# The feed''s sort key is server-owned — an author cannot pin themselves (044)'
+
+-- --------------------------------------------------------------------------
+-- 044.  postcards.created_at is the home feed's SORT KEY and its PAGINATION
+--       CURSOR (src/lib/data/postcards.ts orders created_at desc and pages
+--       with .lt). While `authenticated` could write it, an author could pin
+--       their own postcard to the top of every feed permanently and push it
+--       outside every later cursor page — PD-163. 044 takes the grant away on
+--       BOTH verbs, and does the same for `updated_at`.
+--
+--       Asserted BY ROLE with has_column_privilege, never by attempting the
+--       write: this suite runs as the table owner, for whom no column
+--       privilege is a barrier, so a write that succeeded here would prove
+--       nothing and a write that failed would prove something else. 031 is
+--       where that lesson is written down.
+-- --------------------------------------------------------------------------
+reset role;
+
+-- INSERT, column by column. 041 made UPDATE column-level and left INSERT at
+-- table level, so before 044 `created_at` was insertable even though it was not
+-- in any grant list — the half a reader of 041 alone would not predict.
+select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'insert'),
+  false, '044: authenticated holds no TABLE-level INSERT grant on postcards — 044 made it column-level, as 041 did for UPDATE');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'created_at', 'INSERT'),
+  false, '044: ... so a postcard cannot be BORN dated in the year 3000 either, which the UPDATE half alone would not have stopped');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'updated_at', 'INSERT'),
+  false, '044: ... nor born claiming an edit that never happened — nothing stamped updated_at on INSERT');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'author_id,caption,club_id,id,image_path,ride_id',
+  '044: exactly six columns hold INSERT, and neither timestamp is among them');
+
+-- The whole migration in one line. **Deliberately a RESTATEMENT** and placed
+-- after the four it summarises rather than before them: all four combinations
+-- it covers are asserted individually above and in 041's block, so a mutation
+-- reaches one of those first and this one can only go red behind it. It earns
+-- its place as the sentence a future session greps for, not as unique coverage
+-- — and putting it first would have made the specific failures unreachable
+-- instead, which is the worse of the two.
+select assert_eq(
+  (select bool_or(has_column_privilege('authenticated', 'public.postcards', c, p))
+     from unnest(array['created_at', 'updated_at']) c,
+          unnest(array['INSERT', 'UPDATE']) p),
+  false, '044: authenticated can write NEITHER timestamp on postcards, by NEITHER verb — the feed cannot be pinned');
+
+-- What must survive, or the fix has broken the product instead of the hole.
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'created_at', 'SELECT'),
+  true, '044: created_at is still READABLE — the feed sorts and pages on it, so revoking select would empty the home screen');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'caption', 'INSERT'),
+  true, '044: ... and caption is still insertable, so createPostcard''s four-column insert still lands');
+select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'delete'),
+  true, '044: ... and DELETE is untouched at table level — deleting your own postcard is the only remedy a rider has');
+
+-- The default is the VALUE and the grant is the GUARANTEE — 034 §4b's sentence.
+-- Losing the default now costs every insert a NOT NULL violation rather than a
+-- wrong timestamp, because nothing else can supply one.
+select assert_eq(
+  (select string_agg(a.attname || '=' || pg_get_expr(d.adbin, d.adrelid), ',' order by a.attname)
+     from pg_attribute a join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+    where a.attrelid = 'public.postcards'::regclass
+      and a.attname in ('created_at', 'updated_at')),
+  'created_at=now(),updated_at=now()',
+  '044: both timestamps still DEFAULT now() — the grant reserves the column, the default is what fills it');
+
+-- 007 revoked the last of anon's reach; decision #1 keeps it that way. Named by
+-- role on every verb rather than counted, because a per-column grant does not
+-- appear in role_table_grants at all — 034 §4b's trap.
+select assert_eq(
+  (select bool_or(has_column_privilege('anon', 'public.postcards', c, p))
+     from unnest(array['created_at', 'updated_at']) c,
+          unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p),
+  false, '044: anon holds nothing on either postcards timestamp, in any verb');
+
+-- 044 is a GRANT change and nothing else. The UPDATE policy is the one it could
+-- plausibly have been "tidied" into, so it is pinned as text rather than
+-- described — captured from letsride-dev with 044 applied.
+select assert_eq(
+  (select md5(qual || with_check) from pg_policies
+    where schemaname = 'public' and tablename = 'postcards' and cmd = 'UPDATE'),
+  'ac4c46eb256cc388059ad524be0b90ae',
+  '044: the postcards UPDATE policy is byte-identical — 044 moved grants and touched no policy');
+
+-- --------------------------------------------------------------------------
+-- 044.b  The trigger still stamps updated_at, even though `authenticated` no
+--        longer holds UPDATE on that column. This is the claim that makes §2
+--        free rather than a regression, and it is the one worth measuring
+--        BEHAVIOURALLY: a column privilege gates the statement's SET list,
+--        while a BEFORE trigger assigns to NEW after that check. Getting it
+--        backwards would mean every caption edit silently stopped recording
+--        when it happened.
+--
+--        Run as `authenticated` with the suite's own identity idiom
+--        (set_config('test.uid', ...)). Setting request.jwt.claims here is read
+--        by nothing — auth.uid() is redefined in harness.sql to read test.uid —
+--        and a positive assertion written that way passes while proving
+--        nothing, which is exactly what this one would do.
+-- --------------------------------------------------------------------------
+savepoint stamp_044;
+
+-- Its own fixture rather than a seed row, aged to 2020 so that "moved" and
+-- "did not move" are distinguishable instead of both reading as now(). Two
+-- reasons it is written here rather than reusing `e1`:
+--
+--   * `e1` is DELETED at rls_test.sql:1646, outside any savepoint, to prove the
+--     comment/hide/report cascade. Every fixture this section could borrow is
+--     one an earlier section may have consumed, and a missing row makes an
+--     assertion read NULL rather than fail for its own reason.
+--   * The ageing is done at INSERT, not by a later UPDATE, because
+--     `postcards_set_updated_at` fires on the OWNER's update too — `set
+--     updated_at = '2020-01-01'` would be overwritten with now() on the spot and
+--     the assertion below would pass against a row that was never aged, proving
+--     nothing. A before/after comparison cannot substitute either: `now()` is
+--     TRANSACTION time and this whole suite is one transaction, so both
+--     readings would be the same instant.
+--
+-- Inserted as the owner, which is also what lets it name both timestamps at all.
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption, created_at, updated_at)
+values ('00000000-0000-0000-0000-00000044e001', '00000000-0000-0000-0000-00000000000a',
+        null, 'postcards/00000000-0000-0000-0000-00000000000a/44440000-0000-4000-8000-000000000044.jpg',
+        'Aged on purpose', '2020-01-01', '2020-01-01');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+update postcards set caption = 'Aged on purpose, edited'
+ where id = '00000000-0000-0000-0000-00000044e001';
+
+select assert_eq(
+  (select caption from postcards where id = '00000000-0000-0000-0000-00000044e001'),
+  'Aged on purpose, edited',
+  '044: an author can still edit their own caption — the grant that survived is the one the app actually uses');
+select assert_eq(
+  (select updated_at > '2021-01-01'::timestamptz from postcards
+    where id = '00000000-0000-0000-0000-00000044e001'),
+  true, '044: ... and postcards_set_updated_at STILL stamps updated_at off its aged 2020 value, despite authenticated holding no UPDATE grant on it — a column privilege gates the SET list, not what a BEFORE trigger assigns');
+select assert_eq(
+  (select created_at = '2020-01-01'::timestamptz from postcards
+    where id = '00000000-0000-0000-0000-00000044e001'),
+  true, '044: ... while created_at is carried through at its aged value, because no trigger writes it and no grant admits it');
+
+rollback to savepoint stamp_044;
+reset role;
+
+\echo ''
+\echo '# rides and clubs: created_at is server-owned, ownership needs a grant too (045)'
+
+-- --------------------------------------------------------------------------
+-- 045.  The other half of PD-163. Both tables were still at the pre-041 shape
+--       — everything table-level, no column grants at all — so `created_at`
+--       was writable on both verbs and `id`/`organizer_id`/`owner_id` on
+--       UPDATE. `clubs.created_at` was a LIVE pinning vector, because
+--       getClubsToExplore orders `created_at desc`; `rides.created_at` was not
+--       (that list sorts `departure_at`) and is closed anyway.
+--
+--       Grant questions are asked BY ROLE with has_column_privilege. The suite
+--       runs as the table owner, for whom no column privilege is a barrier, so
+--       attempting the write would prove nothing — 031's lesson.
+-- --------------------------------------------------------------------------
+reset role;
+
+-- Neither table has an updated_at column, so 044's trigger-vs-grant question
+-- does not arise here. Asserted rather than described, because "we checked" is
+-- exactly the claim a later session would re-derive wrongly from 044's shape.
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name in ('rides', 'clubs')
+      and column_name = 'updated_at'),
+  0, '045: neither rides nor clubs has an updated_at column at all — 044''s trigger-vs-grant finding has nothing to apply to here');
+
+-- ---- rides -------------------------------------------------------------
+select assert_eq(has_table_privilege('authenticated', 'public.rides', 'insert'),
+  false, '045: authenticated holds no TABLE-level INSERT grant on rides — it is column-level now');
+select assert_eq(has_table_privilege('authenticated', 'public.rides', 'update'),
+  false, '045: ... nor a TABLE-level UPDATE grant on rides');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'created_at', 'INSERT'),
+  false, '045: a ride cannot be created with a chosen created_at');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'created_at', 'UPDATE'),
+  false, '045: ... nor rewritten to one afterwards');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'created_at', 'SELECT'),
+  true, '045: ... while staying readable, because the ride card renders it');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'organizer_id', 'UPDATE'),
+  false, '045: rides.organizer_id holds NO update grant — a hand-off is now refused by the grant as well as by the WITH CHECK, so relaxing that policy for an unrelated feature cannot reopen it silently');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'organizer_id', 'INSERT'),
+  true, '045: ... but IS insertable, or createRide could not author a ride as its organizer');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'id', 'UPDATE'),
+  false, '045: rides.id holds no update grant — re-keying your own row buys nothing');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'id', 'INSERT'),
+  true, '045: ... and IS insertable, for the client-generated-UUID convention 034 and 044 both keep');
+
+-- The exact column sets. These are what catch a LATER migration adding a column
+-- to either table and handing it a grant by accident — the individual
+-- assertions above cannot, because nobody writes one for a column that does not
+-- exist yet.
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'rides'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'club_id,departure_at,description,id,is_public,max_riders,meeting_point,organizer_id,route_description,title',
+  '045: exactly ten columns of rides hold INSERT, and created_at is not among them');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'rides'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  'club_id,departure_at,description,is_public,max_riders,meeting_point,route_description,title',
+  '045: exactly eight columns of rides hold UPDATE — created_at, id and organizer_id are not among them');
+
+-- ---- clubs -------------------------------------------------------------
+select assert_eq(has_table_privilege('authenticated', 'public.clubs', 'insert'),
+  false, '045: authenticated holds no TABLE-level INSERT grant on clubs');
+select assert_eq(has_table_privilege('authenticated', 'public.clubs', 'update'),
+  false, '045: ... nor a TABLE-level UPDATE grant on clubs');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'created_at', 'INSERT'),
+  false, '045: a club cannot be created with a chosen created_at — THE live pinning vector, since getClubsToExplore orders created_at desc');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'created_at', 'UPDATE'),
+  false, '045: ... nor floated to the top of Explore afterwards by rewriting it');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'created_at', 'SELECT'),
+  true, '045: ... while staying readable, because Explore SORTS on it');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'owner_id', 'UPDATE'),
+  false, '045: clubs.owner_id holds NO update grant — same second lock as rides.organizer_id');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'owner_id', 'INSERT'),
+  true, '045: ... but IS insertable, or createClub could not author a club as its owner');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'id', 'UPDATE'),
+  false, '045: clubs.id holds no update grant');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'id', 'INSERT'),
+  true, '045: ... and IS insertable, same convention as rides.id');
+
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'clubs'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'avatar_path,cover_image_path,description,id,is_public,name,owner_id',
+  '045: exactly seven columns of clubs hold INSERT, and created_at is not among them');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'clubs'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  'avatar_path,cover_image_path,description,is_public,name',
+  '045: exactly five columns of clubs hold UPDATE — created_at, id and owner_id are not among them');
+
+-- What must survive on both tables, or the fix broke the product.
+select assert_eq(
+  (select bool_and(has_table_privilege('authenticated', t, p))
+     from unnest(array['public.rides', 'public.clubs']) t,
+          unnest(array['select', 'delete']) p),
+  true, '045: SELECT and DELETE stay TABLE-level on both — deleting your own ride or club is untouched');
+
+-- The default is the value; the grant is the guarantee. Losing the default now
+-- costs every insert a NOT NULL violation rather than a wrong timestamp.
+select assert_eq(
+  (select string_agg(c.relname || '=' || pg_get_expr(d.adbin, d.adrelid), ',' order by c.relname)
+     from pg_attribute a
+     join pg_class c on c.oid = a.attrelid
+     join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+    where c.relname in ('rides', 'clubs') and a.attname = 'created_at'),
+  'clubs=now(),rides=now()',
+  '045: created_at still DEFAULTs now() on both tables');
+
+select assert_eq(
+  (select bool_or(has_column_privilege('anon', 'public.' || t, 'created_at', p))
+     from unnest(array['rides', 'clubs']) t,
+          unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p),
+  false, '045: anon holds nothing on either created_at, in any verb');
+
+-- **The policy layer, pinned as text.** 043's two ownership assertions now trip
+-- on the grant and never reach the WITH CHECK, so without these two the policy
+-- half would be untested while those labels still mentioned it. This is the
+-- pair that keeps both locks measured.
+select assert_eq(
+  (select with_check from pg_policies
+    where schemaname = 'public' and tablename = 'clubs' and cmd = 'UPDATE'),
+  '(auth.uid() = owner_id)',
+  '045: the clubs UPDATE with_check still pins owner_id to auth.uid() — the lock 043''s assert_denied no longer reaches');
+-- **Exact text, not LIKE.** The first draft of this line matched
+-- `'%auth.uid() = organizer_id%'`, which survives the precise relaxation 045's
+-- header names as foreseeable — ORing a club-admin arm in beside it — because
+-- the substring is still there. The label would have stayed green while
+-- "still pins organizer_id" stopped being true, which is the 043 defect this
+-- pair of assertions was written to fix, reproduced inside the fix. The clubs
+-- sibling above already pinned full text; both do now.
+select assert_eq(
+  (select with_check from pg_policies
+    where schemaname = 'public' and tablename = 'rides' and cmd = 'UPDATE'),
+  '((auth.uid() = organizer_id) AND ((club_id IS NULL) OR private.is_club_member(club_id)))',
+  '045: ... and the rides UPDATE with_check is exactly organizer_id AND the club-membership conjunct — ORing an admin arm in beside it must go red here');
+
+-- --------------------------------------------------------------------------
+-- 045.b  The four live write paths, as their actions actually emit them.
+--        `updateRide` and `updateClub` shipped in PD-101 hours before 045, so
+--        unlike 044 this migration lands on a table with a live UPDATE path —
+--        which is why every column the four name is exercised here rather than
+--        argued in the header. Column lists read out of src/lib/actions/ and
+--        the Zod schemas they spread; two of the four ARE spreads, whatever
+--        their docstrings say.
+--
+--        Run as `authenticated` with the suite's own identity idiom
+--        (set_config('test.uid', ...)). request.jwt.claims is read by nothing
+--        here — auth.uid() is redefined in harness.sql — so a positive
+--        assertion written that way would pass while proving nothing.
+-- --------------------------------------------------------------------------
+savepoint write_paths_045;
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+-- createRide: the spread of rideSchema, plus departure_at and organizer_id.
+insert into rides (title, description, route_description, meeting_point,
+                   departure_at, max_riders, is_public, club_id, organizer_id)
+values ('045 ride', 'desc', 'route', 'Meeting point', now() + interval '7 days',
+        10, true, null, '00000000-0000-0000-0000-00000000000a');
+select assert_eq((select count(*)::int from rides where title = '045 ride'),
+  1, '045: createRide''s exact nine-column insert still lands');
+select assert_eq(
+  (select created_at > now() - interval '1 minute' from rides where title = '045 ride'),
+  true, '045: ... and its created_at came from the default, which is the only place it can now come from');
+
+-- updateRide: the explicit eight.
+update rides set title = '045 ride edited', description = 'desc2',
+                 route_description = 'route2', meeting_point = 'Elsewhere',
+                 departure_at = now() + interval '8 days', max_riders = 12,
+                 is_public = true, club_id = null
+ where title = '045 ride';
+select assert_eq((select count(*)::int from rides where title = '045 ride edited'),
+  1, '045: updateRide''s exact eight-column update still lands');
+
+-- createClub: the spread of clubSchema, plus owner_id. The two path columns are
+-- named as NULL on purpose — naming a column in the list needs the privilege
+-- whatever the value is, so this measures the grant without dragging in 016's
+-- path CHECK.
+insert into clubs (name, description, is_public, avatar_path, cover_image_path, owner_id)
+values ('045 club', 'desc', true, null, null, '00000000-0000-0000-0000-00000000000a');
+select assert_eq((select count(*)::int from clubs where name = '045 club'),
+  1, '045: createClub''s exact six-column insert still lands');
+
+-- updateClub: the explicit five.
+update clubs set name = '045 club edited', description = 'desc2', is_public = true,
+                 avatar_path = null, cover_image_path = null
+ where name = '045 club';
+select assert_eq((select count(*)::int from clubs where name = '045 club edited'),
+  1, '045: updateClub''s exact five-column update still lands');
+
+-- And the writes the grants exist to refuse, in the same four shapes.
+select assert_denied($$insert into rides (title, meeting_point, departure_at, is_public,
+                                          organizer_id, created_at)
+                       values ('pinned', 'x', now(), true,
+                               '00000000-0000-0000-0000-00000000000a', '3000-01-01')$$,
+  '045: a ride cannot be INSERTED with a chosen created_at');
+select assert_denied($$update rides set created_at = '3000-01-01'
+                        where title = '045 ride edited'$$,
+  '045: nor can an organizer rewrite it afterwards');
+select assert_denied($$insert into clubs (name, is_public, owner_id, created_at)
+                       values ('pinned', true, '00000000-0000-0000-0000-00000000000a', '3000-01-01')$$,
+  '045: a club cannot be INSERTED with a chosen created_at — this is the Explore pin');
+select assert_denied($$update clubs set created_at = '3000-01-01'
+                        where name = '045 club edited'$$,
+  '045: nor can an owner float it to the top of Explore afterwards');
+
+rollback to savepoint write_paths_045;
+reset role;
+
+\echo ''
+\echo '# A byline cannot be reassigned, by grant as well as by policy (046)'
+
+-- --------------------------------------------------------------------------
+-- 046.  045 argued that ownership refused by a policy conjunct ALONE is one
+--       unrelated `with check` edit away from being reachable, and revoked
+--       rides.organizer_id / clubs.owner_id on that ground. 044 had kept
+--       postcards.author_id on the opposite reasoning, hours earlier on the
+--       same branch. 046 applies 045's argument back.
+--
+--       Nothing was exposed — the conjunct really does refuse the hand-off, and
+--       the assertion at rls_test.sql:~697 has proved that since 009. What
+--       changes is that TWO layers now refuse it, and that the branch stops
+--       containing a principle and a counter-example to it.
+-- --------------------------------------------------------------------------
+reset role;
+
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'author_id', 'UPDATE'),
+  false, '046: a byline cannot be reassigned — the grant refuses it, not only the with_check');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'author_id', 'INSERT'),
+  true, '046: ... but IS insertable, because every INSERT policy here is `<owner column> = auth.uid()` and the client has to send it — you may declare authorship of a new row and never reassign an existing one');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'id', 'UPDATE'),
+  false, '046: postcards.id is not re-keyable either, matching rides.id and clubs.id');
+
+-- The two the rule must NOT over-fire on. `club_id` is the one that would go if
+-- "sensitive column" were the test instead of "no legitimate client update":
+-- 041 §D3 records it as updatable BY DESIGN, and its with_check conjunct is the
+-- only thing stopping a photo being moved into a private club — revoking the
+-- grant would delete a designed capability and make that conjunct dead code.
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'club_id', 'UPDATE'),
+  true, '046: club_id KEEPS its update grant — the audience is meant to be changeable, and 041''s with_check conjunct is what guards it');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'caption', 'UPDATE'),
+  true, '046: ... and caption too, or the one postcard edit the design draws would stop working');
+
+-- The ownership columns across all three tables, in one line. This is the claim
+-- 044 and 045 disagreed about, so it is worth stating once where a future
+-- session greps for it rather than leaving it spread over three files.
+select assert_eq(
+  (select bool_or(has_column_privilege('authenticated', t, c, 'UPDATE'))
+     from (values ('public.postcards', 'author_id'),
+                  ('public.rides', 'organizer_id'),
+                  ('public.clubs', 'owner_id')) v(t, c)),
+  false, '046: NO ownership column on postcards, rides or clubs holds an UPDATE grant — one rule, three tables, after 044 and 045 disagreed about it');
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', t, c, 'INSERT'))
+     from (values ('public.postcards', 'author_id'),
+                  ('public.rides', 'organizer_id'),
+                  ('public.clubs', 'owner_id')) v(t, c)),
+  true, '046: ... while all three stay INSERTable, which is the asymmetry rather than an inconsistency');
 
 rollback;
 
