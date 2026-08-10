@@ -8623,26 +8623,24 @@ select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'imag
   true, '041: ... on image_path');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'caption', 'UPDATE'),
   true, '041: ... on caption');
+-- The two timestamp columns were in 041's re-granted list and are NOT any more.
+-- 041's own comment here said "fixing PD-163 SHOULD edit this line deliberately"
+-- — 044 is that edit, so both lines flip to false and are relabelled 044 rather
+-- than deleted. The full 044 section lives further down; these two stay in place
+-- so that 041's enumeration of its own re-grant list still reads as a complete
+-- account of which columns hold UPDATE and which do not.
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'updated_at', 'UPDATE'),
-  true, '041: ... and on updated_at');
-
--- created_at, alone and labelled. THIS IS NOT AN INVARIANT — it records the
--- status quo of a live defect, PD-163: postcards.created_at is client-writable,
--- no trigger imposes it, and it is the feed's sort key AND its pagination
--- cursor, so an author can pin a postcard to the top of every feed for ever.
--- 041 preserves the grant so that this change alters no column it did not come
--- to alter; two concurrent rewrites of one table's grants is how one silently
--- undoes the other. Fixing PD-163 SHOULD edit this line deliberately.
+  false, '044: ... and NOT on updated_at — 041 re-granted it, 044 took it back, and postcards_set_updated_at stamps it anyway');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'created_at', 'UPDATE'),
-  true, '041: created_at KEEPS its UPDATE grant — status quo of PD-163, not an invariant. Fixing that defect edits this line on purpose');
+  false, '044: ... and NOT on created_at — 041 pinned this as a known defect (PD-163) and 044 is the deliberate edit that closes it');
 
 select assert_eq(
   (select string_agg(column_name, ',' order by column_name)
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'postcards'
       and grantee = 'authenticated' and privilege_type = 'UPDATE'),
-  'author_id,caption,club_id,created_at,id,image_path,updated_at',
-  '041: exactly seven columns hold UPDATE, and ride_id is not among them');
+  'author_id,caption,club_id,id,image_path',
+  '041/044: exactly five columns hold UPDATE — ride_id (041), created_at and updated_at (044) are not among them');
 
 -- 007 revoked the last of anon's reach and decision #1 keeps it that way. The
 -- column-level check is separate because a per-column grant does not appear in
@@ -9469,6 +9467,154 @@ select assert_eq(
   '017: ... and the DELETE policy is still organizer-only with no membership arm, which is what holds exit one open');
 
 rollback to savepoint ex_member_017;
+
+\echo ''
+\echo '# The feed''s sort key is server-owned — an author cannot pin themselves (044)'
+
+-- --------------------------------------------------------------------------
+-- 044.  postcards.created_at is the home feed's SORT KEY and its PAGINATION
+--       CURSOR (src/lib/data/postcards.ts orders created_at desc and pages
+--       with .lt). While `authenticated` could write it, an author could pin
+--       their own postcard to the top of every feed permanently and push it
+--       outside every later cursor page — PD-163. 044 takes the grant away on
+--       BOTH verbs, and does the same for `updated_at`.
+--
+--       Asserted BY ROLE with has_column_privilege, never by attempting the
+--       write: this suite runs as the table owner, for whom no column
+--       privilege is a barrier, so a write that succeeded here would prove
+--       nothing and a write that failed would prove something else. 031 is
+--       where that lesson is written down.
+-- --------------------------------------------------------------------------
+reset role;
+
+-- INSERT, column by column. 041 made UPDATE column-level and left INSERT at
+-- table level, so before 044 `created_at` was insertable even though it was not
+-- in any grant list — the half a reader of 041 alone would not predict.
+select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'insert'),
+  false, '044: authenticated holds no TABLE-level INSERT grant on postcards — 044 made it column-level, as 041 did for UPDATE');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'created_at', 'INSERT'),
+  false, '044: ... so a postcard cannot be BORN dated in the year 3000 either, which the UPDATE half alone would not have stopped');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'updated_at', 'INSERT'),
+  false, '044: ... nor born claiming an edit that never happened — nothing stamped updated_at on INSERT');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'author_id,caption,club_id,id,image_path,ride_id',
+  '044: exactly six columns hold INSERT, and neither timestamp is among them');
+
+-- The whole migration in one line. **Deliberately a RESTATEMENT** and placed
+-- after the four it summarises rather than before them: all four combinations
+-- it covers are asserted individually above and in 041's block, so a mutation
+-- reaches one of those first and this one can only go red behind it. It earns
+-- its place as the sentence a future session greps for, not as unique coverage
+-- — and putting it first would have made the specific failures unreachable
+-- instead, which is the worse of the two.
+select assert_eq(
+  (select bool_or(has_column_privilege('authenticated', 'public.postcards', c, p))
+     from unnest(array['created_at', 'updated_at']) c,
+          unnest(array['INSERT', 'UPDATE']) p),
+  false, '044: authenticated can write NEITHER timestamp on postcards, by NEITHER verb — the feed cannot be pinned');
+
+-- What must survive, or the fix has broken the product instead of the hole.
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'created_at', 'SELECT'),
+  true, '044: created_at is still READABLE — the feed sorts and pages on it, so revoking select would empty the home screen');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'caption', 'INSERT'),
+  true, '044: ... and caption is still insertable, so createPostcard''s four-column insert still lands');
+select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'delete'),
+  true, '044: ... and DELETE is untouched at table level — deleting your own postcard is the only remedy a rider has');
+
+-- The default is the VALUE and the grant is the GUARANTEE — 034 §4b's sentence.
+-- Losing the default now costs every insert a NOT NULL violation rather than a
+-- wrong timestamp, because nothing else can supply one.
+select assert_eq(
+  (select string_agg(a.attname || '=' || pg_get_expr(d.adbin, d.adrelid), ',' order by a.attname)
+     from pg_attribute a join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+    where a.attrelid = 'public.postcards'::regclass
+      and a.attname in ('created_at', 'updated_at')),
+  'created_at=now(),updated_at=now()',
+  '044: both timestamps still DEFAULT now() — the grant reserves the column, the default is what fills it');
+
+-- 007 revoked the last of anon's reach; decision #1 keeps it that way. Named by
+-- role on every verb rather than counted, because a per-column grant does not
+-- appear in role_table_grants at all — 034 §4b's trap.
+select assert_eq(
+  (select bool_or(has_column_privilege('anon', 'public.postcards', c, p))
+     from unnest(array['created_at', 'updated_at']) c,
+          unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p),
+  false, '044: anon holds nothing on either postcards timestamp, in any verb');
+
+-- 044 is a GRANT change and nothing else. The UPDATE policy is the one it could
+-- plausibly have been "tidied" into, so it is pinned as text rather than
+-- described — captured from letsride-dev with 044 applied.
+select assert_eq(
+  (select md5(qual || with_check) from pg_policies
+    where schemaname = 'public' and tablename = 'postcards' and cmd = 'UPDATE'),
+  'ac4c46eb256cc388059ad524be0b90ae',
+  '044: the postcards UPDATE policy is byte-identical — 044 moved grants and touched no policy');
+
+-- --------------------------------------------------------------------------
+-- 044.b  The trigger still stamps updated_at, even though `authenticated` no
+--        longer holds UPDATE on that column. This is the claim that makes §2
+--        free rather than a regression, and it is the one worth measuring
+--        BEHAVIOURALLY: a column privilege gates the statement's SET list,
+--        while a BEFORE trigger assigns to NEW after that check. Getting it
+--        backwards would mean every caption edit silently stopped recording
+--        when it happened.
+--
+--        Run as `authenticated` with the suite's own identity idiom
+--        (set_config('test.uid', ...)). Setting request.jwt.claims here is read
+--        by nothing — auth.uid() is redefined in harness.sql to read test.uid —
+--        and a positive assertion written that way passes while proving
+--        nothing, which is exactly what this one would do.
+-- --------------------------------------------------------------------------
+savepoint stamp_044;
+
+-- Its own fixture rather than a seed row, aged to 2020 so that "moved" and
+-- "did not move" are distinguishable instead of both reading as now(). Two
+-- reasons it is written here rather than reusing `e1`:
+--
+--   * `e1` is DELETED at rls_test.sql:1646, outside any savepoint, to prove the
+--     comment/hide/report cascade. Every fixture this section could borrow is
+--     one an earlier section may have consumed, and a missing row makes an
+--     assertion read NULL rather than fail for its own reason.
+--   * The ageing is done at INSERT, not by a later UPDATE, because
+--     `postcards_set_updated_at` fires on the OWNER's update too — `set
+--     updated_at = '2020-01-01'` would be overwritten with now() on the spot and
+--     the assertion below would pass against a row that was never aged, proving
+--     nothing. A before/after comparison cannot substitute either: `now()` is
+--     TRANSACTION time and this whole suite is one transaction, so both
+--     readings would be the same instant.
+--
+-- Inserted as the owner, which is also what lets it name both timestamps at all.
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption, created_at, updated_at)
+values ('00000000-0000-0000-0000-00000044e001', '00000000-0000-0000-0000-00000000000a',
+        null, 'postcards/00000000-0000-0000-0000-00000000000a/44440000-0000-4000-8000-000000000044.jpg',
+        'Aged on purpose', '2020-01-01', '2020-01-01');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+update postcards set caption = 'Aged on purpose, edited'
+ where id = '00000000-0000-0000-0000-00000044e001';
+
+select assert_eq(
+  (select caption from postcards where id = '00000000-0000-0000-0000-00000044e001'),
+  'Aged on purpose, edited',
+  '044: an author can still edit their own caption — the grant that survived is the one the app actually uses');
+select assert_eq(
+  (select updated_at > '2021-01-01'::timestamptz from postcards
+    where id = '00000000-0000-0000-0000-00000044e001'),
+  true, '044: ... and postcards_set_updated_at STILL stamps updated_at off its aged 2020 value, despite authenticated holding no UPDATE grant on it — a column privilege gates the SET list, not what a BEFORE trigger assigns');
+select assert_eq(
+  (select created_at = '2020-01-01'::timestamptz from postcards
+    where id = '00000000-0000-0000-0000-00000044e001'),
+  true, '044: ... while created_at is carried through at its aged value, because no trigger writes it and no grant admits it');
+
+rollback to savepoint stamp_044;
+reset role;
 
 rollback;
 

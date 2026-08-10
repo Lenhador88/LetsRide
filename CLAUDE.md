@@ -514,7 +514,7 @@ migration, and CI has no path that would catch it.
 | `clubs` | Clubs with `owner_id → profiles`. **A club outlives its owner as of `029`.** The FK is `ON DELETE CASCADE` and `postcards.club_id → clubs` cascades behind it, so deleting an owner would destroy every postcard every *other* member ever posted there — `009` reasoned that link out correctly for a club deleted *by* its owner and never considered it arriving as a side effect of a third party's erasure. `private.transfer_owned_clubs` hands the club to its longest-tenured remaining admin, else member, and only deletes it when nobody is left. Reached through `031`'s `service_role`-only wrapper, never by a client. **An owner deletes their OWN club through `public.delete_owned_club(p_club_id uuid)` (`043`), never a bare `.delete()`**: the `rides` DELETE policy is `auth.uid() = organizer_id` with no club-owner arm, so a client delete leaves every private ride in the club detached by `SET NULL`, visible to its organizer alone, with its crew list and chat unreadable — and for a private club that is every ride. The RPC is `security definer`, re-checks `owner_id = auth.uid()` in its own body (RLS does not apply inside it), deletes the club's `is_public = false` rides with the club, and returns the club's own Storage object paths so the caller can delete the bytes. Cascade-deleted postcards' images belong to other riders and are permanently orphaned — `PD-94`. |
 | `club_members` | `(club_id, user_id)` composite PK. `role`: `owner` \| `admin` \| `member`. |
 | ~~`friendships`~~ | **Dropped by `013`, applied 2026-08-04.** Gone from the schema and from `src/`. A v1 leftover; the design has no friendship concept. Listed here only so its absence is not mistaken for an oversight. |
-| `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`, optional `ride_id → rides` (`041`). **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. **`ride_id` is a TAG, not a second audience** — the SELECT policy does not mention it, so nulling it changes who can see the postcard by exactly nothing, which is the property that keeps it a tag. Tagging needs the ride visible to the caller **and** `private.is_ride_crew`; neither alone, because a FK is validated with RLS bypassed and a `ride_members` row outlives blocking the organizer. `authenticated` holds no UPDATE grant on it, so a tag is set once at insert — that, not a policy, is what refuses a retag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
+| `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`, optional `ride_id → rides` (`041`). **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. **`ride_id` is a TAG, not a second audience** — the SELECT policy does not mention it, so nulling it changes who can see the postcard by exactly nothing, which is the property that keeps it a tag. Tagging needs the ride visible to the caller **and** `private.is_ride_crew`; neither alone, because a FK is validated with RLS bypassed and a `ride_members` row outlives blocking the organizer. `authenticated` holds no UPDATE grant on it, so a tag is set once at insert — that, not a policy, is what refuses a retag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. **`created_at` and `updated_at` are SERVER-OWNED as of `044`** — `authenticated` holds SELECT and neither INSERT nor UPDATE on either, so the only value they can ever take is `default now()`. `created_at` is the home feed's sort key *and* its pagination cursor, so while it was writable an author could pin their own postcard to the top of every feed permanently (PD-163); a `default` is the value and the grant is the guarantee, because a default applies only when the column is omitted. Both verbs are now per column: `insert (id, author_id, club_id, image_path, caption, ride_id)` and `update (id, author_id, club_id, image_path, caption)` — re-derive with `information_schema.column_privileges` scoped to `grantee = 'authenticated'` rather than reading this list. |
 | `postcard_likes` | `(postcard_id, user_id)` composite PK. No denormalised count — the correct count is per-viewer, so it is counted under RLS. |
 | `blocks` | `(blocker_id, blocked_id)` composite PK. The row is **directional**, the effect **symmetric**. Never query it from a policy — go through `private.is_blocked(a, b)`, which is `security definer` because the blocked party cannot read the row. |
 | `postcard_comments` | A comment has no audience of its own — it **inherits the postcard's**, expressed as an `EXISTS` against `postcards` rather than a second copy of the club predicate. No UPDATE policy and no UPDATE grant: editing is not designed. No denormalised count, same reason as likes. |
@@ -554,11 +554,14 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 43 files, and DEV is THREE AHEAD of PROD — DEV at `043`, PROD at `040`.** Do not
+**Applied state: 44 files, and DEV is FOUR AHEAD of PROD — DEV at `044`, PROD at `040`.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead. `041_postcard_ride_tag`, `042_revoke_profiles_delete_grant` and
-`043_delete_owned_club` are applied to DEV only, deliberately; promoting any of them is the owner's
-call, they are independent of each other, and `docs/HANDOFF.md` §Migrations carries what each needs.
+`ls supabase/migrations/` instead. `041_postcard_ride_tag`, `042_revoke_profiles_delete_grant`,
+`043_delete_owned_club` and `044_postcards_server_owned_timestamps` are applied to DEV only,
+deliberately; promoting any of them is the owner's call, they are independent of each other, and
+`docs/HANDOFF.md` §Migrations carries what each needs. **`044` is the one with a PROD consequence
+if it is left behind**: PROD is where riders are, and until it applies there an author can still
+pin their own postcard to the top of every feed by writing `created_at`.
 
 **Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string
 and nothing can pipe a file into it, so a 61 KB file (`036`) has to be reproduced — which risks a
@@ -580,7 +583,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1122** assertions — re-derive rather than trust it:
+Suite **1136** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
