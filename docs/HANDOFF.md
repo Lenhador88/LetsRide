@@ -82,10 +82,15 @@ PGPASSWORD=postgres npm test          # 1213 assertions, 0 failures
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` is at `903dffb`** — promoted via #100 as a merge commit, back-merged by fast-forward,
+- **`main` is at `a9cf1e5`** — promoted via #150 as a merge commit, back-merged by fast-forward,
   production `READY` on that sha as a real rebuild (`target: production`, ref `main`) rather than
-  a promoted preview. That promotion carried **19 commits**: ride chat, the guard cache, the Inbox
-  removal and the native shell's first half.
+  a promoted preview. That promotion carried **one** commit, #149's squash: `047`, `048` and
+  PD-177. The two promotions before it were #148 and #100, the latter carrying the 19 that brought
+  ride chat, the guard cache, the Inbox removal and the native shell's first half.
+
+  **This line goes stale on every promotion and nothing updates it automatically** — #148 shipped
+  without moving it, which is why it read two promotions out of date. Re-derive rather than trust
+  it: `git log --oneline -1 origin/main`.
 
   **`development` is normally AHEAD of `main`, and that is the steady state rather than drift.**
   Do not write an equality here: the two are level only in the minutes after a promotion, and a

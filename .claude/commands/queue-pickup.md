@@ -39,7 +39,7 @@ The live set as last read back off the board:
 | `Development (AI)` | started | An agent has it *now*. **The concurrency lock** | Agent |
 | `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
 | **`Deployed to DEV`** | started | **Merged to `development`, green, live on DEV. Where a firing ends** | Agent |
-| `Done (in production)` | completed | Promoted to `main` and live for riders. **Was `Done`** | **Owner** |
+| `Done (in production)` | completed | Promoted to `main` and live for riders. **Was `Done`** | **Whoever promoted** — never a firing |
 | `Canceled` / `Duplicate` | canceled / duplicate | Closed without shipping. **Both clear a blocker** (STEP 2b) | Either |
 
 `duplicate` really is what `list_issue_statuses` returns as `Duplicate`'s `type` — read back off
@@ -64,10 +64,12 @@ four times in one batch to the `project` field.
   never-clearing-guard shape as the team-scoped lock and the buried stall alarm. It is a
   recurring failure here, not a numbered series — do not give it a sequence number, because
   hypotheticals and observed events end up sharing one.)
-- **`Done (in production)` is the only `completed` status, and a session never sets it.**
-  Production promotion is manual and the owner's, done in their own session at their own timing
-  (§STEP 5). A firing that moves an issue there is claiming riders have the feature when they do
-  not.
+- **`Done (in production)` is the only `completed` status, and a FIRING never sets it** — because
+  a firing never promotes, not because a session may not write it. **The status follows the
+  deploy, not the role**: an owner-directed session that promotes to `main` itself sets it, and
+  `CLAUDE.md` §The roadmap lives in Linear carries that instruction and its wording. A *firing*
+  ends at `Deployed to DEV` and stops there (§STEP 5), so for this procedure the effect is
+  unchanged — moving an issue there from a firing claims riders have the feature when they do not.
 
 ---
 
@@ -717,7 +719,7 @@ exists and two of its five ratings are this question:
 
 | Relatedness | Rating | What happens |
 |---|---|---|
-| Travels | **Recommendation ≥ 7/10 *and* This session = Y** | **Build it now** — same branch, same PR, reviewed at STEP 4c |
+| Travels | **Recommendation ≥ 4/10 *and* This session = Y** | **Build it now** — same branch, same PR, reviewed at STEP 4c |
 | Travels | Anything else | Record it for filing |
 | Filed | *(rate it anyway — the filing table routes by rating)* | Record it for filing |
 
@@ -726,10 +728,17 @@ of that axis, not a narrower one. **Do not re-narrow it on the grounds that a fi
 unattended**; what bounds an unattended build is the breadth cap below, not a higher bar on each
 item.
 
-**That moves `This session` and leaves `Recommendation` exactly where it was.** Both halves still
-have to clear, so a related fix rated 6/10 is *not* built, and under the table below a sub-4 one
-is not even filed. `CLAUDE.md` illustrates the axis with a two-minute 3/10 **Y** — that example
-says what `This session` *means*, not what travels, and an item rated that low does not.
+**The bar is 4 because that is the number the filing table already uses**, and the two are
+deliberately the same one. Below 4 a firing files nothing it could have built itself; at 4 and
+above it files a row. So the rule is *if it would otherwise become a permanent row on the owner's
+board, and you can do it on this branch, do it here* — one threshold with no band between them.
+**Do not raise it back**: a higher bar recreates exactly that band, where an item is worth a row
+for ever but not worth ten minutes on a branch already open over the file.
+
+Both halves still have to clear. `CLAUDE.md` illustrates the axis with a two-minute 3/10 **Y** —
+that example says what `This session` *means*, not what travels, and a 3/10 still does not
+travel. One a session could do itself is not filed either — it is a line in the PR body. An
+owner action is filed whatever it rates.
 
 **Both halves, never either.** A 9/10 recommendation with `This session` **N** is a story, not a
 build — an ordinary pairing here rather than a contradiction, and `CLAUDE.md` illustrates it
@@ -752,8 +761,16 @@ Reading a high recommendation *alone* as licence is how a firing starts choosing
 Recursion and breadth are different problems, and "one level deep" closes only the first. Five
 items each rated 8/Y pass every gate above individually while collectively tripling the diff.
 
-- **At most two fold-ins per story.** A third means the story was under-specified; file them
-  all and say so in the PR.
+- **At most two fold-ins per story, and necessity ranks ahead of rating.** Fold every *necessary*
+  one first — the item whose relatedness sentence says the story is broken without it — then fill
+  any slot left by **Recommendation**, ties to the smaller diff, and file the rest. Ranking by
+  rating alone would file a necessary item any time two discretionary ones outscored it, and the
+  two are independent axes: that is the premise of the whole five-rating block. At a ≥ 4 bar a
+  third eligible item is the ordinary shape of a triage, so this is a quota to spend rather than
+  an alarm — which is coupled to that bar, and raising it should bring the old cliff back.
+- **More than two *necessary* fold-ins is the cliff, and the real signal.** File them all and say
+  so in the PR: a story that cannot be finished without three separate additions was
+  under-specified, and that is the owner's to fix rather than yours to absorb.
 - **The fold-ins together must stay smaller than the story's own diff.** If the extras are the
   larger half, the PR is no longer the story you were asked to build.
 - **The *discretionary* ones are capped harder — together under a third of the story's diff.**
@@ -764,12 +781,15 @@ items each rated 8/Y pass every gate above individually while collectively tripl
 - **Anything the folded-in work itself turns up is a story, always**, whatever it rates. One
   level deep, no chaining.
 
-Over the **count** or the **parity** bound, **file everything and build none of it.** Do not pick
-the best two — the count is the signal that the triage has gone wrong, not a quota to spend.
-**The discretionary third is the one bound with a partial remedy**, because there the excess is by
-definition the optional half — it is computed over discretionary fold-ins only, so anything over
-it is discretionary and dropping it cannot leave the story merged and incomplete. Fold what fits
-under the third and file the rest, which resolves a single over-large tidy-up to "file it".
+**Two bounds have a partial remedy, and both are safe for the same one reason: their excess
+cannot contain a necessary fold-in.** The discretionary third is scoped to the optional half by
+construction; the count gets there by ranking necessity ahead of rating. Neither can drop
+something the story is broken without — and a single over-large tidy-up resolves to "file it"
+under the third.
+
+**Parity stays a cliff**: over it, **file everything and build none of it.** Its excess is
+neither scoped nor ranked, so it can contain anything, and when the extras outweigh the story
+itself it is the triage rather than the ordering that went wrong.
 
 ### Where each one gets filed — decided here, written at STEP 5
 
@@ -977,7 +997,11 @@ session at my own will."* So:
 
 - **A firing never moves an issue to `Done (in production)`**, never opens a PR against `main`,
   and never merges one. That status is a claim that riders have the feature, and only the
-  promotion makes it true.
+  promotion makes it true — so it belongs to whoever performs the promotion, which is never this
+  procedure. (An owner-directed session that *is* asked to promote sets it, and must: see
+  `CLAUDE.md` §The roadmap lives in Linear. The three-way split — a firing stops at DEV, a
+  directed session that promotes closes the loop, the owner promotes on their own timing — is why
+  this reads as "never a firing" rather than "never a session".)
 - **`Deployed to DEV` is an honest end state, not a lesser one.** The work is merged, green and
   live on DEV. `CLAUDE.md` §Working Principles' *committed and pushed is not shipped* is
   satisfied by the merge — the queue's unit of done is a merged PR, and the release is a
@@ -1053,7 +1077,7 @@ STEP 1.5 is the single exit for that reason.
 for scope creep*. The rule has two halves, and **STEP 4b is where they are applied**:
 
 - **Work inside the context of the build travels with it** — when it passes the relatedness test
-  *and* rates ≥ 7/10 with `This session` **Y**. Same branch, same PR, same `reviewer` pass.
+  *and* rates ≥ 4/10 with `This session` **Y**. Same branch, same PR, same `reviewer` pass.
 - **Work outside it becomes a story** in `Todo AI` or `Todo Human` — or an update to the issue
   that already covers it, per STEP 4b's search rule — and the owner decides when it gets built.
   Below 4/10, work a session could have built itself becomes a line in the PR body and nothing
