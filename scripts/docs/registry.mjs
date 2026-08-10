@@ -194,7 +194,7 @@ export const claims = [
     // re-read the sentence when the relationship changes again (i.e. when PROD
     // catches up) rather than leaving a stale "AGREE" behind a correct count.
     // A pattern miss here is the check working, not breaking.
-    pattern: /\*\*Applied state: (\d+) files, and DEV is FOUR AHEAD of PROD/,
+    pattern: /\*\*Applied state: (\d+) files, and DEV is FIVE AHEAD of PROD/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

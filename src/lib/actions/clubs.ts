@@ -298,9 +298,16 @@ export async function leaveClub(clubId: string): Promise<ActionState> {
  * uses and for the same reason: the form carries no field for it.
  *
  * **The `.update()` payload is an explicit field list, never a spread** — see
- * `updateRide`'s own comment on this; `authenticated` holds table-level
- * UPDATE on every column of `clubs` too, including `owner_id`, and only the
- * `WITH CHECK` stops that one moving.
+ * `updateRide`'s own comment on this. It used to be the only thing keeping
+ * `created_at` and `owner_id` out of the statement; **`045` made it
+ * structural** (PD-163, 2026-08-10), granting UPDATE over these five columns
+ * and no others, so both are refused with `42501` whatever this function
+ * sends. `clubs.created_at` mattered more than `rides.created_at` did:
+ * `getClubsToExplore` sorts on it, so a writable column meant an owner could
+ * float their club to the top of Explore for every rider, permanently.
+ *
+ * `createClub` above is a **spread**, so this guarantee has never covered it —
+ * its safety comes from Zod stripping unknown keys.
  *
  * Reads the row **before** writing it to learn which image paths a
  * replacement orphaned, swept the same way `setProfileImage` sweeps a

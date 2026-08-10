@@ -214,12 +214,24 @@ export async function setRideAttendance(
  * takes its id as a plain argument rather than a hidden input.
  *
  * **The `.update()` payload is an explicit field list, never a spread of
- * `parsed.data`.** `authenticated` holds table-level UPDATE on every column
- * of `rides`, including `id`, `created_at` and `organizer_id` — the policy's
- * `WITH CHECK` stops `organizer_id` moving, but nothing stops `created_at`
- * being rewritten. This is advisory, not enforced — see the
- * `database-enforced-integrity` delta — and the real fix is narrowing the
- * grant, logged on `PD-163` rather than built here.
+ * `parsed.data`.** It was once the only thing keeping `created_at` and
+ * `organizer_id` out of the statement, because `authenticated` held
+ * table-level UPDATE on every column of `rides`.
+ *
+ * **`045` made that structural** (PD-163, 2026-08-10): UPDATE is granted over
+ * these eight columns and no others, so `created_at`, `id` and `organizer_id`
+ * are refused with `42501` whatever this function sends. The field list is now
+ * belt to the grant's braces rather than the enforcement, which is the right
+ * way round — CLAUDE.md's rule is that an integrity claim living only in
+ * client code is advisory.
+ *
+ * Two consequences worth knowing here. **`createRide` above is a spread, not a
+ * field list** — its safety comes from Zod stripping unknown keys, not from
+ * the payload being written out, so this docstring's guarantee has never
+ * covered it. And the `42501` branch below maps *any* insufficient-privilege
+ * error to the club message; that is correct for the columns this function
+ * actually sends, and would mislead if a field were ever added here without a
+ * matching grant.
  */
 export async function updateRide(
   rideId: string,
