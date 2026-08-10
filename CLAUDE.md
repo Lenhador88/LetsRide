@@ -1182,11 +1182,11 @@ the narration, never about the record.
 work — a refactor, a test, a hardening, a follow-up — close it with this block. Not a sentence
 with numbers buried in it; the point is that the reader can skim five scores and still decide.
 
-**Break the line after each score.** The rating goes on its own line, its justification on the
-next, with a blank `>` between entries. The number and the reason are two different things a
-reader scans for — the numbers to triage, the reasons only for the ones that survive triage —
-and running them together on one line makes the block read as prose and defeats the skim it
-exists for.
+**Break the line after each score.** The rating goes on its own line and its justification in its
+own paragraph below, so every entry is two paragraphs and the entries are separated the same way.
+The number and the reason are two different things a reader scans for — the numbers to triage, the
+reasons only for the ones that survive triage — and running them together on one line makes the
+block read as prose and defeats the skim it exists for.
 
 **The separator is a blank `>` line — a paragraph break, not a line break.** A bare newline
 inside a blockquote is a *soft* break: CommonMark and GitHub both collapse it to a space, so the
@@ -1201,7 +1201,7 @@ here by hand — the check rides the CI job that a docs diff already triggers. T
 
 ```bash
 awk '/^[[:space:]]*> \*\*(Recommendation|Complexity|Urgency|Customer value|This session)\*\*/ {
-  s = $0; f = FILENAME; n = FNR; getline line
+  s = $0; f = FILENAME; n = FNR; if ((getline line) <= 0) line = ""
   if (line !~ /^[[:space:]]*>[[:space:]]*$/) print f ":" n ": " s
 }' CLAUDE.md docs/HANDOFF.md
 ```

@@ -394,10 +394,29 @@ describe('the rating block renders as five skimmable scores', () => {
     // The `| wc -l` failure mode this file already guards three greps against:
     // a detector pointed at nothing reports clean for ever. If the convention
     // is renamed or the blocks move, this goes red instead of quietly passing.
-    const seen = ['CLAUDE.md', 'docs/HANDOFF.md'].map(
-      (f) => readFileSync(join(repoRoot, f), 'utf8').split('\n').filter((l) => SCORE.test(l)).length
-    )
-    for (const count of seen) expect(count).toBeGreaterThanOrEqual(5)
+    //
+    // A bare floor is not enough, and review caught this: at `>= 5` against a
+    // real 15 per file, renaming ONE of the five labels leaves 12 — over the
+    // floor, so the scan stays green while a third of every block silently
+    // stops being checked. Asserting each label individually is what closes
+    // it; the floor then only has to catch wholesale deletion.
+    const LABELS = ['Recommendation', 'Complexity', 'Urgency', 'Customer value', 'This session']
+
+    for (const file of ['CLAUDE.md', 'docs/HANDOFF.md']) {
+      const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
+      const scored = lines.filter((l) => SCORE.test(l))
+      expect(scored.length, `${file} has no rating blocks — the scan above passed vacuously`).toBeGreaterThanOrEqual(15)
+
+      for (const label of LABELS) {
+        const seen = scored.filter((l) => l.includes(`**${label}**`)).length
+        expect(seen, `${file} has no "${label}" line — a renamed label drops out of the scan silently`).toBeGreaterThan(0)
+      }
+
+      // Every block carries all five, so the counts must agree. A block that
+      // lost one line reads as complete under a per-label presence check.
+      const perLabel = LABELS.map((l) => scored.filter((s) => s.includes(`**${l}**`)).length)
+      expect(new Set(perLabel).size, `${file} has an incomplete rating block — label counts ${perLabel} disagree`).toBe(1)
+    }
   })
 
   it('catches a real violation — the hard-break form it replaced', () => {
