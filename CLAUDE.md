@@ -511,7 +511,7 @@ migration, and CI has no path that would catch it.
 | `profiles` | One per auth user. PK = auth user UUID. Has `username`, `bio`, `bike_model`, `location`, `avatar_path`, `cover_image_path`. `avatar_url` is **gone — `024`, applied 2026-08-05** after the code repair deployed. `014` had kept it as a fallback rather than dropping it unverified; the verification came back 0 non-NULL on both tables. The name survives in `src/` as a *field on what `lib/data/` returns*, holding the signed URL — never a column. The two `*_path` columns are Storage object paths under `avatars/<uid>/` and `covers/<uid>/`, each pinned to its owner by a CHECK on the row's own `id`. Render them through `resolveAvatarUrls` / `signImagePaths`, never directly. **`username` is durable: once it holds a value, `authenticated` cannot return it to NULL** (`038`). The rule is **"once set, never unset", not "once onboarded"**, so a rider mid-wizard cannot free a taken name either; a rename is still permitted, unbuilt and unsurfaced rather than decided. **`authenticated` holds no DELETE grant (`042`)** — deleting your own row reaches the same invisibility `038` closed, by a different door, and until `042` it was refused only by the *absence of a DELETE policy*, so any future DELETE policy added for an unrelated reason would have reopened it silently. The row is still reaped by the cascade from `auth.users`, which is how account deletion removes it (`029`–`032`) and which consults no table grant at all. |
 | `rides` | Rides with `organizer_id → profiles`, optional `club_id → clubs`. The organizer FK is `ON DELETE CASCADE`, so **a ride is cancelled by its organizer's account deletion** — deliberate (a ride is one person's plan), and the crew is not notified because there is nothing to notify them with. `club_id` is `ON DELETE SET NULL`, which `029` treats as a trap rather than a default: a private club's ride left with `club_id` NULL and `is_public` false is visible only to its organizer while its `ride_members` rows survive, so the transfer function deletes a club's rides with the club instead. |
 | `ride_members` | `(ride_id, user_id)` composite PK. `status`: `going` \| `maybe`. |
-| `clubs` | Clubs with `owner_id → profiles`. **A club outlives its owner as of `029`.** The FK is `ON DELETE CASCADE` and `postcards.club_id → clubs` cascades behind it, so deleting an owner would destroy every postcard every *other* member ever posted there — `009` reasoned that link out correctly for a club deleted *by* its owner and never considered it arriving as a side effect of a third party's erasure. `private.transfer_owned_clubs` hands the club to its longest-tenured remaining admin, else member, and only deletes it when nobody is left. Reached through `031`'s `service_role`-only wrapper, never by a client. |
+| `clubs` | Clubs with `owner_id → profiles`. **A club outlives its owner as of `029`.** The FK is `ON DELETE CASCADE` and `postcards.club_id → clubs` cascades behind it, so deleting an owner would destroy every postcard every *other* member ever posted there — `009` reasoned that link out correctly for a club deleted *by* its owner and never considered it arriving as a side effect of a third party's erasure. `private.transfer_owned_clubs` hands the club to its longest-tenured remaining admin, else member, and only deletes it when nobody is left. Reached through `031`'s `service_role`-only wrapper, never by a client. **An owner deletes their OWN club through `public.delete_owned_club(p_club_id uuid)` (`043`), never a bare `.delete()`**: the `rides` DELETE policy is `auth.uid() = organizer_id` with no club-owner arm, so a client delete leaves every private ride in the club detached by `SET NULL`, visible to its organizer alone, with its crew list and chat unreadable — and for a private club that is every ride. The RPC is `security definer`, re-checks `owner_id = auth.uid()` in its own body (RLS does not apply inside it), deletes the club's `is_public = false` rides with the club, and returns the club's own Storage object paths so the caller can delete the bytes. Cascade-deleted postcards' images belong to other riders and are permanently orphaned — `PD-94`. |
 | `club_members` | `(club_id, user_id)` composite PK. `role`: `owner` \| `admin` \| `member`. |
 | ~~`friendships`~~ | **Dropped by `013`, applied 2026-08-04.** Gone from the schema and from `src/`. A v1 leftover; the design has no friendship concept. Listed here only so its absence is not mistaken for an oversight. |
 | `postcards` | The photo feed / home screen. `author_id → profiles`, optional `club_id → clubs`, optional `ride_id → rides` (`041`). **`club_id` IS the audience** — NULL means the app-wide feed, set means that club's members. There is deliberately no `is_public` flag. **`ride_id` is a TAG, not a second audience** — the SELECT policy does not mention it, so nulling it changes who can see the postcard by exactly nothing, which is the property that keeps it a tag. Tagging needs the ride visible to the caller **and** `private.is_ride_crew`; neither alone, because a FK is validated with RLS bypassed and a `ride_members` row outlives blocking the organizer. `authenticated` holds no UPDATE grant on it, so a tag is set once at insert — that, not a policy, is what refuses a retag. `image_path` is a Storage object path, never a URL, and must sit under `postcards/<your uid>/`. |
@@ -554,11 +554,11 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 42 files, and DEV is TWO AHEAD of PROD — DEV at `042`, PROD at `040`.** Do not
+**Applied state: 43 files, and DEV is THREE AHEAD of PROD — DEV at `043`, PROD at `040`.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead. `041_postcard_ride_tag` and `042_revoke_profiles_delete_grant`
-are applied to DEV only, deliberately; promoting either is the owner's call, they are independent
-of each other, and `docs/HANDOFF.md` §Migrations carries what each needs.
+`ls supabase/migrations/` instead. `041_postcard_ride_tag`, `042_revoke_profiles_delete_grant` and
+`043_delete_owned_club` are applied to DEV only, deliberately; promoting any of them is the owner's
+call, they are independent of each other, and `docs/HANDOFF.md` §Migrations carries what each needs.
 
 **Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string
 and nothing can pipe a file into it, so a 61 KB file (`036`) has to be reproduced — which risks a
@@ -580,7 +580,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1047** assertions — re-derive rather than trust it:
+Suite **1109** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -614,13 +614,13 @@ carry, and must.** Inside a `security definer` function `current_user` is the *o
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: eight, and only one is outstanding.** Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because seven of the eight are things
+**Security advisors: nine, and only one is outstanding.** Re-derive rather than trust the number
+— `get_advisors(security)` — but the *shape* is durable, because eight of the nine are things
 this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 6 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored. Narrowness is the defence |
+| 7 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043` — DEV only until PROD catches up, so PROD reads six here and nine total is DEV's number). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns. Narrowness is the defence |
 | 1 | `rls_enabled_no_policy` on `password_reset_grants` (INFO) | Correct by design: `026` revokes everything on it from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 

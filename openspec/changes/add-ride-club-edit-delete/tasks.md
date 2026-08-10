@@ -50,11 +50,11 @@ is mergeable on its own with neither leaving the other half-built.
 
 ## 2. Clubs — edit and delete (migration required)
 
-- [ ] 2.1 Write `supabase/migrations/043_delete_owned_club.sql`. **Do not edit an applied
+- [x] 2.1 Write `supabase/migrations/043_delete_owned_club.sql`. **Do not edit an applied
       migration; confirm the next free prefix with `list_migrations` against
       `ls supabase/migrations/` first** — `CLAUDE.md` records DEV at `042` and PROD at `040`, and
       that number has been wrong in both directions.
-- [ ] 2.2 The function: **`public.delete_owned_club(p_club_id uuid)`**, `security definer`,
+- [x] 2.2 The function: **`public.delete_owned_club(p_club_id uuid)`**, `security definer`,
       `SET search_path = ''`, `revoke execute ... from public/anon`, `grant execute to
       authenticated`. Body re-checks `owner_id = auth.uid()` and raises if not; deletes
       `rides where r.club_id = p_club_id and r.is_public = false`; deletes the club. One
@@ -65,7 +65,7 @@ is mergeable on its own with neither leaving the other half-built.
       that name makes `where club_id = club_id` ambiguous. `p_` is this repo's own convention
       for exactly this case — `complete_onboarding(p_location text)` is the precedent, and
       `location` is a `profiles` column. Locals take `v_`, as that function's do.
-- [ ] 2.2a **Write `#variable_conflict error` as the first line of the body, and qualify every
+- [x] 2.2a **Write `#variable_conflict error` as the first line of the body, and qualify every
       column reference with its table alias** (`r.club_id`, `c.owner_id`), the way
       `complete_onboarding` writes `p.id = v_uid`.
 
@@ -76,7 +76,7 @@ is mergeable on its own with neither leaving the other half-built.
       dependent on a cluster GUC an operator can set to `use_column`, which is the setting under
       which the silent mass delete would become real. Say that in the migration's comment rather
       than the scarier version, or the next session inherits a claim the database contradicts.
-- [ ] 2.3 **Paired assertion task — a policy/function change with no assertion is not finished.**
+- [x] 2.3 **Paired assertion task — a policy/function change with no assertion is not finished.**
       Add to `supabase/tests/rls_test.sql`:
       - `has_function_privilege('authenticated', …, 'EXECUTE')` is true — **name the role, do not
         call the function**; the suite runs as the table owner (`031`'s lesson).
@@ -86,7 +86,7 @@ is mergeable on its own with neither leaving the other half-built.
       - an owner call **leaves a public ride standing** with `club_id` NULL.
       - after an owner call, **no ride exists with `club_id` NULL, `is_public` false and
         surviving `ride_members` rows**.
-- [ ] 2.3a **The blast-radius containment assertion — the one the happy path cannot make.**
+- [x] 2.3a **The blast-radius containment assertion — the one the happy path cannot make.**
       Seed **two** unrelated clubs, each with a private ride and its own `club_members` and
       `ride_members` rows. Delete club A. Assert club B still exists **and club B's private ride
       still exists**, alongside its membership and crew rows.
@@ -96,33 +96,33 @@ is mergeable on its own with neither leaving the other half-built.
       resolved the wrong way, or a plain `delete from rides where is_public = false`. This is the
       only assertion that fails when the function deletes **more** than it was asked to, which is
       the entire risk this function carries.
-- [ ] 2.4 Add assertions for the four standing policies from the **client** direction, which the
+- [x] 2.4 Add assertions for the four standing policies from the **client** direction, which the
       suite does not currently cover: owner/organizer can UPDATE and DELETE; `member`,
       non-member and blocked rider cannot; `organizer_id`/`owner_id` cannot be moved by the
       `WITH CHECK`.
-- [ ] 2.4a The `admin` case is asserted **as a regression guard on current policy text, not as a
+- [x] 2.4a The `admin` case is asserted **as a regression guard on current policy text, not as a
       product rule**: a hand-written `role = 'admin'` row still matches zero rows on club UPDATE
       and DELETE, because neither policy consults `club_members`. **Name it in the assertion
       label as such** (e.g. `admin role confers no club write under current policies`) and add a
       comment pointing at `design.md` Q3, which is open. A label reading "admins may not edit
       clubs" ships the undecided answer as a green test — the failure `openspec/config.yaml`
       exists to prevent.
-- [ ] 2.5 Add an assertion pair for `propagate_club_privacy_to_rides` in **both** directions:
+- [x] 2.5 Add an assertion pair for `propagate_club_privacy_to_rides` in **both** directions:
       public → private downgrades rides; private → public does **not** restore them.
-- [ ] 2.6 Apply to DEV via `apply_migration`. Then run the security advisors and confirm exactly
+- [x] 2.6 Apply to DEV via `apply_migration`. Then run the security advisors and confirm exactly
       one new WARN, `authenticated_security_definer_function_executable`.
-- [ ] 2.7 Update `CLAUDE.md`'s security-advisor table — six becomes seven, eight becomes nine,
+- [x] 2.7 Update `CLAUDE.md`'s security-advisor table — six becomes seven, eight becomes nine,
       naming `delete_owned_club`. An expected advisor missing from that table reads as a
       regression for ever.
 - [ ] 2.8 Add `updateClub(clubId, prev, formData)` to `src/lib/actions/clubs.ts`, explicit field
       list: `name`, `description`, `is_public`, `avatar_path`, `cover_image_path`.
 - [ ] 2.9 Add `deleteClub(clubId)` calling the RPC. A bare `.from('clubs').delete()` must not
       ship.
-- [ ] 2.9a Have the function **return the orphaned Storage object paths** (`club-avatars/…`,
+- [ ] 2.9a **Function half done in `043`; the client half is not.** Have the function **return the orphaned Storage object paths** (`club-avatars/…`,
       `club-covers/…`), mirroring `private.transfer_owned_clubs`'s `object_path text` return, and
       have `deleteClub` delete those objects from Storage. They sit under the owner's own uid
       prefix, so the caller's Storage policy permits it.
-- [ ] 2.9b Record in the migration comment that **cascade-deleted postcards' images are
+- [x] 2.9b Record in the migration comment that **cascade-deleted postcards' images are
       permanently orphaned** — they live under `postcards/<author uid>/` and the club owner's
       Storage policy cannot reach another rider's prefix. Point at **`PD-94`** (orphaned Storage
       objects); **file no new issue**.
