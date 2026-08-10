@@ -493,8 +493,8 @@ over `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`, `information_sche
 
 **The cost, and it reads exactly like drift: PROD's recorded statement for `036`–`040` is the
 reduced form, so `md5(statements[1])` on those five will NOT equal `md5sum` of the file.**
-Expected. DEV carries one asymmetry of the same class on `034`; `docs/HANDOFF.md` has the
-reconciliation SQL.
+Expected. DEV carries one asymmetry of the same class on `034`;
+[`docs/reference/migrations.md`](docs/reference/migrations.md) has the reconciliation SQL.
 
 **A migration that hangs triggers off an already-shipped write path needs a hand-exercise gate
 before it applies.** `036` is the worked example: six fan-out triggers on five live write paths,

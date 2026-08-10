@@ -18,9 +18,37 @@ which `041` adds). **`044 → 046` fails SILENTLY**: both issue an absolute `rev
 running `046` first has it reinstated with no error and nothing red. Filename order satisfies both,
 so a full in-order apply is always correct.
 
-**`048` carries `046`'s trap forward to three more tables**: it issues ABSOLUTE `revoke` + `grant
-(…)` lists rather than deltas, so any later migration re-granting these three must restate the
-whole list or it silently reinstates what this one removed — with no error and nothing red.
+**`046`'s own header points at a table that no longer exists.** It says *"see docs/HANDOFF.md
+§Migrations, which carries the same table"* — that was `THE APPLY ORDER` block, deleted once the
+apply completed. Migration files are append-only, so it cannot be corrected in place. The chain
+above is what it meant, and the reader it misdirects is exactly the one doing a partial
+promotion.
+
+**The absolute-list trap is not confined to that chain — it governs SIX tables.** `044`, `045`,
+`046` and `048` all issue ABSOLUTE `revoke` + `grant (…)` lists rather than deltas, so **any**
+later migration re-granting one of these must restate the whole column list or it silently
+reinstates what its predecessor removed, with no error and nothing red:
+
+| Migration | Tables it left on absolute lists |
+|---|---|
+| `044`, `046` | `postcards` |
+| `045` | `rides`, `clubs` |
+| `048` | `postcard_comments`, `club_members`, `ride_members` |
+
+Re-derive rather than trusting the table — a seventh arrives the day anyone writes another
+per-column grant:
+
+```sql
+select c.relname, count(*) filter (where a.attacl is not null) as columns_with_acl
+from pg_class c join pg_attribute a on a.attrelid = c.oid
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind = 'r' and a.attnum > 0
+group by 1 having count(*) filter (where a.attacl is not null) > 0 order by 1;
+```
+
+**`045`'s two are the ones most likely to be missed.** Its own file header carries no such
+warning, and the paragraph that used to record its shape was an apply note that PD-187 deleted
+as spent — correctly, except that this clause was the only durable thing in it.
 
 ## Rollback — `git revert` is not the path
 
