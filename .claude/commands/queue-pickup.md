@@ -737,7 +737,8 @@ for ever but not worth ten minutes on a branch already open over the file.
 
 Both halves still have to clear. `CLAUDE.md` illustrates the axis with a two-minute 3/10 **Y** —
 that example says what `This session` *means*, not what travels, and a 3/10 still does not
-travel. It is not filed either; it is a line in the PR body.
+travel. One a session could do itself is not filed either — it is a line in the PR body. An
+owner action is filed whatever it rates.
 
 **Both halves, never either.** A 9/10 recommendation with `This session` **N** is a story, not a
 build — an ordinary pairing here rather than a contradiction, and `CLAUDE.md` illustrates it
@@ -760,11 +761,16 @@ Reading a high recommendation *alone* as licence is how a firing starts choosing
 Recursion and breadth are different problems, and "one level deep" closes only the first. Five
 items each rated 8/Y pass every gate above individually while collectively tripling the diff.
 
-- **At most two fold-ins per story.** Over it, **fold the two highest-rated and file the rest** —
-  ties broken by the smaller diff. At a ≥ 4 bar a third eligible item is the ordinary shape of a
-  triage rather than a sign the story was under-specified, so this is a quota to spend, not an
-  alarm. It was the opposite under the old ≥ 7 bar, where three qualifying items really did mean
-  something had gone wrong; do not restore that reading without also restoring that bar.
+- **At most two fold-ins per story, and necessity ranks ahead of rating.** Fold every *necessary*
+  one first — the item whose relatedness sentence says the story is broken without it — then fill
+  any slot left by **Recommendation**, ties to the smaller diff, and file the rest. Ranking by
+  rating alone would file a necessary item any time two discretionary ones outscored it, and the
+  two are independent axes: that is the premise of the whole five-rating block. At a ≥ 4 bar a
+  third eligible item is the ordinary shape of a triage, so this is a quota to spend rather than
+  an alarm — which is coupled to that bar, and raising it should bring the old cliff back.
+- **More than two *necessary* fold-ins is the cliff, and the real signal.** File them all and say
+  so in the PR: a story that cannot be finished without three separate additions was
+  under-specified, and that is the owner's to fix rather than yours to absorb.
 - **The fold-ins together must stay smaller than the story's own diff.** If the extras are the
   larger half, the PR is no longer the story you were asked to build.
 - **The *discretionary* ones are capped harder — together under a third of the story's diff.**
@@ -775,15 +781,15 @@ items each rated 8/Y pass every gate above individually while collectively tripl
 - **Anything the folded-in work itself turns up is a story, always**, whatever it rates. One
   level deep, no chaining.
 
-**Every bound has a partial remedy now except parity.** The count takes the two highest-rated;
-the discretionary third takes what fits — in both cases the excess is by construction the part
-the story is not broken without, so dropping it cannot leave the story merged and incomplete.
-The single over-large tidy-up resolves to "file it" under the third.
+**Two bounds have a partial remedy, and both are safe for the same one reason: their excess
+cannot contain a necessary fold-in.** The discretionary third is scoped to the optional half by
+construction; the count gets there by ranking necessity ahead of rating. Neither can drop
+something the story is broken without — and a single over-large tidy-up resolves to "file it"
+under the third.
 
-**Parity is the exception and stays a cliff**: over it, **file everything and build none of it.**
-It is the only bound computed over *all* fold-ins, so its excess can contain something necessary,
-and picking a subset there risks shipping the story broken. When the extras outweigh the story,
-the triage itself is what went wrong.
+**Parity stays a cliff**: over it, **file everything and build none of it.** Its excess is
+neither scoped nor ranked, so it can contain anything, and when the extras outweigh the story
+itself it is the triage rather than the ordering that went wrong.
 
 ### Where each one gets filed — decided here, written at STEP 5
 

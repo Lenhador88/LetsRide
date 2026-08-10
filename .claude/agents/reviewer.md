@@ -369,9 +369,12 @@ does more than its issue describes:
   whose apply order relative to the deploy matters, anything owner-only, and a diff bigger than
   one review can honestly cover. A fold-in that trips one of those was mis-rated.
 - **Check the breadth cap** — at most two fold-ins, together smaller than the story's own diff,
-  and the **discretionary** ones together under a *third* of it. Over the count or the third, the
-  procedure says fold what fits and file the rest, so a *third* fold-in is the finding rather than
-  a partial fold being one. Discretionary means any fold-in
+  and the **discretionary** ones together under a *third* of it. A partial fold is **not** a
+  finding — the procedure files the excess on both of those bounds. **What is a finding is a
+  necessary fold-in sitting in the filed excess**: the count folds necessary items first and fills
+  any remaining slot by Recommendation, so an item whose relatedness sentence says the story is
+  broken without it must never appear in the filed list. You hold every relatedness sentence, so
+  you are the only gate on that. Discretionary means any fold-in
   whose relatedness sentence does not say the story was broken without it: an adjacent bug, a
   tidy-up. That sentence is required and the caller hands it to you — or it is in the PR body's
   `## Folded in` section — so the classification is read rather than judged. All of it needs the
