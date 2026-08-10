@@ -273,7 +273,11 @@ npm run build:native          # CAPACITOR_BUILD=1 next build, then the bundle ch
 ls out/index.html             # exists; .next-capacitor/ does not
 ```
 
-384 files: 33 documents, 274 `__next.*.txt` RSC segment payloads, and the static assets.
+33 documents, 274 `__next.*.txt` RSC segment payloads, and the static assets — around 380 files
+in all. **Do not pin the total**: two builds of the same commit came back 384 and 383, because
+the JS chunk count moves by one or two. The two counts that are stable are the documents and the
+payloads, which is why `check-export.mjs` asserts a floor and those two being non-zero rather than
+an exact number.
 **Every document's rendered text is the empty string** — `RouteGuard` renders the splash instead
 of children during the prerender pass, and every detail screen reads in an effect anyway — which
 is the property `scripts/native/check-export.mjs` asserts rather than infers.

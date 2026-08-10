@@ -34,9 +34,11 @@ and is no longer a fork:
       empty `webDir`. Confirmed by running both builds: `out/index.html` exists and no
       `.next-capacitor/` was created.
 - [x] 1.7 Verify: `CAPACITOR_BUILD=1 npm run build` succeeds and `out/index.html` exists.
-      **Measured 2026-08-10: 384 files — 33 HTML documents, 274 `__next.*.txt` RSC payloads, 66 JS
-      chunks, 9 fonts, 1 CSS, 1 PNG.** No `.next-capacitor/`. The expected "ten `●` routes with one
-      prerendered path each" does not apply under B: there are **32 `○` routes and no `●` at all**.
+      **Measured 2026-08-10: 33 HTML documents, 274 `__next.*.txt` RSC payloads, and the static
+      assets — around 380 files, and deliberately not pinned: two builds of the same commit came
+      back 384 and 383, because the JS chunk count moves.** No `.next-capacitor/`. The expected
+      "ten `●` routes with one prerendered path each" does not apply under B: there are **32 `○`
+      routes and no `●` at all**.
 - [x] 1.8 Verify the negative: a plain `npm run build` produces the web app.
       **Measured: `.next/` present, `out/` absent, `.next/export-detail.json` absent, 11 redirects
       in `routes-manifest.json` (the internal trailing-slash one plus the ten legacy detail

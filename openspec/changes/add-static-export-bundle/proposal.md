@@ -316,8 +316,8 @@ actively harmful.**
   effect, and `RouteGuard` renders the splash instead of children during the prerender pass — so
   the document that gets cached and served contains no rider data and no per-viewer decision.
   Measured on the built output: the rendered text of every document in `out/` is the empty string,
-  and `scripts/native/check-export.mjs` walks all 384 files for a v4 uuid, a signed Storage URL or
-  a JWT and finds none. It stops being true the moment one of these pages reads during render,
+  and `scripts/native/check-export.mjs` walks every emitted file — around 380 of them — for a v4
+  uuid, a signed Storage URL or a JWT and finds none. It stops being true the moment one of these pages reads during render,
   which is why it is a check and not a sentence.
 
 ## Out of scope — named, so nobody folds them in

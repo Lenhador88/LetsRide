@@ -31,8 +31,12 @@ const OUT = path.join(ROOT, 'out')
 
 /**
  * A floor, so a walk of nothing cannot report clean. The 2026-08-10 export was
- * 384 files — 33 documents, 274 RSC payloads and the static assets — and a build
- * that produced a tenth of that is a failed build rather than a tidy one.
+ * around 380 files — 33 documents, 274 RSC payloads and the static assets — and a
+ * build that produced a tenth of that is a failed build rather than a tidy one.
+ *
+ * **A floor rather than an exact count on purpose.** Two builds of the same commit
+ * came back 384 and 383: the JS chunk count moves, so an equality check here would
+ * be red on a good build roughly whenever chunking changed.
  */
 const MIN_FILES = 100
 
