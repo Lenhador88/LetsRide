@@ -1,8 +1,16 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
-import { unwrapList } from '@/lib/data/unwrap'
+import { unwrapCount, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
-import type { Club, ClubDetail, ClubListItem, ClubRosterMember, PublicProfile } from '@/types'
+import type {
+  Club,
+  ClubDeletionImpact,
+  ClubDetail,
+  ClubForEdit,
+  ClubListItem,
+  ClubRosterMember,
+  PublicProfile,
+} from '@/types'
 
 type ClubOption = Pick<Club, 'id' | 'name'>
 
@@ -354,6 +362,119 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
   if (club.owner) await resolveAvatarUrls([club.owner], supabase)
 
   return club
+}
+
+/**
+ * One club, for `/clubs/[id]/edit` (PD-101). Narrower than `getClub` — no
+ * `owner` embed, no `members_count` — because the edit screen needs the
+ * editable columns and nothing a byline or a member list would want.
+ *
+ * `is_owner` is computed here the same way `RideForEdit.is_organizer` is, so
+ * the edit screen can tell "not found" from "not yours" without a second
+ * `auth.getUser()` round trip — the clubs SELECT policy already admits every
+ * member and every public club, so a row coming back is not by itself
+ * permission to edit it.
+ *
+ * Mirrors `getClub`'s own choice not to distinguish a missing row from a
+ * read error — see that function's header.
+ */
+export async function getClubForEdit(id: string): Promise<ClubForEdit | null> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { data } = await supabase
+    .from('clubs')
+    .select('id, name, description, is_public, avatar_path, cover_image_path, owner_id')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (!data) return null
+
+  const row = data as unknown as {
+    id: string
+    name: string
+    description: string | null
+    is_public: boolean
+    avatar_path: string | null
+    cover_image_path: string | null
+    owner_id: string
+  }
+
+  const club: ClubForEdit = {
+    ...row,
+    avatar_url: null,
+    cover_image_url: null,
+    is_owner: !!user && user.id === row.owner_id,
+  }
+
+  const paths = [club.avatar_path, club.cover_image_path].filter((p): p is string => !!p)
+  if (paths.length > 0) {
+    const urls = await signImagePaths(paths, supabase)
+    club.avatar_url = club.avatar_path ? (urls.get(club.avatar_path) ?? null) : null
+    club.cover_image_url = club.cover_image_path
+      ? (urls.get(club.cover_image_path) ?? null)
+      : null
+  }
+
+  return club
+}
+
+/**
+ * How many of a club's rides are currently public — read only when the owner
+ * is about to flip a public club private, so `EditClubForm` can name the
+ * count `propagate_club_privacy_to_rides` (`022`) is about to rewrite
+ * one-directionally. Not scoped to upcoming rides: the trigger rewrites every
+ * public ride in the club regardless of `departure_at`, so a count bounded to
+ * upcoming ones would understate what the toggle actually does.
+ */
+export async function getClubPublicRideCount(clubId: string): Promise<number> {
+  const supabase = await resolveSupabase()
+
+  return unwrapCount(
+    await supabase
+      .from('rides')
+      .select('id', { count: 'exact', head: true })
+      .eq('club_id', clubId)
+      .eq('is_public', true),
+    "this club's public rides",
+  )
+}
+
+/**
+ * The delete confirmation's blast-radius counts (`club-lifecycle`'s delete
+ * requirement) — read under the OWNER's own RLS, which is why both are a
+ * floor rather than a total. See `ClubDeletionImpact`.
+ *
+ * `ridesToDelete` is scoped to `is_public = false`: `delete_owned_club`
+ * (`043`) only ever removes the rides `ON DELETE SET NULL` would zombify, so
+ * a public ride is not part of what this confirmation discloses as
+ * "will be deleted" even though it does leave the club.
+ *
+ * Throws rather than returning zeros on a failed read — `unwrapCount`'s whole
+ * reason to exist — because `club-lifecycle` requires the confirmation to
+ * refuse when it cannot count, not to show an all-clear it never measured.
+ */
+export async function getClubDeletionImpact(clubId: string): Promise<ClubDeletionImpact> {
+  const supabase = await resolveSupabase()
+
+  const [postcards, rides, members] = await Promise.all([
+    supabase.from('postcards').select('id', { count: 'exact', head: true }).eq('club_id', clubId),
+    supabase
+      .from('rides')
+      .select('id', { count: 'exact', head: true })
+      .eq('club_id', clubId)
+      .eq('is_public', false),
+    supabase
+      .from('club_members')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('club_id', clubId),
+  ])
+
+  return {
+    postcards: unwrapCount(postcards, 'postcards this club holds'),
+    ridesToDelete: unwrapCount(rides, "this club's rides that would be deleted"),
+    members: unwrapCount(members, "this club's members"),
+  }
 }
 
 /**

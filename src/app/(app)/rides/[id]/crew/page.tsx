@@ -65,7 +65,13 @@ export default function RideCrewPage() {
           URL — so the header renders straight away, with `undefined` for the
           title and a placeholder bar in its place, rather than the whole screen
           waiting on it. */}
-      <RideHeader rideId={id} title={ride.data?.title} current="crew" isCrew={isCrew} />
+      <RideHeader
+        rideId={id}
+        title={ride.data?.title}
+        current="crew"
+        isCrew={isCrew}
+        isOrganizer={ride.data?.is_organizer}
+      />
 
       <div className="pt-header-sub-extra flex flex-col gap-4 pb-4">
         {gate.error ? (

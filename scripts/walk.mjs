@@ -213,8 +213,14 @@ async function discoverDetailPaths({ quiet = false } = {}) {
   if (!postcard) say('  (no postcard thread link — /postcards/[id] unwalked)')
 
   const paths = [
-    ...(ride ? [ride, `${ride}/crew`, `${ride}/chat`] : []),
-    ...(club ? [club, `${club}/rides`, `${club}/members`, `${club}/about`] : []),
+    // `edit` (PD-101) renders even for a rider who is not the organizer/owner
+    // — it draws the "not yours" message rather than 404ing — but the walk's
+    // fixtures are created through the UI by this same signed-in account, so
+    // in the common case it is the real form that gets exercised.
+    ...(ride ? [ride, `${ride}/crew`, `${ride}/chat`, `${ride}/edit`] : []),
+    ...(club
+      ? [club, `${club}/rides`, `${club}/members`, `${club}/about`, `${club}/edit`]
+      : []),
     ...(postcard ? [postcard] : []),
   ]
   return { ride, club, postcard, paths }

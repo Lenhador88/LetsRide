@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChatBubbleIcon } from '@/components/icons/generated'
+import { ChatBubbleIcon, EditIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { RidePageMenu } from '@/components/rides/RidePageMenu'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -15,10 +15,15 @@ import { Skeleton } from '@/components/ui/Skeleton'
  * *other* omission it named still stands, and for the same reason:
  *
  * - **Options** (`Element / Icon / Options`, x342) opens a sheet this flow never
- *   draws. Ride overflow is presumably edit / cancel / leave, and "no edit or
- *   delete UI for rides or clubs" is a standing known issue (Linear PD-101) —
- *   inventing three rows for a destructive menu is the kind of guess that gets
- *   trusted later. Logged in docs/FIGMA-FIDELITY-TODO.md §Ride detail.
+ *   draws, and stays absent — inventing rows for a destructive menu is the kind
+ *   of guess that gets trusted later. Logged in docs/FIGMA-FIDELITY-TODO.md
+ *   §Ride detail. **Edit is not that menu, and PD-101 no longer names this
+ *   gap**: `design.md` §D4 decided Edit belongs in the header as a single
+ *   affordance and Delete belongs at the foot of the edit screen behind a
+ *   second tap, not bundled into an invented overflow sheet. It renders through
+ *   `secondaryAction` (x302), which is free here — the organizer's own chat
+ *   button already occupies `action` (x342) whenever Edit would show, since an
+ *   organizer is crew by construction.
  *
  * **The chat button is shown to the crew only**, which is narrower than the
  * design draws — the frames show one header for everybody, because a mock has no
@@ -41,6 +46,7 @@ export function RideHeader({
   title,
   current,
   isCrew,
+  isOrganizer,
   ridersCount,
 }: {
   rideId: string
@@ -61,6 +67,12 @@ export function RideHeader({
    * sub-page cannot forget it. Pass `undefined` explicitly while loading.
    */
   isCrew: boolean | undefined
+  /**
+   * Whether this rider organises the ride — required for the same reason
+   * `isCrew` is (PD-101). Narrower than `isCrew`: every organizer is crew, not
+   * every crew member is the organizer, and only the organizer gets Edit.
+   */
+  isOrganizer: boolean | undefined
   /** Chat only, and `undefined` until the roster lands. See the sub-row below. */
   ridersCount?: number
 }) {
@@ -90,6 +102,17 @@ export function RideHeader({
         ) : (
           <RidePageMenu rideId={rideId} current={current} isCrew={isCrew} />
         )
+      }
+      secondaryAction={
+        !onChat && isOrganizer ? (
+          <Link
+            href={`/rides/${rideId}/edit`}
+            aria-label="Edit ride"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
+          >
+            <EditIcon className="h-6 w-6" />
+          </Link>
+        ) : undefined
       }
       action={
         !onChat && isCrew ? (

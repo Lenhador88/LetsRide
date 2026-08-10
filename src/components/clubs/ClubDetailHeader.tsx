@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { EditIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { Avatar } from '@/components/ui/Avatar'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -17,11 +19,18 @@ import type { ClubDetail } from '@/types'
  * Leaving a club is reachable from the About page instead, where it is one
  * labelled control rather than an invented menu.
  *
+ * **Edit is not that menu, and is built as of PD-101.** `design.md` §D4 puts
+ * it in the header as its own affordance, owner-only, through `action` — free
+ * here, unlike the ride header, because nothing else in this header claims it.
+ * Delete stays off the header entirely, at the foot of the edit screen behind
+ * a second tap.
+ *
  * **`clubId` is taken separately from `club` so the header can draw before the
  * club arrives.** Back and the sub-page switcher both come from the route
  * segment, so the only two things that wait on the read are the name and the
  * avatar — and holding the whole header for them would leave a slow club with
- * no way out of it.
+ * no way out of it. Edit waits too, on the same read: `club.viewer_role` is
+ * what decides it, and there is nothing safe to show before that lands.
  */
 export function ClubDetailHeader({
   clubId,
@@ -52,6 +61,17 @@ export function ClubDetailHeader({
           // sideways when the club lands.
           <Skeleton className="h-7 w-7 shrink-0 rounded-lg" />
         )
+      }
+      action={
+        club?.viewer_role === 'owner' ? (
+          <Link
+            href={`/clubs/${clubId}/edit`}
+            aria-label="Edit club"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
+          >
+            <EditIcon className="h-6 w-6" />
+          </Link>
+        ) : undefined
       }
     />
   )

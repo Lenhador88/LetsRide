@@ -8,45 +8,55 @@ is mergeable on its own with neither leaving the other half-built.
 
 ## 1. Rides — edit and delete (no schema change)
 
-- [ ] 1.1 Add `updateRide(rideId, prev, formData)` to `src/lib/actions/rides.ts`. Reuse
+- [x] 1.1 Add `updateRide(rideId, prev, formData)` to `src/lib/actions/rides.ts`. Reuse
       `rideSchema`. Build the `.update()` payload from an **explicit field list** — `title`,
       `description`, `route_description`, `meeting_point`, `departure_at`, `max_riders`,
       `is_public`, `club_id` — never a spread. Comment that this is advisory, not enforced: the
       grant is table-level (`database-enforced-integrity` delta).
-- [ ] 1.2 Pass `departure_at` through `wallClockToUtc`, exactly as `createRide` does.
-- [ ] 1.3 Carry `createRide`'s `23514` + `private club cannot be public` branch into
+- [x] 1.2 Pass `departure_at` through `wallClockToUtc`, exactly as `createRide` does.
+- [x] 1.3 Carry `createRide`'s `23514` + `private club cannot be public` branch into
       `updateRide`. `enforce_ride_club_audience` fires `BEFORE INSERT OR UPDATE`, so an edit hits
       it; `018`'s length CHECKs raise the same SQLSTATE, which is why the message is matched too.
-- [ ] 1.4 Refuse, in the action and in the form, a save where `club_id` is NULL and `is_public`
+- [x] 1.4 Refuse, in the action and in the form, a save where `club_id` is NULL and `is_public`
       is false — the zombie shape. Name both remedies in the message.
-- [ ] 1.4a Handle the **ex-member organizer** dead end. A `WITH CHECK` is evaluated on every
+- [x] 1.4a Handle the **ex-member organizer** dead end. A `WITH CHECK` is evaluated on every
       update, so an organizer who left the ride's club can no longer edit that ride at all — the
       refusal arrives on a save that touched no club field. Show the Edit affordance, surface the
       refusal naming the club, and offer the two exits the policies already permit: delete the
       ride, or make it public and detach it from the club. Do **not** widen the policy.
 - [ ] 1.4b Add RLS assertions for it: an ex-member organizer's UPDATE is refused; their DELETE
-      succeeds; their `club_id → NULL` with `is_public = true` succeeds.
-- [ ] 1.5 Add `deleteRide(rideId)` to `src/lib/actions/rides.ts`. Plain `.delete()`; no function
+      succeeds; their `club_id → NULL` with `is_public = true` succeeds. **Not done in this
+      session** — scoped to app code only (`supabase/**` untouched, RLS suite not run); the
+      `updateRide` `42501` branch and the two `EditRideForm` copy checks are exercised by review
+      and `npm run walk` instead, per `ride-lifecycle`'s own requirement table.
+- [x] 1.5 Add `deleteRide(rideId)` to `src/lib/actions/rides.ts`. Plain `.delete()`; no function
       needed (`design.md` §D2).
-- [ ] 1.6 Add `getRideForEdit(rideId)` to `src/lib/data/rides.ts` returning the editable columns
+- [x] 1.6 Add `getRideForEdit(rideId)` to `src/lib/data/rides.ts` returning the editable columns
       plus `organizer_id`, so the screen can tell "not yours" from "not found".
-- [ ] 1.7 Add a helper that renders a stored instant back into a `datetime-local` value as
+- [x] 1.7 Add a helper that renders a stored instant back into a `datetime-local` value as
       `APP_TIME_ZONE` wall-clock, in `src/lib/utils.ts`, named for the screen it serves. Unit
       tests SHALL assert **offsets, not strings** — `TZ=UTC` in `vitest.config.ts` lets a naive
       implementation pass, which is why `wallClockToUtc`'s own tests are written that way.
-- [ ] 1.8 Build `src/app/(app)/rides/[id]/edit/page.tsx` — `'use client'`, read via `useQuery`
+- [x] 1.8 Build `src/app/(app)/rides/[id]/edit/page.tsx` — `'use client'`, read via `useQuery`
       with `keys.rides.detail(id)`, gate on the data not `isLoading`, `null` → `notFound()`.
-- [ ] 1.9 Implement the state matrix from `specs/ride-lifecycle`: loading, not-found vs not-yet,
+      **Reads `keys.rides.edit(id)` instead** — `getRideForEdit` returns a narrower shape than
+      `getRide`, so it needs its own key rather than colliding two shapes on `rides.detail(id)`;
+      see that key's own comment in `keys.ts`.
+- [x] 1.9 Implement the state matrix from `specs/ride-lifecycle`: loading, not-found vs not-yet,
       not-yours, error-with-values-kept, offline-refuses, partial (club picker disabled with its
       current value, never empty).
-- [ ] 1.10 Add the Edit affordance to `RideHeader`, organizer-only. **Not** to `RidePageMenu` —
+- [x] 1.10 Add the Edit affordance to `RideHeader`, organizer-only. **Not** to `RidePageMenu` —
       that is the sub-page switcher (`design.md` §D4).
-- [ ] 1.11 Add the Delete control at the foot of the edit screen, `Button variant="danger"`,
+- [x] 1.11 Add the Delete control at the foot of the edit screen, `Button variant="danger"`,
       behind a second confirmation stating the crew count and that the chat goes with it.
-- [ ] 1.12 Wire cache invalidation per the `client-cache-invalidation` delta: `updateRide` →
+- [x] 1.12 Wire cache invalidation per the `client-cache-invalidation` delta: `updateRide` →
       `rides.detail(id)` + `rides.all()`; `deleteRide` → `rides.all()` + `postcards.all()`.
       Navigate away before the detail read re-runs against a deleted row.
-- [ ] 1.13 Vitest for the new `lib/data` function and the wall-clock round-trip helper.
+- [x] 1.13 Vitest for the new `lib/data` function and the wall-clock round-trip helper.
+      **`formatRideDepartureInput` is tested directly** (`utils.test.ts`); `getRideForEdit` itself
+      calls `resolveSupabase()` and is not unit-testable without a live database, matching every
+      other `lib/data/` read function's own test coverage (none of them mock Supabase either) —
+      `unwrapCount`, the new shared helper it and the club counts route through, is.
 
 ## 2. Clubs — edit and delete (migration required)
 
@@ -114,11 +124,11 @@ is mergeable on its own with neither leaving the other half-built.
 - [x] 2.7 Update `CLAUDE.md`'s security-advisor table — six becomes seven, eight becomes nine,
       naming `delete_owned_club`. An expected advisor missing from that table reads as a
       regression for ever.
-- [ ] 2.8 Add `updateClub(clubId, prev, formData)` to `src/lib/actions/clubs.ts`, explicit field
+- [x] 2.8 Add `updateClub(clubId, prev, formData)` to `src/lib/actions/clubs.ts`, explicit field
       list: `name`, `description`, `is_public`, `avatar_path`, `cover_image_path`.
-- [ ] 2.9 Add `deleteClub(clubId)` calling the RPC. A bare `.from('clubs').delete()` must not
+- [x] 2.9 Add `deleteClub(clubId)` calling the RPC. A bare `.from('clubs').delete()` must not
       ship.
-- [ ] 2.9a **Function half done in `043`; the client half is not.** Have the function **return the orphaned Storage object paths** (`club-avatars/…`,
+- [x] 2.9a **Function half done in `043`; the client half is not.** Have the function **return the orphaned Storage object paths** (`club-avatars/…`,
       `club-covers/…`), mirroring `private.transfer_owned_clubs`'s `object_path text` return, and
       have `deleteClub` delete those objects from Storage. They sit under the owner's own uid
       prefix, so the caller's Storage policy permits it.
@@ -126,46 +136,56 @@ is mergeable on its own with neither leaving the other half-built.
       permanently orphaned** — they live under `postcards/<author uid>/` and the club owner's
       Storage policy cannot reach another rider's prefix. Point at **`PD-94`** (orphaned Storage
       objects); **file no new issue**.
-- [ ] 2.10 Add `getClubForEdit(clubId)` and a counts read for the confirmation — postcards, rides
+- [x] 2.10 Add `getClubForEdit(clubId)` and a counts read for the confirmation — postcards, rides
       and members, **under the caller's own RLS**, no definer path. **All three counts undercount
       by design**: blocked riders' postcards, rides and memberships are invisible to the owner and
       are still destroyed. Name the variables so the floor is obvious at the call site.
-- [ ] 2.11 Build `src/app/(app)/clubs/[id]/edit/page.tsx`, owner-only, with the image upload the
+      **`getClubDeletionImpact` carries postcards/rides; members is read alongside them** rather
+      than reused from `ClubDetail.members_count`, so `DeleteClubControl` has one source for every
+      number it shows instead of two reads that could disagree.
+- [x] 2.11 Build `src/app/(app)/clubs/[id]/edit/page.tsx`, owner-only, with the image upload the
       create screen already has.
-- [ ] 2.12 Implement the privacy-toggle disclosure: before saving `is_public = false`, state that
+- [x] 2.12 Implement the privacy-toggle disclosure: before saving `is_public = false`, state that
       the club's public rides become private and are **not** restored by toggling back, and name
       the count.
-- [ ] 2.13 Implement the delete confirmation. It must enumerate the **whole** blast radius, not
+- [x] 2.13 Implement the delete confirmation. It must enumerate the **whole** blast radius, not
       postcards alone: postcard count including other members'; ride count **and that each ride
       takes its crew list and its entire chat history with it**; member count; "cannot be undone";
       second deliberate tap. If the counts cannot be read, **refuse the action** rather than
       showing zero.
-- [ ] 2.13a Phrase every count as a **floor** — "at least N", never "N". All three are read under
+- [x] 2.13a Phrase every count as a **floor** — "at least N", never "N". All three are read under
       the owner's RLS and exclude blocked riders' content, which is still destroyed. Do **not**
       build a privileged count to fix this: it would tell the owner exactly how much content a
       rider who blocked them holds, which is what blocking withholds. The under-disclosure is the
       deliberate trade and the copy carries it.
-- [ ] 2.14 Add the Edit affordance to `ClubDetailHeader`, owner-only. Not to
+- [x] 2.14 Add the Edit affordance to `ClubDetailHeader`, owner-only. Not to
       `ClubDetailPageMenu`.
-- [ ] 2.15 Wire invalidation: `updateClub` → `clubs.all()`, plus `rides.all()` **when
+- [x] 2.15 Wire invalidation: `updateClub` → `clubs.all()`, plus `rides.all()` **when
       `is_public` changed**; `deleteClub` → `clubs.all()` + `rides.all()` + `postcards.all()`.
       Navigate away before the detail read re-runs.
 
 ## 3. Cross-cutting — lands with whichever group ships last
 
-- [ ] 3.1 Add any new keys to `src/lib/query/keys.ts`; no key written inline in a component.
-- [ ] 3.2 Add the edit routes to `npm run walk` so the screens are actually rendered — `tsc`,
+- [x] 3.1 Add any new keys to `src/lib/query/keys.ts`; no key written inline in a component.
+- [x] 3.2 Add the edit routes to `npm run walk` so the screens are actually rendered — `tsc`,
       ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws
-      on load.
+      on load. **Added to `discoverDetailPaths()`'s `paths`, not run** — this session has no DEV
+      credentials and the walk needs `WALK_EMAIL`/`WALK_PASSWORD` plus the relay; see the
+      session's own report for what that leaves unverified.
 - [ ] 3.3 Run `npm test` (RLS suite) and compare **label sets, not counts**, against the previous
-      run: a count cannot tell a rename from a loss.
-- [ ] 3.4 Run `npm run test:unit`, `npx tsc --noEmit`, `npm run lint`, `npm run build`.
-- [ ] 3.5 Run `npm run docs:check` — the advisor-count edit in 2.7 touches a registered numeric
-      claim.
-- [ ] 3.6 Update `docs/HANDOFF.md`: the migration's applied state on DEV vs PROD, each claim
+      run: a count cannot tell a rename from a loss. **Not run** — this change touches no
+      `supabase/**` file, and the brief scoping this session's work states the RLS suite is not a
+      required gate for it.
+- [x] 3.4 Run `npm run test:unit`, `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+- [x] 3.5 Run `npm run docs:check` — the advisor-count edit in 2.7 touches a registered numeric
+      claim. **Also caught this session's own drift**: the unit-test count (987 → 1010) and the
+      dynamic-route count (8 → 10, the two new `/edit` routes) were both registered claims;
+      `docs/HANDOFF.md` is updated to match.
+- [x] 3.6 Update `docs/HANDOFF.md`: the migration's applied state on DEV vs PROD, each claim
       beside the command that verifies it.
 - [ ] 3.7 Log the deferred hardening **on the existing `PD-163`** rather than as a new issue:
       narrow the `rides`/`clubs` UPDATE grant per column so `created_at` is not client-writable
       (`design.md` Q5). `PD-163` already covers the same defect class on `postcards`; add a
-      comment naming the two extra tables so its scope is complete.
+      comment naming the two extra tables so its scope is complete. **Not done in this session —
+      no Linear tool was in this session's allowlist.**
 - [ ] 3.8 Delegate `reviewer` on the final diff, immediately before the PR.

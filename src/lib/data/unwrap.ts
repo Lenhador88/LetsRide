@@ -51,3 +51,18 @@ export function unwrapList<T>(result: QueryResult<T[]>, what: string): T[] {
   if (result.error) throw new DataReadError(what, result.error)
   return result.data ?? []
 }
+
+/**
+ * The `{ count: 'exact', head: true }` form: no rows come back, only a count,
+ * so `data` is always null on success and cannot be the discriminator
+ * `unwrap` uses. Throws on the same terms as its siblings — a failed count
+ * must not read as "destroys nothing", which is what a delete confirmation
+ * would otherwise show.
+ */
+export function unwrapCount(
+  result: { count: number | null; error: { message: string; code?: string; details?: string | null } | null },
+  what: string
+): number {
+  if (result.error) throw new DataReadError(what, result.error)
+  return result.count ?? 0
+}

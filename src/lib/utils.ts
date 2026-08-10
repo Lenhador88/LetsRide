@@ -106,6 +106,43 @@ export function wallClockToUtc(local: string): string {
 }
 
 /**
+ * The inverse of `wallClockToUtc` — renders a stored instant back into a
+ * `datetime-local` value, as `APP_TIME_ZONE` wall-clock.
+ *
+ * An edit screen has a round trip a create screen does not: `CreateRideForm`
+ * only ever writes `departure_at`, but `/rides/[id]/edit` has to read the
+ * stored instant back into the same input first. Rendering the raw UTC instant
+ * there (in the browser's own zone, or via a bare `toISOString().slice(0,16)`)
+ * would mean saving the form without touching the time field moves the ride by
+ * the browser's offset from Amsterdam — a bug an edit screen can produce and a
+ * create screen structurally cannot.
+ *
+ * Parts are pulled with `formatToParts` rather than assembled from
+ * `toLocaleString`, matching `zoneOffsetMs`'s own reasoning: a `datetime-local`
+ * value has one required shape (`YYYY-MM-DDTHH:mm`) and no locale of its own.
+ */
+export function formatRideDepartureInput(date: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(new Date(date))
+
+  const find = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+
+  // Same `24` at midnight quirk `zoneOffsetMs` guards against — `datetime-local`
+  // rejects an hour of 24, and it means 00 here regardless.
+  const hour = find('hour') === '24' ? '00' : find('hour')
+
+  return `${find('year')}-${find('month')}-${find('day')}T${hour}:${find('minute')}`
+}
+
+/**
  * A Google Maps **directions** link to a free-text destination.
  *
  * `maps/dir/?api=1&destination=…`, not `maps/search/?api=1&query=…`. The search

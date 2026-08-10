@@ -63,10 +63,10 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 ```bash
 npm ci
 npx tsc --noEmit                      # exit 0
-npm run lint                          # exit 0 — 7 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 987/987 across 38 files
+npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
+npm run test:unit                     # 1010/1010 across 38 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 10 dynamic routes
 PGPASSWORD=postgres npm test          # 1109 assertions, 0 failures
 ```
 
@@ -175,7 +175,7 @@ Verify rather than trust, in one line each:
 git grep -L "^'use client'" -- 'src/app/**/page.tsx'   # zero server pages — prints nothing
 ls src/proxy.ts src/lib/supabase/server.ts             # both deleted — prints errors
 node -p "Object.keys(require('./package.json').dependencies).length"   # 9
-npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 8
+npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 10
 ```
 
 **Keep `┌` in that character class.** The route table's first row uses it, so the `├└│`-only
@@ -184,9 +184,10 @@ because `/` sorts first and is static.
 
 **The dynamic count is the number the native epic needs**, because every dynamic route is one
 `output: 'export'` refuses without a `generateStaticParams()`. `next build` reports
-**22 static** and **8 dynamic** (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`, `/rides/[id]`,
-`/rides/[id]/crew`, `/rides/[id]/chat`). They are dynamic for their *segment*, not for any data,
-and no `ƒ Proxy (Middleware)` line appears at all.
+**22 static** and **10 dynamic** (`/clubs/[id]` plus its four sub-pages including `edit`
+(PD-101), `/postcards/[id]`, `/rides/[id]`, `/rides/[id]/crew`, `/rides/[id]/chat`,
+`/rides/[id]/edit` (PD-101)). They are dynamic for their *segment*, not for any data, and no
+`ƒ Proxy (Middleware)` line appears at all.
 Do not read the `Generating static pages (23/23)` line as the static route count — it is a
 different quantity, and 23 against 22 is exactly the kind of near-miss that gets copied.
 
@@ -250,7 +251,7 @@ iOS or Android behaviour. That needs a device.
 
 **The gate for everything else is the static export.** Measured 2026-08-07: with
 `output: 'export'`, `next build` fails with
-`Page "/postcards/[id]" is missing "generateStaticParams()"`. All eight dynamic routes hit it,
+`Page "/postcards/[id]" is missing "generateStaticParams()"`. All ten dynamic routes hit it,
 none can supply one (the ids are per-rider RLS-scoped content), and returning `[]` does not
 help because export forces `dynamicParams: false` so unknown ids 404. **`npx cap sync` has
 nothing to copy until this is resolved**, and resolving it is a routing change with real
@@ -366,7 +367,7 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1109**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled |
-| Unit tests | `npm run test:unit` — **987 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **1010 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -525,7 +526,7 @@ timeout:**
 |---|---|---|
 | `enforce-creator-membership` | Proposed, 44 tasks, validates strict. **Not started** | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
 | `add-account-deletion` | **Groups 1, 2 and 5 built and applied** (`029`–`032`). **Store blocker 2** | Groups 3 and 4 are blocked on the Edge Function being deployed — an owner action. Q4 and Q7 still open, plus the postcard half of 1.6b |
-| `add-ride-club-edit-delete` (PD-101) | **Group 2's migration half only**: `043_delete_owned_club` is written, applied to DEV and asserted (62 new RLS assertions). **Every action and every screen in groups 1, 2 and 3 is unbuilt** — there is still no `updateRide`, `deleteRide`, `updateClub` or `deleteClub`, and no edit route | Nothing. Groups 1 and 2 are independent and either may ship first; group 2's build half now has its function to call. Q1–Q7 in `design.md` each carry a recommended default, so none of them blocks |
+| `add-ride-club-edit-delete` (PD-101) | **Groups 1, 2 and 3 all built.** `043_delete_owned_club` is applied to DEV and asserted (62 RLS assertions). `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/[id]/edit` and `/clubs/[id]/edit` exist, the Edit affordance is in both headers, and both delete confirmations enumerate the floor-phrased blast radius `club-lifecycle` specifies. `tsc`/lint/`test:unit` (1010)/`build`/`docs:check` are all green | **The RLS suite (`npm test`) was not re-run against this diff** — no `supabase/**` file changed, so the migration's own 62 assertions are unaffected, but `1.4b`'s ex-member-organizer assertions were never added (`tasks.md` records this). **`npm run walk` was not run** — the edit routes were added to `discoverDetailPaths()` but this session had no DEV credentials, so neither edit screen has been loaded against a real database. `PD-163`'s comment (task 3.7) is unlogged — no Linear tool in this session |
 
 **The 1.6b defect that PR #60 found while checking the proposal was found independently in
 review of the branch that built it, and is half fixed.** `account-erasure-cascade` claims a club
