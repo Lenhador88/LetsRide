@@ -83,7 +83,7 @@ still true — it sweeps every endpoint in one command.
 
 These came from the file and are already verified — do not re-derive or second-guess them:
 
-- All 20 v2 colour tokens, all 16 Poppins type tokens (`CLAUDE.md` §Design System).
+- All 20 v2 colour tokens, all 16 Poppins type tokens (`docs/reference/design-system.md`).
 - The app background: 135° gradient `#F2ECE6` → `#CCB8A3`.
 - Most-used geometry: radii `4`, `8`, `12`, `100`; padding `16`, `8`, `24`; spacing `8`, `4`, `16`.
 

@@ -601,7 +601,7 @@ first one.
 
 If every candidate in the column is blocked, exit silently.
 
-**This is a backstop, not the sequencing mechanism.** `CLAUDE.md` §Sequencing is still the
+**This is a backstop, not the sequencing mechanism.** `docs/reference/linear.md` §Sequencing is still the
 contract: only buildable work belongs in `Queued (AI)`, and work waiting on something else
 waits in `Todo AI` until the owner queues it. `list_issues` cannot filter or return
 relations, so you can only check *after* picking — which catches a mistake rather than
@@ -808,7 +808,7 @@ Never `Queued (AI)` — that is the owner's column and the only start signal.
 | **`Todo AI`** | A session could build it, and you would recommend building it (**Recommendation** ≥ 4/10) |
 | **Nowhere** | A session could have built it *and* you rated it below 4/10 — write it in the PR body and let it go |
 
-An owner action can rate 2/10 and still has to be filed: `CLAUDE.md` §Keep it current requires a new
+An owner action can rate 2/10 and still has to be filed: `docs/reference/linear.md` §Keep it current requires a new
 one in Linear *the moment it is found*, and nobody in a session will ever pick it up off a PR
 body. Only work a session could have done itself is eligible to be dropped.
 
@@ -830,7 +830,7 @@ never having noticed them.
 and tooling work, which is precisely what a firing files. Routing on it would drop every such
 item — burying the findings this step exists to surface.
 
-**Default to one filed story per build, and make a second argue for itself.** §Sequencing's *one
+**Default to one filed story per build, and make a second argue for itself.** `docs/reference/linear.md` §Sequencing's *one
 issue per deliverable* governs what a firing files just as much as what the owner files, so four
 findings about one subsystem are one issue with four lines in it, not four issues. The board's
 one-day clusters are what the alternative looks like — `PD-159`, `PD-160` and `PD-161` are three
@@ -860,7 +860,7 @@ Search on the *symptom*, not on your own phrasing of the fix — the existing is
 certainly written from a different angle, and a query built from your title will miss it.
 
 **Use `parentId` when the follow-up belongs to the same feature as the story it came out of.**
-§Sequencing's "one issue per feature" applies to work a firing files just as much as to work
+`docs/reference/linear.md` §Sequencing's "one issue per feature" applies to work a firing files just as much as to work
 the owner files, and a loose top-level story is the shape that rule exists to prevent.
 
 The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
@@ -1104,6 +1104,20 @@ Routine is one bad call away from a permanently connector-less job, and only the
 re-attach them by hand in the claude.ai Routines UI. Binding to a long-lived session moves the
 grant off the trigger entirely: the session holds its own connections, and the firing is just a
 message arriving in a conversation that can already reach Linear.
+
+**Two things follow that are irreversible from inside a session, and both are the conclusion of
+the paragraph above rather than a new rule.** They are also in `CLAUDE.md` §What Not To Do,
+because the calls that trip them are CCR calls made by a session that is not reading this file:
+
+- **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the *disabled* fresh-session Routine, and the
+  fallback. Its three connectors were hand-attached and cannot be recreated from a session, so
+  deleting it destroys the only recoverable path; `update_trigger enabled: true` restores it
+  whole. **`…WJkMV` is the cheap hourly one and `…Gzy8e` is the irreplaceable one** — keep the two
+  straight in both directions. A disabled trigger's `list_triggers` row has **no `enabled` key at
+  all** rather than `"enabled": false`, so read a disable back by checking the field is gone.
+- **Never archive or abandon this session** (`session_01B2mxc642tG8vZ15wysQpqM`). Archiving it
+  stops the queue silently, with no error anywhere, and `update_trigger` has no
+  `persistent_session_id` parameter — so recovery means a *third* trigger bound to a new session.
 
 What it costs, and what each cost is paid with:
 

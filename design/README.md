@@ -97,7 +97,7 @@ resolved token on every node in one screenful.
 | `manifest.json` | Provenance and counts — when it was pulled, which Figma version, how much it holds |
 | `index.json` | Name → file map for every frame and component. What `query.mjs` resolves against |
 | `tokens.json` | Colour and type tokens with usage counts, plus a geometry census |
-| `TOKENS.md` | The same tokens as markdown tables, shaped like `CLAUDE.md` §Design System so drift is a `diff` |
+| `TOKENS.md` | The same tokens as markdown tables, shaped like `docs/reference/design-system.md` so drift is a `diff` |
 | `frames/*.json` | One pruned tree per top-level frame — the screens |
 | `components/*.json` | One pruned tree per component set or standalone component |
 | `icons/index.json` | The 44 `Element / Icon / *` names and node ids |
