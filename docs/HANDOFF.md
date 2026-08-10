@@ -63,11 +63,11 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 ```bash
 npm ci
 npx tsc --noEmit                      # exit 0
-npm run lint                          # exit 0 — 7 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 987/987 across 38 files
+npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
+npm run test:unit                     # 1010/1010 across 38 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 8 dynamic routes
-PGPASSWORD=postgres npm test          # 1047 assertions, 0 failures
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 10 dynamic routes
+PGPASSWORD=postgres npm test          # 1122 assertions, 0 failures
 ```
 
 **Two traps in running that, both of which produce a confident wrong answer first:**
@@ -175,7 +175,7 @@ Verify rather than trust, in one line each:
 git grep -L "^'use client'" -- 'src/app/**/page.tsx'   # zero server pages — prints nothing
 ls src/proxy.ts src/lib/supabase/server.ts             # both deleted — prints errors
 node -p "Object.keys(require('./package.json').dependencies).length"   # 9
-npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 8
+npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'           # dynamic routes — 10
 ```
 
 **Keep `┌` in that character class.** The route table's first row uses it, so the `├└│`-only
@@ -184,9 +184,10 @@ because `/` sorts first and is static.
 
 **The dynamic count is the number the native epic needs**, because every dynamic route is one
 `output: 'export'` refuses without a `generateStaticParams()`. `next build` reports
-**22 static** and **8 dynamic** (`/clubs/[id]` plus its three sub-pages, `/postcards/[id]`, `/rides/[id]`,
-`/rides/[id]/crew`, `/rides/[id]/chat`). They are dynamic for their *segment*, not for any data,
-and no `ƒ Proxy (Middleware)` line appears at all.
+**22 static** and **10 dynamic** (`/clubs/[id]` plus its four sub-pages including `edit`
+(PD-101), `/postcards/[id]`, `/rides/[id]`, `/rides/[id]/crew`, `/rides/[id]/chat`,
+`/rides/[id]/edit` (PD-101)). They are dynamic for their *segment*, not for any data, and no
+`ƒ Proxy (Middleware)` line appears at all.
 Do not read the `Generating static pages (23/23)` line as the static route count — it is a
 different quantity, and 23 against 22 is exactly the kind of near-miss that gets copied.
 
@@ -250,7 +251,7 @@ iOS or Android behaviour. That needs a device.
 
 **The gate for everything else is the static export.** Measured 2026-08-07: with
 `output: 'export'`, `next build` fails with
-`Page "/postcards/[id]" is missing "generateStaticParams()"`. All eight dynamic routes hit it,
+`Page "/postcards/[id]" is missing "generateStaticParams()"`. All ten dynamic routes hit it,
 none can supply one (the ids are per-rider RLS-scoped content), and returning `[]` does not
 help because export forces `dynamicParams: false` so unknown ids 404. **`npx cap sync` has
 nothing to copy until this is resolved**, and resolving it is a routing change with real
@@ -315,8 +316,9 @@ working around them.**
    actually closes the recovery hole `026` can only gate at the app's front door — GoTrue's
    `PUT /auth/v1/user` accepts a password change from any live session, measured.
 3. **Enable leaked-password protection** — one dashboard toggle, and the only outstanding
-   security advisor that is not deliberate. `get_advisors(security)` returns **eight**; the other
-   seven are there on purpose and `CLAUDE.md` §Supabase Rules names each.
+   security advisor that is not deliberate. `get_advisors(security)` returns **nine** against DEV and
+   **eight** against PROD — the gap is `043`'s `delete_owned_club`, applied to DEV only. Every other
+   one is there on purpose and `CLAUDE.md` §Supabase Rules names each.
 4. **Move Supabase off the free tier**, which auto-pauses after ~7 days idle. A paused project
    serves nothing, with no alert. Needed before anything resembling launch. It also breaks
    account deletion specifically: a rider who cannot reach a paused project cannot delete their
@@ -364,8 +366,8 @@ verify the remaining Postcards screens against the design. `/postcards/new` and
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1047**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false) |
-| Unit tests | `npm run test:unit` — **987 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1122**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled |
+| Unit tests | `npm run test:unit` — **1010 across 38 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -516,15 +518,15 @@ timeout:**
 
 ---
 
-## Two changes: one part-built, one ready to pick up
+## Three changes: two part-built, one ready to pick up
 
-Both were written 2026-08-06. `npm run openspec -- list --json` is the live view; this is the
-orientation.
+`npm run openspec -- list --json` is the live view; this is the orientation.
 
 | Change | State | What blocks starting |
 |---|---|---|
 | `enforce-creator-membership` | Proposed, 44 tasks, validates strict. **Not started** | **3 blocking questions**, two of them product-owner: may a club owner leave their own club? may a ride organizer leave their own crew? Defaults are "no" for both. The third — the orphan pre-flight — is **already answered** (0/0, measured) |
 | `add-account-deletion` | **Groups 1, 2 and 5 built and applied** (`029`–`032`). **Store blocker 2** | Groups 3 and 4 are blocked on the Edge Function being deployed — an owner action. Q4 and Q7 still open, plus the postcard half of 1.6b |
+| `add-ride-club-edit-delete` (PD-101) | **Groups 1, 2 and 3 all built.** `043_delete_owned_club` is applied to DEV and asserted (62 RLS assertions), and `1.4b`'s ex-member-organizer case is pinned by 13 more labelled `017:` — suite **1122**, so CI's `RLS Policy Tests` job does fire on this PR. `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/[id]/edit` and `/clubs/[id]/edit` exist, the Edit affordance is in both headers, and both delete confirmations enumerate the floor-phrased blast radius `club-lifecycle` specifies. `tsc`/lint/`test:unit` (1010)/`build`/`docs:check` are all green | **`npm run walk` was not run** — the edit routes were added to `discoverDetailPaths()` but this session had no DEV credentials, so neither edit screen has been loaded against a real database. That is this change's one real coverage gap: it is compiled, built and asserted, never rendered. `PD-163`'s comment (task 3.7) is unlogged |
 
 **The 1.6b defect that PR #60 found while checking the proposal was found independently in
 review of the branch that built it, and is half fixed.** `account-erasure-cascade` claims a club
@@ -560,21 +562,29 @@ Linear **PD-115** (epic) with PD-116 schema, PD-117 screen, PD-119 realtime. PD-
 badge) is `Todo AI`; PD-121 (Pin/Mute) is backlogged because neither row means anything until
 Inbox or push exists.
 
-## Migrations — DEV is TWO AHEAD of PROD, and five things will read as drift
+## Migrations — DEV is THREE AHEAD of PROD, and six things will read as drift
 
-**`041` and `042` are applied to DEV and deliberately NOT to PROD.** DEV is at `042`, PROD at
-`040`, and the repo holds 42 files. That gap is a decision, not a lapse: each was applied by the
+**`041`, `042` and `043` are applied to DEV and deliberately NOT to PROD.** DEV is at `043`, PROD
+at `040`, and the repo holds 43 files. That gap is a decision, not a lapse: each was applied by the
 session that wrote it under a brief scoped to DEV, and promoting them is the owner's call. **They
 are independent of each other** — `041` adds a column to `postcards`, `042` revokes a grant on
-`profiles` — so either order works and neither blocks the other. Verify rather than trust it; this
-is exactly the kind of line that goes stale:
+`profiles`, `043` adds one function — so any order works and none blocks another. Verify rather
+than trust it; this is exactly the kind of line that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 42 rows, ending 20260809152346 revoke_profiles_delete_grant
+#   DEV  (fpmrimzxadewsaiwpsel): 43 rows, ending 20260809235652 delete_owned_club
 #   PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 040_locality_centroid
-ls supabase/migrations/ | wc -l          # 42
+ls supabase/migrations/ | wc -l          # 43
 ```
+
+**Applying `043` to PROD needs no gate and no ordering, and it is inert until `deleteClub` ships.**
+One `create or replace function`, its grants and its comment. It hangs nothing off an existing
+write path, so unlike `036` it starts no new code inside a rider's transaction and needs no
+hand-exercise first; and nothing in `src/` calls it, so unlike `023`/`025` it has no relationship
+to a code deploy in either direction. It costs PROD one expected advisor — a seventh
+`authenticated_security_definer_function_executable`, which `CLAUDE.md`'s table already names.
+Rollback is `drop function public.delete_owned_club(uuid);`.
 
 **Applying `042` to PROD needs no gate and no ordering either.** One statement — `revoke delete on
 public.profiles from authenticated` — writing no rows and touching no policy. PROD was measured at
@@ -595,10 +605,28 @@ apply time rather than copied, because omitting one silently retracts a grant th
 migration *names* only — and four known mismatches will look like drift to anyone who checks by
 hand:
 
-- **`npm run db:drift` reports `041` and `042` missing from PROD, and that is TRUE rather than a
-  false positive.** They are the entries on this list a session should act on rather than explain
+- **`npm run db:drift` reports `041`, `042` and `043` missing from PROD, and that is TRUE rather
+  than a false positive.** They are the entries on this list a session should act on rather than explain
   away — by applying them to PROD, once the owner decides to. Every other entry here is a recording
   artefact.
+- **DEV's `043` statement is its file minus the final newline, and that was PROVEN rather than
+  assumed.** `apply_migration` takes a string and the argument cannot carry the file's trailing
+  `\n`, so this is `042`'s row again rather than a new class. Recompute both forms rather than
+  trusting a hash written here; the second is the one that matches
+  `md5sum supabase/migrations/043_delete_owned_club.sql`, and `octet_length(statements[1])` comes
+  back exactly one byte under `wc -c`:
+
+  ```sql
+  -- md5(statements[1])            -- raw: will NOT equal md5sum of the file
+  -- md5(statements[1] || chr(10)) -- this one does
+  ```
+
+  The stronger check was also run, and it is the one to copy: the OBJECT that landed was diffed
+  against the object the file produces. `md5(prosrc)`, `md5(pg_get_functiondef(oid))` and
+  `md5(obj_description(oid,'pg_proc'))` for `public.delete_owned_club(uuid)` are identical on DEV
+  and on the scratch database `npm test` builds by applying the file with `psql`, and `prosecdef`
+  is `t` with `proconfig[1] = 'search_path=""'` on both. That is stronger than comparing the text
+  that produced them, which is `036`'s lesson.
 - **DEV's `041` statement IS byte-identical to its file**, so it does **not** join the reduced-form
   list below: `md5(statements[1])` on DEV equals `md5sum supabase/migrations/041_postcard_ride_tag.sql`
   — both `28ac654156c67f8f1a668bba2eee70b2` at apply time, 2026-08-09. Recorded because the *absence*

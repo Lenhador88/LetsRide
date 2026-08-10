@@ -204,3 +204,146 @@ export async function setRideAttendance(
   invalidateRide()
   return { error: null, sent: true }
 }
+
+/**
+ * Saves an organizer's edit to their own ride — PD-101, `ride-lifecycle`.
+ *
+ * Bound to a specific `rideId` at the call site (`useActionState((prev, fd)
+ * => updateRide(ride.id, prev, fd), …)`) rather than reading it out of
+ * `formData`: the form has no field for it, the same way `deletePostcard`
+ * takes its id as a plain argument rather than a hidden input.
+ *
+ * **The `.update()` payload is an explicit field list, never a spread of
+ * `parsed.data`.** `authenticated` holds table-level UPDATE on every column
+ * of `rides`, including `id`, `created_at` and `organizer_id` — the policy's
+ * `WITH CHECK` stops `organizer_id` moving, but nothing stops `created_at`
+ * being rewritten. This is advisory, not enforced — see the
+ * `database-enforced-integrity` delta — and the real fix is narrowing the
+ * grant, logged on `PD-163` rather than built here.
+ */
+export async function updateRide(
+  rideId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const rawMax = (formData.get('max_riders') as string)?.trim()
+  const rawClub = (formData.get('club_id') as string)?.trim()
+
+  const parsed = rideSchema.safeParse({
+    title: formData.get('title'),
+    description: formData.get('description'),
+    meeting_point: formData.get('meeting_point'),
+    route_description: formData.get('route_description'),
+    departure_at: formData.get('departure_at'),
+    max_riders: rawMax ? Number(rawMax) : null,
+    is_public: formData.get('is_public') === 'on',
+    club_id: rawClub || null,
+  })
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
+  }
+
+  // The zombie shape `029` names: neither public nor in a club is a ride only
+  // its organizer could ever see again, with `ride_members` rows still
+  // attached to it. `EditRideForm` disables Save on this combination already;
+  // this is the guard for whatever reaches the action anyway.
+  if (!parsed.data.club_id && !parsed.data.is_public) {
+    return {
+      error:
+        'A ride needs to be public or belong to a club, or nobody but you could ever see it again. Make it public, or pick a club.',
+    }
+  }
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to edit a ride.' }
+
+  const { departure_at, title, description, route_description, meeting_point, max_riders, is_public, club_id } =
+    parsed.data
+
+  const { data: ride, error } = await supabase
+    .from('rides')
+    .update({
+      title,
+      description,
+      route_description,
+      meeting_point,
+      departure_at: wallClockToUtc(departure_at),
+      max_riders,
+      is_public,
+      club_id,
+    })
+    .eq('id', rideId)
+    .select('id')
+    .maybeSingle()
+
+  // Same match `createRide` makes, and for the same reason: 022 fires on
+  // UPDATE as much as on INSERT, and 018's length CHECKs raise the same
+  // SQLSTATE, so the message is matched too rather than the code alone — a
+  // title-too-long must not be reported as an audience problem.
+  if (error?.code === '23514' && error.message.includes('private club cannot be public')) {
+    return { error: 'A ride in a private club cannot be public. Untick “Make this ride public”, or pick a public club.' }
+  }
+
+  // The `WITH CHECK`, not the `USING` clause. `USING` passes for this rider —
+  // they are still `organizer_id` — but the post-image fails
+  // `private.is_club_member(club_id)`, which Postgres reports as an RLS
+  // violation rather than a silent zero-row update. This is
+  // `ride-lifecycle`'s "ex-member organizer" case: reachable the moment
+  // `leaveClub` runs on a club whose ride this rider still organises, on a
+  // save that may not have touched `club_id` at all.
+  if (error?.code === '42501') {
+    return {
+      error:
+        'You’ve left this ride’s club, so changes can’t be saved while it stays linked. Delete the ride, or make it public and remove it from the club.',
+    }
+  }
+
+  if (error) return { error: 'That ride could not be saved.' }
+  // Not the ex-member case above (that raises) and not a length violation
+  // (that raises too) — zero rows with no error is a non-organizer's write,
+  // which `USING` filters out silently rather than refusing loudly.
+  if (!ride) return { error: 'That ride is not yours to edit.' }
+
+  // `rides.all()`, not `rides.detail(rideId)` alone: `club_id` and
+  // `is_public` are both editable, and an edit can move the ride between
+  // filter segments — narrower invalidation would leave it visible in a list
+  // it no longer belongs to.
+  invalidate(queryKeys.rides.all())
+  return { error: null, redirectTo: `/rides/${rideId}` }
+}
+
+/**
+ * Cancels a ride — PD-101, `ride-lifecycle`. Needs no `security definer`
+ * function, unlike a club delete: `ride_members`, `ride_messages` and
+ * `notifications.ride_id` all cascade, and `postcards.ride_id` is `SET NULL`
+ * on a column that is a tag rather than an audience, so nulling it changes a
+ * tagged postcard's visibility by exactly nothing (`design.md` §D2).
+ *
+ * No `.eq('organizer_id', …)`: the DELETE policy is already
+ * `auth.uid() = organizer_id`, and restating it here would be a second copy
+ * of a rule RLS owns. `.select()` is what makes a refusal detectable —
+ * PostgREST reports no error when a delete matches nothing.
+ */
+export async function deleteRide(rideId: string): Promise<ActionState> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to do that.' }
+
+  const { data: deleted, error } = await supabase
+    .from('rides')
+    .delete()
+    .eq('id', rideId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { error: 'Could not cancel that ride. Try again.' }
+  if (!deleted) return { error: 'That ride is not yours to cancel.' }
+
+  invalidate(queryKeys.rides.all())
+  // postcards.ride_id is SET NULL by the cascade, so any postcard tagged to
+  // this ride has changed even though this call never named one.
+  invalidate(queryKeys.postcards.all())
+  return { error: null }
+}
