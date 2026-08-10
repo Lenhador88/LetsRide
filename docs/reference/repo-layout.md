@@ -58,11 +58,13 @@ docs/
 ├── HANDOFF.md              # Current position — read at session start
 ├── ENVIRONMENTS.md         # DEV vs PROD — branches, targets, apply order, what drifts
 ├── FIGMA-FIDELITY-TODO.md  # Values inferred, not read — verify before trusting the UI
-├── reference/              # Split out of CLAUDE.md so it is NOT auto-loaded. Look-up material,
-│                           # reached from the signpost heading CLAUDE.md keeps for each:
+├── reference/              # Split out of the two files every session loads — CLAUDE.md and
+│                           # HANDOFF.md — so neither carries it. Look-up material, reached from
+│                           # the signpost heading the source file keeps for each:
 │   ├── schema.md           #   the per-table contract — grants, cascades, audience predicates
 │   ├── linear.md           #   the board: statuses, sequencing, the queue Routine
 │   ├── design-system.md    #   v2 tokens, type scale, geometry, the icon set
+│   ├── migrations.md       #   the ordering chain, the rollback SQL, what reads as drift
 │   ├── repo-layout.md      #   this file
 │   └── product-scope.md    #   what is built per domain, against the Figma
 └── specs/                  # Implementation specs (login-onboarding.md)

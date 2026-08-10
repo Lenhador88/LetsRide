@@ -479,8 +479,8 @@ filename order, so a full in-order apply is always correct — the chain matters
 one. `044` grants `insert (… ride_id)`, a column `041` adds, so out of order it **errors**.
 `044` and `046` both issue an **absolute** `revoke update` + `grant update (…)` list rather than a
 delta, so running `046` first lets `044`'s list — which still names `id` and `author_id` — reinstate
-exactly what `046` removes, with **no error and nothing red**. `docs/HANDOFF.md` §Migrations carries
-the table.
+exactly what `046` removes, with **no error and nothing red**.
+`docs/reference/migrations.md` §The ordering chain carries both links, and the rollback SQL.
 
 **Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string
 and nothing can pipe a file into it, so a 61 KB file (`036`) has to be reproduced — which risks a
@@ -493,8 +493,8 @@ over `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`, `information_sche
 
 **The cost, and it reads exactly like drift: PROD's recorded statement for `036`–`040` is the
 reduced form, so `md5(statements[1])` on those five will NOT equal `md5sum` of the file.**
-Expected. DEV carries one asymmetry of the same class on `034`; `docs/HANDOFF.md` has the
-reconciliation SQL.
+Expected. DEV carries one asymmetry of the same class on `034`;
+[`docs/reference/migrations.md`](docs/reference/migrations.md) has the reconciliation SQL.
 
 **A migration that hangs triggers off an already-shipped write path needs a hand-exercise gate
 before it applies.** `036` is the worked example: six fan-out triggers on five live write paths,
