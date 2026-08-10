@@ -79,8 +79,10 @@ const RESTORE_KEY = 'letsride:boot-restore'
 /**
  * Has this boot already tried to restore `target`? Records it if not.
  *
- * One restore per target per webview session, so a target whose own payload
- * cannot be fetched degrades to a blank screen rather than to a reload loop.
+ * One restore per target per **boot**, so a target whose own payload cannot be
+ * fetched degrades to a blank screen rather than to a reload loop. Not per
+ * webview session: `clearRestoreAttempt` is what makes the difference, and
+ * without it this is a ban rather than a bound.
  *
  * **The record has to outlive the document, which is why this is storage and not
  * a module-scope flag.** The loop being bounded is not a second mount: it is
