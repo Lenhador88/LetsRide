@@ -1314,10 +1314,15 @@ looks finished. Before ending a session, merge it or say plainly that it is open
 is not hypothetical: a handoff rewrite sat in an unmerged PR while `main` told the next session
 a shipped epic was half-finished.
 
-**"Counts" has two thresholds and only the first is yours.** **A session's unit of done is a
-merged PR on `development`**, which is where a queue firing ends (`Deployed to DEV`). Reaching
-riders is the owner's manual promotion to `main`, and `Done (in production)` is the status that
-asserts it — never write "shipped" for the first and mean the second.
+**"Counts" has two thresholds, and which of them is yours depends on what you were asked to do.**
+**A session's unit of done is a merged PR on `development`**, which is where a queue firing ends
+(`Deployed to DEV`). Reaching riders is the promotion to `main`, and `Done (in production)` is the
+status that asserts it — never write "shipped" for the first and mean the second.
+
+**When the session does the promotion, both thresholds are yours, and so is the status.** Standing
+instruction from the product owner, 2026-08-10 — the full wording and the reasoning are in §The
+roadmap lives in Linear → *The statuses*. The short version: finishing a deploy includes saying on
+the board that it happened, and that is not something to hand back.
 
 **A claim about state needs the command that checks it.** `docs/HANDOFF.md` describes things
 that move on their own — what is deployed, what is applied, how many tests there are. Write
@@ -1461,9 +1466,28 @@ Three rules that outlive any rename:
   looking like a healthy job behind a busy column. Never park work in `Development (AI)` by hand
   — staged work belongs in `Todo AI`.
 - **A session's unit of done is `Deployed to DEV`** — merged to `development`, green, live on DEV.
-  **No session ever sets `Done (in production)`**; that asserts riders have the feature, and only
-  the owner's manual promotion to `main` makes it true. A blocker counts as cleared at
-  `Deployed to DEV` for the same reason.
+  That is where a *queue firing* ends, and a blocker counts as cleared there for the same reason.
+
+  **But whoever promotes to `main` owns the status that says so — and when a session does the
+  promotion, that is the session.** Product owner, 2026-08-10, after a session promoted three
+  issues to production and left them on `Deployed to DEV` for them to finish: *"If you deployed to
+  production, please update story statuses as well!! I don't have to tell you to do it."*
+
+  So the rule is about **who did the deploy, not about what a session is allowed to write**.
+  `Done (in production)` asserts riders have the feature; set it exactly when that is true and you
+  are the one who made it true — promotion merged, production `READY` on that sha as a real
+  rebuild. Verify rather than assume, because a promoted preview is not a deploy:
+
+  ```
+  # via the Vercel MCP: list_deployments -> state READY, target production, ref main, matching sha
+  ```
+
+  **The old rule was "no session ever sets it", and it inverted into a worse failure.** It was
+  written when promotion was always the owner's manual step, so the status and the act had the
+  same owner by construction. The day a session was asked to deploy, the rule stopped tracking
+  reality and started producing a board that understated what had shipped — and it asked the owner
+  to do bookkeeping for work they had already delegated. Leaving a promoted issue on
+  `Deployed to DEV` is now the error.
 
 Labels are the cross-cut: **`Owner only`** filters what no session can do; `App` / `Database` /
 `Native shell` / `Design` / `Website` say where; `Chore` is the type `Bug`/`Feature`/`Improvement`
@@ -1589,9 +1613,11 @@ confirm something already true.
 Two things bound it. **"Sure" means measured, not inferred** — read the issue's own body before
 closing it, because a satellite issue's status often lives in its parent and this has already
 gone wrong once in the other direction, an owner action reported as outstanding that had been
-answered in the parent hours earlier. And **`Done (in production)` is still off limits**: it
-asserts riders have the feature. `Duplicate` (with `duplicateOf`) closes a folded-in issue,
-`Canceled` closes one that should not be built, and both are a session's to set.
+answered in the parent hours earlier. And **`Done (in production)` follows the deploy rather than
+the role** — set it when this session promoted the work to `main` and production is live on that
+sha, and never as a guess about a promotion somebody else might have done. `Duplicate` (with
+`duplicateOf`) closes a folded-in issue, `Canceled` closes one that should not be built, and both
+are a session's to set.
 
 The one thing this does **not** cover: deleting anything a human authored — an issue, a comment,
 a document, or a label that is in use. Closing is reversible and leaves the record; deleting is
