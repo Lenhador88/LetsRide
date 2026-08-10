@@ -52,9 +52,9 @@ Edit and no Delete control at all**, rather than a disabled one or one that fail
 
 #### Scenario: A crew member opens a ride they did not organize
 
-- **WHEN** a rider with a `going` RSVP opens `/rides/[id]`
+- **WHEN** a rider with a `going` RSVP opens `/rides/detail`
 - **THEN** the header offers no Edit action and the page offers no Delete
-- **AND** a direct navigation to `/rides/[id]/edit` SHALL NOT render the form
+- **AND** a direct navigation to `/rides/detail/edit` SHALL NOT render the form
 
 #### Scenario: A non-organizer submits an update anyway
 

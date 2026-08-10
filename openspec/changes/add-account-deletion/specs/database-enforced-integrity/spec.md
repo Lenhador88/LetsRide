@@ -43,7 +43,7 @@ What `019` left is narrower and is what the two changes above close between them
 still admits a client-written `role = 'owner'` row, which stops being needed the moment the
 database writes that row itself.
 
-The roster screen renders the value — `/clubs/[id]/members` labels `owner` and `admin` and
+The roster screen renders the value — `/clubs/detail/members` labels `owner` and `admin` and
 draws an owner ring — so a forged role is visible to every member of the club.
 
 **Account deletion is the first thing in this system that has to change a club's owner, and

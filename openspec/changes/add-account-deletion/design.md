@@ -324,7 +324,7 @@ migration settled for private clubs — **reveal nothing about existence** — w
 copy says the content is *unavailable*, never that the rider was deleted, because "this account
 was deleted" discloses something about a person to someone they may have blocked.
 
-Four screens need the treatment: `/rides/[id]`, `/postcards/[id]`, a byline tapped through to a
+Four screens need the treatment: `/rides/detail`, `/postcards/detail`, a byline tapped through to a
 profile, and the deck when a card disappears between fetch and swipe. The deck matters more than
 it looks: `CLAUDE.md` records that it only moves forward, so a card that vanishes must be skipped
 rather than leaving a blank the rider cannot get back to.

@@ -94,7 +94,7 @@ MAY be `going` or `maybe`.
 `createRide` has the same two-insert shape and the same window as `createClub`. The consequence is
 different and more visible: `toRideListItem` draws the organizer "on the ride by construction"
 whether or not the row exists, while `getRideCrew` reads `ride_members` alone — so the ride card
-and `/rides/[id]/crew` disagree about the same ride, and `RideAttendanceBar` is hidden from the
+and `/rides/detail/crew` disagree about the same ride, and `RideAttendanceBar` is hidden from the
 organizer, leaving them no route back onto their own crew.
 
 #### Scenario: Creating a ride puts the organizer on the crew

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bootRestoreTarget } from '@/lib/native/boot-restore'
+import { bootRestoreTarget, restoreAlreadyAttempted } from '@/lib/native/boot-restore'
 import { PUBLIC_PATHS, resolveDestination } from '@/lib/auth/guard'
 import { routes } from '@/lib/routes'
 
@@ -109,5 +109,62 @@ describe('the restore does not step past the route guard', () => {
     }
     expect(resolveDestination('/rides/detail', onboarded)).toBeNull()
     expect(resolveDestination('/clubs/detail/about', onboarded)).toBeNull()
+  })
+})
+
+/**
+ * The loop bound. These exist because the first shape of this guard was a
+ * module-scope boolean, which is in force only across a second mount *within one
+ * document* — and the loop it was written for destroys the document: Next
+ * answers a missing RSC payload with a hard navigation. So the case it covered
+ * could not loop and the case it was named for was unguarded.
+ */
+describe('restoreAlreadyAttempted', () => {
+  const store = (): Storage => {
+    const map = new Map<string, string>()
+    return {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      removeItem: (k: string) => void map.delete(k),
+      clear: () => map.clear(),
+      key: () => null,
+      get length() {
+        return map.size
+      },
+    } as Storage
+  }
+
+  it('lets the first attempt through and refuses the second', () => {
+    const s = store()
+    expect(restoreAlreadyAttempted(s, '/rides/detail?id=x')).toBe(false)
+    expect(restoreAlreadyAttempted(s, '/rides/detail?id=x')).toBe(true)
+  })
+
+  it('survives the document being replaced, which is what the loop does', () => {
+    // Storage outlives the document; a module-scope flag would not, and this is
+    // the case that distinguishes the two. Same storage, "new document".
+    const s = store()
+    restoreAlreadyAttempted(s, '/rides/8d6e0001-0000-4000-8000-000000000001')
+    expect(restoreAlreadyAttempted(s, '/rides/8d6e0001-0000-4000-8000-000000000001')).toBe(true)
+  })
+
+  it('does not refuse a different target', () => {
+    // The guard bounds one bad target, never navigation in general — a rider who
+    // opens a second deep link in the same session must still get it.
+    const s = store()
+    restoreAlreadyAttempted(s, '/rides/detail?id=a')
+    expect(restoreAlreadyAttempted(s, '/clubs/detail?id=b')).toBe(false)
+  })
+
+  it('fails open when storage throws, losing the guard and not the restore', () => {
+    const denied = {
+      getItem: () => {
+        throw new Error('storage denied')
+      },
+      setItem: () => {
+        throw new Error('storage denied')
+      },
+    } as unknown as Storage
+    expect(restoreAlreadyAttempted(denied, '/rides/detail?id=x')).toBe(false)
   })
 })

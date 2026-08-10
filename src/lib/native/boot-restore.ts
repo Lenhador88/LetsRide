@@ -73,3 +73,39 @@ export function bootRestoreTarget(url: {
   if (url.pathname === '/') return null
   return `${url.pathname}${url.search}${url.hash}`
 }
+
+const RESTORE_KEY = 'letsride:boot-restore'
+
+/**
+ * Has this boot already tried to restore `target`? Records it if not.
+ *
+ * One restore per target per webview session, so a target whose own payload
+ * cannot be fetched degrades to a blank screen rather than to a reload loop.
+ *
+ * **The record has to outlive the document, which is why this is storage and not
+ * a module-scope flag.** The loop being bounded is not a second mount: it is
+ * Next answering a missing RSC payload with a hard navigation, which builds a
+ * *new* document and resets anything held in module scope — so a flag would be
+ * in force only in the one case that cannot loop, and absent from the case it
+ * was written for. `sessionStorage` is per webview session and is cleared with
+ * it, which is exactly the lifetime of "this boot".
+ *
+ * Reachable input, so this is not theoretical: a legacy `/rides/<uuid>` link —
+ * the shape `LEGACY_DETAIL_REDIRECTS` exists because those are already in the
+ * wild — arriving as a deep link into the shell, where no server redirect can
+ * run and no payload was ever emitted. Latent until a platform exists (PD-95),
+ * wrong the day one does.
+ *
+ * **Fails open.** A webview with storage denied loses the guard, not the
+ * restore: degrading to the pre-guard behaviour is better than a shell that
+ * cannot open a deep link at all.
+ */
+export function restoreAlreadyAttempted(storage: Storage, target: string): boolean {
+  try {
+    if (storage.getItem(RESTORE_KEY) === target) return true
+    storage.setItem(RESTORE_KEY, target)
+    return false
+  } catch {
+    return false
+  }
+}

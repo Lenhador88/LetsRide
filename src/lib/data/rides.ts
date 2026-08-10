@@ -413,6 +413,13 @@ export function isRideCrew(isOrganizer: boolean, attendance: RideAttendance): bo
  * Bounded — see `RIDE_CREW_LIMIT`.
  */
 export async function getRideCrew(rideId: string): Promise<RideCrew> {
+  // An empty crew, not a throw: `.eq('ride_id', <not a uuid>)` is a guaranteed
+  // `22P02`, which `unwrapList` turns into an error boundary. The screen already
+  // reaches `notFound()` because `getRide` refuses the same id without any I/O,
+  // but that is resolution order rather than a gate — this read is issued in
+  // parallel and must not depend on losing a race.
+  if (!rideIdSchema.safeParse(rideId).success) return { going: [], maybe: [] }
+
   const supabase = await resolveSupabase()
 
   const rows = unwrapList(

@@ -211,6 +211,21 @@ jobs:
       - name: Assert the build is the web app, not the native bundle
         run: node scripts/native/assert-web-build.mjs
 
+      # The step above guards only the inverse direction — that a web build did
+      # not become an export. Without this one, nothing automated ever produces
+      # the bundle PD-142 exists to make possible, and the property regresses
+      # silently: the next PR adding an `[id]` route leaves `next build`, the
+      # assertion above and `docs:check:cheap` all green (the `[ƒ●]` census is
+      # `kind: 'build'`, which the cheap run excludes by design) while
+      # `build:native` fails — discovered by whoever next tries to cut a store
+      # binary. Last, because it is the slowest step and the only one whose
+      # failure blocks nobody's web deploy.
+      - name: Build the native bundle and walk it
+        run: npm run build:native
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
   rls:
     name: RLS Policy Tests
     needs: changes

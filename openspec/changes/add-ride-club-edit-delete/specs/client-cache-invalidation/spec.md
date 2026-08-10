@@ -45,6 +45,6 @@ and the detail screen SHALL NOT be left mounted against an invalidated key for a
 
 #### Scenario: An organizer deletes the ride they are looking at
 
-- **WHEN** deletion succeeds on `/rides/[id]`
+- **WHEN** deletion succeeds on `/rides/detail`
 - **THEN** the rider SHALL land on the rides list
 - **AND** SHALL NOT see a not-found screen in between

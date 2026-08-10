@@ -39,7 +39,7 @@ is mergeable on its own with neither leaving the other half-built.
       `APP_TIME_ZONE` wall-clock, in `src/lib/utils.ts`, named for the screen it serves. Unit
       tests SHALL assert **offsets, not strings** — `TZ=UTC` in `vitest.config.ts` lets a naive
       implementation pass, which is why `wallClockToUtc`'s own tests are written that way.
-- [x] 1.8 Build `src/app/(app)/rides/[id]/edit/page.tsx` — `'use client'`, read via `useQuery`
+- [x] 1.8 Build `src/app/(app)/rides/detail/edit/page.tsx` — `'use client'`, read via `useQuery`
       with `keys.rides.detail(id)`, gate on the data not `isLoading`, `null` → `notFound()`.
       **Reads `keys.rides.edit(id)` instead** — `getRideForEdit` returns a narrower shape than
       `getRide`, so it needs its own key rather than colliding two shapes on `rides.detail(id)`;
@@ -145,7 +145,7 @@ is mergeable on its own with neither leaving the other half-built.
       **`getClubDeletionImpact` carries postcards/rides; members is read alongside them** rather
       than reused from `ClubDetail.members_count`, so `DeleteClubControl` has one source for every
       number it shows instead of two reads that could disagree.
-- [x] 2.11 Build `src/app/(app)/clubs/[id]/edit/page.tsx`, owner-only, with the image upload the
+- [x] 2.11 Build `src/app/(app)/clubs/detail/edit/page.tsx`, owner-only, with the image upload the
       create screen already has.
 - [x] 2.12 Implement the privacy-toggle disclosure: before saving `is_public = false`, state that
       the club's public rides become private and are **not** restored by toggling back, and name

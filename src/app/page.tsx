@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { bootRestoreTarget } from '@/lib/native/boot-restore'
+import { bootRestoreTarget, restoreAlreadyAttempted } from '@/lib/native/boot-restore'
 
 /**
  * `/` is a resolver, not a screen (Q7/Q18) — and it is now a resolver that
@@ -37,21 +37,13 @@ import { bootRestoreTarget } from '@/lib/native/boot-restore'
  * because a deployment serves `/`'s document for `/` and for nothing else.
  */
 
-/**
- * One restore per document, so a target whose own payload cannot be fetched
- * degrades to a blank screen rather than to a reload loop. Module scope rather
- * than a ref: a second mount of `/` within the same document is the same boot.
- */
-let restored = false
-
 export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
-    if (restored) return
     const target = bootRestoreTarget(window.location)
     if (!target) return
-    restored = true
+    if (restoreAlreadyAttempted(window.sessionStorage, target)) return
     // `replace`, never `push`: the root document was never a screen the rider
     // asked for, and leaving it in history puts a blank page behind the back
     // button on the first thing they opened.

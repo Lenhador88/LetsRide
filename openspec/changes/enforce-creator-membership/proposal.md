@@ -35,7 +35,7 @@ the policy set rather than recalled:
 | **Private** club | `008`'s `owner_id = auth.uid()` arm — the owner, and nobody else | It is on neither club list (`getYourClubs` reads membership, `getExploreClubs` filters `is_public`), so it is reachable from **no screen at all**, by anyone, including its owner. Only the owner's `clubs` DELETE policy could remove it and no screen offers delete |
 | **Public** club | Everyone, on `/clubs/explore` | It shows on Explore **to its own owner**, because Explore excludes by membership. Tapping `Join club` inserts `role` defaulted to `'member'`, and `club_members` has **no UPDATE policy** (`019` Q10), so the owner is permanently recorded as a member of the club they own — an irreversible self-inflicted demotion reachable in two taps |
 | Either | — | `private.is_club_member` has no owner arm, so the owner **cannot create a ride in their own club** (`017`), **cannot post a postcard to it** (`009`), and for a private one cannot read its own roster (`008`/`009`) |
-| **Ride** | Everyone, if public | `toRideListItem` already draws the organizer "on the ride by construction"; `getRideCrew` reads `ride_members` only. So the ride card and `/rides/[id]/crew` **disagree about the same ride**, and `RideAttendanceBar` is hidden from the organizer (`!is_organizer`), so they have no way to put themselves back |
+| **Ride** | Everyone, if public | `toRideListItem` already draws the organizer "on the ride by construction"; `getRideCrew` reads `ride_members` only. So the ride card and `/rides/detail/crew` **disagree about the same ride**, and `RideAttendanceBar` is hidden from the organizer (`!is_organizer`), so they have no way to put themselves back |
 
 **And the create window is not the only door to that state. It is not even the likely one.**
 `leaveClub` has no owner guard — its own comment says so — and `club_members` DELETE is
@@ -45,7 +45,7 @@ recalled).
 **The UI does guard it, and a previous revision of this paragraph claimed otherwise. That claim
 was wrong and is retracted here rather than quietly deleted**, because it is the kind of error
 that gets re-derived: the owner branch is at the **call site**, not in the component.
-`src/app/(app)/clubs/[id]/about/page.tsx:65` computes `const isOwner = viewer_role === 'owner'`
+`src/app/(app)/clubs/detail/about/page.tsx:65` computes `const isOwner = viewer_role === 'owner'`
 and `:103` renders `{!isOwner && (<ClubMembershipButton … />)}`. The earlier draft cited `:104`
 — the line *inside* that guard — having grepped for `isOwner` in `src/components/clubs/` only,
 where it correctly does not appear. The page's own doc comment states **"The owner is offered
