@@ -25,9 +25,11 @@ is mergeable on its own with neither leaving the other half-built.
       refusal naming the club, and offer the two exits the policies already permit: delete the
       ride, or make it public and detach it from the club. Do **not** widen the policy.
 - [x] 1.4b Add RLS assertions for it: an ex-member organizer's UPDATE is refused; their DELETE
-      succeeds; their `club_id → NULL` with `is_public = true` succeeds. **Not done in this
-      session** — scoped to app code only (`supabase/**` untouched, RLS suite not run); the
-      `updateRide` `42501` branch and the two `EditRideForm` copy checks are exercised by review
+      succeeds; their `club_id → NULL` with `is_public = true` succeeds. **Done** — 13
+      assertions in `rls_test.sql`, labelled `017:` because they constrain that migration's
+      UPDATE policy rather than `043`. Suite 1109 → 1122. Each claim was mutation-tested, and
+      the precondition that the same rider *can* edit while still a member is what stops the
+      case passing vacuously against a policy that refuses everyone
       and `npm run walk` instead, per `ride-lifecycle`'s own requirement table.
 - [x] 1.5 Add `deleteRide(rideId)` to `src/lib/actions/rides.ts`. Plain `.delete()`; no function
       needed (`design.md` §D2).

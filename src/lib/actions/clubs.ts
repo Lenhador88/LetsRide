@@ -302,12 +302,17 @@ export async function leaveClub(clubId: string): Promise<ActionState> {
  * UPDATE on every column of `clubs` too, including `owner_id`, and only the
  * `WITH CHECK` stops that one moving.
  *
- * Reads the row **before** writing it so two things can be told apart from
- * an unconditional `clubs.all()` invalidation: whether `is_public` actually
- * changed (022's trigger only fires on a real flip, and `rides.all()` is
- * only invalidated when it did — `client-cache-invalidation`'s requirement),
- * and which image paths a replacement orphaned, swept the same way
- * `setProfileImage` sweeps a replaced avatar.
+ * Reads the row **before** writing it to learn which image paths a
+ * replacement orphaned, swept the same way `setProfileImage` sweeps a
+ * replaced avatar.
+ *
+ * It no longer reads `is_public` to decide whether to invalidate
+ * `rides.all()`. That conditional was correct for 022's trigger — which
+ * fires only on a real public -> private flip — and wrong for the reason
+ * that turned up in review: `RIDE_SELECT` embeds `club:clubs(id, name)`, so
+ * *every* save can stale a ride card whether or not privacy moved. Both
+ * reasons land on the same key, so the unconditional call subsumes the
+ * conditional one.
  */
 export async function updateClub(
   clubId: string,
@@ -332,7 +337,7 @@ export async function updateClub(
 
   const { data: previous } = await supabase
     .from('clubs')
-    .select('is_public, avatar_path, cover_image_path')
+    .select('avatar_path, cover_image_path')
     .eq('id', clubId)
     .maybeSingle()
 
