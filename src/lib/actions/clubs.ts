@@ -369,13 +369,20 @@ export async function updateClub(
   }
 
   invalidate(queryKeys.clubs.all())
-  // propagate_club_privacy_to_rides (022) rewrites ride rows this call never
-  // named, one-directionally, and only on an actual public -> private flip —
-  // over-invalidating on every save would still be safe (keys.ts's own rule),
-  // but `previous` is already in hand, so the claim can stay honest about why.
-  if (previous && previous.is_public !== parsed.data.is_public) {
-    invalidate(queryKeys.rides.all())
-  }
+  // A club's name and avatar are EMBEDDED in three other domains' reads, and
+  // none of them sits under the ['clubs'] prefix: postcards.filters() signs
+  // club:clubs(id, name, avatar_path), RIDE_SELECT embeds club:clubs(id, name),
+  // and notifications carry CLUB_EMBED_COLUMNS. Renaming leaves the old name on
+  // ride cards; replacing the avatar is worse than stale, because the Storage
+  // object was just deleted above — the cached signed URL is non-null and dead,
+  // so the tile renders a broken image rather than falling back to initials.
+  invalidate(queryKeys.postcards.all())
+  invalidate(queryKeys.notifications.all())
+  // rides.all() is invalidated unconditionally for the embed above. The privacy
+  // flip is a second, independent reason: propagate_club_privacy_to_rides (022)
+  // rewrites ride rows this call never named, one-directionally, on an actual
+  // public -> private flip. Both land on the same key, so the embed covers it.
+  invalidate(queryKeys.rides.all())
 
   return { error: null, redirectTo: `/clubs/${clubId}` }
 }
