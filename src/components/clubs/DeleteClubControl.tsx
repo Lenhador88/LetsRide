@@ -10,7 +10,7 @@ import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 
 /**
- * The destructive control at the foot of `/clubs/[id]/edit` — PD-101,
+ * The destructive control at the foot of `/clubs/detail/edit` — PD-101,
  * `design.md` §D4, `club-lifecycle`'s delete requirement. Not in
  * `ClubDetailPageMenu`, for the same reason `DeleteRideControl` is not in
  * `RidePageMenu`: that sheet is navigation, and an irreversible action does

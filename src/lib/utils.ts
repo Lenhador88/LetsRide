@@ -110,7 +110,7 @@ export function wallClockToUtc(local: string): string {
  * `datetime-local` value, as `APP_TIME_ZONE` wall-clock.
  *
  * An edit screen has a round trip a create screen does not: `CreateRideForm`
- * only ever writes `departure_at`, but `/rides/[id]/edit` has to read the
+ * only ever writes `departure_at`, but `/rides/detail/edit` has to read the
  * stored instant back into the same input first. Rendering the raw UTC instant
  * there (in the browser's own zone, or via a bare `toISOString().slice(0,16)`)
  * would mean saving the form without touching the time field moves the ride by
@@ -242,8 +242,8 @@ export function formatRideTime(date: string) {
  * `formatDateTime` had exactly one caller — the club page's ride card — and
  * `formatDate` had none at all. Pinning the three `formatRide*` helpers to
  * APP_TIME_ZONE while leaving that caller unpinned made two screens one tap
- * apart disagree about the same ride: `/clubs/[id]` said `06:00 PM` where
- * `/rides/[id]` said `20:00`, and past 22:00 UTC they disagreed about the day.
+ * apart disagree about the same ride: `/clubs/detail` said `06:00 PM` where
+ * `/rides/detail` said `20:00`, and past 22:00 UTC they disagreed about the day.
  * Uniformly wrong had become inconsistently wrong, which is worse.
  *
  * That caller now uses the ride helpers, which is what a ride time should have

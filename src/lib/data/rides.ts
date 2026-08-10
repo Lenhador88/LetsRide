@@ -50,7 +50,7 @@ export const RIDE_AVATAR_LIMIT = 5
 export const RIDE_FILTER_SCAN_LIMIT = 500
 
 /**
- * How much of a crew `/rides/[id]/crew` will read, and **not** because a
+ * How much of a crew `/rides/detail/crew` will read, and **not** because a
  * motorcycle ride has 200 riders.
  *
  * Nothing caps `ride_members`. `max_riders` has existed since 001 and has never
@@ -236,7 +236,7 @@ export async function getRides(
 }
 
 /**
- * One ride, for `/rides/[id]`.
+ * One ride, for `/rides/detail`.
  *
  * Returns `null` for both "no such ride" and "you may not see this one", and
  * that conflation is deliberate: PostgREST answers a row hidden by RLS exactly
@@ -326,7 +326,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
 }
 
 /**
- * One ride, for `/rides/[id]/edit` (PD-101). Narrower than `getRide` — no
+ * One ride, for `/rides/detail/edit` (PD-101). Narrower than `getRide` — no
  * RSVP read, no `is_upcoming` — and returns the editable columns rather than
  * the display shape.
  *
@@ -398,7 +398,7 @@ export function isRideCrew(isOrganizer: boolean, attendance: RideAttendance): bo
 }
 
 /**
- * The crew roster for `/rides/[id]/crew`, split the way the design's two
+ * The crew roster for `/rides/detail/crew`, split the way the design's two
  * sections are: `Going` and `May be going`.
  *
  * There is no block filtering here and there must not be. 009 put

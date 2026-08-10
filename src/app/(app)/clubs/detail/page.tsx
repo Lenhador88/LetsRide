@@ -100,7 +100,7 @@ function ClubTimelineScreen() {
     getClubFeed(id)
   )
 
-  // The same key and the same read as `/clubs/[id]/rides`, sliced to five for
+  // The same key and the same read as `/clubs/detail/rides`, sliced to five for
   // the strip rather than fetched at five. Two different lengths under one key
   // is the failure that avoids: `rides.list('club:<id>')` would hold either the
   // whole list or this strip depending on which screen loaded first, and the

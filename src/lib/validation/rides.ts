@@ -108,14 +108,22 @@ export function parseRideFilter(params: {
 }
 
 /**
- * A ride id out of the URL, which is untrusted like any other segment.
+ * A ride id out of the URL, which is untrusted whatever part of the URL it
+ * arrives in.
  *
- * `/rides/[id]` and `/rides/[id]/crew` put this straight into `.eq('id', …)`.
- * Postgres rejects a non-UUID with `22P02`, PostgREST returns 400, and `unwrap`
- * throws — so `/rides/new/crew` answered **500** rather than 404. Found by
- * loading the app against the real database on 2026-08-05, not by review: the
- * link that produced it was the "Create ride" button's own `/rides/new`, which
- * matches `/rides/[id]` for any segment that is not a real route.
+ * `/rides/detail` and `/rides/detail/crew` put `?id=` straight into
+ * `.eq('id', …)`. Postgres rejects a non-UUID with `22P02`, PostgREST returns
+ * 400, and `unwrap` throws — a "Try again" button on a URL that can never
+ * succeed, where the honest answer is 404.
+ *
+ * **The route that produced it is gone and the schema is not obsolete with it.**
+ * This was found on 2026-08-05 by loading the app against the real database, not
+ * by review: `/rides/new/crew` answered **500**, because the "Create ride"
+ * button's own `/rides/new` matched the then-dynamic `/rides/[id]` for any
+ * segment that was not a real route. PD-142 moved the id into `?id=`, so that
+ * particular collision cannot happen again — and the input got *easier* to
+ * malform, because a query parameter is the part of a URL a person edits by
+ * hand.
  *
  * Same reasoning as `rideSearchParamsSchema` above and `riderIdSchema` in
  * `blocks.ts`. A malformed id means "no such ride", and 404 is the honest

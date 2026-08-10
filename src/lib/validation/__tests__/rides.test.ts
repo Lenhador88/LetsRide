@@ -38,11 +38,17 @@ describe('rideIdSchema', () => {
   })
 
   it('rejects the segments that actually reached it in production', () => {
-    // `/rides/new` is the Create-ride button's own href, and it matches the
-    // `/rides/[id]` route for any segment that is not a real sub-route. Before
-    // this schema, `/rides/new/crew` answered 500 — Postgres 22P02 through
-    // PostgREST as a 400, thrown by unwrap. Found by loading the app, not by
-    // review.
+    // `/rides/new` is the Create-ride button's own href, and it matched the
+    // then-dynamic `/rides/[id]` route for any segment that was not a real
+    // sub-route. Before this schema, `/rides/new/crew` answered 500 — Postgres
+    // 22P02 through PostgREST as a 400, thrown by unwrap. Found by loading the
+    // app, not by review.
+    //
+    // `'new'` is kept after PD-142 moved the id to `?id=`, where that collision
+    // can no longer happen: these are the values that have reached the schema,
+    // and dropping one because its old route is gone loses the case rather than
+    // the risk. `''` is the one that matters most now — it is what an absent
+    // `?id=` becomes on all ten screens.
     for (const bad of ['new', 'not-a-uuid', '', '123', 'undefined', 'null']) {
       expect(rideIdSchema.safeParse(bad).success).toBe(false)
     }
