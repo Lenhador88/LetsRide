@@ -29,39 +29,36 @@ The hard part is finished. Do not redo it, and do not assume it is half-done:
     writing the implementation; it is the contract.
   - `src/lib/auth/guard.ts` is a pure function, so routing survives a webview unchanged.
 
-## The one thing still on the web side
+## The bundle builds — what that settled, and what it left you
 
-**Next still server-renders client components on first load.** That SSR pass is the last piece
-of the render model, and retiring it is *your* work, not leftover migration work — a bundled
-app has no Node process to run it. Decide deliberately between a static export and whatever
-Next 16 offers for a fully-static bundle, and **measure what breaks** rather than assuming.
-`next build` today reports 20 static routes and **7 dynamic** — re-derive with
-`npm run build 2>&1 | grep -cE '^[┌├└│ ]*ƒ /'` rather than trusting the 7:
+**`CAPACITOR_BUILD=1 npm run build` produces `out/`, which is `capacitor.config.ts`'s
+`webDir`.** PD-142 shipped it: `next.config.ts` carries a whole alternative config object under
+that flag, so the Vercel build is unchanged by construction rather than by review.
 
-```
-/clubs/[id]  /clubs/[id]/about  /clubs/[id]/members  /clubs/[id]/rides
-/postcards/[id]  /rides/[id]  /rides/[id]/crew
-```
+**There are no dynamic route segments left.** The ten detail screens read their id from
+`?id=<uuid>` — `/rides/detail?id=`, `/clubs/detail/members?id=`, `/postcards/detail?id=` — so
+`generateStaticParams` is not needed anywhere and the export has nothing to prerender per id.
+`src/lib/routes.ts` is the single definition of every one of those hrefs; build a link from it
+rather than writing the string. The old `/rides/<uuid>` shape survives as a UUID-constrained
+307 in the **web** config only — putting one in the export config would ship a redirect no
+static host can serve.
 
-**Three of those are nested club sub-routes**, which is the shape a static export handles
-worst — so what matters for your decision is not only how many but how deep. An earlier draft
-of this brief said five and omitted exactly those three.
+Re-derive the route census rather than trusting a number here:
 
-**Measured 2026-08-07, so stop assuming it might work.** With `output: 'export'`, `next build`
-fails on the first dynamic route it reaches:
-
-```
-Error: Page "/postcards/[id]" is missing "generateStaticParams()"
-so it cannot be used with "output: export" config.
+```bash
+npm run build 2>&1 | grep -cE '^[┌├└│ ]*[ƒ●] /'    # dynamic + prerendered-dynamic; expect 0
 ```
 
-None of the seven can supply one — the ids are per-rider, RLS-scoped content that does not
-exist at build time — and returning `[]` does not rescue it, because `output: 'export'` forces
-`dynamicParams: false`, so every unknown id 404s instead. So the decision is not *whether* the
-route shape changes but *into what*, and it is a routing change with real negative cases: deep
-links, the guard's public-path denylist, and `notFound()` semantics all move with it. That
-makes it OpenSpec work before it is config work. `capacitor.config.ts` exists and its `webDir`
-(`out/`) is exactly what this blocks.
+`scripts/native/assert-web-build.mjs` runs in CI and fails if a plain build ever becomes an
+export — the failure it catches is `CAPACITOR_BUILD` leaking into a Vercel target, which
+produces a green deploy of a serverless static bundle with every redirect silently dropped.
+
+**What is left is the shell itself**: `cap add ios`, `cap add android`, `cap sync`, and a device
+check that a cold start at a non-root URL lands on its screen. `src/lib/native/boot-restore.ts`
+is the client half of that and is unit-tested; the premise underneath it — that Capacitor
+answers every extensionless path with the root `index.html` — is read from `Router.swift` and
+`WebViewLocalServer.java` at the pinned 8.5.0 and is **written and unverified** until a platform
+runs.
 
 **The *read in an effect, never during render* rule does not go away, and this brief used to
 say it would.** It said "when it is gone, say so plainly, because that rule can then be
