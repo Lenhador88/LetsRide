@@ -87,10 +87,29 @@
 -- as 045 did to 043's pair, so its label is amended rather than left claiming a
 -- mechanism that no longer runs.
 --
--- No ordering dependency: 046 names no column 041 added and touches no table
--- 045 touched, so on PROD it may be applied at any point after 044, which is
--- itself only ordered behind 041. Measured, not expected — the re-grant list
--- below contains `club_id`, `caption` and `image_path`, all three of which exist
+-- ORDERING: 046 MUST be applied after 044, and the failure is SILENT.
+--
+-- Both files issue an ABSOLUTE `revoke update` + `grant update (...)` list
+-- rather than a delta, so whichever runs last wins the whole surface. 044's
+-- list still contains `id` and `author_id` — the two columns this file exists
+-- to remove — so applying 046 first and 044 second reinstates exactly what 046
+-- revoked, with no error, nothing red, and a migrations table that looks
+-- complete. Measured both directions on Postgres, not reasoned:
+--
+--     046 then 044  ->  update = author_id, caption, club_id, id, image_path
+--     044 then 046  ->  update = caption, club_id, image_path        (correct)
+--
+-- The full PROD chain is therefore 041 -> 044 -> 046, and its two links fail
+-- differently. 041 -> 044 fails LOUDLY: 044 grants `insert (... ride_id)` and
+-- 041 is what adds that column, so out of order it errors outright. 044 -> 046
+-- is the dangerous one, because nothing announces it.
+--
+-- Filename order satisfies both links, so a full in-order promotion is always
+-- correct. This note exists for a PARTIAL one — see docs/HANDOFF.md §Migrations,
+-- which carries the same table.
+--
+-- Column existence is a separate and satisfied question: the re-grant list
+-- below names `club_id`, `caption` and `image_path`, all three of which exist
 -- on PROD's `postcards` today.
 --
 -- Retention and reach are unchanged: no table, no column, no personal data.

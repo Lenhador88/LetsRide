@@ -594,7 +594,7 @@ rather than trust this; it is exactly the kind of line that goes stale:
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV  (fpmrimzxadewsaiwpsel): 46 rows, ending 20260810022619 046_postcards_authorship_needs_a_grant
+#   DEV  (fpmrimzxadewsaiwpsel): 46 rows, ending 20260810022117 046_postcards_authorship_needs_a_grant
 #   PROD (zwprydcyryvudhurbnye): 40 rows, ending 20260808205709 040_locality_centroid
 ls supabase/migrations/ | wc -l          # 46
 ```
