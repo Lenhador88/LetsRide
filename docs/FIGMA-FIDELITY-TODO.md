@@ -98,7 +98,7 @@ rather than a re-derivation.
 
 **Built 2026-08-03 against this register:** the feed (`/postcards`), the card, the like
 control, and the create screen (`/postcards/new`). **Built 2026-08-04:** the comment thread
-(`/postcards/[id]`), the composer and the card's comment control. Every value below marked
+(`/postcards/detail`), the composer and the card's comment control. Every value below marked
 *chose* is in the code right now and unverified.
 
 ### Home / Postcards feed — rebuilt from the measurements 2026-08-04
@@ -191,7 +191,7 @@ Expect to move things when the designer draws it.
 
 ### Club detail and Create club — built 2026-08-05
 
-`/clubs/[id]` is four sub-pages behind the header's dropdown — Timeline, Rides, Members,
+`/clubs/detail` is four sub-pages behind the header's dropdown — Timeline, Rides, Members,
 About — built from the **private club** frames, which are the ones marked Done.
 
 - [x] ~~**Which club design to build**~~ — **settled by the epic covers, and it is a product
@@ -394,7 +394,7 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
 
 ### Ride detail — built from the measurements 2026-08-04
 
-`/rides/[id]` and `/rides/[id]/crew`, from `Ride - Ride plan (Details)` (`2375:8771`),
+`/rides/detail` and `/rides/detail/crew`, from `Ride - Ride plan (Details)` (`2375:8771`),
 `Ride - Ride plan - Sub pages` (`2375:9114`) and `Ride - Crew (Riders)` (`2375:9212`).
 
 Every geometry value was read with `npm run figma -- show`, not estimated: banner 390×200,
@@ -413,7 +413,7 @@ for the crew only — Chat. The remaining deviation is first:
       and a ride-scoped postcard would be a second axis. Omitted from the menu rather than
       offered as a dead row.
 - [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
-      `Ride - Chat - Text focus` (`2242:11086`) at `/rides/[id]/chat`. **It did not need the
+      `Ride - Chat - Text focus` (`2242:11086`) at `/rides/detail/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
       which existed. Every sub-item below is a deviation, and each is a decision rather than a
       miss. **Count them rather than read a number here** — this line said "Five" while the list
@@ -815,7 +815,7 @@ around **2026-08-06T12:32Z** — so the thread screen was built the same way the
 the register below is what that cost. The *behaviour* is not a guess: `011` owns who may read,
 write and delete a comment, and the UI adds no rule of its own.
 
-- [ ] **Where a thread lives** — *chose:* a dedicated route, `/postcards/[id]`, holding the
+- [ ] **Where a thread lives** — *chose:* a dedicated route, `/postcards/detail`, holding the
       card and its comments; the feed card carries a comment control that links to it. The
       alternative — comments inline on the feed card, with a "view all N" expander — is what
       several photo feeds do, and it is unread which one this design uses. Two things pushed
@@ -823,7 +823,7 @@ write and delete a comment, and the UI adds no rule of its own.
       before any route answered to that path, and `getPostcard()` existed unused. Inline
       expansion would also have meant inventing a truncation rule, which is the same trap the
       caption clamp is being avoided for.
-      → `src/app/(app)/postcards/[id]/page.tsx`
+      → `src/app/(app)/postcards/detail/page.tsx`
 - [ ] **Comment affordance on the card** — *chose:* a **text-labelled** link ("Comment" /
       "Comments N") sitting beside the like control in one row below the image. The design
       uses `Element / Icon / Chat Bubble`, which cannot be exported while the render endpoint

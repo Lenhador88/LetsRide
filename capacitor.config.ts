@@ -9,26 +9,32 @@ import type { CapacitorConfig } from '@capacitor/cli'
  * `.claude/agents/native.md`, this file is **written and unverified**, not
  * verified-in-container and not verified-on-device.
  *
- * ## `webDir` does not exist yet, and that is the epic's real gate
+ * ## `webDir` exists — PD-142, 2026-08-10
  *
  * Capacitor serves a **static** bundle from the filesystem, so `out/` has to be
- * produced by `next build` with `output: 'export'`. Measured 2026-08-07, that
- * build fails:
+ * produced by `next build` with `output: 'export'`. `npm run build:native` does
+ * that and then checks what it produced; 384 files, 33 documents, 274 RSC
+ * segment payloads.
  *
- *     Error: Page "/postcards/[id]" is missing "generateStaticParams()"
- *     so it cannot be used with "output: export" config.
+ * What unblocked it was a **routing** change rather than a config one. The
+ * export refuses a dynamic segment without `generateStaticParams()`, and none of
+ * the ten detail screens could supply one — the ids are per-rider, RLS-scoped
+ * rows that do not exist at build time, and returning `[]` does not help because
+ * the export forces `dynamicParams: false`, so every unknown id 404s. So the ids
+ * left the path: `/rides/detail?id=…` and its nine siblings (`src/lib/routes.ts`).
+ * A query string is not part of the path, so one prerendered document serves
+ * every ride and no navigation can hard-navigate looking for a payload that was
+ * never emitted. The old shape survives on the **web** as a `redirects()` entry,
+ * absent from the export by construction.
  *
- * Seven routes hit it — `/postcards/[id]`, `/rides/[id]`, `/rides/[id]/crew`,
- * `/clubs/[id]` and its three sub-routes — and none can supply
- * `generateStaticParams`, because the ids are per-rider RLS-scoped content that
- * does not exist at build time. Returning `[]` does not help: `output: 'export'`
- * forces `dynamicParams: false`, so every unknown id 404s. Resolving what shape
- * those routes take in a bundle is the prerequisite for `cap sync`, and it is a
- * routing decision with real negative cases (deep links, the guard's public-path
- * denylist, `notFound()` semantics) rather than a config tweak.
- *
- * Until then `npx cap sync` has nothing to copy. That is expected, not a
- * misconfiguration in this file.
+ * That is also why this file needs no `server.html5mode` and no `RouteProcessor`.
+ * Both platforms answer every extensionless path with the **root** `index.html`
+ * — `Router.swift`'s `if pathUrl.pathExtension.isEmpty`, and
+ * `WebViewLocalServer.handleLocalRequest()`'s html5mode branch, which hands the
+ * route processor a hardcoded `"/index.html"` and discards the requested path
+ * before any processor is consulted. So a cold start at a deep link boots `/`'s
+ * tree at somebody else's URL; `src/lib/native/boot-restore.ts` is the
+ * client-side answer to that, and it needs nothing native.
  *
  * ## `'out'` is only right while `distDir` is untouched — read this before setting one
  *
@@ -64,11 +70,11 @@ import type { CapacitorConfig } from '@capacitor/cli'
  * The rule, either way round: **`webDir` must equal `distDir` whenever one is
  * set, and `'out'` only when one is not.**
  *
- * Verified 2026-08-08 by reading the pinned Next source, not by running a native
- * build — no platform has ever run here (see the header). The mechanism came
- * from `claude/store-submission-prep-6o1q3d`, an unmerged branch that measured
- * it empirically on 2026-08-06 and found the HTML at
- * `.next-capacitor/postcards/placeholder/index.html` with no `out/` present.
+ * Verified 2026-08-08 by reading the pinned Next source, and confirmed
+ * 2026-08-10 by running the export with no `distDir`: `out/index.html` exists
+ * and no `.next-capacitor/` was created. What has still never run here is a
+ * **native** build — no platform project has ever been generated in this
+ * container (see the header).
  */
 const config: CapacitorConfig = {
   /**
