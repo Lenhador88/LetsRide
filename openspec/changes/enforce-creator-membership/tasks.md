@@ -206,7 +206,7 @@ documentation-claims audit `reviewer` runs.
 - [ ] 5.3 `getYourClubs`'s doc comment — *"A club owned without a membership row would appear on
   neither sub-page; that is a create-flow integrity question"* — is right and can now say the
   question is answered and where.
-- [ ] 5.4 `CLAUDE.md` §Schema: the `club_members` and `ride_members` rows gain the invariant, and
+- [ ] 5.4 `docs/reference/schema.md`: the `club_members` and `ride_members` rows gain the invariant, and
   the `019` line ("only 'member' is self-assignable, and only the club's own owner_id may insert
   'owner'") becomes wrong the moment `030` applies.
 - [ ] 5.5 `leaveClub`'s "Registered rather than fixed" note (3.4).

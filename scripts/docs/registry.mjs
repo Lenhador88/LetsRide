@@ -221,21 +221,21 @@ export const claims = [
   // ---- lucide-react retirement (comment trap, both directions) -----------
   {
     id: 'lucide-importers-filtered',
-    file: 'CLAUDE.md',
+    file: 'docs/reference/design-system.md',
     pattern: /the importer count is\s+`grep -rl "from 'lucide-react'" src\/ \| grep -v generated \| wc -l` and it is \*\*(\d+)\*\*/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l`,
-    about: 'Design System §Icons: the real importer count (must be 0)',
+    about: 'docs/reference/design-system.md §Icons: the real importer count (must be 0)',
   },
   {
     id: 'lucide-raw-comment-mentions',
-    file: 'CLAUDE.md',
+    file: 'docs/reference/design-system.md',
     pattern: /The (\w+) matches\s+`grep -rn lucide-react src\/` still returns are prose inside comments/,
     extractStated: extractWord(),
     kind: 'shell',
     cmd: `grep -rn lucide-react src/ | wc -l`,
-    about: 'Design System §Icons: raw (unfiltered) grep — expected all-comments',
+    about: 'docs/reference/design-system.md §Icons: raw (unfiltered) grep — expected all-comments',
   },
 
   // ---- supabase.from() retirement (comment trap, both directions) --------
@@ -292,12 +292,12 @@ export const claims = [
   // ---- Nav item count ------------------------------------------------------
   {
     id: 'nav-items-scoped-claude',
-    file: 'CLAUDE.md',
+    file: 'docs/reference/product-scope.md',
     pattern: /The built app covers a fraction of the design\. \*\*(\w+) nav tabs — Home, Rides, Clubs,/,
     extractStated: extractWord(),
     kind: 'shell',
     cmd: `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep -c "href:"`,
-    about: '§Product Scope: "Four nav tabs" — the scoped grep on navItems',
+    about: 'docs/reference/product-scope.md: "Four nav tabs" — the scoped grep on navItems',
   },
   {
     id: 'nav-items-scoped-handoff',
@@ -310,12 +310,12 @@ export const claims = [
   },
   {
     id: 'nav-items-raw-claude',
-    file: 'CLAUDE.md',
+    file: 'docs/reference/product-scope.md',
     pattern: /A bare `grep -c "href:"` on that file reads \*\*(\d+)\*\*: the four/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `grep -c "href:" src/components/layout/Navbar.tsx`,
-    about: '§Product Scope: the trap — unscoped grep -c "href:" on Navbar.tsx',
+    about: 'docs/reference/product-scope.md: the trap — unscoped grep -c "href:" on Navbar.tsx',
   },
 
   // ---- RLS assertion count (needs Postgres — see check.mjs's gate) -------

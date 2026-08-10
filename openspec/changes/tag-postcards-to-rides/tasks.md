@@ -218,7 +218,7 @@
 - [ ] 5.1 `CLAUDE.md` §Supabase Rules: the `postcards` row gains `ride_id` — *a tag, never the
   audience; `club_id` is still the audience* — and the applied-state line moves to 41 with its
   verification command intact.
-- [ ] 5.2 `CLAUDE.md` §Product Scope: the Rides row loses "Journal needs `postcards.ride_id`"; the
+- [ ] 5.2 `docs/reference/product-scope.md`: the Rides row loses "Journal needs `postcards.ride_id`"; the
   Inbox row's excluded notification keeps its entry with an updated reason (the column now exists; the
   fan-out helper does not).
 - [ ] 5.3 `docs/HANDOFF.md`: position, each claim beside the command that verifies it.

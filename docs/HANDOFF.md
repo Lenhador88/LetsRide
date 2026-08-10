@@ -838,7 +838,7 @@ oversight — the group marked **absorb on contact** is unfiled on purpose, per 
 2026-08-09: *"If it seems within the context of the build, and recommended, just do it."* Fix one
 in the next branch that already has the file open, say so in the PR body, and do not open a story
 for it. The census that justifies that, and the bucketing trap inside it, are in `CLAUDE.md`
-§Sequencing — run it there rather than trusting a second copy here.
+`docs/reference/linear.md` §Sequencing — run it there rather than trusting a second copy here.
 
 - **`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
   is not on its own crew.** `PD-103`. Two inserts, no transaction, and a hand-rolled rollback that
@@ -937,8 +937,8 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   so the nav is four tabs and `/notifications` will become `/inbox/notifications` when it returns.
   **The design still draws five**, so its absence reads as an omission to anyone in Figma rather
   than here — `Navbar.tsx`'s own docstring carries the reason at the point of temptation, and that
-  is the copy to keep current. `CLAUDE.md` §Product Scope holds the scoped grep that counts the
-  tabs, including why a bare `grep -c "href:"` reads 9.
+  is the copy to keep current. `docs/reference/product-scope.md` holds the scoped grep that
+  counts the tabs, including why a bare `grep -c "href:"` reads 9.
 - **The swipe deck only moves forward.** A swipe in either direction advances, per the product
   owner, so there is no way back except "Start over". **Decided, not a defect** — no issue, and
   nothing to fix.
