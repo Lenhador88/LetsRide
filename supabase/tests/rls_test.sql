@@ -9902,6 +9902,329 @@ select assert_eq(
                   ('public.clubs', 'owner_id')) v(t, c)),
   true, '046: ... while all three stay INSERTable, which is the asymmetry rather than an inconsistency');
 
+\echo ''
+\echo '# RLS does not apply to TRUNCATE, so the grant had to go (047)'
+
+-- --------------------------------------------------------------------------
+-- 047.  `authenticated` held TRUNCATE, REFERENCES and TRIGGER on the five
+--       tables 001 created — the residue of Supabase's project default
+--       `grant all on tables`. RLS never governed TRUNCATE: a policy filters
+--       rows, TRUNCATE empties the relation without reading one, so
+--       `truncate public.club_members` succeeded as `authenticated` (measured
+--       on DEV 2026-08-10 in a rolled-back transaction).
+--
+--       Not reachable through PostgREST, which has no TRUNCATE verb — and
+--       "unreachable through PostgREST" is a property of the API surface, not
+--       of the database, which is the whole reason it is closed.
+--
+--       Grant questions are asked BY ROLE with has_table_privilege. The suite
+--       runs as the table owner, for whom no privilege is a barrier, so
+--       attempting the TRUNCATE would prove nothing — 031's lesson.
+-- --------------------------------------------------------------------------
+reset role;
+
+-- The five, one assertion per privilege per table, so a failure names the pair.
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', t, 'TRUNCATE'))
+     from unnest(array['public.rides', 'public.clubs', 'public.club_members',
+                       'public.ride_members', 'public.profiles']) t),
+  false, '047: authenticated cannot TRUNCATE any of the five tables 001 created — RLS would not have stopped it');
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', t, 'REFERENCES'))
+     from unnest(array['public.rides', 'public.clubs', 'public.club_members',
+                       'public.ride_members', 'public.profiles']) t),
+  false, '047: ... nor point a foreign key at them, which is an existence oracle on ids it cannot SELECT');
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', t, 'TRIGGER'))
+     from unnest(array['public.rides', 'public.clubs', 'public.club_members',
+                       'public.ride_members', 'public.profiles']) t),
+  false, '047: ... nor attach a trigger to a table it does not own');
+
+-- The whole-schema sweep. This is what catches a LATER migration creating a
+-- table and inheriting the same `grant all` default — the five assertions above
+-- cannot, because nobody writes one for a table that does not exist yet.
+select assert_eq(
+  (select coalesce(string_agg(c.relname, ',' order by c.relname), '')
+     from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind = 'r'
+      and (has_table_privilege('authenticated', c.oid, 'TRUNCATE')
+        or has_table_privilege('authenticated', c.oid, 'REFERENCES')
+        or has_table_privilege('authenticated', c.oid, 'TRIGGER'))),
+  '', '047: NO table in public grants authenticated TRUNCATE, REFERENCES or TRIGGER — swept rather than listed, so a new table inheriting Supabase''s grant-all default shows up here');
+
+-- REFERENCES is also expressible per column, and a column-level grant would not
+-- appear in the table-level sweep above.
+select assert_eq(
+  (select coalesce(string_agg(distinct table_name || '.' || column_name, ','), '')
+     from information_schema.column_privileges
+    where table_schema = 'public' and grantee = 'authenticated'
+      and privilege_type = 'REFERENCES'),
+  '', '047: ... and no COLUMN of any public table grants it either, which the table-level sweep alone would miss');
+
+-- **The anti-vacuity check, and it is the reason 047 is testable at all.**
+-- harness.sql used to reproduce Supabase's default as `grant select, insert,
+-- update, delete`, which never granted these three — so every assertion above
+-- would have passed on a database where the grant had never existed, measuring
+-- nothing. It now says `grant all`. This proves the harness still does, by
+-- creating a table and reading what the default handed it.
+create table public.grant_default_probe_047 (id int);
+select assert_eq(has_table_privilege('authenticated', 'public.grant_default_probe_047', 'TRUNCATE'),
+  true, '047: a FRESH public table still inherits TRUNCATE from the reproduced Supabase default — so the assertions above measure 047''s revoke rather than a harness that never granted it');
+drop table public.grant_default_probe_047;
+
+-- service_role and postgres must be UNAFFECTED. A `revoke ... from public`
+-- would have taken both with it, and nothing else here would have noticed:
+-- the deletion Edge Function runs as service_role, and postgres owns the tables.
+select assert_eq(
+  (select bool_and(has_table_privilege('service_role', t, 'TRUNCATE'))
+     from unnest(array['public.rides', 'public.clubs', 'public.club_members',
+                       'public.ride_members', 'public.profiles']) t),
+  true, '047: service_role keeps TRUNCATE on all five — the revoke named authenticated, not public');
+select assert_eq(
+  (select bool_and(has_table_privilege('postgres', t, 'TRUNCATE'))
+     from unnest(array['public.rides', 'public.clubs', 'public.club_members',
+                       'public.ride_members', 'public.profiles']) t),
+  true, '047: ... and so does postgres, which owns them');
+
+-- The DML grants 047 must not have touched. Scoped to SELECT and DELETE
+-- because 045 already owns the INSERT/UPDATE column lists on rides and clubs.
+select assert_eq(
+  (select bool_and(has_table_privilege('authenticated', t, 'SELECT'))
+     from unnest(array['public.rides', 'public.clubs', 'public.club_members',
+                       'public.ride_members']) t),
+  true, '047: SELECT is untouched on the four — profiles is excluded because 025 made its SELECT column-level, so the table-level answer is false and always was');
+select assert_eq(
+  (select bool_and(has_table_privilege('authenticated', t, 'DELETE'))
+     from unnest(array['public.rides', 'public.clubs', 'public.club_members',
+                       'public.ride_members']) t),
+  true, '047: ... and so is DELETE, so leaving a club or a ride still works');
+
+\echo ''
+\echo '# A membership timestamp is not the rider''s to write (048)'
+
+-- --------------------------------------------------------------------------
+-- 048.  The third instalment of 044/045/046: a timestamp a list SORTS on must
+--       not be writable by the rider it sorts. All three tables started at the
+--       pre-041 shape — everything table-level, attacl NULL on every column —
+--       so INSERT covered every column on all three and UPDATE covered every
+--       column on the two membership tables.
+--
+--       Both rosters are LIMIT-bounded at 200 with no pagination, so a
+--       back-dated joined_at did not merely sort first: it guaranteed a place
+--       inside the truncation window and pushed a genuine member out of it.
+-- --------------------------------------------------------------------------
+reset role;
+
+-- The exact column sets, per table and verb. These are what catch a LATER
+-- migration handing one of these tables a new column with a grant by accident.
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcard_comments'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'author_id,body,id,postcard_id',
+  '048: exactly four columns of postcard_comments hold INSERT — created_at and updated_at are not among them');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'club_members'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'club_id,role,user_id',
+  '048: exactly three columns of club_members hold INSERT, and joined_at is not among them');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'club_members'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  'club_id,role,user_id',
+  '048: ... and exactly the same three hold UPDATE — dead today (there is NO update policy on club_members) but narrowed so a future member-promotion policy cannot inherit joined_at for free');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'ride_members'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'ride_id,status,user_id',
+  '048: exactly three columns of ride_members hold INSERT, and joined_at is not among them');
+-- All three are REQUIRED, not tidy: setRideAttendance is an upsert and
+-- PostgREST's ON CONFLICT DO UPDATE SET list carries every payload column,
+-- including the two conflict columns. Granting `status` alone breaks every
+-- repeat RSVP with 42501 — exercised for real in 048.b below.
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'ride_members'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  'ride_id,status,user_id',
+  '048: ... and the same three hold UPDATE, which is the upsert''s SET list rather than a choice — joined_at is the only column that came out');
+
+-- postcard_comments has NO update grant and must not acquire one: 011 designed
+-- comment editing out, and there is no UPDATE policy either.
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcard_comments'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  0, '048: postcard_comments holds NO update grant on any column — editing a comment is not designed, and a grant here would be the thing that created the capability');
+
+-- No TABLE-level INSERT or UPDATE survives on any of the three. Without this a
+-- later `grant insert on <table>` would silently restore every column.
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', t, p))
+     from unnest(array['public.postcard_comments', 'public.club_members',
+                       'public.ride_members']) t,
+          unnest(array['INSERT', 'UPDATE']) p),
+  false, '048: no TABLE-level INSERT or UPDATE remains on any of the three — all three are column-level now');
+
+-- The four timestamps themselves, named by role on all three verbs.
+select assert_eq(
+  (select bool_or(has_column_privilege('authenticated', t, c, p))
+     from (values ('public.postcard_comments', 'created_at'),
+                  ('public.postcard_comments', 'updated_at'),
+                  ('public.club_members', 'joined_at'),
+                  ('public.ride_members', 'joined_at')) v(t, c),
+          unnest(array['INSERT', 'UPDATE']) p),
+  false, '048: none of the four timestamps is writable on either verb');
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', t, c, 'SELECT'))
+     from (values ('public.postcard_comments', 'created_at'),
+                  ('public.postcard_comments', 'updated_at'),
+                  ('public.club_members', 'joined_at'),
+                  ('public.ride_members', 'joined_at')) v(t, c)),
+  true, '048: ... while all four stay readable, because the thread and both rosters SORT on them');
+
+-- anon holds nothing on any of them, in any verb.
+select assert_eq(
+  (select bool_or(has_column_privilege('anon', t, c, p))
+     from (values ('public.postcard_comments', 'created_at'),
+                  ('public.club_members', 'joined_at'),
+                  ('public.ride_members', 'joined_at')) v(t, c),
+          unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p),
+  false, '048: anon holds nothing on any of the three timestamps, in any verb');
+
+-- The defaults still supply what the grants now reserve. If one were ever
+-- dropped, every insert would fail NOT NULL instead of getting a wrong value.
+select assert_eq(
+  (select count(*)::int from pg_attribute a
+     join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+    where a.attrelid in ('public.postcard_comments'::regclass,
+                         'public.club_members'::regclass,
+                         'public.ride_members'::regclass)
+      and a.attname in ('created_at', 'updated_at', 'joined_at')
+      and pg_get_expr(d.adbin, d.adrelid) = 'now()'),
+  4, '048: all four timestamps still DEFAULT now() — the grant is the guarantee, the default is the value');
+
+-- --------------------------------------------------------------------------
+-- 048.b  The live write paths, as their actions actually emit them, plus the
+--        writes the grants exist to refuse.
+--
+--        Run as `authenticated` with the suite's own identity idiom
+--        (set_config('test.uid', ...)). request.jwt.claims is read by nothing
+--        here — auth.uid() is redefined in harness.sql — so a positive
+--        assertion written that way would pass while proving nothing.
+-- --------------------------------------------------------------------------
+savepoint write_paths_048;
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+-- createRide, then the organizer's own crew row it inserts straight after.
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id)
+values ('00000000-0000-0000-0000-0000000048a1', '048 ride', 'Meeting point',
+        now() + interval '7 days', true, '00000000-0000-0000-0000-00000000000a');
+insert into ride_members (ride_id, user_id, status)
+values ('00000000-0000-0000-0000-0000000048a1', '00000000-0000-0000-0000-00000000000a', 'going');
+select assert_eq(
+  (select status from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000000048a1'
+      and user_id = '00000000-0000-0000-0000-00000000000a'),
+  'going', '048: createRide''s three-column crew-row insert still lands');
+select assert_eq(
+  (select joined_at > now() - interval '1 minute' from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000000048a1'
+      and user_id = '00000000-0000-0000-0000-00000000000a'),
+  true, '048: ... and its joined_at came from the default, which is the only place it can now come from');
+
+-- **setRideAttendance, as PostgREST actually emits it.** The SET list carries
+-- every payload column including the two conflict columns — recovered verbatim
+-- from pg_stat_statements on DEV. This is the assertion that would have caught
+-- a `grant update (status)` list, which reads correct and takes RSVP down on
+-- the SECOND tap rather than the first.
+insert into ride_members (ride_id, user_id, status)
+values ('00000000-0000-0000-0000-0000000048a1', '00000000-0000-0000-0000-00000000000a', 'maybe')
+on conflict (ride_id, user_id) do update
+  set ride_id = excluded.ride_id,
+      status  = excluded.status,
+      user_id = excluded.user_id;
+select assert_eq(
+  (select status from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000000048a1'
+      and user_id = '00000000-0000-0000-0000-00000000000a'),
+  'maybe', '048: a REPEAT RSVP still lands — the upsert''s ON CONFLICT DO UPDATE needs ride_id and user_id in the grant as well as status, and granting status alone would fail this with 42501');
+
+-- createClub, then the owner's own membership row.
+insert into clubs (id, name, description, is_public, owner_id)
+values ('00000000-0000-0000-0000-0000000048c1', '048 club', 'desc', true,
+        '00000000-0000-0000-0000-00000000000a');
+insert into club_members (club_id, user_id, role)
+values ('00000000-0000-0000-0000-0000000048c1', '00000000-0000-0000-0000-00000000000a', 'owner');
+select assert_eq(
+  (select role from club_members
+    where club_id = '00000000-0000-0000-0000-0000000048c1'
+      and user_id = '00000000-0000-0000-0000-00000000000a'),
+  'owner', '048: createClub''s three-column membership insert still lands, role included');
+
+-- joinClub's upsert. `ignoreDuplicates` makes this ON CONFLICT DO NOTHING, so
+-- unlike the RSVP it needs no update privilege at all — asserted so the
+-- difference between the two upserts is recorded rather than assumed.
+insert into club_members (club_id, user_id)
+values ('00000000-0000-0000-0000-0000000048c1', '00000000-0000-0000-0000-00000000000a')
+on conflict do nothing;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000000048c1'),
+  1, '048: joinClub''s ON CONFLICT DO NOTHING upsert still lands and stays a no-op on a row that exists');
+
+-- addComment, on a postcard the same rider authors.
+insert into postcards (id, author_id, image_path)
+values ('00000000-0000-0000-0000-0000000048p1', '00000000-0000-0000-0000-00000000000a',
+        'postcards/00000000-0000-0000-0000-00000000000a/048.jpg');
+insert into postcard_comments (postcard_id, author_id, body)
+values ('00000000-0000-0000-0000-0000000048p1', '00000000-0000-0000-0000-00000000000a', '048 comment');
+select assert_eq(
+  (select count(*)::int from postcard_comments
+    where postcard_id = '00000000-0000-0000-0000-0000000048p1'),
+  1, '048: addComment''s three-column insert still lands');
+select assert_eq(
+  (select created_at > now() - interval '1 minute' from postcard_comments
+    where postcard_id = '00000000-0000-0000-0000-0000000048p1'),
+  true, '048: ... and its created_at came from the default, so it cannot be pinned to the top of the thread');
+
+-- And the writes the grants exist to refuse, in the same shapes.
+select assert_denied($$insert into ride_members (ride_id, user_id, status, joined_at)
+                       values ('00000000-0000-0000-0000-0000000048a1',
+                               '00000000-0000-0000-0000-00000000000b', 'going', '1970-01-01')$$,
+  '048: a rider cannot join a ride with a chosen joined_at — first place in the crew is also the avatar row on the ride card');
+select assert_denied($$update ride_members set joined_at = '1970-01-01'
+                        where ride_id = '00000000-0000-0000-0000-0000000048a1'$$,
+  '048: nor back-date their crew row afterwards');
+select assert_denied($$insert into club_members (club_id, user_id, joined_at)
+                       values ('00000000-0000-0000-0000-0000000048c1',
+                               '00000000-0000-0000-0000-00000000000b', '1970-01-01')$$,
+  '048: a rider cannot join a club with a chosen joined_at — the roster truncates at 200, so a back-dated row pushes a real member out of the list');
+select assert_denied($$update club_members set joined_at = '1970-01-01'
+                        where club_id = '00000000-0000-0000-0000-0000000048c1'$$,
+  '048: nor back-date their membership afterwards');
+select assert_denied($$insert into postcard_comments (postcard_id, author_id, body, created_at)
+                       values ('00000000-0000-0000-0000-0000000048p1',
+                               '00000000-0000-0000-0000-00000000000a', 'pinned', '1970-01-01')$$,
+  '048: a comment cannot be INSERTED with a chosen created_at — the thread sorts ASC, so this is the top of the thread, above the comments it replies to');
+select assert_denied($$insert into postcard_comments (postcard_id, author_id, body, updated_at)
+                       values ('00000000-0000-0000-0000-0000000048p1',
+                               '00000000-0000-0000-0000-00000000000a', 'edited', '3000-01-01')$$,
+  '048: nor be born claiming an edit, on a table that has no UPDATE path at all');
+
+rollback to savepoint write_paths_048;
+reset role;
+
 rollback;
 
 \echo ''
