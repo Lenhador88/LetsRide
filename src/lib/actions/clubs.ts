@@ -262,8 +262,13 @@ export async function joinClub(clubId: string): Promise<ActionState> {
   const { error } = await supabase
     .from('club_members')
     // Pressing Join twice is a no-op rather than an error. `ignoreDuplicates`
-    // for the same reason likes and hides use it: there is no UPDATE grant on
-    // club_members, so the default on-conflict-update would fail 42501.
+    // for the same reason likes and hides use it — but NOT for the reason this
+    // comment used to give. It said there is no UPDATE grant on club_members;
+    // there was a table-level one, and after 048 there is a column-level one.
+    // What is actually missing is the UPDATE *policy* — the table has none at
+    // all (036 §7.6 relies on that: nobody can promote an admin) — so RLS, not
+    // a grant, is what would refuse the default on-conflict-update. The
+    // conclusion was right and the mechanism named was not.
     .upsert({ club_id: clubId, user_id: user.id }, { onConflict: 'club_id,user_id', ignoreDuplicates: true })
 
   if (error) return { error: 'That club could not be joined.' }
