@@ -197,7 +197,12 @@ export const claims = [
     // re-read the sentence when the relationship changes again (i.e. when PROD
     // catches up) rather than leaving a stale "AGREE" behind a correct count.
     // A pattern miss here is the check working, not breaking.
-    pattern: /\*\*Applied state: (\d+) files, and DEV is SIX AHEAD of PROD/,
+    // 2026-08-10: PROD caught up, so the pinned prose moved from "DEV is SIX
+    // AHEAD of PROD" to "DEV and PROD are LEVEL". That transition is the one
+    // this entry's comment predicted, and it worked — the pattern stopped
+    // matching and the check reported SKIPPED rather than passing on a claim
+    // it was no longer reading.
+    pattern: /\*\*Applied state: (\d+) files, and DEV and PROD are LEVEL/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
