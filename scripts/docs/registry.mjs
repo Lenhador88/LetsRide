@@ -490,13 +490,23 @@ export const claims = [
     pattern: /`null` means stay; a string is where to go\. (\d+) cases in `__tests__\/guard\.test\.ts`/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
-    cmd: `out=$(npx vitest run src/lib/auth/__tests__/guard.test.ts 2>&1) && echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
+    cmd: `out=$(./node_modules/.bin/vitest run src/lib/auth/__tests__/guard.test.ts 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo "$out" | tail -5 >&2; exit $rc; fi; echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
     // These two claims share one vitest process (check.mjs caches by cmd), and
     // it is the only real process any cheap claim spawns. 1s warm here, but a
     // cold two-core CI runner with no vite transform cache is plausibly 25s,
     // and runShell's 60s default was picked for greps. Under --cheap a
     // timeout is a red build rather than a green skip, so the ceiling has to
     // clear the slow case by a wide margin instead of by a little.
+    //
+    // Two things about the command's shape, both learned from a red CI run
+    // that was green locally. It calls ./node_modules/.bin/vitest rather than
+    // `npx vitest`: npx failed on the runner in under a second while the same
+    // line worked here, and the local bin needs no resolution step at all.
+    // And it re-emits the captured output on a non-zero exit instead of
+    // relying on `&&`, because `2>&1` INSIDE a command substitution swallows
+    // the diagnostic — the first version reported `command failed: no output`
+    // for what was really a resolution error, which is unactionable from a CI
+    // log and cost a round trip to diagnose.
     timeoutMs: 180_000,
     about: '§Critical: the route guard — "36 cases in __tests__/guard.test.ts"',
   },
@@ -506,7 +516,7 @@ export const claims = [
     pattern: /`src\/lib\/auth\/guard\.ts` \((\d+) cases, replacing the untestable/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
-    cmd: `out=$(npx vitest run src/lib/auth/__tests__/guard.test.ts 2>&1) && echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
+    cmd: `out=$(./node_modules/.bin/vitest run src/lib/auth/__tests__/guard.test.ts 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo "$out" | tail -5 >&2; exit $rc; fi; echo "$out" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+'`,
     // Same ceiling as the claim above, which shares this command.
     timeoutMs: 180_000,
     about: '§Technology Decisions, Tests table: the same count, restated in the Units row',
