@@ -26,6 +26,14 @@ is the second, and a keyword search (`+execute_sql supabase`) says whether the n
 **diagnosis, not recovery** (`CLAUDE.md` §The Agent Squad). Never proceed quietly — **stop and say
 so at the top of your report**, naming which failure and what went unverified.
 
+**Probe with a name off your own `tools:` line, never a plausible-sounding one.** A tool absent
+because this brief never listed it is *scoping*, and it is byte-identical to a rotation — same
+`No such tool available`, same silence around it. Measured 2026-08-10: a `data` subagent probed
+`list_projects`, a name **its own brief does not carry**, and reported the database lost while
+`execute_sql` answered under its unchanged name. Note the scope of that — `list_projects` is a
+real tool, and `test.md` does hold it. "Is it declared *here*" is the only question that decides
+this, which is why the rule is never "not `list_projects`".
+
 ## This replaces the `spec` agent
 
 `spec` wrote one document to `docs/specs/` and was retired into this agent, for two reasons

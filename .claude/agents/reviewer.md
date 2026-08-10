@@ -34,11 +34,21 @@ to the doc-claims pass and fails the same silent way. `get_issue` and `list_issu
 unresolved. Measured 2026-08-09: a review asked to check six ids reached none of them, and the
 diff it passed asserted a status for every one.
 
-**Expect them to be absent today.** `PD-184`: the Supabase and Linear servers re-registered under
-UUID prefixes, the allowlist is exact-name, and a UUID name that is not on it is refused at name
-resolution — measured 2026-08-10, so this is the known state rather than a new fault. The entries
-above are what makes the pass work the day the connector is restored; until then the honest
-degraded report *is* the deliverable for that pass.
+**Probe rather than expect — and weight your own probe over `PD-184`.** The block above sends you
+to read a `PD-` id the diff names, so you will reach that issue, and its body asserts as measured
+fact that every connector is dead and a subagent gets **zero** MCP tools. Re-measured 2026-08-10
+from a fresh session and again from a brief-scoped subagent: `mcp__Supabase__*` and
+`mcp__Linear__*` both resolve under their original prefixes. The probe behind that "absent"
+reading asked for `list_projects`, which the **`data`** brief does not carry — so its `No such
+tool available` was *scoping*, not a rotation. (`test.md` does hold `list_projects`; the question
+is only ever whether the probing brief declares it.) This is the rare case where the primary
+source outside the repo is the stale one, so your own call decides it.
+
+**Probe with a name off your own `tools:` line** for exactly that reason. And note why a standing
+expectation was the wrong shape even while it looked right: it survives the condition it
+describes, and a reviewer told to expect no database files a degraded report without ever calling
+the tool — the false-degraded failure this section already warns about, arriving by the other
+door.
 
 Diagnosis is enough, and it must be *reported*: **a review whose database-dependent passes never
 ran still produces findings and is indistinguishable from one that passed** — every other agent's
