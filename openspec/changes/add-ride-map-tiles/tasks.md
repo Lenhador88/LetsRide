@@ -26,18 +26,54 @@
   which is true of writes and **false of reads** — the instrument this change needs already exists
   and must be copied from a SELECT policy, never from an INSERT one.
 
-- [x] 0.2 **Q1 — product owner, BLOCKING task 6. ANSWERED 2026-08-11, from vendor documentation
-  via web search — NOT from the primary terms, which stay egress-blocked. Treat as strong
-  indication, not as the licence.** Two obligations, and they are separate:
+- [x] 0.2 **Q1 — product owner, BLOCKING task 6. ANSWERED 2026-08-11 from the PRIMARY terms**
+  (Terms and Conditions, 2 February 2024, Version 5, KEPTAGO LTD), supplied by the product owner
+  because `*.geoapify.com` is egress-blocked from this container.
 
-  1. **The free plan requires the string** `Powered by <a href="https://www.geoapify.com/">Geoapify</a>`.
-     Paid plans carry a "White label" option that removes it.
-  2. **The Static Maps API burns the map-style attribution into the returned PNG by default**, in
-     the bottom-right corner. That covers the underlying data credit *for free* — the obligation
-     to render it ourselves arises only if we suppress the built-in one. **So do not suppress it.**
+  **Three attribution obligations, not one. The first is the one a session would miss**, because
+  every secondary source describes attribution as a free-plan concern:
+
+  1. **OpenStreetMap attribution is required ALWAYS** — verbatim: *"When using the Services, you
+     must always provide OpenStreetMap attribution."* **Not conditional on the plan.** Upgrading to
+     a paid plan does not remove it, so the white-label option removes only obligation 2.
+  2. **Geoapify attribution is mandatory on the Free plan** — *"Geoapify attribution is mandatory
+     when using Free subscription plan."* The documented string is
+     `Powered by <a href="https://www.geoapify.com/">Geoapify</a>`.
+  3. **Per-API additional attribution** — *"Different APIs may require additional attribution,
+     which you must comply with as specified in their respective documentation."* Unread for the
+     geocoding and Static Maps endpoints specifically; assume there may be more.
+
+  **The Static Maps API burns map-style attribution into the returned PNG by default** (bottom-right).
+  That is what discharges obligation 1 in practice — **so do not suppress it.** Suppressing it does
+  not remove the obligation, it moves it onto us, and obligation 1 has no plan-level escape.
 
   This repo still carries **one** unresolved attribution question (`places` / Overture); it is a
   separate vendor and neither answer covers the other.
+- [ ] 0.2b **NEW, raised by the primary terms — two claims this change rests on that the Terms do
+  NOT support. Neither blocks writing code; both block real riders.**
+
+  1. **There is no caching or storage clause in the Terms, in either direction.** `PD-164` §3 is
+     recorded as having *"confirmed in the primary terms"* that we may store the rendered PNG
+     indefinitely, serve it to multiple end users, with no subscription tether — and **the Terms
+     contain no such clause**. They are silent on caching. Silence is not prohibition, and the
+     absence of a retention limit is genuinely favourable, but *"confirmed in the primary terms"*
+     overstates it: the licence granted is a bare *"non-exclusive, non-transferable,
+     non-sublicensable license to use and access our services."* Either `PD-164` read the pricing
+     page or an API doc rather than the Terms, or the claim is wrong. **The whole render-once-and-
+     store architecture rests on this.** Settle where that permission is actually written before
+     tiles reach riders.
+  2. **Free-plan production use carries undocumented limits.** Verbatim: *"The commercial use of
+     the Free-package is allowed in the development and, with some limitations, in the production
+     phase. Please contact us for details."* The limits are not stated anywhere in the Terms, and
+     this app is heading for production with real riders. **Owner action: email info@geoapify.com
+     and get the production limits in writing**, or price the paid plan. Note the paid plan does
+     not remove obligation 1 above.
+  3. **What Geoapify retains of a submitted address is still unread.** The Terms delegate this
+     entirely — *"Please read Privacy Policy for information about Geoapify's privacy and data
+     protection practices"* — so the third question this task set is answered by
+     `geoapify.com/privacy-policy/`, not here. It matters because `meeting_point` is frequently a
+     home address and **our own `/legal/privacy` now makes a factual claim about this flow**. Read
+     it before the function is deployed, and correct our page if it retains more than transiently.
 - [x] 0.3 **Q2 — designer, BLOCKING task 6.2 only. DECIDED 2026-08-11 by the product owner:
   "do according to Figma… just make the most reasonable choice for now, we can modify/move later."**
 
