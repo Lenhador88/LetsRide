@@ -12,7 +12,7 @@ until 2026-08-08, which was the single most misleading line in the squad** — i
 agent that owns Realtime that the tables it was about to touch did not exist.
 
 - **Per-ride group chat — SHIPPED** 2026-08-07 (`034`, `PD-115`). `ride_messages`, in the
-  `supabase_realtime` publication, `/rides/[id]/chat`, and `src/lib/realtime/useRideMessageStream`
+  `supabase_realtime` publication, `/rides/detail/chat?id=`, and `src/lib/realtime/useRideMessageStream`
   — **the app's only Realtime subscription, so it is your worked example rather than a greenfield
   question.** Read `034`'s header before touching its audience rule: the visibility is an
   *intersection* of "can see the ride" and "is on the crew", and using the `security definer`
@@ -50,6 +50,14 @@ is the first — search, then call again, it is not a missing permission. `No su
 is the second, and a keyword search (`+execute_sql supabase`) says whether the name moved:
 **diagnosis, not recovery** (`CLAUDE.md` §The Agent Squad). Never proceed quietly — **stop and say
 so at the top of your report**, naming which failure and what went unverified.
+
+**Probe with a name off your own `tools:` line, never a plausible-sounding one.** A tool absent
+because this brief never listed it is *scoping*, and it is byte-identical to a rotation — same
+`No such tool available`, same silence around it. Measured 2026-08-10: a `data` subagent probed
+`list_projects`, a name **its own brief does not carry**, and reported the database lost while
+`execute_sql` answered under its unchanged name. Note the scope of that — `list_projects` is a
+real tool, and `test.md` does hold it. "Is it declared *here*" is the only question that decides
+this, which is why the rule is never "not `list_projects`".
 
 ## The subscription rules
 

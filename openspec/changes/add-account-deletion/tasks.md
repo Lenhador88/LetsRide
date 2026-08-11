@@ -239,7 +239,7 @@ removal landing without its code repair is an outage.
 
 ## 4. What everyone else sees — the four screens where empty and forbidden look identical
 
-- [ ] 4.1 `/rides/[id]`, `/postcards/[id]`, the profile reached from a byline, and a club roster:
+- [ ] 4.1 `/rides/detail`, `/postcards/detail`, the profile reached from a byline, and a club roster:
   say the content is **unavailable**. Not "deleted" — that discloses a person to someone who may
   have blocked them. Not "you do not have permission" — that is a different and wrong explanation
   of the same zero rows.

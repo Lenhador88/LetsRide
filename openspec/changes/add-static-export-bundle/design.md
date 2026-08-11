@@ -198,12 +198,34 @@ same failure. But `/rides/detail` is a **static** route, so a boot-time
 TypeScript, testable in this container. The same trick under option A hard-navigates and loops,
 because the target is a dynamic segment with no prerendered payload.
 
-### Recommendation, and who decides
+### Decided: **B**, by the product owner, 2026-08-10
 
-**B, with A as the fallback. This reverses the first revision, and the reason is the Android
-finding above, not a change of taste.** A was recommended on the grounds that it kept every URL as
-it is and confined the change to two small files. That premise is half false: on Android it is not
-a small file, and under Capacitor's defaults it is not possible at all. Re-priced:
+Recorded on Linear PD-142. **This is the decision, not a recommendation** — the argument below is
+kept because it is the pricing that produced the answer, not because the answer is still open.
+
+**The URL family, decided by the implementing session on the same day** and settled here so no
+later change has to guess at it. The existing nesting is kept, so the layouts survive:
+
+| before | after |
+|---|---|
+| `/postcards/[id]` | `/postcards/detail?id=<uuid>` |
+| `/rides/[id]` | `/rides/detail?id=<uuid>` |
+| `/rides/[id]/crew` `/chat` `/edit` | `/rides/detail/crew?id=` `…/chat?id=` `…/edit?id=` |
+| `/clubs/[id]` | `/clubs/detail?id=<uuid>` |
+| `/clubs/[id]/rides` `/members` `/about` `/edit` | `/clubs/detail/rides?id=` `…/members?id=` `…/about?id=` `…/edit?id=` |
+
+`src/app/(app)/clubs/[id]/layout.tsx` becomes `clubs/detail/layout.tsx` with its **body
+untouched** — it wraps children in `pt-header-sub-extra pb-8`, and an intermediate revision of
+the draft replaced that with `return children` and silently regressed four screens.
+
+**What the decision deletes:** with no dynamic segment left, `generateStaticParams` is not needed
+anywhere. `tasks.md` 1.1, 1.2, 1.3 and 1.9 go with it, and there is no
+`src/lib/native/static-params.ts` and no placeholder id in the repo at all. The negative cases
+about a placeholder reaching a Vercel deployment are satisfied by construction rather than by a
+flag — there is nothing to invert — and the property they protected (no rider data and no real id
+in the bundle) is asserted directly instead, by `scripts/native/check-export.mjs`.
+
+The pricing that produced the answer, kept for the record:
 
 | | A (paths + native routing) | B (`?id=`) |
 |---|---|---|
@@ -215,10 +237,11 @@ a small file, and under Capacitor's defaults it is not possible at all. Re-price
 | Shared URL shape | unchanged | changes; old shape survives as a web redirect |
 | Failure mode when wrong | a route hard-fails on device | a link 404s on the web |
 
-**What would still make A right** is a hard product requirement that `/postcards/<uuid>` stay the
-canonical shared URL inside the bundle as well as on the web. That is a legitimate requirement if
-it is one — but it should now be bought knowingly, at the corrected price, rather than accepted
-because A looked cheap. The trade is the product owner's, not a session's.
+**What would have made A right** was a hard product requirement that `/postcards/<uuid>` stay the
+canonical shared URL inside the bundle as well as on the web. It was not asserted, and the owner
+chose B. The old shape still resolves **on the web** — `next.config.ts`'s `redirects()`, 307,
+each `source` constrained to a UUID — so links already in people's messages keep working; they
+simply do not resolve inside the bundle, which has no server to redirect with.
 
 ## D4 — `distDir`, `webDir`, and the white screen
 
@@ -317,25 +340,20 @@ Each is marked blocking or not, and says who can answer it. A question with no d
 build; a default lets work continue and be corrected.
 
 **Q1 — Option A or option B? (D3)**
-**Blocking for groups 2 and 3. Not blocking for group 1, but see the tension below.** Product
-owner. **Default: B**, on the corrected pricing in D3 — this reverses the first revision's default
-of A, because A is not possible on Android under Capacitor's defaults and the shape that is
-possible is a from-scratch static resolver in Java.
-
-*The tension, named rather than buried:* group 1 is safe to merge under A and is work that B partly
-deletes, because a route with no dynamic segment needs no `generateStaticParams`. It is cheap
-enough (one small module, three layout exports) that merging it first is defensible either way —
-but it should be merged knowing that, not discovered later.
+**ANSWERED: B, product owner, 2026-08-10**, recorded on Linear PD-142 and in §D3 above. The
+tension this question named — that group 1 is work option B partly deletes — resolved by never
+building it: `generateStaticParams` was never added, no `static-params.ts` module exists, and
+`tasks.md` 1.1, 1.2, 1.3 and 1.9 are struck.
 
 **Q2 — Does a native route override actually resolve the deep link?**
-**Blocking for group 3 under option A only. Half of it is now answered, in this container, from
-source, and the answer is no.** Android's `RouteProcessor` is handed a hardcoded `"/index.html"`
-in the branch that extensionless paths take, so under Capacitor's defaults the answer is a
-definite **no** rather than an unknown. What remains genuinely unmeasurable here is whether the
-`server.html5mode: false` shape works on a device, and whether the iOS `Router` subclass does.
-Needs a human with a Mac, after PD-95. **Default: choose B and the question does not arise.** If
-A is chosen anyway, implement it and label the whole of group 3 *written and unverified* in the PR
-body — per `.claude/agents/native.md` that is a legitimate deliverable as long as it is labelled.
+**MOOT — B was chosen and no native route override exists.** Group 3 is a boot-time
+`router.replace` in `src/lib/native/boot-restore.ts`, ordinary TypeScript with a unit test.
+**One half of it is still unverified and always will be from here:** that Capacitor really does
+serve the root `index.html` for every extensionless path is read out of `Router.swift` and
+`WebViewLocalServer.java` and has never been observed on a device. That is *written and
+unverified* per `.claude/agents/native.md`, and it is the premise the restore exists for — if it
+turns out to be wrong, the restore is a no-op rather than a bug, because it only fires when `/`'s
+tree renders at a URL that is not `/`.
 
 **Q3 — What should a rider see when a ride is gone?** There is no `not-found.tsx`, so it is Next's
 stock *"404 | This page could not be found"* — inside the app, on a phone. **Non-blocking.**
@@ -360,23 +378,28 @@ by attributing the postcards behaviour to the data layer:
   does no validation at all** (`src/lib/data/postcards.ts:324` passes the segment straight to
   `.eq()`), so that page is the only thing standing between a bad id and a `22P02`.
 
-**Default: the `getRide` precedent — validate inside `getClub`.** Three reasons: the doorway rule
+**ANSWERED: the `getRide` precedent, done 2026-08-10.** `clubIdSchema` is in
+`src/lib/validation/clubs.ts` and parsed inside `getClub` — and inside `getClubForEdit`, which had
+the same gap and is the direct mirror of `getRideForEdit`. `getPostcard` is untouched; see 2.4a.
+Three reasons: the doorway rule
 says `lib/data/` owns the query shape; five club pages would otherwise each need their own copy of
 the page-level guard; and the postcards shape exists for a reason that does not apply here — that
 page fans out three queries and needed the disabled-key trick to keep hook order stable. Worth
 noting that this leaves `getPostcard` as the one read whose guard lives outside it, which is a
 pre-existing inconsistency this change should name rather than silently even out.
 
-**Q5 — Is `images: { unoptimized: true }` still required?** The draft measured it on 2026-08-06;
-this proposal did not re-measure it in isolation. **Non-blocking**, and answered by the
-implementing build. **Default: keep it** — `next/image`'s default loader is a server route and
-there is no server in a bundle.
+**Q5 — Is `images: { unoptimized: true }` still required?** **Kept, and not re-measured in
+isolation.** The export builds with it; whether it would also build without it was not tested,
+because `next/image`'s default loader is a server route and there is no server in a bundle, so
+removing it could only trade a build error for a runtime one. Labelled here rather than left to
+read as measured.
 
-**Q6 — What stops `CAPACITOR_BUILD` reaching a Vercel target?** Nothing today except nobody having
-set it. **Non-blocking now, blocking before the first native release**, because from then on two
-build shapes exist and one of them must never deploy. Owner action on the Vercel side; a session
-can add the CI assertion. **Default: assert it in CI** (`next build` output contains no
-`placeholder`) and leave the Vercel-side environment hygiene to the owner.
+**Q6 — What stops `CAPACITOR_BUILD` reaching a Vercel target?** **ANSWERED, and the assertion
+changed shape with the decision.** There is no `placeholder` path to grep for under option B, so
+the thing to assert is that a plain build is **not an export**: `.next/` exists, `out/` does not,
+`.next/export-detail.json` does not, and all ten legacy redirects still resolve.
+`scripts/native/assert-web-build.mjs` runs in CI after the Build step. The Vercel-side hygiene is
+still an **owner action** — a session can assert on output, never on a dashboard.
 
 **Q7 — Should the bundle carry a build stamp so a white screen can be diagnosed?** An empty
 `webDir` and a broken route look identical on a device. **Non-blocking.** Session's call.

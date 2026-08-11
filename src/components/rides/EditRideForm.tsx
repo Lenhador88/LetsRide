@@ -22,7 +22,7 @@ import type { RideForEdit } from '@/types'
 const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') ?? APP_TIME_ZONE
 
 /**
- * `/rides/[id]/edit` — PD-101. Composition-is-ours for the same reason
+ * `/rides/detail/edit` — PD-101. Composition-is-ours for the same reason
  * `CreateRideForm`'s is (that component's header has the full argument); this
  * shares its field set exactly, per `design.md` §D5.
  *

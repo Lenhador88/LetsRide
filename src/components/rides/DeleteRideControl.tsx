@@ -10,7 +10,7 @@ import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 
 /**
- * The destructive control at the foot of `/rides/[id]/edit` — PD-101,
+ * The destructive control at the foot of `/rides/detail/edit` — PD-101,
  * `design.md` §D4. Deliberately not in `RidePageMenu`: that is the header's
  * sub-page switcher, and an irreversible action does not belong one tap from
  * `Crew` on a glove-sized target. `PostcardMenu`'s two-tap shape is the

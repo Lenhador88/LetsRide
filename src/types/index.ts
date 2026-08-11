@@ -153,7 +153,7 @@ export type RideListItem = {
 }
 
 /**
- * One ride, as `/rides/[id]` renders it — `Ride - Ride plan (Details)`.
+ * One ride, as `/rides/detail` renders it — `Ride - Ride plan (Details)`.
  *
  * Distinct from `RideListItem` rather than an extension of it: the card needs
  * five avatars and no prose, the detail page needs the prose and no avatars, and
@@ -207,7 +207,7 @@ export type RideDetail = {
  */
 
 /**
- * One ride, as `/rides/[id]/edit` renders it — PD-101. The editable field
+ * One ride, as `/rides/detail/edit` renders it — PD-101. The editable field
  * set only: `description D5` lists exactly these eight columns as what the
  * schema actually has, against the five drawn fields the v1 frame has no
  * column for.
@@ -452,7 +452,7 @@ export type ClubDetail = {
 }
 
 /**
- * One club, as `/clubs/[id]/edit` renders it — PD-101. Narrower than
+ * One club, as `/clubs/detail/edit` renders it — PD-101. Narrower than
  * `ClubDetail`: no `owner` embed, no `members_count`, no `viewer_role` — this
  * screen needs the editable columns and nothing a member list or a byline
  * would want.

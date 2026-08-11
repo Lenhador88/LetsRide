@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ListUser } from '@/components/ui/ListUser'
@@ -8,6 +9,7 @@ import { SkeletonList } from '@/components/ui/Skeleton'
 import { getClub, getClubMembers } from '@/lib/data/clubs'
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM } from '@/lib/routes'
 
 /**
  * `Private club - Members` (`2059:6545`).
@@ -29,7 +31,19 @@ import { queryKeys } from '@/lib/query/keys'
  * the roster below it cannot drift apart, even though they come from two reads.
  */
 export default function ClubMembersPage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per club — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <ClubMembersScreen />
+    </Suspense>
+  )
+}
+
+function ClubMembersScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
   // Enabled only once the club has come back. `getClubMembers` raises on a

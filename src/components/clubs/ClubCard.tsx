@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Globe2Icon, Lock2Icon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { JoinClubButton } from '@/components/clubs/JoinClubButton'
+import { routes } from '@/lib/routes'
 import type { ClubListItem } from '@/types'
 
 /**
@@ -44,7 +45,7 @@ export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean
 
   return (
     <div className="relative flex gap-3 rounded-lg bg-surface p-1 pr-4 transition-colors focus-within:bg-background active:bg-background">
-      <Link href={`/clubs/${club.id}`} className="absolute inset-0 rounded-lg">
+      <Link href={routes.club(club.id)} className="absolute inset-0 rounded-lg">
         <span className="sr-only">{club.name}</span>
       </Link>
 

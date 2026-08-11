@@ -83,7 +83,7 @@ still true — it sweeps every endpoint in one command.
 
 These came from the file and are already verified — do not re-derive or second-guess them:
 
-- All 20 v2 colour tokens, all 16 Poppins type tokens (`CLAUDE.md` §Design System).
+- All 20 v2 colour tokens, all 16 Poppins type tokens (`docs/reference/design-system.md`).
 - The app background: 135° gradient `#F2ECE6` → `#CCB8A3`.
 - Most-used geometry: radii `4`, `8`, `12`, `100`; padding `16`, `8`, `24`; spacing `8`, `4`, `16`.
 
@@ -98,7 +98,7 @@ rather than a re-derivation.
 
 **Built 2026-08-03 against this register:** the feed (`/postcards`), the card, the like
 control, and the create screen (`/postcards/new`). **Built 2026-08-04:** the comment thread
-(`/postcards/[id]`), the composer and the card's comment control. Every value below marked
+(`/postcards/detail`), the composer and the card's comment control. Every value below marked
 *chose* is in the code right now and unverified.
 
 ### Home / Postcards feed — rebuilt from the measurements 2026-08-04
@@ -191,7 +191,7 @@ Expect to move things when the designer draws it.
 
 ### Club detail and Create club — built 2026-08-05
 
-`/clubs/[id]` is four sub-pages behind the header's dropdown — Timeline, Rides, Members,
+`/clubs/detail` is four sub-pages behind the header's dropdown — Timeline, Rides, Members,
 About — built from the **private club** frames, which are the ones marked Done.
 
 - [x] ~~**Which club design to build**~~ — **settled by the epic covers, and it is a product
@@ -394,7 +394,7 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
 
 ### Ride detail — built from the measurements 2026-08-04
 
-`/rides/[id]` and `/rides/[id]/crew`, from `Ride - Ride plan (Details)` (`2375:8771`),
+`/rides/detail` and `/rides/detail/crew`, from `Ride - Ride plan (Details)` (`2375:8771`),
 `Ride - Ride plan - Sub pages` (`2375:9114`) and `Ride - Crew (Riders)` (`2375:9212`).
 
 Every geometry value was read with `npm run figma -- show`, not estimated: banner 390×200,
@@ -413,7 +413,7 @@ for the crew only — Chat. The remaining deviation is first:
       and a ride-scoped postcard would be a second axis. Omitted from the menu rather than
       offered as a dead row.
 - [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
-      `Ride - Chat - Text focus` (`2242:11086`) at `/rides/[id]/chat`. **It did not need the
+      `Ride - Chat - Text focus` (`2242:11086`) at `/rides/detail/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
       which existed. Every sub-item below is a deviation, and each is a decision rather than a
       miss. **Count them rather than read a number here** — this line said "Five" while the list
@@ -815,7 +815,7 @@ around **2026-08-06T12:32Z** — so the thread screen was built the same way the
 the register below is what that cost. The *behaviour* is not a guess: `011` owns who may read,
 write and delete a comment, and the UI adds no rule of its own.
 
-- [ ] **Where a thread lives** — *chose:* a dedicated route, `/postcards/[id]`, holding the
+- [ ] **Where a thread lives** — *chose:* a dedicated route, `/postcards/detail`, holding the
       card and its comments; the feed card carries a comment control that links to it. The
       alternative — comments inline on the feed card, with a "view all N" expander — is what
       several photo feeds do, and it is unread which one this design uses. Two things pushed
@@ -823,7 +823,7 @@ write and delete a comment, and the UI adds no rule of its own.
       before any route answered to that path, and `getPostcard()` existed unused. Inline
       expansion would also have meant inventing a truncation rule, which is the same trap the
       caption clamp is being avoided for.
-      → `src/app/(app)/postcards/[id]/page.tsx`
+      → `src/app/(app)/postcards/detail/page.tsx`
 - [ ] **Comment affordance on the card** — *chose:* a **text-labelled** link ("Comment" /
       "Comments N") sitting beside the like control in one row below the image. The design
       uses `Element / Icon / Chat Bubble`, which cannot be exported while the render endpoint
@@ -935,7 +935,8 @@ add-notifications/tasks.md` §4.1–§4.7 — the row, the dot, `Header`'s secon
 - [x] **`NotificationRow`** (`src/components/ui/NotificationRow.tsx`) — 72px, two-line text
       block (`Poppins/16/Semibold` name + `Poppins/14/Regular` stamp on line one,
       `Poppins/14/Regular` copy on line two), optional trailing 56×56 thumbnail. A new
-      component, not a `ListUser` prop, per `design.md` §D9.
+      component, not a `ListUser` prop, per
+      `openspec/changes/archive/2026-08-08-add-notifications/design.md` §D9.
 - [ ] **The composite double-avatar leading treatment is not reproduced.** Two of the drawn
       types (`ride_joined`, `ride_created_in_club`) show two overlapping 36px avatars inside
       the 56px leading frame rather than one — the mock does not name whose second avatar it
@@ -962,7 +963,8 @@ add-notifications/tasks.md` §4.1–§4.7 — the row, the dot, `Header`'s secon
       not an invented one here.
 - [x] **`Header` gains `secondaryAction`** (`src/components/layout/Header.tsx`) — a second
       40×40 slot at `right-10` (x302), alongside the existing `action` at `right-0` (x342).
-      Per `design.md` §D9, taken as an architecture decision rather than reopened here. Both
+      Per `openspec/changes/archive/2026-08-08-add-notifications/design.md` §D9, taken as an
+      architecture decision rather than reopened here. Both
       existing `action` callers (`/profile`'s `<ProfileMenu />`, `RideHeader`'s chat button)
       are unchanged — verified by `next build` still producing the same route list and by
       `npx tsc --noEmit` / `npm run lint` / `npm run test:unit` staying green.

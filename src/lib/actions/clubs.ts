@@ -1,6 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
+import { routes } from '@/lib/routes'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
 import { clubSchema } from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
@@ -158,7 +159,7 @@ export async function createClub(
   // forms), which the two `revalidatePath` calls this replaces covered between
   // them — and the picker, which neither did, because no route drew it.
   invalidate(queryKeys.clubs.all())
-  return { error: null, redirectTo: `/clubs/${club.id}` }
+  return { error: null, redirectTo: routes.club(club.id) }
 }
 
 /**
@@ -416,7 +417,7 @@ export async function updateClub(
   // public -> private flip. Both land on the same key, so the embed covers it.
   invalidate(queryKeys.rides.all())
 
-  return { error: null, redirectTo: `/clubs/${clubId}` }
+  return { error: null, redirectTo: routes.club(clubId) }
 }
 
 /**

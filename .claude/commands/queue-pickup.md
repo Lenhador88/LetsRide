@@ -601,7 +601,7 @@ first one.
 
 If every candidate in the column is blocked, exit silently.
 
-**This is a backstop, not the sequencing mechanism.** `CLAUDE.md` §Sequencing is still the
+**This is a backstop, not the sequencing mechanism.** `docs/reference/linear.md` §Sequencing is still the
 contract: only buildable work belongs in `Queued (AI)`, and work waiting on something else
 waits in `Todo AI` until the owner queues it. `list_issues` cannot filter or return
 relations, so you can only check *after* picking — which catches a mistake rather than
@@ -808,7 +808,7 @@ Never `Queued (AI)` — that is the owner's column and the only start signal.
 | **`Todo AI`** | A session could build it, and you would recommend building it (**Recommendation** ≥ 4/10) |
 | **Nowhere** | A session could have built it *and* you rated it below 4/10 — write it in the PR body and let it go |
 
-An owner action can rate 2/10 and still has to be filed: `CLAUDE.md` §Keep it current requires a new
+An owner action can rate 2/10 and still has to be filed: `docs/reference/linear.md` §Keep it current requires a new
 one in Linear *the moment it is found*, and nobody in a session will ever pick it up off a PR
 body. Only work a session could have done itself is eligible to be dropped.
 
@@ -830,7 +830,7 @@ never having noticed them.
 and tooling work, which is precisely what a firing files. Routing on it would drop every such
 item — burying the findings this step exists to surface.
 
-**Default to one filed story per build, and make a second argue for itself.** §Sequencing's *one
+**Default to one filed story per build, and make a second argue for itself.** `docs/reference/linear.md` §Sequencing's *one
 issue per deliverable* governs what a firing files just as much as what the owner files, so four
 findings about one subsystem are one issue with four lines in it, not four issues. The board's
 one-day clusters are what the alternative looks like — `PD-159`, `PD-160` and `PD-161` are three
@@ -860,7 +860,7 @@ Search on the *symptom*, not on your own phrasing of the fix — the existing is
 certainly written from a different angle, and a query built from your title will miss it.
 
 **Use `parentId` when the follow-up belongs to the same feature as the story it came out of.**
-§Sequencing's "one issue per feature" applies to work a firing files just as much as to work
+`docs/reference/linear.md` §Sequencing's "one issue per feature" applies to work a firing files just as much as to work
 the owner files, and a loose top-level story is the shape that rule exists to prevent.
 
 The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
@@ -921,12 +921,33 @@ live RLS hole letting any signed-in rider post a ride into any club.
    comment does not need one. **When in doubt, re-run on the delta** — it is a small diff by
    definition, so the cheap call is the safe one.
 
-   **Its prompt must carry the scope material, because it runs before the PR exists and so
-   cannot read the PR body.** Pass: the issue being built, each fold-in with its one-line
-   relatedness justification and its five ratings, and the two commit ranges — the story's own
-   commits versus the fold-ins'. Without those, `reviewer.md`'s scope pass cannot check the
-   breadth cap at all, and is briefed to report that rather than guess the boundary from the
-   diff.
+   **Its prompt must carry a review packet, because it runs before the PR exists and so cannot
+   read the PR body.** Build it immediately before spawning the agent, with one command, and
+   paste the output verbatim:
+
+   ```bash
+   base=$(git merge-base origin/development HEAD)
+   echo "base: $base"; git diff --name-only "$base" HEAD
+   ```
+
+   **The base is that sha, never the name `origin/development`**, and that is the half of the
+   packet that earns its place. A branch name resolves when the reviewer reads it, so another
+   firing merging in between silently widens the diff by work this session did not write —
+   `reviewer.md` §Start here already refuses `main` as a base for exactly that reason, and a
+   moving `development` is the same defect arriving later. A sha cannot move.
+
+   Pass it with the rest of the scope material: the issue being built, each fold-in with its
+   one-line relatedness justification and its five ratings, and the two commit ranges — the
+   story's own commits versus the fold-ins'. Without those, `reviewer.md`'s scope pass cannot
+   check the breadth cap at all, and is briefed to report that rather than guess the boundary
+   from the diff.
+
+   **Rebuild the packet whenever anything commits after you built it** — bullet 3's CI fix is the
+   usual case, and a delta re-review above needs its own packet based on the reviewed sha rather
+   than the merge base. `reviewer.md` re-derives the file list as a checksum and reports a stale
+   packet rather than trusting it, so forgetting costs a line in the report instead of an
+   unreviewed file — but it only reports what it can see, and a packet is not a substitute for
+   rebuilding it.
 2. **Push the branch — again, if STEP 4b built anything.** Then open a PR against
    **`development`**, with the `## Folded in` section from STEP 4b in the body, or nothing there
    if nothing travelled.
@@ -1104,6 +1125,20 @@ Routine is one bad call away from a permanently connector-less job, and only the
 re-attach them by hand in the claude.ai Routines UI. Binding to a long-lived session moves the
 grant off the trigger entirely: the session holds its own connections, and the firing is just a
 message arriving in a conversation that can already reach Linear.
+
+**Two things follow that are irreversible from inside a session, and both are the conclusion of
+the paragraph above rather than a new rule.** They are also in `CLAUDE.md` §What Not To Do,
+because the calls that trip them are CCR calls made by a session that is not reading this file:
+
+- **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the *disabled* fresh-session Routine, and the
+  fallback. Its three connectors were hand-attached and cannot be recreated from a session, so
+  deleting it destroys the only recoverable path; `update_trigger enabled: true` restores it
+  whole. **`…WJkMV` is the cheap hourly one and `…Gzy8e` is the irreplaceable one** — keep the two
+  straight in both directions. A disabled trigger's `list_triggers` row has **no `enabled` key at
+  all** rather than `"enabled": false`, so read a disable back by checking the field is gone.
+- **Never archive or abandon this session** (`session_01B2mxc642tG8vZ15wysQpqM`). Archiving it
+  stops the queue silently, with no error anywhere, and `update_trigger` has no
+  `persistent_session_id` parameter — so recovery means a *third* trigger bound to a new session.
 
 What it costs, and what each cost is paid with:
 

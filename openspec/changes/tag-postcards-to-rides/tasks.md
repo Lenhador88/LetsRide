@@ -197,7 +197,7 @@
   in the header table. `createPostcard` widens its existing invalidation to reach it. **No
   `feed_reads` key or watermark is touched** — the Journal has no unread concept, so `markFeedSeen`
   and `club_unread_counts()` are unchanged and the Journal writes no watermark on open.
-- [ ] 4.8 `src/app/(app)/rides/[id]/journal/page.tsx` — built from `Ride - Journal
+- [ ] 4.8 `src/app/(app)/rides/detail/journal/page.tsx` — built from `Ride - Journal
   (Postcards/Timeline)` (`2226:4865`), a scrolling list of `v2 / Component / Postcard` with the drawn
   divider. Gate on the data, never on `isLoading`; `null` is `notFound()`, `undefined` is a skeleton.
 - [ ] 4.9 All seven states from `ride-journal`: empty (crew and non-crew variants), loading, error with
@@ -218,7 +218,7 @@
 - [ ] 5.1 `CLAUDE.md` §Supabase Rules: the `postcards` row gains `ride_id` — *a tag, never the
   audience; `club_id` is still the audience* — and the applied-state line moves to 41 with its
   verification command intact.
-- [ ] 5.2 `CLAUDE.md` §Product Scope: the Rides row loses "Journal needs `postcards.ride_id`"; the
+- [ ] 5.2 `docs/reference/product-scope.md`: the Rides row loses "Journal needs `postcards.ride_id`"; the
   Inbox row's excluded notification keeps its entry with an updated reason (the column now exists; the
   fan-out helper does not).
 - [ ] 5.3 `docs/HANDOFF.md`: position, each claim beside the command that verifies it.

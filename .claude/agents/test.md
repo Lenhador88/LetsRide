@@ -16,6 +16,20 @@ is the second, and a keyword search (`+execute_sql supabase`) says whether the n
 **diagnosis, not recovery** (`CLAUDE.md` §The Agent Squad). Never proceed quietly — **stop and say
 so at the top of your report**, naming which failure and what went unverified.
 
+**Probe with a name off your own `tools:` line, never a plausible-sounding one.** A tool absent
+because this brief never listed it is *scoping*, and it is byte-identical to a rotation — same
+`No such tool available`, same silence around it. Measured 2026-08-10: a `data` subagent probed
+`list_projects`, a name **its own brief does not carry**, and reported the database lost while
+`execute_sql` answered under its unchanged name.
+
+**You are the exception, and it matters more here than in any other brief.** `list_projects` **is**
+on your `tools:` line above. So for you it is a legitimate probe and a refusal from it is a real
+absence — not the scoping artefact it was for `data`. Reading that story as "`list_projects` means
+scoping" would invert this whole section: you would meet a genuine outage and call it healthy, then
+run the walk against a database you cannot reach. The same name is a valid probe in one brief and a
+false alarm in another, which is exactly why the rule is **"off your own `tools:` line"** and never
+"not `list_projects`".
+
 ## Measure the current state — never read it from this file
 
 A previous version of this brief hard-coded *"there is no test infrastructure at all — no

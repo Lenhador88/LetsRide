@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ListUser } from '@/components/ui/ListUser'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -9,6 +10,7 @@ import { RideHeader } from '@/components/rides/RideHeader'
 import { getRide, getRideCrew, withOrganizer } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM } from '@/lib/routes'
 import type { RideCrewMember } from '@/types'
 
 /**
@@ -24,7 +26,19 @@ import type { RideCrewMember } from '@/types'
  * yet. Logged in docs/FIGMA-FIDELITY-TODO.md §Ride detail.
  */
 export default function RideCrewPage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per ride — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <RideCrewScreen />
+    </Suspense>
+  )
+}
+
+function RideCrewScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   // The ride read is not redundant with the crew read: it supplies the header
   // title and the organizer, and it is also the authorization probe — a ride

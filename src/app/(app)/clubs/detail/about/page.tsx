@@ -1,6 +1,7 @@
 'use client'
 
-import { notFound, useParams } from 'next/navigation'
+import { Suspense } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, Lock2Icon } from '@/components/icons/generated'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
@@ -10,6 +11,7 @@ import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { getClub } from '@/lib/data/clubs'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { DETAIL_ID_PARAM } from '@/lib/routes'
 import { formatRideDateLong } from '@/lib/utils'
 
 /**
@@ -32,7 +34,19 @@ import { formatRideDateLong } from '@/lib/utils'
  * already has both.
  */
 export default function ClubAboutPage() {
-  const { id } = useParams<{ id: string }>()
+  // The id is a query parameter, not a segment, so the static bundle needs one
+  // document rather than one per club — and `useSearchParams()` has to sit
+  // inside a Suspense boundary or the whole route opts out of prerendering,
+  // which `output: 'export'` refuses. See src/lib/routes.ts.
+  return (
+    <Suspense fallback={null}>
+      <ClubAboutScreen />
+    </Suspense>
+  )
+}
+
+function ClubAboutScreen() {
+  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
 

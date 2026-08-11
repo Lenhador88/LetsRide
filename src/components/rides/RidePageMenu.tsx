@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ChevronDownIcon } from '@/components/icons/generated'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
+import { routes } from '@/lib/routes'
 
 /**
  * The header's sub-page switcher — `Ride plan ⌄` opening the sheet drawn in
@@ -67,9 +68,9 @@ export function RidePageMenu({
      * above rows that never move, so the arrival cannot move a target out from
      * under a finger.
      */
-    ...(isCrew ? [{ key: 'chat' as const, label: 'Chat', href: `/rides/${rideId}/chat` }] : []),
-    { key: 'plan' as const, label: 'Ride plan', href: `/rides/${rideId}` },
-    { key: 'crew' as const, label: 'Crew', href: `/rides/${rideId}/crew` },
+    ...(isCrew ? [{ key: 'chat' as const, label: 'Chat', href: routes.rideChat(rideId) }] : []),
+    { key: 'plan' as const, label: 'Ride plan', href: routes.ride(rideId) },
+    { key: 'crew' as const, label: 'Crew', href: routes.rideCrew(rideId) },
   ]
   const label = pages.find((page) => page.key === current)?.label ?? 'Ride plan'
 

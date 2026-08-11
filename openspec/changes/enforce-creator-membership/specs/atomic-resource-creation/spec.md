@@ -96,9 +96,9 @@ appears in Explore **to its own owner** with a `Join club` button. Tapping it re
 `role = 'member'` on the club they own, irreversibly — `club_members` has no UPDATE policy.
 `ClubMembershipButton` and `RideAttendanceBar` do hide their controls from the owner and the
 organizer — but **only the club half of that guard depends on the row that is missing.**
-`viewer_role` is `membership?.role` (`src/lib/data/clubs.ts:343`), so an orphaned club's owner
+`viewer_role` is `membership?.role` (`src/lib/data/clubs.ts:359`), so an orphaned club's owner
 reads `null` and the guard stops firing. `is_organizer` is **not** from `ride_members`: it is
-`user.id === row.organizer_id` (`src/lib/data/rides.ts:302`), read from `rides.organizer_id`,
+`user.id === row.organizer_id` (`src/lib/data/rides.ts:303`), read from `rides.organizer_id`,
 which is never missing — so the RSVP bar stays correctly hidden from the organizer of an orphan
 ride. The ride half of this requirement therefore rests on the roster disagreement
 (`toRideListItem` draws the organizer as attending "by construction" while `getRideCrew` reads

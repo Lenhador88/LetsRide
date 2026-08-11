@@ -3,6 +3,7 @@ import { EditIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { Avatar } from '@/components/ui/Avatar'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { routes } from '@/lib/routes'
 import { ClubDetailPageMenu, type ClubPage } from '@/components/clubs/ClubDetailPageMenu'
 import type { ClubDetail } from '@/types'
 
@@ -65,7 +66,7 @@ export function ClubDetailHeader({
       action={
         club?.viewer_role === 'owner' ? (
           <Link
-            href={`/clubs/${clubId}/edit`}
+            href={routes.clubEdit(clubId)}
             aria-label="Edit club"
             className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
           >

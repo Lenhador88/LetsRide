@@ -14,10 +14,16 @@
  *
  * ## Three outcomes, not two
  *
- * A claim either PASSES (measured equals stated), FAILS (measured, but
- * different), or is SKIPPED (could not be measured at all — no Postgres, a
- * build that would not complete, or the anchor text itself has moved so the
- * stated value can no longer be read). The contract PD-155 sets is explicit:
+ * A claim either PASSES (measured equals stated), FAILS, or is SKIPPED.
+ *
+ * FAILS covers two shapes: measured but different, and — since 2026-08-10 — a
+ * claim whose anchor cannot be located or whose file is missing. A vanished
+ * anchor is the repo's fault, not the environment's, which is the line between
+ * the two; `runClaim` carries the full reasoning.
+ *
+ * SKIPPED means could not be measured at all: no Postgres, a build that would
+ * not complete, or a stated *word* the number table cannot parse. The contract
+ * PD-155 sets is explicit:
  * a skip must never read as a pass. So the summary line reports all three
  * separately, and the exit code distinguishes "everything I could check
  * agreed" (0) from "something disagreed" (1) from "I could not check
@@ -183,8 +189,23 @@ export function evaluateRlsRun({ ok, count }) {
  */
 function measure(claim, cache, root) {
   switch (claim.kind) {
+    // Measured exactly like 'shell'. The separate name is the whole point: it
+    // keeps a claim that SPAWNS VITEST out of CHEAP_KINDS, which two red CI
+    // runs argued for more convincingly than reasoning did. `npx vitest`
+    // failed on the runner in under a second, and after switching to the local
+    // binary the summary line the command greps for did not appear either —
+    // green locally both times, including under CI=true GITHUB_ACTIONS=true.
+    // A claim whose ground truth is a human-readable summary from a test
+    // runner is not "a local command" in the sense --cheap means, and the
+    // difference is not a thing to keep re-diagnosing from a CI log.
+    case 'vitest-file':
     case 'shell': {
-      const res = cache(`shell:${claim.cmd}`, () => runShell(claim.cmd, { cwd: root }))
+      // `claim.timeoutMs` overrides runShell's 60s default, which was chosen
+      // for greps. A claim that spawns a real process needs its own ceiling:
+      // under --cheap a timeout is no longer a green skip but a red build, so
+      // a 60s bound on a cold CI runner would turn a slow machine into a
+      // failed PR on a diff that changed nothing about the claim.
+      const res = cache(`shell:${claim.cmd}`, () => runShell(claim.cmd, { cwd: root, timeout: claim.timeoutMs }))
       if (!res.ok) return { skip: `command failed: ${shellFailureReason(res)}` }
       return parseCountOutput(res.stdout)
     }
@@ -270,9 +291,26 @@ function readClaimFile(claim, root, fileCache) {
  * without going through `main()`'s printing and `process.exit`.
  */
 export function runClaim(claim, { root = ROOT, fileCache = makeCache(), measureCache = makeCache() } = {}) {
+  // A missing file, or a claim whose anchor no longer matches, is a FAILURE.
+  //
+  // Both read as a skip until 2026-08-10, on the reasoning that a skip means
+  // "could not check". That is true of Postgres being down and false here, and
+  // the difference is whose fault it is: an unavailable measurement is the
+  // environment's, while a vanished anchor is the repo's — and the repo is what
+  // this script exists to police. It showed up under the CLAUDE.md split, where
+  // four claims moved to a new file: `docs:check` printed "0 failed" with them
+  // sitting quietly in the skip list, and only `registry.test.mjs`'s separate
+  // locate sweep went red. A hand-run must not be gentler than CI about the one
+  // thing it is uniquely placed to catch.
+  //
+  // ClaimExtractError deliberately stays a SKIP. That one is not the same
+  // animal: it fires when the *stated* text is a word the number table does not
+  // know ("a dozen", a typo), and PD-155's review asked for it explicitly so an
+  // unparseable word cannot take down the run. Failing it would push authors
+  // into a restricted vocabulary, which is a cost this check should not impose.
   const file = readClaimFile(claim, root, fileCache)
   if (!file.ok) {
-    return { id: claim.id, status: 'skip', reason: `could not read the file — ${file.reason}` }
+    return { id: claim.id, status: 'fail', reason: `could not read the file — ${file.reason}` }
   }
 
   let stated
@@ -281,7 +319,7 @@ export function runClaim(claim, { root = ROOT, fileCache = makeCache(), measureC
     stated = claim.extractStated(m)
   } catch (err) {
     if (err instanceof ClaimLocateError) {
-      return { id: claim.id, status: 'skip', reason: `could not locate the claim — ${err.message}` }
+      return { id: claim.id, status: 'fail', reason: `could not locate the claim — ${err.message}` }
     }
     if (err instanceof ClaimExtractError) {
       return { id: claim.id, status: 'skip', reason: `could not read the stated value — ${err.message}` }
@@ -308,12 +346,16 @@ function printReport(results, claims) {
   console.log()
 
   if (failed.length) {
-    console.log('  DISAGREEMENTS:')
+    console.log('  FAILURES:')
     for (const r of failed) {
       const c = byId.get(r.id)
       console.log(`    - [${r.id}] ${c.file}`)
       console.log(`        ${c.about}`)
-      console.log(`        stated ${r.stated}, measured ${r.measured}`)
+      // Two shapes of failure now land here. A disagreement has both numbers; a
+      // claim that could not be located has neither, only a reason — printing
+      // "stated undefined, measured undefined" for it would bury the one line
+      // that says what to do about it.
+      console.log(r.reason ? `        ${r.reason}` : `        stated ${r.stated}, measured ${r.measured}`)
     }
     console.log()
   }
@@ -350,22 +392,79 @@ function printReport(results, claims) {
  *     exit-code contract asks for them to be loud, not for them to block a
  *     merge on their own.
  */
-export function decideExitCode({ passed, failed, skipped }) {
+export function decideExitCode({ passed, failed, skipped }, { strict = false } = {}) {
   if (failed.length > 0) return 1
-  if (passed.length === 0 && skipped.length > 0) return 2
+  // Under --cheap a skip is a defect, not a shrug. The cheap set is BY
+  // DEFINITION the claims needing no external service, so there is no
+  // legitimate reason for one to be unmeasurable — a skip there means the
+  // command broke, timed out, or its output format moved. Review found the
+  // concrete case: both guard-cases claims parse vitest's `Tests N passed`
+  // summary, so a vitest upgrade rewording it turns them into permanently
+  // green skips. Which of the three it was is in the skip line, never here. The un-strict default keeps a hand-run's Postgres-absent skips
+  // non-fatal, which is what PD-155 asked for.
+  if (strict && skipped.length > 0) return 1
+  // `passed.length === 0` alone, not `&& skipped.length > 0`: an empty
+  // selection measured nothing either, and exiting 0 on it would make a CI
+  // step that checks NOTHING indistinguishable from one that checked
+  // everything and agreed.
+  if (passed.length === 0) return 2
   return 0
 }
 
-export function main(claims = defaultClaims) {
+/**
+ * The claims a run should attempt, given `--cheap`.
+ *
+ * Four kinds are out. Three for cost — `rls` wants a scratch Postgres (it
+ * lives in the *other* workflow), `build` wants a second full `next build`,
+ * and `vitest` wants a second full `npm run test:unit`, the last two on top of
+ * steps the same job runs a minute earlier. That expense was the stated reason
+ * `ci.yml` gates on `registry.test.mjs`'s anchor sweep rather than on this
+ * script.
+ *
+ * The fourth, `vitest-file`, is out for a different and harder reason: it
+ * spawns a test runner and reads its human-readable summary, and that turned
+ * out not to be portable. Two CI runs failed on it while passing locally —
+ * see the `case` in `measure`. What is left is greps, `jq` and arithmetic on
+ * two hex values, which is why `--cheap` can run on every PR.
+ *
+ * The split is by cost, not by importance: the unit-test counts are checked
+ * as thoroughly as ever by a full `npm run docs:check`, which is what a
+ * session runs locally and what the doc-claims review pass still has.
+ *
+ * Filtering rather than skipping, deliberately: a skip is a *loud* outcome
+ * here (PD-155's contract), and eleven permanent skips printed on every green
+ * CI run is how the whole report stops being read. A cheap run reports only
+ * what it genuinely attempted.
+ *
+ * Pure and exported so the split is pinned by a test rather than by reading
+ * a workflow file.
+ */
+export const CHEAP_KINDS = new Set(['shell', 'contrast'])
+
+export function selectClaims(claims, { cheap = false } = {}) {
+  return cheap ? claims.filter((c) => CHEAP_KINDS.has(c.kind)) : claims
+}
+
+export function main(claims = defaultClaims, { strict = false } = {}) {
   const fileCache = makeCache()
   const measureCache = makeCache()
   const results = claims.map((claim) => runClaim(claim, { root: ROOT, fileCache, measureCache }))
 
   const { passed, failed, skipped } = printReport(results, claims)
-  const code = decideExitCode({ passed, failed, skipped })
+  const code = decideExitCode({ passed, failed, skipped }, { strict })
 
   if (code === 2) {
     console.error('  Nothing could be measured. Check the environment (Postgres? node_modules?) and re-run.\n')
+  }
+  if (strict && skipped.length > 0 && failed.length === 0) {
+    // Deliberately does NOT name the cause. Every cheap claim measures with a
+    // local command, so a skip is always a defect — but which defect is in the
+    // skip line above, which carries `shellFailureReason`'s actual reason
+    // (`timed out after 60s`, `command failed: …`). An earlier version
+    // asserted "a broken command or a changed output format" here and would
+    // have contradicted a timeout printed two lines up.
+    console.error('  A claim skipped under --cheap, where every claim measures with a local command.\n' +
+      '  Read the SKIPPED reason above: that is the defect, and it is not a missing service.\n')
   }
 
   process.exit(code)
@@ -374,5 +473,6 @@ export function main(claims = defaultClaims) {
 // Only when invoked directly, so `runClaim`/`main` can be imported and pinned
 // by a test without this file spawning `npm test` or `next build`.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main()
+  const cheap = process.argv.includes('--cheap')
+  main(selectClaims(defaultClaims, { cheap }), { strict: cheap })
 }

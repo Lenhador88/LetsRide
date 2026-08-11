@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:native": "CAPACITOR_BUILD=1 next build && node scripts/native/check-export.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "./supabase/tests/run.sh",
@@ -21,7 +22,8 @@
     "walk": "node scripts/walk.mjs",
     "db:drift": "node scripts/db/check-migration-drift.mjs",
     "db:seed:check": "./scripts/db/check-seed.sh",
-    "docs:check": "node scripts/docs/check.mjs"
+    "docs:check": "node scripts/docs/check.mjs",
+    "docs:check:cheap": "node scripts/docs/check.mjs --cheap"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",
