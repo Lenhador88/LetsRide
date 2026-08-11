@@ -821,8 +821,9 @@ node -p "Math.round(require('fs').statSync('CLAUDE.md').size/4)"                
 node -p "Math.round(require('fs').statSync('.claude/agents/reviewer.md').size/4)"   # + its brief
 ```
 
-So `reviewer` costs ~42k before it reads one line of the diff. **Delegate when the agent will read
-more than ~40k of material and return a paragraph.** `Explore` sweeping forty files for one
+So `reviewer` costs ~34k before it reads one line of the diff — measured 2026-08-11, and it moves
+with the files, which is why the commands are here rather than the number. **Delegate when the
+agent will read more of the codebase than its own fixed cost and return a paragraph.** `Explore` sweeping forty files for one
 conclusion clears that easily. A subagent that just runs the build does not — a green run is ~1k
 of output — `tsc` prints nothing, lint 3.4k, `test:unit` 0.6k — so it spends ~38k, its own brief
 included, to save ~1k.
@@ -850,48 +851,57 @@ a build.
 
 **Default: one build in flight, in the background, and the thread stays free.** Spawn the agent,
 reply at once, and keep answering questions about other stories while it runs. What this buys is
-**availability, not throughput** — the queue Routine already builds unattended, one story an hour,
-and parks on `Needs help` the moment a story needs an answer. Here the owner is right there, so
-what stalls a firing for an hour costs thirty seconds.
+**availability, not throughput** — and the Routine is not the fallback a session assumes it is,
+because gate (7) of `.claude/commands/queue-pickup.md` stops a firing when any of the owner's
+sessions was touched in the last 15 minutes. **So while the owner is at the keyboard the queue is
+suppressed, not merely slow**, and this mode is the only thing picking work up at all.
 
-The break-even above is unchanged: ~42k per delegated story, so a copy fix or a one-liner still
-stays in the main thread. Measure it rather than trust the number:
+**The break-even is CLAUDE.md plus the agent's own brief — nothing else.** A subagent is handed
+this file and its brief; `docs/HANDOFF.md` is not auto-loaded into one, so counting it inflates
+every estimate and argues against delegating work that clears the bar comfortably:
 
 ```bash
-for f in CLAUDE.md docs/HANDOFF.md .claude/agents/feature.md; do
-  node -p "Math.round(require('fs').statSync('$f').size/4)"; done
+node -p "Math.round(require('fs').statSync('CLAUDE.md').size/4)"                  # every agent
+for b in .claude/agents/*.md; do
+  echo "$b $(node -p "Math.round(require('fs').statSync('$b').size/4)")"; done   # + one brief
 ```
+
+Measured 2026-08-11 that is **~27k** for a `feature` story and **~34k** for `reviewer`, the most
+expensive brief — so the material an agent must read to be worth spawning is lower than the ~40k
+above suggests, and the rule bites in the direction this repo already errs. A copy fix or a
+one-liner still stays in the main thread.
 
 **The one real quality regression: the owner sees an assumption only after it has been built on.**
 Inline, an assumption is a line in a reply and is corrected in the same minute; from a background
-agent it arrives in a report, by which time it is load-bearing across a dozen files. The filter
-itself is right — §Working With the Product Owner already says ambiguity → assume and report,
-disagreement → stop and report — so the defect is *latency*, not judgement. **Resolve the
-ambiguities with the owner while writing the brief**, before spawning.
+agent it arrives in a report, by which time it is load-bearing across a dozen files.
+§Working With the Product Owner still governs, **including the half that is easiest to lose here:
+disagreement means stop and *wait*, not stop and mention it in the report.** Attended delegation
+is the mode where waiting is cheapest — the owner is at the keyboard by definition. **Resolve the
+ambiguities into the brief before spawning**; the defect this mode adds is latency, not judgement.
 
 **A second concurrent build is not free, and the collisions are resources rather than files.** Two
 agents on unrelated stories barely touch the same source, but they share:
 
 - **One test database.** `supabase/tests/run.sh` defaults `TEST_DB=letsride_test` and opens with
-  `drop database if exists`, so a second `npm test` **drops the database the first is running
-  against** — which surfaces as a failed assertion, not as a collision.
+  `drop database if exists`. **Do not read a refused drop as proof this is safe** — Postgres
+  refuses `DROP DATABASE` while another session is connected and `run.sh` passes no `WITH (FORCE)`,
+  so the obvious experiment says "protected". It is not: every step is its own `psql`, so the
+  database is unconnected between them and a drop landing in one of those gaps takes the other run
+  down mid-chain on a missing relation.
 - **Two fixed ports.** The relay defaults to `:3001` (`scripts/supabase-relay.mjs`) and the walk
-  targets `http://localhost:3000` (`scripts/walk.mjs`). Two walks either collide on the port or,
-  worse, the second runs against the first's dev server and reports **green**.
+  targets `http://localhost:3000` (`scripts/walk.mjs`). `npm run dev` pins no port, so the second
+  agent's server slides to the next free one while its walk still calls `:3000` — it signs in,
+  walks the **first** agent's tree, and reports **green**.
 
 Both are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. Set them per agent
-or serialise the verification step; the port one is the dangerous half because it passes.
+or serialise the verification step. The database half fails loudly; the port half passes, which is
+why it is the dangerous one.
 
-**The docs spine collides even when the code does not.** `CLAUDE.md` and `docs/HANDOFF.md` are the
-two most-edited files in the repo, so any two builds both want them:
-
-```bash
-git log --pretty=format: --name-only origin/development -40 |
-  grep -v '^$' | sort | uniq -c | sort -rn | head
-```
-
-So **agents do not write those two; the main thread does**, once the reports are in. That also
-keeps the git index single-writer, which is the thing that actually corrupts a shared tree.
+**The docs spine collides even when the code does not** — §Working Principles already carries the
+measurement and the command, so re-derive it there rather than trusting a second copy. What
+follows from it here: **agents do not write `CLAUDE.md` or `docs/HANDOFF.md`; the main thread
+does**, once the reports are in. That also keeps the git index single-writer, which is what
+actually corrupts a shared tree.
 
 ## Architectural Decisions
 
