@@ -26,13 +26,15 @@
   which is true of writes and **false of reads** — the instrument this change needs already exists
   and must be copied from a SELECT policy, never from an INSERT one.
 
-- [ ] 0.2 **Q1 — product owner, BLOCKING task 6. MOSTLY ANSWERED 2026-08-11 from the PRIMARY terms.
-  Left unchecked deliberately: the question asks what the *current plan* requires, and the answer
-  below is what the *Free* plan requires. Nobody has opened this account's plan page, so the
-  fail-closed default — build the pipeline, render no tile — stays in force until someone does.**
-  The obligations themselves are settled; which of them binds us is not.
-  (Terms and Conditions, 2 February 2024, Version 5, KEPTAGO LTD), supplied by the product owner
-  because `*.geoapify.com` is egress-blocked from this container.
+- [x] 0.2 **Q1 — product owner, BLOCKING task 6. ANSWERED 2026-08-11, and the fail-closed default
+  is lifted.** This task was held open on one remaining unknown — *which* plan the account is on,
+  since the obligations differ — and the product owner confirmed it the same day: **Free.**
+
+  So both plan-dependent obligations bind, and task 6 has what it needs to render rather than
+  falling back to "build the pipeline, render no tile".
+
+  Source: Terms and Conditions, 2 February 2024, Version 5, KEPTAGO LTD, supplied by the product
+  owner because `*.geoapify.com` is egress-blocked from this container.
 
   **Three attribution obligations, not one. The first is the one a session would miss**, because
   every secondary source describes attribution as a free-plan concern:
