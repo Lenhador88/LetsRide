@@ -71,43 +71,45 @@ head=$(git rev-parse HEAD 2>/dev/null) || exit 0
 pushed=$(git rev-parse --verify -q "origin/$branch" 2>/dev/null) || exit 0
 [[ "$head" == "$pushed" ]] || exit 0
 
+gitdir=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+
 # `development` is the base a feature PR targets — CLAUDE.md §Branching & CI.
 #
-# THE REF IS USUALLY ABSENT ON TURN ONE, and the old fallback to origin/main was
-# a wrong instruction rather than the false negative its comment claimed. A cloud
-# session clones the repo's default branch, which is still `main`
-# (docs/ENVIRONMENTS.md §The last piece), so `origin/development` does not exist
-# until something fetches it. Falling back to `main` measured a feature branch
-# against *production*, where every unreleased commit counts — so a branch whose
-# work had already merged to `development` read as a wrap-up waiting to happen.
-# It also rendered the reason as "Open a PR against `main` (NOT main)", because
-# the base is interpolated into a sentence whose whole point is that main is the
-# wrong answer.
+# NEVER FALL BACK TO `main`. A cloud session clones the repo's default branch,
+# which is still `main` (docs/ENVIRONMENTS.md §The last piece — a step the owner
+# has not taken yet, so this path goes dormant rather than wrong when they do),
+# so `origin/development` does not exist until something fetches it. Measuring
+# against `main` compares a feature branch to *production*, where every
+# unreleased commit counts, so an already-merged branch reads as a wrap-up
+# waiting to happen — and the base is interpolated into a sentence asserting
+# main is the wrong answer, rendering "Open a PR against `main` (NOT main)".
 #
-# Two things made the number in that message worse than merely wrong. The clone
-# is SHALLOW (`.git/shallow`), so the shared history with `main` is truncated and
-# commits that are in `main` cannot be proven to be — they all count as ahead.
-# Measured 2026-08-11: it reported 128 where the true gap between the branch and
-# `main` was 8, and between `development` and `main` was 11. Fetching the real
-# base fixes the count as a side effect, because the commits that close the gap
-# arrive with it.
+# DO NOT TRUST `git rev-list --count` HERE TO SANITY-CHECK ANY OF THIS. The clone
+# is shallow (`.git/shallow`), so history shared with the base is truncated and
+# the count is wrong in whichever direction the truncation falls — it read 128
+# against a true 8 in the container, and under-counts just as readily in a
+# fixture. It looks authoritative and is not. The tree compare below is the real
+# decision; the count is only ever a number in a sentence.
 #
-# So: fetch it, and stay silent if that fails. This file's own rule — a reminder
-# that misses a wrap-up beats one that breaks the session — applies twice as hard
-# to one that invents a wrap-up.
-# The refspec is explicit on purpose: `git fetch origin development` writes only
-# FETCH_HEAD on a --single-branch clone, so the ref would still be missing and
-# the fetch would look like it had worked.
+# The refspec is explicit because `git fetch origin development` writes only
+# FETCH_HEAD on a --single-branch clone: the ref stays missing and the fetch
+# looks like it worked.
+#
+# One failure is silent by design: an offline clone never resolves a base and
+# this check simply does not run. "Exits 0" and "everything is fine" look
+# identical from outside.
 base=origin/development
-if ! git rev-parse --verify -q "$base" >/dev/null 2>&1; then
-  timeout 5 git fetch --quiet origin \
-    "+refs/heads/development:refs/remotes/origin/development" >/dev/null 2>&1 || true
-fi
-git rev-parse --verify -q "$base" >/dev/null 2>&1 || exit 0
+fetchfail="$gitdir/wrapup-fetch-unreachable"
+refresh_base () {
+  [[ -f "$fetchfail" ]] && return 1          # a hanging remote costs 5s once per clone, not per turn
+  timeout --kill-after=2 5 git fetch --quiet origin \
+    "+refs/heads/development:refs/remotes/origin/development" >/dev/null 2>&1 && return 0
+  : >"$fetchfail" 2>/dev/null
+  return 1
+}
 
-ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || exit 0
-[[ "$ahead" =~ ^[0-9]+$ ]] || exit 0
-[[ "$ahead" -gt 0 ]] || exit 0
+git rev-parse --verify -q "$base" >/dev/null 2>&1 || refresh_base
+git rev-parse --verify -q "$base" >/dev/null 2>&1 || exit 0
 
 # ANCESTRY IS NOT CONTENT, and this repo squash-merges every feature PR.
 #
@@ -124,8 +126,21 @@ ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || exit 0
 # Any "has this landed?" test written against sha ancestry alone is wrong here.
 git diff --quiet "$base" HEAD 2>/dev/null && exit 0
 
-marker="$(git rev-parse --git-dir 2>/dev/null)/wrapup-reminded" || exit 0
+marker="$gitdir/wrapup-reminded"
 [[ -f "$marker" && "$(cat "$marker" 2>/dev/null)" == "$head" ]] && exit 0
+
+# ABOUT TO SPEAK — and only now is a network call worth its latency. A ref that
+# is merely STALE says the work is unmerged long after it landed, which is the
+# same false alarm by a different route, so re-read the base before accusing
+# anyone. Ordering matters: this sits below the marker check so a hanging remote
+# costs one fetch per wrap-up state rather than one per turn.
+if refresh_base; then
+  git diff --quiet "$base" HEAD 2>/dev/null && exit 0
+fi
+
+ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || exit 0
+[[ "$ahead" =~ ^[0-9]+$ ]] || exit 0
+[[ "$ahead" -gt 0 ]] || exit 0
 printf '%s' "$head" >"$marker" 2>/dev/null
 
 jq -cn --arg b "$branch" --arg base "${base#origin/}" --arg n "$ahead" '

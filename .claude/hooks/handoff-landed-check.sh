@@ -17,7 +17,12 @@
 # ruler the day the environment split landed: a session that correctly merged
 # its handoff into `development` would still be told it had not shipped, and a
 # warning that fires when the rule was followed is one nobody reads twice.
-# `main` stays as the fallback for a clone that has never fetched development.
+#
+# THERE IS NO `main` FALLBACK, for the same reason session-wrapup-check.sh lost
+# its one on 2026-08-11. `docs/HANDOFF.md` genuinely differs between `main` and
+# `development` most of the time — unreleased work — so falling back to `main`
+# warns that a handoff has not landed when it landed perfectly well. Silence is
+# this hook's designed failure mode; a wrong warning is not.
 #
 # It deliberately does NOT check PR state. The GitHub REST API is unreachable
 # from the shell in this environment (the proxy returns "GitHub access is not
@@ -35,10 +40,25 @@ cd "$root" 2>/dev/null || exit 0
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || exit 0
 case "$branch" in ''|main|master|development|HEAD) exit 0 ;; esac
 
-# The base as last fetched. Deliberately no network call: a Stop hook must not
-# hang the session, and a stale ref only costs a false negative.
+# Resolve the base, fetching once if this clone has never seen it. The old
+# comment here claimed no network call was needed because "a stale ref only
+# costs a false negative" — both halves were wrong: it fell back to `main`, and
+# that costs a false *positive*, which is the expensive kind.
+#
+# Bounded and failure-tolerant, because a Stop hook must not hang the session.
+# The marker is shared with session-wrapup-check.sh on purpose: the two run in
+# the same Stop event against the same clone, so an unreachable remote should
+# cost one timeout between them, not one each. The explicit refspec is required
+# on a --single-branch clone, where the short form writes only FETCH_HEAD.
 base=origin/development
-git rev-parse --verify -q "$base" >/dev/null 2>&1 || base=origin/main
+if ! git rev-parse --verify -q "$base" >/dev/null 2>&1; then
+  gitdir=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+  if [[ ! -f "$gitdir/wrapup-fetch-unreachable" ]]; then
+    timeout --kill-after=2 5 git fetch --quiet origin \
+      "+refs/heads/development:refs/remotes/origin/development" >/dev/null 2>&1 \
+      || : >"$gitdir/wrapup-fetch-unreachable" 2>/dev/null
+  fi
+fi
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || exit 0
 
 # Two comparisons, and the first one is what keeps this quiet.
