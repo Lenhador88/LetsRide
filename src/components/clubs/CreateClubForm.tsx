@@ -12,12 +12,13 @@ import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, wasChecked } from '@/lib/actions/retain'
 
+import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
+import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX, clubSchema } from '@/lib/validation/clubs'
+
 // `name` is controlled already (the header mirrors it as you type), so only the
 // two React would otherwise erase are named here.
 const retainClub = retaining(createClub, ['description', 'is_public'])
 const initialState = seedRetained(emptyActionState)
-import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
-import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX, clubSchema } from '@/lib/validation/clubs'
 
 /**
  * `Create club`.

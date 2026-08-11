@@ -22,8 +22,8 @@
  * about what the screen then does.
  *
  * The named phases are the exception — refused sign-in before the walk, and
- * refused create, client-side navigation, the route guard and sign-out after
- * it. They are named
+ * refused create, refused edit, client-side navigation, the route guard and
+ * sign-out after it. They are named
  * individually rather than covered by a general claim: each exists because a
  * specific defect is invisible to every other gate in this repo, and each
  * asserts exactly that one behaviour. Adding a phase means adding a reason, not
@@ -868,10 +868,15 @@ async function checkFormRetention() {
   if (clubOption) await page.selectOption(field('club_id'), clubOption)
 
   await page.click('button[type="submit"]')
+  // **Scoped to the form**, like `field()` above and for the same reason: there
+  // are a dozen `role="status"` regions in `src/`, including the route guard's
+  // splash and every skeleton. None carries text today, so a document-wide
+  // query passes for the right reason — and would pass vacuously the day one
+  // does, on the single assertion that proves the submit was refused at all.
   await page
     .waitForFunction(
       () =>
-        [...document.querySelectorAll('[role="status"]')].some(
+        [...document.querySelectorAll('form [role="status"]')].some(
           (n) => n.textContent.trim().length > 0
         ),
       null,
@@ -880,7 +885,9 @@ async function checkFormRetention() {
     .catch(() => {})
 
   const refusal = (
-    await page.$$eval('[role="status"]', (ns) => ns.map((n) => n.textContent.trim()).filter(Boolean))
+    await page.$$eval('form [role="status"]', (ns) =>
+      ns.map((n) => n.textContent.trim()).filter(Boolean)
+    )
   ).join(' | ')
   report(Boolean(refusal), 'the refusal is reported', 'no status text on screen')
 
@@ -905,6 +912,125 @@ async function checkFormRetention() {
   return { bad, ran }
 }
 
+/**
+ * The edit forms, which fail the same way and cost more when they do.
+ *
+ * **The create form's fields are uncontrolled and these are controlled, which
+ * is why this is a second phase rather than another path through the first.**
+ * Controlled state survives the reset; the DOM does not, and React re-applies a
+ * host element only when its props *change* — which they do not across a
+ * refusal. So the box and the select silently disagree with the state behind
+ * them.
+ *
+ * **That disagreement is data loss here, not a papercut.** `updateRide` and
+ * `updateClub` build `club_id` and `is_public` from `FormData`, so the retry
+ * the rider makes after fixing whatever was refused sends what the *reset* left
+ * behind: a ride detached from its club, and a club made public again. Both
+ * succeed, and neither says anything.
+ *
+ * Refused by `max_riders = 0` exactly as the create phase is, and unable to
+ * write for the same two reasons.
+ */
+async function checkEditRetention(candidates) {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nrefused edit keeps the choices behind it:')
+  const field = (name) => `form [name="${name}"]`
+  // **`role="status"` only, never `role="alert"`.** Both edit forms draw a live
+  // `role="alert"` the moment the public box is unticked — the ride's
+  // "would strand" warning, the club's blast-radius note — so accepting either
+  // made this phase report a refusal that had not happened, and every
+  // assertion below then passed against a form nothing had submitted. The
+  // action's own error is the `role="status"` one.
+
+  // **The first candidate whose form actually renders.** `/rides/detail/edit`
+  // and `/clubs/detail/edit` both answer 200 for a rider who does not own the
+  // row — they draw a "not yours" message rather than 404ing (PD-101) — and the
+  // walk discovers ids from lists that include other riders' rows. So a missing
+  // `is_public` here means "not this rider's", not "the control is gone", and
+  // waiting 20s for it to appear is how this phase first read as a harness
+  // failure on a perfectly good build.
+  let chosen = null
+  for (const candidate of candidates) {
+    await page.goto(`${BASE}${candidate.path}`, { waitUntil: 'networkidle' })
+    await page.waitForTimeout(1500)
+    if ((await page.isChecked(field('is_public')).catch(() => null)) !== null) {
+      chosen = candidate
+      break
+    }
+  }
+  if (!chosen) {
+    console.log('  (no ride or club this rider owns — not exercised)')
+    return { bad, ran }
+  }
+  console.log(`  (on ${chosen.label})`)
+
+  const clubBefore = await page.inputValue(field('club_id')).catch(() => null)
+  const publicBefore = await page.isChecked(field('is_public'))
+
+  // Flip the checkbox, so what is asserted is the rider's change rather than
+  // whatever the ride already was.
+  await page.click('form label:has(input[name="is_public"])')
+  const publicWanted = !publicBefore
+
+  // **The refusal is whitespace, and the reason is worth keeping.** The create
+  // form carries `noValidate`, so `max_riders = 0` reaches its action; neither
+  // edit form does, so the browser's own constraint validation blocks an
+  // out-of-range number, no action runs, no reset happens — and every
+  // assertion below then passes without exercising anything. The refusal
+  // assertion is what caught that.
+  //
+  // A whitespace-only required field satisfies HTML `required` (it checks for a
+  // non-empty string) and is refused by `.trim().min(1)` in both `rideSchema`
+  // and `clubSchema`, before either action issues a query. Nothing can be
+  // written at any layer.
+  await page.fill(field(chosen.refuse), '   ')
+  await page.click('button[type="submit"]')
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('form [role="status"]')].some(
+          (n) => n.textContent.trim().length > 0
+        ),
+      null,
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
+
+  const refusal = (
+    await page.$$eval('form [role="status"]', (ns) =>
+      ns.map((n) => n.textContent.trim()).filter(Boolean)
+    )
+  ).join(' | ')
+  report(Boolean(refusal), 'the refusal is reported', 'no status text on screen')
+
+  if (clubBefore !== null) {
+    const clubAfter = await page.inputValue(field('club_id')).catch(() => null)
+    report(
+      clubAfter === clubBefore,
+      'the club is still selected',
+      `was ${JSON.stringify(clubBefore)}, read ${JSON.stringify(clubAfter)} — the next save would send this`
+    )
+  } else {
+    console.log('  (this form has no club <select>, so it was not exercised)')
+  }
+
+  const publicAfter = await page.isChecked(field('is_public')).catch(() => null)
+  report(
+    publicAfter === publicWanted,
+    'the flipped "public" box keeps the rider’s answer',
+    `wanted ${publicWanted}, read ${publicAfter} — the next save would send this`
+  )
+
+  return { bad, ran }
+}
+
 let guardFailures = 0
 let retentionRan = 0
 if (isFullWalk) {
@@ -918,6 +1044,36 @@ if (isFullWalk) {
   })
   guardFailures += retention.bad
   retentionRan = retention.ran
+
+  // Discovered, like the screens above — with no ride to edit there is no form,
+  // and the phase says so rather than passing on an empty page.
+  const discovered = await discoverDetailPaths({ quiet: true })
+  const editCandidates = [
+    ...(discovered.ride
+      ? [
+          {
+            path: `/rides/detail/edit?id=${discovered.ride}`,
+            label: 'the ride edit form',
+            refuse: 'title',
+          },
+        ]
+      : []),
+    ...(discovered.club
+      ? [
+          {
+            path: `/clubs/detail/edit?id=${discovered.club}`,
+            label: 'the club edit form',
+            refuse: 'name',
+          },
+        ]
+      : []),
+  ]
+  const edit = await checkEditRetention(editCandidates).catch((e) => {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    return { bad: 1, ran: 1 }
+  })
+  guardFailures += edit.bad
+  retentionRan += edit.ran
 
   // Before the guard cases, which end on /auth/reset-password, and well before
   // `checkSignOut` takes the session away.

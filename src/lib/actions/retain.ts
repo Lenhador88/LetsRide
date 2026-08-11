@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, type RefObject } from 'react'
 import type { ActionState } from '@/lib/actions/state'
 
@@ -69,23 +71,56 @@ import type { ActionState } from '@/lib/actions/state'
  * select exactly as it had for an uncontrolled one.
  *
  * `useRestoreSelection` closes it: an effect keyed on the action state runs
- * after the commit that performed the reset, and puts the value back. Both
- * selects use it, and neither is named in a `retaining` call.
+ * after the commit that performed the reset, and puts the value back. All three
+ * selects use it, and none is named in a `retaining` call.
+ *
+ * **A controlled *checkbox* needs the same treatment**, via `useRestoreChecked`
+ * below — and the way that was established is worth more than the conclusion. A
+ * review pass predicted it and labelled the prediction inferred. A first
+ * measurement appeared to refute it, so the hook was deleted. That measurement
+ * was itself vacuous: the phase accepted `role="alert"` as proof of a refusal,
+ * and both edit forms draw one live the moment the box is unticked, so nothing
+ * had actually been submitted. With the assertion narrowed to the action's own
+ * `role="status"`, the box came back ticked — `wanted false, read true`.
+ *
+ * **A green assertion is only as good as the precondition it asserted**, which
+ * is the same lesson as the sign-in phase's refusal check, learned twice.
  *
  * **A password is not retained by default and each form decides.** `/auth/login`
  * deliberately drops it: the only error `signIn` returns means that password was
  * refused, and a rejected value sitting in the box invites an identical
  * resubmit. `/auth/signup` keeps it, because there the usual error is about the
  * *email* and retyping a long password the rider got right is pure cost.
+ *
+ * **A retained password moves from a DOM property into a DOM attribute**, which
+ * is a small but real change rather than none: `defaultValue` reflects the
+ * `value` content attribute, so the plaintext now appears in `input.outerHTML`
+ * where before it lived only in `.value`, which is not serialized. Same-origin
+ * script could always read `.value`, so this is not a new reader — what it adds
+ * is every DOM-*serializing* consumer: a "save page", a Playwright trace, and
+ * any error tracker that captures DOM snapshots. Error tracking is listed as
+ * deliberately undecided in CLAUDE.md; whoever decides it should know this.
  */
-export type RetainedFields = Readonly<Record<string, string | undefined>>
+
+/**
+ * **Parameterised by the field names**, so `state.retained.meeting_pont` is a
+ * compile error rather than an empty box. Without the type variable the keys
+ * are `string` and a typo type-checks as `undefined` — which renders exactly
+ * like a field the reset was supposed to restore, and is the one miswiring
+ * this whole mechanism invites.
+ */
+export type RetainedFields<N extends string = string> = Readonly<Partial<Record<N, string>>>
 
 /** An action state carrying what the last submit actually sent. */
-export type WithRetained<S extends ActionState> = S & { retained: RetainedFields }
+export type WithRetained<S extends ActionState, N extends string = string> = S & {
+  retained: RetainedFields<N>
+}
 
 /** The seed for `useActionState` — nothing submitted yet, so nothing retained. */
-export function seedRetained<S extends ActionState>(state: S): WithRetained<S> {
-  return { ...state, retained: {} }
+export function seedRetained<S extends ActionState, N extends string = string>(
+  state: S
+): WithRetained<S, N> {
+  return { ...state, retained: {} as RetainedFields<N> }
 }
 
 /**
@@ -106,13 +141,13 @@ export function seedRetained<S extends ActionState>(state: S): WithRetained<S> {
  * A `File` value records as `''`. Only name fields whose value is text; an
  * upload's identity belongs in the state the uploader already keeps.
  */
-export function retaining<S extends ActionState>(
+export function retaining<S extends ActionState, N extends string>(
   action: (previous: S, formData: FormData) => Promise<S>,
-  names: readonly string[]
-): (previous: WithRetained<S>, formData: FormData) => Promise<WithRetained<S>> {
+  names: readonly N[]
+): (previous: WithRetained<S, N>, formData: FormData) => Promise<WithRetained<S, N>> {
   return async (previous, formData) => {
     const result = await action(previous, formData)
-    const retained: Record<string, string> = {}
+    const retained = {} as Record<N, string>
     for (const name of names) {
       const value = formData.get(name)
       retained[name] = typeof value === 'string' ? value : ''
@@ -123,6 +158,11 @@ export function retaining<S extends ActionState>(
 
 /**
  * Puts a controlled `<select>`'s value back after the post-action form reset.
+ *
+ * **Precondition the type cannot state: the action must return a fresh object
+ * each submit.** `retaining` guarantees it and every action here returns an
+ * object literal, but `state` is `unknown` and a memoised state would make this
+ * effect fire once and never again.
  *
  * The reset is a DOM operation with no React render behind it, and React writes
  * a host element only when its props change — so a controlled select whose
@@ -151,6 +191,33 @@ export function useRestoreSelection(
 }
 
 /**
+ * The same restore for a controlled checkbox, and it costs more when missing.
+ *
+ * `form.reset()` restores a checkbox from its `checked` **attribute**, which
+ * React writes at mount rather than on every update, so a box the rider cleared
+ * comes back ticked while React state still says `false`. Nothing looks wrong —
+ * the box shows what it showed when the screen opened.
+ *
+ * **The consequence is data, not display.** `updateRide` and `updateClub` build
+ * `is_public` from `FormData`, so the retry the rider makes after fixing
+ * whatever was refused re-publishes the thing they had just made private, and
+ * succeeds silently.
+ *
+ * An *uncontrolled* checkbox uses `wasChecked` below instead: `defaultChecked`
+ * does survive the reset, which the create phase measured.
+ */
+export function useRestoreChecked(
+  ref: RefObject<HTMLInputElement | null>,
+  checked: boolean,
+  state: unknown
+): void {
+  useEffect(() => {
+    const element = ref.current
+    if (element && element.checked !== checked) element.checked = checked
+  }, [ref, checked, state])
+}
+
+/**
  * Whether a checkbox was ticked on the last submit, or `fallback` before there
  * has been one.
  *
@@ -159,9 +226,9 @@ export function useRestoreSelection(
  * value is compared against `''` rather than `'on'` so a `value=` attribute on
  * the input does not silently turn every restore into `false`.
  */
-export function wasChecked(
-  retained: RetainedFields,
-  name: string,
+export function wasChecked<N extends string>(
+  retained: RetainedFields<N>,
+  name: N,
   fallback: boolean
 ): boolean {
   const value = retained[name]

@@ -11,6 +11,7 @@ import { DeleteClubControl } from '@/components/clubs/DeleteClubControl'
 import { updateClub } from '@/lib/actions/clubs'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState, type ActionState } from '@/lib/actions/state'
+import { useRestoreChecked } from '@/lib/actions/retain'
 import { getClubPublicRideCount } from '@/lib/data/clubs'
 import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
 import { useQuery } from '@/lib/query'
@@ -47,6 +48,13 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
   const [name, setName] = useState(club.name)
   const [description, setDescription] = useState(club.description ?? '')
   const [isPublic, setIsPublic] = useState(club.is_public)
+  // `form.reset()` re-ticks this from its mount-time `checked` attribute while
+  // this state still says false, and `updateClub` reads `is_public` from
+  // `FormData` — so the retry after a refusal re-opens a club the owner had just
+  // made private, silently. See lib/actions/retain.ts.
+  const publicRef = useRef<HTMLInputElement>(null)
+  useRestoreChecked(publicRef, isPublic, state)
+
 
   const [avatarPath, setAvatarPath] = useState(club.avatar_path ?? '')
   const [coverPath, setCoverPath] = useState(club.cover_image_path ?? '')
@@ -194,6 +202,7 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
 
           <div className="flex flex-col gap-1">
             <Checkbox
+              ref={publicRef}
               name="is_public"
               label="Make this club public"
               checked={isPublic}

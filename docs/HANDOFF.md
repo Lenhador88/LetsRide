@@ -473,17 +473,28 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `33/33 guard, navigation and sign-out checks correct` on a DEV with a club,
-`32/32` without one.** Count them from the output rather than from here: 5 refused-sign-in
-assertions, 9 refused-create assertions (8 where the rider belongs to no club, so the club
-`<select>` is not drawn — the phase counts what it ran rather than a constant, and says which
-it did), then `all N taps navigated`,
+**A clean run is `36/36 guard, navigation and sign-out checks correct` on a DEV where the walk
+account owns a ride and a club.** Two phases count what they *ran* rather than a constant,
+because two controls are drawn only for a rider who has somewhere to put them, so the total
+falls to 35 or 33 on a thinner database and the run says which parts it skipped. Count them from
+the output rather than from here: 5 refused-sign-in assertions, 9 refused-create assertions (8
+with no club, so the club `<select>` is not drawn), 3 refused-edit assertions (2 on the club edit
+form, which has no select), then `all N taps navigated`,
 `no stamp re-read`, `the shell stayed mounted`, `the splash never painted`, then 6 signed-in
 guard rules, 4 sign-out assertions and 5 signed-out guard rules. The walk discovers detail
 routes from the lists, checks eleven route-guard redirects in both signed-in and signed-out
 states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no
 reachable screen, and taps five bottom tabs to prove a navigation costs no
 `my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
+
+**The refused-edit phase is the one that has been wrong twice, and both times it read green.**
+It flips the public checkbox, submits a **whitespace-only** required field — which satisfies HTML
+`required` and is refused by `.trim().min(1)` in both schemas, before either action issues a query
+— and reads the choices back. The two traps, because a third form will hit them: the edit forms
+carry **no `noValidate`**, so an out-of-range number is blocked by the browser and no action ever
+runs; and both draw a live `role="alert"` the instant the box is unticked, so accepting that as
+proof of a refusal makes every assertion below it vacuous. The refusal assertion reads
+`role="status"` — the action's own error — for exactly that reason.
 
 **The refused-create phase is PD-199's**, and it is the one that found what nothing else could.
 It fills `/rides/new`, submits `max_riders = 0` — refused by `rideSchema` before any network call
@@ -507,8 +518,8 @@ leaves the field filled too.
 discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
 `13/13` against a DEV with a club but no ride, `16/16` once the ride is there. **Read the `N/N`
 for equality, not for the value**, and read the skip notices above it for what was not covered.
-`33/33` above is the pass/fail one — read it for equality too, since its total moves with
-whether a club exists.
+`36/36` above is the pass/fail one — read it for equality too, since its total moves with what
+the walk account owns.
 
 **So the walk provisions what it needs** — a shrunken figure looks exactly like success while
 meaning the ride detail was never opened, which is how PD-125 shipped a switcher nobody had
