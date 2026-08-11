@@ -72,10 +72,37 @@ pushed=$(git rev-parse --verify -q "origin/$branch" 2>/dev/null) || exit 0
 [[ "$head" == "$pushed" ]] || exit 0
 
 # `development` is the base a feature PR targets — CLAUDE.md §Branching & CI.
-# Fall back to main only when this clone has never fetched development, in which
-# case a stale ref costs a false negative and never a wrong instruction.
+#
+# THE REF IS USUALLY ABSENT ON TURN ONE, and the old fallback to origin/main was
+# a wrong instruction rather than the false negative its comment claimed. A cloud
+# session clones the repo's default branch, which is still `main`
+# (docs/ENVIRONMENTS.md §The last piece), so `origin/development` does not exist
+# until something fetches it. Falling back to `main` measured a feature branch
+# against *production*, where every unreleased commit counts — so a branch whose
+# work had already merged to `development` read as a wrap-up waiting to happen.
+# It also rendered the reason as "Open a PR against `main` (NOT main)", because
+# the base is interpolated into a sentence whose whole point is that main is the
+# wrong answer.
+#
+# Two things made the number in that message worse than merely wrong. The clone
+# is SHALLOW (`.git/shallow`), so the shared history with `main` is truncated and
+# commits that are in `main` cannot be proven to be — they all count as ahead.
+# Measured 2026-08-11: it reported 128 where the true gap between the branch and
+# `main` was 8, and between `development` and `main` was 11. Fetching the real
+# base fixes the count as a side effect, because the commits that close the gap
+# arrive with it.
+#
+# So: fetch it, and stay silent if that fails. This file's own rule — a reminder
+# that misses a wrap-up beats one that breaks the session — applies twice as hard
+# to one that invents a wrap-up.
+# The refspec is explicit on purpose: `git fetch origin development` writes only
+# FETCH_HEAD on a --single-branch clone, so the ref would still be missing and
+# the fetch would look like it had worked.
 base=origin/development
-git rev-parse --verify -q "$base" >/dev/null 2>&1 || base=origin/main
+if ! git rev-parse --verify -q "$base" >/dev/null 2>&1; then
+  timeout 5 git fetch --quiet origin \
+    "+refs/heads/development:refs/remotes/origin/development" >/dev/null 2>&1 || true
+fi
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || exit 0
 
 ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || exit 0
