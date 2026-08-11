@@ -30,10 +30,10 @@ export default function PrivacyPage() {
         real destination, and must be replaced before the app accepts real users.
       </p>
 
-      <h2 className="text-base font-semibold pt-4">Who processes your data</h2>
+      <h2 className="text-base font-semibold pt-4">Who processes your data today</h2>
       <p className="text-muted">
-        This list is factual and current. It is the one part of this page that is not a
-        placeholder, and it is kept accurate as processors are added.
+        Not a substitute for the notice above — the binding copy still has to be written. This is
+        a plain list of who currently handles your data, so the gap is at least an honest one.
       </p>
       <ul className="text-muted list-disc pl-5 space-y-2">
         <li>
@@ -45,16 +45,23 @@ export default function PrivacyPage() {
           <span className="font-medium">Vercel</span> — serves the app itself. It receives the
           usual request data a web host sees, including your IP address.
         </li>
+      </ul>
+
+      <h2 className="text-base font-semibold pt-4">Planned, and not running yet</h2>
+      <p className="text-muted">
+        Nothing below is happening today. It is listed in advance because it will involve sending
+        data to someone new, and that should not be a surprise when it starts.
+      </p>
+      <ul className="text-muted list-disc pl-5 space-y-2">
         <li>
-          <span className="font-medium">Geoapify</span> — turns a ride&rsquo;s meeting point into
-          map coordinates and renders the map image shown on a ride. When you create or edit a
-          ride, the meeting point you typed is sent to Geoapify for this purpose.{' '}
+          <span className="font-medium">Geoapify</span> — will turn a ride&rsquo;s meeting point
+          into map coordinates and render the small map shown on a ride. When that is switched on,
+          creating or editing a ride will send the meeting point you typed to Geoapify.{' '}
           <span className="font-medium">
             A meeting point is often a home address, so treat it as one.
           </span>{' '}
-          The resulting coordinates and map image are stored by us; your device never contacts
-          Geoapify directly. This processing begins when ride maps are switched on and does not
-          happen before then.
+          The resulting coordinates and map image will be stored by us, and your device will not
+          contact Geoapify directly. Today no ride has coordinates and nothing is sent anywhere.
         </li>
       </ul>
       <p className="text-muted">

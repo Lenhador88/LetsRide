@@ -26,7 +26,11 @@
   which is true of writes and **false of reads** — the instrument this change needs already exists
   and must be copied from a SELECT policy, never from an INSERT one.
 
-- [x] 0.2 **Q1 — product owner, BLOCKING task 6. ANSWERED 2026-08-11 from the PRIMARY terms**
+- [ ] 0.2 **Q1 — product owner, BLOCKING task 6. MOSTLY ANSWERED 2026-08-11 from the PRIMARY terms.
+  Left unchecked deliberately: the question asks what the *current plan* requires, and the answer
+  below is what the *Free* plan requires. Nobody has opened this account's plan page, so the
+  fail-closed default — build the pipeline, render no tile — stays in force until someone does.**
+  The obligations themselves are settled; which of them binds us is not.
   (Terms and Conditions, 2 February 2024, Version 5, KEPTAGO LTD), supplied by the product owner
   because `*.geoapify.com` is egress-blocked from this container.
 
@@ -74,18 +78,32 @@
      `geoapify.com/privacy-policy/`, not here. It matters because `meeting_point` is frequently a
      home address and **our own `/legal/privacy` now makes a factual claim about this flow**. Read
      it before the function is deployed, and correct our page if it retains more than transiently.
-- [x] 0.3 **Q2 — designer, BLOCKING task 6.2 only. DECIDED 2026-08-11 by the product owner:
+- [ ] 0.3 **Q2 — designer, BLOCKING task 6.2 only. PARTIALLY ANSWERED 2026-08-11. Product owner:
   "do according to Figma… just make the most reasonable choice for now, we can modify/move later."**
 
-  The design carries no credit area on the 80×148 strip, and 0.2 shows it does not need one: the
-  PNG arrives with the style attribution already burned in. So **the strip renders the tile as
-  designed, with no scrim bar and no added text** — the earlier 14px-bar default is dropped, not
-  implemented.
+  **A first pass at this closed the task with "one shared `Powered by Geoapify` on the ride detail
+  panel, none on the cards". That contradicts this change's own merged spec** — 
+  `specs/ride-map-tiles/spec.md` §*The 80×148 strip carries the credit as part of its design*:
+  *"a single shared credit elsewhere on the screen SHALL NOT be accepted as covering the tiles,
+  because a list is scrolled and a card is what a rider sees."* Recorded rather than silently
+  corrected, because the grant of discretion is real and it is still not a licence to overrule a
+  merged requirement.
 
-  The plan-level `Powered by Geoapify` credit is a different obligation and needs a home. Put it
-  **once on the ride detail panel**, not on every card in a scrolling list — one visible credit per
-  screen discharges it and N copies is just noise. Revisit if the burned-in credit proves
-  illegible at 80×148; that is a rendering observation and cannot be made until task 6 runs.
+  **What the owner's decision does settle:** the design carries no credit area, and none needs
+  drawing — the Static Maps PNG arrives with attribution burned into the image itself, which is
+  *composed into the strip* exactly as the spec requires, per tile, surviving a scroll. So the
+  14px scrim-bar default is dropped in favour of not suppressing the vendor's own credit. **That
+  is the whole reason suppression is off the table** (0.2 obligation 1).
+
+  **What is still open, and only task 6 can answer it:** whether the burned-in credit is legible at
+  80×148. That is precisely the spec's *A credit that cannot fit means no tile* scenario — if it is
+  not legible, the strip renders the pin fallback and no tile, and that is the specified outcome,
+  not a failure. Do not resolve it by shrinking, clipping or truncating.
+
+  **Do not treat the free-plan `Powered by Geoapify` credit as covering tile attribution.** It is a
+  service-level obligation (0.2 obligation 2) and needs its own legible home; the spec's rejection
+  of a shared credit is about the tile's data attribution and is unaffected by where that string
+  sits. Task 6.2 is unchanged and still instructs the per-tile build.
 - [ ] 0.4 **Q3 — product owner, non-blocking.** Render ceiling per ride. Default: **10 render
   attempts per ride per rolling 24 hours**, enforced by the append-only ledger in task 1.4. High
   enough that no honest organizer meets it, low enough to bound a loop. The window is genuinely
