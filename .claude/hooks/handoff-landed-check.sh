@@ -73,8 +73,47 @@ git rev-parse --verify -q "$base" >/dev/null 2>&1 || exit 0
 mergebase=$(git merge-base "$base" HEAD 2>/dev/null) || exit 0
 git diff --quiet "$mergebase" -- docs/HANDOFF.md 2>/dev/null && exit 0
 
-# It did touch it. Has that edit landed? If the working tree now matches the base
-# tip, the merge already happened and there is nothing to say.
+# It did touch it. Has that edit landed?
+#
+# ** Ask "is this branch's content already contained in the base", NOT "does this
+# branch match the base tip". ** Those two diverge the moment ANOTHER session
+# lands a handoff change while this branch sits — the normal case here rather
+# than bad luck, since docs/HANDOFF.md is touched by roughly two-thirds of
+# commits and several sessions run at once. A branch whose own handoff edit
+# merged perfectly well then gets warned about somebody else's, which is exactly
+# the wrong warning this file's header promises not to issue.
+#
+# Measured 2026-08-11 against the real case: branch tip 2a0bc68, whose handoff
+# edits had merged in #168 and #177, warned every Stop because `development` had
+# moved ahead by one unrelated handoff change (#176, PD-196's walk phase). Merge
+# base c2679fb, so guard 1 passed and the tip comparison then compared against
+# work that was never this branch's. The session's fix was to reset the branch
+# onto the base — correct, and CLAUDE.md prescribes it — but a warning that fires
+# when the rule was followed is one nobody reads twice.
+#
+# `merge-tree --write-tree` answers containment with no merge-base gymnastics: if
+# merging this branch into the base would produce the base's OWN tree, nothing
+# here is unlanded. Same instrument, and same reason, as CLAUDE.md §Branch
+# cleanup — an ahead-count reports every commit of a squash-merged branch as
+# unlanded for ever, so it cannot tell a merged branch from an unmerged one, and
+# every branch in this repo is squash-merged.
+#
+# COMMITTED CONTENT ONLY, which is why the tip comparison below survives rather
+# than being replaced: merge-tree reads commits, so a handoff edited but not yet
+# committed is invisible to it and must still reach that check.
+#
+# On any failure — git older than 2.38, no merge base, unreadable ref — fall
+# THROUGH to the tip comparison rather than exiting. That preserves this file's
+# previous behaviour exactly, so a failure here can only ever be as noisy as it
+# was before, never quieter.
+if git diff --quiet HEAD -- docs/HANDOFF.md 2>/dev/null; then
+  basetree=$(git rev-parse -q --verify "$base^{tree}" 2>/dev/null || true)
+  merged=$(git merge-tree --write-tree "$base" HEAD 2>/dev/null | head -1 || true)
+  if [[ -n "$basetree" && -n "$merged" && "$merged" == "$basetree" ]]; then exit 0; fi
+fi
+
+# So either the handoff is edited and uncommitted, or this branch genuinely
+# carries something the base does not.
 #
 # Working tree vs a commit, not a commit range: a range only sees commits, so an
 # edited-but-uncommitted handoff would slip through.
