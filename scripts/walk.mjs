@@ -21,8 +21,9 @@
  * screen, or as a redirect, an error boundary, or an empty body — and nothing
  * about what the screen then does.
  *
- * The named phases are the exception — refused sign-in before the walk,
- * client-side navigation, the route guard and sign-out after it. They are named
+ * The named phases are the exception — refused sign-in before the walk, and
+ * refused create, client-side navigation, the route guard and sign-out after
+ * it. They are named
  * individually rather than covered by a general claim: each exists because a
  * specific defect is invisible to every other gate in this repo, and each
  * asserts exactly that one behaviour. Adding a phase means adding a reason, not
@@ -789,8 +790,135 @@ async function checkSignOut() {
   return bad
 }
 
+/**
+ * A refused create must give the rider back what they filled in — the same
+ * defect as the refused sign-in above, on the screen with the most to lose.
+ *
+ * **It is here rather than in Vitest because the control types differ in the
+ * DOM, not in the data.** `src/lib/actions/__tests__/retain.test.ts` covers what
+ * `retaining` records, which is a pure function over `FormData` and needs no
+ * browser. What it cannot cover is whether React's post-action `form.reset()`
+ * honours a *changed* `defaultValue` for each kind of control — `<input>`,
+ * `<textarea>`, `<select>` and a checkbox take four different paths through
+ * `updateInput`/`updateTextarea`/`updateOptions`, and a build where three of
+ * them work is indistinguishable from a correct one until a rider meets the
+ * fourth.
+ *
+ * **The submit cannot create a ride, at either layer.** `max_riders = 0` fails
+ * `rideSchema`'s `.positive()` before any network call, and `018` bounds the
+ * column at 1–999 in the database — so even a regression that dropped the
+ * client parse could not turn this phase into a writer. That is why it runs on
+ * every full walk rather than behind `WALK_FIXTURES`.
+ *
+ * The club `<select>` only exists when the rider belongs to a club, so its
+ * assertion is counted only when it runs — `ran` rather than a fixed constant.
+ * A silent skip would read as a pass on exactly the control type that is
+ * hardest to get right.
+ */
+async function checkFormRetention() {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nrefused create keeps what was typed:')
+
+  const filled = {
+    title: 'Retention probe',
+    description: 'Two lines\nof description',
+    meeting_point: 'Kanaalweg 1',
+    departure_at: '2027-03-14T09:15',
+    route_description: 'Along the dyke, back over the bridge',
+  }
+
+  // **Every selector is scoped to the form.** A bare `[name="description"]`
+  // matches `<meta name="description">` in the document head first, and
+  // Playwright fills the first match — 30 seconds of waiting for a meta tag to
+  // become editable, then an uncaught timeout that takes the whole walk with it.
+  const field = (name) => `form [name="${name}"]`
+
+  await page.goto(`${BASE}/rides/new`, { waitUntil: 'networkidle' })
+  await page.waitForSelector(field('title'), { timeout: 20_000 })
+  for (const [name, value] of Object.entries(filled)) {
+    await page.fill(field(name), value)
+  }
+  // The refusal, and the reason nothing can be written — see above.
+  await page.fill(field('max_riders'), '0')
+  // Ticked by default, so unticking is what proves the restore reads the
+  // submission rather than reinstating the literal default.
+  //
+  // **Clicked by its label, which is how a rider clears it too.** `<Checkbox>`
+  // draws an `sr-only` input beneath a styled span, so Playwright refuses an
+  // ordinary click as intercepted and a forced one lands on the span and
+  // toggles nothing ("Clicking the checkbox did not change its state"). The
+  // label is the control's real hit area — `htmlFor` does the toggling.
+  await page.click('form label:has(input[name="is_public"])')
+  // A precondition, not an assertion about the app: if the box did not clear,
+  // everything below would be measuring the wrong submission.
+  if (await page.isChecked(field('is_public'))) {
+    throw new Error('could not clear the "public" checkbox — the harness, not the app')
+  }
+
+  const clubOption = await page
+    .$eval(`${field('club_id')} option:nth-child(2)`, (o) => o.value)
+    .catch(() => null)
+  if (clubOption) await page.selectOption(field('club_id'), clubOption)
+
+  await page.click('button[type="submit"]')
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('[role="status"]')].some(
+          (n) => n.textContent.trim().length > 0
+        ),
+      null,
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
+
+  const refusal = (
+    await page.$$eval('[role="status"]', (ns) => ns.map((n) => n.textContent.trim()).filter(Boolean))
+  ).join(' | ')
+  report(Boolean(refusal), 'the refusal is reported', 'no status text on screen')
+
+  for (const [name, value] of Object.entries(filled)) {
+    const actual = await page.inputValue(field(name)).catch(() => null)
+    report(actual === value, `${name} survives it`, `read ${JSON.stringify(actual)}`)
+  }
+
+  const max = await page.inputValue(field('max_riders')).catch(() => null)
+  report(max === '0', 'max_riders survives it', `read ${JSON.stringify(max)}`)
+
+  const stillPublic = await page.isChecked(field('is_public')).catch(() => null)
+  report(stillPublic === false, 'the cleared "public" box stays cleared', 'it was re-ticked')
+
+  if (clubOption) {
+    const club = await page.inputValue(field('club_id')).catch(() => null)
+    report(club === clubOption, 'the chosen club survives it', `read ${JSON.stringify(club)}`)
+  } else {
+    console.log('  (no club — the club <select> is not rendered, so it was not exercised)')
+  }
+
+  return { bad, ran }
+}
+
 let guardFailures = 0
+let retentionRan = 0
 if (isFullWalk) {
+  // A phase that throws must fail, not abort — an uncaught Playwright timeout
+  // here takes the guard and sign-out phases down with it and reports nothing
+  // at all, which reads as a harness problem rather than as this phase's
+  // verdict.
+  const retention = await checkFormRetention().catch((e) => {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    return { bad: 1, ran: 1 }
+  })
+  guardFailures += retention.bad
+  retentionRan = retention.ran
+
   // Before the guard cases, which end on /auth/reset-password, and well before
   // `checkSignOut` takes the session away.
   guardFailures += await checkTabNavigation()
@@ -822,7 +950,10 @@ if (isFullWalk) {
     GUARD_CASES_SIGNED_OUT.length +
     SIGN_OUT_CHECKS +
     TAB_NAV_CHECKS +
-    REFUSED_SIGN_IN_CHECKS
+    REFUSED_SIGN_IN_CHECKS +
+    // Counted from what ran, not from a constant: the club `<select>` exists
+    // only for a rider in a club. See checkFormRetention.
+    retentionRan
   const bad = guardFailures + refusedSignInFailures
   console.log(`${total - bad}/${total} guard, navigation and sign-out checks correct`)
 }

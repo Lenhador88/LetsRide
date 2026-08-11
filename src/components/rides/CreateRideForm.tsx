@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useRef } from 'react'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { createRide } from '@/lib/actions/rides'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
+import { retaining, seedRetained, useRestoreSelection, wasChecked } from '@/lib/actions/retain'
 import { APP_TIME_ZONE } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
@@ -47,8 +48,39 @@ const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') 
  * and no screen has ever set it, so a club's Rides sub-page could only ever be
  * empty — a hole the club detail made visible.
  */
+// Every field on the form. This is the screen with the most to lose: seven
+// answers and two defaults, all of which React's post-action `form.reset()`
+// used to erase on any refusal. See lib/actions/retain.ts.
+const RIDE_FIELDS = [
+  'title',
+  'description',
+  'meeting_point',
+  'departure_at',
+  'route_description',
+  'max_riders',
+  'is_public',
+] as const
+
+const retainRide = retaining(createRide, RIDE_FIELDS)
+const initialState = seedRetained(emptyActionState)
+
 export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[] }) {
-  const [state, formAction, pending] = useActionState(createRide, emptyActionState)
+  const [state, formAction, pending] = useActionState(retainRide, initialState)
+  // **A `<select>` is the one control `retaining` cannot serve, and it is
+  // controlled for that reason rather than by preference.** `defaultValue` on a
+  // select sets `option.selected`; `form.reset()` restores each option from its
+  // `defaultSelected` — the `selected` *attribute* — which React never writes.
+  // So the reset drops the choice back to the first option however carefully the
+  // submitted value is fed back. Measured by the walk's own retention phase:
+  // every other field on this form passed while this one read "".
+  //
+  // Component state has no such problem, and none of the autofill exposure that
+  // makes a controlled *text* input the wrong fix (see lib/actions/retain.ts):
+  // the reset touches the DOM, not React, and no password manager fills a club
+  // picker.
+  const [clubId, setClubId] = useState('')
+  const clubRef = useRef<HTMLSelectElement>(null)
+  useRestoreSelection(clubRef, clubId, state)
   useActionRedirect(state)
   const formRef = useRef<HTMLFormElement>(null)
   // What was actually on the form at submission, not what is on it now. React
@@ -103,15 +135,28 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
       noValidate
       className="flex flex-col gap-4"
     >
-      <Input name="title" label="Title" required maxLength={RIDE_TITLE_MAX} />
+      <Input
+        name="title"
+        label="Title"
+        required
+        maxLength={RIDE_TITLE_MAX}
+        defaultValue={state.retained.title}
+      />
 
-      <Textarea name="description" label="Description" rows={3} maxLength={RIDE_DESCRIPTION_MAX} />
+      <Textarea
+        name="description"
+        label="Description"
+        rows={3}
+        maxLength={RIDE_DESCRIPTION_MAX}
+        defaultValue={state.retained.description}
+      />
 
       <Input
         name="meeting_point"
         label="Starting location"
         required
         maxLength={RIDE_MEETING_POINT_MAX}
+        defaultValue={state.retained.meeting_point}
       />
 
       <div className="flex flex-col gap-1.5">
@@ -121,7 +166,13 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
           from here instead would put the browser's zone into the write, which is
           the write-side half of the bug #37 fixed on the read side.
         */}
-        <Input name="departure_at" type="datetime-local" label="Departure" required />
+        <Input
+          name="departure_at"
+          type="datetime-local"
+          label="Departure"
+          required
+          defaultValue={state.retained.departure_at}
+        />
         {/* One template literal rather than text interleaved with {expr}. JSX
             drops whitespace at a line boundary, so if a formatter ever wraps
             the expression onto its own line the hint renders "Amsterdamtime"
@@ -135,7 +186,13 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
         </p>
       </div>
 
-      <Textarea name="route_description" label="Route" rows={2} maxLength={RIDE_ROUTE_MAX} />
+      <Textarea
+        name="route_description"
+        label="Route"
+        rows={2}
+        maxLength={RIDE_ROUTE_MAX}
+        defaultValue={state.retained.route_description}
+      />
 
       <Input
         name="max_riders"
@@ -145,6 +202,7 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
         max={999}
         label="Maximum riders"
         placeholder="Leave blank for no limit"
+        defaultValue={state.retained.max_riders}
       />
 
       {clubs.length > 0 && (
@@ -155,8 +213,10 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
               component the design has not drawn. It inherits the Input
               treatment so it does not read as a different system. */}
           <select
+            ref={clubRef}
             name="club_id"
-            defaultValue=""
+            value={clubId}
+            onChange={(event) => setClubId(event.target.value)}
             className="h-12 rounded-lg border-2 border-border-strong bg-surface px-4 text-base text-foreground"
           >
             <option value="">No club</option>
@@ -171,7 +231,14 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
 
       {/* Public by default, matching 001's column default and the v1 form. */}
       <div className="flex flex-col gap-1">
-        <Checkbox name="is_public" label="Make this ride public" defaultChecked />
+        {/* `wasChecked` and not `defaultChecked` alone: an unticked box sends
+            nothing, so restoring the literal default would silently re-publish
+            a ride the rider had just made private. */}
+        <Checkbox
+          name="is_public"
+          label="Make this ride public"
+          defaultChecked={wasChecked(state.retained, 'is_public', true)}
+        />
         <p className="pl-8 text-xs font-medium text-muted">
           Anyone signed in can see and join a public ride. A private ride is visible to its club,
           or to you alone if it has no club.

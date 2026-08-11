@@ -7,6 +7,13 @@ import { Textarea } from '@/components/ui/Textarea'
 import { FormError } from '@/components/auth/FormError'
 import { updateProfile } from '@/lib/actions/profile'
 import { emptyActionState } from '@/lib/actions/state'
+import { retaining, seedRetained } from '@/lib/actions/retain'
+
+// The edit forms fail differently from the create ones: their `defaultValue` is
+// the *stored* value, so the reset does not blank the form, it silently rolls
+// every edit back to what was already saved — which looks like the save worked.
+const retainProfile = retaining(updateProfile, ['location', 'bike_model', 'bio'])
+const initialState = seedRetained(emptyActionState)
 import type { ActionState } from '@/lib/actions/state'
 import { BIKE_MODEL_MAX_LENGTH, BIO_MAX_LENGTH, profileEditSchema } from '@/lib/validation/profile'
 import type { Profile } from '@/types'
@@ -51,7 +58,7 @@ import type { Profile } from '@/types'
  * data loss, and it is not this branch's to fix.
  */
 export function EditProfileForm({ profile }: { profile: Profile }) {
-  const [state, formAction, pending] = useActionState(updateProfile, emptyActionState)
+  const [state, formAction, pending] = useActionState(retainProfile, initialState)
 
   // "Saved" has to survive the action's re-render and then *stop* being true the
   // moment the rider edits again — otherwise it sits over an unsubmitted change,
@@ -118,7 +125,7 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
       <Input
         name="location"
         label="Where you ride from"
-        defaultValue={profile.location ?? ''}
+        defaultValue={state.retained.location ?? profile.location ?? ''}
         maxLength={100}
         required
       />
@@ -126,7 +133,7 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
         name="bike_model"
         label="Your bike"
         placeholder="e.g. Kawasaki Z900"
-        defaultValue={profile.bike_model ?? ''}
+        defaultValue={state.retained.bike_model ?? profile.bike_model ?? ''}
         maxLength={BIKE_MODEL_MAX_LENGTH}
       />
       <Textarea
@@ -134,7 +141,7 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
         label="About you"
         placeholder="Tell other riders about yourself…"
         rows={4}
-        defaultValue={profile.bio ?? ''}
+        defaultValue={state.retained.bio ?? profile.bio ?? ''}
         maxLength={BIO_MAX_LENGTH}
       />
 

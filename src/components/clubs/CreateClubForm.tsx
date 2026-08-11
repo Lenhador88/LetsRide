@@ -10,6 +10,12 @@ import { Textarea } from '@/components/ui/Textarea'
 import { createClub } from '@/lib/actions/clubs'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
+import { retaining, seedRetained, wasChecked } from '@/lib/actions/retain'
+
+// `name` is controlled already (the header mirrors it as you type), so only the
+// two React would otherwise erase are named here.
+const retainClub = retaining(createClub, ['description', 'is_public'])
+const initialState = seedRetained(emptyActionState)
 import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
 import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX, clubSchema } from '@/lib/validation/clubs'
 
@@ -37,7 +43,7 @@ import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX, clubSchema } from '@/lib/validatio
  * orphaned object, never a club pointing at an image that is not there.
  */
 export function CreateClubForm() {
-  const [state, formAction, pending] = useActionState(createClub, emptyActionState)
+  const [state, formAction, pending] = useActionState(retainClub, initialState)
   useActionRedirect(state)
   const formRef = useRef<HTMLFormElement>(null)
   // What was on the form at submission, not what is on it now — see the same
@@ -189,13 +195,25 @@ export function CreateClubForm() {
           onChange={(event) => setName(event.target.value)}
         />
 
-        <Textarea name="description" label="Description" rows={4} maxLength={CLUB_DESCRIPTION_MAX} />
+        <Textarea
+          name="description"
+          label="Description"
+          rows={4}
+          maxLength={CLUB_DESCRIPTION_MAX}
+          defaultValue={state.retained.description}
+        />
 
         {/* Public by default, matching 001's column default and the product
             owner's call. The design's "until then we only have private clubs"
             note is out of date — see clubSchema. */}
         <div className="flex flex-col gap-1">
-          <Checkbox name="is_public" label="Make this club public" defaultChecked />
+          {/* See CreateRideForm — restoring the literal default would re-open a
+              club the rider had just made private. */}
+          <Checkbox
+            name="is_public"
+            label="Make this club public"
+            defaultChecked={wasChecked(state.retained, 'is_public', true)}
+          />
           <p className="pl-8 text-xs font-medium text-muted">
             Anyone signed in can find a public club and join it. A private club is only visible to
             its members.
