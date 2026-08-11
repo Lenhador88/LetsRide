@@ -1196,6 +1196,31 @@ C" instead of a quoted sentence. One letter per thing that can be independently 
 single suggestion needs no letter. **Say who does each one** — an owner-only item mixed into a
 list of build tasks hides the one nobody but them can do.
 
+**Every lettered option opens with a title and one line of context saying what it actually is.**
+Product owner, 2026-08-11. A bare imperative — *"Cap the candidate rows"* — assumes the reader
+carries the problem in their head, and by the time they read it they do not. Name the thing, then
+say in a sentence what it does and what it costs. The ratings justify it; the context is what
+makes them mean anything.
+
+### The debrief shape — Points, Proposals, Question
+
+**Standing format, product owner 2026-08-11, for closing out a build and for any reply that puts
+a decision to them.** It arrived as *"that's so much better"* after a long analysis was cut to
+nine lines, and the point is the **compression**, not the headings:
+
+- **Points** — what you found, one line each. Three or four, not eight.
+- **Proposals** — the lettered blocks above, each with its title, its line of context, and its
+  ratings. Skip entirely when there is nothing to decide.
+- **Question** — the single thing you need answered, phrased so a one-word reply works.
+
+**The reasoning goes in the commit, the PR and the Linear issue — never in the reply.** That is
+§The record is not the reply, applied to the shape rather than only to the length. If a point
+needs a paragraph to defend, the paragraph belongs in the record and the reply gets the sentence.
+
+**This replaces the long-form debrief for every session, not just long ones.** A wrap-up that
+re-explains findings already written into three durable places is the failure this exists to
+stop.
+
 **Give every lettered option its own blockquote, with the letter and its description *outside*
 the bar.** The bar groups the ratings so a reader scanning three options can see where each one
 ends; the description is the thing being chosen between, and inside the bar it reads as a sixth
