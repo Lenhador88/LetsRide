@@ -186,26 +186,27 @@ export const claims = [
   {
     id: 'migrations-count-claude',
     file: 'CLAUDE.md',
-    // The tail of this pattern tracks the DEV/PROD RELATIONSHIP, which has
-    // changed six times since 2026-08-09 — 041, 042, 043, 044, 045, 046, each
-    // applied to DEV by itself. Keep this list in step with the regex below when
-    // you move it: the comment stopped a migration short once already, which
-    // reads as the pin being stale when it was the prose that was.
-    // It is deliberately NOT relaxed to
-    // /Applied state: (\d+) files/: the numeric half is the only thing this
-    // entry verifies, so pinning the prose is what forces the next session to
-    // re-read the sentence when the relationship changes again (i.e. when PROD
-    // catches up) rather than leaving a stale "AGREE" behind a correct count.
-    // A pattern miss here is the check working, not breaking.
-    // 2026-08-10: PROD caught up, so the pinned prose moved from "DEV is SIX
-    // AHEAD of PROD" to "DEV and PROD are LEVEL". That transition is the one
-    // this entry's comment predicted, and it worked — the pattern stopped
-    // matching and the check reported SKIPPED rather than passing on a claim
-    // it was no longer reading.
-    // 2026-08-11: 049 applied to DEV only, so the relationship left LEVEL again
-    // and the pattern refused to match a second time — the same mechanism, in
-    // the opposite direction. It moves back to LEVEL when 049 reaches PROD.
-    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD is at `\d+` — they are NOT level/,
+    // The tail of this pattern pins the DEV/PROD RELATIONSHIP prose, and it is
+    // deliberately NOT relaxed to /Applied state: (\d+) files/. The numeric half
+    // is the only thing this entry verifies, so pinning the prose is what forces
+    // the next session to re-read the sentence when the relationship changes
+    // rather than leaving a stale "AGREE" behind a correct count. Relaxing the
+    // regex is the obvious repair and it is the wrong one.
+    //
+    // ** A pattern miss here FAILS, and this comment said "skipped" until
+    // 2026-08-11. ** check.mjs was changed on 2026-08-10 to make an unmatched
+    // anchor a ClaimLocateError with status 'fail' — see its own comment saying
+    // both "read as a skip until 2026-08-10". This entry is kind: 'shell', so it
+    // is in CHEAP_KINDS and runs under `docs:check --cheap` in CI on every PR
+    // that touches code. So the day 051 lands on DEV alone — the ordinary state
+    // of a migration between its merge and its promotion — this claim goes RED
+    // on every unrelated PR until someone edits the prose and this pattern
+    // together. That is the tripwire working, but budget for it: the fix is two
+    // edits in one commit, never a relaxed regex.
+    //
+    // The flip-by-flip history of this pin lives in `git log -p` and is not
+    // recopied here; it grew a paragraph every time PROD caught up.
+    pattern: /\*\*Applied state: (\d+) files\. DEV and PROD are LEVEL at `\d+`/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

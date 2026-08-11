@@ -116,8 +116,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Every gate that can be checked before spending 476 MB of egress and ~15
-      # minutes of extract, checked first.
+      # Every gate that can be checked before spending 476 MB of egress and the
+      # extract, checked first. (The extract is fast — 16 s on a runner, 54 s
+      # locally, measured across the DEV and PROD loads on 2026-08-11. This
+      # comment said "~15 minutes" until then; the egress figure was always
+      # right and only the time was wrong.)
       #
       # ** Every input reaches the shell through `env:`, never through `${{ }}`
       # inline. ** An interpolated `${{ inputs.release }}` is substituted into the
