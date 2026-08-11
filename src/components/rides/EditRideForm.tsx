@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useCallback, useEffect, useState } from 'react'
+import { useActionState, useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
@@ -9,6 +9,7 @@ import { DeleteRideControl } from '@/components/rides/DeleteRideControl'
 import { updateRide } from '@/lib/actions/rides'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState, type ActionState } from '@/lib/actions/state'
+import { useRestoreChecked, useRestoreSelection } from '@/lib/actions/retain'
 import { APP_TIME_ZONE, formatRideDepartureInput } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
@@ -67,6 +68,18 @@ export function EditRideForm({
   )
   const [isPublic, setIsPublic] = useState(ride.is_public)
   const [clubId, setClubId] = useState(ride.club_id ?? '')
+  // **Controlled is not enough for either of these, and here it costs data
+  // rather than typing.** React's post-action `form.reset()` puts the select
+  // back on its first option — always "No club" — and the checkbox back on its
+  // mount-time value, with no re-render to carry the real ones back. And
+  // `updateRide` builds `club_id` and `is_public` from `FormData`, not from this
+  // state, so the retry after any refusal silently detaches the ride from its
+  // club and re-publishes it, and succeeds. Both measured by the walk's
+  // `refused edit` phase — see lib/actions/retain.ts.
+  const clubRef = useRef<HTMLSelectElement>(null)
+  const publicRef = useRef<HTMLInputElement>(null)
+  useRestoreSelection(clubRef, clubId, state)
+  useRestoreChecked(publicRef, isPublic, state)
 
   // Moves focus to the schema-rejected field on error, off the same
   // `rideSchema` the action parses — reading controlled state directly rather
@@ -191,6 +204,7 @@ export function EditRideForm({
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-muted">Club</span>
             <select
+              ref={clubRef}
               name="club_id"
               value={clubId}
               onChange={(event) => setClubId(event.target.value)}
@@ -208,6 +222,7 @@ export function EditRideForm({
 
         <div className="flex flex-col gap-1">
           <Checkbox
+            ref={publicRef}
             name="is_public"
             label="Make this ride public"
             checked={isPublic}

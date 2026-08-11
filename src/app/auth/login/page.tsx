@@ -7,62 +7,26 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { signIn } from '@/lib/actions/auth'
 import { useActionRedirect } from '@/lib/actions/navigate'
-import { emptyActionState, type ActionState } from '@/lib/actions/state'
+import { emptyActionState } from '@/lib/actions/state'
+import { retaining, seedRetained } from '@/lib/actions/retain'
 
-/** `signIn`'s state plus the address the last submit actually carried. */
-type LoginFormState = ActionState & { email: string }
-
-const initialState: LoginFormState = { ...emptyActionState, email: '' }
+const retainEmail = retaining(signIn, ['email'])
+const initialState = seedRetained(emptyActionState)
 
 /**
- * **A refused sign-in must leave the email in the field (PD-196), and the form
- * puts it back rather than trying to stop React taking it away.**
+ * **A refused sign-in must leave the email in the field — PD-196.** React
+ * resets a `<form action={fn}>` on the error return as readily as on the
+ * success one; `lib/actions/retain.ts` carries the mechanism, why the value is
+ * put back rather than held in component state, and what a password manager
+ * does to the version that holds it.
  *
- * React resets a `<form action={fn}>` once the action resolves — `form.reset()`
- * in the commit phase — so every *uncontrolled* field reverts to its
- * `defaultValue`. That runs on the failure path as well as the success one,
- * because React cannot know which one it was, and the email's `defaultValue`
- * was the empty string. A rider who mistyped their password had to retype an
- * address the app had just been handed.
- *
- * **So the reset is aimed rather than fought**: the wrapper below records what
- * `formData` actually carried, and that becomes the field's `defaultValue` — so
- * `form.reset()` restores the submitted address instead of erasing it.
- *
- * ## Why not simply make the field controlled
- *
- * That is React's documented escape hatch, it fixes the typed case, and it was
- * this fix's first shape. **It breaks the rider this story is about.** A
- * password manager fills the field by assigning the DOM value; if that fill
- * lands before hydration — or dispatches no `input` event React is listening
- * for — `useState('')` never learns about it, and `updateInput` compares its
- * prop against the *live DOM value* and overwrites it on the next render. The
- * `pending` flip from `useActionState` is that render, so the field empties on
- * click, one submit earlier than the bug being fixed. Measured in Chromium
- * against DEV, not reasoned about: a value assigned with no `input` event is
- * gone by the time the refusal is drawn.
- *
- * `defaultValue` has no such failure. React writes an uncontrolled input's
- * value only during the reset, and `formData` is read from the DOM at submit
- * time — so whatever put the address there, typing or autofill, is what comes
- * back.
- *
- * **The password is deliberately left out of this.** It is the field that was
- * wrong, clearing it is what every other sign-in form does, and a rejected
- * password sitting in the box invites a second identical submit.
+ * **The password is deliberately not retained here, and this is the screen that
+ * decides it.** The only error `signIn` returns means that password was
+ * refused, so keeping it invites an identical resubmit — where `/auth/signup`
+ * keeps its own, the error there usually being about the email.
  */
 export default function LoginPage() {
-  // A wrapper rather than a change to `signIn`: the action is a plain async
-  // function that a test and an event handler call the same way, and what the
-  // form needs to redraw itself is this screen's business, not the mutation's.
-  // `/onboarding/username` carries its refusal list the same way.
-  const [state, formAction, pending] = useActionState<LoginFormState, FormData>(
-    async (previous, formData) => ({
-      ...(await signIn(previous, formData)),
-      email: String(formData.get('email') ?? ''),
-    }),
-    initialState
-  )
+  const [state, formAction, pending] = useActionState(retainEmail, initialState)
   useActionRedirect(state)
 
   return (
@@ -82,7 +46,7 @@ export default function LoginPage() {
             label="Email"
             autoComplete="email"
             required
-            defaultValue={state.email}
+            defaultValue={state.retained.email}
           />
           <Input
             name="password"

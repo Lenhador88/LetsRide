@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Pagination } from '@/components/ui/Pagination'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
+import { retaining, seedRetained } from '@/lib/actions/retain'
 import { setLocation } from '@/lib/actions/onboarding'
 
 /**
@@ -16,8 +17,11 @@ import { setLocation } from '@/lib/actions/onboarding'
  * reads "Finish" rather than the design's "Next": with no step after it,
  * "Next" would promise a screen that no longer exists.
  */
+const retainLocation = retaining(setLocation, ['location'])
+const initialState = seedRetained(emptyActionState)
+
 export default function OnboardingLocationPage() {
-  const [state, formAction, pending] = useActionState(setLocation, emptyActionState)
+  const [state, formAction, pending] = useActionState(retainLocation, initialState)
   useActionRedirect(state)
 
   return (
@@ -38,7 +42,13 @@ export default function OnboardingLocationPage() {
         }
       >
         <div className="flex flex-col gap-2">
-          <Input name="location" label="City" autoComplete="address-level2" required />
+          <Input
+            name="location"
+            label="City"
+            autoComplete="address-level2"
+            required
+            defaultValue={state.retained.location}
+          />
         </div>
       </AuthScreen>
     </form>

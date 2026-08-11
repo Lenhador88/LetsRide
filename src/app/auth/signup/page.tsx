@@ -10,10 +10,19 @@ import { Input } from '@/components/ui/Input'
 import { signUp } from '@/lib/actions/auth'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
+import { retaining, seedRetained } from '@/lib/actions/retain'
 import { NEW_PASSWORD_MIN_LENGTH } from '@/lib/validation/auth'
 
+// **The password is retained here and not on `/auth/login`.** The error a
+// rider actually hits on this screen is about the *email* — already registered
+// — so clearing a password they got right, and which has a length rule to
+// satisfy, is pure cost. `signIn`'s only error means the password itself was
+// refused, which is why that screen drops it.
+const retainCredentials = retaining(signUp, ['email', 'password'])
+const initialState = seedRetained(emptyActionState)
+
 export default function SignupPage() {
-  const [state, formAction, pending] = useActionState(signUp, emptyActionState)
+  const [state, formAction, pending] = useActionState(retainCredentials, initialState)
   useActionRedirect(state)
   const [accepted, setAccepted] = useState(false)
 
@@ -50,6 +59,7 @@ export default function SignupPage() {
             inputMode="email"
             enterKeyHint="next"
             required
+            defaultValue={state.retained.email}
           />
           <div className="flex flex-col gap-1.5">
             <Input
@@ -60,6 +70,7 @@ export default function SignupPage() {
               enterKeyHint="done"
               minLength={NEW_PASSWORD_MIN_LENGTH}
               required
+              defaultValue={state.retained.password}
             />
             <p className="px-1 text-xs text-muted">At least {NEW_PASSWORD_MIN_LENGTH} characters.</p>
           </div>
