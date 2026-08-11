@@ -482,13 +482,17 @@ that decision anyway — see below.
 of sync with the schema in a way `npm run db:drift` cannot see. A function calling a column
 that only exists on DEV is a failure class the chain does not cover.
 
-`supabase/functions/delete-account/` is **written, not deployed, and has never run** — its own
-header says so, and `list_edge_functions` against PROD returns zero. Three things follow:
+`supabase/functions/delete-account/` is **deployed to both projects and `ACTIVE` as of
+2026-08-11**, both `verify_jwt: true`, both on the same `ezbr_sha256` — so PROD and DEV run an
+identical build. Re-derive with `list_edge_functions` against each ref rather than trusting this
+line. Three things follow:
 
-- **Deploying needs the Supabase CLI.** The MCP server exposes `list_edge_functions` and
-  `get_edge_function` but no deploy tool, so this is an owner action and the CLI has to arrive
-  before the first deploy. That is the same CLI that brings `config.toml`, which is why the
-  first Edge Function — not branching — is what forces the tooling decision.
+- **Redeploying needs the Supabase CLI.** The MCP server exposes `list_edge_functions` and
+  `get_edge_function` but no deploy tool, so every deploy after this one is an owner action too.
+  **That makes an edit to `index.ts` silent drift**: the repo changes, the running function does
+  not, and nothing — not CI, not `db:drift`, which only reads migrations — compares them. That is
+  the same CLI that brings `config.toml`, which is why the first Edge Function — not branching —
+  is what forces the tooling decision.
 - **Nothing type-checks them.** `tsconfig.json` excludes `supabase/functions` because it is
   Deno. ESLint still parses them, and it is the only tool that does.
 - **Secrets are per project.** A DEV push key that reaches a test device and a PROD one that

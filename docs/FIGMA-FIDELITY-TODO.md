@@ -695,8 +695,9 @@ Blocked on schema, same shape as the ride detail's banner:
       What now exists: `029` transfers a departing rider's clubs instead of cascading them
       (which would destroy other riders' postcards), `030` versions the consent record, `031`
       makes the transfer callable, and `supabase/functions/delete-account/` holds the Edge
-      Function that owns the auth delete. **The function is not deployed and has never run**,
-      so no row points at it — `openspec/changes/add-account-deletion/` group 3 is the flow
+      Function that owns the auth delete. **The function is deployed to both projects and
+      `ACTIVE` (2026-08-11)**, but nothing in `src/` calls it yet — so
+      `openspec/changes/add-account-deletion/` group 3 is the flow
       itself, and group 4 the four screens where "gone" and "forbidden" currently look
       identical. `Preferences` is still undesigned as a destination and is a separate question.
 

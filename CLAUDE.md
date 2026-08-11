@@ -410,10 +410,18 @@ introduce a service-role key into the app" — **the function is not the app**:
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**It is written, not deployed, and has never run.** There is no `supabase` CLI in the build
-container and the Supabase MCP server has no deploy tool, so deploying is an **owner action**.
-A function deployed by hand and never redeployed is the same class of drift as an unapplied
-migration, and CI has no path that would catch it.
+**It is deployed to both projects and `ACTIVE`, as of 2026-08-11** — and it stays an **owner
+action**, which is why it is still drift waiting to happen. There is no `supabase` CLI in the
+build container and the Supabase MCP server has no deploy tool, so nothing in a session can
+redeploy it after an edit to `supabase/functions/delete-account/index.ts`, and CI has no path that
+would notice. Check the deploy rather than trusting this line, and check that both projects run
+the *same* build:
+
+```
+mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
+mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
+# status ACTIVE, verify_jwt true, and ezbr_sha256 equal across the two
+```
 
 **There is one doorway now, and almost nothing should reach past it:**
 - **Anything in `src/lib/data/` or `src/lib/actions/`** →

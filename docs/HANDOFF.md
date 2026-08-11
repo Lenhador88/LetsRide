@@ -343,39 +343,34 @@ nothing marks it done except someone re-measuring.** The credential-free probes 
 `docs/ENVIRONMENTS.md` §The redirect allowlist.
 
 Every one is a dashboard click or a credential a human holds, so **ask for them rather than
-working around them.** Three carry detail worth having at hand:
+working around them.** Four carry detail worth having at hand:
 
 1. **`PD-90` — enable `UpdatePasswordRequireCurrentPassword`.** Worth knowing *why* it is not
    optional: it is what actually closes the recovery hole `026` can only gate at the app's front
    door — GoTrue's `PUT /auth/v1/user` accepts a password change from any live session, measured.
 
-2. **`PD-92` — supply the T&C version string.** (`PD-86`'s deploy is **done** — 2026-08-11, see
-   below.)
+2. **`PD-86` — prove PROD's `SERVICE_ROLE_KEY` is PROD's key.** The deploy half closed on
+   2026-08-11 (both projects `ACTIVE`, identical `ezbr_sha256`); this half did not, and it is
+   narrow. Both PROD probes returned 401 at the `getUser` check, which runs *before* the admin
+   client is constructed, so neither reached the code a wrong key breaks. A wrong value fails at
+   `auth.admin.deleteUser` — **the first real deletion 500s**, in production, on the one flow that
+   cannot be retried. **Only one probe settles it**: a throwaway PROD account, created through the
+   app (PROD has email confirmation on, so it needs a real inbox) and deleted through the function.
 
-   - **`delete-account` is DEPLOYED to both projects and exercised on DEV.** `list_edge_functions`
-     returns it `ACTIVE`, `verify_jwt: true`, with **identical `ezbr_sha256` on both** — which is
-     the check worth repeating when a function is pasted into the dashboard twice rather than
-     pushed from one source. All five of task 2.6's cases pass on DEV, and case 3 was verified
-     against `auth.users` rather than against the response body: the rider named in the request
-     body survived, the caller did not. Cascade confirmed — 0 orphaned `profiles` rows.
+   **Every redeploy is an owner action too**, via the dashboard rather than the CLI — Edge
+   Functions → *Deploy a new function* → Via editor, secret under Project Settings → Edge
+   Functions. So an edit to `index.ts` is silent drift until someone repeats this. The CLI path
+   failed twice on things the dashboard cannot get wrong: it resolves
+   `supabase/functions/<name>/index.ts` relative to the **current directory**, and the secret and
+   the deploy were aimed at different project refs.
 
-     **The one thing still unproven, and it is narrow:** whether PROD's `SERVICE_ROLE_KEY` holds
-     PROD's key. Both PROD probes returned 401 at the `getUser` check, which runs *before* the
-     admin client is constructed, so they never reached that code path. A wrong value fails at
-     `auth.admin.deleteUser` — the first real deletion 500s. **Only one probe settles it**: a
-     throwaway PROD account, created through the app (PROD has email confirmation on, so it needs
-     a real inbox) and deleted through the function. Owner action.
+3. **`PD-92` — supply the T&C version string.**
 
-     Deploy is **via the dashboard**, not the CLI — Edge Functions → *Deploy a new function* →
-     Via editor, with the secret under Project Settings → Edge Functions. The CLI path failed
-     twice on things the dashboard cannot get wrong: it resolves
-     `supabase/functions/<name>/index.ts` relative to the **current directory**, and the secret
-     and the deploy were aimed at different project refs.
    - `030` stamps every new consent with `0-placeholder`, because `/legal/terms` is placeholder
      copy that disclaims being an agreement. **Replace it when the binding text lands** — one
      line in `private.current_terms_version()`, in a new migration. Consents already stamped
      keep the version they were given, which is the point of the column.
-3. **`PD-94` — sweep the orphaned Storage objects**, and note that **only the owner can**. Run
+4. **`PD-94` — sweep the orphaned Storage objects**, and note that **only the owner can**. Run
    2026-08-06 as `qa-verify`: *"0 object(s) in your folder, 0 referenced by a postcard. No
    orphans."* That settles nothing about the two objects (1.15 MB) the note refers to, because
    the sweeper signs in as a rider and `010`'s Storage policies scope it to
@@ -668,8 +663,10 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   enough. There is a second door of the same width in `leaveClub`, and the same shape via
   `setRideAttendance(rideId, null)`; both need a hand-rolled request, neither is reachable by
   tapping. **Read `openspec/changes/enforce-creator-membership/` rather than a summary here** — it
-  holds the mechanism, the negative cases and the three blocking questions, two of which are the
-  product owner's.
+  holds the mechanism and the negative cases. **All three blocking questions are answered**: Q3 by
+  measurement on 2026-08-06, Q1 and Q2 by the product owner on 2026-08-11 — both *no*, both the
+  proposal's own default, so the change builds as drafted. An owner leaving as a **transfer** is
+  deferred to `PD-194`, not folded in here.
 
   > **Recommendation** 8/10
   >
@@ -690,10 +687,10 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   > a rider who abandons a create loses the club entirely — a private orphan is on no list and
   > reachable from no screen, including its owner's. Rare, and total for whoever hits it
   >
-  > **This session** N
+  > **This session** Y
   >
-  > 3 blocking questions, two of them product-owner decisions (may an owner leave their own
-  > club? may an organizer leave their own crew?)
+  > nothing blocks it any more — the last two questions were answered on 2026-08-11, both as the
+  > drafted default, so `tasks.md` group 0 is clear down to 0.4
 
 - **Two riders deleting at the same moment can destroy a third rider's postcards.** `PD-175`, a
   sub-issue of `PD-102` because it sits inside the deletion deliverable. The narrow race that
@@ -728,8 +725,10 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
 
 - **Account deletion has a database half, a deployed function, and no flow.** `PD-102`. `029`–`032`
   are applied, and the Edge Function at `supabase/functions/delete-account/` is **deployed to both
-  projects and exercised on DEV as of 2026-08-11** — this line said "never been deployed or run"
-  until then. Nothing in `src/` calls it yet, deliberately: its own task list says a control ships
+  projects and exercised on DEV as of 2026-08-11** — `ACTIVE`, `verify_jwt: true`, identical
+  `ezbr_sha256`, all five of task 2.6's cases passing on DEV with case 3 checked against
+  `auth.users` rather than the response body, and 0 orphaned `profiles` rows after the cascade.
+  Nothing in `src/` calls it yet, deliberately: its own task list says a control ships
   working or it does not ship, and **that gate is now satisfied for DEV**, which is where group 3
   will be built and walked. **Store blocker 2** — App Store 5.1.1(v).
 

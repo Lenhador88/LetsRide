@@ -73,7 +73,8 @@ because `club_members` has no UPDATE policy.
   owner's membership row
 - **THEN** the delete SHALL succeed, because the guard binds `authenticated` only
 - **AND** this SHALL remain true so that account deletion can transfer a club rather than cascade
-  it, destroying other riders' postcards
+  it, destroying other riders' postcards — and so that a voluntary owner-leave, should one be
+  built (PD-194), needs no change to this rule
 
 #### Scenario: Existing orphans are repaired rather than left
 - **WHEN** the rule is applied to a database that already contains clubs with no owner-membership
