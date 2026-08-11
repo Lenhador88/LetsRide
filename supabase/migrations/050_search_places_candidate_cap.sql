@@ -18,12 +18,17 @@
 --
 --   | query                            | 039/049 predicted | measured  |
 --   |----------------------------------|-------------------|-----------|
---   | ten distinct substrings of one word | 5,914 ms       | 14.6 ms   |  <- 049 works
+--   | ten distinct substrings of one word | 5,914 ms       | 14.6 ms   |  <- see below
 --   | `straat`, no location            | ~2,957 ms         | 11,458 ms |
 --   | `straat`, near Amsterdam         | 29-152 ms         |  4,011 ms |
 --   | `Stationsplein Amsterdam`        | -                 |    330 ms |
 --
--- **Two of those are 4x and 25-130x worse than documented.** The synthetic bench
+-- **The first row is NOT like-for-like and the table cannot show it.** `049`
+-- REFUSES a term of more than eight distinct tokens, so 14.6 ms is the cost of a
+-- zero-row refusal rather than of a fast search. `049` closed that vector; it did
+-- not make it cheap to serve.
+--
+-- **The other two are 3.9x and 138x worse than documented.** The synthetic bench
 -- was well calibrated on SIZE — it predicted 162 MB heap against an actual 163 —
 -- and badly calibrated on TIME. Do not reuse its timings for anything.
 --
@@ -41,15 +46,22 @@
 -- ---------------------------------------------------------------------------
 -- §2  What changes: one cap, applied differently in each pass
 -- ---------------------------------------------------------------------------
--- Cost is dominated by per-candidate work, not by finding candidates: the
--- `ilike all (t.pats)` lateral that computes `named`, and `similarity()` on the
--- rows where it is true. Measured at ~74 microseconds per candidate row, which
--- is 7-9x the 8-11 us `039` assumed. Capping the candidate set is therefore
--- close to linear in effect:
+-- Scoring dominates: the `ilike all (t.pats)` lateral that computes `named`, and
+-- `similarity()` on the rows where it is true. Three measured points, and they do
+-- NOT support a single per-row constant — read them as a curve, not a rate:
 --
---   211,407 candidates -> 11,458 ms
---    20,000 candidates ->  1,813 ms
---     2,000 candidates ->    148 ms
+--   211,407 candidates -> 11,458 ms   (54.2 us/row)
+--    20,000 candidates ->  1,813 ms   (90.7 us/row)
+--     2,000 candidates ->    148 ms   (74.0 us/row)
+--
+-- A 1.7x spread, non-monotonic, so fitting a line through it is not honest —
+-- an earlier revision of this paragraph quoted "~74 us/row" from the third point
+-- alone and called the relationship "close to linear". Do not do that: a
+-- linear+fixed fit through the two smaller points predicts 19,555 ms at 211,407
+-- against 11,458 measured, and a NEGATIVE fixed cost. What the points do support
+-- is the only claim this file needs: **scoring 2,000 rows costs ~150 ms and
+-- scoring 211,407 costs ~11 s, so the cap is worth roughly two orders of
+-- magnitude.**
 --
 -- **`PLACE_CANDIDATE_CAP` = 2000**, chosen against that curve for ~150 ms. It is
 -- a typeahead: `PD-114`'s picker debounces at ~250 ms and fires per keystroke, so
@@ -60,10 +72,33 @@
 --   * **local** (a location was supplied) orders by distance BEFORE the cap, so
 --     the survivors are the 2,000 NEAREST matches rather than 2,000 arbitrary
 --     ones. `dist2` is two multiplications and an add — cheap enough to compute
---     for every bbox match, unlike `similarity()`. So the local pass keeps its
---     contract exactly: the nearest matching places, in order. **Nothing is lost
---     here** beyond the case where more than 2,000 matches sit closer than the
---     answer, which cannot happen — the answer is one of the nearest five.
+--     for every bbox match, unlike `similarity()`.
+--
+--     ** This is NOT lossless, and an earlier revision of this file claimed it
+--     was. ** The claim was that the answer is always among the nearest five, so
+--     nothing beyond the cap can win. That is false: the local ORDER BY is
+--     `mrank, score desc, dist2` — **distance is the THIRD key.** A place the
+--     query NAMES outranks a nearer place it merely locates, which is `039` §4's
+--     contract and `039.3` asserts it by name. So a named match sitting outside
+--     the 2,000 nearest is now unreachable where it previously won.
+--
+--     Measured, `search_places('straat', 52.3784, 4.9031)`: 35,813 bbox matches,
+--     and the pre-050 top five sat at distance ranks **8093, 16588, 31356, 32628
+--     and 33740** — every one beyond the cap. Result sets before and after share
+--     **zero** rows, and the place literally called `Straat` is gone.
+--
+--     **Why this is accepted rather than fixed.** It only fires on terms broad
+--     enough to fill the cap. Across twelve realistic meeting-point terms near
+--     Amsterdam — `shell`, `esso`, `bp`, `total`, `jumbo`, `mcdonald`, `cafe`,
+--     `tankstation`, `albert`, `parkeer` — **none reaches 2,000 bbox matches and
+--     none loses a row.** The losers are `straat` (5/5), `plein` (4/5), `dam`
+--     (3/5), `kerk` and `haven` (1/5): Dutch street-type suffixes, where the
+--     previous answer was already five arbitrary streets. For a meeting-point
+--     picker the nearby results are arguably the better ones.
+--
+--     **No fixture can catch a regression here**, because the suite's `places`
+--     rows number in the tens. That is why the caps are pinned structurally in
+--     `rls_test.sql` §050 rather than behaviourally.
 --
 --   * **national** has no meaningful pre-scoring order. `named` needs the
 --     lateral and `similarity()` needs `named`, so ordering before the cap would
@@ -259,7 +294,7 @@ as $fn$
 $fn$;
 
 comment on function public.search_places(text, double precision, double precision) is
-  'Meeting-point typeahead over public.places (037, widened by 039, bounded by 049 and 050). SECURITY INVOKER — the places SELECT policy governs it, there is nothing to re-check. Returns at most 5 rows: the design draws five. MATCHES name, brand, street and locality, PER TOKEN and ANDed: the term is split on whitespace and every token must appear somewhere in the row''s searchable text, so `Jumbo Maastricht` finds a Jumbo whose locality is Maastricht and adding a word always narrows. RANKS a place the query NAMES (every token in name or brand) above a place the query merely LOCATES; name matches are then ordered by trigram similarity and address-only matches by distance. Proximity still outranks both: matches within roughly 28 km fill the list first and the rest of the country fills only what is left — the escape hatch is to type the town. TWO REFUSALS, both returning ZERO ROWS rather than an error, so gate the input and do not render an empty state for either: the query must hold three consecutive alphanumerics, and it must carry at most EIGHT distinct tokens after case-insensitive deduplication (049). It matches PLACE_SEARCH_MAX_TOKENS in src/lib/data/places.ts, whose boundTerm() sends at most eight tokens joined by single spaces — ALWAYS, never the rider''s raw string. TWO CANDIDATE CAPS (050): each pass scores at most 2,000 candidate rows, which is what makes cost independent of how many rows a term matches. The LOCAL pass orders by distance BEFORE its cap, so it keeps its contract exactly — the nearest matching places, in order, with nothing lost. The NATIONAL pass has no useful pre-scoring order, so its 2,000 are ARBITRARY: a query matching more than 2,000 rows nationally with no location returns five plausible rows rather than the five best. That imprecision is confined to queries whose answers were already meaningless — a term matching 211,407 rows has no five best — and narrow queries are untouched. MEASURED ON REAL DATA 2026-08-11, 736,538 rows, as postgres with no timeout: `straat` was 11,458 ms before this file and matches 28.7% of the table; with a location it was 4,011 ms. Both are now bounded by the caps. DO NOT reuse the timings in 039 or in this comment''s earlier revisions: they came from a synthetic bench that was well calibrated on size and 4x to 130x optimistic on time. DEBOUNCE IT anyway — PD-114''s picker fires per keystroke and every intermediate prefix of a street name lands here. Supplying near_lat/near_lon still helps: it selects the local pass, whose cap preserves ordering. A function-level statement_timeout cannot bound any of this (measured: the timer is armed before the function is entered, so the SET is applied but inert).';
+  'Meeting-point typeahead over public.places (037, widened by 039, bounded by 049 and 050). SECURITY INVOKER — the places SELECT policy governs it, there is nothing to re-check. Returns at most 5 rows: the design draws five. MATCHES name, brand, street and locality, PER TOKEN and ANDed: the term is split on whitespace and every token must appear somewhere in the row''s searchable text, so `Jumbo Maastricht` finds a Jumbo whose locality is Maastricht and adding a word always narrows. RANKS a place the query NAMES (every token in name or brand) above a place the query merely LOCATES; name matches are then ordered by trigram similarity and address-only matches by distance. Proximity still outranks both: matches within roughly 28 km fill the list first and the rest of the country fills only what is left — the escape hatch is to type the town. TWO REFUSALS, both returning ZERO ROWS rather than an error, so gate the input and do not render an empty state for either: the query must hold three consecutive alphanumerics, and it must carry at most EIGHT distinct tokens after case-insensitive deduplication (049). It matches PLACE_SEARCH_MAX_TOKENS in src/lib/data/places.ts, whose boundTerm() sends at most eight tokens joined by single spaces — ALWAYS, never the rider''s raw string. TWO CANDIDATE CAPS (050): each pass SCORES at most 2,000 candidate rows. This bounds scoring, NOT candidate-finding — the cap sits after the bbox scan and the distance sort, so cost still rises with how many rows a term matches, just far more slowly: measured warm near Amsterdam, `kerkstraat` (567 matches) is 43 ms and `straat` (35,813) is 343 ms, an 8x spread across a 63x difference in matches. Do not read the caps as making cost constant. BOTH CAPS LOSE ROWS, including the local one. The local pass orders by distance before truncating, so its survivors are the nearest matches — but the ORDER BY is `mrank, score desc, dist2` and distance is the THIRD key, so a place the query NAMES sitting outside the 2,000 nearest is now unreachable where it previously won. Measured: `straat` near Amsterdam shares ZERO rows with its pre-050 result, and the place called `Straat` is gone. The national pass has no useful pre-scoring order at all, so its 2,000 are ARBITRARY and systematically biased toward heap order rather than randomly sampled. BOTH losses are confined to terms broad enough to fill the cap — Dutch street-type suffixes, where the previous answer was already five arbitrary streets. Twelve realistic meeting-point terms (`shell`, `esso`, `jumbo`, `mcdonald`, `cafe`, `tankstation`, `albert`, `parkeer` and others) lose NOTHING: none reaches 2,000 matches. MEASURED ON REAL DATA 2026-08-11, 736,538 rows, as postgres with no timeout: `straat` was 11,458 ms before this file and matches 28.7% of the table; with a location it was 4,011 ms. After: 117 ms and 311 ms. NOTE the local path is the slower of the two and is 343 ms warm / 1,364 ms COLD, which is ABOVE PD-114's ~250 ms debounce — the cap makes this survivable, not fast, and a cold cache on the broadest terms still misses that budget. DO NOT reuse the timings in 039: they came from a synthetic bench that was well calibrated on size and 3.9x to 138x optimistic on time. DEBOUNCE IT anyway — PD-114''s picker fires per keystroke and every intermediate prefix of a street name lands here. Supplying near_lat/near_lon still helps: it selects the local pass, whose cap preserves ordering. A function-level statement_timeout cannot bound any of this (measured: the timer is armed before the function is entered, so the SET is applied but inert).';
 
 -- Idempotent, and it means this file states its own privilege model instead of
 -- referring to one. `create or replace` preserved 037's, 039's and 049's ACL;

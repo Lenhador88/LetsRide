@@ -478,7 +478,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 49 files. DEV is at `049` and PROD is at `048` — they are NOT level, 2026-08-11.** Do not
+**Applied state: 50 files. DEV is at `050` and PROD is at `049` — they are NOT level, 2026-08-11.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 

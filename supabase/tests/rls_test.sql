@@ -6397,9 +6397,13 @@ select assert_eq(
 -- Structural as well as behavioural: the behavioural pair above depends on heap
 -- order matching insertion order, which is true here but is a property of the
 -- test rather than of the function. This names the thing itself.
+-- ** The alias is `c.` since 050, not `p.` ** — the scoring passes now read from
+-- the capped candidate CTEs rather than joining `public.places` directly. The
+-- needle is updated rather than deleted: it caught exactly this rewrite, which
+-- is what it is for.
 select assert_eq(
-  (select (prosrc like '%dist2 asc, p.id%')
-      and (prosrc like '%dist2 asc nulls last, p.id%')
+  (select (prosrc like '%dist2 asc, c.id%')
+      and (prosrc like '%dist2 asc nulls last, c.id%')
       and (prosrc like '%r.dist2 asc nulls last, r.id%')
      from pg_proc
     where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
@@ -7419,10 +7423,33 @@ select assert_eq(
 -- because the behavioural proof depends on heap order, which is a property of
 -- this transaction rather than of the function.
 select assert_eq(
-  (select (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc, p.id%')
-      and (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc nulls last, p.id%')
+  (select (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc, c.id%')
+      and (pg_temp.sp_code() like '%order by mrank, score desc, dist2 asc nulls last, c.id%')
       and (pg_temp.sp_code() like '%order by r.tier, r.mrank, r.score desc, r.dist2 asc nulls last, r.id%')),
   true, '039: all three ORDER BYs carry mrank AND still end in id — ordering stays total');
+
+-- --------------------------------------------------------------------------
+-- 050  The two candidate caps. STRUCTURAL ONLY, and that is not a shortcut.
+--
+-- A cap is a COST property, and cost is invisible to this suite: the fixtures
+-- are a handful of rows, so every query here is instant whether the caps exist
+-- or not. 039.4 set the precedent for asserting the shape when the behaviour
+-- cannot be reached.
+--
+-- Without these, the next `create or replace` drops both caps and nothing turns
+-- red — which is the failure the needles above just caught for 050 itself.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select (pg_temp.sp_code() like '%limit 2000%')),
+  true, '050: a candidate cap is present — cost is bounded by candidates scored, not by rows matched');
+
+-- The local cap orders by distance BEFORE truncating, so its survivors are the
+-- nearest matches. Drop this and the local pass keeps 2,000 arbitrary rows,
+-- which is a different function with the same row count — invisible here and
+-- catastrophic on 736k rows.
+select assert_eq(
+  (select (pg_temp.sp_code() like '%order by dist2%limit 2000%')),
+  true, '050: the local cap sorts by distance before truncating, not after');
 -- mrank sits AFTER tier in the pooled sort, not before: proximity remains the
 -- primary key. Reversing them is a change to 037 §5b rather than an addition.
 select assert_eq(

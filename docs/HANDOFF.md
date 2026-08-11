@@ -613,8 +613,8 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV 49 rows, ending search_places_token_cap · PROD 48, ending 048_membership_timestamps_server_owned
-ls supabase/migrations/ | wc -l          # 49
+#   DEV 50 rows, ending 050_search_places_candidate_cap · PROD 49, ending 049_search_places_token_cap
+ls supabase/migrations/ | wc -l          # 50
 ```
 
 **DEV's recorded statement for `049` is the reduced form** — the file's §1–§4 prose replaced by a
@@ -634,8 +634,10 @@ Read it before concluding either database has drifted.
 
 ## `places` — both projects hold the table, and zero rows
 
-**`places` exists on BOTH projects with 0 rows**, and an empty index is indistinguishable from a
-working search that finds nothing:
+**`places` is LOADED on DEV — 736,538 rows as of 2026-08-11 — and still 0 rows on PROD.** This line
+said both were empty until the load ran (`PD-195`). An empty index is indistinguishable from a
+working search that finds nothing, so check rather than assume, and note the two projects now
+differ:
 
 ```bash
 # via the Supabase MCP: execute_sql -> select count(*) from public.places;
