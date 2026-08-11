@@ -29,6 +29,34 @@ export default function PrivacyPage() {
         Do not treat this page as a privacy notice. It exists so the signup checkbox has a
         real destination, and must be replaced before the app accepts real users.
       </p>
+
+      <h2 className="text-base font-semibold pt-4">Who processes your data</h2>
+      <p className="text-muted">
+        This list is factual and current. It is the one part of this page that is not a
+        placeholder, and it is kept accurate as processors are added.
+      </p>
+      <ul className="text-muted list-disc pl-5 space-y-2">
+        <li>
+          <span className="font-medium">Supabase</span> — hosts the database, your account and
+          sign-in, uploaded photos, and the emails sent to confirm your address or reset your
+          password. Everything you enter in the app is stored here.
+        </li>
+        <li>
+          <span className="font-medium">Vercel</span> — serves the app itself. It receives the
+          usual request data a web host sees, including your IP address.
+        </li>
+        <li>
+          <span className="font-medium">Geoapify</span> — turns a ride&rsquo;s meeting point into
+          map coordinates and renders the map image shown on a ride. When you create or edit a
+          ride, the meeting point you typed is sent to Geoapify for this purpose.{' '}
+          <span className="font-medium">
+            A meeting point is often a home address, so treat it as one.
+          </span>{' '}
+          The resulting coordinates and map image are stored by us; your device never contacts
+          Geoapify directly. This processing begins when ride maps are switched on and does not
+          happen before then.
+        </li>
+      </ul>
       <p className="text-muted">
         <Link href="/legal/account-deletion" className="underline">
           How to delete your account

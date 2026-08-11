@@ -26,16 +26,30 @@
   which is true of writes and **false of reads** — the instrument this change needs already exists
   and must be copied from a SELECT policy, never from an INSERT one.
 
-- [ ] 0.2 **Q1 — product owner, BLOCKING task 6.** What exact attribution string does Geoapify's
-  current plan require, and does the underlying data carry a second obligation? Default while
-  unanswered: **build the tile pipeline and do not render either tile** — paths stay NULL, both
-  screens keep today's fallback, and nothing ships that could breach a licence. Note this repo
-  already carries **one** unresolved attribution question (`places` / Overture); they are separate
-  vendors and neither answer covers the other.
-- [ ] 0.3 **Q2 — designer, BLOCKING task 6.2 only.** Where does the credit sit on the 80×148 strip?
-  Default: a 14px bar across the bottom, `Grey/70%` scrim, `Poppins/10/Medium` in `White/100`,
-  leaving 80×134 of map. If the answer is that it cannot be made legible, the strip renders no tile
-  — that is the specified negative case, not a failure.
+- [x] 0.2 **Q1 — product owner, BLOCKING task 6. ANSWERED 2026-08-11, from vendor documentation
+  via web search — NOT from the primary terms, which stay egress-blocked. Treat as strong
+  indication, not as the licence.** Two obligations, and they are separate:
+
+  1. **The free plan requires the string** `Powered by <a href="https://www.geoapify.com/">Geoapify</a>`.
+     Paid plans carry a "White label" option that removes it.
+  2. **The Static Maps API burns the map-style attribution into the returned PNG by default**, in
+     the bottom-right corner. That covers the underlying data credit *for free* — the obligation
+     to render it ourselves arises only if we suppress the built-in one. **So do not suppress it.**
+
+  This repo still carries **one** unresolved attribution question (`places` / Overture); it is a
+  separate vendor and neither answer covers the other.
+- [x] 0.3 **Q2 — designer, BLOCKING task 6.2 only. DECIDED 2026-08-11 by the product owner:
+  "do according to Figma… just make the most reasonable choice for now, we can modify/move later."**
+
+  The design carries no credit area on the 80×148 strip, and 0.2 shows it does not need one: the
+  PNG arrives with the style attribution already burned in. So **the strip renders the tile as
+  designed, with no scrim bar and no added text** — the earlier 14px-bar default is dropped, not
+  implemented.
+
+  The plan-level `Powered by Geoapify` credit is a different obligation and needs a home. Put it
+  **once on the ride detail panel**, not on every card in a scrolling list — one visible credit per
+  screen discharges it and N copies is just noise. Revisit if the burned-in credit proves
+  illegible at 80×148; that is a rendering observation and cannot be made until task 6 runs.
 - [ ] 0.4 **Q3 — product owner, non-blocking.** Render ceiling per ride. Default: **10 render
   attempts per ride per rolling 24 hours**, enforced by the append-only ledger in task 1.4. High
   enough that no honest organizer meets it, low enough to bound a loop. The window is genuinely
@@ -49,11 +63,35 @@
 - [ ] 0.7 **Q6 — product owner / OWNER ACTION, non-blocking for the build.** The privacy policy must
   name Geoapify as a processor before real meeting points are geocoded, since `meeting_point` is
   frequently a home address. Label `Owner only` in Linear.
-- [ ] 0.8 **Verify the vendor's response shape before `042` hardcodes a floor.** `rank.confidence`
-  and the match-type vocabulary in `design.md` §D3 are **inferred, not measured** — this container
-  has no egress to the vendor's docs. Capture one real geocode response and confirm the field
-  names, the score range and the granularity values. If they differ, `design.md` §D3 is wrong and
-  the migration must not be written from it.
+- [ ] 0.8 **Verify the vendor's response shape before `042` hardcodes a floor. PARTIALLY ANSWERED
+  2026-08-11 — read the fidelity note before writing the CHECK.**
+
+  **What is now known, from vendor documentation via web search.** `*.geoapify.com` is egress-blocked
+  (all hosts return `000`, a connection failure with no HTTP status; `WebFetch` returns an explicit
+  `EGRESS_BLOCKED`), so this is a **summary of the docs, not a response anyone captured**. It is a
+  real upgrade on §D3, which was written from prior knowledge alone — but it is one tier below the
+  raw JSON this task asks for, and it is labelled that way deliberately.
+
+  | Field | Finding |
+  |---|---|
+  | `rank.confidence` | **Range 0–1**, not 0–100. Documented examples: `0.675`, `1`. **So §D3's `>= 0.70` floor is on the right scale.** |
+  | `rank.match_type` | Vocabulary: `full_match`, `fuzzy_match`, `partial`, `inner_part` |
+  | `rank.confidence_street_level` | Separate field — "indicates if the street is correct" |
+  | `rank.confidence_city_level` | Separate field — "indicates if the city is correct" |
+  | `rank.confidence_building_level` | Separate field — "indicates if the building position is correct" |
+
+  **This changes the granularity gate for the better, and task 1.1 should take it.** §D3 gates on a
+  match-type vocabulary; the three `confidence_*_level` fields express granularity directly, so the
+  gate should read `confidence_street_level` rather than parse `match_type` strings. A vocabulary
+  can gain a member in a vendor release and silently fall through a whitelist; a numeric level
+  cannot.
+
+  **What is still NOT measured, and what task 1.1 must still do.** Whether the `confidence_*_level`
+  fields are 0–1 floats or 0/1 flags — the documentation describes them as "indicates if", which
+  reads boolean, while the examples show `1`. **Do not write a threshold against them until a real
+  response settles it**; gate on `= 1` or `>= 0.70` only once their type is known. The `>= 0.70 AND
+  <= 1.0` fail-closed CHECK on `rank.confidence` is now belt-and-braces rather than the only
+  defence, and is cheap enough to keep regardless.
 
 ## 1. `042` — the migration (purely additive, safe to apply first)
 
