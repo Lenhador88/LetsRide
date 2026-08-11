@@ -53,8 +53,24 @@
 
   This repo still carries **one** unresolved attribution question (`places` / Overture); it is a
   separate vendor and neither answer covers the other.
-- [ ] 0.2b **NEW, raised by the primary terms — two claims this change rests on that the Terms do
-  NOT support. Neither blocks writing code; both block real riders.**
+- [x] 0.2b **Raised by the primary terms; DECIDED by the product owner 2026-08-11: "let's just
+  store the images for now… we will check that better when we start having users on the app."**
+
+  **Proceed with render-once-and-store as designed.** The exposure is bounded and the reasoning is
+  sound: `places` aside, this app has **4 accounts on PROD and no riders**, so there is no volume of
+  stored tiles to unwind and no production usage to be out of compliance on. The residual questions
+  are filed as their own story rather than held here.
+
+  **What the measured response adds, and it materially improves the position on item 1:** every
+  feature carries `datasource.license` = **`Open Database License`** with
+  `attribution` = `© OpenStreetMap contributors`. So the *geocoding* results are ODbL — a licence
+  that does permit storage and redistribution, with attribution, rather than a vendor clause that
+  has to be found. That is a stronger footing than the Terms' silence, and it is per-result rather
+  than inferred. **It does not cover the rendered PNG**, which is the Static Maps product and may
+  carry different underlying sources.
+
+  Items 1 and 2 below are retained verbatim as the record of what was decided against, not as open
+  work. **Item 3 stays genuinely open** and is the one to carry into the story.
 
   1. **There is no caching or storage clause in the Terms, in either direction.** `PD-164` §3 is
      recorded as having *"confirmed in the primary terms"* that we may store the rendered PNG
@@ -71,7 +87,9 @@
      phase. Please contact us for details."* The limits are not stated anywhere in the Terms, and
      this app is heading for production with real riders. **Owner action: email info@geoapify.com
      and get the production limits in writing**, or price the paid plan. Note the paid plan does
-     not remove obligation 1 above.
+     not remove obligation 1 above. **Plan CONFIRMED 2026-08-11: Free.** So `0.2` obligation 2 (the
+     `Powered by Geoapify` credit) does apply and needs a home, and these undocumented production
+     limits are live rather than hypothetical.
   3. **What Geoapify retains of a submitted address is still unread.** The Terms delegate this
      entirely — *"Please read Privacy Policy for information about Geoapify's privacy and data
      protection practices"* — so the third question this task set is answered by
@@ -117,35 +135,76 @@
 - [ ] 0.7 **Q6 — product owner / OWNER ACTION, non-blocking for the build.** The privacy policy must
   name Geoapify as a processor before real meeting points are geocoded, since `meeting_point` is
   frequently a home address. Label `Owner only` in Linear.
-- [ ] 0.8 **Verify the vendor's response shape before `042` hardcodes a floor. PARTIALLY ANSWERED
-  2026-08-11 — read the fidelity note before writing the CHECK.**
+- [x] 0.8 **Verify the vendor's response shape before the migration hardcodes a floor. MEASURED
+  2026-08-11 against a real response** (`Stationsplein 1, Amsterdam`), supplied by the product
+  owner. This closes the task and **contradicts `design.md` §D3 in two places.**
 
-  **What is now known, from vendor documentation via web search.** `*.geoapify.com` is egress-blocked
-  (all hosts return `000`, a connection failure with no HTTP status; `WebFetch` returns an explicit
-  `EGRESS_BLOCKED`), so this is a **summary of the docs, not a response anyone captured**. It is a
-  real upgrade on §D3, which was written from prior knowledge alone — but it is one tier below the
-  raw JSON this task asks for, and it is labelled that way deliberately.
+  ### What the response actually carries
 
-  | Field | Finding |
-  |---|---|
-  | `rank.confidence` | **Range 0–1**, not 0–100. Documented examples: `0.675`, `1`. **So §D3's `>= 0.70` floor is on the right scale.** |
-  | `rank.match_type` | Vocabulary: `full_match`, `fuzzy_match`, `partial`, `inner_part` |
-  | `rank.confidence_street_level` | Separate field — "indicates if the street is correct" |
-  | `rank.confidence_city_level` | Separate field — "indicates if the city is correct" |
-  | `rank.confidence_building_level` | Separate field — "indicates if the building position is correct" |
+  | Path | Value seen | Note |
+  |---|---|---|
+  | `properties.rank.confidence` | `1` | **0–1 confirmed.** The `>= 0.70` floor is on the right scale |
+  | `properties.rank.confidence_street_level` | `1` | present, as documented |
+  | `properties.rank.confidence_city_level` | `1` | present |
+  | `properties.rank.confidence_building_level` | `1` | present |
+  | `properties.rank.match_type` | `full_match` | describes **how the query matched** |
+  | `properties.rank.importance` | `0.00008268` | not a quality score — do not gate on it |
+  | `properties.rank.popularity` | `8.995` | ~0–10, not 0–1 |
+  | `properties.result_type` | `building` | **the granularity field, and it is NOT inside `rank`** |
+  | `properties.lat` / `.lon` | `52.3784733` / `4.9031499` | top level of `properties`, not only in `geometry` |
+  | `properties.datasource.license` | `Open Database License` | see 0.8b |
+  | `properties.datasource.attribution` | `© OpenStreetMap contributors` | the exact string to render |
+  | `properties.timezone.name` | `Europe/Brussels` | see 0.8c |
 
-  **This changes the granularity gate for the better, and task 1.1 should take it.** §D3 gates on a
-  match-type vocabulary; the three `confidence_*_level` fields express granularity directly, so the
-  gate should read `confidence_street_level` rather than parse `match_type` strings. A vocabulary
-  can gain a member in a vendor release and silently fall through a whitelist; a numeric level
-  cannot.
+  **§D3 error 1 — the granularity gate reads the wrong field.** §D3 gates on a `match_type`
+  vocabulary. `match_type` says how the *query* matched; `properties.result_type` says what kind of
+  thing came back (`building` here). **The street-level gate must read `result_type`**, with
+  `rank.confidence_street_level` as the corroborating signal. Gating on `match_type` would accept a
+  `full_match` on a city.
 
-  **What is still NOT measured, and what task 1.1 must still do.** Whether the `confidence_*_level`
-  fields are 0–1 floats or 0/1 flags — the documentation describes them as "indicates if", which
-  reads boolean, while the examples show `1`. **Do not write a threshold against them until a real
-  response settles it**; gate on `= 1` or `>= 0.70` only once their type is known. The `>= 0.70 AND
-  <= 1.0` fail-closed CHECK on `rank.confidence` is now belt-and-braces rather than the only
-  defence, and is cheap enough to keep regardless.
+  **§D3 error 2 — and this one is the reason this task existed.** See 0.8b.
+
+- [ ] 0.8b **BLOCKING task 1 and task 5. A confidence floor cannot do the job §D3 gives it, and
+  the measured response proves it rather than suggesting it.**
+
+  The query `Stationsplein 1, Amsterdam` returned **two features**:
+
+  | # | Formatted | `confidence` | `confidence_building_level` | `match_type` |
+  |---|---|---|---|---|
+  | 1 | Stationsplein 1, 1012 AB **Amsterdam** | `1` | `1` | `full_match` |
+  | 2 | Stationsplein 1, 1382 AD **Weesp** | `1` | `1` | `full_match` |
+
+  **They are 12.2 km apart and both are maximally confident.** Weesp merged into the Amsterdam
+  *municipality* in 2022, so feature 2 carries `municipality: Amsterdam` and is a legitimate
+  full-confidence match for the typed text.
+
+  **Every gate this change specifies passes both of them.** `confidence >= 0.70`: both. Street-level
+  granularity: both. Fail-closed `<= 1.0` upper arm: both. A pipeline that takes `features[0]`
+  silently sends a rider 12.2 km wrong **with the highest possible confidence score attached**, and
+  the stored coordinate then looks exactly like a good one.
+
+  This is the same failure `PD-149` describes for the picker (*a nearby street can crowd out a
+  famous landmark of the same name*) and the one this issue's own history called *"a guess that can
+  centre the tile on the wrong Shell station"*. It was assumed to be a low-confidence problem. **It
+  is not — it is an ambiguity problem, and confidence is silent on ambiguity.**
+
+  **Required change before the migration is written:** the gate must reject on *ambiguity* as well
+  as on confidence. Minimum viable rule — **if more than one returned feature ties at the top
+  `confidence`, resolve nothing**: leave the coordinate NULL and fall back to today's text panel.
+  That is the same fail-closed direction the rest of this change takes, and it is cheap. Do not
+  break the tie on `importance` or `popularity`; both are vendor-relevance signals, neither knows
+  which town the rider meant.
+
+  Note this makes the coupling CHECK a weaker line of defence than §D3 assumed, and moves the real
+  work into the Edge Function. Task 1.1 must state that explicitly rather than implying the CHECK
+  bounds correctness.
+
+- [ ] 0.8c **Non-blocking, and it belongs to a different story — file it, do not build it here.**
+  The response carries `properties.timezone.name` = `Europe/Brussels`. `CLAUDE.md` §Technology
+  Decisions records ride times pinned to `APP_TIME_ZONE` as *"a documented interim"* whose correct
+  model is *"wall-clock at the meeting point, which needs a zone column on `rides`"* — and this is
+  exactly that zone, arriving free with a geocode we are already making. Worth a story; out of
+  scope here.
 
 ## 1. `042` — the migration (purely additive, safe to apply first)
 
