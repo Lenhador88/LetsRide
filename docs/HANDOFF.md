@@ -614,6 +614,15 @@ free tier's CPU. Applying it afterwards would have opened exactly that window.
 
 Neither file changes a table, policy, column or index; both replace one function body.
 
+**PROD's DATABASE is now ahead of `main`, and that is safe for one reason worth stating here
+rather than 70 lines down.** `049` and `050` exist only on `development` until the next
+promotion, so a replay from `main` would produce `048` against a database running `050`. The
+usual argument — "the deployed client already truncates to the same eight tokens" — is *not* what
+makes this safe, and it was deleted from this section because its premise (`places` holds 0 rows)
+is now false. What makes it safe: **both files only ever narrow or bound `search_places`, and
+nothing in `src/` renders a place result at all**, so no deployed code path can observe either
+version. Promote normally; do not read the inversion as a reason to hold.
+
 `041`–`046` were applied to PROD on 2026-08-10, on the owner's instruction, in strict filename
 order with each digest checked against its file; `047` and `048` followed the same day, DEV first
 and PROD after the review pass. The security advisors agreed nine-for-nine across both databases
@@ -643,8 +652,11 @@ actually lands.`, absent from the national-pass block — plus a differing funct
 comment-only, so nothing a rider could observe, and precisely the kind of nothing that makes a
 digest check useless if left. Reconciled the same day by re-issuing `create or replace` and
 `comment on` against DEV **through `execute_sql`, not `apply_migration`**: the ledger already
-carries a `050` row, and a second one is drift of a worse kind than the one being fixed. Both
-projects now agree, so this is a check that works rather than a check that always disagrees:
+carries a `050` row, and a second one is drift of a worse kind than the one being fixed. The
+cost of that choice — DEV's ledger can no longer reproduce DEV's object — is catalogued where
+this repo keeps such things, [`docs/reference/migrations.md`](docs/reference/migrations.md)
+§What reads as drift, rather than only here. Both projects now agree, so this is a check that
+works rather than one that always disagrees:
 
 ```sql
 -- expect identical digests on both refs, and both equal to the repo file's $fn$ block
@@ -678,19 +690,37 @@ past the 8 s statement timeout `authenticated` runs under, so loading first woul
 rider getting an error having burned the timeout's worth of a free tier's CPU. Both PROD figures
 sit slightly under DEV's 117 ms / 311 ms.
 
+**Every number above is WARM, and cold is an order of magnitude worse.** Re-measured on PROD:
+the first near-Amsterdam call after an idle period was **1,996 ms** and the first national
+`EXPLAIN ANALYZE` **322 ms**, settling to 80–86 ms and 209–212 ms once the cache was hot. Still
+comfortably inside the 8 s timeout — `050` does its job either way — but on a free tier holding a
+337 MB table, cold reads are the routine case rather than the exception, and PD-114's ~250 ms
+debounce budget is not met cold. Quote the warm figures only beside this sentence.
+
 **No screen renders a place yet, which is why loading rows was safe while attribution is open.**
 `grep -rn "searchPlaces" src/ --include=*.tsx` is 0 — `getLocalityCentroid` is reachable only from
 `src/lib/location/rider-location.ts`, and nothing renders a result. The workflow's own PROD gate
 draws exactly this line: *"Loading rows is safe; rendering one is not."* Settle the credit string
 (`scripts/places/README.md` §Attribution) before the first screen ships, not before the next load.
 
+**That line covers ATTRIBUTION and may not cover STORAGE — flagged 2026-08-11, unanswered.** The
+credit question is about display, and "we display nothing" answers it. But several of the named
+sources — Foursquare, Microsoft, Meta, PinMeTo, DAC, Krick — commonly attach terms to *storage and
+derived works* rather than only to display, and those terms are still unread because their hosts
+are egress-blocked. This load moved 736,538 rows of them into **production**, which is a different
+posture from DEV. Nothing here asserts a breach; the point is that `PD-191` as written answers
+only the rendering half, so **do not read "nothing renders a place" as clearing the whole
+question.** Owner's call, and it wants the terms read before it can be answered either way.
+
 **Both secrets are set and both have now been used.** `.github/workflows/places-load.yml`
 (Actions → Load places index) runs the extractor and `scripts/places/load.sql` on a runner, which
 has the Postgres egress no session does. `PLACES_DEV_DATABASE_URL` / `PLACES_PROD_DATABASE_URL`
 are the Supabase **session pooler** strings, because GitHub runners have no IPv6 and the direct
 host needs the IPv4 add-on. A PROD run additionally needs `confirm=load-prod` typed by hand.
-Whole run: **2m35s**, of which the extract is 16 s — do not expect the ~15 minutes the earlier
-local timing suggested.
+Whole run: **2m35s**, of which the extract is 16 s. The local run measured 54 s — see
+`scripts/places/README.md` §What it costs. The "~15 minutes" that used to sit in
+`places-load.yml`'s pre-flight comment was never measured anywhere, and has been replaced rather
+than annotated.
 
 **Scope those secrets to the `places-dev` / `places-prod` environments rather than to the
 repository, and put a deployment branch policy on `places-prod`.** The job declares
