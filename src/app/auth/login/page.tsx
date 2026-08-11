@@ -1,37 +1,68 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState } from 'react'
 import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { signIn } from '@/lib/actions/auth'
 import { useActionRedirect } from '@/lib/actions/navigate'
-import { emptyActionState } from '@/lib/actions/state'
+import { emptyActionState, type ActionState } from '@/lib/actions/state'
+
+/** `signIn`'s state plus the address the last submit actually carried. */
+type LoginFormState = ActionState & { email: string }
+
+const initialState: LoginFormState = { ...emptyActionState, email: '' }
 
 /**
- * **The email field is controlled, and that is what keeps it filled after a
- * refused sign-in (PD-196).**
+ * **A refused sign-in must leave the email in the field (PD-196), and the form
+ * puts it back rather than trying to stop React taking it away.**
  *
- * React resets a `<form action={fn}>` once the action resolves — literally
- * `form.reset()` in the commit phase — so every *uncontrolled* field reverts to
- * its `defaultValue`, which here is the empty string. A rider who mistyped
- * their password got a form with no email in it either, and had to retype an
- * address the app had just been told. Nothing in this repo cleared it; the
- * framework did, on the success path and the failure path alike, because it
- * cannot know which one this was.
+ * React resets a `<form action={fn}>` once the action resolves — `form.reset()`
+ * in the commit phase — so every *uncontrolled* field reverts to its
+ * `defaultValue`. That runs on the failure path as well as the success one,
+ * because React cannot know which one it was, and the email's `defaultValue`
+ * was the empty string. A rider who mistyped their password had to retype an
+ * address the app had just been handed.
  *
- * A controlled input is React's own escape hatch rather than a trick: it keeps
- * the DOM node's `defaultValue` in sync with the `value` prop on every update,
- * so the reset restores the value that is already there.
+ * **So the reset is aimed rather than fought**: the wrapper below records what
+ * `formData` actually carried, and that becomes the field's `defaultValue` — so
+ * `form.reset()` restores the submitted address instead of erasing it.
  *
- * **The password is left uncontrolled on purpose** — it is the field that was
+ * ## Why not simply make the field controlled
+ *
+ * That is React's documented escape hatch, it fixes the typed case, and it was
+ * this fix's first shape. **It breaks the rider this story is about.** A
+ * password manager fills the field by assigning the DOM value; if that fill
+ * lands before hydration — or dispatches no `input` event React is listening
+ * for — `useState('')` never learns about it, and `updateInput` compares its
+ * prop against the *live DOM value* and overwrites it on the next render. The
+ * `pending` flip from `useActionState` is that render, so the field empties on
+ * click, one submit earlier than the bug being fixed. Measured in Chromium
+ * against DEV, not reasoned about: a value assigned with no `input` event is
+ * gone by the time the refusal is drawn.
+ *
+ * `defaultValue` has no such failure. React writes an uncontrolled input's
+ * value only during the reset, and `formData` is read from the DOM at submit
+ * time — so whatever put the address there, typing or autofill, is what comes
+ * back.
+ *
+ * **The password is deliberately left out of this.** It is the field that was
  * wrong, clearing it is what every other sign-in form does, and a rejected
  * password sitting in the box invites a second identical submit.
  */
 export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(signIn, emptyActionState)
-  const [email, setEmail] = useState('')
+  // A wrapper rather than a change to `signIn`: the action is a plain async
+  // function that a test and an event handler call the same way, and what the
+  // form needs to redraw itself is this screen's business, not the mutation's.
+  // `/onboarding/username` carries its refusal list the same way.
+  const [state, formAction, pending] = useActionState<LoginFormState, FormData>(
+    async (previous, formData) => ({
+      ...(await signIn(previous, formData)),
+      email: String(formData.get('email') ?? ''),
+    }),
+    initialState
+  )
   useActionRedirect(state)
 
   return (
@@ -51,8 +82,7 @@ export default function LoginPage() {
             label="Email"
             autoComplete="email"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            defaultValue={state.email}
           />
           <Input
             name="password"

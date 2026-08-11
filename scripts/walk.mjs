@@ -21,7 +21,8 @@
  * screen, or as a redirect, an error boundary, or an empty body — and nothing
  * about what the screen then does.
  *
- * The named phases at the end are the exception, and they are named
+ * The named phases are the exception — refused sign-in before the walk,
+ * client-side navigation, the route guard and sign-out after it. They are named
  * individually rather than covered by a general claim: each exists because a
  * specific defect is invisible to every other gate in this repo, and each
  * asserts exactly that one behaviour. Adding a phase means adding a reason, not
@@ -72,7 +73,7 @@
  * HTTPS_PROXY, so the relay itself cannot reach Supabase without it.
  *
  * Pass paths as arguments to walk a subset — that skips the refused-sign-in,
- * guard and sign-out phases, which need the full run.
+ * navigation, guard and sign-out phases, which need the full run.
  */
 import { chromium } from 'playwright-core'
 
@@ -164,28 +165,83 @@ page.on('response', (r) => {
 })
 
 /** How many assertions `checkRefusedSignIn` makes, for the summary line. */
-const REFUSED_SIGN_IN_CHECKS = 3
+const REFUSED_SIGN_IN_CHECKS = 5
+
+/**
+ * A literal, so it cannot depend on `WALK_PASSWORD`'s length. The obvious
+ * `${PASSWORD}-wrong` is wrong in the string and not in the check: GoTrue
+ * hashes with bcrypt, which **truncates its input at 72 bytes**, so a long
+ * enough walk password makes the extension hash identically and the sign-in
+ * succeed — and this phase then leaves a signed-in browser for the real
+ * sign-in below to fail on with a selector timeout rather than a message.
+ */
+const WRONG_PASSWORD = 'not-the-password-PD-196'
 
 /**
  * A refused sign-in must leave the email in the field — PD-196.
  *
  * React resets a `<form action={fn}>` once the action resolves, so every
  * uncontrolled field in it reverts to its `defaultValue` on the failure path as
- * well as the success one. The login form's email field was uncontrolled, and a
- * rider who mistyped their password had to retype their address too.
+ * well as the success one. A rider who mistyped their password had to retype
+ * their address too.
  *
  * **This is the only gate in the repo that can see it.** `tsc`, ESLint, Vitest
  * and `next build` all stay green through it, and the pure-function tests that
- * cover the guard have no DOM to reset. The regression is one prop wide: delete
- * `value`/`onChange` from that `<Input>` and the framework starts clearing the
- * field again, silently.
+ * cover the guard have no DOM to reset.
  *
- * **The error assertion is what makes the email assertion mean anything.** An
- * empty field and a submit that never happened look identical from here, so a
- * check that only read the email back would pass on a form whose button had
- * stopped working. `role="alert"` on screen proves the action ran and was
- * refused; the retained email is only then a statement about the reset.
+ * **The refusal assertion is what makes the email assertion mean anything.** A
+ * submit that never happened leaves the email in place too, so a check that
+ * only read the field back would pass on a form whose button had stopped
+ * working. Each attempt therefore asserts its own refusal before its email.
+ *
+ * **Both attempts exist because they fail differently, and the second is the
+ * one a rider is likelier to hit.** A password manager fills the field by
+ * assigning the DOM value; a fill that lands before hydration, or dispatches no
+ * `input` event, is invisible to React. Anything that keeps the address in
+ * component state is therefore holding `''` while the box shows an address —
+ * and React overwrites the box from its own state on the next render. Seeding
+ * with `page.fill` cannot see that: it always dispatches the event, so the
+ * typed case passes on a build where every autofilling rider loses their email.
  */
+const WROTE_WITHOUT_EVENT = (el, v) => {
+  el.value = v
+}
+
+/**
+ * One refused attempt. `seed` decides how the address gets into the field,
+ * which is the whole variable between the two cases.
+ */
+async function refusedAttempt(seed) {
+  await page.goto(`${BASE}/auth/login`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('input[name="email"]')
+  await seed()
+  await page.fill('input[name="password"]', WRONG_PASSWORD)
+  await page.click('button[type="submit"]')
+
+  // **Wait for alert *text*, not for an `[role="alert"]` node.** The page
+  // carries a permanently-empty one, so presence is true before the submit even
+  // starts and `page.textContent` can return that one instead of the refusal.
+  // A fixed sleep is wrong here for a second reason: unlike every other wait in
+  // this file it spans a round trip to eu-west-1 and GoTrue's deliberately slow
+  // bcrypt compare, so it would redden a correct build on a slow network.
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('[role="alert"]')].some((n) => n.textContent.trim().length),
+      null,
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
+
+  return {
+    refusal: (
+      await page.$$eval('[role="alert"]', (ns) => ns.map((n) => n.textContent.trim()).filter(Boolean))
+    ).join(' | '),
+    landed: new URL(page.url()).pathname,
+    email: await page.inputValue('input[name="email"]'),
+  }
+}
+
 async function checkRefusedSignIn() {
   let bad = 0
   const report = (ok, label, detail) => {
@@ -194,25 +250,20 @@ async function checkRefusedSignIn() {
   }
 
   console.log('\nrefused sign-in:')
-  await page.goto(`${BASE}/auth/login`, { waitUntil: 'domcontentloaded' })
-  await page.fill('input[name="email"]', EMAIL)
-  // Wrong by construction rather than by choice — only one password is the
-  // account's, so a strict extension of it cannot also be.
-  await page.fill('input[name="password"]', `${PASSWORD}-wrong`)
-  await page.click('button[type="submit"]')
-  await page.waitForTimeout(2500)
 
-  const error = await page.textContent('[role="alert"]').catch(() => null)
-  report(Boolean(error), 'the refusal is reported', 'no [role="alert"] on screen')
-  report(
-    new URL(page.url()).pathname === '/auth/login',
-    'the rider stays on /auth/login',
-    `landed on ${new URL(page.url()).pathname}`
+  const typed = await refusedAttempt(() => page.fill('input[name="email"]', EMAIL))
+  report(Boolean(typed.refusal), 'typed: the refusal is reported', 'no alert text on screen')
+  report(typed.landed === '/auth/login', 'typed: the rider stays on /auth/login', `landed on ${typed.landed}`)
+  report(typed.email === EMAIL, 'typed: the email survives it', 'the field was cleared — see PD-196')
+
+  const filled = await refusedAttempt(() =>
+    page.$eval('input[name="email"]', WROTE_WITHOUT_EVENT, EMAIL)
   )
+  report(Boolean(filled.refusal), 'autofilled: the refusal is reported', 'no alert text on screen')
   report(
-    (await page.inputValue('input[name="email"]')) === EMAIL,
-    'the email survives the refusal',
-    'the field was cleared — see PD-196'
+    filled.email === EMAIL,
+    'autofilled: the email survives it',
+    'the field was cleared — a fill React never saw cannot be held in component state'
   )
 
   return bad
