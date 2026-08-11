@@ -104,12 +104,15 @@ meeting point. A rider who trusts that tile rides to a town centre. Today's scre
 rider's own words and are never wrong, so a wrong tile is a **regression** in a way an absent tile
 is not.
 
-Hence two parts, and the second is doing most of the work:
+Hence **three** parts, and the numeric floor is the weakest of them:
 
-- **Granularity gate** — street-level or better. A city, district or region match is rejected
-  outright whatever its score, because a numeric score cannot express "confident about the wrong
-  question".
-- **Numeric floor `0.70`** applied after the gate, on the provider's confidence rank.
+- **Ambiguity gate** — if more than one candidate ties at the highest `confidence` in the response,
+  resolve nothing. **Added 2026-08-11 after a measured response showed the other two gates do not
+  catch it**; see *What was measured* below.
+- **Granularity gate** — street-level or better, read from the **result type**. A city, district or
+  region match is rejected outright whatever its score, because a numeric score cannot express
+  "confident about the wrong question".
+- **Numeric floor `0.70`** applied after both gates, on the provider's confidence rank.
 
 `0.70` is **chosen, not measured** — it is a starting value, deliberately conservative, and the
 owner may move it once there is a corpus of real meeting points to score against. The gate should
@@ -120,10 +123,50 @@ and the vocabulary is the vendor's to change. The row stores the numeric confide
 enforces the coupling and the floor, and the gate lives in the function. The spec says so rather
 than implying the database is holding a line it is not.
 
-**The field names are inferred, not measured.** The container has no egress to the vendor's
-documentation, so `rank.confidence` and the match-type vocabulary are written from prior knowledge.
-Task 1.1 verifies them against a live response **before** `042` hardcodes a floor, and the
-migration must not be written from this paragraph.
+### What was measured, 2026-08-11 — and the two things this section had wrong
+
+An earlier version of this paragraph said *"the field names are inferred, not measured"* and told
+task 1.1 to verify them before the migration hardcoded a floor. **That verification has now
+happened**, against a real response for `Stationsplein 1, Amsterdam` supplied by the product owner.
+The floor survived; the field names did not.
+
+| Path | Measured | Verdict |
+|---|---|---|
+| `properties.rank.confidence` | `1` | **0–1 confirmed** — the `0.70` floor is on the right scale |
+| `properties.result_type` | `building` | **This is the granularity field.** Not inside `rank` |
+| `properties.rank.match_type` | `full_match` | Describes how the **query** matched, not what came back |
+| `properties.rank.confidence_street_level` | `1` | Corroborating signal, present as documented |
+| `properties.rank.importance` | `0.00008268` | Not a quality score. Do not gate on it |
+| `properties.rank.popularity` | `8.995` | ~0–10, not 0–1. Do not gate on it |
+| `properties.datasource.license` | `Open Database License` | Coordinates are ODbL |
+| `properties.datasource.attribution` | `© OpenStreetMap contributors` | The exact string to render |
+
+**Correction 1 — the granularity gate was pointed at the wrong field.** This section said the gate
+reads a match-type vocabulary. `match_type` returns `full_match` for a city as readily as for a
+building, so a gate reading it admits precisely the city-level match this section exists to reject.
+The gate reads `properties.result_type`.
+
+**Correction 2, and it is why this section now has three parts rather than two.** The same query
+returned **two** buildings, in Amsterdam and in Weesp, **12.2 km apart**, both `confidence: 1`,
+both `confidence_building_level: 1`, both `full_match`. Weesp merged into the Amsterdam
+*municipality* in 2022, so the second is a correct answer to the text that was typed.
+
+Both gates above pass both candidates. A pipeline taking the first feature stores a coordinate
+12.2 km from where the rider meant **with the highest possible confidence attached**, and it is
+then indistinguishable from a good one — which is exactly the "confident wrong" failure this whole
+section is built to prevent, arriving through a door the section did not know existed.
+
+This is the same shape as `PD-149` (*a nearby street can crowd out a famous landmark of the same
+name*) and as this issue's own earlier note about *"a guess that can centre the tile on the wrong
+Shell station"*. **Both were read as low-confidence problems. Neither is.** Confidence answers how
+sure the vendor is about one candidate and is structurally silent on how many candidates there are.
+
+**Do not add a CHECK for any of this.** The ambiguity rule needs the whole response and the
+granularity rule needs a vendor field; both live in the function, and §D3's existing rule against
+hardcoding a vendor vocabulary into the schema covers them. What this does change is how much the
+CHECK is claimed to be doing — see the requirement scenario *The granularity gate is a function-side
+rule and is not overclaimed*, which now understates it: the CHECK bounds **coupling**, and after
+this correction it bounds a smaller share of **correctness** than this section originally implied.
 
 ## D4 — Two zooms, two renders, and why not one crop
 

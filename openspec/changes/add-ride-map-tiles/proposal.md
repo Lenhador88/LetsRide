@@ -107,15 +107,24 @@ than no map at all.** "The usual spot" geocodes to a city centre with high confi
 that city; a rider who trusts the tile rides to the wrong place. Today's screens are never wrong,
 because they show the rider's own words.
 
-**The floor is two-part, and the second half is the one that matters:**
+**The floor is three-part, and the numeric one matters least:**
 
-1. **A granularity gate.** The match must be street-level or better. A city-or-district match is
-   rejected **regardless of its confidence score**, because such a match is confident about the
-   wrong question — it is sure it found the city, and a meeting point is not a city.
-2. **A numeric floor of `0.70`** on the provider's `rank.confidence`, applied after the gate.
+1. **An ambiguity gate.** If more than one returned candidate ties at the highest `confidence`,
+   nothing is stored. **Added 2026-08-11 against a measured response**, which is the only reason
+   this proposal knows it is needed: `Stationsplein 1, Amsterdam` returns two buildings **12.2 km
+   apart** — Amsterdam and Weesp, which joined the Amsterdam *municipality* in 2022 — and both come
+   back `confidence: 1`, `full_match`. The other two gates pass both. Confidence says how sure the
+   vendor is about *one* candidate and says nothing about how many there are.
+2. **A granularity gate.** The match must be street-level or better, read from the result's own
+   type. A city-or-district match is rejected **regardless of its confidence score**, because such
+   a match is confident about the wrong question — it is sure it found the city, and a meeting
+   point is not a city.
+3. **A numeric floor of `0.70`** on the provider's `rank.confidence`, applied after both gates.
 
-Chosen, not measured, and the reasoning is in `design.md` §D3. `0.70` is a starting value the
-owner may move; the granularity gate is the part that should not be dropped.
+`0.70` is chosen rather than measured — a starting value the owner may move — but the **scale is
+now measured**: `rank.confidence` is 0–1, so the number is on the right axis. The two gates above
+it are the parts that should not be dropped. `design.md` §D3 §*What was measured* carries the
+response and the two field-level corrections it forced.
 
 **What the database can and cannot enforce here, stated rather than overclaimed.** The floor is a
 *quality* rule about the geocoder's uncertainty, not a security rule about a hostile rider — the
@@ -126,6 +135,15 @@ carry a tile path without a coordinate. That is an integrity rule, so it is a CH
 `CLAUDE.md`'s rule that anything reaching only a Zod schema is advisory. The granularity gate has
 no CHECK behind it and this proposal says so plainly rather than implying the database is holding
 a line it is not.
+
+**The ambiguity gate has no CHECK behind it either, and the measurement makes that understatement
+sharper.** Both Weesp and Amsterdam satisfy the coupling perfectly — a coordinate, a confidence of
+`1`, well above the floor. **The database cannot distinguish a right coordinate from a wrong one at
+all here**, because the information that separates them (how many candidates came back) never
+reaches the row. Two of the three gates live in the Edge Function, and after this correction the
+CHECK bounds a smaller share of correctness than the paragraph above originally implied. Neither
+gate belongs in the schema: one needs the whole vendor response and the other needs a vendor field,
+and §D3's standing rule against hardcoding a vendor vocabulary covers both.
 
 ## The Storage write — the open question, and where it landed
 

@@ -208,9 +208,20 @@
 
 ## 1. `042` — the migration (purely additive, safe to apply first)
 
-- [ ] 1.1 Write `supabase/migrations/042_ride_map_tiles.sql`. **Header must state the grant level
-  read from `relacl` and `attacl`** and that the table-level grant is deliberately left in place —
-  the columns arrive client-writable and that is accepted, per `design.md` §D2.
+- [ ] 1.1 Write the migration. **Re-derive its number** — `ls supabase/migrations/` — this task
+  said `042` and the chain reached `048` on 2026-08-10. **Header must state the grant level read
+  from `relacl` and `attacl`** and that the table-level grant is deliberately left in place — the
+  columns arrive client-writable and that is accepted, per `design.md` §D2.
+
+  **The header must also state what the CHECK does NOT do, and this is stronger than it was.**
+  `design.md` §D3 originally read as though the confidence floor bounded correctness. It does not:
+  `0.8b` measured two candidates 12.2 km apart both at `confidence: 1`, so **the coupling CHECK
+  cannot distinguish a right coordinate from a wrong one at all** — it enforces only that a
+  coordinate is accompanied by a confidence at or above the floor, and a tile path by a coordinate.
+  The ambiguity gate and the granularity gate both live in the Edge Function, and the schema cannot
+  see either. Say that in the header rather than letting the next reader infer a guarantee from a
+  constraint. The relevant scenario is *The granularity gate is a function-side rule and is not
+  overclaimed*, and it now covers ambiguity too.
 - [ ] 1.2 Add **five** nullable columns to `public.rides`: `latitude double precision`,
   `longitude double precision`, `geocode_confidence real`, `map_card_path text`,
   `map_detail_path text`. NULL is the normal state, not an error.
@@ -351,9 +362,29 @@ exactly what they render today.** That is the intended intermediate state.
   geocode that returns nothing, returns a city, or times out writes no columns and issues no ride
   UPDATE at all, so a count that rose on a column write would never see it — and that organizer,
   retrying an address that will not resolve, is exactly the one the ceiling exists to bound.
-- [ ] 4.5 Geocode, then apply the granularity gate and then the numeric floor. Below either: write
-  nothing, return success, do not render — a render costs a call for an image that must not be
-  shown.
+- [ ] 4.5 Geocode, then apply **three** gates in this order — ambiguity, granularity, numeric floor.
+  Failing any one: write nothing, return success, do not render, leave the columns NULL. A render
+  costs a call for an image that must not be shown.
+
+  1. **Ambiguity — count the candidates tied at the top `confidence` and resolve nothing if there
+     is more than one.** Not an edge case: the first address anyone measured against this design,
+     `Stationsplein 1, Amsterdam`, returns two buildings **12.2 km apart**, both `confidence: 1`,
+     both `full_match` (`0.8b`). This gate is first because it is the only one that catches that,
+     and because it is the cheapest — it needs no vendor field beyond the one already read.
+  2. **Granularity — read `properties.result_type`, NOT `rank.match_type`.** `match_type` describes
+     how the query matched and returns `full_match` for a city, so gating on it admits exactly the
+     city-level match the spec rejects. Use `rank.confidence_street_level` as corroboration only.
+  3. **Numeric floor** on `rank.confidence`, measured 0–1.
+
+  **Never break an ambiguity tie on `rank.importance` or `rank.popularity`.** Both are vendor
+  relevance signals — how prominent a place is — and neither knows which town the rider meant.
+  Picking the more prominent one stores a coordinate indistinguishable from a correct one, which is
+  the whole failure this gate exists to prevent.
+
+- [ ] 4.5a **Assert the ambiguity gate with the measured case, not an invented one.** The
+  `Stationsplein 1, Amsterdam` response is the regression fixture: two features, tied at `1`. A
+  test that only feeds a single-candidate response passes against a pipeline with no ambiguity gate
+  at all.
 - [ ] 4.6 Render both tiles as **JPEG** at 2× device pixel ratio, z13 for 80×148 and ~z15 for
   358×160. **Not PNG** — the bucket allows `image/jpeg` only and refuses the rest above every
   policy.

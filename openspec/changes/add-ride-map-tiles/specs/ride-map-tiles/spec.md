@@ -324,6 +324,39 @@ coordinate SHALL be left NULL and both screens SHALL render exactly what they re
 no map**: a rider who trusts a tile pointing at a city centre rides to the wrong place, whereas
 today's screens show the rider's own words and are never wrong.
 
+**The confidence floor is not the whole gate, and a measured response proves it rather than
+suggesting it.** `Stationsplein 1, Amsterdam` returns two buildings **12.2 km apart** — one in
+Amsterdam, one in Weesp, which merged into the Amsterdam *municipality* in 2022 — and **both carry
+`confidence: 1`, `confidence_building_level: 1` and `match_type: full_match`.** Every gate stated
+below the ambiguity scenarios passes both of them. Confidence answers *how sure are you about this
+candidate*; it is structurally silent on *is there more than one*.
+
+#### Scenario: Two candidates tied at the top confidence resolve nothing
+- **WHEN** the geocoder returns more than one candidate sharing the highest `confidence` value in
+  the response
+- **THEN** the meeting point SHALL be treated as unresolved: `latitude`, `longitude`,
+  `geocode_confidence` and both paths SHALL remain NULL
+- **AND** no tile SHALL be rendered, and both screens SHALL render today's fallback
+- **AND** the ride SHALL save normally, because an ambiguous address is a legitimate thing to type
+- **AND** this SHALL hold however high the shared confidence is, including `1`
+
+#### Scenario: The tie SHALL NOT be broken on a relevance signal
+- **WHEN** two candidates tie at the top confidence and differ on `importance` or `popularity`
+- **THEN** the higher-ranked candidate SHALL NOT be selected on that basis
+- **AND** the reason SHALL be recorded: both are vendor relevance signals describing how prominent
+  a place is, and neither carries any information about which place the rider meant
+- **AND** selecting one anyway SHALL be understood as storing a coordinate that is
+  indistinguishable from a correct one, which is the specific failure this requirement exists to
+  prevent
+
+#### Scenario: The granularity gate reads the result type, not the match type
+- **WHEN** the function decides whether a candidate is street-level or better
+- **THEN** it SHALL read the field describing **what was returned** — the result's own type — and
+  SHALL NOT read the field describing **how the query matched**
+- **AND** the reason SHALL be recorded: a match-type of `full_match` is returned for a city as
+  readily as for a building, so gating on it admits exactly the city-level match the scenario
+  below rejects
+
 #### Scenario: An empty geocode result stores nothing
 - **WHEN** the geocoder returns no candidate for the meeting point
 - **THEN** `latitude`, `longitude`, `geocode_confidence` and both paths SHALL remain NULL
