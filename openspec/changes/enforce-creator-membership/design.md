@@ -18,6 +18,7 @@ this defect and one of which describes the fix in a shape this document rejects.
 | `ride_members` UPDATE policy | exists, own row only | `008:134` |
 | `enforce_participation_gate` | 8 tables, `when (current_user = 'authenticated')` | `023` §3 |
 | `clubs` UPDATE policy | `using` **and** `with check` both `auth.uid() = owner_id` | `008:54` |
+| `clubs` UPDATE **column grant** to `authenticated` | `avatar_path, cover_image_path, description, is_public, name` — **not `owner_id`** (`045`, after this design was drafted) | `information_schema.column_privileges` |
 | Next free migration number | **029** — `028` landed 2026-08-06 | `ls supabase/migrations/` |
 | Orphan clubs / rides on the live project | **0 / 0**, measured 2026-08-06 with RLS bypassed, on 2 clubs and 3 rides — see proposal §Impact | task 0.1 (answered) |
 
@@ -28,7 +29,9 @@ Five facts shape everything below.
    window between two round trips is not closing it.
 2. **`clubs` UPDATE carries `with check (auth.uid() = owner_id)`**, so a rider cannot transfer a
    club to anyone — not even accidentally. Ownership is immutable for `authenticated` today, which
-   is why the seeding trigger fires on INSERT only and needs no UPDATE arm. `add-account-deletion`
+   is why the seeding trigger fires on INSERT only and needs no UPDATE arm. **`045` since added a
+   second, earlier barrier** — `owner_id` is not in the UPDATE column grant, so a client attempt
+   fails `42501` before the policy is reached. `add-account-deletion`
    proposes to change that, from a privileged path; §D5 states the contract between the two.
 3. **`private.is_club_member` has no owner arm.** So an orphan club's owner is a non-member for
    every purpose the schema recognises: `017` refuses them a ride in it, `009` refuses them a
@@ -299,7 +302,8 @@ Neither change blocks the other. This one is smaller and should land first.
   and `030` removes the policy arm that would let a re-added insert succeed — so the mistake fails
   loudly rather than silently duplicating.
 - **The delete guard removes a capability nobody asked to remove.** An owner who genuinely wants
-  out of their own club has no route. Today they have a route that silently breaks the club, so
+  out of their own club has only a destructive route — `043`'s *Delete club*, which takes the club
+  with them. Today they have a route that silently breaks the club, so
   this is a strictly better failure. **Decided rather than open** (Q1, 2026-08-11): the refusal
   ships, and the route back — leaving as a transfer — is deferred to PD-194 rather than declined.
 - **Backfilling re-adds an owner who deliberately left.** Only reachable by hand-rolled request
@@ -317,10 +321,25 @@ give it.
 
 - ~~**Q1 — product owner. May a club owner leave their own club?**~~ **ANSWERED 2026-08-11: NO,
   not for now.** The default stands and `029` contains the delete guard. The answer came with the
-  eventual behaviour attached — *"eventually yes … other admins of the club can still maintain the
-  club, if no left admins, admin is passed by to the rider who joined the longest time ago"* —
-  which is `032`'s succession ladder, so leaving will one day be a **transfer** rather than a
-  refusal. It is deferred, not declined: **PD-194** carries it.
+  eventual behaviour attached — *"eventually yes a club owner can leave the club, other admins of
+  the club can still maintain the club, if no left admins, admin is passed by to the rider who
+  joined the longest time ago"* — so leaving will one day be a **transfer** rather than a refusal.
+  It is deferred, not declined: **PD-194** carries it.
+
+  **What `032` supplies is the successor *selection*, not the transfer** — recording it as "this
+  is already implemented" would hand PD-194 a wrong premise, so state the three divergences
+  rather than the resemblance. `032:146` orders `case role when 'admin' then 0 when 'member' then
+  1 else 2 end, joined_at, user_id limit 1`, which is exactly *"admin first, else whoever joined
+  longest ago"*. But it then elects **one** successor and makes them **owner**, where the answer
+  describes admins *continuing to maintain* the club; and it **demotes** the departing owner to
+  `member`, where a voluntary leave must delete their row outright.
+
+  **The first half of the answer has an unbuilt prerequisite, and PD-194 should not discover it
+  late.** *"Other admins can still maintain the club"* presumes a club can have admins. Today none
+  can be created by any route: `019` admits `member` only, and `club_members` has no UPDATE policy
+  at all, so nothing can promote one — live count of UPDATE policies on that table is **0**.
+  Granting `admin` is therefore its own feature, ahead of or alongside PD-194, and until it exists
+  every leave falls to the tenure rung.
 
   **Shipping the refusal now costs that future nothing, and that is why it is safe to defer.**
   §D3's rule 2 puts `when (current_user = 'authenticated')` on the guard, so a future
@@ -331,18 +350,22 @@ give it.
   Four things that future change will need, recorded here because this session derived them and
   a fresh one would pay for them again:
 
-  - **The ladder is extracted from `032`, never copied.** `private.transfer_owned_clubs` already
-    implements admin-first-then-longest-tenured; a second hand-written copy drifts, and a club
-    would inherit differently depending on *why* its owner left.
+  - **The successor `select` is extracted from `032`, never copied.** A second hand-written copy
+    drifts, and a club would then inherit differently depending on *why* its owner left. Extract
+    `private.pick_club_successor(club_id, departing)` and have both call it.
   - **The `admin` rung is built and unreachable**, so every leave today falls to the tenure rung.
-    `019`'s INSERT policy admits `member` plus the owner arm §D4 removes in `030`, never `admin`,
-    and there is no `club_members` UPDATE policy to promote one. Check rather than recall:
+    `019`'s INSERT policy admits `member`, plus an owner arm this change's own second migration
+    removes (§D4 — the file whose number task 0.4 re-derives, *not* the applied
+    `030_terms_version.sql`), never `admin`. Check rather than recall:
     `select count(*) from public.club_members where role = 'admin';` — 0 on 2026-08-06 (task 0.1).
-  - **It has to be an RPC, and §D1's objection to one does not apply.** The two barriers in the
-    way are each load-bearing elsewhere — `clubs` UPDATE carries `with check (auth.uid() =
-    owner_id)`, which is also what stops a rider dumping a club on an unwilling stranger, and
-    `club_members` has no UPDATE policy at all. Widening either would widen it for every other
-    purpose too.
+  - **It has to be an RPC, and §D1's objection to one does not apply.** **Three** barriers stand
+    in the way, each load-bearing elsewhere, and the first is the one a policy-level fix misses:
+    `045` revoked `owner_id` from `authenticated`'s UPDATE **column grant** on `clubs` — live
+    grant is `avatar_path, cover_image_path, description, is_public, name` — so a client transfer
+    fails `42501` on the grant *before* any policy is evaluated. Then `clubs` UPDATE's
+    `with check (auth.uid() = owner_id)`, which is also what stops a rider dumping a club on an
+    unwilling stranger. Then `club_members` having no UPDATE policy at all. Widening any of the
+    three would widen it for every other purpose too.
   - **The transfer clears the club's avatar and cover.** `016`'s `clubs_avatar_path_owned` and
     `clubs_cover_image_path_owned` pin both paths to the row's current `owner_id`, so *any*
     `update clubs set owner_id` raises `23514` while either is non-null. `032` hits this too.
