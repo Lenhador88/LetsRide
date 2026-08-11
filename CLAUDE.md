@@ -842,6 +842,57 @@ produces work that is individually correct and collectively inconsistent. Under-
 produces work with no fresh eyes on it, where every assumption the author made at the start
 survives to the end unchallenged. The second is the one this repo has actually suffered from.
 
+### Delegating while the owner is at the keyboard
+
+**Adopted 2026-08-11.** The grant above answers *whether* to delegate. This answers the case where
+the owner is present and asking about other stories — a session that is a conversation as much as
+a build.
+
+**Default: one build in flight, in the background, and the thread stays free.** Spawn the agent,
+reply at once, and keep answering questions about other stories while it runs. What this buys is
+**availability, not throughput** — the queue Routine already builds unattended, one story an hour,
+and parks on `Needs help` the moment a story needs an answer. Here the owner is right there, so
+what stalls a firing for an hour costs thirty seconds.
+
+The break-even above is unchanged: ~42k per delegated story, so a copy fix or a one-liner still
+stays in the main thread. Measure it rather than trust the number:
+
+```bash
+for f in CLAUDE.md docs/HANDOFF.md .claude/agents/feature.md; do
+  node -p "Math.round(require('fs').statSync('$f').size/4)"; done
+```
+
+**The one real quality regression: the owner sees an assumption only after it has been built on.**
+Inline, an assumption is a line in a reply and is corrected in the same minute; from a background
+agent it arrives in a report, by which time it is load-bearing across a dozen files. The filter
+itself is right — §Working With the Product Owner already says ambiguity → assume and report,
+disagreement → stop and report — so the defect is *latency*, not judgement. **Resolve the
+ambiguities with the owner while writing the brief**, before spawning.
+
+**A second concurrent build is not free, and the collisions are resources rather than files.** Two
+agents on unrelated stories barely touch the same source, but they share:
+
+- **One test database.** `supabase/tests/run.sh` defaults `TEST_DB=letsride_test` and opens with
+  `drop database if exists`, so a second `npm test` **drops the database the first is running
+  against** — which surfaces as a failed assertion, not as a collision.
+- **Two fixed ports.** The relay defaults to `:3001` (`scripts/supabase-relay.mjs`) and the walk
+  targets `http://localhost:3000` (`scripts/walk.mjs`). Two walks either collide on the port or,
+  worse, the second runs against the first's dev server and reports **green**.
+
+Both are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. Set them per agent
+or serialise the verification step; the port one is the dangerous half because it passes.
+
+**The docs spine collides even when the code does not.** `CLAUDE.md` and `docs/HANDOFF.md` are the
+two most-edited files in the repo, so any two builds both want them:
+
+```bash
+git log --pretty=format: --name-only origin/development -40 |
+  grep -v '^$' | sort | uniq -c | sort -rn | head
+```
+
+So **agents do not write those two; the main thread does**, once the reports are in. That also
+keeps the git index single-writer, which is the thing that actually corrupts a shared tree.
+
 ## Architectural Decisions
 
 Settled. Don't reopen these without an explicit decision to change them.
