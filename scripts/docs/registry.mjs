@@ -202,7 +202,10 @@ export const claims = [
     // this entry's comment predicted, and it worked — the pattern stopped
     // matching and the check reported SKIPPED rather than passing on a claim
     // it was no longer reading.
-    pattern: /\*\*Applied state: (\d+) files, and DEV and PROD are LEVEL/,
+    // 2026-08-11: 049 applied to DEV only, so the relationship left LEVEL again
+    // and the pattern refused to match a second time — the same mechanism, in
+    // the opposite direction. It moves back to LEVEL when 049 reaches PROD.
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD is at `\d+` — they are NOT level/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

@@ -64,11 +64,11 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1094/1094 across 41 files
+npm run test:unit                     # 1095/1095 across 41 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 32 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
-PGPASSWORD=postgres npm test          # 1213 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 1235 assertions, 0 failures
 ```
 
 **And the second build shape, which nothing above covers** — PD-142 left the repo with two, and
@@ -396,8 +396,8 @@ the postcard thread still carry inferred composition; the design has frames for 
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1213**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly) |
-| Unit tests | `npm run test:unit` — **1094 across 41 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1235**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +22 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move |
+| Unit tests | `npm run test:unit` — **1095 across 41 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -586,21 +586,38 @@ publication membership is asserted, the *delivery* is not), and whether the comp
 `crypto.randomUUID` path is on a secure origin — it is over HTTPS, and the fallback exists for
 `http://<lan-ip>` device testing.
 
-## Migrations — DEV and PROD are LEVEL at `048`
+## Migrations — the repo and DEV hold 49, PROD holds 48
 
-**DEV, PROD and the repo all hold 48.** `041`–`046` were applied to PROD on 2026-08-10, on the
-owner's instruction, in strict filename order with each digest checked against its file; `047` and
-`048` followed the same day, DEV first and PROD after the review pass. The security advisors agree
-nine-for-nine across both databases — measured 2026-08-10 with `get_advisors(security)`, and
-`047`/`048` add none, both being grant-only with no function and no view.
-`CLAUDE.md` §Supabase Rules carries the count and the shape; the *parity* is only here. Verify
-rather than trust:
+**`049` is applied to DEV and NOT to PROD**, 2026-08-11, which is the ordinary state of a
+migration between its merge and its promotion rather than drift. It replaces one function body
+(`search_places`, PD-150 option A) and changes no table, policy, column or index, so the two
+databases differ in exactly one function's source and in nothing else.
+
+**Applying it to PROD is safe in either order relative to the code deploy**, which is worth
+stating because the additive-first rule usually decides this: `049` only *narrows* what
+`search_places` accepts, the deployed client already truncates to the same eight tokens, and
+`places` holds 0 rows on both projects — so there is no window in which it can refuse anything a
+rider sent.
+
+`041`–`046` were applied to PROD on 2026-08-10, on the owner's instruction, in strict filename
+order with each digest checked against its file; `047` and `048` followed the same day, DEV first
+and PROD after the review pass. The security advisors agreed nine-for-nine across both databases
+at that point, and `049` adds none — it is `create or replace` on a function that was already
+`security invoker`, which is asserted rather than assumed (`049.4`).
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   both projects: 48 rows, ending 048_membership_timestamps_server_owned
-ls supabase/migrations/ | wc -l          # 48
+#   DEV 49 rows, ending search_places_token_cap · PROD 48, ending 048_membership_timestamps_server_owned
+ls supabase/migrations/ | wc -l          # 49
 ```
+
+**DEV's recorded statement for `049` is the reduced form** — the file's §1–§4 prose replaced by a
+pointer to it, because `apply_migration` takes SQL as a string and the full file is 20 KB of
+mostly comment. The *function body* was verified byte-identical rather than eyeballed:
+`md5(prosrc)` is `6709c48e1a9fc47b02b2364b925343be` over 6,774 bytes on both DEV and the repo
+file's `$fn$` block. This is the same class of asymmetry
+[`docs/reference/migrations.md`](docs/reference/migrations.md) reconciles for `036`–`040`, and it
+reads like drift if you compare `md5sum` of the file against `md5(statements[1])`.
 
 **What the finished apply did not consume is [`docs/reference/migrations.md`](docs/reference/migrations.md)** —
 the `041 → 044 → 046` ordering chain and the link in it that fails silently, the rollback SQL for

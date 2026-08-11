@@ -121,6 +121,29 @@ describe('the token cap', () => {
       expect.objectContaining({ q: distinct.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ') })
     )
   })
+
+  /**
+   * **The one assertion here that is not about this file.** `049` refuses above
+   * eight distinct tokens and this module truncates to eight, and the claim
+   * that the two compose "with no dead zone" holds only while the numbers are
+   * equal — lower the database's below this one and every long query silently
+   * returns zero rows, on a path no unit test mocking the RPC can see.
+   *
+   * So it is read out of the migration rather than restated: a second copy of a
+   * number is exactly the shape that goes stale. `049` is append-only like every
+   * migration here, so the file this reads can never be edited out from under
+   * it — only superseded by a later one, which is a change that has to come
+   * past this test.
+   */
+  it('is the same number the database refuses above — 049, read from the migration', async () => {
+    const { readFileSync } = await import('node:fs')
+    const sql = readFileSync('supabase/migrations/049_search_places_token_cap.sql', 'utf8')
+
+    const cap = sql.match(/coalesce\(array_length\(tk\.pats, 1\), 0\) <= (\d+) as searchable/)
+
+    expect(cap, '049 no longer carries a token cap on `searchable` in the form this reads').not.toBeNull()
+    expect(Number(cap![1])).toBe(PLACE_SEARCH_MAX_TOKENS)
+  })
 })
 
 describe('the proximity bias', () => {

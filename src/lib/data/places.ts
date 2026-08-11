@@ -52,11 +52,19 @@ export const PLACE_SEARCH_MIN_CHARS = 4
  * it intuitively reads as, and an earlier revision of this comment had it
  * backwards.
  *
- * **This does NOT close PD-150, and must not be read as the mitigation.** It is
- * a client-side bound, so it only protects riders using our UI from an
- * accidentally expensive query. Anyone can call the RPC directly through
- * PostgREST with forty tokens and pay none of it. The real gate has to be in
- * `search_places()` itself — that is what PD-150 tracks, and it is still open.
+ * **This is not the security bound and never was — `049` is.** A client-side
+ * cap only reaches riders using our UI; anyone can call the RPC directly
+ * through PostgREST with forty tokens and pay none of it, which is why PD-150
+ * stayed open until the refusal landed in `search_places()` itself.
+ *
+ * **The two numbers must stay equal, and `__tests__/places.test.ts` asserts it
+ * against the migration file rather than trusting this comment.** `049` refuses
+ * above eight distinct tokens; this truncates to eight. Because the database
+ * dedups the same eight again with `lower()`, which can only reduce the count,
+ * a term from this file can never be refused there. Lower this number and
+ * riders simply search on fewer words; lower the DATABASE's below this one and
+ * every long query silently returns zero rows, which is the dead zone the pair
+ * exists to prevent.
  */
 export const PLACE_SEARCH_MAX_TOKENS = 8
 

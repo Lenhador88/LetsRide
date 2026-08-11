@@ -10237,6 +10237,169 @@ select assert_denied($$insert into postcard_comments (postcard_id, author_id, bo
 rollback to savepoint write_paths_048;
 reset role;
 
+\echo ''
+\echo '# A search term cannot choose its own cost — eight distinct tokens, then refusal (049)'
+
+-- ===========================================================================
+-- 049. search_places: at most EIGHT distinct tokens.
+--
+-- ** What makes these assertions meaningful is the PAIR, not the refusal. **
+-- A `count(*) = 0` on its own proves nothing here — it is what a term matching
+-- no row returns, and it is what a broken function returns. So every refusal
+-- below is asserted next to a term that differs ONLY in token count, against
+-- the same fixture rows: 8 returns the row, 9 returns nothing, and the row
+-- satisfies all nine. That is the difference between "refused" and "no match",
+-- and it is the only shape that can tell them apart.
+--
+-- 039 §5d is where this cost was measured and left open; 049 §1 is why the
+-- number is 8 rather than something tighter.
+-- ===========================================================================
+savepoint places_049;
+
+reset role;
+select set_config('test.uid', '', false);
+
+insert into places (id, name, brand, category, lon, lat, street, locality, postcode, country, confidence) values
+  -- NINE distinct matchable words across name, street and locality, so a
+  -- nine-token query matches this row completely and is refused anyway. Without
+  -- that property the refusal test would pass against a function that simply
+  -- failed to match.
+  ('p049-nine', 'Alfa Bravo Charlie Delta Echo', null, 'cafe', 5.11, 52.10,
+   'Foxtrot Golf Hotel 9', 'Indiastad', '1000 AA', 'NL', 0.9),
+  -- PD-150's actual vector needs a row containing `straat`. Every one of the ten
+  -- tokens below is a substring of `straat`, and `Kerkstraat` ends in it.
+  ('p049-straat', 'Bakkerij', null, 'shop', 5.11, 52.09,
+   'Kerkstraat 12', 'Utrecht', '3581 AA', 'NL', 0.8);
+
+-- --------------------------------------------------------------------------
+-- 049.0  The predicate is present, and it counts the DEDUPED array.
+-- --------------------------------------------------------------------------
+-- Comment-stripped, per 039.0: `prosrc` carries the function's own comments, so
+-- a needle can match the sentence describing a mechanism instead of the
+-- mechanism. 049's body comments discuss `tk.pats` in prose, which is exactly
+-- the trap.
+create function pg_temp.sp_code_049() returns text language sql stable as $$
+  select pg_catalog.regexp_replace(prosrc, '--[^\n]*', '', 'g')
+    from pg_proc
+   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure
+$$;
+
+select assert_eq(
+  (select pg_temp.sp_code_049() like '%--%'),
+  false, '049: the comment stripper leaves no comment marker at all — the needle below reads code, not prose');
+select assert_eq(
+  (select pg_temp.sp_code_049() like '%coalesce(array_length(tk.pats, 1), 0) <= 8%'),
+  true, '049: the token cap is in the function body, and it counts tk.pats — the array AFTER the lower() dedup, not the raw split');
+-- The cap is a conjunct of `searchable`, which both passes gate on. Asserted
+-- structurally because the behavioural half cannot distinguish "the cap is on
+-- searchable" from "the cap is on the national pass only" once both return zero.
+select assert_eq(
+  (select pg_temp.sp_code_049() like '%~ ''[[:alnum:]]{3}''%and coalesce(array_length(tk.pats, 1), 0) <= 8 as searchable%'),
+  true, '049: ... and it sits on `searchable` beside 037''s guard, so BOTH passes refuse rather than only one');
+
+-- --------------------------------------------------------------------------
+-- 049.1  The boundary: eight runs, nine is refused, and the row matches nine.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from search_places('alfa bravo charlie delta echo foxtrot golf hotel')),
+  1, '049: eight distinct tokens still search — the cap is at 8, not below it');
+-- ** The assertion this section exists for. ** The row satisfies all nine
+-- tokens, so a function without the cap returns it. Zero here is a REFUSAL.
+select assert_eq(
+  (select count(*)::int from search_places('alfa bravo charlie delta echo foxtrot golf hotel indiastad')),
+  0, '049: nine distinct tokens return NOTHING — and the fixture matches all nine, so this is refusal rather than no-match');
+-- Both passes, not just the national one: the same nine tokens with a location
+-- put the row inside the bbox, where the local pass would otherwise find it.
+select assert_eq(
+  (select count(*)::int from search_places('alfa bravo charlie delta echo foxtrot golf hotel indiastad', 52.10, 5.11)),
+  0, '049: ... including with a location supplied, where the local pass would have found it inside the bbox');
+select assert_eq(
+  (select count(*)::int from search_places('alfa bravo charlie delta echo foxtrot golf hotel', 52.10, 5.11)),
+  1, '049: ... while the same query one token shorter still returns it through the local pass');
+
+-- --------------------------------------------------------------------------
+-- 049.2  The cap counts DISTINCT tokens — dedup first, then the limit.
+-- --------------------------------------------------------------------------
+-- ** This is the assertion that pins the cap to `tk.pats` rather than to
+-- `regexp_split_to_table`. ** Nine raw tokens, eight distinct: a cap applied
+-- before the dedup refuses this, and a rider who types a word twice loses their
+-- search for a repeat that costs the query nothing (039 §5d — AND is
+-- idempotent). Mixed casing, because the dedup key is `lower()`.
+select assert_eq(
+  (select count(*)::int from search_places('alfa ALFA bravo charlie delta echo foxtrot golf hotel')),
+  1, '049: nine raw tokens that are eight distinct ones still search — the cap is applied AFTER the lower() dedup, so a repeated word never spends a slot');
+select assert_eq(
+  (select count(*)::int from search_places('alfa ALFA Alfa bravo charlie delta echo foxtrot golf hotel indiastad')),
+  0, '049: ... and eleven raw tokens that are nine distinct ones are still refused, so the dedup cannot be used to smuggle a tenth past the cap');
+
+-- --------------------------------------------------------------------------
+-- 049.3  PD-150's actual vector, at ten tokens and at eight.
+-- --------------------------------------------------------------------------
+-- Every token is a substring of `straat`, so they AND to the same rows while
+-- multiplying the per-row work — the multiplier no deduplication can reach,
+-- because nothing is duplicated. 5,914 ms on 039's synthetic bench.
+select assert_eq(
+  (select count(*)::int from search_places('str tra raa aat stra traa raat straa traat straat')),
+  0, '049: PD-150''s ten-substring term is refused — the vector this migration exists for');
+-- ** The control. ** The same vector truncated to eight tokens matches the same
+-- row, so the refusal above is the COUNT and nothing else — not the substrings,
+-- not the escaping, not a stray guard.
+select assert_eq(
+  (select count(*)::int from search_places('str tra raa aat stra traa raat straa')),
+  1, '049: ... while the same eight of those tokens return the same row, so it is the token count that refuses and nothing else about the term');
+
+-- --------------------------------------------------------------------------
+-- 049.4  Nothing else about the function moved.
+-- --------------------------------------------------------------------------
+select assert_eq((select count(*)::int from search_places('ab 40', 52.09, 5.11)),
+  0, '049: 037''s three-alphanumeric guard still refuses a term with no indexable run');
+select assert_eq((select count(*)::int from search_places('Kerkstraat 12', 52.09, 5.11)),
+  1, '049: a real two-token address search is untouched — a short token ANDed with a long one is still honoured');
+select assert_eq((select count(*)::int from search_places('Bakkerij', 'NaN'::double precision, 5.11)),
+  1, '049: a broken GPS still degrades to a nationwide search instead of raising');
+select assert_eq(
+  (select prosecdef from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  false, '049: still SECURITY INVOKER — the places SELECT policy governs it, and a replacement that flipped this would add a tenth advisor');
+-- 039 §5d: a function-level statement_timeout is APPLIED AND INERT, so an
+-- assertion on its presence would read as a bound while bounding nothing. This
+-- asserts it is absent, which is the only honest direction.
+select assert_eq(
+  (select array_length(proconfig, 1) from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  1, '049: exactly one proconfig entry — no statement_timeout crept in, which would read as a bound while bounding nothing (039 §5d)');
+select assert_eq(
+  (select proconfig[1] from pg_proc
+    where oid = 'public.search_places(text,double precision,double precision)'::regprocedure),
+  'search_path=""'::text, '049: ... and it is the pinned empty search_path');
+
+-- --------------------------------------------------------------------------
+-- 049.5  The privilege model is re-issued, not widened.
+-- --------------------------------------------------------------------------
+select assert_eq(
+  has_function_privilege('authenticated',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  true, '049: a signed-in rider may still call it');
+select assert_eq(
+  has_function_privilege('anon',
+    'public.search_places(text,double precision,double precision)', 'execute'),
+  false, '049: anon still may not — decision #1, and `create or replace` preserves an ACL that the file re-issues anyway');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+select assert_eq((select count(*)::int from search_places('alfa bravo charlie delta echo foxtrot golf hotel')),
+  1, '049: and the cap behaves identically for a rider, not only for the owner running this suite');
+select assert_eq((select count(*)::int from search_places('alfa bravo charlie delta echo foxtrot golf hotel indiastad')),
+  0, '049: ... refusal included');
+reset role;
+
+set role anon;
+select assert_denied($$select count(*) from search_places('alfa bravo charlie')$$,
+  '049: anon cannot call it at all, so the cap is not the barrier that matters for them');
+reset role;
+
+rollback to savepoint places_049;
+
 rollback;
 
 \echo ''

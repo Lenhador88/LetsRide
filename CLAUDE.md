@@ -478,7 +478,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 48 files, and DEV and PROD are LEVEL — both at `048`, 2026-08-10.** Do not
+**Applied state: 49 files. DEV is at `049` and PROD is at `048` — they are NOT level, 2026-08-11.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 
@@ -510,7 +510,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1213** assertions — re-derive rather than trust it:
+Suite **1235** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
