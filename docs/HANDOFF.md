@@ -349,18 +349,28 @@ working around them.** Three carry detail worth having at hand:
    optional: it is what actually closes the recovery hole `026` can only gate at the app's front
    door — GoTrue's `PUT /auth/v1/user` accepts a password change from any live session, measured.
 
-2. **`PD-86` / `PD-92` — deploy the `delete-account` Edge Function, and supply the T&C version
-   string.** Two separate asks that both land here:
+2. **`PD-92` — supply the T&C version string.** (`PD-86`'s deploy is **done** — 2026-08-11, see
+   below.)
 
-   - There is no `supabase` CLI in the build container and the Supabase MCP server exposes no
-     deploy tool, so **no session can deploy it**. It needs the CLI and a project access token:
+   - **`delete-account` is DEPLOYED to both projects and exercised on DEV.** `list_edge_functions`
+     returns it `ACTIVE`, `verify_jwt: true`, with **identical `ezbr_sha256` on both** — which is
+     the check worth repeating when a function is pasted into the dashboard twice rather than
+     pushed from one source. All five of task 2.6's cases pass on DEV, and case 3 was verified
+     against `auth.users` rather than against the response body: the rider named in the request
+     body survived, the caller did not. Cascade confirmed — 0 orphaned `profiles` rows.
 
-     ```bash
-     supabase functions deploy delete-account --project-ref zwprydcyryvudhurbnye
-     supabase secrets set SERVICE_ROLE_KEY=... --project-ref zwprydcyryvudhurbnye
-     ```
+     **The one thing still unproven, and it is narrow:** whether PROD's `SERVICE_ROLE_KEY` holds
+     PROD's key. Both PROD probes returned 401 at the `getUser` check, which runs *before* the
+     admin client is constructed, so they never reached that code path. A wrong value fails at
+     `auth.admin.deleteUser` — the first real deletion 500s. **Only one probe settles it**: a
+     throwaway PROD account, created through the app (PROD has email confirmation on, so it needs
+     a real inbox) and deleted through the function. Owner action.
 
-     Then exercise task 2.6's five cases against a disposable account before group 3 is built.
+     Deploy is **via the dashboard**, not the CLI — Edge Functions → *Deploy a new function* →
+     Via editor, with the secret under Project Settings → Edge Functions. The CLI path failed
+     twice on things the dashboard cannot get wrong: it resolves
+     `supabase/functions/<name>/index.ts` relative to the **current directory**, and the secret
+     and the deploy were aimed at different project refs.
    - `030` stamps every new consent with `0-placeholder`, because `/legal/terms` is placeholder
      copy that disclaims being an agreement. **Replace it when the binding text lands** — one
      line in `private.current_terms_version()`, in a new migration. Consents already stamped
@@ -716,11 +726,19 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   >
   > it is a design choice between two mechanisms, and the flow it protects does not exist yet
 
-- **Account deletion has a database half and no flow.** `PD-102`. `029`–`032` are applied, the
-  Edge Function at `supabase/functions/delete-account/` has **never been deployed or run**, and
-  nothing in `src/` calls it. **Deploy it before building group 3**, not after: the five negative
-  cases in task 2.6 can only be proven live, and its own task list says a control ships working or
-  it does not ship. **Store blocker 2** — App Store 5.1.1(v).
+- **Account deletion has a database half, a deployed function, and no flow.** `PD-102`. `029`–`032`
+  are applied, and the Edge Function at `supabase/functions/delete-account/` is **deployed to both
+  projects and exercised on DEV as of 2026-08-11** — this line said "never been deployed or run"
+  until then. Nothing in `src/` calls it yet, deliberately: its own task list says a control ships
+  working or it does not ship, and **that gate is now satisfied for DEV**, which is where group 3
+  will be built and walked. **Store blocker 2** — App Store 5.1.1(v).
+
+  Two things to carry into group 3 rather than rediscover. **A second `delete-account` call with
+  the same token returns 401, and that is correct** — `getUser` runs first and GoTrue rejects a
+  token whose subject is gone, so the retry never reaches the already-gone branch. The deletion
+  screen must treat 401 on this endpoint as success. And **PROD's `SERVICE_ROLE_KEY` value is
+  still unverified** (§Owner actions 2) — building the UI does not depend on it, but shipping to
+  riders does.
 
   > **Recommendation** 8/10
   >
