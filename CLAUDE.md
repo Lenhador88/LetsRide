@@ -934,12 +934,13 @@ project's whole life while PROD was "on", and three places in `src/` drove real 
 sentence. `signUp` now branches on `data.session` and is correct under either configuration.
 
 **A second setting behind the same door has the same property**, and it is worse when wrong: if
-`letsride`'s Site URL is `http://localhost:3000` and the production origin is off the redirect
-allowlist, every link the app emails lands on a dead address. **`http://localhost:3000/**` was
-still honoured on PROD's redirect allowlist at the last probe — a permanently open redirect
-target on a production auth server, and the half most likely to be forgotten once the dead-link
-half is fixed.** Re-run the credential-free probe in `docs/ENVIRONMENTS.md` §The redirect
-allowlist rather than trusting this line; that file holds the dated result.
+`letsride`'s Site URL points at a host that does not serve the app and the real origin is off the
+redirect allowlist, every link the app emails lands on a dead address — silently, because an
+unlisted `redirect_to` is discarded and replaced by the Site URL rather than refused. Both
+projects were repointed at `letsride.social` on 2026-08-11 and PROD's `http://localhost:3000/**`
+entry went with the move. Re-run the credential-free probe in `docs/ENVIRONMENTS.md` §The
+redirect allowlist rather than trusting this line; that file holds the dated result, and it has
+gone stale twice.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 
@@ -1373,13 +1374,15 @@ chain to a scratch database and asserts what each role can reach.
 - **`main` = production, `development` = DEV.** Both auto-deploy to Vercel; `main` builds the
   Production target against the `letsride` project, `development` builds a Preview against
   `letsride-dev`. Feature branches are Previews too, so they also point at DEV.
-- **The domain is `letsride.social`, bought 2026-08-07, and the app does not live at its apex.**
-  `app.letsride.social` is production, `app-dev.letsride.social` is `development`, and the apex
-  is the marketing website in a **separate Vercel project that is not this repo**. Nothing is
-  attached yet and the `*.vercel.app` URLs still work; `docs/ENVIRONMENTS.md` §Domains is the
-  contract, including the one ordering rule (attach and confirm the host *before* moving
-  Supabase's Site URL) and why the apex redirect must be a 307 rather than a 301. **No code
-  changes with the domain** — `ShareButton`, `signUp` and `requestPasswordReset` all build URLs
+- **The domain is `letsride.social`, and the app does not live at its apex.**
+  `app.letsride.social` is production and `app-dev.letsride.social` is `development` — both live
+  since 2026-08-11, with Supabase's Site URLs pointed at them. The apex is the marketing website
+  in a **separate Vercel project that is not this repo** and is still unattached (`PD-34`), so it
+  serves nothing today. The `*.vercel.app` URLs keep working alongside the new hosts.
+  `docs/ENVIRONMENTS.md` §Domains is the contract, including the one ordering rule (attach and
+  confirm the host *before* moving Supabase's Site URL), the name.com CNAME trap that makes step
+  2 fail on a correct value, and why the apex redirect must be a 307 rather than a 301. **No code
+  changed with the domain** — `ShareButton`, `signUp` and `requestPasswordReset` all build URLs
   from `window.location.origin`, so a hardcoded origin anywhere in `src/` is a bug that would
   only surface in email: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0.
 - **Branch off `development`, and open PRs against `development` — not `main`.** This is the one

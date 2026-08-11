@@ -130,6 +130,10 @@ branches at the same SHA.
 
 - **`development` is deployed**: `letsrideapp-git-development-pedro-projects1.vercel.app`,
   Preview target, `READY`. Owner-only, because Preview carries Vercel SSO.
+- **Both custom hosts are live since 2026-08-11** — `app.letsride.social` (production, `200`) and
+  `app-dev.letsride.social` (`development`, `302` to Vercel SSO), with both Supabase Site URLs
+  moved to match. `PD-105`/`PD-106`; `docs/ENVIRONMENTS.md` §Domains carries the probe. The
+  `*.vercel.app` URLs still work and are still the fallback.
 - **CI triggers on a `development` base** — confirmed by run 149's own `pull_request` event.
   `ci.yml` `on:` lists both branches on both triggers; a base missing from those lists runs
   *zero* jobs and shows no red mark, which is indistinguishable from having nothing to check.
@@ -941,8 +945,10 @@ both long-lived branches) and `PD-186` (the 🟠-prefixed Figma sections) were m
 2026-08-10; both had existed only in this file.
 
 One that is *not* a question and keeps getting re-asked: the Site URL and redirect allowlist on
-`letsride`. `PD-88` closed it, and a dashboard setting has no file behind it — so re-run the
-credential-free probe in `docs/ENVIRONMENTS.md` §The redirect allowlist rather than reopening it.
+`letsride`. `PD-88` closed it, `PD-106` then moved both projects onto `letsride.social` and took
+PROD's `http://localhost:3000/**` entry off on the way — and a dashboard setting has no file
+behind it, so re-run the credential-free probe in `docs/ENVIRONMENTS.md` §The redirect allowlist
+rather than reopening it.
 
 ---
 
