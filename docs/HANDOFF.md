@@ -473,20 +473,23 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `19/19 guard, navigation and sign-out checks correct`.** Count them from the
-output rather than from here: `all N taps navigated`, `no stamp re-read`,
-`the shell stayed mounted`, `the splash never painted`, then 6 signed-in guard rules, 4
-sign-out assertions and 5 signed-out guard rules. The walk discovers detail
+**A clean run is `22/22 guard, navigation and sign-out checks correct`.** Count them from the
+output rather than from here: 3 refused-sign-in assertions, then `all N taps navigated`,
+`no stamp re-read`, `the shell stayed mounted`, `the splash never painted`, then 6 signed-in
+guard rules, 4 sign-out assertions and 5 signed-out guard rules. The walk discovers detail
 routes from the lists, checks eleven route-guard redirects in both signed-in and signed-out
 states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no
-reachable screen, and taps five bottom tabs to prove a navigation costs no
-`my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
+reachable screen, taps five bottom tabs to prove a navigation costs no
+`my_onboarding_state()` re-read, does not remount the shell and never paints the splash, and
+submits a wrong password to prove the refusal is reported and the email survives it (PD-196 —
+React resets a `<form action={fn}>` on the failure path too, so an uncontrolled field there is
+one the framework clears).
 
 **The screens figure is data-dependent and is not a pass/fail number.** The detail routes are
 discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
 `13/13` against a DEV with a club but no ride, `16/16` once the ride is there. **Read the `N/N`
 for equality, not for the value**, and read the skip notices above it for what was not covered.
-`19/19` above is the pass/fail one; there is deliberately no canonical screens number here.
+`22/22` above is the pass/fail one; there is deliberately no canonical screens number here.
 
 **So the walk provisions what it needs** — a shrunken figure looks exactly like success while
 meaning the ride detail was never opened, which is how PD-125 shipped a switcher nobody had

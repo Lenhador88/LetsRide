@@ -16,10 +16,16 @@
  * repeatable rather than remembered.
  *
  * **This is a smoke walk, not an end-to-end suite.** CLAUDE.md defers Playwright
- * "until a flow is stable enough to be worth maintaining", and that still holds:
- * there are no assertions about behaviour here, only about whether a screen
- * rendered at all. It asks one question per route — did this come back as a
- * screen, or as a redirect, an error boundary, or an empty body.
+ * "until a flow is stable enough to be worth maintaining", and that still holds.
+ * Of every route it visits it asks one question — did this come back as a
+ * screen, or as a redirect, an error boundary, or an empty body — and nothing
+ * about what the screen then does.
+ *
+ * The named phases at the end are the exception, and they are named
+ * individually rather than covered by a general claim: each exists because a
+ * specific defect is invisible to every other gate in this repo, and each
+ * asserts exactly that one behaviour. Adding a phase means adding a reason, not
+ * broadening a remit.
  *
  * ## Running it, and the one thing that will otherwise waste an hour
  *
@@ -65,8 +71,8 @@
  * `NODE_USE_ENV_PROXY=1` is separately not optional: Node's fetch ignores
  * HTTPS_PROXY, so the relay itself cannot reach Supabase without it.
  *
- * Pass paths as arguments to walk a subset — that skips the guard and sign-out
- * phases, which need the full run.
+ * Pass paths as arguments to walk a subset — that skips the refused-sign-in,
+ * guard and sign-out phases, which need the full run.
  */
 import { chromium } from 'playwright-core'
 
@@ -156,6 +162,65 @@ page.on('pageerror', (e) => problems.push(`pageerror: ${String(e).slice(0, 300)}
 page.on('response', (r) => {
   if (r.status() >= 500) problems.push(`${r.status()} ${r.url().slice(0, 160)}`)
 })
+
+/** How many assertions `checkRefusedSignIn` makes, for the summary line. */
+const REFUSED_SIGN_IN_CHECKS = 3
+
+/**
+ * A refused sign-in must leave the email in the field — PD-196.
+ *
+ * React resets a `<form action={fn}>` once the action resolves, so every
+ * uncontrolled field in it reverts to its `defaultValue` on the failure path as
+ * well as the success one. The login form's email field was uncontrolled, and a
+ * rider who mistyped their password had to retype their address too.
+ *
+ * **This is the only gate in the repo that can see it.** `tsc`, ESLint, Vitest
+ * and `next build` all stay green through it, and the pure-function tests that
+ * cover the guard have no DOM to reset. The regression is one prop wide: delete
+ * `value`/`onChange` from that `<Input>` and the framework starts clearing the
+ * field again, silently.
+ *
+ * **The error assertion is what makes the email assertion mean anything.** An
+ * empty field and a submit that never happened look identical from here, so a
+ * check that only read the email back would pass on a form whose button had
+ * stopped working. `role="alert"` on screen proves the action ran and was
+ * refused; the retained email is only then a statement about the reset.
+ */
+async function checkRefusedSignIn() {
+  let bad = 0
+  const report = (ok, label, detail) => {
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nrefused sign-in:')
+  await page.goto(`${BASE}/auth/login`, { waitUntil: 'domcontentloaded' })
+  await page.fill('input[name="email"]', EMAIL)
+  // Wrong by construction rather than by choice — only one password is the
+  // account's, so a strict extension of it cannot also be.
+  await page.fill('input[name="password"]', `${PASSWORD}-wrong`)
+  await page.click('button[type="submit"]')
+  await page.waitForTimeout(2500)
+
+  const error = await page.textContent('[role="alert"]').catch(() => null)
+  report(Boolean(error), 'the refusal is reported', 'no [role="alert"] on screen')
+  report(
+    new URL(page.url()).pathname === '/auth/login',
+    'the rider stays on /auth/login',
+    `landed on ${new URL(page.url()).pathname}`
+  )
+  report(
+    (await page.inputValue('input[name="email"]')) === EMAIL,
+    'the email survives the refusal',
+    'the field was cleared — see PD-196'
+  )
+
+  return bad
+}
+
+// Full walks only, matching the guard cases below: a subset invocation is
+// someone debugging one screen, and this one costs a whole extra sign-in.
+const refusedSignInFailures = isFullWalk ? await checkRefusedSignIn() : 0
 
 await page.goto(`${BASE}/auth/login`, { waitUntil: 'domcontentloaded' })
 await page.fill('input[name="email"]', EMAIL)
@@ -705,7 +770,9 @@ if (isFullWalk) {
     GUARD_CASES_SIGNED_IN.length +
     GUARD_CASES_SIGNED_OUT.length +
     SIGN_OUT_CHECKS +
-    TAB_NAV_CHECKS
-  console.log(`${total - guardFailures}/${total} guard, navigation and sign-out checks correct`)
+    TAB_NAV_CHECKS +
+    REFUSED_SIGN_IN_CHECKS
+  const bad = guardFailures + refusedSignInFailures
+  console.log(`${total - bad}/${total} guard, navigation and sign-out checks correct`)
 }
-process.exit(failures || guardFailures || fixtureFailures ? 1 : 0)
+process.exit(failures || guardFailures || refusedSignInFailures || fixtureFailures ? 1 : 0)
