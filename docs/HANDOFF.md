@@ -230,9 +230,11 @@ stays load-bearing permanently**, and `resolve.browser.ts`'s tripwire keeps earn
 (`.claude/agents/native.md` §Before you report done):
 
 - **`capacitor.config.ts`** — `appId`, `appName`, `webDir: 'out'`, `androidScheme: 'https'`,
-  splash background `#3D996B`. **`appId` is `com.letsride.app` and is a placeholder needing
-  the owner's confirmation** — a bundle id cannot be changed after the first submission; a new
-  one is a new listing with no reviews or installs.
+  splash background `#3D996B`. **`appId` is `social.letsride.app` — CONFIRMED by the product
+  owner 2026-08-11 and settled.** This line said `com.letsride.app` and called it a placeholder
+  for four days after the file stopped carrying that value; read the file rather than this line
+  — `grep appId capacitor.config.ts`. A bundle id cannot be changed after the first submission;
+  a new one is a new listing with no reviews or installs.
 - **`src/lib/native/secure-store.ts`** — the keychain/keystore behind the seam, installed from
   `createClient()` immediately before the store resolves. That call site is deliberate and is
   the only race-free one: `resolveSessionStore()` resolves **once per page load**, so anything

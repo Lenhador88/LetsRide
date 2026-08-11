@@ -93,11 +93,18 @@ const config: CapacitorConfig = {
    * `https://app.letsride.social/.well-known/apple-app-site-association` before
    * any universal link resolves (docs/ENVIRONMENTS.md §Domains).
    *
-   * **Still a placeholder until the owner confirms it**, for one reason worth
-   * writing down: the App Store Connect and Play Console records are created
-   * from it, and neither can be renamed afterwards. Changing this line today
-   * costs nothing — `cap add` has never run (see the header) — and changing it
-   * after the first submission costs the listing.
+   * **CONFIRMED by the product owner 2026-08-11. This value is now settled and
+   * must not be changed.** It was a placeholder awaiting that confirmation
+   * until then, for the reason worth keeping: the App Store Connect and Play
+   * Console records are created from it and neither can be renamed afterwards.
+   * `cap add` has still never run (see the header), so nothing has baked it in
+   * yet — but the decision is made, and the next person to touch this line
+   * should treat it as a one-way door that is already closed rather than one
+   * still standing open.
+   *
+   * Valid on both platforms as written: three segments, each starting with a
+   * letter, no reserved words. The trailing `app` is an ordinary segment here,
+   * not the TLD.
    */
   appId: 'social.letsride.app',
   appName: 'LetsRide',
