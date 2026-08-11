@@ -856,6 +856,18 @@ because gate (7) of `.claude/commands/queue-pickup.md` stops a firing when any o
 sessions was touched in the last 15 minutes. **So while the owner is at the keyboard the queue is
 suppressed, not merely slow**, and this mode is the only thing picking work up at all.
 
+**Backgrounding it and then waiting on it is the same as not backgrounding it.** Product owner,
+2026-08-11: *"shouldn't all of that be running on the background?"* — said to a session that had
+correctly spawned `reviewer` with `run_in_background`, then stopped and idled until it returned.
+The point of the background is the *thread*, not the agent. While one runs, do every step that
+does not depend on its answer: push, open the PR so CI starts, update Linear, write the handoff.
+**A long-running thing you cannot act on yet is never a reason to stop** — the completion
+notification re-invokes you, so there is nothing to wait for and nothing to poll.
+
+This is also the one place `reviewer`-before-the-PR bends, and only in ordering: opening the PR
+starts CI in parallel and the findings still land before the **merge**, which is the threshold
+that matters. Never merge on an unfinished review.
+
 **The break-even is CLAUDE.md plus the agent's own brief — nothing else.** A subagent is handed
 this file and its brief; `docs/HANDOFF.md` is not auto-loaded into one, so counting it inflates
 every estimate and argues against delegating work that clears the bar comfortably:
@@ -1095,6 +1107,14 @@ not an exception to it: state what landed, what needs them, and stop.
 where the reasoning belongs, and they stay as long as they need to be. Do not also paste it
 into chat — link it. If something is worth saying twice it is worth saying once, in the place
 that survives the session.
+
+**Do not narrate the step you are about to take.** Product owner, 2026-08-11: *"output less
+information."* The rule above covers recapping work already done; this is the other half, and it
+is the one that produces a paragraph before every tool call. *"Checking X before I do Y"*,
+*"Making both edits together"*, *"Prepping the body so it opens the moment the review lands"* —
+the tool call itself already shows all of that. **Announce a decision only when the owner could
+still change it**; otherwise act, and say what came back. A reply whose content is its own
+preamble should not have been sent.
 
 Three things stay long however brief the commentary gets, because each is a *decision* rather
 than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,
