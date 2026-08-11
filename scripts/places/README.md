@@ -153,11 +153,14 @@ reachable through PostgREST can.
 indistinguishable from a working search that finds nothing.** `037` creates the
 schema; it cannot create the rows.
 
-**Loading is also what arms the open cost in §Searching.** Linear **PD-150** —
+**Loading is also what arms the cost in §Searching.** Linear **PD-150** —
 ~5.9 s of database CPU per request from a 49-character term — is 0 ms today only
-because there is nothing to scan. Land it before this load reaches PROD; the
-workflow's PROD arm requires a typed confirmation that says so, which is a human
-gate and not a check.
+because there is nothing to scan. **`049` landed its option A**, so the
+caller-chosen multiplier is now bounded at eight distinct tokens; the ~2.8 s
+floor from a single broad token is option B and is **still open**. The
+workflow's PROD arm still requires a typed confirmation naming PD-150, and that
+wording is a human gate rather than a check — read the issue's current state
+rather than the prompt.
 
 ### What it costs — measured on the real extract, 2026-08-09
 
@@ -305,10 +308,11 @@ sequential scan, and two contracts the UI has to honour:
   Nothing exceeds the 8 s statement timeout, so no rider sees an error — which is
   the hazard as much as the reassurance.
 
-- **A long multi-token term is an OPEN cost — gate it, do not just debounce it.**
+- **A long multi-token term multiplied the whole query. `049` bounds it at eight
+  distinct tokens; the FLOOR it does not touch is still open.**
   Per-candidate work is linear in the *number of distinct patterns*, so a term
   that holds many patterns matching the same rows multiplies the whole query.
-  `039` §5d closes one half of this and leaves the other open, and the README
+  `039` §5d closed one half of this and left the other open, and the README
   said the opposite for one revision:
 
   | payload | chars | before `lower()` | after |
@@ -320,10 +324,21 @@ sequential scan, and two contracts the UI has to honour:
   Case-insensitively repeated tokens are collapsed (`group by lower(s.tok)`),
   because `ILIKE` is case-insensitive and byte-equality dedup misses exactly the
   vector someone would choose deliberately. **Distinct co-extensive substrings
-  are not collapsed by anything** — nothing is duplicated — so the worst measured
-  term costs ~5.9 s from 49 characters, half the cap. A function-level
-  `statement_timeout` does *not* bound it: measured on PG 16.13, the timer is
-  armed before the function is entered, so the setting is applied and inert.
+  are not collapsed by anything** — nothing is duplicated — so that row measured
+  ~5.9 s from 49 characters, half the cap. A function-level `statement_timeout`
+  does *not* bound it: measured on PG 16.13, the timer is armed before the
+  function is entered, so the setting is applied and inert.
 
-  Until a cap lands, **the client is the only bound**: reject or truncate terms
-  with more than a handful of tokens before calling the RPC.
+  **`049` closed it by refusing above eight distinct tokens** (PD-150 option A),
+  which is the same number `boundTerm` in `src/lib/data/places.ts` normalises
+  to — at most eight tokens joined by single spaces, on every call rather than
+  only on long terms, so the database's count cannot exceed its own cap. **State
+  it as a property of what the client sends, never as "the app cannot trip the
+  refusal" via a prediction of Postgres's tokenising**: that version was
+  disproved on both the whitespace class and the ICU case fold, and `places.ts`
+  carries both measurements. What
+  it bounds is the *multiplier a caller chooses*, not the cost of the data: a
+  single broad token is still ~2.8 s, and the 100-character cap previously
+  allowed roughly twice the ten patterns above. **Capping candidate rows before
+  scoring is what would lower the floor, and it is still open** — PD-150
+  option B.

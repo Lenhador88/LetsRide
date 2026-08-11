@@ -753,7 +753,7 @@ export type Place = {
  * purpose, so the UI draws one line instead of an empty second one. Trust this
  * type over the generated one.
  *
- * Five behaviours the caller has to know, all enforced in the function body
+ * Six behaviours the caller has to know, all enforced in the function body
  * rather than by validation the client could skip:
  *
  *  - **Matching is PER TOKEN and ANDed, over `name`, `brand`, `street` and
@@ -776,6 +776,17 @@ export type Place = {
  *    rendering an empty state. The guard is on the WHOLE term, not per token, so
  *    `Kerkstraat 40` is fine and its two-character token is honoured rather than
  *    dropped — but `ab 40` is refused.
+ *  - **More than EIGHT distinct tokens returns zero rows** (`049`), by the same
+ *    refusal as the guard above rather than by an error. Deduplication is
+ *    applied first and it is case-insensitive, so `Jumbo jumbo` spends one slot,
+ *    not two. `boundTerm` in `src/lib/data/places.ts` normalises every term to
+ *    at most eight space-separated tokens before calling, so this app's count
+ *    cannot exceed the cap — note the direction of that claim: it is a property
+ *    of what the client SENDS, not a prediction of how Postgres will tokenise a
+ *    raw string. Predicting it was wrong on both the whitespace class and the
+ *    case fold, and `places.ts` carries the measurements. The refusal itself
+ *    exists for a caller reaching PostgREST directly, which no client-side rule
+ *    can reach.
  *  - **`near_lat`/`near_lon` are optional, and they are a bias with a sharp
  *    edge.** Matches within roughly 28 km fill the list first and the rest of
  *    the country fills only what is left — so when five nearby matches exist,
@@ -803,15 +814,18 @@ export type Place = {
  *  - **Always pass `near_lat`/`near_lon` when you have them.** With a location
  *    every term above measured 29–152 ms, because the bbox applies. Without one
  *    there is nothing to narrow the scan.
- *  - **Gate the token COUNT, not just the timing — this one is not optional and
- *    the database cannot do it for you.** Per-candidate work is linear in the
- *    number of distinct patterns, so a term holding many patterns that match the
- *    same rows multiplies the whole query: ten substrings of one word inside 49
+ *  - **Gate the token COUNT, not just the timing — still worth doing, but for a
+ *    different reason since `049`.** Per-candidate work is linear in the number
+ *    of distinct patterns, so a term holding many patterns that match the same
+ *    rows multiplies the whole query: ten substrings of one word inside 49
  *    characters measured **5,914 ms**. `039` §5d collapses case-insensitively
- *    duplicate tokens, which closes the repeat vector, but nothing collapses
+ *    duplicate tokens, which closes the repeat vector; nothing collapses
  *    genuinely distinct substrings and a function-level `statement_timeout`
- *    cannot bound it (the timer is armed before the function is entered).
- *    Refuse or truncate terms beyond a handful of tokens client-side.
+ *    cannot bound it (the timer is armed before the function is entered), so
+ *    **`049` refuses above eight distinct tokens** and that is now the real
+ *    bound. The client-side truncation is no longer the only thing standing
+ *    between a rider and a six-second query — it is what keeps a rider from
+ *    meeting the refusal, which is a UX job rather than a safety one.
  *
  * Nothing exceeds the 8 s statement timeout, so a slow query surfaces as a slow
  * screen rather than an error — which is why this is worth reading rather than

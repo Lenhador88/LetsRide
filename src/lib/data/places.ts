@@ -52,26 +52,68 @@ export const PLACE_SEARCH_MIN_CHARS = 4
  * it intuitively reads as, and an earlier revision of this comment had it
  * backwards.
  *
- * **This does NOT close PD-150, and must not be read as the mitigation.** It is
- * a client-side bound, so it only protects riders using our UI from an
- * accidentally expensive query. Anyone can call the RPC directly through
- * PostgREST with forty tokens and pay none of it. The real gate has to be in
- * `search_places()` itself — that is what PD-150 tracks, and it is still open.
+ * **This is not the security bound and never was — `049` is.** A client-side
+ * cap only reaches riders using our UI; anyone can call the RPC directly
+ * through PostgREST with forty tokens and pay none of it, which is why PD-150
+ * stayed open until the refusal landed in `search_places()` itself.
+ *
+ * **What this guarantees is a property of the OUTPUT, not a prediction about
+ * how Postgres will read the input** — see `boundTerm` below for why the
+ * predicting version was wrong twice over.
  */
 export const PLACE_SEARCH_MAX_TOKENS = 8
 
 /**
- * Deduped case-insensitively before the cap is applied — not a query-cost fix
- * (`039` §5d already dedups server-side before building patterns, so a
- * repeated word costs one pattern there regardless of what this does), but
- * without it here the CAP wastes its budget on repeats: `Jumbo jumbo JUMBO
- * ×8 Maastricht` is nine raw tokens, so the un-deduped cap kept the eight
- * Jumbos and dropped `Maastricht` entirely — where the database would have
- * collapsed the eight into one and kept it. Deduping first means a repeated
- * word can never push a genuinely distinct one out of the truncated term.
+ * Normalises the term to **at most eight tokens joined by single U+0020**, and
+ * does so UNCONDITIONALLY rather than only when it truncates.
+ *
+ * **The unconditional part is the whole correctness argument, and the earlier
+ * version — which returned the raw term whenever it was under the cap — was
+ * wrong in two independent ways.** That version tried to *predict* how Postgres
+ * would tokenise the rider's string. Both runtimes disagree about Unicode, in
+ * the same harmful direction, and both were measured against DEV rather than
+ * reasoned about:
+ *
+ *  - **The split.** `U+001C`–`U+001F` and `U+0085` are token separators to
+ *    Postgres's `\s` and are *not* matched by JavaScript's. So
+ *    `"aabb cc dd ee ff gg hh ii"` counted 8 here, passed through
+ *    untouched, and reached the database as **9** — refused, zero rows, and a
+ *    caller cannot tell that from an honest miss.
+ *  - **The fold.** The database's `lower()` is ICU's, not V8's. There are 55
+ *    code points V8 lowercases and this server's ICU does not — `U+1C89`,
+ *    seven more in the BMP, and 47 across Garay and Medefaidrin — so
+ *    `"Ᲊx ᲊx abc def ghi jkl mno pqr stu"` deduped to 8 here and to **9**
+ *    there. **That set is a function of the server's ICU version and regrows
+ *    with every Unicode release**, so it cannot be enumerated once and pinned.
+ *
+ * Splitting on a class that is a superset of any plausible server's whitespace
+ * and then rejoining with a plain space means the database receives a string
+ * containing no character any locale could split on. Postgres's split is
+ * therefore *this* split, and its `lower()` can then only ever merge — so
+ * eight stays at most eight whatever ICU the server runs. **The proof stops
+ * depending on the two runtimes agreeing about Unicode.**
+ *
+ * `\p{Cc}` is what carries `U+0085` and the C0 separators; `\p{Zs}` is already
+ * inside `\s` and is named for intent. `\p{Cf}` is deliberately absent — the
+ * database does *not* split on `U+200B`/`U+FEFF`/`U+00AD`/`U+2060` (measured),
+ * and stripping format characters would corrupt legitimate text, ZWJ sequences
+ * most obviously.
+ *
+ * **Two behaviour notes, both in the safe direction:**
+ *
+ *  - The term is no longer sent verbatim. A character this splits on but the
+ *    database would not (`U+FEFF`, `U+00A0`) becomes a space, so the search
+ *    WIDENS — tokens are ANDed, so a separator that was previously part of a
+ *    token now imposes two weaker constraints instead of one stronger one.
+ *    Never a missed match, though the five-row cap can still rank one out.
+ *  - Case-insensitive dedup runs before the slice, so a repeated word cannot
+ *    push a genuinely distinct one out of the truncated term: `Jumbo jumbo
+ *    JUMBO ×8 Maastricht` keeps `Maastricht`. It now also *reaches* the
+ *    database deduped rather than raw, which only improves the
+ *    `similarity(term, name)` ranking the repeats were diluting.
  */
 function boundTerm(term: string): string {
-  const tokens = term.split(/\s+/).filter(Boolean)
+  const tokens = term.split(/[\s\p{Zs}\p{Cc}]+/u).filter(Boolean)
 
   const deduped: string[] = []
   const seen = new Set<string>()
@@ -83,9 +125,7 @@ function boundTerm(term: string): string {
     }
   }
 
-  return deduped.length > PLACE_SEARCH_MAX_TOKENS
-    ? deduped.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ')
-    : term
+  return deduped.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ')
 }
 
 /** What `resolveRiderLocation()` (`src/lib/location/`) hands to `searchPlaces`
