@@ -330,8 +330,13 @@ sequential scan, and two contracts the UI has to honour:
   function is entered, so the setting is applied and inert.
 
   **`049` closed it by refusing above eight distinct tokens** (PD-150 option A),
-  which is the same number `PLACE_SEARCH_MAX_TOKENS` truncates to in
-  `src/lib/data/places.ts`, so no term from the app can reach the refusal. What
+  which is the same number `boundTerm` in `src/lib/data/places.ts` normalises
+  to — at most eight tokens joined by single spaces, on every call rather than
+  only on long terms, so the database's count cannot exceed its own cap. **State
+  it as a property of what the client sends, never as "the app cannot trip the
+  refusal" via a prediction of Postgres's tokenising**: that version was
+  disproved on both the whitespace class and the ICU case fold, and `places.ts`
+  carries both measurements. What
   it bounds is the *multiplier a caller chooses*, not the cost of the data: a
   single broad token is still ~2.8 s, and the 100-character cap previously
   allowed roughly twice the ten patterns above. **Capping candidate rows before

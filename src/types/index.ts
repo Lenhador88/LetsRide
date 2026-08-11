@@ -779,10 +779,14 @@ export type Place = {
  *  - **More than EIGHT distinct tokens returns zero rows** (`049`), by the same
  *    refusal as the guard above rather than by an error. Deduplication is
  *    applied first and it is case-insensitive, so `Jumbo jumbo` spends one slot,
- *    not two. `PLACE_SEARCH_MAX_TOKENS` in `src/lib/data/places.ts` truncates to
- *    the same eight before calling, so a term from this app can never trip it —
- *    the refusal exists for a caller reaching PostgREST directly, which the
- *    client-side truncation never could.
+ *    not two. `boundTerm` in `src/lib/data/places.ts` normalises every term to
+ *    at most eight space-separated tokens before calling, so this app's count
+ *    cannot exceed the cap — note the direction of that claim: it is a property
+ *    of what the client SENDS, not a prediction of how Postgres will tokenise a
+ *    raw string. Predicting it was wrong on both the whitespace class and the
+ *    case fold, and `places.ts` carries the measurements. The refusal itself
+ *    exists for a caller reaching PostgREST directly, which no client-side rule
+ *    can reach.
  *  - **`near_lat`/`near_lon` are optional, and they are a bias with a sharp
  *    edge.** Matches within roughly 28 km fill the list first and the rest of
  *    the country fills only what is left — so when five nearby matches exist,

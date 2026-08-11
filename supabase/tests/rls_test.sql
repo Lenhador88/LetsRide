@@ -10287,6 +10287,17 @@ $$;
 select assert_eq(
   (select pg_temp.sp_code_049() like '%--%'),
   false, '049: the comment stripper leaves no comment marker at all — the needle below reads code, not prose');
+-- The stripper eats from `--` to end of line INCLUDING inside a string literal,
+-- so an over-reach deletes real code and the cap needle below goes red saying
+-- "the cap is gone" when the cap is fine. This separates the two: it survives
+-- an over-reach (the body is far longer than its comments) and fails only if
+-- the stripper stopped stripping, so a red cap needle beneath a green line here
+-- means the code, not the tool. 039.0 and 040.0 carry the same probe.
+select assert_eq(
+  (select length(pg_temp.sp_code_049())
+        < (select length(prosrc) from pg_proc
+            where oid = 'public.search_places(text,double precision,double precision)'::regprocedure)),
+  true, '049: ... and it removed something, so the cap needle is not silently reading raw prosrc');
 select assert_eq(
   (select pg_temp.sp_code_049() like '%coalesce(array_length(tk.pats, 1), 0) <= 8%'),
   true, '049: the token cap is in the function body, and it counts tk.pats — the array AFTER the lower() dedup, not the raw split');

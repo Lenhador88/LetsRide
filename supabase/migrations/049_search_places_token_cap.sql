@@ -31,14 +31,39 @@
 -- says why 8: "covers any real meeting-point query with room to spare (`Jumbo
 -- Maastricht Stationsweg 40` is four)".
 --
--- ** So the two rules compose with no dead zone, and that is provable rather
--- than hopeful. ** The client dedups case-insensitively and truncates to 8; this
--- function then dedups the SAME eight with `group by lower(s.tok)`, which can
--- only ever REDUCE the count. A term that arrives through our own UI therefore
--- carries at most 8 distinct patterns and can never be refused by the line below
--- — including when JavaScript's `toLowerCase()` and Postgres's `lower()`
--- disagree on some exotic pair, since that disagreement can only make the
--- database's count smaller than the client's, never larger.
+-- ** The two rules compose because the client NORMALISES its output, not
+-- because it predicts this function's input. That distinction is the whole
+-- argument, and the predicting version of it was wrong twice over. **
+--
+-- `boundTerm` sends at most eight tokens joined by single U+0020, always —
+-- never the rider's raw string. So the split below is the split the client
+-- already performed, and `group by lower(s.tok)` can then only ever REDUCE the
+-- count from eight. Nothing here depends on the two runtimes agreeing about
+-- Unicode.
+--
+-- ** They do not agree, and both disagreements were measured against DEV rather
+-- than reasoned about — an earlier revision of this section asserted the
+-- opposite and review disproved it: **
+--
+--   * THE SPLIT. `U+001C`-`U+001F` and `U+0085` separate tokens for Postgres's
+--     `\s` and not for JavaScript's. A term the client counted as 8 arrived
+--     here as 9.
+--   * THE FOLD. `lower()` is ICU's, not V8's. 55 code points fold in V8 and not
+--     in this server's ICU — `U+1C89`, seven more in the BMP, 47 across Garay
+--     and Medefaidrin — so a client-deduped 8 was 9 distinct here. ** That set
+--     is a function of the server's ICU version and regrows with every Unicode
+--     release **, so it can never be enumerated once and pinned.
+--
+-- Both failures were silent and fail-closed: zero rows, which a caller cannot
+-- distinguish from an honest miss. That is why the guarantee had to become a
+-- property of what the client SENDS.
+--
+-- ** State it as the property, never as "a term from the app can never be
+-- refused". ** The correct claim is: the client sends at most eight
+-- space-separated tokens, so this function's count cannot exceed its own cap.
+-- `src/lib/data/__tests__/places.test.ts` asserts that property on `boundTerm`'s
+-- output — including both measured vectors — which is an assertion that survives
+-- a server ICU upgrade. A test comparing the two NUMBERS does not.
 --
 -- ** Picking a SMALLER cap here was considered and rejected, so it is not
 -- re-litigated. ** 6 would bound the worst term ~690 ms tighter (§3's
@@ -279,7 +304,7 @@ as $fn$
 $fn$;
 
 comment on function public.search_places(text, double precision, double precision) is
-  'Meeting-point typeahead over public.places (037, widened by 039, bounded by 049). SECURITY INVOKER — the places SELECT policy governs it, there is nothing to re-check. Returns at most 5 rows: the design draws five. MATCHES name, brand, street and locality, PER TOKEN and ANDed: the term is split on whitespace and every token must appear somewhere in the row''s searchable text, so `Jumbo Maastricht` finds a Jumbo whose locality is Maastricht and adding a word always narrows. RANKS a place the query NAMES (every token in name or brand) above a place the query merely LOCATES; name matches are then ordered by trigram similarity and address-only matches by distance, so a bare city name does not bury the place actually called that. Proximity still outranks both: matches within roughly 28 km fill the list first and the rest of the country fills only what is left, so a distant branch of a nearby chain is unreachable while a location is supplied (037 §5b) — the escape hatch is to type the town, which is what 039 makes possible. TWO REFUSALS, both returning ZERO ROWS rather than an error, so gate the input and do not render an empty state for either: the query must hold three consecutive alphanumerics (per-token by construction, since such a run cannot span whitespace), and it must carry at most EIGHT distinct tokens after case-insensitive deduplication (049). The token cap is the ONLY bound on the multiplier a caller controls — per-candidate work is linear in distinct patterns, and ten distinct co-extensive substrings of one word AND to the same rows while multiplying the per-row work tenfold, which no deduplication can reach because nothing is duplicated (039 §5d). It matches PLACE_SEARCH_MAX_TOKENS in src/lib/data/places.ts, which truncates to the same eight, so a term from this app''s own UI can never be refused by it. A short token ANDed with a long one is free and is honoured, so `Kerkstraat 40` is not silently `Kerkstraat`. Non-finite or out-of-range coordinates degrade to a nationwide search instead of raising. DEBOUNCE IT — REQUIRED, not advisable: cost is roughly linear in matched rows (8-11 µs each) and the broadest tokens are Dutch street-type suffixes, not city names. On a 750k-row SYNTHETIC bench (039 §5c; this table is empty, so nothing is measured on real data) the national pass took 2,957 ms for `straat`, which matches 52% of rows, and 996 ms for `sta` — three characters, so it is the FIRST query fired the moment the guard stops refusing, for anyone typing "Stationsweg". A city name is 497 ms. Supplying a location keeps every one of those to 29-152 ms because the bbox applies, so pass `near_lat`/`near_lon` whenever you have them and fire on a pause rather than a keystroke. THE FLOOR IS NOT BOUNDED and 049 does not change it: one broad token still costs ~2,809 ms, because that is the data''s cost rather than the caller''s choice — capping candidate rows before scoring is what would bound it, and it is still open (PD-150 option B). A function-level statement_timeout cannot bound any of this (measured: the timer is armed before the function is entered, so the SET is applied but inert).';
+  'Meeting-point typeahead over public.places (037, widened by 039, bounded by 049). SECURITY INVOKER — the places SELECT policy governs it, there is nothing to re-check. Returns at most 5 rows: the design draws five. MATCHES name, brand, street and locality, PER TOKEN and ANDed: the term is split on whitespace and every token must appear somewhere in the row''s searchable text, so `Jumbo Maastricht` finds a Jumbo whose locality is Maastricht and adding a word always narrows. RANKS a place the query NAMES (every token in name or brand) above a place the query merely LOCATES; name matches are then ordered by trigram similarity and address-only matches by distance, so a bare city name does not bury the place actually called that. Proximity still outranks both: matches within roughly 28 km fill the list first and the rest of the country fills only what is left, so a distant branch of a nearby chain is unreachable while a location is supplied (037 §5b) — the escape hatch is to type the town, which is what 039 makes possible. TWO REFUSALS, both returning ZERO ROWS rather than an error, so gate the input and do not render an empty state for either: the query must hold three consecutive alphanumerics (per-token by construction, since such a run cannot span whitespace), and it must carry at most EIGHT distinct tokens after case-insensitive deduplication (049). The token cap is the ONLY bound on the multiplier a caller controls — per-candidate work is linear in distinct patterns, and ten distinct co-extensive substrings of one word AND to the same rows while multiplying the per-row work tenfold, which no deduplication can reach because nothing is duplicated (039 §5d). It matches PLACE_SEARCH_MAX_TOKENS in src/lib/data/places.ts, whose boundTerm() sends at most eight tokens joined by single spaces — ALWAYS, never the rider''s raw string — so this function''s count cannot exceed its own cap. State it that way round rather than as "a term from the app can never be refused": the version of that claim which predicted how Postgres would tokenise the raw term was disproved twice, once on the whitespace class (U+001C-U+001F and U+0085 split here and not in JavaScript) and once on the case fold (lower() is ICU''s, and 55 code points fold in V8 and not in ICU, a set that regrows with every Unicode release). A short token ANDed with a long one is free and is honoured, so `Kerkstraat 40` is not silently `Kerkstraat`. Non-finite or out-of-range coordinates degrade to a nationwide search instead of raising. DEBOUNCE IT — REQUIRED, not advisable: cost is roughly linear in matched rows (8-11 µs each) and the broadest tokens are Dutch street-type suffixes, not city names. On a 750k-row SYNTHETIC bench (039 §5c; this table is empty, so nothing is measured on real data) the national pass took 2,957 ms for `straat`, which matches 52% of rows, and 996 ms for `sta` — three characters, so it is the FIRST query fired the moment the guard stops refusing, for anyone typing "Stationsweg". A city name is 497 ms. Supplying a location keeps every one of those to 29-152 ms because the bbox applies, so pass `near_lat`/`near_lon` whenever you have them and fire on a pause rather than a keystroke. THE FLOOR IS NOT BOUNDED and 049 does not change it: one broad token still costs ~2,809 ms, because that is the data''s cost rather than the caller''s choice — capping candidate rows before scoring is what would bound it, and it is still open (PD-150 option B). A function-level statement_timeout cannot bound any of this (measured: the timer is armed before the function is entered, so the SET is applied but inert).';
 
 -- Idempotent, and it means this file states its own privilege model instead of
 -- referring to one. `create or replace` preserved 037's and 039's ACL; this
