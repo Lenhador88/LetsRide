@@ -14,9 +14,11 @@ things that are *not* in the repo and therefore drift silently.
 > this file, and it is §Owner setup items 3 and 3a.
 >
 > **2026-08-11: both app hosts are live on `letsride.social`, and Supabase points at them.**
-> `app.letsride.social` serves production, `app-dev.letsride.social` serves `development`, and
-> both Site URLs moved after the hosts were confirmed serving — the order §Domains insists on.
-> The apex is still unattached and belongs to the website's own Vercel project (`PD-34`).
+> `app.letsride.social` was confirmed serving the app before its Site URL moved — the order
+> §Domains insists on. `app-dev.letsride.social` answers, but **behind Vercel SSO, so what it
+> serves could not be confirmed from outside**; its branch binding is set rather than observed,
+> and §Domains carries the check that closes that. The apex is still unattached and belongs to
+> the website's own Vercel project (`PD-34`).
 > The auth URLs that §Owner setup items 8 and 9 called an outage were **repaired before the
 > domain arrived**; re-measured 2026-08-07 and struck through there.
 
@@ -28,7 +30,7 @@ things that are *not* in the repo and therefore drift silently.
 |---|---|---|
 | Git branch | `development` | `main` |
 | Vercel target | Preview | Production |
-| URL (intended) | `app-dev.letsride.social` | `app.letsride.social` |
+| URL (canonical, live since 2026-08-11) | `app-dev.letsride.social` | `app.letsride.social` |
 | URL (Vercel-assigned, always works) | `letsrideapp-git-development-pedro-projects1.vercel.app` | `letsrideapp.vercel.app` |
 | Supabase project | `Letsride-dev` / `fpmrimzxadewsaiwpsel` — **created 2026-08-06, chain applied, schema verified identical to PROD** | `letsride` / `zwprydcyryvudhurbnye` |
 | Who can reach it | Owner only (Vercel SSO on Preview) | Anyone with the link |
@@ -200,11 +202,11 @@ cutover with a window.
 
 | Host | Serves | Vercel project | Target / branch | State |
 |---|---|---|---|---|
-| `app.letsride.social` | **The app, production** | `letsrideapp` | Production (`main`) | ✅ live |
-| `app-dev.letsride.social` | The app, DEV | `letsrideapp` | Preview, **git branch `development`** | ✅ live, behind SSO |
+| `app.letsride.social` | **The app, production** | `letsrideapp` | Production (`main`) | ✅ serving, verified |
+| `app-dev.letsride.social` | The app, DEV | `letsrideapp` | Preview, **git branch `development`** | ✅ attached; **branch binding set, not verified** |
 | `letsride.social` + `www` | The marketing website | **a second project — not this repo** | its own Production | not attached (`PD-34`) |
 
-Check rather than trust the two ticks — a domain can be detached, and the fallback is silent:
+Check rather than trust the ticks — a domain can be detached, and the fallback is silent:
 
 ```bash
 for h in app.letsride.social app-dev.letsride.social; do
@@ -212,6 +214,24 @@ for h in app.letsride.social app-dev.letsride.social; do
 done
 # 200 for app · 302 to vercel.com/sso-api for app-dev (Preview SSO — see below)
 ```
+
+**That second row's branch binding cannot be read from outside, and the distinction is not
+pedantry.** A `302` to the SSO wall proves the host is attached and protected; it says nothing
+about *which build* sits behind it. If the Git Branch field were unset or wrong, Vercel would
+serve the **production** build there — and `NEXT_PUBLIC_SUPABASE_URL` is inlined at build time
+(§Never use Vercel's promote), so DEV's Site URL would be sending testers to a build wired to the
+**production** database, with the SSO wall guaranteeing nobody notices. Confirm it in Vercel →
+Settings → Domains, or from a browser already authenticated to Vercel, by reading the build id out
+of the page:
+
+```bash
+# in the browser console on https://app-dev.letsride.social
+__next_f.flat().join('').match(/"b":"([^"]+)"/)[1]
+# RaYyGVUpuNcjXRMPL2sXX = development (right) · oU6Zgzt7JSBwDS6DyoYa2 = production (wrong)
+```
+
+Those two ids were measured 2026-08-11 and move with every deploy, so re-read them from
+`letsrideapp-git-development-…` and `letsrideapp.vercel.app` rather than trusting the literals.
 
 **The apex belongs to a different Vercel project, and that is the load-bearing part of the
 split.** Putting the website in this repo would drag it through this repo's CI, this repo's
@@ -243,16 +263,26 @@ still has to go through it when `PD-34` lands, and so does any host added later.
 
 **Step 2 has a trap at name.com, and the obvious move is the one that fails.** Vercel's
 per-domain target is a hex label — `61d5e29577db7c13.vercel-dns-017.com` for `app-dev` — and
-name.com's DNS panel **rejects it as an invalid entry**. The label starts with a digit, which
-[RFC 1123](https://www.rfc-editor.org/rfc/rfc1123) permits and the older RFC 952 does not; the
-panel validates against the older rule. Nothing about the value is wrong, so the natural reading
-— *Vercel printed the wrong thing* — is the wrong one. Three ways past it, in order:
+name.com's DNS panel **rejects it as an invalid entry**. Nothing about the value is wrong, so the
+natural reading — *Vercel printed the wrong thing* — is the wrong one, and that is the whole
+reason this paragraph exists.
 
-1. Re-enter it with the trailing dot: `61d5e29577db7c13.vercel-dns-017.com.`
-2. Use the generic **`cname.vercel-dns.com`** instead. It starts with a letter, so it passes, and
-   Vercel still verifies a subdomain pointed at it.
-3. `POST /v4/domains/letsride.social/records` on name.com's API, which does not run the panel's
-   validation. Needs an API token from the account.
+**Likely cause, untested:** the label starts with a digit, which
+[RFC 1123](https://www.rfc-editor.org/rfc/rfc1123) permits and the older RFC 952 does not, and
+some registrar validators still enforce the older rule. Nobody probed name.com's validator, so
+treat this as the working hypothesis rather than the diagnosis. Three ways past it:
+
+1. Use the generic **`cname.vercel-dns.com`** instead. It starts with a letter, so it satisfies
+   the hypothesis, and Vercel still verifies a subdomain pointed at it.
+2. `POST /v4/domains/letsride.social/records` on name.com's API, which does not run the panel's
+   client-side validation at all. Needs an API token from the account. This is the one that works
+   whatever the cause is.
+3. Re-enter it with a trailing dot: `61d5e29577db7c13.vercel-dns-017.com.` — cheap to try, but
+   **note it is inconsistent with the hypothesis above**, since a trailing dot does not move the
+   leading digit. If this is what clears it, the hypothesis is wrong and should be struck.
+
+**Which of the three actually resolved it on 2026-08-11 was not recorded.** Establish it the next
+time — `PD-34`'s apex has to run this same step.
 
 Two more name.com specifics: the **Host** field takes the bare label (`app`, not
 `app.letsride.social` — paste the FQDN and you get `app.letsride.social.letsride.social`), and
@@ -282,15 +312,22 @@ is the one field where being early is worse than being late.
 `http://localhost:3000/**` stays on DEV and is now **off** PROD, where it had been a permanently
 open redirect target on a production auth server.
 
-**The preview wildcard stays on PROD, and the reason is not what the name suggests.** It matches
-two *production* aliases as well as previews — `letsrideapp-pedro-projects1.vercel.app` and
-`letsrideapp-git-main-pedro-projects1.vercel.app`, the latter measured serving the identical
-production build (same etag as `app.letsride.social`). Drop it and auth links opened on those
-aliases fall back to the Site URL instead. It is also a far weaker exposure than the localhost
-entry that *was* removed: a matching host cannot be created without deploy rights on the Vercel
-project, whereas any process on a rider's own machine can listen on `localhost:3000`. Replacing
-it with the two exact aliases is the tidier end state, once `app.letsride.social` is canonical
-and the `*.vercel.app` entries can all go together.
+**The preview wildcard stays on PROD, and the reason is not what the name suggests.** It also
+matches a *production* alias: `letsrideapp-git-main-pedro-projects1.vercel.app`, measured serving
+the identical production build — same etag as `app.letsride.social`. Drop the wildcard and auth
+links opened on that host fall back to the Site URL instead.
+
+**Note it does *not* match `letsrideapp-pedro-projects1.vercel.app`**, the other alias on the
+project — `letsrideapp-` + `*` + `-pedro-projects1.vercel.app` cannot match a string that is
+shorter than the two literals combined, even with `*` empty. Worth stating because the pattern
+reads as though it covers every `letsrideapp-…` host and it does not; whether auth links opened
+on that alias work has never been probed.
+
+The wildcard is also a far weaker exposure than the localhost entry that *was* removed: a matching
+host cannot be created without deploy rights on the Vercel project, whereas any process on a
+rider's own machine can listen on `localhost:3000`. Replacing it with the one exact alias is the
+tidier end state, once `app.letsride.social` is canonical and the `*.vercel.app` entries can all
+go together.
 
 **Nothing in `src/` needs to change for any of this.** `ShareButton`, `signUp` and
 `requestPasswordReset` all build their URLs from `window.location.origin`, so the app follows
@@ -462,11 +499,11 @@ opposite.
 
 Check these on both projects whenever either changes:
 
-| Setting | DEV | PROD (intended) | **PROD, measured 2026-08-06** |
+| Setting | DEV | PROD (intended) | **PROD, measured — date per cell** |
 |---|---|---|---|
 | Email confirmation | off | **on** before launch (decision #6) | **ON** — `mailer_autoconfirm: false`, re-measured 2026-08-07 |
-| Site URL | the DEV preview alias | `https://app.letsride.social` once it serves (§Domains) | ✅ **`https://letsrideapp.vercel.app`** — repaired, re-measured 2026-08-07 |
-| Redirect allowlist | `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | add `https://app.letsride.social/**`; keep the `*.vercel.app` entry | ✅ `https://letsrideapp.vercel.app/**` honoured. ⚠️ `http://localhost:3000/**` also honoured, and should be DEV-only |
+| Site URL | `https://app-dev.letsride.social` | `https://app.letsride.social` | ✅ **`https://app.letsride.social`** — moved and re-measured 2026-08-11 |
+| Redirect allowlist | `https://app-dev.letsride.social/**` + `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | `https://app.letsride.social/**`, the `*.vercel.app` entries, and **no** localhost | ✅ all three honoured; `http://localhost:3000/**` **removed** — re-measured 2026-08-11 |
 | Leaked-password protection | on | on | **off** — the one outstanding security advisor |
 | `UpdatePasswordRequireCurrentPassword` | on | on | **not measured** — no read-only probe found for it |
 
@@ -610,16 +647,17 @@ Nobody in a session can do these.
    had already been fixed*, in three places at once, which is the strongest argument this file
    has for §The redirect allowlist's rule: **keep the probe, not the verdict.**
 9. ~~**Add the production origin to the redirect allowlist.**~~ **Done and verified** by the
-   same probe. One residue worth a click, not urgent: `http://localhost:3000/**` is still
-   honoured on **PROD**, where §Auth configuration intends it DEV-only. It is not an outage —
-   nothing in production ever asks for it, because `requestPasswordReset` builds its
-   `redirect_to` from `window.location.origin` — but it is a permanently open redirect target
-   on a production auth server, and it costs nothing to remove.
+   same probe. ~~One residue worth a click: `http://localhost:3000/**` is still honoured on
+   **PROD**.~~ **Removed 2026-08-11**, with the domain move — it was never an outage, since
+   `requestPasswordReset` builds its `redirect_to` from `window.location.origin` and nothing in
+   production ever asked for it, but it was a permanently open redirect target on a production
+   auth server.
 
-**The domain replaces both with one new item, and it is in §Domains rather than here** because
-its ordering matters more than its content: attach `app.letsride.social`, confirm it serves,
-**then** move the Site URL. Doing it in the other order recreates items 8 and 9 exactly, with a
-hostname that looks right.
+**The domain work that replaced both of these is done — `PD-105` and `PD-106`, 2026-08-11 — and
+the ordering rule it was kept here for outlives it:** attach the host, confirm it serves, **then**
+move the Site URL. Doing it in the other order recreates items 8 and 9 exactly, with a hostname
+that looks right. The apex still has to go through it when `PD-34` lands, which is why §Domains
+keeps the list as procedure rather than a record.
 
 Then, in a session: apply the chain to DEV, run `npm run db:drift` to prove the three agree,
 seed it, and move the two `@letsride.test` fixtures off production.

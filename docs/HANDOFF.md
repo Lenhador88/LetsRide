@@ -130,10 +130,12 @@ branches at the same SHA.
 
 - **`development` is deployed**: `letsrideapp-git-development-pedro-projects1.vercel.app`,
   Preview target, `READY`. Owner-only, because Preview carries Vercel SSO.
-- **Both custom hosts are live since 2026-08-11** — `app.letsride.social` (production, `200`) and
-  `app-dev.letsride.social` (`development`, `302` to Vercel SSO), with both Supabase Site URLs
-  moved to match. `PD-105`/`PD-106`; `docs/ENVIRONMENTS.md` §Domains carries the probe. The
-  `*.vercel.app` URLs still work and are still the fallback.
+- **Both custom hosts are attached since 2026-08-11**, with both Supabase Site URLs moved to
+  match — `PD-105`/`PD-106`, and `docs/ENVIRONMENTS.md` §Domains carries the probes.
+  `app.letsride.social` answers `200` with the app, verified. `app-dev.letsride.social` answers
+  `302` to Vercel SSO, which verifies it is attached and protected and **not** which build is
+  behind it — its `development` binding is set, not observed, and §Domains has the build-id check
+  that settles it. The `*.vercel.app` URLs still work and are still the fallback.
 - **CI triggers on a `development` base** — confirmed by run 149's own `pull_request` event.
   `ci.yml` `on:` lists both branches on both triggers; a base missing from those lists runs
   *zero* jobs and shows no red mark, which is indistinguishable from having nothing to check.

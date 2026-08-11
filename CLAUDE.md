@@ -1375,8 +1375,10 @@ chain to a scratch database and asserts what each role can reach.
   Production target against the `letsride` project, `development` builds a Preview against
   `letsride-dev`. Feature branches are Previews too, so they also point at DEV.
 - **The domain is `letsride.social`, and the app does not live at its apex.**
-  `app.letsride.social` is production and `app-dev.letsride.social` is `development` — both live
-  since 2026-08-11, with Supabase's Site URLs pointed at them. The apex is the marketing website
+  `app.letsride.social` is production and `app-dev.letsride.social` is `development` — both
+  attached since 2026-08-11, with Supabase's Site URLs pointed at them. Only the production half
+  is *verified* serving: `app-dev` sits behind Vercel SSO, so its branch binding is set rather
+  than observed and `docs/ENVIRONMENTS.md` §Domains carries the check. The apex is the marketing website
   in a **separate Vercel project that is not this repo** and is still unattached (`PD-34`), so it
   serves nothing today. The `*.vercel.app` URLs keep working alongside the new hosts.
   `docs/ENVIRONMENTS.md` §Domains is the contract, including the one ordering rule (attach and
