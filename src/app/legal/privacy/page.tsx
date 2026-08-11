@@ -29,6 +29,41 @@ export default function PrivacyPage() {
         Do not treat this page as a privacy notice. It exists so the signup checkbox has a
         real destination, and must be replaced before the app accepts real users.
       </p>
+
+      <h2 className="text-base font-semibold pt-4">Who processes your data today</h2>
+      <p className="text-muted">
+        Not a substitute for the notice above — the binding copy still has to be written. This is
+        a plain list of who currently handles your data, so the gap is at least an honest one.
+      </p>
+      <ul className="text-muted list-disc pl-5 space-y-2">
+        <li>
+          <span className="font-medium">Supabase</span> — hosts the database, your account and
+          sign-in, uploaded photos, and the emails sent to confirm your address or reset your
+          password. Everything you enter in the app is stored here.
+        </li>
+        <li>
+          <span className="font-medium">Vercel</span> — serves the app itself. It receives the
+          usual request data a web host sees, including your IP address.
+        </li>
+      </ul>
+
+      <h2 className="text-base font-semibold pt-4">Planned, and not running yet</h2>
+      <p className="text-muted">
+        Nothing below is happening today. It is listed in advance because it will involve sending
+        data to someone new, and that should not be a surprise when it starts.
+      </p>
+      <ul className="text-muted list-disc pl-5 space-y-2">
+        <li>
+          <span className="font-medium">Geoapify</span> — will turn a ride&rsquo;s meeting point
+          into map coordinates and render the small map shown on a ride. When that is switched on,
+          creating or editing a ride will send the meeting point you typed to Geoapify.{' '}
+          <span className="font-medium">
+            A meeting point is often a home address, so treat it as one.
+          </span>{' '}
+          The resulting coordinates and map image will be stored by us, and your device will not
+          contact Geoapify directly. Today no ride has coordinates and nothing is sent anywhere.
+        </li>
+      </ul>
       <p className="text-muted">
         <Link href="/legal/account-deletion" className="underline">
           How to delete your account

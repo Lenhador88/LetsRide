@@ -26,16 +26,84 @@
   which is true of writes and **false of reads** — the instrument this change needs already exists
   and must be copied from a SELECT policy, never from an INSERT one.
 
-- [ ] 0.2 **Q1 — product owner, BLOCKING task 6.** What exact attribution string does Geoapify's
-  current plan require, and does the underlying data carry a second obligation? Default while
-  unanswered: **build the tile pipeline and do not render either tile** — paths stay NULL, both
-  screens keep today's fallback, and nothing ships that could breach a licence. Note this repo
-  already carries **one** unresolved attribution question (`places` / Overture); they are separate
-  vendors and neither answer covers the other.
-- [ ] 0.3 **Q2 — designer, BLOCKING task 6.2 only.** Where does the credit sit on the 80×148 strip?
-  Default: a 14px bar across the bottom, `Grey/70%` scrim, `Poppins/10/Medium` in `White/100`,
-  leaving 80×134 of map. If the answer is that it cannot be made legible, the strip renders no tile
-  — that is the specified negative case, not a failure.
+- [ ] 0.2 **Q1 — product owner, BLOCKING task 6. MOSTLY ANSWERED 2026-08-11 from the PRIMARY terms.
+  Left unchecked deliberately: the question asks what the *current plan* requires, and the answer
+  below is what the *Free* plan requires. Nobody has opened this account's plan page, so the
+  fail-closed default — build the pipeline, render no tile — stays in force until someone does.**
+  The obligations themselves are settled; which of them binds us is not.
+  (Terms and Conditions, 2 February 2024, Version 5, KEPTAGO LTD), supplied by the product owner
+  because `*.geoapify.com` is egress-blocked from this container.
+
+  **Three attribution obligations, not one. The first is the one a session would miss**, because
+  every secondary source describes attribution as a free-plan concern:
+
+  1. **OpenStreetMap attribution is required ALWAYS** — verbatim: *"When using the Services, you
+     must always provide OpenStreetMap attribution."* **Not conditional on the plan.** Upgrading to
+     a paid plan does not remove it, so the white-label option removes only obligation 2.
+  2. **Geoapify attribution is mandatory on the Free plan** — *"Geoapify attribution is mandatory
+     when using Free subscription plan."* The documented string is
+     `Powered by <a href="https://www.geoapify.com/">Geoapify</a>`.
+  3. **Per-API additional attribution** — *"Different APIs may require additional attribution,
+     which you must comply with as specified in their respective documentation."* Unread for the
+     geocoding and Static Maps endpoints specifically; assume there may be more.
+
+  **The Static Maps API burns map-style attribution into the returned PNG by default** (bottom-right).
+  That is what discharges obligation 1 in practice — **so do not suppress it.** Suppressing it does
+  not remove the obligation, it moves it onto us, and obligation 1 has no plan-level escape.
+
+  This repo still carries **one** unresolved attribution question (`places` / Overture); it is a
+  separate vendor and neither answer covers the other.
+- [ ] 0.2b **NEW, raised by the primary terms — two claims this change rests on that the Terms do
+  NOT support. Neither blocks writing code; both block real riders.**
+
+  1. **There is no caching or storage clause in the Terms, in either direction.** `PD-164` §3 is
+     recorded as having *"confirmed in the primary terms"* that we may store the rendered PNG
+     indefinitely, serve it to multiple end users, with no subscription tether — and **the Terms
+     contain no such clause**. They are silent on caching. Silence is not prohibition, and the
+     absence of a retention limit is genuinely favourable, but *"confirmed in the primary terms"*
+     overstates it: the licence granted is a bare *"non-exclusive, non-transferable,
+     non-sublicensable license to use and access our services."* Either `PD-164` read the pricing
+     page or an API doc rather than the Terms, or the claim is wrong. **The whole render-once-and-
+     store architecture rests on this.** Settle where that permission is actually written before
+     tiles reach riders.
+  2. **Free-plan production use carries undocumented limits.** Verbatim: *"The commercial use of
+     the Free-package is allowed in the development and, with some limitations, in the production
+     phase. Please contact us for details."* The limits are not stated anywhere in the Terms, and
+     this app is heading for production with real riders. **Owner action: email info@geoapify.com
+     and get the production limits in writing**, or price the paid plan. Note the paid plan does
+     not remove obligation 1 above.
+  3. **What Geoapify retains of a submitted address is still unread.** The Terms delegate this
+     entirely — *"Please read Privacy Policy for information about Geoapify's privacy and data
+     protection practices"* — so the third question this task set is answered by
+     `geoapify.com/privacy-policy/`, not here. It matters because `meeting_point` is frequently a
+     home address and **our own `/legal/privacy` now makes a factual claim about this flow**. Read
+     it before the function is deployed, and correct our page if it retains more than transiently.
+- [ ] 0.3 **Q2 — designer, BLOCKING task 6.2 only. PARTIALLY ANSWERED 2026-08-11. Product owner:
+  "do according to Figma… just make the most reasonable choice for now, we can modify/move later."**
+
+  **A first pass at this closed the task with "one shared `Powered by Geoapify` on the ride detail
+  panel, none on the cards". That contradicts this change's own merged spec** — 
+  `specs/ride-map-tiles/spec.md` §*The 80×148 strip carries the credit as part of its design*:
+  *"a single shared credit elsewhere on the screen SHALL NOT be accepted as covering the tiles,
+  because a list is scrolled and a card is what a rider sees."* Recorded rather than silently
+  corrected, because the grant of discretion is real and it is still not a licence to overrule a
+  merged requirement.
+
+  **What the owner's decision does settle:** the design carries no credit area, and none needs
+  drawing — the Static Maps PNG arrives with attribution burned into the image itself, which is
+  *composed into the strip* exactly as the spec requires, per tile, surviving a scroll. So the
+  14px scrim-bar default is dropped in favour of not suppressing the vendor's own credit. **That
+  is the whole reason suppression is off the table** (0.2 obligation 1).
+
+  **What is still open, and only task 6 can answer it:** whether the burned-in credit is legible at
+  80×148. That is precisely the spec's *A credit that cannot fit means no tile* scenario — if it is
+  not legible, the strip renders the pin fallback and no tile, and that is the specified outcome,
+  not a failure. Do not resolve it by shrinking, clipping or truncating.
+
+  **Do not treat the free-plan `Powered by Geoapify` credit as covering tile attribution.** It is a
+  service-level obligation (0.2 obligation 2) and needs its own legible home; the spec's rejection
+  of a shared credit is about the tile's data attribution and is unaffected by where that string
+  sits. Task 6.2 is unchanged and still instructs the per-tile build.
 - [ ] 0.4 **Q3 — product owner, non-blocking.** Render ceiling per ride. Default: **10 render
   attempts per ride per rolling 24 hours**, enforced by the append-only ledger in task 1.4. High
   enough that no honest organizer meets it, low enough to bound a loop. The window is genuinely
@@ -49,11 +117,35 @@
 - [ ] 0.7 **Q6 — product owner / OWNER ACTION, non-blocking for the build.** The privacy policy must
   name Geoapify as a processor before real meeting points are geocoded, since `meeting_point` is
   frequently a home address. Label `Owner only` in Linear.
-- [ ] 0.8 **Verify the vendor's response shape before `042` hardcodes a floor.** `rank.confidence`
-  and the match-type vocabulary in `design.md` §D3 are **inferred, not measured** — this container
-  has no egress to the vendor's docs. Capture one real geocode response and confirm the field
-  names, the score range and the granularity values. If they differ, `design.md` §D3 is wrong and
-  the migration must not be written from it.
+- [ ] 0.8 **Verify the vendor's response shape before `042` hardcodes a floor. PARTIALLY ANSWERED
+  2026-08-11 — read the fidelity note before writing the CHECK.**
+
+  **What is now known, from vendor documentation via web search.** `*.geoapify.com` is egress-blocked
+  (all hosts return `000`, a connection failure with no HTTP status; `WebFetch` returns an explicit
+  `EGRESS_BLOCKED`), so this is a **summary of the docs, not a response anyone captured**. It is a
+  real upgrade on §D3, which was written from prior knowledge alone — but it is one tier below the
+  raw JSON this task asks for, and it is labelled that way deliberately.
+
+  | Field | Finding |
+  |---|---|
+  | `rank.confidence` | **Range 0–1**, not 0–100. Documented examples: `0.675`, `1`. **So §D3's `>= 0.70` floor is on the right scale.** |
+  | `rank.match_type` | Vocabulary: `full_match`, `fuzzy_match`, `partial`, `inner_part` |
+  | `rank.confidence_street_level` | Separate field — "indicates if the street is correct" |
+  | `rank.confidence_city_level` | Separate field — "indicates if the city is correct" |
+  | `rank.confidence_building_level` | Separate field — "indicates if the building position is correct" |
+
+  **This changes the granularity gate for the better, and task 1.1 should take it.** §D3 gates on a
+  match-type vocabulary; the three `confidence_*_level` fields express granularity directly, so the
+  gate should read `confidence_street_level` rather than parse `match_type` strings. A vocabulary
+  can gain a member in a vendor release and silently fall through a whitelist; a numeric level
+  cannot.
+
+  **What is still NOT measured, and what task 1.1 must still do.** Whether the `confidence_*_level`
+  fields are 0–1 floats or 0/1 flags — the documentation describes them as "indicates if", which
+  reads boolean, while the examples show `1`. **Do not write a threshold against them until a real
+  response settles it**; gate on `= 1` or `>= 0.70` only once their type is known. The `>= 0.70 AND
+  <= 1.0` fail-closed CHECK on `rank.confidence` is now belt-and-braces rather than the only
+  defence, and is cheap enough to keep regardless.
 
 ## 1. `042` — the migration (purely additive, safe to apply first)
 
