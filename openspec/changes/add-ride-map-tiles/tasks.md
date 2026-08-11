@@ -15,7 +15,7 @@
   | `postcards` / `clubs` SELECT | `author_id = auth.uid() OR (…)` and `is_public OR owner_id = auth.uid() OR is_club_member(id)` — an **unconditional owner arm** in each, which is the test §D9 uses |
   | `rides` non-internal triggers | `enforce_participation_gate`, `enforce_ride_club_audience`, `notify_ride_created_in_club` |
   | `propagate_club_privacy_to_rides` | `update public.rides set is_public = false where club_id = new.id and is_public` — `is_public` only |
-  | Migration files / applied | **41 files / 40 applied** — `041_postcard_ride_tag.sql` is unapplied and belongs to `tag-postcards-to-rides`. **`042` is this change's number** |
+  | Migration files / applied | **41 files / 40 applied AS AT 2026-08-09 — both numbers are now stale.** Re-derive with `ls supabase/migrations/` and `list_migrations`; the chain reached `048` on 2026-08-10 and `042`–`048` are other changes' shipped work. **This change's number is whatever comes next, and it is NOT `042`** |
   | Security advisors | **8**, matching `CLAUDE.md`'s table |
 
   Three of these change the shape of the work. The **table-level grant** means the five new columns
@@ -164,7 +164,7 @@
 
   **§D3 error 2 — and this one is the reason this task existed.** See 0.8b.
 
-- [ ] 0.8b **BLOCKING task 1 and task 5. A confidence floor cannot do the job §D3 gives it, and
+- [x] 0.8b **DISCHARGED by the spec amendment — retained as the record of the measurement, not as open work. Note the rule stated below was superseded on review: see 4.5b, which keys on distance rather than on a tie.** Originally BLOCKING task 1 and task 5. A confidence floor cannot do the job §D3 gives it, and
   the measured response proves it rather than suggesting it.**
 
   The query `Stationsplein 1, Amsterdam` returned **two features**:
@@ -184,9 +184,11 @@
   the stored coordinate then looks exactly like a good one.
 
   This is the same failure `PD-149` describes for the picker (*a nearby street can crowd out a
-  famous landmark of the same name*) and the one this issue's own history called *"a guess that can
-  centre the tile on the wrong Shell station"*. It was assumed to be a low-confidence problem. **It
-  is not — it is an ambiguity problem, and confidence is silent on ambiguity.**
+  famous landmark of the same name*) and the one **`PD-114`** named — *"a guess that can silently
+  centre the tile on the wrong Shell station"* — which is PD-114's characterisation of **this**
+  change's approach, not a note this issue made about itself. It was read as a low-confidence
+  problem in both places. **It is not — it is an ambiguity problem, and confidence is silent on
+  ambiguity.**
 
   **Required change before the migration is written:** the gate must reject on *ambiguity* as well
   as on confidence. Minimum viable rule — **if more than one returned feature ties at the top
@@ -206,15 +208,40 @@
   exactly that zone, arriving free with a geocode we are already making. Worth a story; out of
   scope here.
 
-## 1. `042` — the migration (purely additive, safe to apply first)
+## 1. The migration (purely additive, safe to apply first)
 
-- [ ] 1.1 Write `supabase/migrations/042_ride_map_tiles.sql`. **Header must state the grant level
-  read from `relacl` and `attacl`** and that the table-level grant is deliberately left in place —
-  the columns arrive client-writable and that is accepted, per `design.md` §D2.
+- [ ] 1.1 Write the migration. **Re-derive its number** — `ls supabase/migrations/` — this task
+  said `042`, which is now a different change's applied migration (`042_revoke_profiles_delete_grant.sql`), and the chain reached `048` on 2026-08-10. **Header must state the grant level read
+  from `relacl` and `attacl`** and that the table-level grant is deliberately left in place — the
+  columns arrive client-writable and that is accepted, per `design.md` §D2.
+
+  **The header must also state what the CHECK does NOT do, and this is stronger than it was.**
+  `design.md` §D3 originally read as though the confidence floor bounded correctness. It does not:
+  `0.8b` measured two candidates 12.2 km apart both at `confidence: 1`, so **the coupling CHECK
+  cannot distinguish a right coordinate from a wrong one at all** — it enforces only that a
+  coordinate is accompanied by a confidence at or above the floor, and a tile path by a coordinate.
+  The ambiguity gate and the granularity gate both live in the Edge Function, and the schema cannot
+  see either. Say that in the header rather than letting the next reader infer a guarantee from a
+  constraint. The relevant scenario is *The granularity gate is a function-side rule and is not
+  overclaimed*, and it now covers ambiguity too.
 - [ ] 1.2 Add **five** nullable columns to `public.rides`: `latitude double precision`,
   `longitude double precision`, `geocode_confidence real`, `map_card_path text`,
   `map_detail_path text`. NULL is the normal state, not an error.
-- [ ] 1.3 Add the constraints:
+- [ ] 1.3 Add the constraints. **Two things about the floor comparison, both measured on Postgres
+  17 against DEV rather than reasoned about:**
+
+  - **Cast the literal to the column's type.** `select (0.70::real >= 0.70)` returns **false** —
+    `real` cannot represent `0.70` and the bare literal is `numeric`, so Postgres widens the `real`
+    and the comparison fails. A candidate whose confidence is *exactly* the stated floor therefore
+    violates its own CHECK, and the failure is not a filter but a write error: the Edge Function's
+    `UPDATE` raises, on a path no scenario covers, skipping the compensating delete in 4.8. Write
+    `>= 0.70::real`, or make the column `numeric`.
+  - **Add the upper arm.** `geocode_confidence <= 1.0` was described in 0.8b as an existing
+    fail-closed defence and is not in this list. The scale is plausible rather than validated, so
+    the arm is what makes a mis-scaled vendor value fail closed — no tiles ever, rather than wrong
+    ones.
+
+  The constraints:
   - the **coupling + floor** CHECK — either all of `latitude`/`longitude`/`geocode_confidence` are
     NULL, or all are present with the coordinates in range and `geocode_confidence >= <floor>`;
   - a **one-directional** CHECK — a tile path requires a coordinate, but a coordinate does **not**
@@ -231,7 +258,7 @@
     is below the ceiling (Q3). This `WITH CHECK` **is** the ceiling — bounded as described below,
     not exactly.
   - **This is the first policy in this repo whose predicate is an aggregate over its own table, and
-    it overshoots under concurrency. Measure it rather than assume it when writing `042`.** Under
+    it overshoots under concurrency. Measure it rather than assume it when writing the migration.** Under
     READ COMMITTED two concurrent inserts each evaluate the `count(*)` before either commits, both
     see `ceiling − 1`, both pass, and the window ends with `ceiling + 1` rows. **The failure is
     permissive, not restrictive**, which is the direction that does not announce itself. The
@@ -294,7 +321,7 @@
   `stored-media-visibility`.
 - [ ] 1.10 `PGPASSWORD=postgres npm test` green. Reconcile by **label set**, not by count — a count
   cannot tell a rename from a loss.
-- [ ] 1.11 Apply `042` to DEV, then PROD. Re-derive with `list_migrations` against
+- [ ] 1.11 Apply the migration to DEV, then PROD. Re-derive with `list_migrations` against
   `ls supabase/migrations/` rather than trusting any number in a document.
 - [ ] 1.12 Check security advisors after applying. **Expect eight, unchanged.** A new WARN means a
   `revoke` did not land.
@@ -351,9 +378,54 @@ exactly what they render today.** That is the intended intermediate state.
   geocode that returns nothing, returns a city, or times out writes no columns and issues no ride
   UPDATE at all, so a count that rose on a column write would never see it — and that organizer,
   retrying an address that will not resolve, is exactly the one the ceiling exists to bound.
-- [ ] 4.5 Geocode, then apply the granularity gate and then the numeric floor. Below either: write
-  nothing, return success, do not render — a render costs a call for an image that must not be
-  shown.
+- [ ] 4.5 **Request more than one candidate, and state the number.** Nothing in this change
+  specified the geocoder *request* until now, and the omission was load-bearing: this change bounds
+  vendor spend everywhere else, so narrowing the call to a single result is the natural
+  optimisation — and it leaves the separation gate in 4.5b structurally unable to fire while every
+  scenario in the spec still passes.
+
+- [ ] 4.5a Geocode, then apply **three** gates in this order. Failing any one: write nothing,
+  return success, do not render, leave the columns NULL. A render costs a call for an image that
+  must not be shown.
+
+  1. **Granularity — read `properties.result_type`, NOT `rank.match_type`.** `match_type` describes
+     how the query matched and returns `full_match` for a city, so gating on it admits exactly the
+     city-level match the spec rejects. **Establish the vocabulary before writing this gate** —
+     `building` is the only value anyone has observed, and the gate has to sort `street`, `amenity`,
+     `postcode`, `suburb`, `locality` and `district` onto two sides of a line. Use
+     `rank.confidence_street_level` as corroboration only.
+  2. **Numeric floor** on `rank.confidence`. The scale is plausible rather than validated — see
+     `design.md` §What was measured — so treat `0.70` as provisional.
+  3. **Separation, among the survivors of 1 and 2 only.** See 4.5b.
+
+  **The order is correctness, not cost.** Testing separation first measures distance between
+  candidates granularity is about to discard: `[building, city]` is an ordinary response for a
+  street address in a named city, and separation-first rejects it though exactly one usable
+  candidate existed.
+
+- [ ] 4.5b **The separation gate: if any two surviving candidates lie further apart than the stated
+  threshold, resolve nothing.** Keyed on **distance**, never on a tie in the confidence score.
+
+  The measured case ties at exactly `1` because confidence **saturates**, which is a property of the
+  ceiling and not of ambiguity — the same two towns returned as `1.00` and `0.97` carry the
+  identical harm and would pass a tie test. In the other direction, a vendor merging datasources
+  returns one building twice, tied exactly and 0 m apart, and a count-based rule would refuse a
+  perfectly unambiguous address for ever.
+
+  Pick the threshold against what it protects — how far wrong a rider can be sent before the tile is
+  worse than no tile — and write it down with its unit and its reasoning, as the confidence floor is.
+
+  **Never break a disagreement on `rank.importance` or `rank.popularity`.** Both are vendor
+  relevance signals — how prominent a place is — and neither knows which town the rider meant.
+  Picking the more prominent one stores a coordinate indistinguishable from a correct one, which is
+  the whole failure this gate exists to prevent.
+
+- [ ] 4.5c **Assert the gate against the measured case AND against the outbound request.** The
+  `Stationsplein 1, Amsterdam` response is the regression fixture: two buildings 12.2 km apart. But
+  a fixture is a *response*, so a test built only from one passes green against a pipeline whose
+  real call asked for a single candidate — the exact failure 4.5 exists to prevent. Assert the
+  request too.
+
 - [ ] 4.6 Render both tiles as **JPEG** at 2× device pixel ratio, z13 for 80×148 and ~z15 for
   358×160. **Not PNG** — the bucket allows `image/jpeg` only and refuses the rest above every
   policy.
@@ -401,14 +473,14 @@ exactly what they render today.** That is the intended intermediate state.
   must re-read the standing spec as the first left it and rewrite its delta against **that** text.
   The banner is at the top of `specs/database-enforced-integrity/spec.md`.
 - [ ] 7.3 **`tag-postcards-to-rides`** owns `041` and adds the requirement this change is an
-  instance of. This change does **not** depend on it: `042` states its grant level either way.
+  instance of. This change does **not** depend on it: the migration states its grant level either way.
 - [ ] 7.4 **PD-114 (place picker)** writes the same `latitude`/`longitude` columns with a
   known-good coordinate. Do not add a second coordinate column for it; a picked place overwrites the
   geocoded guess in place and the confidence column records which it was.
 
 ## 8. Deploy — the ordering, and the one owner action
 
-- [ ] 8.1 **`042` first**, on its own. Purely additive; nothing reads the columns yet.
+- [ ] 8.1 **The migration first**, on its own. Purely additive; nothing reads the columns yet.
 - [ ] 8.2 Groups 2–5 merge to `development` and deploy. Tiles are NULL everywhere and both screens
   render the fallback. **This state is correct and shippable indefinitely.**
 - [ ] 8.3 **OWNER ACTION — deploy the Edge Function.** There is no `supabase` CLI in this container

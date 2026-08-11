@@ -29,10 +29,10 @@ prefix is protected by nothing. Every SELECT policy carries the `EXISTS`; every 
 policy checks the prefix and the caller's uid **only**, which is correct for a write and
 catastrophic if copied into a read.
 
-**Two shapes are in use and both are permitted.** *Measured 2026-08-09, before `042`:* fifteen
+**Two shapes are in use and both are permitted.** *Measured 2026-08-09, before this change's migration:* fifteen
 policies across five folders, of which four SELECT policies are `own-folder OR EXISTS(parent)`
 (`avatars`, `covers`, `club-avatars`, `club-covers`) and `postcards` is the bare `EXISTS`. *Added
-by `042`, and therefore an intention until it applies:* `ride-maps`, as
+by this change's migration, and therefore an intention until it applies:* `ride-maps`, as
 `own-folder OR EXISTS(rides)`. The disjunction is safe **only** under the condition the own-folder
 requirement below states, which is why this capability legislates that condition rather than
 banning the arm outright.

@@ -324,6 +324,90 @@ coordinate SHALL be left NULL and both screens SHALL render exactly what they re
 no map**: a rider who trusts a tile pointing at a city centre rides to the wrong place, whereas
 today's screens show the rider's own words and are never wrong.
 
+**Confidence is silent on ambiguity, and a measured response shows it rather than suggesting it.**
+`Stationsplein 1, Amsterdam` returns two buildings **12.2 km apart** — Amsterdam and Weesp, which
+merged into the Amsterdam *municipality* in 2022 — both at the highest confidence the vendor emits.
+Confidence answers *how sure are you about this candidate*; it says nothing about how many
+candidates there are, or how far apart they sit.
+
+**The rule is separation, NOT a tie.** An earlier draft of this requirement rejected only on an
+exact tie at the top confidence. That was fitted to an artifact: confidence **saturates**, so the
+two candidates tied at the ceiling rather than because they were equally good. The same two towns
+returned as `1.00` and `0.97` carry the identical harm and would pass a tie test — and, in the
+other direction, two datasource records of one building tie exactly while being 0 m apart and
+perfectly unambiguous. Distance discriminates; tie-ness does not.
+
+#### Scenario: Plausible candidates that disagree on location resolve nothing
+- **WHEN** more than one candidate survives the granularity and confidence gates, and any two of
+  them lie further apart than a stated separation threshold
+- **THEN** the meeting point SHALL be treated as unresolved: `latitude`, `longitude`,
+  `geocode_confidence` and both paths SHALL remain NULL
+- **AND** no tile SHALL be rendered, and both screens SHALL render today's fallback
+- **AND** the ride SHALL save normally, because an ambiguous address is a legitimate thing to type
+- **AND** this SHALL hold however high the candidates' confidences are, including the maximum, and
+  whether or not they are equal to each other
+
+#### Scenario: Candidates describing one place are not ambiguity
+- **WHEN** several candidates fall within the separation threshold of each other
+- **THEN** they SHALL be treated as one place and the best of them MAY be stored
+- **AND** the reason SHALL be recorded: a vendor merging multiple datasources returns the same
+  building more than once, and a rule keyed on candidate **count** would refuse a perfectly
+  unambiguous address for ever
+
+#### Scenario: The separation threshold is a stated value, not an implementation detail
+- **WHEN** the threshold is chosen
+- **THEN** it SHALL be written down with its unit and its reasoning, as the confidence floor is
+- **AND** it SHALL be justified against what it is protecting: a rider riding to the wrong place,
+  so the threshold is about how far wrong is too far, not about geocoder internals
+- **AND** it SHALL NOT be expressed as a float-equality comparison on a vendor score, because a
+  tolerance on a parsed decimal is not a property anyone can reason about
+
+#### Scenario: Ambiguity SHALL be tested among survivors, not among raw candidates
+- **WHEN** the gates are applied in sequence
+- **THEN** granularity and the numeric floor SHALL be applied **first**, and separation SHALL be
+  tested only among the candidates that survive them
+- **AND** the reason SHALL be recorded: a response of `[building, city]` is an ordinary result for
+  a street address in a named city, and testing separation before discarding the city rejects a
+  request that had exactly one usable answer
+- **AND** the ordering SHALL be understood as a correctness rule rather than an efficiency one
+
+#### Scenario: The request SHALL ask for enough candidates for the gate to be able to fire
+- **WHEN** the geocoder is called
+- **THEN** the request SHALL ask for more than one candidate, and the value SHALL be stated
+- **AND** the reason SHALL be recorded: this change bounds vendor spend everywhere else, so a
+  request narrowed to a single result is the natural optimisation — and it would leave the
+  separation gate structurally unable to fire while every scenario here still passed
+- **AND** a test of this requirement SHALL assert the **outbound request**, not only the handling
+  of a canned response, because a fixture cannot observe a request that asked for one candidate
+
+#### Scenario: A disagreement SHALL NOT be resolved on a relevance signal
+- **WHEN** two surviving candidates disagree on location and differ on `importance` or `popularity`
+- **THEN** the higher-ranked candidate SHALL NOT be selected on that basis
+- **AND** the reason SHALL be recorded: both are vendor relevance signals describing how prominent
+  a place is, and neither carries any information about which place the rider meant
+- **AND** selecting one anyway SHALL be understood as storing a coordinate that is
+  indistinguishable from a correct one, which is the specific failure this requirement exists to
+  prevent
+
+#### Scenario: The granularity gate reads the result type, not the match type
+- **WHEN** the function decides whether a candidate is street-level or better
+- **THEN** it SHALL read the field describing **what was returned** — the result's own type — and
+  SHALL NOT read the field describing **how the query matched**
+- **AND** the reason SHALL be recorded: a match-type of `full_match` is returned for a city as
+  readily as for a building, so gating on it admits exactly the city-level match the scenario
+  below rejects
+- **AND** the set of values that field takes SHALL be established before the gate is written: one
+  value has been observed, the vocabulary has not, and a gate that must sort `street`, `amenity`,
+  `postcode`, `suburb` and `locality` onto two sides of a line cannot be written from one sample
+
+#### Scenario: A single confidently-wrong candidate is a KNOWN GAP
+- **WHEN** the geocoder returns exactly one candidate and it is the wrong place
+- **THEN** every gate here SHALL pass it and the tile SHALL be rendered
+- **AND** this SHALL be recorded as a known gap rather than left implied: the gates bound
+  *ambiguity* and *granularity*, never *wrongness*
+- **AND** the resulting asymmetry SHALL be stated — a rider whose address is ambiguous gets no
+  tile, a rider whose address resolves cleanly to one wrong building gets a wrong one
+
 #### Scenario: An empty geocode result stores nothing
 - **WHEN** the geocoder returns no candidate for the meeting point
 - **THEN** `latitude`, `longitude`, `geocode_confidence` and both paths SHALL remain NULL
@@ -342,13 +426,21 @@ today's screens show the rider's own words and are never wrong.
 - **AND** the reason SHALL be recorded: such a match is confident about the wrong question, and
   the numeric score cannot express that
 
-#### Scenario: The granularity gate is a function-side rule and is not overclaimed
+#### Scenario: The granularity and separation gates are function-side rules and are not overclaimed
 - **WHEN** the floor is documented
 - **THEN** it SHALL be stated that the CHECK enforces the **coupling** — no coordinate without a
-  confidence at or above the floor, no tile path without a coordinate — and that the granularity
-  gate lives in the function
+  confidence at or above the floor, no tile path without a coordinate — and that **both** the
+  granularity gate and the separation gate live in the function
 - **AND** it SHALL NOT be claimed that the database rejects a low-granularity match, because it
-  cannot see the match type
+  cannot see the result type
+- **AND** it SHALL NOT be claimed that the database rejects an ambiguous one, because the
+  information that separates a right coordinate from a wrong one — how many candidates came back
+  and how far apart they were — never reaches the row. Both Amsterdam and Weesp satisfy the
+  coupling perfectly, so on that input the CHECK distinguishes nothing at all
+- **AND** the CHECK's floor comparison SHALL be written against the column's own type. Measured on
+  Postgres 17: `0.70::real >= 0.70` is **false**, because `real` cannot represent `0.70` and the
+  bare literal is `numeric`, so the stated floor value is rejected by its own constraint and the
+  Edge Function's `UPDATE` raises rather than filtering
 - **AND** an organizer writing a coordinate that disagrees with their own address SHALL be
   accepted as within their authority, since they author the address
 
@@ -635,7 +727,7 @@ of where somebody will be is the same class of record.
 
 ### Requirement: Existing rides SHALL render the fallback and SHALL NOT be backfilled by this change
 
-Every ride that exists when `042` applies SHALL have NULL coordinates and NULL paths, and SHALL
+Every ride that exists when this change's migration applies SHALL have NULL coordinates and NULL paths, and SHALL
 render exactly what it renders today. No backfill SHALL run.
 
 There is no actor in this design entitled to render a ride it does not organise — which is the
@@ -643,7 +735,7 @@ same property that keeps the service-role key out of the function. A backfill wo
 building that actor.
 
 #### Scenario: Applying the migration changes nothing a rider sees
-- **WHEN** `042` is applied
+- **WHEN** this change's migration is applied
 - **THEN** every existing ride SHALL render as before
 - **AND** the migration SHALL be safe to apply before any code deploys and before the function is
   deployed at all
