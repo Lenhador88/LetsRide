@@ -25,10 +25,13 @@
   (The `admin`-rows zero independently confirms `019` Q10's premise, and the private-clubs zero
   confirms `docs/HANDOFF.md`'s "not reachable today (0 private clubs)" for the `createRide` `23514`
   message — both were assumptions elsewhere and are now measurements.)
-- [ ] 0.2 **Q1 — product owner.** May a club owner leave their own club? Default: no. This decides
-  whether `029` contains a delete guard, which is half the change.
-- [ ] 0.3 **Q2 — product owner.** May a ride organizer leave their own crew? Default: no, with
-  `maybe` as the way to express uncertainty.
+- [x] 0.2 ~~**Q1 — product owner.** May a club owner leave their own club?~~ **ANSWERED
+  2026-08-11: no, not for now.** The default stands and `029` contains the delete guard. Eventually
+  yes, as a transfer down `032`'s ladder — deferred to **PD-194**, which does not block this change.
+  `design.md` §Open Questions Q1 carries what that future change will need.
+- [x] 0.3 ~~**Q2 — product owner.** May a ride organizer leave their own crew?~~ **ANSWERED
+  2026-08-11: no.** The default stands, `maybe` remains the way to express uncertainty, and the
+  asymmetry with Q1's eventual answer is deliberate — see `design.md` §Open Questions Q2.
 - [ ] 0.4 Re-derive the migration number rather than trusting this file. It reads **029** at write
   time, on 2026-08-06, the day `028_refresh_stale_column_comments` took `028`.
   `ls supabase/migrations/` against `list_migrations`; this repo's docs have had that number wrong
