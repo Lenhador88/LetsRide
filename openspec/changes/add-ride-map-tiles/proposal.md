@@ -95,7 +95,7 @@ device**, which answers offline read, per-view cost, per-view IP leak and key ex
 |---|---|
 | **A backfill of the 5 existing rides**, and of every ride created before the function deploys | A consequence of §The Storage write, stated honestly there rather than buried: with no service-role credential there is no actor entitled to render another rider's ride. Existing rides get a tile the next time their organizer edits them, and until then they render exactly what they render today. A backfill needs either a privileged path this change declines to build, or the owner editing rides by hand |
 | **The 390×200 ride detail banner** | A different missing column — a ride cover *photo*, not a map. `docs/FIGMA-FIDELITY-TODO.md` §Ride detail logs it separately and says to do both together; that was written when both were blocked on "a migration and Storage", which is no longer the same migration or the same audience question. A photo needs EXIF stripping and a moderation story; a map render needs neither |
-| **A place picker** | **PD-114.** When it lands it writes the same `latitude`/`longitude` columns with a known-good coordinate and the geocode guess is simply overwritten. This change must not block on it and must not build a second coordinate column for it to use |
+| **A place picker** | **PD-114.** This change must not block on it and must not build a second coordinate column for it to use. **The two do NOT currently agree on the column names, and this line previously asserted that they did.** PD-114 step 3 specifies `meeting_point_lat` / `meeting_point_lng` / `meeting_point_place_id`; this change specifies `latitude` / `longitude`. If both land as written, `rides` ends up with **four** coordinate columns — the exact outcome this row says must not happen. One of the two documents has to move before PD-114 is built, and it is cheaper to move PD-114, which has no migration yet. Recorded here rather than silently reconciled, because this proposal is the one asserting an agreement that does not exist |
 | **`ends_at`, the location row's two-line address, `max_riders` enforcement** | Three other things `docs/FIGMA-FIDELITY-TODO.md` logs on these two screens. None of them is a map |
 | **Error tracking for vendor failures** | `CLAUDE.md` lists error tracking as *deliberately undecided*. This change states what the rider sees on every failure and declines to invent the alerting channel that would tell the owner. Recorded as a KNOWN GAP and as an open question below |
 | **Route rendering, turn-by-turn, an interactive map** | Decision #3, unchanged. `docs/FIGMA-FIDELITY-TODO.md` rules out the `output=embed` iframe by name and gives three reasons; none has expired |
@@ -394,7 +394,7 @@ tile.
   — read, and deliberately **not** applied. See §The trap that is not this change's trap.
 - **`tag-postcards-to-rides` / `Adding a column to a table with table-level grants SHALL be
   treated as granting it`** — this change is a textbook instance of it and **does not depend on
-  it**. That requirement is not standing yet, and it also owns `041`. `042` states its grant level
+  it**. That requirement is not standing yet, and it also owns `041`. This change's migration states its grant level
   from `relacl` and `attacl` whether or not that change ever archives.
 
 ## The trap that is not this change's trap
@@ -422,7 +422,7 @@ it. `private.is_ride_crew` must not appear anywhere in this change.
 
 ## Impact
 
-**Database.** One migration, **`042`**. Measured 2026-08-09 with `list_migrations` against
+**Database.** One migration. **Re-derive its number rather than reading one here** — an earlier revision of this line said `042`, which is now a different change's applied migration. Measured 2026-08-09 with `list_migrations` against
 `ls supabase/migrations/`: **40 applied, 41 files** — `041_postcard_ride_tag.sql` is written and
 unapplied and belongs to the active `tag-postcards-to-rides` change. **Do not read the next number
 off `CLAUDE.md`**, which says 40 files and both projects at `040`; the file count moved when that
@@ -459,7 +459,7 @@ tile fields folded into the existing `RIDE_SELECT`), the signed-URL resolution b
 only fetches a JPEG. Nine runtime dependencies before, nine after — re-derive with
 `node -p "Object.keys(require('./package.json').dependencies).length"`.
 
-**Tests.** `042` pairs with assertions in `supabase/tests/rls_test.sql` per
+**Tests.** The migration pairs with assertions in `supabase/tests/rls_test.sql` per
 `openspec/config.yaml`. The whole audience rule is testable on plain Postgres, including the
 `storage.objects` policies — the suite already asserts the five existing folders. **Two things are
 not**, and are named as such rather than left to look covered: whether Supabase Storage honours
