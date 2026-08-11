@@ -602,18 +602,17 @@ publication membership is asserted, the *delivery* is not), and whether the comp
 `crypto.randomUUID` path is on a secure origin — it is over HTTPS, and the fallback exists for
 `http://<lan-ip>` device testing.
 
-## Migrations — the repo and DEV hold 49, PROD holds 48
+## Migrations — the repo, DEV and PROD all hold 50
 
-**`049` is applied to DEV and NOT to PROD**, 2026-08-11, which is the ordinary state of a
-migration between its merge and its promotion rather than drift. It replaces one function body
-(`search_places`, PD-150 option A) and changes no table, policy, column or index, so the two
-databases differ in exactly one function's source and in nothing else.
+**`049` and `050` both reached PROD on 2026-08-11**, so the chain is level across both databases
+for the first time since `048`. `050` was applied *ahead of* the PROD places load rather than
+after it, and that ordering is the point rather than a preference: `050` is the candidate cap,
+and **the load is what arms the cost it bounds**. On a loaded table with no `050`, `straat` — one
+token, 28.7% of the rows, the most ordinary thing a Dutch rider types — costs 11,458 ms and dies
+on the 8 s statement timeout, so a rider gets an error having burned the timeout's worth of a
+free tier's CPU. Applying it afterwards would have opened exactly that window.
 
-**Applying it to PROD is safe in either order relative to the code deploy**, which is worth
-stating because the additive-first rule usually decides this: `049` only *narrows* what
-`search_places` accepts, the deployed client already truncates to the same eight tokens, and
-`places` holds 0 rows on both projects — so there is no window in which it can refuse anything a
-rider sent.
+Neither file changes a table, policy, column or index; both replace one function body.
 
 `041`–`046` were applied to PROD on 2026-08-10, on the owner's instruction, in strict filename
 order with each digest checked against its file; `047` and `048` followed the same day, DEV first
@@ -623,7 +622,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV 50 rows, ending 050_search_places_candidate_cap · PROD 49, ending 049_search_places_token_cap
+#   both 50 rows, both ending 050_search_places_candidate_cap
 ls supabase/migrations/ | wc -l          # 50
 ```
 
@@ -637,32 +636,61 @@ when nothing has drifted. This is the same class of asymmetry
 [`docs/reference/migrations.md`](docs/reference/migrations.md) reconciles for `036`–`040`, and it
 reads like drift if you compare `md5sum` of the file against `md5(statements[1])`.
 
+**`050`'s applied body had genuinely drifted on DEV, and the digest is what caught it.** Applying
+`050` to PROD from the file produced `md5(prosrc) = 1fc795cf…`; DEV read `43d7c861…`. The
+difference was 64 characters — one comment line, `-- See §2 for where the resulting imprecision
+actually lands.`, absent from the national-pass block — plus a differing function comment. Both
+comment-only, so nothing a rider could observe, and precisely the kind of nothing that makes a
+digest check useless if left. Reconciled the same day by re-issuing `create or replace` and
+`comment on` against DEV **through `execute_sql`, not `apply_migration`**: the ledger already
+carries a `050` row, and a second one is drift of a worse kind than the one being fixed. Both
+projects now agree, so this is a check that works rather than a check that always disagrees:
+
+```sql
+-- expect identical digests on both refs, and both equal to the repo file's $fn$ block
+select md5(prosrc), md5(obj_description(oid, 'pg_proc')) from pg_proc
+ where oid = 'public.search_places(text,double precision,double precision)'::regprocedure;
+--   both: 1fc795cfb8fc6e631c4bab6e056ed89e · 3d03b3859a949834c7f3f387ffb935d2
+```
+
 **What the finished apply did not consume is [`docs/reference/migrations.md`](docs/reference/migrations.md)** —
 the `041 → 044 → 046` ordering chain and the link in it that fails silently, the rollback SQL for
 `042`–`048`, and the hand reconciliation for every recorded statement that disagrees with its file.
 Read it before concluding either database has drifted.
 
-## `places` — both projects hold the table, and zero rows
+## `places` — LOADED on both projects, 736,538 rows each
 
-**`places` is LOADED on DEV — 736,538 rows as of 2026-08-11 — and still 0 rows on PROD.** This line
-said both were empty until the load ran (`PD-195`). An empty index is indistinguishable from a
-working search that finds nothing, so check rather than assume, and note the two projects now
-differ:
+**PROD was loaded 2026-08-11 (run 4 of Load places index), DEV earlier the same day (`PD-195`).**
+Both hold the same 736,538 rows from the same extract. An empty index is indistinguishable from a
+working search that finds nothing, so check rather than assume:
 
 ```bash
 # via the Supabase MCP: execute_sql -> select count(*) from public.places;
-#   DEV  (fpmrimzxadewsaiwpsel): 0 · PROD (zwprydcyryvudhurbnye): 0
+#   DEV (fpmrimzxadewsaiwpsel): 736538 · PROD (zwprydcyryvudhurbnye): 736538
+#   PROD: 337 MB table (162 heap + 174 indexes), 350 MB database, 0 invalid indexes
 ```
 
-**The loader exists as of PD-173 and the owner action shrank to one secret per database.**
-`.github/workflows/places-load.yml` (Actions → Load places index) runs the extractor and
-`scripts/places/load.sql` on a runner, which has the Postgres egress no session does. It needs
-`PLACES_DEV_DATABASE_URL` / `PLACES_PROD_DATABASE_URL` — the Supabase **session pooler** string,
-because GitHub runners have no IPv6 and the direct host needs the IPv4 add-on. Until one is pasted
-the workflow fails at its pre-flight naming the missing secret. **The whole pipeline was run end to
-end locally** against the real extract and the full migration chain on 2026-08-09 — 736,538 rows,
-both detector rejections exercised, and both the first-load and refresh branches — so what the
-first real run adds is the connection, not the confidence.
+**`050` was applied to PROD BEFORE the load, and the order is the load's only real precondition.**
+`050` is the candidate cap; the load is what arms the cost it bounds. Measured on PROD after the
+load — `straat`, one token, 28.7% of the rows: **95.9 ms** national and **227 ms** near Amsterdam,
+against the 11,458 ms and 4,011 ms the same terms cost without `050`. The unbounded numbers are
+past the 8 s statement timeout `authenticated` runs under, so loading first would have meant a
+rider getting an error having burned the timeout's worth of a free tier's CPU. Both PROD figures
+sit slightly under DEV's 117 ms / 311 ms.
+
+**No screen renders a place yet, which is why loading rows was safe while attribution is open.**
+`grep -rn "searchPlaces" src/ --include=*.tsx` is 0 — `getLocalityCentroid` is reachable only from
+`src/lib/location/rider-location.ts`, and nothing renders a result. The workflow's own PROD gate
+draws exactly this line: *"Loading rows is safe; rendering one is not."* Settle the credit string
+(`scripts/places/README.md` §Attribution) before the first screen ships, not before the next load.
+
+**Both secrets are set and both have now been used.** `.github/workflows/places-load.yml`
+(Actions → Load places index) runs the extractor and `scripts/places/load.sql` on a runner, which
+has the Postgres egress no session does. `PLACES_DEV_DATABASE_URL` / `PLACES_PROD_DATABASE_URL`
+are the Supabase **session pooler** strings, because GitHub runners have no IPv6 and the direct
+host needs the IPv4 add-on. A PROD run additionally needs `confirm=load-prod` typed by hand.
+Whole run: **2m35s**, of which the extract is 16 s — do not expect the ~15 minutes the earlier
+local timing suggested.
 
 **Scope those secrets to the `places-dev` / `places-prod` environments rather than to the
 repository, and put a deployment branch policy on `places-prod`.** The job declares
@@ -674,16 +702,19 @@ bypasses RLS more completely than the service-role key that `CLAUDE.md` keeps in
 that file lives inside the job, after injection, where a pushed branch can delete it. With no
 protection rule configured, the real bound is who has push access.
 
-**Refreshes are blocked on `PD-87`, which is new information rather than a restatement.** Measured
-on the real extract: a first load is 337 MB and lands DEV at ~346 MB against the free tier's 500 MB
-database cap, so it fits. A refresh measures **465 MB** before the reindex peak or WAL — the heap
-doubles once (`delete` leaves the dead tuples in place and `vacuum` makes the space reusable
-without returning it) and index bloat needs a rebuild that briefly holds two copies of all four
-indexes. So the first load is the only one that fits, and `load.sql` skips the reindex on a first
-load precisely so that one does. `scripts/places/README.md` §Loading has the full table.
+**Refreshes are blocked on `PD-87`, and that now binds on BOTH databases rather than one.**
+Measured on the real extract: a first load is 337 MB and lands a project at ~350 MB against the
+free tier's 500 MB database cap, so it fits — PROD came out at exactly 350 MB, DEV at 351 MB. A
+refresh measures **465 MB** before the reindex peak or WAL: the heap doubles once (`delete` leaves
+the dead tuples in place and `vacuum` makes the space reusable without returning it) and index
+bloat needs a rebuild that briefly holds two copies of all four indexes. So on each project **the
+first load is the only one that fits**, and `load.sql` skips the reindex on a first load precisely
+so that one does. Overture releases monthly, so the index starts going stale immediately and
+cannot be refreshed on either project until Pro. `scripts/places/README.md` §Loading has the full
+table.
 
-**`039`'s index swap was free only because the table is empty**; once the extract is loaded,
-dropping a `places` index is a deliberate act again.
+**`039`'s index swap was free only because the table was empty**; on both projects, dropping a
+`places` index is a deliberate act again.
 
 ## Known issues, roughly by cost to fix
 

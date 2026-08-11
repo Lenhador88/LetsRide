@@ -205,7 +205,10 @@ export const claims = [
     // 2026-08-11: 049 applied to DEV only, so the relationship left LEVEL again
     // and the pattern refused to match a second time — the same mechanism, in
     // the opposite direction. It moves back to LEVEL when 049 reaches PROD.
-    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD is at `\d+` — they are NOT level/,
+    // 2026-08-11, later the same day: 050 applied to PROD ahead of the places
+    // PROD load — the load is what arms the cost 050 bounds — so the pair is
+    // LEVEL for the third time and the pattern follows the prose back.
+    pattern: /\*\*Applied state: (\d+) files\. DEV and PROD are LEVEL at `\d+`/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
