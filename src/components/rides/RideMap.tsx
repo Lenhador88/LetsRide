@@ -65,7 +65,7 @@ import { cn, googleMapsDirectionsUrl } from '@/lib/utils'
  * task 8.4's to answer against a real tile.
  *
  * **`bg-scrim` is still the instrument, but it now backs ~120px instead of the
- * whole panel.** `Grey/70%` bounds the composite at `#4D4D4D` however bright the
+ * whole panel.** `Grey/70%` bounds the composite at `#4C4C4C` however bright the
  * tile is — 8.59:1 for `White/100` at worst, measured, and better everywhere
  * else. That is what any text over unknown imagery needs, and after 3.3 was
  * reversed the only such text left is the Geoapify credit. **Do not reintroduce

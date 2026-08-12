@@ -506,17 +506,27 @@ Blocked on schema, in the same shape as the rides list's image strip:
       needs a migration + Storage work of its own: `051` gave `rides` map tiles, not a rider's
       own photo of the ride, so the entry below resolved without resolving this one.
 - [x] ~~**The map tile has no coordinates.**~~ **Schema landed 2026-08-12** (`051`, PD-104):
-      `rides` carries `latitude`, `longitude` and `map_detail_path`, and the panel draws that
-      tile **behind** the address and the `Get directions` chip rather than instead of them —
-      decision #3 is a static thumbnail *plus* a deeplink, and the whole 358×160 stays the
+      `rides` carries `latitude`, `longitude` and `map_detail_path`, and over a tile the panel
+      draws **what the Figma draws** — the map and the `Get directions` chip, and nothing else.
+      Decision #3 is a static thumbnail *plus* a deeplink, and the whole 358×160 stays the
       anchor, which was the iPad fix recorded below.
 
-      *Chose:* `bg-scrim` (`Grey/70%`) between the tile and the text, with the address and pin
-      in `White/100`. Grey/100 on `bg-track` is 12.65:1 and holds only because the fill is
-      known; over an arbitrary map it is whatever the map is under those two lines, and the
-      scrim bounds the composite at `#4D4D4D` however bright the tile — **8.0:1 at worst**. It
-      costs the tile brightness, which is the trade: the address is the one thing on this
-      panel a rider reads. A lighter treatment is a design call, not a correctness one.
+      *Chose:* **no address and no pin over the tile.** Product owner, 2026-08-12. An earlier
+      version of this entry chose the opposite — `bg-scrim` (`Grey/70%`) between tile and text
+      with the address and pin in `White/100` — and the reasoning was correct as far as it went:
+      Grey/100 is 12.65:1 on `bg-track` only because that fill is known, so text over an
+      arbitrary map does need a bounded composite. **The error was upstream of the contrast
+      question.** The address did not need to be over the tile at all: the Figma panel carries
+      neither it nor the pin, and the page already renders `meeting_point` in the `DetailRow`
+      immediately above the panel. So a full-panel 70% scrim was darkening the whole map to hold
+      a **duplicate of the line directly above it** legible.
+
+      The pin and address are now the **no-tile** rendering exclusively, and that rendering is
+      unchanged. `bg-scrim` survives as a small pill behind `Powered by Geoapify`, the only text
+      still over unknown imagery — **8.59:1 at worst**, over a `#4C4C4C` composite. *(The
+      `#4D4D4D`/8.0:1 pair this entry used to state was wrong in both halves and had spread to
+      three files; `--color-scrim` is `#000000B3`, 70.196% black, so the composite over white is
+      `#4C4C4C`.)*
 
       **Nothing writes the column yet**, so the panel renders today exactly what it rendered
       before — the address, legibly, and one tap that opens directions. The renderer is
