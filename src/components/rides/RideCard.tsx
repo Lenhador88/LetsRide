@@ -122,10 +122,14 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
             // Decorative: the meeting point this tile is centred on is the
             // third line of the card, in text, right beside it.
             alt=""
-            // `object-bottom` — see the header. The vendor's credit is burned
-            // into the bottom of the tile, and a centred crop removes it on the
-            // 128-tall club-filtered card.
-            className="absolute inset-0 h-full w-full object-cover object-bottom"
+            // `object-right-bottom` — see the header. The vendor's credit is
+            // burned into the bottom-RIGHT of the tile, and a centred crop
+            // removes it on the 128-tall club-filtered card. The horizontal half
+            // is a no-op here (the strip is `w-20` against an 80-wide tile, so
+            // there is no horizontal crop) and is written anyway to match
+            // `RideMap`, where it is not a no-op at all, and so that a future
+            // change to the strip's width cannot silently start truncating it.
+            className="absolute inset-0 h-full w-full object-cover object-right-bottom"
             onError={() => setFailedTileUrl(ride.map_card_url ?? null)}
             loading="lazy"
             draggable={false}

@@ -348,14 +348,28 @@ Deno.serve(async (req: Request) => {
     //    upload stays a valid row rather than losing the coordinate too. One path
     //    present and the other NULL is likewise valid — the screen whose path
     //    landed draws its tile and the other draws its fallback.
+    //
+    //    ** A path column is written ONLY when its own upload succeeded, and that
+    //    conditional is load-bearing rather than defensive. ** Writing
+    //    `storedCardPath` unconditionally means a *failed* render NULLs whatever
+    //    was already there — so on a re-render of an unchanged address, a brief
+    //    outage at `maps.geoapify.com` clears a live tile, and the sweep below
+    //    then deletes the object it named. The rider loses a working map to a
+    //    transient vendor failure, permanently, because nothing re-renders an
+    //    address that did not change. The header promises every vendor failure
+    //    "leaves the columns NULL"; it must not also mean "clears columns that
+    //    were populated". Omitting the key leaves the existing value untouched.
+    const tileColumns: Record<string, string> = {}
+    if (storedCardPath) tileColumns.map_card_path = storedCardPath
+    if (storedDetailPath) tileColumns.map_detail_path = storedDetailPath
+
     const { data: written, error: writeError } = await caller
       .from('rides')
       .update({
         latitude: verdict.latitude,
         longitude: verdict.longitude,
         geocode_confidence: verdict.confidence,
-        map_card_path: storedCardPath,
-        map_detail_path: storedDetailPath,
+        ...tileColumns,
       })
       .eq('id', rideId)
       .select('id')
@@ -377,9 +391,16 @@ Deno.serve(async (req: Request) => {
     // of an unchanged address leaves the old objects with nothing naming them.
     // Best-effort and after the write, never before — deleting first would take
     // a live tile down if the write then failed.
-    const superseded = [ride.map_card_path, ride.map_detail_path].filter(
-      (path): path is string => !!path && !uploaded.includes(path),
-    )
+    //
+    // ** Scoped to the sides that were actually REPLACED. ** An old path is only
+    // orphaned if a new path took its column; if this render's card succeeded and
+    // its detail failed, the old detail path is still in its column and still the
+    // live tile, so sweeping it would delete an object the row points at. Same
+    // defect as the unconditional write above, one step later.
+    const superseded = [
+      storedCardPath ? ride.map_card_path : null,
+      storedDetailPath ? ride.map_detail_path : null,
+    ].filter((path): path is string => !!path && !uploaded.includes(path))
     if (superseded.length > 0) await caller.storage.from(BUCKET).remove(superseded)
 
     return json({ rendered: uploaded.length > 0 }, 200)

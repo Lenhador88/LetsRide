@@ -363,14 +363,24 @@ export async function updateRide(
   // exists to solve and an over-eager clear costs one render.
   const addressChanged = !!previous && previous.meeting_point !== meeting_point
 
-  // **Before the UPDATE, not after, and that ordering is the requirement.** The
-  // stale-tile trigger NULLs both path columns inside this same statement, so
-  // afterwards nothing in the system knows what those objects were called.
-  // Deleting afterwards is a defect, not a tidier arrangement of the same code.
-  if (addressChanged) {
-    await removeRideMapTiles(supabase, [previous.map_card_path, previous.map_detail_path])
-  }
-
+  // **AFTER the UPDATE, and only once it is confirmed.** 5.1a asks for the
+  // delete first, on the reasoning that the stale-tile trigger NULLs both path
+  // columns inside the same statement so afterwards nothing knows the names.
+  // That is true of the DATABASE and false of this function, which holds both
+  // names in `previous` across the call — so the premise of the ordering does
+  // not apply here, and deleting first is strictly worse:
+  //
+  // this UPDATE can be REFUSED. An organizer who has left the ride's club hits
+  // the 42501 below on a save that need not have touched `club_id` at all —
+  // the case documented a few lines down as "reachable the moment `leaveClub`
+  // runs". Deleting first means both JPEGs are gone, `meeting_point` never
+  // changed so the trigger never fired, both path columns still name the
+  // deleted objects, and the re-render is gated on the same success that did
+  // not happen. Pin fallback for ever, from a save that returned an error.
+  //
+  // Deleting after a confirmed write costs nothing and fails only into an
+  // orphaned object, which is recoverable; the other order fails into a broken
+  // row, which is not.
   const { data: ride, error } = await supabase
     .from('rides')
     .update({
@@ -418,7 +428,14 @@ export async function updateRide(
   // PD-104 §5.1, the second of its two triggers. Only on an address change:
   // the trigger has just NULLed all five columns, so this is what puts a tile
   // back, and a title or time edit has nothing to re-render.
-  if (addressChanged) requestRideMapRender(supabase, rideId)
+  //
+  // The delete rides here rather than before the UPDATE — see the note above.
+  // Awaited before the re-render is asked for, so the two cannot race over a
+  // path the render is about to reuse.
+  if (addressChanged) {
+    await removeRideMapTiles(supabase, [previous!.map_card_path, previous!.map_detail_path])
+    requestRideMapRender(supabase, rideId)
+  }
 
   // `rides.all()`, not `rides.detail(rideId)` alone: `club_id` and
   // `is_public` are both editable, and an edit can move the ride between

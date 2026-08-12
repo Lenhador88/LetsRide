@@ -27,8 +27,11 @@ import { cn, googleMapsDirectionsUrl } from '@/lib/utils'
  *    *"When using the Services, you must always provide OpenStreetMap
  *    attribution"* — so no plan upgrade removes it. The Static Maps response
  *    **burns that credit into the image**, bottom-right, and that is what
- *    discharges it. Nothing here suppresses it, and `object-bottom` below is what
- *    stops `object-cover` cropping it off on a viewport wider than 390.
+ *    discharges it. Nothing here suppresses it, and `object-right-bottom` below
+ *    is what stops `object-cover` cropping it off. **Both axes crop, in opposite
+ *    directions**: the panel is wider than the 358 tile above 390 and *narrower*
+ *    below it, so a bottom-only anchor still truncated the credit mid-string at
+ *    375 and 360 — the two commonest mobile widths. See the table at the tag.
  * 2. **`Powered by Geoapify`, mandatory on the Free plan** — the plan this
  *    account is on, confirmed by the product owner 2026-08-11. That one is a
  *    *service*-level obligation rather than a property of the tile's data, so it
@@ -138,13 +141,26 @@ export function RideMap({
             // Decorative: the meeting point this tile is centred on is written
             // over it, and again in the location row above the panel.
             alt=""
-            // `object-bottom`, not the default centre. The tile is rendered at
-            // exactly 358×160 and this panel is the page width less 32, so on a
-            // viewport wider than 390 `object-cover` scales it up and crops top
-            // and bottom equally — taking the vendor's burned-in OpenStreetMap
-            // credit off the bottom edge with it. Anchoring the bottom takes the
-            // crop entirely off the top, where nothing is owed.
-            className="absolute inset-0 h-full w-full object-cover object-bottom"
+            // `object-right-bottom`, not the default centre and NOT
+            // `object-bottom`. The tile is 358×160 and this panel is the page
+            // width less 32, with no `max-w` anywhere in the layout — so the
+            // panel is *narrower* than the tile on most phones and `object-cover`
+            // crops HORIZONTALLY, which `object-bottom` (`50% 100%`) does nothing
+            // about because it only moves the vertical axis:
+            //
+            //   430 → 398 panel, no horizontal crop
+            //   390 → 358, none
+            //   375 → 343, 15px cropped, 7.5px off the right   (iPhone SE 2/3, 6–8)
+            //   360 → 328, 30px cropped, 15px off the right    (most Android)
+            //   320 → 288, 70px cropped, 35px off the right    (iPhone SE 1)
+            //
+            // Geoapify burns the credit bottom-RIGHT, so on the two commonest
+            // mobile widths in the world `© OpenStreetMap contributors` was being
+            // truncated mid-string. Obligation 1 has no plan-level escape and
+            // §6.2 forbids resolving it by truncating the vendor's name.
+            // Anchoring bottom-right pins the credit's own corner and moves the
+            // whole crop to the top and left, where nothing is owed.
+            className="absolute inset-0 h-full w-full object-cover object-right-bottom"
             onError={() => setFailedTileUrl(tileUrl ?? null)}
             loading="lazy"
             draggable={false}

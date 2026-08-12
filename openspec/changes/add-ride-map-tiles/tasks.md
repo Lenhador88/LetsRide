@@ -688,7 +688,19 @@ property of the tile's data, so it takes one legible home rather than riding on 
   exactly this state.
 - [ ] 8.3 **OWNER ACTION — deploy the Edge Function. §6's attribution must be settled and rendered
   BEFORE this step, not merely before §6 is ticked** — this is the moment a tile first exists, so it
-  is the moment an uncredited tile first reaches a rider. There is no `supabase` CLI in this container
+  is the moment an uncredited tile first reaches a rider.
+
+  **AND redeploy `delete-account` in the SAME window — deploying this one alone opens a privacy
+  hole.** `ride-maps/` is written for the first time by this function, and `delete-account`'s
+  `PREFIXES` sweep is the only thing that ever removes it. The prefix is now in that list in the
+  repo, but **the deployed build predates it** and no session can redeploy either function, so until
+  the owner does both an account deletion leaves two rendered images of the rider's meeting point —
+  frequently their home address — in the bucket, with no row naming them and no credential left in
+  the system that can reach the folder. 7.1 files the wider account-deletion coordination; this line
+  is the deploy-order half of it, because nothing else in §8 blocked on it. **Verify after both:
+  `list_edge_functions` shows a new `ezbr_sha256` for `delete-account` on both projects.**
+
+  There is no `supabase` CLI in this container
   and the Supabase MCP has no deploy tool, so no session can do it. Same blocker as PD-86. Label
   `Owner only` in Linear and set the Geoapify key in the function's secret store — never in `src/`,
   `.env.local.example`, Vercel or any `NEXT_PUBLIC_*`.
