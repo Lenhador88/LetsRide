@@ -516,31 +516,43 @@ never become a development convenience.
 relay itself cannot reach Supabase without it.
 
 **A clean run is `47/47 guard, navigation and sign-out checks correct` on a DEV where the walk
-account owns a ride and a club** — measured 2026-08-12, `devrider093453` (`rider-1786033088990@…`,
-§Test accounts below). **A freshly minted account will usually measure one lower, and
-that is not a bug to chase**: `checkEditRetention` picks the first candidate whose form actually
-renders, `getRides` orders by `departure_at` ascending, and fixture rides are deliberately dated a
-year out and never cleaned up (below, "idempotence with an expiry date is not idempotence") —
-so on a DEV that has accumulated fixture rides from earlier sessions, a brand-new account's own
-ride almost never sorts first, the walk correctly lands on someone else's ride edit form instead
-("not this rider's"), falls through to the club one, and the `club_id` restore assertion —
-`retain.ts`'s hardest control type — is skipped rather than run. Reproduce the reference figure
-against an account that already organises the earliest-departing ride, not a fresh one; the SQL to
-mint a password for either named account is in §Test accounts. Three phases count what they *ran*
-rather than a constant: the club `<select>` and the ride/club edit form are drawn only for a rider
-who has somewhere to put them, and `runRefusedSignup` skips entirely when the browser's session is
-not on the writable-project allowlist — so the total falls on a thinner database or a wrongly
-configured environment, and the run says which parts it skipped rather than shrinking silently.
-Count them from the output rather than from here: 5 refused-sign-in assertions, 3 refused-signup
-assertions when the ref gate passes (0 when it does not), 9 refused-ride-create assertions (8 with
-no club, so the club `<select>` is not drawn), 4 refused-club-create assertions, 2 or 3
-refused-edit assertions (2 on the club edit form, which has no select), 4 refused-profile-edit
-assertions, then `all N taps navigated`, `no stamp re-read`, `the shell stayed mounted`, `the
-splash never painted`, then 6 signed-in guard rules, 4 sign-out assertions and 5 signed-out guard
-rules. The walk discovers detail routes from the lists, checks eleven route-guard redirects in
-both signed-in and signed-out states, asserts sign-out leaves no `sb-*` key in `localStorage`, no
-`sb-*` cookie and no reachable screen, and taps five bottom tabs to prove a navigation costs no
-`my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
+account owns a ride and a club** — measured 2026-08-12. **The account that measures the full total
+is whoever currently organises the earliest-departing ride, not a fixed name**: `checkEditRetention`
+picks the first candidate whose form actually renders, and `getRides` orders `/rides` by
+`departure_at` ascending, so `discoverDetailPaths` hands it whichever ride is soonest regardless of
+who created it or when. Re-derive who currently qualifies rather than trusting a name written here:
+
+```sql
+select p.username, r.title, r.departure_at
+  from public.rides r join public.profiles p on p.id = r.organizer_id
+ where r.departure_at >= now() order by r.departure_at asc limit 1;
+```
+
+The account that organises that row is the one whose run exercises the `club_id` restore
+assertion — `retain.ts`'s hardest control type — rather than landing on that ride's edit form as
+someone else ("not this rider's"), falling through to the club one, and skipping it. A
+freshly-minted account usually measures one lower for exactly that reason: its own fixture ride is
+dated a year out **on creation** (`provision()`, below), so it is rarely the earliest row on a DEV
+that has accumulated others; the SQL to mint a password for whichever account the query above
+names is in §Test accounts.
+
+Five phases count what they *ran* rather than a fixed constant — `checkFormRetention`,
+`checkCreateClubRetention`, `checkEditRetention`, `checkEditProfileRetention` and
+`checkRefusedSignup` all return it — and three of the five actually vary at runtime: the club
+`<select>` and the ride/club edit form are drawn only for a rider who has somewhere to put them,
+and `runRefusedSignup` skips entirely when the browser's session is not on the writable-project
+allowlist. So the total falls on a thinner database or a wrongly configured environment, and the
+run says which parts it skipped rather than shrinking silently. Count them from the output rather
+than from here: 5 refused-sign-in assertions, 3 refused-signup assertions when the ref gate passes
+(0 when it does not), 9 refused-ride-create assertions (8 with no club, so the club `<select>` is
+not drawn), 4 refused-club-create assertions, 2 or 3 refused-edit assertions (2 on the club edit
+form, which has no select), 4 refused-profile-edit assertions, then `all N taps navigated`,
+`no stamp re-read`, `the shell stayed mounted`, `the splash never painted`, then 6 signed-in guard
+rules, 4 sign-out assertions and 5 signed-out guard rules. The walk discovers detail routes from
+the lists, checks eleven route-guard redirects in both signed-in and signed-out states, asserts
+sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no reachable screen, and taps
+five bottom tabs to prove a navigation costs no `my_onboarding_state()` re-read, does not remount
+the shell and never paints the splash.
 
 **The refused-edit phase is the one that has been wrong twice, and both times it read green.**
 It flips the public checkbox, submits a **whitespace-only** required field — which satisfies HTML
@@ -571,11 +583,12 @@ input, an uncontrolled textarea and an uncontrolled checkbox in a single refusal
 branch of `signUp` — with confirmation ON (PROD) GoTrue's duplicate-signup mitigation returns
 success instead, so the `alreadyRegistered` branch this phase exercises is unreachable there; the
 comment above it in `scripts/walk.mjs` says so. **It runs after the real sign-in below, not beside
-`checkRefusedSignIn`, and only behind the same project-ref gate `provision()`'s fixture writes use**
-(`runRefusedSignup`) — a real `signUp` call is a write with no schema or database layer backing its
-refusal the way `max_riders = 0` backs the ride phase, so "the address is already registered" being
-true is a fact about the environment, not a guarantee, and it needed a session to read the project
-ref from before it could be trusted to run at all. The phase call site also carries the `.catch()`
+`checkRefusedSignIn`, and only behind `refWritable` — the one place the project-ref allowlist is
+checked, shared with `fixturesPermitted`'s gate on `provision()`'s writes** (`runRefusedSignup`) —
+a real `signUp` call is a write with no schema or database layer backing its refusal the way
+`max_riders = 0` backs the ride phase, so "the address is already registered" being true is a fact
+about the environment, not a guarantee, and it needed a session to read the project ref from
+before it could be trusted to run at all. The phase call site also carries the `.catch()`
 every other new PD-203 phase has; broken and reverted by hand to confirm it reports a failure
 rather than aborting the run. The remaining two of the nine `retaining` forms are recorded as
 deliberately unexercised in the same file, next to `checkRefusedSignup`:

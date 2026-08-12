@@ -387,8 +387,9 @@ async function checkRefusedSignup(targetPage) {
  */
 
 /**
- * Gates `checkRefusedSignup` behind the same project ref `provision()` gates
- * fixture writes behind — review finding on PD-203's first pass.
+ * Gates `checkRefusedSignup` behind the same project-ref allowlist
+ * `fixturesPermitted()` gates fixture writes behind — review finding on
+ * PD-203's first pass.
  *
  * **Unlike `checkFormRetention`'s ride** (`max_riders = 0`, refused by both
  * `rideSchema`'s `.positive()` and `018`'s CHECK, so it cannot write at
@@ -409,17 +410,17 @@ async function checkRefusedSignup(targetPage) {
  * (`GUARD_CASES_SIGNED_IN`), so the phase would never reach the form on
  * `page` itself, and the phase is supposed to be probing an anonymous
  * rider's browser in the first place.
+ *
+ * **Calls `refWritable` rather than re-testing `ref` inline** — the
+ * allowlist check itself has to live in exactly one place (`fixturesPermitted`
+ * below is the other caller), or a session tightening the rule later (a
+ * confirmation-ON project must never be writable, say) does it there and
+ * this write silently keeps the old, looser one.
  */
 async function runRefusedSignup() {
-  const ref = await authenticatedProjectRef()
-  if (!ref || !WRITABLE_REFS.has(ref)) {
-    console.log(
-      `\n(refused-signup phase skipped — ${
-        ref
-          ? `refusing to sign up against "${ref}" — only ${[...WRITABLE_REFS].join(', ')} is writable`
-          : 'could not read which project the browser signed in to — refusing to write rather than guessing'
-      })`
-    )
+  const permit = refWritable(await authenticatedProjectRef(), 'sign up')
+  if (!permit.ok) {
+    console.log(`\n(refused-signup phase skipped — ${permit.why})`)
     return { bad: 0, ran: 0 }
   }
 
@@ -618,12 +619,16 @@ async function authenticatedProjectRef() {
 }
 
 /**
- * Writes are off by default, and turning them on is not enough on its own — the
- * project has to be one this walk is allowed to write to, established from the
- * session rather than from anything the runner typed.
+ * The one place the project-ref allowlist is checked — every write this walk
+ * can make (`fixturesPermitted` below, and `runRefusedSignup` above) calls
+ * this rather than testing `ref` itself, so a rule change (tightening it to
+ * refuse a confirmation-ON project outright, say) happens once and binds
+ * every write rather than whichever ones a session remembered to touch.
+ *
+ * `context` names what the caller was about to do, for the skip message
+ * only — the allowlist logic itself never varies by caller.
  */
-function fixturesPermitted(ref) {
-  if (process.env.WALK_FIXTURES !== '1') return { ok: false, quiet: true }
+function refWritable(ref, context) {
   if (!ref) {
     return {
       ok: false,
@@ -633,10 +638,20 @@ function fixturesPermitted(ref) {
   if (!WRITABLE_REFS.has(ref)) {
     return {
       ok: false,
-      why: `refusing to create fixtures against "${ref}" — only ${[...WRITABLE_REFS].join(', ')} is writable`,
+      why: `refusing to ${context} against "${ref}" — only ${[...WRITABLE_REFS].join(', ')} is writable`,
     }
   }
   return { ok: true }
+}
+
+/**
+ * Writes are off by default, and turning them on is not enough on its own — the
+ * project has to be one this walk is allowed to write to, established from the
+ * session rather than from anything the runner typed.
+ */
+function fixturesPermitted(ref) {
+  if (process.env.WALK_FIXTURES !== '1') return { ok: false, quiet: true }
+  return refWritable(ref, 'create fixtures')
 }
 
 async function provision({ ride, club }) {
@@ -1222,28 +1237,32 @@ async function checkEditRetention(candidates) {
   // `is_public` here means "not this rider's", not "the control is gone".
   //
   // **A `waitForSelector` here, uncaught, is how an earlier draft of this loop
-  // once read a "not yours" candidate as a harness failure rather than a skip**
-  // — a rejected wait with nothing catching it took the whole phase down. The
-  // flat `waitForTimeout` that replaced it fixed that, but review on PD-203
-  // named a real risk in it: a fixed 1500ms *can* read the `is_public` field
-  // before an owned form's data — fetched through the relay, one round trip
-  // slower than a direct connection — has actually arrived, silently reading
-  // an owned candidate as "not yours" and falling through to the next one,
-  // skipping the `club_id` restore assertion below (the control type
-  // `retain.ts` singles out as hardest to get right). `waitForSelector` **with**
-  // a `.catch()` removes that risk without reintroducing the harness failure:
-  // it settles the moment the form is actually there, and a genuine "not
-  // yours" candidate degrades to a bounded wait instead of an uncaught
-  // rejection. (What actually decided *this* session's measured run was a
-  // different, unrelated cause — see docs/HANDOFF.md §The walk on why a
-  // freshly-minted account's own fixture ride is rarely the one discovered at
-  // all on a DEV that has accumulated others — but the timing risk this fixes
-  // is real independently of that, and worth closing on its own.)
+  // once read a "not yours" candidate as a harness failure rather than a
+  // skip** — a rejected wait with nothing catching it took the whole phase
+  // down. The flat `waitForTimeout` that replaced it fixed that, but a fixed
+  // 1500ms can read the `is_public` field before an owned form's data —
+  // fetched through the relay, one round trip slower than a direct
+  // connection — has actually arrived, silently reading an owned candidate
+  // as "not yours" and falling through to the next one, skipping the
+  // `club_id` restore assertion below (the control type `retain.ts` singles
+  // out as hardest to get right). `waitForSelector` **with** a `.catch()`
+  // removes that risk without reintroducing the harness failure: it settles
+  // the moment the form is actually there, and a genuine "not yours"
+  // candidate degrades to a bounded wait instead of an uncaught rejection.
   let chosen = null
   for (const candidate of candidates) {
     await page.goto(`${BASE}${candidate.path}`, { waitUntil: 'networkidle' })
+    // `state: 'attached'`, not the default `'visible'` — `Checkbox`'s real
+    // input is `className="peer sr-only"` (visually hidden, not absent), and
+    // the old `isChecked(...).catch(() => null)` this replaced resolved on
+    // attachment too. Requiring visibility would make this probe agree with
+    // the old one only by accident, on the current CSS: a future move to
+    // `hidden`/zero-size would make an *owned* form read as "not yours" on
+    // both candidates, and the phase returns `{bad: 0, ran: 0}` — a skip
+    // that reads as a pass, on the one thing this file's own conventions
+    // exist to catch.
     const rendered = await page
-      .waitForSelector(field('is_public'), { timeout: 20_000 })
+      .waitForSelector(field('is_public'), { state: 'attached', timeout: 20_000 })
       .then(() => true)
       .catch(() => false)
     if (rendered) {
