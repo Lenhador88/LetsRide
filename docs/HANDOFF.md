@@ -550,8 +550,9 @@ form, which has no select), 4 refused-profile-edit assertions, then `all N taps 
 `no stamp re-read`, `the shell stayed mounted`, `the splash never painted`, then 6 signed-in guard
 rules, 4 sign-out assertions and 5 signed-out guard rules. The walk discovers detail routes from
 the lists, checks eleven route-guard redirects in both signed-in and signed-out states, asserts
-sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no reachable screen, and taps
-five bottom tabs to prove a navigation costs no `my_onboarding_state()` re-read, does not remount
+sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no reachable screen, and makes
+five bottom-tab taps across the four tabs to prove a navigation costs no `my_onboarding_state()`
+re-read, does not remount
 the shell and never paints the splash.
 
 **The refused-edit phase is the one that has been wrong twice, and both times it read green.**
@@ -573,8 +574,9 @@ the two selects also need an effect.
 
 **PD-203's three phases close most of the gap between "wired on nine forms" and "asserted on
 two", and record what they deliberately still leave open.** `checkCreateClubRetention` submits
-a whitespace-only `name` (`clubSchema`'s `.trim().min(1)`, and unlike `rides.max_riders` there is
-no database CHECK behind `clubs.name` at all) and is the one phase covering a controlled text
+a whitespace-only `name` — refused at both layers, by `clubSchema`'s `.trim().min(1)` and by
+`018`'s `clubs_name_length` CHECK, exactly as `018` bounds `rides.max_riders` — and is the one
+phase covering a controlled text
 input, an uncontrolled textarea and an uncontrolled checkbox in a single refusal.
 `checkEditProfileRetention` is the only phase touching the one form where `retaining`'s
 `defaultValue` fallback ever reaches a *stored* value (`state.retained.location ?? profile.location
