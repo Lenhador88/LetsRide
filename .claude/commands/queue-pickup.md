@@ -948,6 +948,32 @@ live RLS hole letting any signed-in rider post a ride into any club.
    packet rather than trusting it, so forgetting costs a line in the report instead of an
    unreviewed file — but it only reports what it can see, and a packet is not a substitute for
    rebuilding it.
+
+   **Confirm the pass returned a result before you push, and read a missing result as a missing
+   review rather than a clean one.** That reading is what does the damage: it reaches a merge
+   with no review at all — CI green, a PR merged and a `Deployed to DEV` status all looking
+   correct — which is the same outcome STEP 0.6 describes for a build agent that cannot spawn
+   `reviewer` at all, arrived at by a different route. **A dead agent and a slow one
+   are indistinguishable from the main thread**: no error, no notification, nothing on the board.
+   The signal is an *absence*, and every other gate here that can fail silently already has a
+   tripwire for one — `docs:check` fails a skip instead of passing it, `no-service-role-key`
+   proves its own detector still matches. This is that tripwire, and it is one call:
+
+   ```
+   ListAgents     # still listed -> running · not listed, and no report -> it died
+   ```
+
+   - **You hold a report** → covered. Carry on.
+   - **No report, agent still listed** → it is running. Do not re-spawn and do not idle — the
+     completion re-invokes you, so do everything that does not depend on it (`CLAUDE.md`
+     §Delegating while the owner is at the keyboard).
+   - **No report, agent not listed** → it died. **Re-run it once**, with a freshly built packet.
+   - **The re-run also returns nothing** → **`Needs help`, and do not merge.** §If you get stuck.
+
+   Observed rather than feared: the pass spawned on the `PD-151` firing (2026-08-09) never
+   returned, with `ListAgents` empty 1h45m later; the re-run came back in ~5 minutes and found
+   two real issues. **The delta re-review above is the same gate and gets the same check** — it
+   is spawned the same way and can die the same way.
 2. **Push the branch — again, if STEP 4b built anything.** Then open a PR against
    **`development`**, with the `## Folded in` section from STEP 4b in the body, or nothing there
    if nothing travelled.
@@ -1078,7 +1104,8 @@ it look handled.
 
 Use it whenever you would otherwise guess: an ambiguous requirement, a visibility rule
 nobody wrote down, a migration whose ordering you cannot verify, a design frame that does not
-exist, CI red for a reason outside the story, or a decision that is the owner's to make.
+exist, CI red for a reason outside the story, a `reviewer` pass that will not return even on a
+re-run (STEP 4c bullet 1), or a decision that is the owner's to make.
 `CLAUDE.md` §Working Principles forbids letting an unlabelled guess pass as a known value —
 `Needs help` is where those go.
 
