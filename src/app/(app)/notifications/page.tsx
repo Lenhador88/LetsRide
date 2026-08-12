@@ -99,13 +99,17 @@ function NotificationsScreen() {
 
   // `combineQueries` surfaces the FIRST error of either, so a failed profile
   // read blanks the whole list even when all 30 rows are already in hand. That
-  // is deliberate rather than overlooked, and it is the same argument as the
-  // data gate below: the alternative is to fall through with `viewerId`
-  // undefined, which does not degrade to "unknown" — it degrades to a positive
-  // claim that the reader is NOT the organizer, silently, on every row. A loud
-  // retryable error beats a quiet wrong sentence, and `gate.refetch` retries
-  // both. The cost is an availability regression on a transient `profiles`
-  // failure, which is the trade being made.
+  // is deliberate, and the alternative is worse than it looks: dropping
+  // `profile` from THIS gate alone does not fall through, because the data gate
+  // below still holds on `profile.data === undefined` and `useQuery` leaves
+  // `data` undefined after a failed first fetch. That is a permanent skeleton
+  // with no retry affordance. The ErrorState is the same failure, made loud and
+  // recoverable — `gate.refetch` retries both.
+  //
+  // **The data gate below is what prevents the wrong sentence; this one does
+  // not, and reading it as redundant with that is the trap.** The first-tick
+  // defect PD-129 removes arrives through `undefined`, which that gate holds on
+  // deliberately. Trimming it as covered by this error gate reinstates it.
   const gate = combineQueries(first, profile)
   if (gate.error) {
     return (

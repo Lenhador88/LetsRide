@@ -1155,6 +1155,12 @@ back to me with the outcome of points questions etc. That I need to act upon."* 
 the three rules above were all reaching for, stated directly — apply it to every reply, including
 the wrap-up.
 
+**It governs CHAT REPLIES, exactly like the three rules it restates, and nothing else.** The
+`Done ; )` push notification above is by construction a report of landed work needing no action,
+so a reading of this rule that reaches it deletes the one message meant for an owner who is *not*
+watching — which is the whole reason that notification exists. The record is likewise out of
+scope: commit, PR and Linear stay as long as they need to be.
+
 Before sending anything, ask what the owner **does** with it. A question only they can answer, a
 blocked capability, a decision between options, a thing that is now broken: send it. Work that
 landed and needs nothing from them: the commit, the PR and the Linear issue already say it, and
