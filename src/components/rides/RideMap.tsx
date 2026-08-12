@@ -8,12 +8,22 @@ import { cn, googleMapsDirectionsUrl } from '@/lib/utils'
  * The 358×160 map panel — decision #3, "a static thumbnail plus a Google Maps
  * deeplink", and now both halves of it.
  *
- * **The tile goes behind the existing content; it does not replace it.** `051`
- * added `rides.map_detail_path` and the data layer signs it into
- * `map_detail_url`, so when a ride has a tile the panel draws it under the
- * address and the `Get directions` chip. The whole panel stays the anchor — see
- * the iPad note below, which was a real bug fix rather than a decoration — and
- * the deeplink is untouched.
+ * **A tile REPLACES the panel's contents rather than sitting behind them.**
+ * `051` added `rides.map_detail_path` and the data layer signs it into
+ * `map_detail_url`; when a ride has one the panel draws what the Figma draws —
+ * the map and the `Get directions` chip, and nothing else. The whole panel stays
+ * the anchor — see the iPad note below, which was a real bug fix rather than a
+ * decoration — and the deeplink is untouched.
+ *
+ * **The address is deliberately NOT drawn over the tile**, reversing task 3.3 on
+ * the product owner's decision, 2026-08-12. 3.3 asked for it and the Figma panel
+ * (`Ride - Ride plan (Details)` → `Map 358×160`) draws neither the address nor
+ * the pin, carrying only `Map Container` and the chip. The page already renders
+ * `meeting_point` in the `DetailRow` immediately above this panel, so keeping it
+ * here bought a duplicate — and the price was a **70% full-panel scrim**, needed
+ * only to hold that duplicate legible over unknown imagery, which darkened the
+ * map badly enough to defeat the point of rendering one. Dropping the address
+ * drops the scrim with it.
  *
  * **No tile is the ordinary state and it is the state of every ride today.**
  * Nothing writes `map_detail_path` until the render function ships, and an
@@ -41,8 +51,12 @@ import { cn, googleMapsDirectionsUrl } from '@/lib/utils'
  * Plain text and not the documented `Powered by <a …>Geoapify</a>`, because the
  * whole panel is already an anchor and nesting one inside another is invalid HTML
  * that browsers resolve by closing the outer link early — which would cost the
- * `Get directions` tap target this component exists to fix. Bottom-**left**, so
- * it is clear of the `Get directions` chip inset bottom-right.
+ * `Get directions` tap target this component exists to fix. **Top-left, on its
+ * own `bg-scrim` pill** — it used to sit bottom-left in plain white, relying on
+ * the full-panel scrim the address needed; with that gone it carries its own
+ * bounded background, over ~120px rather than the whole tile. Top rather than
+ * bottom because the bottom edge now belongs to the vendor's own credit and the
+ * chip that had to move off it.
  *
  * **What is still owed here**, recorded rather than assumed: whether the
  * burned-in credit is legible at `RideCard`'s 80×148 strip. That is
@@ -50,13 +64,13 @@ import { cn, googleMapsDirectionsUrl } from '@/lib/utils'
  * cannot be measured from a container with no route to the vendor, and it is
  * task 8.4's to answer against a real tile.
  *
- * **The address needs a scrim over a tile and does not over `bg-track`.** Grey/100
- * on the opaque `Grey/10` fill is 12.65:1; over an arbitrary map it is whatever
- * the map happens to be under those two lines. `bg-scrim` — the `Grey/70%` this
- * design system already uses to put text on a photo — bounds the composite at
- * `#4D4D4D` however bright the tile is, which is 8.0:1 for `White/100` at worst
- * and better everywhere else. It costs the tile some brightness, and that is the
- * trade: the address is the one thing on this panel a rider actually reads.
+ * **`bg-scrim` is still the instrument, but it now backs ~120px instead of the
+ * whole panel.** `Grey/70%` bounds the composite at `#4C4C4C` however bright the
+ * tile is — 8.59:1 for `White/100` at worst, measured, and better everywhere
+ * else. That is what any text over unknown imagery needs, and after 3.3 was
+ * reversed the only such text left is the Geoapify credit. **Do not reintroduce
+ * a full-panel scrim** without also reintroducing something that needs it: the
+ * darkening was never free, it was the cost of the address.
  *
  * What the panel does when there is no tile is be honest about what it is: the
  * meeting point, legibly, and one obvious tap that opens directions to it. Three
@@ -139,7 +153,10 @@ export function RideMap({
           <img
             src={tileUrl ?? undefined}
             // Decorative: the meeting point this tile is centred on is written
-            // over it, and again in the location row above the panel.
+            // in the `DetailRow` immediately above this panel, and the whole
+            // panel's `aria-label` names it again. Nothing here is the only
+            // place that information appears, which is what makes an empty alt
+            // correct rather than lazy.
             alt=""
             // `object-right-bottom`, not the default centre and NOT
             // `object-bottom`. The tile is 358×160 and this panel is the page
@@ -165,38 +182,56 @@ export function RideMap({
             loading="lazy"
             draggable={false}
           />
-          <span aria-hidden className="pointer-events-none absolute inset-0 bg-scrim" />
-          {/* White/100 on `bg-scrim` — the same 8.0:1 floor the address above
-              gets, since the scrim covers the whole panel. After the scrim in
-              DOM order so it paints above it, and before the chip so the chip
-              still paints above this. */}
-          <span className="pointer-events-none absolute bottom-1 left-1 text-2xs font-medium text-white">
+          {/* White/100 on a LOCAL `bg-scrim` pill, not the full-panel scrim this
+              panel used to carry. The scrim existed to hold the address legible
+              over an unknown map; with the address gone there is nothing left to
+              darken the whole tile for, and this string is the only thing still
+              needing a bounded background. Same 8.59:1 worst case, over ~120px
+              instead of the entire panel. */}
+          <span className="pointer-events-none absolute top-1 left-1 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white">
             Powered by Geoapify
           </span>
         </>
       )}
 
-      {/* `relative` only over a tile, and only so the content paints above an
-          absolutely-positioned sibling. Without a tile these two are exactly
-          what this panel has always rendered. */}
-      <LocationFilledIcon
-        className={cn('h-6 w-6', showsTile ? 'relative text-white' : 'text-muted')}
-        aria-hidden="true"
-      />
-      {/* Grey/100 on Grey/10 is 12.65:1. `text-muted` here would be 4.17:1 —
-          under the bar, and the exact failure docs/FIGMA-FIDELITY-TODO.md
-          §Ride detail already logs twice for this screen. Over a tile the fill
-          is unknown, so the pairing becomes White/100 on `bg-scrim` — see the
-          header. */}
+      {/* The pin and the address are the NO-TILE rendering, and only that.
+          Over a tile the panel draws what the Figma draws — the map and the
+          directions chip — because the address is already on screen in the
+          `DetailRow` immediately above this panel, and holding a duplicate of it
+          legible over unknown imagery is what cost the whole tile a 70% scrim.
+          Product owner, 2026-08-12, reversing task 3.3. */}
+      {!showsTile && (
+        <>
+          <LocationFilledIcon className="h-6 w-6 text-muted" aria-hidden="true" />
+          {/* Grey/100 on Grey/10 is 12.65:1. `text-muted` here would be 4.17:1 —
+              under the bar, and the exact failure docs/FIGMA-FIDELITY-TODO.md
+              §Ride detail already logs twice for this screen. */}
+          <span className="line-clamp-2 text-center text-sm font-medium text-foreground">
+            {destination}
+          </span>
+        </>
+      )}
+
+      {/* **Bottom-LEFT over a tile, bottom-right without one, and that is an
+          attribution constraint rather than a layout preference.** Geoapify
+          burns the OpenStreetMap credit into the bottom-RIGHT of the image, and
+          this chip is inset into exactly that corner — so over a tile it sits on
+          top of the credit discharging obligation 1, the one with no plan-level
+          escape. It was invisible while the panel carried a full-width scrim and
+          a centred address; dropping those is what makes the tile's own corner
+          legible and the collision real.
+          UNMEASURED — the vendor's hosts are egress-blocked from the build
+          container, so nobody has seen a real tile. Moved pre-emptively because
+          the failure direction is a breached licence term, and task 8.4d
+          confirms it against a real one. (Naming the host here is what the
+          no-geoapify-key tripwire caught on the first draft of this comment —
+          it scans prose too, deliberately.) */}
       <span
         className={cn(
-          'line-clamp-2 text-center text-sm font-medium',
-          showsTile ? 'relative text-white' : 'text-foreground'
+          'absolute bottom-1 rounded bg-surface px-2 py-[3px] text-2xs font-medium text-foreground',
+          showsTile ? 'left-1' : 'right-1'
         )}
       >
-        {destination}
-      </span>
-      <span className="absolute right-1 bottom-1 rounded bg-surface px-2 py-[3px] text-2xs font-medium text-foreground">
         Get directions
       </span>
     </a>

@@ -376,20 +376,51 @@
   tile branch adds an `object-cover` image under a `White/100` disc behind the pin, which is
   17.4:1 whatever the map is. Doc comment rewritten; it now names no-tile as the ordinary state
   rather than a gap.
-- [x] 3.2 `RideMap`: draw the tile behind the existing content in the 358×160 panel. **The whole
-  panel stays the anchor** and `Get directions` stays — that was a real iPad bug fix, not a
-  decoration. Keep the blank-`meeting_point` early return. Both kept, untouched. The tile and its
-  scrim are two extra absolutely-positioned layers that exist **only** when a tile shows, so the
-  no-tile DOM is unchanged apart from the address and pin carrying `relative` — inert, and needed
-  only so in-flow content paints above a positioned sibling.
-- [x] 3.3 Contrast: the address currently sits at 12.65:1 on `bg-track`. Over a photographic tile
-  that guarantee is gone — the text needs a scrim or a treatment that holds the ratio. This is a new
-  colour pairing and therefore a mandatory reviewer contrast pass. `bg-scrim` (`Grey/70%`, the
-  token this system already uses to put text on a photo) with `White/100` text and pin: a 70%
-  black scrim bounds the composite at `#4D4D4D` however bright the tile, so the floor is **8.0:1**
-  rather than "whatever the map is". The `Get directions` chip is unchanged — `White/100` fill,
-  `Grey/100` text, 17.4:1 — and paints above the scrim. **Still owed the reviewer pass**, which is
-  9.2's, and the brightness cost of a 70% scrim is a design call worth putting to the designer.
+- [x] 3.2 `RideMap`: the tile in the 358×160 panel. **The whole panel stays the anchor** and
+  `Get directions` stays — that was a real iPad bug fix, not a decoration. Keep the
+  blank-`meeting_point` early return. Both kept, untouched.
+
+  **SUPERSEDED IN PART by 3.3's reversal, 2026-08-12.** This originally said the tile draws
+  *behind* the existing content, with the tile and its scrim as two extra layers and the address
+  and pin carrying an inert `relative`. None of that is the code any more: **a tile replaces the
+  panel's contents**, there is no scrim layer, and the pin and address render only when there is
+  no tile. What still holds is the part that matters — the **no-tile DOM is unchanged**, verified
+  rendered-identical rather than eyeballed.
+- [x] 3.3 Contrast — **and this task was REVERSED by the product owner on 2026-08-12. Read the
+  reversal before the rationale, because the rationale is sound and still leads to the wrong
+  answer.**
+
+  **What it asked for:** the address over the tile, held legible by `bg-scrim` (`Grey/70%`) with
+  `White/100` text and pin. The reasoning was correct — Grey/100 sits at 12.65:1 on `bg-track` only
+  because that fill is known, and over an arbitrary map the guarantee is gone, so text over a tile
+  genuinely does need a bounded composite.
+
+  **Why it was reversed:** the address was never *needed* over the tile. The Figma panel draws
+  neither the address nor the pin, and the page already renders `meeting_point` in the `DetailRow`
+  immediately above. So the scrim was buying legibility for a **duplicate of the line above it**,
+  at the price of darkening the whole map badly enough to defeat the point of rendering one. The
+  premise "the address is the one thing on this panel a rider reads" was the error: they read it
+  in the row above, before the panel.
+
+  **What shipped instead:** over a tile the panel draws the map and the chip only. The scrim is
+  gone with the text that needed it. `bg-scrim` survives as a **local pill** behind
+  `Powered by Geoapify`, which is now the only text over unknown imagery — same instrument, ~120px
+  instead of the whole panel.
+
+  **The measured floor is 8.59:1, not the 8.0:1 this task claimed.** `--color-scrim` is
+  `#000000B3` = 70.196% black, so over the brightest possible tile the composite is `#4C4C4C` —
+  **not `#4D4D4D`**, which was inherited into three files and matches neither figure. White on
+  `#4C4C4C` is 8.587:1; on `#4D4D4D` it would be 8.453:1. Independently recomputed by the reviewer.
+
+  **`#4D4D4D` is worth naming rather than silently replacing, because it is what a careful person
+  gets.** Read the token as "70%" — which is how every one of these three files described it — and
+  the composite is 255 × 0.30 = 76.5, which rounds up to 77 = `#4D4D4D`. The real alpha is `B3` =
+  179, so 255 − 179 = **76 exactly**, no rounding involved. Derive it from the prose and you get
+  the wrong hex; derive it from the token and you cannot.
+
+  The `Get directions` chip is unchanged in treatment — `White/100` fill, `Grey/100` text, 17.4:1 —
+  but **moved to bottom-left over a tile**, off the corner where the vendor burns its credit. 8.4d
+  is what confirms that against a real tile.
 - [x] 3.4 A failed image load falls back to the no-tile rendering rather than breaking the row.
   `onError` flips a `useState` in each component and every tile-dependent class keys off it, so a
   broken URL lands on exactly the fallback rendering rather than on a half-styled one. Both
@@ -726,6 +757,14 @@ property of the tile's data, so it takes one legible home rather than riding on 
   credit with it. **If the parameter does not exist, §4.6 and §6.2 cannot both hold** and 6.2's
   fail-closed branch fires — the card strip renders the pin fallback and no tile. That is a
   specified outcome, not a defect; do not resolve it by shrinking type below the system's floor.
+- [ ] 8.4d **Confirm nothing of ours covers the burned-in credit, now that the panel is bare.**
+  Geoapify burns the OpenStreetMap credit into the bottom-**right** of the tile, and the
+  `Get directions` chip is inset into that same corner. It was moved to bottom-left over a tile
+  pre-emptively — the failure direction is a breached licence term with no plan-level escape — but
+  **nobody has seen a real tile**, so the exact extent of the vendor's credit is unmeasured. Check
+  it against a rendered 358×160 and against the 80×148 card strip, where `RideCard` has no chip but
+  the crop is tighter. This became visible only when the address and the full-panel scrim came off;
+  while they were there, anything the chip covered was already under a 70% scrim.
 - [ ] 8.4c **Correct `/legal/privacy` in the SAME window as 8.3, not after it.** The page currently
   ends *"Today no ride has coordinates and nothing is sent anywhere"* — true right up to the moment
   the function deploys and false immediately after, on a **public, live** page describing where a
