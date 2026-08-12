@@ -206,7 +206,12 @@ export const claims = [
     //
     // The flip-by-flip history of this pin lives in `git log -p` and is not
     // recopied here; it grew a paragraph every time PROD caught up.
-    pattern: /\*\*Applied state: (\d+) files\. DEV and PROD are LEVEL at `\d+`/,
+    // 2026-08-12: 051 and 052 landed on DEV alone, which is the exact case the
+    // paragraph above predicted. Prose and pattern edited together, as it says.
+    // Still pinned to the RELATIONSHIP rather than relaxed to the count: both
+    // refs are named and `NOT level` is asserted, so the day PROD catches up
+    // this goes red again and the sentence gets re-read. That is the point.
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — NOT level/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
