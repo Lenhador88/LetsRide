@@ -726,6 +726,14 @@ property of the tile's data, so it takes one legible home rather than riding on 
   credit with it. **If the parameter does not exist, §4.6 and §6.2 cannot both hold** and 6.2's
   fail-closed branch fires — the card strip renders the pin fallback and no tile. That is a
   specified outcome, not a defect; do not resolve it by shrinking type below the system's floor.
+- [ ] 8.4d **Confirm nothing of ours covers the burned-in credit, now that the panel is bare.**
+  Geoapify burns the OpenStreetMap credit into the bottom-**right** of the tile, and the
+  `Get directions` chip is inset into that same corner. It was moved to bottom-left over a tile
+  pre-emptively — the failure direction is a breached licence term with no plan-level escape — but
+  **nobody has seen a real tile**, so the exact extent of the vendor's credit is unmeasured. Check
+  it against a rendered 358×160 and against the 80×148 card strip, where `RideCard` has no chip but
+  the crop is tighter. This became visible only when the address and the full-panel scrim came off;
+  while they were there, anything the chip covered was already under a 70% scrim.
 - [ ] 8.4c **Correct `/legal/privacy` in the SAME window as 8.3, not after it.** The page currently
   ends *"Today no ride has coordinates and nothing is sent anywhere"* — true right up to the moment
   the function deploys and false immediately after, on a **public, live** page describing where a
