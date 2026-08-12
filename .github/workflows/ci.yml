@@ -235,7 +235,11 @@ jobs:
           #
           # **A literal rather than a secret, and this bundle is deliberately
           # not a release.** It is built to prove the export still works and is
-          # thrown away; `design.md` §D7 allows exactly that. The gate that a
+          # thrown away; `openspec/changes/add-static-export-bundle/design.md`
+          # §D7 allows exactly that. Spelled in full because ten `design.md`
+          # files are tracked here and `crossrefs.mjs` scans `.md`, not YAML —
+          # so nothing would catch this one going stale when the change is
+          # archived and the file moves. The gate that a
           # *submitted* bundle carries the production ref and origin is
           # `npm run release:check`, which is deliberately not part of
           # `build:native` — wiring it here would fail every PR, because this

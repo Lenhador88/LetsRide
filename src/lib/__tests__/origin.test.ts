@@ -81,9 +81,9 @@ describe('normaliseConfiguredOrigin — the definition the build guards share', 
   // guard sees falsy *and* the consumer falls back. Asserting either alone is
   // what let both escapes through.
   //
-  // `undefined` is passed to `stubEnv` rather than `''`, which deletes the
-  // variable — an absent variable and an empty one are different inputs and the
-  // `?? ''` branch only exists for the first.
+  // `undefined` is passed to `stubEnv` rather than `''`, because passing
+  // `undefined` deletes the variable — an absent variable and an empty one are
+  // different inputs, and the `?? ''` branch only exists for the first.
   it.each([undefined, '', '   ', '/', '//', '  //  '])('treats %j as not configured', (value) => {
     expect(normaliseConfiguredOrigin(value)).toBe('')
     withRuntimeOrigin(RUNTIME)
