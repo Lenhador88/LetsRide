@@ -83,18 +83,22 @@ function PostcardsScreen() {
   const filters = useQuery(queryKeys.postcards.filters(), () => getPostcardFilters())
 
   const gate = combineQueries(feed, filters)
-  if (gate.error) return <ErrorState onRetry={gate.refetch} />
+  // The bar is gated on its own read on the error path too, for the reason
+  // `/rides` gives at the same line: a failed feed read is not a failed filter
+  // read, and swapping the bar out is the defect this change exists to remove.
+  if (filters.error) return <ErrorState onRetry={gate.refetch} />
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
-  // where `isLoading` is false and there is still nothing to draw. Only the
-  // bar's own read is waited on here; the deck has its own gate below.
+  // where `isLoading` is false and there is still nothing to draw.
   if (!filters.data) return <SkeletonDeck />
 
   return (
     <>
       <PostcardFilterBar filters={filters.data} active={filter} />
       <div className="min-h-0 flex-1 py-2">
-        {feed.data ? (
+        {feed.error ? (
+          <ErrorState onRetry={feed.refetch} />
+        ) : feed.data ? (
           <PostcardDeck key={`${filter?.kind}-${filter?.id}`} postcards={feed.data} />
         ) : (
           <SkeletonDeck />

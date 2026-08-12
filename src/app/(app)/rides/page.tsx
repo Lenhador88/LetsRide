@@ -49,6 +49,14 @@ import type { RideFilter } from '@/types'
  * back with its horizontal scroll reset to the left. The bar's own key has no
  * filter segment, so its data is already there and there is nothing to wait
  * for. Whatever gates a subtree must be what that subtree reads.
+ *
+ * **The property that made this screen and `/postcards` the only two, stated
+ * precisely, because the loose version has counterexamples.** It is not "a
+ * control changes a query key in place" — `DeleteClubControl`,
+ * `DeleteRideControl` and `EditClubForm` all do that, and all three are fine.
+ * It is *gating a subtree wider than the read that was re-keyed*: those three
+ * scope the pending state to the text that reads it, and every other re-key in
+ * the app comes from a route change, where replacing the screen is correct.
  */
 export default function RidesPage() {
   return (
@@ -96,20 +104,32 @@ function RidesScreen() {
   const rides = useQuery(queryKeys.rides.list(filterKey), () => getRides(filter))
   const filters = useQuery(queryKeys.rides.filters(), () => getRideFilters())
 
+  // Only the bar's own read gates the bar — on the error path as much as on
+  // the loading one. A failed list read leaves `filters.data` sitting in cache
+  // and its own read successful, so collapsing both into one `gate.error` puts
+  // the reported symptom back on the very path where it is worst: the control
+  // for choosing a different filter is the way out of a failing one.
   const gate = combineQueries(rides, filters)
-  if (gate.error) return <ErrorState onRetry={gate.refetch} />
+  if (filters.error) return <ErrorState onRetry={gate.refetch} />
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
-  // where `isLoading` is false and there is still nothing to draw. Only the
-  // bar's own read is waited on here; the list has its own gate below.
+  // where `isLoading` is false and there is still nothing to draw.
   if (!filters.data) return <SkeletonList />
 
   return (
     <>
       <RideFilterBar filters={filters.data} active={filter} />
 
-      {!rides.data ? (
-        <SkeletonList />
+      {rides.error ? (
+        <ErrorState onRetry={rides.refetch} />
+      ) : !rides.data ? (
+        // The wrapper, not the skeleton, carries `py-2`: `SkeletonList`'s root
+        // is `px-4` only, and it now stands in the same slot as the loaded
+        // list rather than replacing the screen — so without it every filter
+        // tap ends with the cards jumping 8px as the data lands.
+        <div className="py-2">
+          <SkeletonList />
+        </div>
       ) : rides.data.length === 0 ? (
         <EmptyList filter={filter} />
       ) : (
