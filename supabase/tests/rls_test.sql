@@ -1961,13 +1961,27 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'storage' and tablename = 'objects'
-      and policyname !~* '(postcard|avatar|cover)'),
+      and policyname !~* '(postcard|avatar|cover|ride map)'),
   0, 'every storage.objects policy names the upload surface it belongs to');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'storage' and tablename = 'objects'
       and policyname ~* '(avatar|cover)' and policyname !~* 'club'),
   6, 'the profile surfaces carry three policies each — avatars/ and covers/');
+-- The sixth surface, added by 051. Scoped to its own name rather than folded
+-- into a whole-table total, for the reason the block above gives: a total stops
+-- testing "no leftover policy to OR against" for any one folder the moment a
+-- second folder exists.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname ~* 'ride map'),
+  3, '051: ride-maps/ carries exactly three policies — insert, select and delete');
+select assert_eq(
+  (select array_agg(cmd order by cmd)::text from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname ~* 'ride map'),
+  '{DELETE,INSERT,SELECT}', '051: ... and no UPDATE among them, so replacing a tile is delete-then-insert and stays subject to the same path pinning');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'storage' and tablename = 'objects' and not (roles = '{authenticated}')),
@@ -3535,13 +3549,23 @@ rollback to savepoint stranded_wizard;
 -- would answer 42501 rather than a boolean.
 reset role;
 
--- Nine since 034 added ride_messages. This number is deliberately hand-written
--- rather than derived: if it were `(select count(*) from the tables we gated)`
--- it could not notice a gate going missing, which is the whole point.
+-- Ten since 051 added ride_map_render_attempts, nine since 034 added
+-- ride_messages. This number is deliberately hand-written rather than derived:
+-- if it were `(select count(*) from the tables we gated)` it could not notice a
+-- gate going missing, which is the whole point.
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  9, 'nine gate triggers, one per gated table');
+  10, 'ten gate triggers, one per gated table');
+
+-- Named rather than counted, for the same reason the omissions below are: the
+-- total above cannot tell a gate that MOVED from one that was added, and the
+-- ledger is the table 051 gated.
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate'
+      and c.relname = 'ride_map_render_attempts'),
+  1, '051: ... and the tenth is on the render ledger — spending our vendor budget is a write like any other');
 
 -- Named rather than counted. A bare total would not notice a gate landing on
 -- `blocks`, which is the omission that matters most.
@@ -3559,7 +3583,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  9, 'every gate trigger carries the WHEN guard that reads the invoking role');
+  10, 'every gate trigger carries the WHEN guard that reads the invoking role');
 
 -- The two halves of the security-definer question, and they point opposite ways.
 -- The gate functions MUST be definer; the profile completion guard must NOT be,
@@ -4014,6 +4038,18 @@ select assert_eq(
 select assert_eq(
   has_function_privilege('service_role', 'private.transfer_owned_clubs(uuid)', 'execute'),
   true, '031: ... because service_role also holds EXECUTE on the worker it calls');
+
+-- ** The POSITIVE half, unasserted until 053. ** Everything below pins that the
+-- grant did not spread; nothing pinned that it EXISTS — so revoking it went
+-- red nowhere, and account deletion would simply stop working in production
+-- with the suite still green. That is not hypothetical: `052`'s verification
+-- block tells a reader to expect this false and cites `031` as its authority
+-- (see `053`'s header). A session that "restores" the documented value takes
+-- `private.transfer_owned_clubs` out of service_role's reach, which is the
+-- exact defect `031` exists to fix.
+select assert_eq(
+  has_schema_privilege('service_role', 'private', 'usage'),
+  true, '053: service_role DOES hold USAGE on private — 031 granted it so the deletion function can resolve its worker; 052''s verification block claims otherwise and is wrong');
 
 -- The assertion that matters most in 031: widening `private` for service_role
 -- must not widen it for the client. `005` put the helpers there so PostgREST
@@ -9730,8 +9766,8 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'rides'
       and grantee = 'authenticated' and privilege_type = 'UPDATE'),
-  'club_id,departure_at,description,is_public,max_riders,meeting_point,route_description,title',
-  '045: exactly eight columns of rides hold UPDATE — created_at, id and organizer_id are not among them');
+  'club_id,departure_at,description,geocode_confidence,is_public,latitude,longitude,map_card_path,map_detail_path,max_riders,meeting_point,route_description,title',
+  '045/051: exactly thirteen columns of rides hold UPDATE — created_at, id and organizer_id are still not among them, and the five 051 added ARE, deliberately');
 
 -- ---- clubs -------------------------------------------------------------
 select assert_eq(has_table_privilege('authenticated', 'public.clubs', 'insert'),
@@ -10437,6 +10473,601 @@ select assert_denied($$select count(*) from search_places('alfa bravo charlie')$
 reset role;
 
 rollback to savepoint places_049;
+
+\echo ''
+\echo '# Ride map tiles: the tile inherits the ride audience exactly (051)'
+
+-- ===========================================================================
+-- 051. Ride map tiles — five columns, three CHECKs, the stale-tile trigger,
+--      the append-only render ledger, and the `ride-maps/` Storage folder.
+--
+-- ** The shape that matters here is that the tile's audience is the RIDE's,
+-- exactly — neither wider nor narrower. ** So every read assertion below names
+-- a role the `rides` SELECT policy already decides, and the tile assertion is
+-- expected to agree with it. An implementer copying 034's chat policy would
+-- break the third one (a signed-in rider who is not on the crew), and it fails
+-- SILENTLY as a grey strip rather than as an error — which is why it is
+-- asserted explicitly rather than left to follow from the others.
+--
+-- Two things this section deliberately does NOT claim to cover, so their
+-- absence is not read as coverage:
+--   * the ceiling's behaviour under CONCURRENCY. This suite runs serially, so
+--     these assertions pass whatever the concurrent behaviour is. The policy
+--     overshoots permissively by design and 051's header says so.
+--   * anything about a SIGNED URL. Storage checks the policy when the URL is
+--     minted, not when it is fetched; that is verifiable only against the
+--     hosted project.
+-- ===========================================================================
+savepoint ride_map_tiles_051;
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- A ride inside the PRIVATE club c1, organised by 000b (a member, not the
+-- owner). Separates "club owner reads it" from "organizer reads it", which d1
+-- confounds because 000a is both.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-000000051051', 'Member Run', 'The Depot', now() + interval '5 days',
+   false, '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000b');
+
+-- A public ride organised by the BLOCKER, so the block can be asserted with the
+-- two riders exchanged. d4 already covers the other direction (organised by the
+-- blocked rider), and the `blocks` row is directional while the effect is not.
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id) values
+  ('00000000-0000-0000-0000-000000051052', 'Blocker Run', 'The Yard', now() + interval '6 days',
+   true, '00000000-0000-0000-0000-00000000001a');
+
+-- A public ride inside the PUBLIC club c2, so `propagate_club_privacy_to_rides`
+-- has something with a tile to bulk-update when c2 turns private. Without a ride
+-- in a public club there is nothing for the unscoped-trigger test to fire on.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-000000051053', 'Club Run', 'The Garage', now() + interval '7 days',
+   true, '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000a');
+
+-- Tiles. Written as the owner because the Edge Function that would write them
+-- does not exist yet; the point of these rows is the READ policy, and the write
+-- path is asserted separately below through the CHECKs and the column grant.
+update rides set latitude = 52.3784733, longitude = 4.9031499, geocode_confidence = 1.0,
+  map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2ca1.jpg',
+  map_detail_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2de1.jpg'
+  where id = '00000000-0000-0000-0000-0000000000d2';
+update rides set latitude = 52.1, longitude = 4.9, geocode_confidence = 0.9,
+  map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d1ca1.jpg'
+  where id = '00000000-0000-0000-0000-0000000000d1';
+update rides set latitude = 52.2, longitude = 4.8, geocode_confidence = 0.9,
+  map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d3ca1.jpg'
+  where id = '00000000-0000-0000-0000-0000000000d3';
+update rides set latitude = 52.3, longitude = 4.7, geocode_confidence = 0.9,
+  map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000001b/bbbbbbbb-0000-4000-8000-0000000d4ca1.jpg'
+  where id = '00000000-0000-0000-0000-0000000000d4';
+update rides set latitude = 52.4, longitude = 4.6, geocode_confidence = 0.9,
+  map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000001a/aaaaaaaa-0000-4000-8000-0000000d6ca1.jpg'
+  where id = '00000000-0000-0000-0000-000000051052';
+update rides set latitude = 52.5, longitude = 4.5, geocode_confidence = 0.9,
+  map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000b/bbbbbbbb-0000-4000-8000-0000000d5ca1.jpg'
+  where id = '00000000-0000-0000-0000-000000051051';
+update rides set latitude = 52.6, longitude = 4.4, geocode_confidence = 0.9,
+  map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d7ca1.jpg'
+  where id = '00000000-0000-0000-0000-000000051053';
+
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2ca1.jpg',
+   '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}'),
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2de1.jpg',
+   '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}'),
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d1ca1.jpg',
+   '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}'),
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d3ca1.jpg',
+   '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}'),
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000001b/bbbbbbbb-0000-4000-8000-0000000d4ca1.jpg',
+   '00000000-0000-0000-0000-00000000001b', '{"mimetype":"image/jpeg","size":1}'),
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000001a/aaaaaaaa-0000-4000-8000-0000000d6ca1.jpg',
+   '00000000-0000-0000-0000-00000000001a', '{"mimetype":"image/jpeg","size":1}'),
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000000b/bbbbbbbb-0000-4000-8000-0000000d5ca1.jpg',
+   '00000000-0000-0000-0000-00000000000b', '{"mimetype":"image/jpeg","size":1}'),
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d7ca1.jpg',
+   '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}'),
+  -- The orphan: an object no `rides` row names. Models an upload whose column
+  -- write was refused, a tile superseded by an address edit, and a tile whose
+  -- ride was deleted — all three end identically.
+  ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000f00d.jpg',
+   '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}');
+
+-- 000c holds a ride_members row on the PRIVATE club's ride but is not a member
+-- of that club. This is the ex-member state: nothing removes a ride_members row
+-- when a rider leaves a club, so a crew-based predicate would keep the tile
+-- reachable for ever. 000b gets `maybe` on d3 to prove maybe == going.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-00000000000c', 'going'),
+  ('00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-00000000000b', 'maybe');
+
+set role authenticated;
+
+-- --------------------------------------------------------------------------
+-- 051.1  The per-role read table. Every row of it, positive and negative.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2ca1.jpg'),
+  1, '051: the organizer reads their own ride''s card tile');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2de1.jpg'),
+  1, '051: ... and the detail tile, which is a second object under the same rules');
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-0000000000d2'
+                     and user_id = '00000000-0000-0000-0000-00000000000a'),
+  1, '051: (the organizer does hold a ride_members row here, so the next assertion is the one that isolates it)');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000b/bbbbbbbb-0000-4000-8000-0000000d5ca1.jpg'),
+  1, '051: the club owner reads a club ride''s tile on the strength of MEMBERSHIP, not of owning the club');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000b/bbbbbbbb-0000-4000-8000-0000000d5ca1.jpg'),
+  1, '051: the organizer of a private club''s ride reads its tile, holding no ride_members row at all');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d1ca1.jpg'),
+  1, '051: a private club MEMBER reads that club''s ride tile');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d3ca1.jpg'),
+  1, '051: a crew member with status `maybe` reads the tile — identical to `going`, because crew status is not part of this audience at all');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d3ca1.jpg'),
+  1, '051: a crew member with status `going` reads the tile');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+-- ** The assertion an implementer copying 034 would break, and it fails as a
+-- grey strip rather than as an error. ** Seeing a ride is not being on it, but
+-- for a TILE that distinction is exactly wrong: the tile renders a column the
+-- same screen already prints as text to this rider.
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2ca1.jpg'),
+  1, '051: a signed-in rider with NO ride_members row reads a public ride''s tile');
+-- The negatives, all reached with the exact object path in hand: a path is
+-- built from a ride id and a uid and is NOT a secret.
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d1ca1.jpg'),
+  0, '051: a NON-MEMBER of a private club reads nothing, knowing the exact path');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000b/bbbbbbbb-0000-4000-8000-0000000d5ca1.jpg'),
+  0, '051: ... including a second ride in that club organised by someone else');
+-- The ex-member: 000c holds a live ride_members row on d1 and still reads
+-- nothing. A crew-based predicate would have kept this reachable for ever,
+-- because nothing deletes a ride_members row when a rider leaves the club.
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-0000000000d1'
+                     and user_id = '00000000-0000-0000-0000-00000000000c'),
+  0, '051: (the ex-member''s own ride_members row is itself invisible to them — the row exists, which is what the next assertion needs)');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d1ca1.jpg'),
+  0, '051: an ex-member''s surviving ride_members row does NOT keep the tile reachable');
+
+-- Blocking, in both directions, with every other condition satisfied: both
+-- rides are public, both riders are signed in and onboarded, and the refusal
+-- comes from the EXISTS against `rides` inheriting `not private.is_blocked(...)`
+-- rather than from any predicate 051 writes.
+--
+-- ** Each refusal below is PAIRED with an unrelated rider reading the very same
+-- object. ** A bare `count = 0` is what a mistyped path returns and what a
+-- broken policy returns; only the pair tells "refused" apart from "no such
+-- row", which is 049's lesson applied to a different table.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000001b/bbbbbbbb-0000-4000-8000-0000000d4ca1.jpg'),
+  1, '051: (an unrelated rider DOES read the blocked rider''s ride tile, so the refusal below is about the block and not about a missing object)');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000001a/aaaaaaaa-0000-4000-8000-0000000d6ca1.jpg'),
+  1, '051: (... and the blocker''s ride tile too, pairing the other direction)');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000001b/bbbbbbbb-0000-4000-8000-0000000d4ca1.jpg'),
+  0, '051: the BLOCKER reads nothing of a public ride organised by the rider they blocked');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000001a/aaaaaaaa-0000-4000-8000-0000000d6ca1.jpg'),
+  0, '051: the BLOCKED rider reads nothing of a public ride organised by the blocker — the row is directional, the effect is not');
+
+-- --------------------------------------------------------------------------
+-- 051.2  The orphan, and the own-folder arm that exists only for it.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000f00d.jpg'),
+  0, '051: an object no rides row names is unreadable by another rider under any circumstances');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+-- ** Without the own-folder arm this reads 0, and that is not the safe
+-- direction. ** A Storage listing is filtered by this same policy, so an orphan
+-- nobody can see is an orphan nobody can name, and the DELETE policy can only
+-- remove an object by name. Omitting the arm makes the object permanent,
+-- invisible and uncounted rather than making it go away.
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000f00d.jpg'),
+  1, '051: ... and its own folder''s rider CAN still list it, which is the only thing the own-folder arm does');
+savepoint orphan_sweep_051;
+delete from storage.objects
+  where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000f00d.jpg';
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000f00d.jpg'),
+  0, '051: ... and can therefore delete it, so "until something sweeps them" names an actor that exists');
+rollback to savepoint orphan_sweep_051;
+
+-- --------------------------------------------------------------------------
+-- 051.3  The `ride-maps/` folder's own write policies. Per folder, never by
+--        reusing another folder's coverage.
+-- --------------------------------------------------------------------------
+select assert_allowed($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000abcd.jpg',
+          '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}')$$,
+  '051: a rider uploads a tile into their own ride-maps folder');
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'ride-maps/00000000-0000-0000-0000-00000000000b/aaaaaaaa-0000-4000-8000-00000000abcd.jpg',
+          '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}')$$,
+  '051: ... and never into another rider''s folder');
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/not-a-uuid.jpg',
+          '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}')$$,
+  '051: ... and never under a filename outside the pinned shape');
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000abcd.png',
+          '00000000-0000-0000-0000-00000000000a', '{"mimetype":"image/jpeg","size":1}')$$,
+  '051: ... and never as .png — the tile is requested as JPEG because the bucket allows nothing else');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+savepoint cross_rider_delete_051;
+delete from storage.objects
+  where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2ca1.jpg';
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d2ca1.jpg'),
+  1, '051: another rider cannot delete a tile out of a folder that is not theirs (asserted by counting, since a filtered DELETE raises nothing)');
+rollback to savepoint cross_rider_delete_051;
+
+reset role;
+set role anon;
+select assert_eq((select count(*)::int from storage.objects
+                   where (storage.foldername(name))[1] = 'ride-maps'),
+  0, '051: a signed-out visitor reads no ride-maps object at all — decision #1');
+select assert_denied($$
+  insert into storage.objects (bucket_id, name, metadata)
+  values ('media', 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000dead.jpg',
+          '{"mimetype":"image/jpeg","size":1}')$$,
+  '051: ... and uploads none either');
+reset role;
+set role authenticated;
+
+-- --------------------------------------------------------------------------
+-- 051.4  The three CHECK constraints. Named individually, because 1.8 asks for
+--        all three and a count cannot tell which one fired.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+select assert_rejected($$
+  update rides set latitude = 52.0, longitude = 4.0, geocode_confidence = null
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: the coupling CHECK refuses a coordinate with no confidence beside it');
+select assert_rejected($$
+  update rides set latitude = 52.0, longitude = null, geocode_confidence = 0.9
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: ... and half a coordinate');
+select assert_rejected($$
+  update rides set latitude = 52.0, longitude = 4.0, geocode_confidence = 0.69
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: ... and a confidence below the 0.70 floor');
+select assert_rejected($$
+  update rides set latitude = 52.0, longitude = 4.0, geocode_confidence = 1.5
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: ... and a confidence above 1.0, which is what makes a mis-scaled vendor value fail closed rather than store nonsense');
+select assert_rejected($$
+  update rides set latitude = 95.0, longitude = 4.0, geocode_confidence = 0.9
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: ... and a latitude out of range');
+
+-- ** The cast assertion. ** `0.70::real >= 0.70` is FALSE on Postgres — `real`
+-- cannot represent 0.70 and the bare literal is `numeric`, so the column gets
+-- widened and a candidate at EXACTLY the stated floor would violate its own
+-- constraint. That is not a filter, it is a write error on a path no scenario
+-- covers. Written `>= 0.70::real`, this must be ACCEPTED.
+savepoint floor_exactly_051;
+update rides set latitude = 52.0, longitude = 4.0, geocode_confidence = 0.70
+ where id = '00000000-0000-0000-0000-0000000000d2';
+select assert_eq((select geocode_confidence from rides where id = '00000000-0000-0000-0000-0000000000d2'),
+  0.70::real, '051: a confidence of EXACTLY the floor is accepted — the CHECK casts the literal to the column''s own type');
+rollback to savepoint floor_exactly_051;
+
+select assert_rejected($$
+  update rides set latitude = null, longitude = null, geocode_confidence = null,
+    map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000beef.jpg'
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: the one-directional CHECK refuses a tile path with no coordinate behind it');
+-- The other direction must be PERMITTED: a geocode that succeeds and an upload
+-- that fails is a valid stored state, and a symmetric constraint would turn a
+-- partial failure into a write failure and lose the coordinate too.
+savepoint coord_without_path_051;
+update rides set map_card_path = null, map_detail_path = null
+ where id = '00000000-0000-0000-0000-0000000000d2';
+select assert_eq((select (latitude is not null and map_card_path is null) from rides
+                   where id = '00000000-0000-0000-0000-0000000000d2'),
+  true, '051: ... but a coordinate with NO path is permitted, which is the failed-upload state');
+rollback to savepoint coord_without_path_051;
+-- And one path present with the other NULL, which is the "one tile lands, the
+-- other does not" state each screen resolves independently.
+savepoint one_path_051;
+update rides set map_detail_path = null where id = '00000000-0000-0000-0000-0000000000d2';
+select assert_eq((select (map_card_path is not null and map_detail_path is null) from rides
+                   where id = '00000000-0000-0000-0000-0000000000d2'),
+  true, '051: ... and one tile present with the other absent is permitted too');
+rollback to savepoint one_path_051;
+
+select assert_rejected($$
+  update rides set map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000b/bbbbbbbb-0000-4000-8000-0000000d5ca1.jpg'
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: the path-pinning CHECK refuses a path in ANOTHER rider''s folder — a ride is not a laundering route to someone else''s object');
+select assert_rejected($$
+  update rides set map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/nope.jpg'
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: ... and a filename outside the pinned shape');
+select assert_rejected($$
+  update rides set map_card_path = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000beef.jpg'
+   where id = '00000000-0000-0000-0000-0000000000d2'$$,
+  '23514', '051: ... and a path pointing out of the ride-maps folder entirely');
+
+-- --------------------------------------------------------------------------
+-- 051.5  The column grant. `045` converted `rides` to per-column INSERT/UPDATE
+--        grants, so these five columns arrive with NO update grant unless 051
+--        issues one — and the Edge Function writes them as `authenticated`
+--        under the caller's forwarded JWT. A missing grant fails 42501 ABOVE
+--        RLS, on every ride, with the policy set looking perfectly correct.
+--
+--        Asserted by naming the ROLE's privilege rather than by writing, since
+--        this suite runs as the table owner for whom no grant barrier exists —
+--        `031`'s lesson.
+-- --------------------------------------------------------------------------
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'latitude', 'update'),
+  true, '051: authenticated may UPDATE rides.latitude — without this the Edge Function cannot write a tile at all');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'longitude', 'update'),
+  true, '051: ... longitude');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'geocode_confidence', 'update'),
+  true, '051: ... geocode_confidence');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'map_card_path', 'update'),
+  true, '051: ... map_card_path');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'map_detail_path', 'update'),
+  true, '051: ... map_detail_path');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'map_card_path', 'insert'),
+  false, '051: ... and INSERT on a tile column is NOT granted — a tile is only ever written by an UPDATE after the ride exists');
+select assert_eq(has_column_privilege('anon', 'public.rides', 'map_card_path', 'update'),
+  false, '051: anon holds nothing on the tile columns — decision #1');
+
+-- --------------------------------------------------------------------------
+-- 051.6  The stale-tile trigger, and the bulk update it must NOT fire on.
+-- --------------------------------------------------------------------------
+savepoint address_edit_051;
+update rides set meeting_point = 'A Different Corner'
+ where id = '00000000-0000-0000-0000-0000000000d2';
+select assert_eq((select (latitude is null and longitude is null and geocode_confidence is null
+                          and map_card_path is null and map_detail_path is null)
+                    from rides where id = '00000000-0000-0000-0000-0000000000d2'),
+  true, '051: changing meeting_point clears all five tile columns in the same statement');
+rollback to savepoint address_edit_051;
+
+-- BEFORE, not AFTER: the clearing has to win over anything the same statement
+-- supplies, or a client can keep a stale path by sending both.
+savepoint address_edit_with_path_051;
+update rides set meeting_point = 'Another Corner',
+  latitude = 51.0, longitude = 3.0, geocode_confidence = 0.99,
+  map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000beef.jpg'
+ where id = '00000000-0000-0000-0000-0000000000d2';
+select assert_eq((select (latitude is null and map_card_path is null) from rides
+                   where id = '00000000-0000-0000-0000-0000000000d2'),
+  true, '051: ... and the clearing overwrites a coordinate and a path supplied by that same statement');
+rollback to savepoint address_edit_with_path_051;
+
+savepoint whitespace_edit_051;
+update rides set meeting_point = 'The Pier ' where id = '00000000-0000-0000-0000-0000000000d2';
+select assert_eq((select map_card_path is null from rides where id = '00000000-0000-0000-0000-0000000000d2'),
+  true, '051: a whitespace-only edit clears too — IS DISTINCT FROM is the whole test, and an over-eager clear costs one render');
+rollback to savepoint whitespace_edit_051;
+
+-- ** The scope. ** `propagate_club_privacy_to_rides` issues
+-- `update public.rides set is_public = false where club_id = … and is_public`,
+-- so an UNSCOPED trigger wipes every tile in a club the instant it turns
+-- private — a bulk data loss with a plausible-looking cause. d7 sits in the
+-- public club c2 and carries a tile.
+savepoint club_turns_private_051;
+reset role;
+update clubs set is_public = false where id = '00000000-0000-0000-0000-0000000000c2';
+select assert_eq((select is_public from rides where id = '00000000-0000-0000-0000-000000051053'),
+  false, '051: (the club going private did reach the ride, so the next assertion is about the trigger and not about a no-op)');
+select assert_eq((select map_card_path from rides where id = '00000000-0000-0000-0000-000000051053'),
+  'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d7ca1.jpg',
+  '051: a club turning private does NOT clear its rides'' tiles — the audience narrowed and the meeting point did not change');
+rollback to savepoint club_turns_private_051;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+savepoint unrelated_edit_051;
+update rides set title = 'Coast Run Renamed' where id = '00000000-0000-0000-0000-0000000000d2';
+select assert_eq((select map_card_path is not null from rides where id = '00000000-0000-0000-0000-0000000000d2'),
+  true, '051: an edit that does not touch meeting_point leaves the tile alone');
+rollback to savepoint unrelated_edit_051;
+
+-- --------------------------------------------------------------------------
+-- 051.7  The render ledger.
+-- --------------------------------------------------------------------------
+select assert_eq((select relrowsecurity from pg_class where oid = 'public.ride_map_render_attempts'::regclass),
+  true, '051: RLS is enabled on the render ledger');
+
+-- The grants, by ROLE rather than by calling: the organizer must be able to
+-- raise their own count and must not be able to lower it, and the direction is
+-- the whole design.
+select assert_eq(has_table_privilege('authenticated', 'public.ride_map_render_attempts', 'insert'),
+  true, '051: authenticated may INSERT into the ledger — recording an attempt is the organizer''s own write');
+select assert_eq(has_table_privilege('authenticated', 'public.ride_map_render_attempts', 'select'),
+  true, '052: ... and may SELECT, which is how the organizer reads their own spend — NOT how the ceiling counts, which is 052''s definer helper');
+select assert_eq(has_table_privilege('authenticated', 'public.ride_map_render_attempts', 'update'),
+  false, '051: ... and holds NO update grant, so an attempted_at cannot be moved out of the window');
+select assert_eq(has_table_privilege('authenticated', 'public.ride_map_render_attempts', 'delete'),
+  false, '051: ... and NO delete grant, so a count cannot be lowered — the only direction the organizer wants is the one with no grant behind it');
+select assert_eq(has_table_privilege('anon', 'public.ride_map_render_attempts', 'select'),
+  false, '051: anon holds nothing on the ledger');
+select assert_eq((select count(*)::int from pg_policies
+                   where schemaname = 'public' and tablename = 'ride_map_render_attempts'
+                     and cmd in ('UPDATE', 'DELETE')),
+  0, '051: and there is no UPDATE or DELETE policy either — the missing grant is the outer gate, the missing policy the inner one');
+
+-- 052: the ceiling could not be an aggregate over the ledger's own table.
+-- Postgres raises `infinite recursion detected in policy` structurally, so the
+-- count lives in a `private` security definer helper. Asserted by naming the
+-- ROLE rather than by calling it, since this suite runs as the table owner for
+-- whom neither the schema barrier nor the grant exists — `031`'s shape.
+--
+-- The role drops back to the owner first, for the reason 023's block already
+-- documents: `has_function_privilege` resolves a `private.` name, and
+-- `authenticated` holds no USAGE on that schema by design (005), so the check
+-- itself would answer 42501 rather than a boolean.
+reset role;
+select assert_eq(has_function_privilege('authenticated',
+  'private.ride_map_renders_in_window(uuid)', 'execute'),
+  true, '052: authenticated may execute the ceiling helper — an RLS expression is evaluated as the querying role, so without this every ledger insert fails');
+select assert_eq(has_function_privilege('anon',
+  'private.ride_map_renders_in_window(uuid)', 'execute'),
+  false, '052: ... and anon may not — decision #1');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'private.ride_map_renders_in_window(uuid)'::regprocedure),
+  true, '052: the helper really is SECURITY DEFINER — 022 shipped exactly this clause missing between the repo and the database, and the invoker version would recurse again');
+select assert_eq(
+  (select proconfig[1] from pg_proc where oid = 'private.ride_map_renders_in_window(uuid)'::regprocedure),
+  'search_path=""'::text, '052: ... with the pinned empty search_path every definer function here carries');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where p.proname = 'ride_map_renders_in_window' and n.nspname = 'private'),
+  1, '052: ... and it lives in `private`, which PostgREST does not route to, so no client can ask it about a ride they do not organise');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+-- The attempted_at trigger. A DEFAULT applies only when the column is OMITTED,
+-- and PostgREST lets a client name it, so the trigger is the guarantee.
+savepoint backdate_051;
+insert into ride_map_render_attempts (ride_id, attempted_at)
+  values ('00000000-0000-0000-0000-0000000000d3', timestamptz '2000-01-01 00:00:00+00');
+select assert_eq((select attempted_at > now() - interval '1 minute' from ride_map_render_attempts
+                   where ride_id = '00000000-0000-0000-0000-0000000000d3'),
+  true, '051: a client-supplied attempted_at is discarded and replaced with server time — a caller who can backdate has no ceiling at all');
+rollback to savepoint backdate_051;
+
+-- Entitlement: only the ride's organizer may record an attempt against it.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_denied($$
+  insert into ride_map_render_attempts (ride_id)
+  values ('00000000-0000-0000-0000-0000000000d2')$$,
+  '051: a rider who can SEE a public ride cannot record a render attempt against it — the cost lands on us, not on them');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_denied($$
+  insert into ride_map_render_attempts (ride_id)
+  values ('00000000-0000-0000-0000-0000000000d3')$$,
+  '051: ... and neither can a crew member of that ride');
+
+-- The ceiling.
+reset role;
+select set_config('test.uid', '', false);
+insert into ride_map_render_attempts (ride_id)
+  select '00000000-0000-0000-0000-0000000000d2' from generate_series(1, 10);
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq((select count(*)::int from ride_map_render_attempts
+                   where ride_id = '00000000-0000-0000-0000-0000000000d2'),
+  10, '052: the organizer reads their own ride''s ledger rows — their own spend, read under their own RLS; the ceiling counts separately in the definer and is no longer bounded by this policy');
+select assert_denied($$
+  insert into ride_map_render_attempts (ride_id)
+  values ('00000000-0000-0000-0000-0000000000d2')$$,
+  '051: an organizer at the ceiling is refused a further ledger insert');
+-- A ride that has spent nothing is unaffected: the ceiling is per ride, and a
+-- count that leaked across rides would look identical from the refusal above.
+select assert_allowed($$
+  insert into ride_map_render_attempts (ride_id)
+  values ('00000000-0000-0000-0000-0000000000d3')$$,
+  '051: ... while a different ride of theirs is still under its own ceiling');
+
+-- ** The guarantee that is invisible from the ledger's own tests. ** A spend
+-- control must never abort a statement against `rides`: a BEFORE UPDATE trigger
+-- that raised at the ceiling would stop an organizer editing their own ride's
+-- address for the rest of the window, which is far worse than a missing map and
+-- is the failure the design names explicitly.
+savepoint ceiling_never_blocks_ride_051;
+update rides set meeting_point = 'The Pier Annex' where id = '00000000-0000-0000-0000-0000000000d2';
+select assert_eq((select meeting_point from rides where id = '00000000-0000-0000-0000-0000000000d2'),
+  'The Pier Annex', '051: an organizer AT their ceiling still updates their own ride''s meeting_point — the refusal lands on the ledger and never on the ride');
+select assert_eq((select map_card_path is null from rides where id = '00000000-0000-0000-0000-0000000000d2'),
+  true, '051: ... and the stale-tile trigger still clears, so the rider sees the fallback with no error');
+rollback to savepoint ceiling_never_blocks_ride_051;
+
+-- The ledger is nobody else's business: it records when an identified rider was
+-- editing a meeting point.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq((select count(*)::int from ride_map_render_attempts
+                   where ride_id = '00000000-0000-0000-0000-0000000000d2'),
+  0, '051: another rider reads ZERO ledger rows for a ride they do not organise, though the ride itself is public to them');
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000000000d2'),
+  1, '051: ... and that is not because the ride is hidden from them');
+
+-- --------------------------------------------------------------------------
+-- 051.8  The left-the-club path (task 1.8a). Nothing else covers it, and it is
+--        the silent failure design.md §D2 exists to describe: the UPDATE policy
+--        re-evaluates club membership on EVERY update, including one touching
+--        only the map columns, and nothing clears rides.club_id when a rider
+--        leaves a club.
+-- --------------------------------------------------------------------------
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000000000c1'
+   and user_id = '00000000-0000-0000-0000-00000000000b';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-000000051051'),
+  1, '051: an organizer who left the club can still SELECT their own ride — the rides SELECT policy''s organizer arm is unconditional');
+select assert_denied($$
+  update rides set latitude = 52.0, longitude = 4.0, geocode_confidence = 0.9,
+    map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000b/bbbbbbbb-0000-4000-8000-00000000beef.jpg'
+   where id = '00000000-0000-0000-0000-000000051051'$$,
+  '051: ... and is refused the tile write by the UPDATE policy''s WITH CHECK club arm — so the function must pre-flight membership BEFORE spending a geocode');
+
+-- --------------------------------------------------------------------------
+-- 053 — the ledger's table comment, and the one grant it is easy to misread
+-- --------------------------------------------------------------------------
+-- A table comment is what `\d+` prints, so a wrong one is read far more often
+-- than the migration that wrote it. `051`'s described the in-policy aggregate
+-- that `052` proved Postgres refuses outright, which would send the next reader
+-- straight back to the shape that cannot execute.
+--
+-- Pin the CLAIM, not the noun: the corrected comment necessarily contains the
+-- phrase "aggregate over this table" in its negation, so the obvious needle
+-- matches the fix as well as the defect. CLAUDE.md's comment trap, on a table
+-- comment rather than a grep.
+reset role;
+select assert_eq(
+  (select obj_description('public.ride_map_render_attempts'::regclass, 'pg_class')
+            not like '%ceiling is a WITH CHECK aggregate%'),
+  true, '053: the ledger''s comment no longer describes the recursive in-policy count 052 removed');
+select assert_eq(
+  (select obj_description('public.ride_map_render_attempts'::regclass, 'pg_class')
+            like '%ride_map_renders_in_window%'),
+  true, '053: ... and names the definer helper that replaced it');
+
+-- Schema USAGE is not EXECUTE, which is the half of 031 that IS still true and
+-- the reason the positive assertion above is safe to make.
+select assert_eq(
+  has_function_privilege('service_role', 'private.ride_map_renders_in_window(uuid)', 'execute'),
+  false, '053: service_role''s USAGE on private did not hand it the render ceiling');
+set role authenticated;
+
+rollback to savepoint ride_map_tiles_051;
 
 rollback;
 

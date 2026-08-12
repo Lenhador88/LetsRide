@@ -1,0 +1,98 @@
+-- 053: Two record corrections `051` and `052` cannot make themselves. PD-104.
+--
+-- Nothing here changes behaviour. Both fixes are text that is WRONG about the
+-- database it ships beside, and both live in applied files — so the only way to
+-- correct either is a new file, which is the same rule and the same remedy
+-- `010` used for `009` and `052` used for `051`.
+--
+-- ---------------------------------------------------------------------------
+-- §1 — the ledger's table comment describes the design `052` replaced
+-- ---------------------------------------------------------------------------
+-- `051` wrote it, truthfully, one migration before `052` proved that design
+-- unimplementable. It still says:
+--
+--   "The ceiling is a WITH CHECK aggregate over this table's own rows"
+--
+-- which is exactly the shape Postgres refuses with "infinite recursion detected
+-- in policy". A reader who trusts `\d+` — and a table comment is what `\d+`
+-- prints — is told the ceiling works in a way that could never have executed,
+-- and would reach for the same shape the next time.
+--
+-- The overshoot sentence in the same comment stays, because that half is still
+-- true: moving the count into a definer did not make it atomic.
+--
+-- ---------------------------------------------------------------------------
+-- §2 — `052`'s verification block inverts `031`, and following it breaks
+--      account deletion
+-- ---------------------------------------------------------------------------
+-- `052` §Verification asks the reader to expect:
+--
+--   -- false, false — and by nobody else. anon is decision #1; service_role
+--   -- holds no USAGE on `private` at all, which is 031's finding restated.
+--   select has_function_privilege('anon',
+--            'private.ride_map_renders_in_window(uuid)', 'execute'),
+--          has_schema_privilege('service_role', 'private', 'usage');
+--
+-- ** The second expectation is backwards, and it is the dangerous kind of
+-- wrong: it names a real grant as an anomaly. ** `031` line 92 is
+-- `grant usage on schema private to service_role`, and it exists because
+-- WITHOUT it the deletion Edge Function cannot resolve
+-- `private.transfer_owned_clubs` — which is the entire defect `031` was written
+-- to fix. A session that runs `052`'s block, reads `true`, and "restores" the
+-- documented `false` revokes that grant and takes account deletion down, with
+-- a migration whose comment cites `031` as its authority.
+--
+-- The confusion is `031`'s own finding read one clause too far. `031` found
+-- that service_role held no USAGE — and then GRANTED it. What is still true is
+-- the narrower half, and it is what the block should have asserted: schema
+-- USAGE is not EXECUTE, so service_role can resolve names in `private` and
+-- still reach nothing there but the one function `031` granted it.
+--
+-- Measured against DEV 2026-08-12, and this is the corrected block:
+--
+--   -- t, f — the helper is reachable by the role that EVALUATES the policy,
+--   -- and by nobody else. anon is decision #1.
+--   select has_function_privilege('authenticated',
+--            'private.ride_map_renders_in_window(uuid)', 'execute'),   -- t
+--          has_function_privilege('anon',
+--            'private.ride_map_renders_in_window(uuid)', 'execute');   -- f
+--
+--   -- t, f — service_role holds schema USAGE (031, for the deletion function)
+--   -- and NO execute on this helper. Do not "fix" the first one.
+--   select has_schema_privilege('service_role', 'private', 'usage'),   -- t
+--          has_function_privilege('service_role',
+--            'private.ride_map_renders_in_window(uuid)', 'execute');   -- f
+--
+-- ** And the trap under all of it: `authenticated` holds NO USAGE on `private`
+-- either, yet the policy calls the helper every insert. ** That is not a
+-- latent break, it is how every `private` helper in this schema already works —
+-- `is_blocked`, `is_club_member`, `is_ride_crew` and `may_participate` are all
+-- `execute`-granted to `authenticated` with the schema closed, and all four
+-- drive live policies in production today. Schema USAGE is checked when a name
+-- is RESOLVED; a policy expression is parsed once at creation and stored with
+-- the function's oid, so execution re-checks EXECUTE and never the schema. Do
+-- not read the `false` as a reason to open the schema.
+--
+-- ---------------------------------------------------------------------------
+-- §Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--   -- The comment no longer claims the recursive shape. Note the needle: the
+--   -- obvious `not like '%aggregate over this table%'` returns FALSE against
+--   -- the corrected comment, because the correction says "CANNOT aggregate over
+--   -- this table". That is CLAUDE.md's comment trap landing on a table comment
+--   -- rather than a grep — a description of what was replaced looks exactly
+--   -- like the thing it replaced. Pin the CLAIM, not the noun:
+--   select obj_description('public.ride_map_render_attempts'::regclass, 'pg_class')
+--            not like '%ceiling is a WITH CHECK aggregate%' as recursive_claim_gone;  -- t
+--
+--   -- Nothing else moved. 2 policies, INSERT+SELECT and nothing more:
+--   select cmd from pg_policies
+--    where schemaname='public' and tablename='ride_map_render_attempts';
+--
+--   select string_agg(distinct privilege_type, ',' order by privilege_type)
+--     from information_schema.role_table_grants
+--    where table_schema='public' and table_name='ride_map_render_attempts'
+--      and grantee='authenticated';                       -- INSERT,SELECT
+
+comment on table public.ride_map_render_attempts is
+  'Append-only spend ledger bounding vendor renders per ride (051, ceiling reshaped by 052). `authenticated` holds INSERT and SELECT only — no UPDATE grant, no UPDATE policy, no DELETE grant, no DELETE policy — because the organizer is the party the limit is aimed at and the only direction they want is the one with no grant behind it. The ceiling is `private.ride_map_renders_in_window(ride_id)` called from the INSERT policy''s WITH CHECK: a `security definer` helper in `private`, because a policy on this table CANNOT aggregate over this table — Postgres raises "infinite recursion detected in policy" structurally, and 051''s original in-policy subquery could never have executed. It still OVERSHOOTS under concurrency, permissively — the definer made the count RLS-independent, not atomic — and the RLS suite runs serially and cannot demonstrate that either way. Deleting the ride cascades its rows away, which is deliberate and costs nothing because the ceiling is per ride. Nothing prunes rows older than the window.';

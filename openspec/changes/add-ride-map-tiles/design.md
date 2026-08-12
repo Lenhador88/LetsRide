@@ -37,10 +37,23 @@ The path checked in order, and the three facts that had to hold:
    filename regex, and `ride-maps` takes that shape unchanged. The organizer writing their own
    ride's tile needs no permission the app does not already grant for an avatar.
 2. **Can the column write be a policy?** Yes — **conditionally**, and the condition was missed on
-   the first pass. `rides` carries a **table-level** grant to `authenticated` (`relacl` =
-   `arwdDxtm`, `attacl` empty on every column, measured 2026-08-09), so the new columns arrive
-   writable. But the UPDATE policy has **two arms**, and quoting only the first is what hid the
-   hole:
+   the first pass.
+
+   > **CORRECTED 2026-08-12, and the original premise was false by the time the build ran.** This
+   > paragraph said `rides` carries a **table-level** grant to `authenticated` (`relacl` =
+   > `arwdDxtm`, `attacl` empty on every column) — measured 2026-08-09, and true then. **`045`
+   > landed 2026-08-10 and converted `rides` to per-column grants**, which is exactly the
+   > inversion §D2 describes below when it *declines* to do it itself. So the five new columns
+   > arrive with **no UPDATE grant at all**, and the Edge Function's column write would have
+   > failed `42501` above RLS on every ride — with the policy set looking correct and the suite
+   > blind to it, because a grant is not a policy. `051` §5 therefore grants UPDATE on the five
+   > explicitly; INSERT is deliberately not granted.
+   >
+   > **The lesson is the dated measurement, not the number.** §0.1's pre-flight is stamped
+   > 2026-08-09 and was read as current a day after a migration invalidated it. Re-measure a
+   > grant level at build time; do not inherit one from a proposal.
+
+   The UPDATE policy has **two arms**, and quoting only the first is what hid the hole:
 
    ```sql
    -- Organizers update their own rides, within their own clubs
@@ -396,6 +409,20 @@ retries.
 **Picked: `ride_map_render_attempts`, append-only.** `authenticated` holds **INSERT and SELECT
 only** — no UPDATE grant, no UPDATE policy, no DELETE grant, no DELETE policy. The ceiling is a
 `WITH CHECK` on the INSERT policy counting the caller's rows in a rolling window.
+
+> **CORRECTED 2026-08-12: that ceiling as written is not implementable, and Postgres refuses it
+> structurally rather than semantically.** A `count(*)` over the ledger *inside the ledger's own
+> INSERT policy* raises `infinite recursion detected in policy for relation
+> "ride_map_render_attempts"` — so **no ledger insert could ever have succeeded**, and with the
+> ledger inserted before the vendor call (§D8), no render either. The RLS suite caught it on the
+> first run; no amount of reading the policy would have.
+>
+> `052` moves the count into `private.ride_map_renders_in_window()`, a `security definer` helper.
+>
+> **One side effect, and it lands in the safe direction.** The count no longer runs under the
+> caller's own RLS, so the third soft edge below — *the ceiling silently depends on the ledger's
+> SELECT policy, and narrowing it later widens the ceiling with nothing failing* — **is gone
+> rather than merely documented.** The concurrency overshoot is unchanged.
 
 **This does not contradict the earlier rejection of "move the counter to another table"; it
 refines it.** That rejection was of a table `authenticated` *cannot* write, which the function

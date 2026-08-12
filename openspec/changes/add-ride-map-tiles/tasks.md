@@ -6,7 +6,7 @@
   | Fact | Value |
   |---|---|
   | `rides` columns | **11 — no latitude, no longitude, no image column**; `meeting_point text not null` |
-  | `rides` grants to `authenticated` | **table-level** `arwdDxtm` in `relacl`; `attacl` empty on every column |
+  | `rides` grants to `authenticated` | **STALE — was table-level `arwdDxtm` on 2026-08-09; `045` converted `rides` to PER-COLUMN grants on 2026-08-10.** The five new columns therefore arrive with NO UPDATE grant, and `051` §5 grants them explicitly. See `design.md` §D2's correction |
   | `profiles` grants | `dDxtm` table-level + 8 per-column ACLs — the `025` revoke-and-regrant precedent |
   | Storage buckets | **one**, `media`, **private**, `allowed_mime_types = ['image/jpeg']`, 5 MB |
   | `storage.objects` policies | **15** across 5 folders — 5 SELECT, 5 INSERT, 5 DELETE, all `authenticated`, **none UPDATE** |
@@ -18,9 +18,12 @@
   | Migration files / applied | **41 files / 40 applied AS AT 2026-08-09 — both numbers are now stale.** Re-derive with `ls supabase/migrations/` and `list_migrations`; the chain reached `048` on 2026-08-10 and `042`–`048` are other changes' shipped work. **This change's number is whatever comes next, and it is NOT `042`** |
   | Security advisors | **8**, matching `CLAUDE.md`'s table |
 
-  Three of these change the shape of the work. The **table-level grant** means the five new columns
-  arrive client-writable (design.md §D2) — and is the reason the spend ledger is a separate
-  append-only table rather than a counter column (§D10). The **SELECT/INSERT policy asymmetry**
+  Three of these change the shape of the work. The **grant level** is the one that moved: it was
+  table-level when this table was written, `045` made it per-column a day later, and the build
+  found it. Either way it is the reason the spend ledger is a separate append-only table rather
+  than a counter column (§D10) — a column on `rides` was resettable under the *old* grant, and the
+  ledger is what survives the question rather than depending on the answer. The **SELECT/INSERT
+  policy asymmetry**
   corrects the brief
   this change was written from: `CLAUDE.md` says Storage policies here check the path prefix only,
   which is true of writes and **false of reads** — the instrument this change needs already exists
@@ -212,7 +215,7 @@
 
 ## 1. The migration (purely additive, safe to apply first)
 
-- [ ] 1.1 Write the migration. **Re-derive its number** — `ls supabase/migrations/` — this task
+- [x] 1.1 Write the migration. **Re-derive its number** — `ls supabase/migrations/` — this task
   said `042`, which is now a different change's applied migration (`042_revoke_profiles_delete_grant.sql`), and the chain reached `048` on 2026-08-10. **Header must state the grant level read
   from `relacl` and `attacl`** and that the table-level grant is deliberately left in place — the
   columns arrive client-writable and that is accepted, per `design.md` §D2.
@@ -226,10 +229,10 @@
   see either. Say that in the header rather than letting the next reader infer a guarantee from a
   constraint. The relevant scenario is *The granularity gate is a function-side rule and is not
   overclaimed*, and it now covers ambiguity too.
-- [ ] 1.2 Add **five** nullable columns to `public.rides`: `latitude double precision`,
+- [x] 1.2 Add **five** nullable columns to `public.rides`: `latitude double precision`,
   `longitude double precision`, `geocode_confidence real`, `map_card_path text`,
   `map_detail_path text`. NULL is the normal state, not an error.
-- [ ] 1.3 Add the constraints. **Two things about the floor comparison, both measured on Postgres
+- [x] 1.3 Add the constraints. **Two things about the floor comparison, both measured on Postgres
   17 against DEV rather than reasoned about:**
 
   - **Cast the literal to the column's type.** `select (0.70::real >= 0.70)` returns **false** —
@@ -251,7 +254,11 @@
   - a **path-pinning** CHECK on both path columns —
     `like 'ride-maps/' || organizer_id::text || '/%'` plus the filename shape, matching the pinning
     `profiles` and `clubs` already use.
-- [ ] 1.4 Add `public.ride_map_render_attempts` — the append-only spend ledger (`design.md` §D10).
+- [x] 1.4 Add `public.ride_map_render_attempts` — the append-only spend ledger (`design.md` §D10).
+  **The ceiling as specified here and in §D10 is NOT implementable**: a `count(*)` over the ledger
+  inside the ledger's own INSERT policy raises `infinite recursion detected in policy`, so no
+  insert could ever succeed. `052` moves the count into `private.ride_map_renders_in_window()`.
+  Original text follows for the reasoning, not as an instruction:
   `id uuid` PK, `ride_id uuid → rides(id) on delete cascade`, `attempted_at timestamptz`.
   - **Grants: `authenticated` gets INSERT and SELECT and nothing else.** No UPDATE grant, no UPDATE
     policy, no DELETE grant, no DELETE policy — the organizer must be able to raise their own count
@@ -284,22 +291,22 @@
   - **The ceiling must never be enforced by a trigger on `rides`.** A `BEFORE UPDATE` trigger that
     raises aborts the whole statement, so an organizer at their ceiling could not edit their own
     ride's address at all — see task 1.8b.
-- [ ] 1.5 Add the stale-tile `BEFORE UPDATE` trigger clearing the five tile columns, scoped
+- [x] 1.5 Add the stale-tile `BEFORE UPDATE` trigger clearing the five tile columns, scoped
   `WHEN (old.meeting_point IS DISTINCT FROM new.meeting_point)`. **The scope is not optional** —
   `propagate_club_privacy_to_rides` bulk-updates `rides` and an unscoped trigger wipes every tile in
   a club when it turns private. It is the **only** trigger this change puts on `rides`, and it
   clears columns rather than raising, so no ride write can be aborted by it. Revoke EXECUTE on every
   trigger function from `public, anon, authenticated` so they produce no security advisor.
-- [ ] 1.6 Add the three `storage.objects` policies for `ride-maps/`. **Copy the SELECT shape from
+- [x] 1.6 Add the three `storage.objects` policies for `ride-maps/`. **Copy the SELECT shape from
   `Riders read postcard images their audience predicate allows`, not from any INSERT policy and not
   from "the five folders" generally** — four of the five carry an `own-folder OR EXISTS(parent)`
   disjunction. The policy is `EXISTS` against `rides` under caller RLS, matching `map_card_path` or
   `map_detail_path`, plus the uid-segment pin to `organizer_id`, **plus a deliberate own-folder arm**
   (`design.md` §D8/§D9) so an orphan stays listable and deletable by its organizer. INSERT and
   DELETE take the ordinary own-folder shape.
-- [ ] 1.7 Add an index supporting the storage SELECT policy's lookup by path, so a tile fetch does
+- [x] 1.7 Add an index supporting the storage SELECT policy's lookup by path, so a tile fetch does
   not sequentially scan `rides`.
-- [ ] 1.8 **Paired assertions in `supabase/tests/rls_test.sql`** — required by
+- [x] 1.8 **Paired assertions in `supabase/tests/rls_test.sql`** — required by
   `openspec/config.yaml`; a policy change with no new assertion is not finished. Cover every row of
   the per-role table: organizer, crew (`going` and `maybe`), signed-in non-crew on a visible ride,
   non-member of a private club, ex-member with a surviving `ride_members` row, blocked in **both**
@@ -307,10 +314,10 @@
   that **another** rider is refused **and** that the organizer is not. Also assert all three CHECKs,
   the stale-tile trigger firing on an address change and **not** firing on an `is_public` bulk
   update, and the ledger's `attempted_at` trigger discarding a client-supplied timestamp.
-- [ ] 1.8a Assert the **left-the-club** path directly: an organizer whose ride keeps a `club_id`
+- [x] 1.8a Assert the **left-the-club** path directly: an organizer whose ride keeps a `club_id`
   they are no longer a member of can SELECT the ride and is refused the UPDATE by the policy's
   `WITH CHECK` arm. This is the silent-failure path in `design.md` §D2 and nothing else covers it.
-- [ ] 1.8b Assert the ledger, and assert the thing it must **not** do:
+- [x] 1.8b Assert the ledger, and assert the thing it must **not** do:
   - an organizer at the ceiling is refused a ledger INSERT;
   - the same organizer, in the same state, **successfully updates their ride's `meeting_point`** —
     this is the guarantee that a spend control never aborts a ride write, and it is invisible from
@@ -319,14 +326,22 @@
     the **role**'s privilege rather than by calling it, since the suite runs as the table owner for
     whom no barrier exists;
   - another rider reads zero ledger rows for a ride they do not organise.
-- [ ] 1.9 Assert the storage policies **per folder**, not by reusing another folder's coverage, per
+- [x] 1.9 Assert the storage policies **per folder**, not by reusing another folder's coverage, per
   `stored-media-visibility`.
-- [ ] 1.10 `PGPASSWORD=postgres npm test` green. Reconcile by **label set**, not by count — a count
+- [x] 1.10 `PGPASSWORD=postgres npm test` green. Reconcile by **label set**, not by count — a count
   cannot tell a rename from a loss.
-- [ ] 1.11 Apply the migration to DEV, then PROD. Re-derive with `list_migrations` against
-  `ls supabase/migrations/` rather than trusting any number in a document.
-- [ ] 1.12 Check security advisors after applying. **Expect eight, unchanged.** A new WARN means a
-  `revoke` did not land.
+- [x] 1.11 Apply the migrations to **DEV**. Re-derived with `list_migrations` against
+  `ls supabase/migrations/`: DEV carries 53, ending `053_ride_map_ledger_comment_and_052_verification`.
+- [ ] 1.11b **PROD is deliberately NOT applied yet, and this box stays open until it is.** PROD sits
+  at `050`; `051`–`053` are DEV-only. They are additive and safe to apply, but nothing reads the
+  tile columns until §2–3 ship, so applying them to production now buys a schema riders cannot
+  reach and a second thing to keep level. Apply with the code, per CLAUDE.md's additive-first
+  ordering — and re-derive rather than trusting this line.
+- [x] 1.12 Check security advisors after applying. **Expect nine, unchanged** — seven
+  `authenticated_security_definer_function_executable`, one `rls_enabled_no_policy`, one
+  `auth_leaked_password_protection`. A new WARN means a `revoke` did not land. Measured on DEV
+  2026-08-12 after `053`: nine, and the ceiling helper adds none because a function in `private` is
+  not on PostgREST's search path — the same reason `034`'s `is_ride_crew` added none.
 
 ## 2. Types and reads — still no tiles anywhere
 
