@@ -975,8 +975,18 @@ live RLS hole letting any signed-in rider post a ride into any club.
    read as a pass, `no-service-role-key` proves its own detector still matches. This is that
    tripwire, and it is one call, made **immediately before the merge**:
 
+   **Stamp the spawn, or the bound below has no clock and the table cannot be evaluated.** One
+   command, run in the same turn that spawns the pass, and again at each check — every other
+   timed gate in this file names its clock (gate (7) takes `max(updated_at)`, STEP 1.5 ships an
+   mtime pipeline) and a bound with none is the shape gate (5) refuses by name: a threshold
+   nothing can compare against is a gate that can never fire.
+
+   ```bash
+   date -u +%FT%TZ     # at spawn, and at each check — the elapsed time IS the bound's clock
    ```
-   ListAgents     # listed -> still alive · not listed, and no report -> it died
+
+   ```
+   ListAgents     # listed -> alive, but read it WITH the elapsed time · not listed -> it died
    ```
 
    The question each branch answers is **has this pass given you an answer, and is it still
@@ -984,25 +994,36 @@ live RLS hole letting any signed-in rider post a ride into any club.
    table total:
 
    - **You hold a report** → covered. Merge when bullet 3's other conditions are met.
-   - **No report, still listed, and spawned within the bound below** → it is running. Do not
+   - **No report, still listed, spawned less than 30 minutes ago** → it is running. Do not
      re-spawn and do not idle — the completion re-invokes you, so do bullet 2 and drive CI.
      **Not the Linear writes**: STEP 5's are ordered behind the merge, and moving the issue to
-     `Deployed to DEV` early releases STEP 1's lock — it is not one of the two names — so the
-     next firing starts a second story on top of an unmerged, unreviewed PR. **Come back to this
-     check before merging**; nothing else will bring you back, because neither a death nor a
-     hang emits an event.
-   - **No report and it is not coming — not listed at all, or listed past the bound — and you
-     have not re-run it yet** → **re-run it once**, with a freshly built packet, and re-enter
-     this table.
+     `Deployed to DEV` early would release STEP 1's lock — it is not one of the two names. The
+     next firing is still stopped by STEP 0.5's gates (3) and (4), which is what they are the
+     backstop for, but do not spend that backstop on a write this step tells you not to make.
+     **Come back to this check before merging**; nothing else will bring you back, because
+     neither a death nor a hang emits an event.
+   - **No report and it is not coming — not listed at all, or listed 30 minutes or more — and
+     you have not re-run it yet** → **re-run it once**, with a freshly built packet, and
+     re-enter this table with a fresh stamp.
    - **Same again after the re-run** → **`Needs help`, and do not merge.** §If you get stuck.
+   - **`ListAgents` will not answer** — the call fails, or the tool is absent. Per STEP 0 a
+     `select:` miss is a rename, so keyword-search before concluding it is gone. If it genuinely
+     is: **this is not "not listed"**, and reading it as one re-runs a healthy pass and then
+     parks it — `Needs help` is a lock name, so that freezes the queue over a review that was
+     working. **Fall back to the clock alone**, which is why the stamp is worth taking even when
+     the call is expected to work: wait out the bound, then re-run once, then park. The table
+     stays total without the tool; it just loses the early death signal.
 
-   **The bound is what makes the middle two distinguishable, and losing it fails in both
+   **The bound is what makes those branches distinguishable, and losing it fails in both
    directions.** Without it a hang has no exit at all: it cannot merge, and if it also cannot
    park it holds STEP 1's lock for ever with nothing on the board — the permanently-held-lock
    symptom STEP 1 warns about, reached from the other side. Set too tight, it is the inverse: a
    re-run spawned a minute ago has no report *yet*, and parking on that stalls the queue over a
-   review that was working. A pass here returns in ~5 minutes — measured twice on the run that
-   wrote this clause — so **still listed after ~30 is the hang, not patience**.
+   review that was working. **30 minutes is ~6× a measured pass** — ~5 minutes, twice, on the run
+   that wrote this clause, and `PD-172` records the real hang still undetected at 1h45m. The
+   multiplier is deliberately generous because the two errors are not symmetric: too long merely
+   delays a merge, while too short spends a `Needs help` on a working review. Re-derive the ~5
+   from a couple of recent passes rather than trusting it, and move the bound with it.
 
    Observed rather than feared — the `PD-151` firing, 2026-08-09; `PD-172` has the account.
    **The delta re-review above is the same gate and gets the same check**: spawned the same way,
