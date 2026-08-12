@@ -126,7 +126,16 @@
   --animate-fade-in: fade-in 180ms ease-out;
 }
 
-/* `from` only, with no `to`. The implicit final keyframe is synthesized from
+/* **Applying this class to an element that is already on screen is enough to
+   run it**, which is what every call site relies on and is worth stating once
+   here rather than re-deriving per screen. An animation starts whenever
+   `animation-name` computes from `none` to a name, so a skeleton branch and a
+   content branch that React reconciles as one persistent node — same element
+   type, same position, no key — still fade: the class arrives, the name
+   changes, the animation runs. No `key` is needed to force a remount, and one
+   added for that reason is dead weight that reads as load-bearing.
+
+   `from` only, with no `to`. The implicit final keyframe is synthesized from
    the element's own computed `opacity`, so the animation cannot disagree with
    the resting state no matter what a call site sets — which is the property
    worth having on a loading treatment, where the failure mode is content that

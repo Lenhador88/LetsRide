@@ -60,6 +60,15 @@ import type { RideFilter } from '@/types'
  *
  * ## The fade belongs to this gate, not to PD-210's
  *
+ * **What this gate does not fix, and no wrapper can:** the skeleton above it
+ * draws with no filter bar, so when `filters.data` lands the rows move down by
+ * the bar's ~104px. Reserving that space needs a skeleton for the bar itself,
+ * which is PD-217 rather than a class here — an earlier pass wrapped this
+ * branch in `py-2` believing it closed the gap, and it closed 8px of ~112.
+ * `/postcards` has the same two-skeleton shape and needs nothing at all: its
+ * deck skeleton is a centred, width-driven card, so vertical padding moves
+ * neither its centre nor its size.
+ *
  * `animate-fade-in` sits on the loaded list only — never on `RideFilterBar`,
  * which PD-210 exists specifically to stop swapping. A background refetch of
  * the same filter does not replay it: `rides.data` stays defined across a
@@ -124,18 +133,7 @@ function RidesScreen() {
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
   // where `isLoading` is false and there is still nothing to draw.
-  //
-  // Wrapped in the same `py-2` the list slot's skeleton carries below, because
-  // on a cold load both are drawn in turn: this one while the filter read is
-  // in flight, that one while the list read still is. Bare, the rows shift 8px
-  // as the bar arrives — the same jump the wrapper below exists to prevent,
-  // one gate earlier.
-  if (!filters.data)
-    return (
-      <div className="py-2">
-        <SkeletonList />
-      </div>
-    )
+  if (!filters.data) return <SkeletonList />
 
   return (
     <>
@@ -149,20 +147,13 @@ function RidesScreen() {
         // list rather than replacing the screen — so without it every filter
         // tap ends with the cards jumping 8px as the data lands.
         //
-        // The keys are belt-and-braces rather than load-bearing, and saying
-        // which matters: React reconciles this and the loaded branch as the
-        // *same* node without them, both being a bare `div` at one position —
-        // but a className changing from no animation to `fade-in` starts the
-        // animation anyway, which is the ordinary add-a-class mechanism. The
-        // keys make it a remount so the fade does not rest on that, and this
-        // container cannot be watched from the build container.
-        <div key="skeleton" className="py-2">
+        <div className="py-2">
           <SkeletonList />
         </div>
       ) : rides.data.length === 0 ? (
         <EmptyList filter={filter} />
       ) : (
-        <div key="content" className="flex flex-col gap-2 px-4 py-2 motion-safe:animate-fade-in">
+        <div className="flex flex-col gap-2 px-4 py-2 motion-safe:animate-fade-in">
           {rides.data.map((ride) => (
             <RideCard key={ride.id} ride={ride} showClub={filter?.kind !== 'club'} />
           ))}

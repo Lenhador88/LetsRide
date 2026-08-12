@@ -26,11 +26,12 @@ import { cn } from '@/lib/utils'
  * `animate-fade-in`, applied at each screen's content slot. Putting it here
  * as well looks like symmetry and is a defect on the two screens that render
  * a skeleton at *two* positions either side of a gate: `/rides` and
- * `/postcards` show one while the filter read is in flight and a second,
- * inside the deck's slot, while the list read is. Those are different tree
- * positions, so the second is a fresh mount — the rider watches the skeleton
- * fade in, blink out and fade in again, on exactly the boundary PD-210 was
- * merged to make seamless. A skeleton that simply appears has none of that.
+ * `/postcards` each show one while the filter read is in flight and a second,
+ * in the list or deck slot, while that read still is. Those are different
+ * tree positions, so the second is a fresh mount — the rider watches the
+ * skeleton fade in, blink out and fade in again, on exactly the boundary
+ * PD-210 was merged to make seamless. A skeleton that simply appears has none
+ * of that.
  */
 export function Skeleton({ className }: { className?: string }) {
   return (
