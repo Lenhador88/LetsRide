@@ -1006,6 +1006,10 @@ can fail silently already has a tripwire for one — `check.mjs` holds that a sk
 as a pass, `no-service-role-key` proves its own detector still matches. This is that tripwire,
 and it is one call plus the stamp bullet 1 took at spawn:
 
+```bash
+date -u +%FT%TZ   # now, against bullet 1's spawn stamp — the elapsed time is the bound's clock
+```
+
 ```
 ListAgents     # listed -> alive, but read it WITH the elapsed time · not listed -> it died
 ```
@@ -1039,9 +1043,10 @@ it holds STEP 1's lock for ever with nothing on the board — the permanently-he
 STEP 1 warns about, reached from the other side. Set too tight, it is the inverse: a re-run
 spawned a minute ago has no report *yet*, and parking on that spends a `Needs help` — a lock
 name — on a review that was working. **30 minutes is ~6× a measured pass**, and the multiplier is
-deliberately generous because those two errors are not symmetric: the first merely delays a
-merge. Re-derive the ~5 minutes from a couple of recent passes rather than trusting it, and move
-the bound with it.
+deliberately generous because those two directions do not cost the same: setting it too long
+merely delays a merge, while setting it too short is the `Needs help` in the sentence above.
+Re-derive the ~5 minutes from a couple of recent passes rather than trusting it, and move the
+bound with it.
 
 Observed rather than feared — the `PD-151` firing, 2026-08-09; `PD-172` has the account.
 **The delta re-review in bullet 1 is the same gate and gets the same check**: spawned the same
