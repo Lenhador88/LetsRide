@@ -954,15 +954,20 @@ live RLS hole letting any signed-in rider post a ride into any club.
    inside the tool call, which leaves no moment at which `ListAgents` can be called at all.
 
    **The pass is a gate on the MERGE, and a missing result is a missing review rather than a
-   clean one.** Anchor it on bullet 3 and nowhere earlier: `CLAUDE.md` §Delegating while the
-   owner is at the keyboard names push, PR and Linear as steps that do *not* depend on the
-   review — *"the findings still land before the merge, which is the threshold that matters"* —
-   so a gate placed at the push both contradicts that and, worse, checks at the one moment a
-   still-listed agent is most likely to look healthy. **Never merge holding no report.** That is
-   the reading that does the damage: it reaches a merge with no review at all — CI green, a PR
-   merged and a `Deployed to DEV` status all looking correct — which is the same outcome
-   STEP 0.6 describes for a build agent that cannot spawn `reviewer` at all, arrived at by a
-   different route.
+   clean one.** Anchor it on bullet 3 and nowhere earlier. The push and the PR do not depend on
+   the review — they only start CI — so a gate at the push buys nothing and costs the thing that
+   matters: it asks the question at the one moment a still-listed agent is most likely to look
+   healthy, hours before the answer is needed. **Never merge holding no report.** That is the
+   reading that does the damage: it reaches a merge with no review at all — CI green, a PR merged
+   and a `Deployed to DEV` status all looking correct — which is the same outcome STEP 0.6
+   describes for a build agent that cannot spawn `reviewer` at all, arrived at by a different
+   route.
+
+   *(`CLAUDE.md` §Delegating while the owner is at the keyboard reaches the same anchor —
+   *"the findings still land before the merge, which is the threshold that matters"* — but do
+   **not** cite it as governing here. That section is explicitly the **attended** mode, and gate
+   (7) means a firing is never in it; the rest of it — reply at once, keep answering — is wrong
+   unattended. The argument above stands on its own.)*
 
    **A dead agent and a slow one are indistinguishable from the main thread**: no error, no
    notification, nothing on the board. The signal is an *absence*, and every other gate here that
@@ -971,20 +976,33 @@ live RLS hole letting any signed-in rider post a ride into any club.
    tripwire, and it is one call, made **immediately before the merge**:
 
    ```
-   ListAgents     # still listed -> running · not listed, and no report -> it died
+   ListAgents     # listed -> still alive · not listed, and no report -> it died
    ```
 
+   The question each branch answers is **has this pass given you an answer, and is it still
+   plausibly going to** — so a hang and a death land in the same place, which is what keeps the
+   table total:
+
    - **You hold a report** → covered. Merge when bullet 3's other conditions are met.
-   - **No report, agent still listed** → it is running. Do not re-spawn and do not idle — the
-     completion re-invokes you, so do everything that does not depend on it (push, the PR, CI,
-     Linear). **Come back to this check before merging**; nothing else will bring you back,
-     because a death emits no event.
-   - **No report, agent not listed** → it died. **Re-run it once**, with a freshly built packet,
-     and re-enter this table.
-   - **Re-run also died — no report and not listed a second time** → **`Needs help`, and do not
-     merge.** §If you get stuck. **Only this state parks the story**: a re-run that is merely
-     still listed is branch 2, and reading it as this one holds STEP 1's lock over a review that
-     was working.
+   - **No report, still listed, and spawned within the bound below** → it is running. Do not
+     re-spawn and do not idle — the completion re-invokes you, so do bullet 2 and drive CI.
+     **Not the Linear writes**: STEP 5's are ordered behind the merge, and moving the issue to
+     `Deployed to DEV` early releases STEP 1's lock — it is not one of the two names — so the
+     next firing starts a second story on top of an unmerged, unreviewed PR. **Come back to this
+     check before merging**; nothing else will bring you back, because neither a death nor a
+     hang emits an event.
+   - **No report and it is not coming — not listed at all, or listed past the bound — and you
+     have not re-run it yet** → **re-run it once**, with a freshly built packet, and re-enter
+     this table.
+   - **Same again after the re-run** → **`Needs help`, and do not merge.** §If you get stuck.
+
+   **The bound is what makes the middle two distinguishable, and losing it fails in both
+   directions.** Without it a hang has no exit at all: it cannot merge, and if it also cannot
+   park it holds STEP 1's lock for ever with nothing on the board — the permanently-held-lock
+   symptom STEP 1 warns about, reached from the other side. Set too tight, it is the inverse: a
+   re-run spawned a minute ago has no report *yet*, and parking on that stalls the queue over a
+   review that was working. A pass here returns in ~5 minutes — measured twice on the run that
+   wrote this clause — so **still listed after ~30 is the hang, not patience**.
 
    Observed rather than feared — the `PD-151` firing, 2026-08-09; `PD-172` has the account.
    **The delta re-review above is the same gate and gets the same check**: spawned the same way,
