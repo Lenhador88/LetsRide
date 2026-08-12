@@ -117,9 +117,57 @@ session can assert on output, never on a dashboard.
 branch or from `development` points **every install** at `letsride-dev` for ever: no promote, no
 redeploy, no dashboard toggle, only a new binary through a store review. DEV also runs
 `mailer_autoconfirm: true`, so such a build would let anyone sign up with an address they do not
-control. **A release bundle is built from `main`, against `letsride`, and the ref it carries is
-grepped out of the built output before submission** rather than inferred from which branch
-somebody was on.
+control.
+
+**A release bundle is built from `main`, against `letsride`, with the canonical origin set — and
+all three are asserted against the built output before submission** rather than inferred from
+which branch somebody was on:
+
+```bash
+NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native
+npm run release:check
+```
+
+`release:check` (`scripts/native/assert-release-bundle.mjs`, PD-188) walks every emitted file and
+refuses the bundle unless it carries `zwprydcyryvudhurbnye` (`letsride`) and **no other** project
+ref, and the canonical origin above and no `localhost` one. **It fails when it finds no ref at
+all**, because a stale or empty `out/` otherwise reads exactly like a clean bundle — the same
+skip-is-not-a-pass rule `docs:check --cheap` follows. Detectors tested against planted failures
+in `scripts/native/__tests__/release-guards.test.mjs`; run against real builds 2026-08-12, a
+PROD-ref bundle passes and a DEV-ref one is refused by name.
+
+**It is deliberately not part of `npm run build:native`.** That runs `check-export.mjs` on every
+native build, including the local, CI and on-device ones which may point wherever they like as long
+as they never reach a store (`openspec/changes/add-static-export-bundle/design.md` §D7) — CI's own
+bundle step builds against DEV. Wiring the release gate in there would either block every test
+build or get switched off.
+
+**`NEXT_PUBLIC_CANONICAL_ORIGIN` is the third variable a bundle bakes in permanently**, and it is
+required for a native build — `next.config.ts` fails a `CAPACITOR_BUILD=1` build without it, and
+the web build must keep building with it unset. Inside the shell `window.location.origin` is
+`https://localhost`, which is on no redirect allowlist, and an unlisted `redirect_to` is discarded
+silently — see §The redirect allowlist for the measurement. A confirmation email from a bundle
+therefore opens `app.letsride.social`, the **web** app, rather than deep-linking back into the
+shell; that is acceptable, and universal/app links are separate work.
+
+**Do not set it in any Vercel target — a web build now REFUSES it rather than tolerating it.**
+This is the one hazard the variable introduces, through the same door as the split that once left
+Preview holding the Supabase URL and not the key: somebody sets it in Vercel, having read that a
+release needs it, and unless it is scoped to a single target it lands on **Preview** too. Every
+DEV and feature-branch build then emails confirmation and recovery links pointing at
+`app.letsride.social`, where the token was minted by the wrong project and is invalid — green
+deploy, right-looking link, and the rider clicking it is the first thing that fails. It cannot
+even help when right: `window.location.origin` is already the host that served the app.
+
+`next.config.ts` throws rather than asserting over the built output — no artifact is produced, so
+nothing can ship wrong. Both directions are checked:
+
+```bash
+# expect exit 1 and "NEXT_PUBLIC_CANONICAL_ORIGIN is set, but this is a web build"
+NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build
+# expect exit 0 — the web build must keep building with it unset
+npm run build && node scripts/native/assert-web-build.mjs
+```
 
 ### The hotfix rule
 
@@ -329,13 +377,24 @@ rider's own machine can listen on `localhost:3000`. Replacing it with the one ex
 tidier end state, once `app.letsride.social` is canonical and the `*.vercel.app` entries can all
 go together.
 
-**Nothing in `src/` needs to change for any of this.** `ShareButton`, `signUp` and
-`requestPasswordReset` all build their URLs from `window.location.origin`, so the app follows
-whichever host served it. Verify rather than trust — it is one grep, and a hardcoded origin
-added later is exactly the kind of thing that only breaks in email:
+**Nothing in `src/` needs to change for any of this, on the web.** `ShareButton`, `signUp` and
+`requestPasswordReset` build their URLs from `canonicalOrigin()` (`src/lib/origin.ts`), which is
+`window.location.origin` unless `NEXT_PUBLIC_CANONICAL_ORIGIN` is set — so the app still follows
+whichever host served it, on every one of these hostnames. Verify rather than trust — a hardcoded
+origin added later is exactly the kind of thing that only breaks in email:
 
 ```bash
 grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/    # expect: nothing
+```
+
+**That grep is the whole check on the web and half of it in the shell**, which is why the helper
+exists: a computed origin has no hostname to find, so the command above reads clean while a native
+bundle emails every rider a link to `https://localhost`. The countable half is the reader —
+exactly one, `canonicalOrigin()` itself:
+
+```bash
+grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx \
+  | grep -vE ':[0-9]+:\s*(\*|//|/\*)'    # expect: src/lib/origin.ts, and nothing else
 ```
 
 ### `app-dev` inherits Vercel SSO, which is intended but has one sharp edge
@@ -544,6 +603,23 @@ done
 The discard rows are how you read the Site URL without a dashboard: **whatever a discarded
 `redirect_to` falls back to *is* the Site URL.** Send a deliberately unlisted host when every
 real one is allowlisted, or the probe has nothing to fall back from and tells you nothing.
+
+**The same probe, pointed at the two origins a native shell produces. Measured against PROD
+2026-08-12** (PD-188) — this is what makes the canonical origin a build requirement rather than a
+nicety:
+
+| Project | `redirect_to` sent | GoTrue's `location:` | Means |
+|---|---|---|---|
+| PROD | `https://app.letsride.social/auth/callback` | the same URL | ✅ the origin a release bundle bakes in is allowlisted and honoured — no dashboard action needed, PD-106 already did it |
+| PROD | `https://localhost/auth/callback` | `https://app.letsride.social` | ❌ discarded — the webview origin under `androidScheme: 'https'` |
+| PROD | `capacitor://localhost/auth/callback` | `https://app.letsride.social` | ❌ discarded — the iOS scheme |
+
+**The discard drops the path with the origin, and that is worse than a dead link.** The rider does
+not land on `/auth/callback` with an error to read: they land on the app **root**, with no `next`
+param and the failure only in the URL fragment, which nothing in this app reads. From the sending
+side it is invisible — the email was sent, the address was confirmed, and the rider is simply
+never seen again. `src/lib/origin.ts` and `next.config.ts` are what stop a bundle being built that
+way at all.
 
 An unlisted `redirect_to` is **discarded silently** and replaced by the Site URL. That mechanism
 is unchanged and is what made the original outage invisible — while the Site URL was

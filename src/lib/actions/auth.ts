@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { canonicalOrigin } from '@/lib/origin'
 import { clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { clearRiderLocation } from '@/lib/location/rider-location'
@@ -42,7 +43,7 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
   const supabase = await resolveSupabase()
-  // `window.location.origin`, matching `requestPasswordReset` below rather than
+  // `canonicalOrigin()`, matching `requestPasswordReset` below rather than
   // leaving this unset. With email confirmation on (the live setting, see the
   // comment on the `!data.session` branch), GoTrue's confirmation link is the
   // entire rest of this flow — without `emailRedirectTo` it falls back to the
@@ -51,7 +52,15 @@ export async function signUp(_prev: ActionState, formData: FormData): Promise<Ac
   // route guard takes it from there; `accept_terms()` has not run yet at that
   // point (no session existed to run it with), so the guard's own consent
   // check sends them to `/onboarding/terms`, which stamps it once there.
-  const origin = window.location.origin
+  //
+  // It is the canonical origin rather than the runtime one because this URL
+  // leaves the app in an email. In the shell the runtime origin is
+  // `https://localhost`, which is not on GoTrue's allowlist — and an unlisted
+  // `redirect_to` is **discarded silently**, path and all, landing the rider on
+  // the app root with the error in a fragment nothing reads. Measured against
+  // the live PROD auth server 2026-08-12; `src/lib/origin.ts` carries the probe
+  // and the readings.
+  const origin = canonicalOrigin()
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
@@ -143,13 +152,18 @@ export async function requestPasswordReset(
   const parsed = resetRequestSchema.safeParse({ email: formData.get('email') })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  // `window.location.origin`, not the `origin` request header this read before
-  // the migration. There is no request here any more — this runs in the
-  // browser, where the header was only ever an indirect way of asking the same
-  // question. It is also the more accurate of the two: `origin` is absent on a
+  // `canonicalOrigin()`, not the `origin` request header this read before the
+  // migration. There is no request here any more — this runs in the browser,
+  // where the header was only ever an indirect way of asking the same question.
+  // It is also the more accurate of the two: `origin` is absent on a
   // same-origin GET in some browsers, and the empty-string fallback this used
   // to take would have produced `/auth/callback` as the recovery link.
-  const origin = window.location.origin
+  //
+  // On the web `canonicalOrigin()` *is* the runtime origin, which is what keeps
+  // recovery working from a per-deployment preview alias. In the shell it is the
+  // configured host, because a recovery link built from `https://localhost` is
+  // discarded by GoTrue and the rider is stranded — `src/lib/origin.ts`.
+  const origin = canonicalOrigin()
   const supabase = await resolveSupabase()
 
   // The result is not surfaced. Q13: the screen always reports that

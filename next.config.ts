@@ -1,5 +1,19 @@
 import type { NextConfig } from "next";
 
+// The same normalisation `canonicalOrigin()` applies, imported rather than
+// re-spelled: the two guards below are only fail-closed if "set" means to them
+// exactly what it means to the code that reads the value. `origin-normalise.ts`
+// carries the two escapes that bought this.
+//
+// **Relative, not the `@/` alias — and the reason is not that the alias fails
+// today.** Measured on Next 16.2.9: `resolveSWCOptions` feeds tsconfig `paths`
+// to SWC precisely so a TS config can use aliases, and both forms load. The
+// reason is `--experimental-next-config-strip-types`, where Node's native type
+// stripping does no path mapping and only the relative form survives. Stated
+// because the obvious test — swap in `@/` and watch it work — argues for
+// exactly the change that breaks under that loader.
+import { normaliseConfiguredOrigin } from './src/lib/origin-normalise'
+
 /**
  * Fail the build when a `NEXT_PUBLIC_SUPABASE_*` variable is missing.
  *
@@ -57,6 +71,79 @@ if (missingEnv.length > 0) {
  * on a rider's phone.
  */
 const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1'
+
+/**
+ * A native build additionally requires `NEXT_PUBLIC_CANONICAL_ORIGIN`, and the
+ * asymmetry with the web build is the whole design.
+ *
+ * `src/lib/origin.ts` defaults to `window.location.origin`, so the web build
+ * keeps following whichever host served it — production, DEV, a per-deployment
+ * preview alias — and needs no variable at all. Inside a bundle that runtime
+ * origin is `https://localhost`, and there is no value it could sensibly fall
+ * back to: a shared postcard link built from it is dead the moment it leaves
+ * the device, and a signup or recovery link built from it is **discarded** by
+ * GoTrue and replaced by the Site URL — path included, so the rider lands on
+ * the app root with the failure in a fragment nothing reads (measured against
+ * the live PROD auth server 2026-08-12, `docs/ENVIRONMENTS.md` §The redirect
+ * allowlist).
+ *
+ * So the bundle fails closed. A binary is not a deployment: the fix for a
+ * wrong origin baked into one is a new store review, which is days, and until
+ * then every rider who installs it and signs up is stranded.
+ *
+ * **It asks `normaliseConfiguredOrigin()` rather than testing the variable, so
+ * that "set" cannot mean one thing here and another in `canonicalOrigin()`.**
+ * Not defensive style — the fix for two measured escapes, both of which built
+ * and shipped clean off one stray character in a CI secret.
+ * `src/lib/origin-normalise.ts` carries them; do not re-spell the check here.
+ */
+if (isCapacitorBuild && !normaliseConfiguredOrigin(process.env.NEXT_PUBLIC_CANONICAL_ORIGIN)) {
+  throw new Error(
+    'Missing required environment variable: NEXT_PUBLIC_CANONICAL_ORIGIN.\n\n' +
+      'A CAPACITOR_BUILD=1 build needs it because the webview origin is ' +
+      'https://localhost, which is on no GoTrue redirect allowlist and resolves ' +
+      'to nothing off the device. The web build does not need it and must keep ' +
+      'building without it.\n\n' +
+      'For a release bundle:\n' +
+      '  NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native\n\n' +
+      'See docs/ENVIRONMENTS.md §The native build flag.'
+  )
+}
+
+/**
+ * And the mirror image: a **web** build refuses the variable rather than
+ * tolerating it, closing the one hazard the variable itself introduces — set on
+ * a Vercel Preview target it would have DEV and feature-branch builds email
+ * confirmation links pointing at production, where the token is invalid.
+ * `docs/ENVIRONMENTS.md` §The native build flag carries the full case and the
+ * two commands that check both directions.
+ *
+ * Tolerating it would be *pointless* rather than merely risky: on the web
+ * `window.location.origin` is already the host that served the app, so a
+ * configured value can only ever agree with the default or contradict it.
+ *
+ * **This is a throw rather than a grep of the built output**, which is the
+ * opposite of `assert-web-build.mjs`'s doctrine and deliberately so. That file
+ * reads artifacts because a config that *says* the right thing and a build that
+ * *did* it are different claims — but a throw here is stronger than either: the
+ * build produces no artifact at all, so there is nothing that can ship wrong.
+ * An assertion is only needed where a wrong build can still finish.
+ */
+if (!isCapacitorBuild && normaliseConfiguredOrigin(process.env.NEXT_PUBLIC_CANONICAL_ORIGIN)) {
+  throw new Error(
+    'NEXT_PUBLIC_CANONICAL_ORIGIN is set, but this is a web build.\n\n' +
+      `It is set to: ${process.env.NEXT_PUBLIC_CANONICAL_ORIGIN}\n\n` +
+      'The variable exists for the native bundle only. On the web, src/lib/origin.ts ' +
+      'follows window.location.origin, which is already the host that served the app — ' +
+      'so setting it here can only pin every deployment to one origin. On a Preview ' +
+      'target that means DEV and feature-branch builds emailing signup-confirmation and ' +
+      'password-recovery links that point at production, where the token is invalid.\n\n' +
+      'If this is a Vercel variable, remove it from every target. If you exported it in ' +
+      'your shell for a native build, run that build with CAPACITOR_BUILD=1 (npm run ' +
+      'build:native).\n\n' +
+      'See docs/ENVIRONMENTS.md §The native build flag.'
+  )
+}
 
 /**
  * The route shapes that shipped before PD-142, kept alive for links already

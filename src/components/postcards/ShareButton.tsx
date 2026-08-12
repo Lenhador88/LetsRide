@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { PaperPlaneIcon } from '@/components/icons/generated'
 import { PostcardActionButton } from '@/components/postcards/PostcardAction'
+import { canonicalOrigin } from '@/lib/origin'
 import { routes } from '@/lib/routes'
 
 /**
@@ -26,13 +27,14 @@ export function ShareButton({ postcardId }: { postcardId: string }) {
   const [copied, setCopied] = useState(false)
 
   async function share() {
-    // `window.location.origin` is still the origin, and in the native shell that
-    // is `https://localhost` — a link that is dead the moment it is shared. That
-    // is `design.md` §D7's separate problem and a separate change; PD-142 only
-    // moved the **path**, which is now `/postcards/detail?id=…`. The old shape
+    // `canonicalOrigin()` rather than the runtime origin: this URL leaves the
+    // device, and inside the shell the runtime origin is `https://localhost`.
+    // On the web the two are identical (`src/lib/origin.ts`).
+    //
+    // The **path** is `/postcards/detail?id=…` since PD-142. The old shape
     // survives as a `redirects()` entry in `next.config.ts` for links already in
     // people's messages, so nothing here may keep generating it.
-    const url = `${window.location.origin}${routes.postcard(postcardId)}`
+    const url = `${canonicalOrigin()}${routes.postcard(postcardId)}`
 
     if (navigator.share) {
       try {

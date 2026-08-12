@@ -1431,9 +1431,21 @@ chain to a scratch database and asserts what each role can reach.
   `docs/ENVIRONMENTS.md` §Domains is the contract, including the one ordering rule (attach and
   confirm the host *before* moving Supabase's Site URL), the name.com CNAME trap that makes step
   2 fail on a correct value, and why the apex redirect must be a 307 rather than a 301. **No code
-  changed with the domain** — `ShareButton`, `signUp` and `requestPasswordReset` all build URLs
-  from `window.location.origin`, so a hardcoded origin anywhere in `src/` is a bug that would
-  only surface in email: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0.
+  changed with the domain**, and what keeps that true is `canonicalOrigin()` in
+  `src/lib/origin.ts`: it returns `NEXT_PUBLIC_CANONICAL_ORIGIN` when set and `window.location.origin`
+  otherwise, so the **web** app still follows whichever host served it — production, DEV, a
+  per-deployment preview alias — with the variable unset. **In the native bundle the runtime origin
+  is `https://localhost`**, which is on no GoTrue redirect allowlist, and an unlisted `redirect_to`
+  is *discarded* — path and all — rather than refused, so a confirmation email lands the rider on
+  the app root with the error in a fragment nothing reads (measured against the live PROD auth
+  server 2026-08-12; the probe is `docs/ENVIRONMENTS.md` §The redirect allowlist). Hence
+  `next.config.ts` fails a `CAPACITOR_BUILD=1` build when the variable is unset — and fails a
+  **web** build when it is *set*, because on Preview it would have DEV and feature branches email
+  confirmation links pointing at production, where the token is invalid. **Two commands,
+  and the first cannot do the second's job** — a computed origin is invisible to a grep for a
+  written one: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0, and
+  `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`
+  is 1 — the definition inside `canonicalOrigin()`, nowhere else.
 - **Branch off `development`, and open PRs against `development` — not `main`.** This is the one
   an agent gets wrong by habit. `main` receives exactly one kind of PR: the promotion from
   `development`, which is what ships to riders.
@@ -1464,7 +1476,7 @@ chain to a scratch database and asserts what each role can reach.
     permissions diff touches nothing else). **So a PR touching only `design/`, `.claude/hooks/`
     or the rest of `.claude/` runs zero jobs.**
   - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
-    is a grep, a `jq` or a contrast ratio — 21 of 33. The ones needing Postgres, a second full
+    is a grep, a `jq` or a contrast ratio — 22 of 34. The ones needing Postgres, a second full
     build or a **test runner** stay out, so `npm run docs:check` locally is still the complete
     answer. That last exclusion was learned rather than designed: the two claims that spawn
     `vitest` on one file passed locally — including under `CI=true GITHUB_ACTIONS=true` — and
