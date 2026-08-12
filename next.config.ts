@@ -76,8 +76,18 @@ const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1'
  * So the bundle fails closed. A binary is not a deployment: the fix for a
  * wrong origin baked into one is a new store review, which is days, and until
  * then every rider who installs it and signs up is stranded.
+ *
+ * **`.trim()` rather than raw truthiness, and the two must agree.**
+ * `canonicalOrigin()` treats a whitespace-only value as unset and falls back to
+ * the runtime origin; a guard testing the raw string calls the same value *set*
+ * and lets the build through. The bundle then ships with `https://localhost` —
+ * precisely what this guard exists to refuse — off one leading space in a CI
+ * secret. Measured: `NEXT_PUBLIC_CANONICAL_ORIGIN=" " npm run build:native`
+ * exited 0 before this, and `release:check` then reported the origin missing.
+ * A fail-closed gate that disagrees with its consumer about what "set" means
+ * is not fail-closed.
  */
-if (isCapacitorBuild && !process.env.NEXT_PUBLIC_CANONICAL_ORIGIN) {
+if (isCapacitorBuild && !process.env.NEXT_PUBLIC_CANONICAL_ORIGIN?.trim()) {
   throw new Error(
     'Missing required environment variable: NEXT_PUBLIC_CANONICAL_ORIGIN.\n\n' +
       'A CAPACITOR_BUILD=1 build needs it because the webview origin is ' +
@@ -92,19 +102,13 @@ if (isCapacitorBuild && !process.env.NEXT_PUBLIC_CANONICAL_ORIGIN) {
 
 /**
  * And the mirror image: a **web** build refuses the variable rather than
- * tolerating it. This closes the one hazard the variable itself introduces.
+ * tolerating it, closing the one hazard the variable itself introduces — set on
+ * a Vercel Preview target it would have DEV and feature-branch builds email
+ * confirmation links pointing at production, where the token is invalid.
+ * `docs/ENVIRONMENTS.md` §The native build flag carries the full case and the
+ * two commands that check both directions.
  *
- * The failure it catches is a checkbox, and it is silent. Somebody sets
- * `NEXT_PUBLIC_CANONICAL_ORIGIN` in Vercel — reasonably, having read that a
- * release needs it — and unless it is scoped to a single target it lands on
- * **Preview** too. Every DEV and feature-branch build then emails confirmation
- * and recovery links pointing at `app.letsride.social`, where the token was
- * minted by the wrong project and is invalid. The deploy is green, the link
- * looks right, and the rider clicking it is the first thing that fails. That is
- * the same shape as the split that once left Preview holding the Supabase URL
- * and not the key, arriving through the same door.
- *
- * Tolerating it would also be *pointless* rather than merely risky: on the web
+ * Tolerating it would be *pointless* rather than merely risky: on the web
  * `window.location.origin` is already the host that served the app, so a
  * configured value can only ever agree with the default or contradict it.
  *
@@ -115,7 +119,7 @@ if (isCapacitorBuild && !process.env.NEXT_PUBLIC_CANONICAL_ORIGIN) {
  * build produces no artifact at all, so there is nothing that can ship wrong.
  * An assertion is only needed where a wrong build can still finish.
  */
-if (!isCapacitorBuild && process.env.NEXT_PUBLIC_CANONICAL_ORIGIN) {
+if (!isCapacitorBuild && process.env.NEXT_PUBLIC_CANONICAL_ORIGIN?.trim()) {
   throw new Error(
     'NEXT_PUBLIC_CANONICAL_ORIGIN is set, but this is a web build.\n\n' +
       `It is set to: ${process.env.NEXT_PUBLIC_CANONICAL_ORIGIN}\n\n` +

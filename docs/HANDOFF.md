@@ -313,12 +313,11 @@ PD-188, 2026-08-12.** Two things landed:
 - **`canonicalOrigin()` (`src/lib/origin.ts`) is what URLs that leave the app are built from** —
   the shared postcard link and both GoTrue redirects. It returns `NEXT_PUBLIC_CANONICAL_ORIGIN`
   when set and `window.location.origin` otherwise, so **the web build is unchanged with the
-  variable unset**, and `next.config.ts` *fails* a `CAPACITOR_BUILD=1` build when it is missing.
-  Measured against PROD's auth server 2026-08-12: a `redirect_to` of `https://localhost` or
-  `capacitor://localhost` is discarded and replaced by the Site URL — **path included**, so the
-  rider lands on the app root with the error only in a fragment nothing reads. Probe in
-  docs/ENVIRONMENTS.md §The redirect allowlist. No dashboard action is needed for
-  `https://app.letsride.social` — PD-106 already allowlisted it.
+  variable unset**. `next.config.ts` fails a `CAPACITOR_BUILD=1` build when it is missing and a
+  **web** build when it is set, both reading it trimmed — a guard that disagrees with `origin.ts`
+  about what "set" means is not fail-closed. Why it matters, measured against PROD's auth server
+  2026-08-12: docs/ENVIRONMENTS.md §The redirect allowlist. No dashboard action is needed —
+  PD-106 already allowlisted `https://app.letsride.social`.
 - **`npm run release:check` is the pre-submission gate** over the built `out/`: the PROD ref
   present, no other ref (DEV by name), the canonical origin baked in, no `localhost` one — and a
   **failure when it finds no ref at all**, so an empty `out/` cannot read as clean. Deliberately
