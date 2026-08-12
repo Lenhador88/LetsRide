@@ -45,10 +45,16 @@
  * key and the paths still exist. Run in the other order and the bytes are
  * unreachable for ever.
  *
- * It also ignores the other four prefixes entirely — `avatars/`, `covers/`,
- * `club-avatars/`, `club-covers/`. A clean run here says nothing about them.
+ * It also ignores every other prefix entirely — `avatars/`, `covers/`,
+ * `club-avatars/`, `club-covers/` and, since PD-104 §4, `ride-maps/`. A clean
+ * run here says nothing about any of them.
  * `docs/HANDOFF.md` records a run that reported "0 orphans" and was read as
  * settling a question about two objects it could not have seen.
+ *
+ * `ride-maps/` is the case that matters most here: a rendered tile is centred on
+ * a ride's meeting point, which is frequently a rider's home address, so an
+ * orphan under it is the one worth finding. Prefer deriving the set from
+ * `delete-account`'s `PREFIXES` over restating it, and never restate its size.
  *
  * ## Usage
  *

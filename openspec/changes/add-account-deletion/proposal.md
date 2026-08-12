@@ -14,8 +14,9 @@ cover with status **Done**, a `Profile - Timeline` frame, an `Account options` s
 (`2303:8097`) whose last row is `Delete account` in `Warning/100` with `Element / Icon / Trash`,
 and a `Confirm account deletion` frame (`2303:9370`) reading **"Delete account?"** /
 **"This action cannot be undone."** with a `Button / Regular / Warning` and a `Cancel`. So the
-screens are not the open question. What the button *does* to eleven tables, five Storage
-folders and every other rider's screen is, and none of that is drawable.
+screens are not the open question. What the button *does* to eleven tables, **six** Storage
+folders (five when this was written; `051` added `ride-maps/`) and every other rider's screen
+is, and none of that is drawable.
 
 **Two migrations already name this feature as the thing that changes their reasoning.**
 `012` §KNOWN LIMIT: its consent guard is a BEFORE **UPDATE** trigger, unreachable today only
@@ -87,7 +88,7 @@ retention rules this change states in advance so the table cannot be created wit
 - `account-deletion`: the rider-facing flow — where it starts, what it confirms, what it costs,
   what it refuses, and every screen state around it. Owns "only the rider themselves", the
   absence of a grace period, and the web-accessible entry point Play requires.
-- `account-erasure-cascade`: what actually happens to eleven tables and five Storage folders,
+- `account-erasure-cascade`: what actually happens to eleven tables and six Storage folders,
   and — the part reviewers should read first — **what a different rider sees the instant a
   deletion lands**. Owns club ownership survival, ride cancellation, comment threads, blocks and
   the empty-versus-forbidden distinction.

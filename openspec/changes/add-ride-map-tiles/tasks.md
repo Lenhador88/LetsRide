@@ -686,18 +686,96 @@ property of the tile's data, so it takes one legible home rather than riding on 
 
 ## 7. Coordination — do not let these land silently
 
-- [ ] 7.1 **`add-account-deletion`**: its Storage sweep must include `ride-maps/<uid>/`. That change
+- [x] 7.1 **`add-account-deletion`**: its Storage sweep must include `ride-maps/<uid>/`. That change
   is active and does not know about a sixth prefix. Raise it there rather than assuming it is
   covered.
-- [ ] 7.2 **`add-account-deletion`** also modifies
+
+  **The code half was already done and the specification half was not, which is the failure this
+  task exists to catch.** PR #183 added `'ride-maps'` to `PREFIXES` in
+  `supabase/functions/delete-account/index.ts`; `add-account-deletion`'s own artifacts still
+  enumerated five prefixes everywhere, so the change that *owns* the sweep asserted a set that its
+  own function no longer had. Raised there on 2026-08-12, in four places: the
+  `account-erasure-cascade` requirement *Storage objects SHALL be deleted before the rows that name
+  them* (now derived from the bucket rather than enumerated, with three added scenarios), the
+  `database-enforced-integrity` delta's upload and sweep scenarios, task 2.3, and design D4 plus
+  the pre-flight table row that measured "five folder prefixes".
+
+  **Two facts were carried into that change rather than left here**, because the person finishing
+  it is not the person reading this file:
+  - the deployed `delete-account` build **predates** the prefix and no session can redeploy it, so
+    repo and deployment disagree until the owner acts — filed there as new task **2.3a**, owner
+    action, with the `ezbr_sha256` verification;
+  - task 8.3 below already blocks the renderer's deploy on that redeploy, so the two are one
+    window and deploying the renderer first is what opens the gap.
+
+  **The negative cases the sweep now states**, because none of them was written down: tiles under
+  **another** organizer's uid survive — the departing rider being crew on, or a club member
+  alongside, that ride takes nothing; no rider of any role loses an object because somebody else
+  deleted their account; the sweep is never widened to "every tile of every ride the rider appears
+  on"; no `storage.objects` policy is created or relaxed to make the sweep possible, so the
+  service-role key stays the only thing that reaches a folder it does not own; and a survivor is
+  **unrecoverable** rather than untidy — `rides_organizer_id_fkey` is `ON DELETE CASCADE` (measured
+  on DEV), so the row naming the tile is gone, the rider's own credential is gone with the account,
+  and `npm run storage:sweep` sweeps `postcards/` for a rider who can still sign in.
+- [x] 7.2 **`add-account-deletion`** also modifies
   `Storage object ownership SHALL remain database-enforced`. Whichever of the two archives second
   must re-read the standing spec as the first left it and rewrite its delta against **that** text.
   The banner is at the top of `specs/database-enforced-integrity/spec.md`.
-- [ ] 7.3 **`tag-postcards-to-rides`** owns `041` and adds the requirement this change is an
+
+  **Path confirmed and it is a delta in each change**, not the standing file: the standing text is
+  `openspec/specs/database-enforced-integrity/spec.md` and the requirement is at its `### Requirement:
+  Storage object ownership SHALL remain database-enforced`. This change's delta carried the banner
+  already. **`add-account-deletion`'s did not** — the banner at the top of its delta names a
+  *different* collision (`Club membership role SHALL NOT be self-assignable`, with
+  `enforce-creator-membership`), which is worse than no banner: a reader who has absorbed it will
+  not look for a second one in the same file. A second banner now sits beside it, and a one-line
+  pointer sits immediately above the requirement itself, where the archiver is actually editing.
+
+  **What the merge must not lose**, now stated in both banners: six scenarios, three from each
+  side, and **no policy count in either**. The standing text's *"Fifteen `storage.objects` policies
+  exist across five folders"* is true of PROD and false of DEV (measured 2026-08-12: 15 across five
+  on `zwprydcyryvudhurbnye`, 18 across six on `fpmrimzxadewsaiwpsel`, because `051` is DEV-only),
+  so whichever change archives second and pastes back its own drafted paragraph reinstates whichever
+  number it was written with. Both deltas now derive it with the same query instead.
+- [x] 7.3 **`tag-postcards-to-rides`** owns `041` and adds the requirement this change is an
   instance of. This change does **not** depend on it: the migration states its grant level either way.
-- [ ] 7.4 **PD-114 (place picker)** writes the same `latitude`/`longitude` columns with a
+
+  **Verified 2026-08-12, and the claim holds with one correction that inverts its direction.**
+  `041_postcard_ride_tag.sql` is in the tree and that change's §1 owns it; the requirement is
+  *A migration adding a column to a table with table-level grants SHALL be treated as granting it*,
+  and `051`'s header states the grant level it measured, so the independence holds.
+
+  **What moved: `rides` no longer has table-level grants.** `045` converted both verbs to
+  per-column on 2026-08-10, so the five new columns arrived with **no** UPDATE grant rather than
+  inheriting one, and `051` §5 grants UPDATE explicitly. Measured on DEV: `authenticated` holds
+  SELECT and UPDATE on all five and **no INSERT on any of them**. So this change is the *inverse*
+  instance of that requirement — the failure mode it warns about (a column silently granted) cannot
+  happen on `rides`, and the opposite one (an ungranted column failing `42501` above RLS, invisible
+  to an RLS suite that runs as the table owner) is the live risk. Nothing to do here; the header
+  already says it.
+- [x] 7.4 **PD-114 (place picker)** writes the same `latitude`/`longitude` columns with a
   known-good coordinate. Do not add a second coordinate column for it; a picked place overwrites the
   geocoded guess in place and the confidence column records which it was.
+
+  **The instruction stands; two of its premises do not, and neither can be fixed from inside this
+  change.** Read this task as "do not build a second coordinate column", which remains right.
+
+  1. **PD-114 does not currently write these columns.** This change's own proposal already records
+     it — PD-114 step 3 specifies `meeting_point_lat` / `meeting_point_lng` /
+     `meeting_point_place_id`, and if both land as written `rides` ends up with **four** coordinate
+     columns, the exact outcome this task forbids. `051` shipped `latitude` / `longitude`, so PD-114
+     is the document that has to move, and it is the cheaper one to move because it has no migration
+     yet. **Unverified against Linear from this session** — no Linear tool was available — so this
+     rests on the repo record rather than on the issue.
+  2. **The confidence column cannot record which it was.** `rides_geocode_coupling` requires
+     `geocode_confidence` between `0.70` and `1.0` whenever a coordinate is present, and the
+     measured geocode of `Stationsplein 1, Amsterdam` returned `confidence: 1` — the value a picker
+     would naturally write for a known-good pick. Confidence **saturates**, which 4.5b already
+     established for a different reason, so a picked coordinate and a maximally-confident geocoded
+     one are indistinguishable in the row. Provenance needs its own marker if anything is ever going
+     to depend on it — a `location_source` column, or a documented sentinel the CHECK admits. Not
+     built here, and not a blocker for this change: nothing today reads provenance. It is a
+     correction PD-114 must carry, because the picker is what makes the distinction real.
 
 ## 8. Deploy — the ordering, and the one owner action
 
