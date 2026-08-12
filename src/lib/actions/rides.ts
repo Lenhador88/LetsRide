@@ -72,11 +72,33 @@ function requestRideMapRender(supabase: DataClient, rideId: string): void {
 /**
  * Removes a ride's tile objects, best-effort.
  *
- * **Always called BEFORE the statement that stops naming them** — `051`'s
- * stale-tile trigger NULLs both path columns in the same UPDATE that changes
- * `meeting_point`, and the ride row is the only place those names were ever
- * recorded. Afterwards nothing knows them. Same ordering the ride-delete path
- * uses: objects first, then the row that names them.
+ * **Called after the write is CONFIRMED, not before it — and the earlier
+ * "always before" rule was wrong in a way worth spelling out, because the
+ * argument for it is genuinely persuasive and will be made again.**
+ *
+ * That argument: `051`'s stale-tile trigger NULLs both path columns in the same
+ * UPDATE that changes `meeting_point`, and the ride row is the only place those
+ * names were ever recorded, so afterwards nothing knows them. Every clause of
+ * that is true **of the database** and false **of the caller**, which is holding
+ * both names in a local across the statement. So the premise does not reach the
+ * conclusion, and the ordering it recommends is strictly worse:
+ *
+ * **the UPDATE can be refused.** An organizer who has left the ride's club
+ * raises 42501 on the WITH CHECK arm, on a save that need not have touched
+ * `club_id` — `ride-lifecycle`'s ex-member case, reachable the moment
+ * `leaveClub` runs. Delete first and both JPEGs are gone, `meeting_point` never
+ * changed so the trigger never fired, both columns still name the deleted
+ * objects, and the re-render is gated on the success that did not happen. Pin
+ * fallback for ever, from a save that returned an error.
+ *
+ * Deleting after a confirmed write fails only into an orphaned object, which is
+ * recoverable; the other order fails into a row naming objects that do not
+ * exist, which is not.
+ *
+ * **`deleteRide` is the one caller where the old ordering is still correct**, and
+ * that is why it keeps it rather than being an inconsistency: its DELETE policy
+ * is `auth.uid() = organizer_id` with no WITH CHECK arm to fail, so it cannot be
+ * refused past a test the caller already passed.
  *
  * Swallowed, and the failure it leaves is the recoverable one. If this refuses,
  * the row still names two objects that are about to become unnamed — the tile

@@ -51,11 +51,21 @@ import type { RideAttendance, RideListItem } from '@/types'
  *   absence. Suppressing the credit would not remove the obligation, it would
  *   move it onto 80px of width that cannot carry `© OpenStreetMap contributors`
  *   at this design system's smallest token.
- * - **`object-bottom`, so a crop cannot take it.** The tile is rendered at
+ * - **`object-right-bottom`, so a crop cannot take it.** The tile is rendered at
  *   80×148, which is this strip in the ordinary 156-tall card. On the
  *   club-filtered screen the card is 128 tall and the strip is 120, and a centred
  *   `object-cover` would crop 14px off the bottom — precisely where the credit
- *   sits. Anchoring the bottom moves the whole crop to the top.
+ *   sits. Anchoring bottom-right moves the whole crop to the top.
+ *
+ *   **The horizontal half of that class is a no-op *here* and is not decoration.**
+ *   The strip is `w-20` against an 80-wide tile, so the cover scale is exactly 1
+ *   and nothing crops sideways — today. `RideMap` uses the same class where it is
+ *   very much not a no-op: its panel is *narrower* than its 358-wide tile below a
+ *   390px viewport, and a bottom-only anchor truncated `© OpenStreetMap
+ *   contributors` mid-string at 375 and 360. **So if you widen this strip past
+ *   `w-20`, that is the failure you inherit** — the credit is burned bottom-RIGHT,
+ *   and the horizontal axis becomes load-bearing the moment the scale factor
+ *   leaves 1.
  *
  * `Powered by Geoapify` — the Free plan's separate, *service*-level obligation —
  * is not here. It has one legible home, on `RideMap`'s 358×160 panel; that string
