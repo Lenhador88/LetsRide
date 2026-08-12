@@ -9,6 +9,7 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { useOnlineStatus } from '@/components/ui/OfflineState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { useBack } from '@/lib/actions/navigate'
 import { getNotificationsPage, NOTIFICATIONS_PAGE_SIZE } from '@/lib/data/notifications'
 import { getCurrentProfile } from '@/lib/data/profile'
 import { combineQueries, useQuery } from '@/lib/query'
@@ -23,12 +24,27 @@ const SECTIONS = ['Today', 'Yesterday', 'This week', 'All time'] as const
  * four tab-root headers rather than from a nav tab of its own — Inbox was
  * dropped 2026-08-07 (PD-100) and this change does not restore it.
  *
- * **No `backHref`.** Every tab-root screen this is reached from renders none
- * either, because the bottom nav bar (fixed, on every `(app)` screen) is
- * always the way off. A static `backHref` would have to pick one of four
- * origins arbitrarily; this screen simply has none, matching its own
- * departure points rather than inventing a "came from" it cannot know without
- * `router.back()`, which `Header`'s `backHref` does not model.
+ * ## The back button is drawn here and the frame hides it — deliberately
+ *
+ * `npm run figma -- tree "Inbox - Notifications" -- --all` shows the header's
+ * `v2 / Component / Button / Icon` and its `Arrow Left` marked `[hidden]`, so
+ * the design specifies **no** back control. Do not read that as this screen
+ * being unfaithful: the frame hides it because it draws Inbox as the **fifth
+ * nav tab, selected** — a tab root leaves through the other tabs, so it needs no
+ * back, exactly like `/postcards` and `/rides` here.
+ *
+ * That premise is gone. With no Inbox tab, `/notifications` matches none of the
+ * four in `Navbar`, so a rider arriving here had a screen with no back control
+ * *and* no lit tab, and nothing but the browser chrome to leave by — which is
+ * what PD-209 reported and what the hidden layer stops being evidence against
+ * the moment the tab it depended on was dropped.
+ *
+ * ## Where back goes
+ *
+ * `onBack` rather than `backHref`, because the four departure points make any
+ * single URL wrong from three of them. `useBack` pops the history, falling back
+ * to `/postcards` when there is none to pop — the cold push-notification open in
+ * the native shell. See `@/lib/back-navigation`.
  *
  * `MarkNotificationsRead` mounts unconditionally, independent of whether the
  * list has loaded — the same shape `MarkClubSeen`/`MarkFeedSeen` use — so
@@ -36,9 +52,11 @@ const SECTIONS = ['Today', 'Yesterday', 'This week', 'All time'] as const
  * in flight or later fails.
  */
 export default function NotificationsPage() {
+  const goBack = useBack('/postcards')
+
   return (
     <>
-      <Header title="Notifications" />
+      <Header title="Notifications" onBack={goBack} />
       <MarkNotificationsRead />
       <NotificationsScreen />
     </>

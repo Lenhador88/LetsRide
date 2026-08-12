@@ -4,6 +4,7 @@ import { useCallback, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from '@/lib/actions/auth'
 import type { ActionState } from '@/lib/actions/state'
+import { resolveBackDestination } from '@/lib/back-navigation'
 
 /**
  * The honouring half of `ActionState.redirectTo` — task 5.8.
@@ -38,6 +39,29 @@ export function useActionRedirect(state: ActionState): void {
     router.replace(state.redirectTo)
     // `state` rather than `state.redirectTo` — see the identity note above.
   }, [state, router])
+}
+
+/**
+ * The handler behind `Header`'s `onBack` — a back control for a screen with
+ * more than one way in, where a static `backHref` would have to guess which.
+ * `@/lib/back-navigation` carries why the destination is resolved rather than
+ * written down, and why the fallback is the case that matters.
+ *
+ * **`window.history` is read inside the handler, never during render.** Next
+ * still server-renders this client component on first load, and `next build`
+ * prerenders it, and neither pass has a `window` to read a length off — the same
+ * rule `lib/data/` follows, for the same reason.
+ */
+export function useBack(fallbackHref: string): () => void {
+  const router = useRouter()
+
+  return useCallback(() => {
+    const destination = resolveBackDestination(window.history.length, fallbackHref)
+    // `replace` rather than `push`: pushing the fallback leaves the screen just
+    // left sitting one entry back, so the rider's next back press returns to it.
+    if (destination.kind === 'replace') router.replace(destination.href)
+    else router.back()
+  }, [router, fallbackHref])
 }
 
 /**

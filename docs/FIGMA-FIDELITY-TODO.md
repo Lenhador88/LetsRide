@@ -1068,6 +1068,16 @@ absent from the mock or a product decision this pass had to make without one:
       "Notifications".** The frame nests this screen inside the dropped Inbox tab, with "Inbox"
       as the page name and "Notifications" as the sub-page. With no Inbox wrapper to nest under,
       the single collapsed title is this pass's own composition rather than a measured value.
+- [ ] **A back button is drawn where the frame hides one (PD-209, 2026-08-12), and the hidden
+      layer is not evidence against it.** `tree "Inbox - Notifications" -- --all` marks the
+      header's `v2 / Component / Button / Icon` and its `Arrow Left` `[hidden]`, so the design
+      specifies no back control — *because it draws Inbox as the fifth nav tab, selected*. A tab
+      root leaves through the other tabs. With that tab dropped (PD-100) `/notifications` matches
+      none of `Navbar`'s four, so the screen had no back control and no lit tab, and the hidden
+      layer stopped meaning what it meant the day it was toggled off. Same 40×40 `Button / Icon`
+      and `Arrow Left` the frame holds, so only its *visibility* deviates. It goes back to
+      measured, unchanged, if the Inbox epic restores the tab — and this bullet is the reason not
+      to "fix" it against the snapshot before then.
 
 ### Navigation
 
