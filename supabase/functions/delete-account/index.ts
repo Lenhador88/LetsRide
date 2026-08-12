@@ -296,7 +296,7 @@ Deno.serve(async (req: Request) => {
 
     if (transferError) throw new Error(`transfer: ${transferError.message}`)
 
-    // 2. Objects, across the five own-folder prefixes plus any club image the
+    // 2. Objects, across every own-folder prefix in PREFIXES plus any club image the
     //    transfer surrendered — those live under this rider's folder but belong
     //    to a club that may now have a different owner, which is why 029 nulls
     //    the path rather than leaving a dangling reference.
