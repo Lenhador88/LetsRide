@@ -20,12 +20,13 @@
 #   - nothing uncommitted, nothing untracked  -> the work is committed
 #   - HEAD == origin/<branch>                 -> the work is pushed
 #   - HEAD is ahead of origin/development     -> there is something to PR
-#   - it has not already fired for this exact HEAD sha
+#   - it has not already fired for this branch's current unit of work
 #
 # The last one is what bounds it. The marker lives in .git/ (per-clone, never
-# committed) and holds the sha it last fired on, so a wrap-up state is announced
-# once rather than on every turn that follows it. A new commit is a new sha and
-# legitimately re-arms it.
+# committed) and holds `<branch>@<merge-base with the base>`, so one branch's
+# worth of work is announced once however many commits it takes. See the comment
+# at the marker for why this is NOT keyed on the HEAD sha — that version fired
+# once per commit, which on a multi-agent build meant once per pipeline stage.
 #
 # WHY IT BLOCKS where handoff-landed-check.sh only warns. A `systemMessage` goes
 # to the user, not to the model — which is right for "here is something to look
@@ -126,8 +127,38 @@ git rev-parse --verify -q "$base" >/dev/null 2>&1 || exit 0
 # Any "has this landed?" test written against sha ancestry alone is wrong here.
 git diff --quiet "$base" HEAD 2>/dev/null && exit 0
 
+# Keyed on the UNIT OF WORK — branch plus fork point — and NOT on the HEAD sha.
+#
+# The sha version was the right idea measured against the wrong thing. It bounds
+# repeats within one state, but a multi-agent build is a sequence of states: the
+# builder commits, the reviewer's findings get committed, a CI fix lands, a
+# fold-in lands. Every one is a new sha, so every one re-armed the reminder, and
+# a session that was pushing correctly the whole time got told to open a PR four
+# or five times before it had anything to open one for. Measured 2026-08-12: a
+# single PD-104 run fired it eight times.
+#
+# That is the failure mode this hook's own header warns about — "anything less
+# specific than 'this looks like a wrap-up' becomes noise that gets ignored" —
+# arriving through the marker rather than through the conditions.
+#
+# Branch + merge-base is the stable identity of one branch's worth of work. It
+# re-arms exactly when it should and no more often:
+#   - a different branch                     -> different key
+#   - the branch restarted onto a new base
+#     after its PR merged (CLAUDE.md's
+#     `checkout -B <branch> origin/development`) -> different fork point, new key
+#   - four more commits on the same branch   -> SAME key, silence
+#
+# The fork point is stable while others merge into the base, because it is the
+# point the branches diverged rather than either tip.
+#
+# The catch is not weakened: a session that pushes and stops still gets exactly
+# one reminder, which is the whole requirement — `decision: block` puts it in the
+# model's context, and once there it does not need repeating.
+mergebase=$(git merge-base "$base" HEAD 2>/dev/null) || mergebase="$head"
+key="$branch@$mergebase"
 marker="$gitdir/wrapup-reminded"
-[[ -f "$marker" && "$(cat "$marker" 2>/dev/null)" == "$head" ]] && exit 0
+[[ -f "$marker" && "$(cat "$marker" 2>/dev/null)" == "$key" ]] && exit 0
 
 # ABOUT TO SPEAK — and only now is a network call worth its latency. A ref that
 # is merely STALE says the work is unmerged long after it landed, which is the
@@ -141,7 +172,7 @@ fi
 ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || exit 0
 [[ "$ahead" =~ ^[0-9]+$ ]] || exit 0
 [[ "$ahead" -gt 0 ]] || exit 0
-printf '%s' "$head" >"$marker" 2>/dev/null
+printf '%s' "$key" >"$marker" 2>/dev/null
 
 jq -cn --arg b "$branch" --arg base "${base#origin/}" --arg n "$ahead" '
 {
