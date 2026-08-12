@@ -436,7 +436,17 @@ Deno.serve(async (req: Request) => {
     )
     if (superseded.length > 0) await caller.storage.from(BUCKET).remove(superseded)
 
-    return json({ rendered: uploaded.length > 0 }, 200)
+    // `bothStored`, NOT `uploaded.length > 0`. Those differ in exactly the door
+    // the both-or-neither block opens: both tiles fetch, the card uploads, the
+    // detail upload fails, the orphan block deletes the surviving card object and
+    // neither column is written — yet `uploaded` still has length 1. Answering
+    // `rendered: true` there tells the caller to invalidate every rides query for
+    // a tile that does not exist and was deleted a few lines above, and it
+    // contradicts this file's own header twice over: "every vendor failure — a
+    // refused upload — returns 200 with `rendered: false`", and "`rendered: true`
+    // means the paths were written". `uploaded` remains the right list for the
+    // writeError cleanup; it was never the right answer to "did a tile land".
+    return json({ rendered: bothStored }, 200)
   } catch (cause) {
     // A meeting point is frequently a home address and a ride id resolves to
     // one, so the boundary redacts rather than the call sites. `delete-account`
