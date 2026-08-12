@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
-import { SIGNED_URL_TTL_SECONDS, resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
+import {
+  SIGNED_URL_TTL_SECONDS,
+  resolveAvatarUrls,
+  resolveRideMapUrls,
+  signImagePaths,
+} from '@/lib/data/media'
 import type { DataClient } from '@/lib/supabase/resolve'
 
 /**
@@ -166,5 +171,154 @@ describe('resolveAvatarUrls', () => {
 
     expect(createSignedUrls).toHaveBeenCalledTimes(1)
     expect(rows.every((row) => row.avatar_url?.startsWith('https://signed.test/'))).toBe(true)
+  })
+})
+
+/**
+ * `051` added the two tile columns and nothing writes them yet, so the state
+ * every one of these has to get right is the NULL one — it is what every ride
+ * in both databases is in, and the only way this change can cost a rider
+ * anything is by making that state render differently from how it renders
+ * today. The card strip and the detail panel each fall back on a null URL, so a
+ * resolver that quietly turned a NULL path into a request or a truthy value
+ * would surface as a broken image on every ride in the app.
+ */
+describe('resolveRideMapUrls', () => {
+  it('writes both tile URLs over their _url siblings, in place', async () => {
+    const { client } = signsEverything()
+    const ride = {
+      map_card_path: 'ride-maps/o1/card.jpg',
+      map_card_url: null as string | null,
+      map_detail_path: 'ride-maps/o1/detail.jpg',
+      map_detail_url: null as string | null,
+    }
+
+    await resolveRideMapUrls([ride], client)
+
+    expect(ride.map_card_url).toBe('https://signed.test/ride-maps/o1/card.jpg')
+    expect(ride.map_detail_url).toBe('https://signed.test/ride-maps/o1/detail.jpg')
+  })
+
+  it('signs both columns of a whole page in one request', async () => {
+    // The list reads thirty rides. One call per column per row would be sixty
+    // round trips on the critical path of the rides screen.
+    const { client, createSignedUrls } = signsEverything()
+    const rows = Array.from({ length: 30 }, (_, index) => ({
+      map_card_path: `ride-maps/o1/card-${index}.jpg`,
+      map_card_url: null as string | null,
+    }))
+
+    await resolveRideMapUrls(rows, client)
+
+    expect(createSignedUrls).toHaveBeenCalledTimes(1)
+    expect(rows.every((row) => row.map_card_url?.startsWith('https://signed.test/'))).toBe(true)
+  })
+
+  it('leaves a ride with NULL paths alone and issues no request', async () => {
+    // **The state of every ride today.** Nothing writes these columns until the
+    // render function ships, so this is not an edge case — it is the whole
+    // behaviour of this function in production right now, and it must cost the
+    // rides list nothing.
+    const { client, createSignedUrls } = signsEverything()
+    const ride = {
+      map_card_path: null,
+      map_card_url: null as string | null,
+      map_detail_path: null,
+      map_detail_url: null as string | null,
+    }
+
+    await resolveRideMapUrls([ride], client)
+
+    expect(ride.map_card_url).toBeNull()
+    expect(ride.map_detail_url).toBeNull()
+    expect(createSignedUrls).not.toHaveBeenCalled()
+  })
+
+  it('issues no request for a whole page of tile-less rides', async () => {
+    const { client, createSignedUrls } = signsEverything()
+    const rows = Array.from({ length: 30 }, () => ({
+      map_card_path: null,
+      map_card_url: null as string | null,
+    }))
+
+    await resolveRideMapUrls(rows, client)
+
+    expect(createSignedUrls).not.toHaveBeenCalled()
+  })
+
+  it('signs the card tile of a ride whose detail tile is missing', async () => {
+    // A valid stored state rather than a broken one: `051`'s coupling CHECK
+    // requires a coordinate behind a path, never a second path beside one, so
+    // one upload succeeding and the other failing leaves exactly this row.
+    const { client, createSignedUrls } = signsEverything()
+    const ride = {
+      map_card_path: 'ride-maps/o1/card.jpg',
+      map_card_url: null as string | null,
+      map_detail_path: null,
+      map_detail_url: null as string | null,
+    }
+
+    await resolveRideMapUrls([ride], client)
+
+    expect(createSignedUrls).toHaveBeenCalledWith(
+      ['ride-maps/o1/card.jpg'],
+      SIGNED_URL_TTL_SECONDS
+    )
+    expect(ride.map_card_url).toBe('https://signed.test/ride-maps/o1/card.jpg')
+    expect(ride.map_detail_url).toBeNull()
+  })
+
+  it('nulls the URL when the Storage policy refuses the path', async () => {
+    // A tile whose ride this viewer may no longer see — an ex-member of a
+    // private club — comes back exactly like this. It must land as null so the
+    // screen draws the ordinary no-tile fallback rather than a broken image,
+    // and so nothing distinguishes "refused" from "absent" on screen.
+    const { client } = stubClient((paths) => ({
+      data: paths.map((path) => ({ path, signedUrl: '', error: 'Object not found' })),
+      error: null,
+    }))
+    const ride = {
+      map_card_path: 'ride-maps/o1/card.jpg',
+      map_card_url: 'https://stale.test/old.jpg' as string | null,
+    }
+
+    await resolveRideMapUrls([ride], client)
+
+    expect(ride.map_card_url).toBeNull()
+  })
+
+  it('leaves every URL null when the whole signing request fails', async () => {
+    // Offline, or Storage down. A missing map is not a broken screen.
+    const { client } = stubClient(() => ({ data: null, error: new Error('offline') }))
+    const ride = {
+      map_card_path: 'ride-maps/o1/card.jpg',
+      map_card_url: null as string | null,
+    }
+
+    await resolveRideMapUrls([ride], client)
+
+    expect(ride.map_card_url).toBeNull()
+  })
+
+  it('signs tiles for many rides in the same request as each other', async () => {
+    const { client, createSignedUrls } = signsEverything()
+    const first = { map_card_path: 'ride-maps/o1/a.jpg', map_card_url: null as string | null }
+    const second = { map_card_path: 'ride-maps/o2/b.jpg', map_card_url: null as string | null }
+
+    await resolveRideMapUrls([first, second], client)
+
+    expect(createSignedUrls).toHaveBeenCalledTimes(1)
+    expect(createSignedUrls).toHaveBeenCalledWith(
+      ['ride-maps/o1/a.jpg', 'ride-maps/o2/b.jpg'],
+      SIGNED_URL_TTL_SECONDS
+    )
+  })
+
+  it('tolerates the nulls a maybeSingle read produces', async () => {
+    const { client } = signsEverything()
+    const ride = { map_card_path: 'ride-maps/o1/a.jpg', map_card_url: null as string | null }
+
+    await expect(resolveRideMapUrls([null, undefined, ride], client)).resolves.toBeUndefined()
+    expect(ride.map_card_url).toBe('https://signed.test/ride-maps/o1/a.jpg')
   })
 })
