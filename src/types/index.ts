@@ -137,6 +137,23 @@ export type RideListItem = {
   riders_count: number
   attendance: RideAttendance
   /**
+   * The 80×148 strip's static map tile — a signed URL minted for **this** viewer,
+   * or null when the ride has no tile.
+   *
+   * A URL rather than `rides.map_card_path`, for the same reason
+   * `PublicProfile` carries `avatar_url`: the data layer keeps one promise —
+   * *this is something you can put in `src`* — and owns how it got there. The
+   * path stays in the database and never reaches a component.
+   *
+   * **Null is the ordinary state, not a failure.** Nothing writes
+   * `map_card_path` until the render function ships, so today it is null on
+   * every row and `RideCard` draws the pin container it has always drawn.
+   * A path this viewer's Storage policy refuses signs to null too, and that
+   * conflation is deliberate — the rider cannot act on the difference, and
+   * saying "there is a tile but not for you" would leak the ride's audience.
+   */
+  map_card_url: string | null
+  /**
    * Read once per list in the data layer rather than per card at render, so
    * every card in one response agrees about what "now" is — and so the card
    * stays a pure function of its props.
@@ -174,6 +191,17 @@ export type RideDetail = {
   club: EmbeddedClub | null
   /** This viewer's own RSVP. The organizer reads as `going` without a row. */
   attendance: RideAttendance
+  /**
+   * The 358×160 panel's static map tile — a signed URL minted for **this**
+   * viewer, or null when the ride has no tile. Same rules as
+   * `RideListItem.map_card_url`, and read that one for why null is ordinary.
+   *
+   * A **second** tile rather than the card's, scaled: the two are rendered at
+   * different zooms (z13 for the strip, ~z15 for the panel), so reusing one for
+   * the other shows a single street cropped to 80px and reads as texture rather
+   * than as a place.
+   */
+  map_detail_url: string | null
   is_organizer: boolean
   is_upcoming: boolean
   /**

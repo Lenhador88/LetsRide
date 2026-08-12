@@ -345,29 +345,64 @@
 
 ## 2. Types and reads — still no tiles anywhere
 
-- [ ] 2.1 Add the tile fields to `src/types/index.ts`. Nothing inline.
-- [ ] 2.2 Extend `RIDE_SELECT` and the list select so the paths arrive with the ride. Keep it to
-  `src/lib/data/`; components never call Supabase.
-- [ ] 2.3 Resolve paths to signed URLs beside the existing `signImagePaths`, per viewer, never
-  cached across riders.
-- [ ] 2.4 Unit tests for the resolver, including that a NULL path yields no URL and no fetch.
+- [x] 2.1 Add the tile fields to `src/types/index.ts`. Nothing inline. `RideListItem.map_card_url`
+  and `RideDetail.map_detail_url` — **URLs, not paths**, on the `avatar_url` precedent: the data
+  layer keeps one promise (*this is something you can put in `src`*) and the Storage path never
+  reaches a component. `latitude`, `longitude` and `geocode_confidence` are deliberately NOT on
+  either type and not selected: they are the render function's inputs, and decision #3 leaves no
+  client-side map to hand a coordinate to.
+- [x] 2.2 Extend `RIDE_SELECT` and the list select so the paths arrive with the ride. Keep it to
+  `src/lib/data/`; components never call Supabase. `RIDE_SELECT` takes `map_card_path` and
+  `getRide`'s select takes `map_detail_path` — one column each, the one its screen draws.
+  **Verified against DEV** that `authenticated` holds a column-level SELECT on all five columns
+  `051` added, since `045` made `rides` per-column and `051` §5 grants only UPDATE explicitly.
+- [x] 2.3 Resolve paths to signed URLs beside the existing `signImagePaths`, per viewer, never
+  cached across riders. `resolveRideMapUrls` in `src/lib/data/media.ts`, the same mutate-in-place
+  shape as `resolveAvatarUrls`, both columns in one batched `createSignedUrls`. Issued
+  concurrently with the avatar pass in `getRides` and `getRide`, and it returns **without a
+  request** while every path is NULL — which is every ride today.
+- [x] 2.4 Unit tests for the resolver, including that a NULL path yields no URL and no fetch.
+  Nine cases in `src/lib/data/__tests__/media.test.ts`, two of them asserting `createSignedUrls`
+  is never called (one row, and a whole page of thirty). Three more in
+  `__tests__/rides.test.ts` pin `toRideListItem`: no URL for a tile-less ride, the signed URL
+  copied through, and an unsigned path read as no tile rather than rendered.
 
 ## 3. The two screens — fallback preserved, tile drawn when present
 
-- [ ] 3.1 `RideCard`: draw the tile in the 80×148 strip when a path is present; keep today's pin
+- [x] 3.1 `RideCard`: draw the tile in the 80×148 strip when a path is present; keep today's pin
   container exactly as-is when it is not. Update the doc comment, which currently states there is
-  no data behind the strip.
-- [ ] 3.2 `RideMap`: draw the tile behind the existing content in the 358×160 panel. **The whole
+  no data behind the strip. The no-tile branch renders the **identical** element it rendered
+  before — same container, same `absolute inset-0 m-auto h-6 w-6 text-foreground` pin — and the
+  tile branch adds an `object-cover` image under a `White/100` disc behind the pin, which is
+  17.4:1 whatever the map is. Doc comment rewritten; it now names no-tile as the ordinary state
+  rather than a gap.
+- [x] 3.2 `RideMap`: draw the tile behind the existing content in the 358×160 panel. **The whole
   panel stays the anchor** and `Get directions` stays — that was a real iPad bug fix, not a
-  decoration. Keep the blank-`meeting_point` early return.
-- [ ] 3.3 Contrast: the address currently sits at 12.65:1 on `bg-track`. Over a photographic tile
+  decoration. Keep the blank-`meeting_point` early return. Both kept, untouched. The tile and its
+  scrim are two extra absolutely-positioned layers that exist **only** when a tile shows, so the
+  no-tile DOM is unchanged apart from the address and pin carrying `relative` — inert, and needed
+  only so in-flow content paints above a positioned sibling.
+- [x] 3.3 Contrast: the address currently sits at 12.65:1 on `bg-track`. Over a photographic tile
   that guarantee is gone — the text needs a scrim or a treatment that holds the ratio. This is a new
-  colour pairing and therefore a mandatory reviewer contrast pass.
-- [ ] 3.4 A failed image load falls back to the no-tile rendering rather than breaking the row.
-- [ ] 3.5 Neither screen gates on the tile. Gate on the ride's data, never on a loading flag.
-- [ ] 3.6 Update `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail — the two unchecked map
+  colour pairing and therefore a mandatory reviewer contrast pass. `bg-scrim` (`Grey/70%`, the
+  token this system already uses to put text on a photo) with `White/100` text and pin: a 70%
+  black scrim bounds the composite at `#4D4D4D` however bright the tile, so the floor is **8.0:1**
+  rather than "whatever the map is". The `Get directions` chip is unchanged — `White/100` fill,
+  `Grey/100` text, 17.4:1 — and paints above the scrim. **Still owed the reviewer pass**, which is
+  9.2's, and the brightness cost of a 70% scrim is a design call worth putting to the designer.
+- [x] 3.4 A failed image load falls back to the no-tile rendering rather than breaking the row.
+  `onError` flips a `useState` in each component and every tile-dependent class keys off it, so a
+  broken URL lands on exactly the fallback rendering rather than on a half-styled one. Both
+  components gained `'use client'` with that state; both are imported only from client pages.
+- [x] 3.5 Neither screen gates on the tile. Gate on the ride's data, never on a loading flag. The
+  tile is a field on the ride, resolved before the row is returned, so there is no second
+  loading state to gate on — and `RidePage` still gates on `ride.data`, unchanged.
+- [x] 3.6 Update `docs/FIGMA-FIDELITY-TODO.md` §Rides list and §Ride detail — the two unchecked map
   entries. Do not delete them; check them off with what shipped, and leave the `ends_at`, two-line
-  address and `max_riders` entries alone.
+  address and `max_riders` entries alone. Both struck through with what shipped, both keeping the
+  standing note that **nothing writes the columns yet**. The 390×200 banner entry stayed open and
+  lost only its claim that the strip's migration would cover it — `051` gave `rides` map tiles,
+  not a rider's own photo.
 
 **At the end of group 3 everything is merged and live, every tile is NULL, and both screens render
 exactly what they render today.** That is the intended intermediate state.
@@ -497,10 +532,25 @@ exactly what they render today.** That is the intended intermediate state.
 
 ## 8. Deploy — the ordering, and the one owner action
 
-- [ ] 8.1 **The migration first**, on its own. Purely additive; nothing reads the columns yet.
+- [ ] 8.1 **The migration first, on BOTH projects, on its own.** Purely additive; nothing reads the
+  columns yet. **"Nothing reads them" stopped being true when §2 shipped**, and that turns this from
+  housekeeping into the gate on the promotion: `RIDE_SELECT` now names `map_card_path`, PROD sits at
+  `050` without it, and a `development → main` promotion breaks the rides **list** and every ride
+  **detail** — green through CI, green through the merge, broken only for riders. Exactly 2 of the
+  10 `from('rides')` call sites name a missing column, so create, edit, cancel, the filter bar and
+  the club counts keep working; that partial breakage is the trap, because most of rides looks
+  healthy. 1.11b is the open box, and `051` is 40 KB, so
+  it needs the reduce-and-diff-against-DEV technique — reduce to executing statements, apply, then
+  prove it by diffing the resulting objects against DEV, which already has the file applied
+  correctly. `CLAUDE.md` §Supabase Rules carries it, under *Applying a migration too large to pass
+  as a string*. A hand transcription of production DDL is the failure that paragraph exists to
+  prevent.
 - [ ] 8.2 Groups 2–5 merge to `development` and deploy. Tiles are NULL everywhere and both screens
-  render the fallback. **This state is correct and shippable indefinitely.**
-- [ ] 8.3 **OWNER ACTION — deploy the Edge Function.** There is no `supabase` CLI in this container
+  render the fallback. **This state is correct and shippable indefinitely.** §2–3 are merged and are
+  exactly this state.
+- [ ] 8.3 **OWNER ACTION — deploy the Edge Function. §6's attribution must be settled and rendered
+  BEFORE this step, not merely before §6 is ticked** — this is the moment a tile first exists, so it
+  is the moment an uncredited tile first reaches a rider. There is no `supabase` CLI in this container
   and the Supabase MCP has no deploy tool, so no session can do it. Same blocker as PD-86. Label
   `Owner only` in Linear and set the Geoapify key in the function's secret store — never in `src/`,
   `.env.local.example`, Vercel or any `NEXT_PUBLIC_*`.

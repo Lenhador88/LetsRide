@@ -322,12 +322,21 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
       `Are you going?`. `No` draws **no pill at all**; `Yes` is `Going` upcoming and **`Went`**
       past; `Maybe` keeps its label in both. Both are derived (departure time, and the viewer's
       `ride_members` row), so the component takes data rather than a variant name.
-- [ ] **The 80×148 image strip has no data behind it.** The design fills it with a photo
-      carrying a `Location Filled` pin — almost certainly the static map thumbnail decision #3
-      calls for. `rides` has **no image column and no coordinates**, and `meeting_point` is
-      free text. *Chose:* render the design's container and the pin, and nothing else. Needs a
-      migration **and** a static-tile provider, so it is two decisions, not a styling task. It
-      is the most visually obvious gap on the screen — a 80×148 grey block on every card.
+- [x] ~~**The 80×148 image strip has no data behind it.**~~ **Schema landed 2026-08-12**
+      (`051`, PD-104): `rides` now carries `map_card_path` beside a coordinate, and the strip
+      draws that tile with the `Location Filled` pin over it — the design's
+      photo-carrying-a-pin, with the static map thumbnail decision #3 calls for as the photo.
+      The pin gains a `White/100` disc **only** over a tile: bare `Grey/100` is 13.82:1 on the
+      `Grey/10%` container — `#0000001A` is 10.196% black, which over the card's own opaque
+      `bg-surface` composites to `#E5E5E5`, not the ~6% fill 15.3:1 would imply — and unknowable
+      on an arbitrary map, and the disc makes it 17.4:1 whatever is behind it.
+
+      **What has not landed is anything that writes the column**, so the honest state of the
+      screen is unchanged: every ride in both databases has a NULL path and every card draws
+      the container and the pin, exactly as before. The renderer is the Edge Function in
+      `add-ride-map-tiles` §4, which is written-not-deployed work and needs an owner action
+      (`8.3`). A tile that fails to load falls back to the same container, so the grey block
+      stays the design's own no-tile state rather than becoming a broken image.
 - [ ] **`10:00 - 15:00` is a range; the schema has one timestamp.** `rides.departure_at` has no
       `ends_at` beside it, so the card renders a single departure time. Adding an end time is a
       small migration and would complete the design as drawn.
@@ -493,17 +502,30 @@ Blocked on schema, in the same shape as the rides list's image strip:
 
 - [ ] **The 390×200 banner has no image column.** Unlike the map it carries no affordance at
       all, so it is omitted entirely rather than rendered as a 200px grey slab — an empty
-      fifth of the screen above the fold is worse than a shorter page. *Chose:* omit. Needs
-      the same migration + Storage work as the list card's strip; do both together.
-- [ ] **The map tile has no coordinates.** `rides` has no lat/lng, only free-text
-      `meeting_point`, so there is no tile to draw. *Chose:* render the panel as what it
-      actually is — the address, legibly, and one tap that opens directions. Filling it is a
-      migration **and** a keyed static-tile provider (Google Static Maps, Mapbox and the rest
-      all require a key and a billing account); that is two product decisions, not a styling
-      task. **Do not** substitute an `output=embed` iframe: it is an interactive map where
-      decision #3 specifies a static thumbnail, it swallows touch gestures inside a scrolling
-      page, and Safari's tracking prevention blanks third-party frames — which would
-      reproduce the exact bug reported below.
+      fifth of the screen above the fold is worse than a shorter page. *Chose:* omit. Still
+      needs a migration + Storage work of its own: `051` gave `rides` map tiles, not a rider's
+      own photo of the ride, so the entry below resolved without resolving this one.
+- [x] ~~**The map tile has no coordinates.**~~ **Schema landed 2026-08-12** (`051`, PD-104):
+      `rides` carries `latitude`, `longitude` and `map_detail_path`, and the panel draws that
+      tile **behind** the address and the `Get directions` chip rather than instead of them —
+      decision #3 is a static thumbnail *plus* a deeplink, and the whole 358×160 stays the
+      anchor, which was the iPad fix recorded below.
+
+      *Chose:* `bg-scrim` (`Grey/70%`) between the tile and the text, with the address and pin
+      in `White/100`. Grey/100 on `bg-track` is 12.65:1 and holds only because the fill is
+      known; over an arbitrary map it is whatever the map is under those two lines, and the
+      scrim bounds the composite at `#4D4D4D` however bright the tile — **8.0:1 at worst**. It
+      costs the tile brightness, which is the trade: the address is the one thing on this
+      panel a rider reads. A lighter treatment is a design call, not a correctness one.
+
+      **Nothing writes the column yet**, so the panel renders today exactly what it rendered
+      before — the address, legibly, and one tap that opens directions. The renderer is
+      `add-ride-map-tiles` §4 and needs an owner action to deploy (`8.3`).
+
+      **Do not** substitute an `output=embed` iframe if this is ever revisited: it is an
+      interactive map where decision #3 specifies a static thumbnail, it swallows touch
+      gestures inside a scrolling page, and Safari's tracking prevention blanks third-party
+      frames — which would reproduce the exact bug reported below.
 - [x] ~~**The map panel read as blank, and its link only dropped a pin.**~~ **Fixed
       2026-08-05**, all three reported from a real iPad:
       **(a)** the fill was `bg-border/40`, which compiles to `#0000000a` — 4% black,

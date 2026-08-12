@@ -2,7 +2,7 @@ import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { rideIdSchema } from '@/lib/validation/rides'
-import { resolveAvatarUrls } from '@/lib/data/media'
+import { resolveAvatarUrls, resolveRideMapUrls } from '@/lib/data/media'
 import type {
   EmbeddedClub,
   PublicProfile,
@@ -77,8 +77,16 @@ export const RIDE_CREW_LIMIT = 200
  * `.limit(RIDE_AVATAR_LIMIT, { referencedTable: 'riders' })` embed — named here
  * so it does not have to be rediscovered.
  */
+/**
+ * `map_card_path` only, and the other four columns `051` added are deliberately
+ * absent. `latitude`, `longitude` and `geocode_confidence` are the render
+ * function's inputs and no screen draws them — decision #3 is a static
+ * thumbnail, so there is no client-side map to hand a coordinate to — and
+ * `map_detail_path` belongs to a panel this query's consumer does not render.
+ * Selecting a column nothing reads is a column the next rename has to find.
+ */
 const RIDE_SELECT = `
-  id, title, meeting_point, departure_at, organizer_id,
+  id, title, meeting_point, departure_at, organizer_id, map_card_path,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
   riders:ride_members(user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
@@ -90,6 +98,9 @@ export type RideRow = {
   meeting_point: string
   departure_at: string
   organizer_id: string
+  map_card_path: string | null
+  /** Synthesised by `resolveRideMapUrls`, never selected — see `avatar_url`. */
+  map_card_url?: string | null
   organizer: PublicProfile | null
   club: Pick<EmbeddedClub, 'id' | 'name'> | null
   riders: { user_id: string; status: 'going' | 'maybe'; profile: PublicProfile | null }[] | null
@@ -134,6 +145,11 @@ export function toRideListItem(
     // The organizer counts even when their profile is not readable, which is
     // why this is not `riders.length`.
     riders_count: others.length + 1,
+    // Whatever `resolveRideMapUrls` wrote onto the row, and null when it wrote
+    // nothing — a ride with no tile, or a tile this viewer may not sign. This
+    // function stays pure: it copies the field rather than deciding it, the
+    // same way it copies `organizer.avatar_url`.
+    map_card_url: row.map_card_url ?? null,
     attendance,
     is_upcoming: new Date(row.departure_at).getTime() >= now,
   }
@@ -227,10 +243,18 @@ export async function getRides(
   // list would be a round trip for something nothing renders — the same reason
   // the postcard deck embeds `id, name`. The three surfaces that *do* draw a
   // club image are the ride detail chip and the two filter bars.
-  await resolveAvatarUrls(
-    rows.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
-    supabase
-  )
+  //
+  // Concurrent, because the two are independent and each is its own
+  // `createSignedUrls` call. Today the tile pass costs nothing at all: every
+  // `map_card_path` is NULL until the render function ships, so it returns
+  // without issuing a request.
+  await Promise.all([
+    resolveAvatarUrls(
+      rows.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
+      supabase
+    ),
+    resolveRideMapUrls(rows, supabase),
+  ])
 
   return rows.map((row) => toRideListItem(row, user?.id, now))
 }
@@ -272,9 +296,11 @@ export async function getRide(id: string): Promise<RideDetail | null> {
   const [rideResult, ownResult] = await Promise.all([
     supabase
       .from('rides')
+      // `map_detail_path` only, for the reason RIDE_SELECT gives: this screen
+      // draws the 358×160 panel and nothing else `051` added.
       .select(`
         id, title, description, route_description, meeting_point, departure_at,
-        max_riders, club_id, organizer_id,
+        max_riders, club_id, organizer_id, map_detail_path,
         organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
         club:clubs(${CLUB_EMBED_COLUMNS})
       `)
@@ -294,7 +320,14 @@ export async function getRide(id: string): Promise<RideDetail | null> {
   ])
 
   const row = unwrap(rideResult, 'this ride') as unknown as
-    | Omit<RideDetail, 'attendance' | 'is_organizer' | 'is_upcoming' | 'is_crew'>
+    | (Omit<
+        RideDetail,
+        'attendance' | 'is_organizer' | 'is_upcoming' | 'is_crew' | 'map_detail_url'
+      > & {
+        map_detail_path: string | null
+        /** Synthesised by `resolveRideMapUrls` — see `avatar_url`. */
+        map_detail_url?: string | null
+      })
     | null
 
   if (!row) return null
@@ -302,7 +335,12 @@ export async function getRide(id: string): Promise<RideDetail | null> {
   const ownRow = unwrap(ownResult, 'your RSVP') as { status: 'going' | 'maybe' } | null
   const isOrganizer = !!user && user.id === row.organizer_id
 
-  await resolveAvatarUrls([row.organizer, row.club], supabase)
+  // Concurrent and independent — see `getRides`. The tile pass issues no
+  // request at all while `map_detail_path` is NULL, which is every ride today.
+  await Promise.all([
+    resolveAvatarUrls([row.organizer, row.club], supabase),
+    resolveRideMapUrls([row], supabase),
+  ])
 
   return {
     id: row.id,
@@ -319,6 +357,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     // Same rule as the list card: an explicit row wins, and an organizer
     // without one reads as `going` rather than as unanswered.
     attendance: ownRow?.status ?? (isOrganizer ? 'going' : null),
+    map_detail_url: row.map_detail_url ?? null,
     is_organizer: isOrganizer,
     is_upcoming: new Date(row.departure_at).getTime() >= Date.now(),
     is_crew: isRideCrew(isOrganizer, ownRow?.status ?? null),
