@@ -41,9 +41,26 @@ A rule written per policy is free to drift again; a rule written in the shared p
 Widening a membership test SHALL NOT widen what a blocked rider can see or be seen doing.
 Decision #2 makes blocking an RLS concern, and it SHALL dominate ownership in both directions.
 
-The structural rule that guarantees it: `private.is_blocked` SHALL remain a conjunct at the top
-level of each policy's predicate, with the membership test beneath it — the shape
-`NOT is_blocked(…) AND (member OR owner)`, never `(NOT is_blocked(…) AND member) OR owner`.
+The structural rule that guarantees it, stated as **domination** rather than as position:
+
+> Every occurrence of the ownership-or-membership predicate SHALL be dominated by a
+> `private.is_blocked` conjunct — that is, no assignment of values SHALL satisfy the policy
+> through that predicate while the block conjunct governing it is false. The **only** disjunct
+> permitted to bypass that domination is one testing the viewer's own identity
+> (`organizer_id = auth.uid()`, `author_id = auth.uid()`, `user_id = auth.uid()`), which is safe
+> because `blocks_no_self_block CHECK (blocker_id <> blocked_id)` makes `is_blocked(x, x)` false
+> for every `x`.
+
+**This SHALL NOT be restated as "`is_blocked` is a top-level conjunct".** That is false of the
+policy set as it stands — `rides` SELECT and `postcards` SELECT are top-level `OR` — and a
+requirement phrased that way fails against a correct database, which teaches a reader to ignore
+it. Domination is the property; position is one way of achieving it.
+
+#### Scenario: A self-identity disjunct is the only permitted bypass
+- **WHEN** any policy grants access through the ownership-or-membership predicate
+- **THEN** a `private.is_blocked` conjunct SHALL govern that grant
+- **AND** any disjunct reaching the row without one SHALL test only the viewer's own identity
+- **AND** adding a new bypassing disjunct SHALL require restating this requirement
 
 #### Scenario: An owner does not see a ride organized by a rider they have blocked
 - **WHEN** a club's owner reads a ride in their own club whose organizer is blocked in either
@@ -82,7 +99,23 @@ Ownership answers "may I see and participate", never "may I edit, delete or evic
 #### Scenario: Seeing a ride does not confer its chat
 - **WHEN** a club's owner reads a ride in their club of whose crew they are not a member
 - **THEN** the ride SHALL be returned and its `ride_messages` SHALL NOT be
-- **AND** chat visibility SHALL remain the intersection of ride visibility and crew membership
+- **AND** chat visibility SHALL remain the intersection of ride visibility and crew membership,
+  so ownership alone SHALL never satisfy it
+
+#### Scenario: An owner may join a club ride's crew, as any member may
+- **WHEN** a club's owner inserts their own `ride_members` row for a ride in their club organized
+  by another rider
+- **THEN** it SHALL be permitted, this being the same RSVP path every member of that club already
+  has, and SHALL be refused for any rider who cannot see the ride
+- **AND** the owner SHALL thereafter reach that ride's chat as crew, the intersection now being
+  satisfied by two independent facts rather than by ownership
+- **AND** the crew row SHALL be visible in the ride's crew list, so the reach SHALL NOT be silent
+
+#### Scenario: A block prevents the join, and therefore the chat
+- **WHEN** a club's owner attempts to join a ride in their own club whose organizer has blocked
+  them, or whom they have blocked
+- **THEN** the ride SHALL return zero rows, the crew insert SHALL be refused, and the chat SHALL
+  remain unreachable by every route
 
 ### Requirement: A caller-relative helper SHALL NOT be used to compute a fan-out recipient set
 

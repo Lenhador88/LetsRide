@@ -93,9 +93,15 @@ Two doors lead in, and the second needs nothing to fail: `createClub`'s two un-t
 The issue offers three. **Option 1 — the owner arm in `is_club_member`.**
 
 The enumeration below is why, and it is the substance of the decision rather than a formality.
-**Ten policies call the function** (`pg_policies`, DEV, 2026-08-12; zero callers in `storage`,
-zero in any other function, so this list is complete). For a rider who owns club C and holds no
-`club_members` row in C:
+**Ten policies call the function directly** (`pg_policies`, DEV, 2026-08-12; zero *direct*
+callers in `storage`, zero in any other function, so the **direct** caller set is closed).
+
+**"Zero direct callers in `storage`" says nothing about whether storage is affected, and reading
+it that way is the trap this section exists to avoid** — the inherited set below includes two
+`storage.objects` policies, and one of them governs photographs. Direct closure and total
+closure are different claims; only the first is proved by a text search for the function name.
+
+For a rider who owns club C and holds no `club_members` row in C:
 
 | Table | Cmd | Policy | What the owner gains in C |
 |---|---|---|---|
@@ -119,15 +125,20 @@ the pairing to prefer.
 
 ### The transitive widening — a grep for `is_club_member` misses all of it
 
-Six further policies gate on a bare `EXISTS (select 1 from rides r …)` or
+Further policies gate on a bare `EXISTS (select 1 from rides r …)` or
 `EXISTS (select 1 from postcards p …)`, which is itself RLS-filtered, so they inherit the change
-without naming the function. Enumerated because an unstated widening is exactly what
-`openspec/config.yaml` warns becomes whatever the migration author assumed:
+without naming the function. **Two of them are in `storage`, not `public`.** Enumerated because
+an unstated widening is exactly what `openspec/config.yaml` warns becomes whatever the migration
+author assumed:
 
 | Table | Cmd | Inherited effect |
 |---|---|---|
+| `storage.objects` | SELECT | **`Riders read postcard images their audience predicate allows` — the owner can download the image bytes of a postcard posted into C by another rider.** This policy has **no `auth.uid()` self-arm at all**: it is `bucket_id`, folder prefix and an RLS-filtered `EXISTS` against `postcards`, so it inherits `postcards` SELECT wholesale. The widening here is photographs, not metadata |
+| `storage.objects` | SELECT | **`Ride map tiles are readable with the ride`** — same shape against `rides`, so the owner can fetch the map tiles of a private club ride they can now see |
+| `storage.objects` | SELECT | `Club avatars are readable with the club` / `Club covers are readable with the club` — **no change.** Both gate on `EXISTS (clubs c …)`, and `clubs` SELECT already carried the owner arm |
 | `ride_members` | SELECT | Owner sees the crew of C's now-visible rides. Block conjunct on `user_id` unchanged |
-| `ride_messages` | SELECT / INSERT | The `EXISTS(rides)` conjunct flips true — **but `private.is_ride_crew` still gates, so no chat access is gained.** See negative case N7 |
+| `ride_members` | **INSERT** | **The owner can insert their own crew row into another rider's private club ride** — the policy is `auth.uid() = user_id AND EXISTS (select 1 from rides r …)`, and that `EXISTS` is RLS-filtered. This is a **decided positive case**, not an oversight; see N7 |
+| `ride_messages` | SELECT / INSERT / DELETE | Reachable **only after** the owner joins the crew above, because `private.is_ride_crew` reads `ride_members` as `SECURITY DEFINER`. Ownership alone still yields nothing. DELETE stays author-or-organizer, so the owner gains no moderation of others' messages |
 | `postcard_comments` | SELECT / INSERT / DELETE | Follows postcard visibility. Owner sees and can write comments on C's postcards. DELETE still author-of-comment or author-of-postcard only |
 | `postcard_likes` | SELECT / INSERT / DELETE | Same shape. DELETE still own-like only |
 | `postcard_reports` | INSERT | Owner can report a postcard in C they can now see |
@@ -135,7 +146,8 @@ without naming the function. Enumerated because an unstated widening is exactly 
 | `ride_map_render_attempts` | SELECT / INSERT | **Nothing** — organizer-only, no club predicate |
 
 Every one of these is "the owner of C reaches, in C, what any member of C reaches". None
-introduces a role the system does not have.
+introduces a role the system does not have — and that equivalence is load-bearing for the
+`ride_members` INSERT row, which is why N7 states it as a decision rather than listing it.
 
 ## Negative cases
 
@@ -149,9 +161,13 @@ Who must **NOT** gain sight of or power over what. Each maps onto an assertion �
 - **N3 — Admin.** An admin gains **nothing new**: `club_members.role = 'admin'` implies a
   membership row, so `is_club_member` was already true for them. **No admin arm is added**, and
   there is no `clubs.admin_id` column, so no ownerless-admin state exists to repair.
-- **N4 — Blocked rider who owns a club. This is the one that must not regress.** In all four
-  block-carrying policies the `private.is_blocked` call is a **separate conjunct outside** the
-  `is_club_member` call, so widening the membership test cannot step past a block:
+- **N4 — Blocked rider who owns a club. This is the one that must not regress.** In all six
+  block-carrying policies in the caller and inherited sets — `rides` SELECT, `postcards` SELECT,
+  `club_members` SELECT, `ride_members` SELECT, `ride_messages` SELECT, and
+  `postcard_comments` / `postcard_likes` SELECT — **every `is_club_member` occurrence is
+  dominated by a `private.is_blocked` conjunct**, so widening the membership test cannot step
+  past a block. (It is *dominated by*, not *positionally beneath a top-level* one — see
+  `design.md` §D4, which states the invariant in the form the database actually has.)
   - an owner who has blocked, or been blocked by, a ride's organizer SHALL still read zero rows
     for that ride, **even though they own the club it sits in**;
   - the same for postcards by a blocked author, their comments and their likes;
@@ -162,12 +178,32 @@ Who must **NOT** gain sight of or power over what. Each maps onto an assertion �
 - **N6 — Signed-out visitor.** Gains nothing. `anon` holds zero grants on every table in the
   caller set, and the arm reads `auth.uid()`, which is NULL with no session. Asserted as a
   negative, per `openspec/config.yaml`.
-- **N7 — Ride chat is NOT widened.** An owner who can now see a private club ride SHALL NOT be
-  able to read or post in its chat unless they are its crew. `ride_messages` SELECT and INSERT
-  call `private.is_ride_crew`, which this change does not touch, and `ride-chat`'s standing
-  requirement *"Chat visibility SHALL be the intersection of ride visibility and crew membership,
-  never crew membership alone"* is preserved — this change widens the ride half; the crew half
-  still gates.
+- **N7 — Ride chat is not gained by ownership, but it IS reachable by joining. Decided, not
+  overlooked.** An owner who can now see a private club ride SHALL NOT be able to read or post in
+  its chat **while they hold no `ride_members` row**. But `ride_members` INSERT is
+  `auth.uid() = user_id AND EXISTS (select 1 from rides r …)` with that `EXISTS` RLS-filtered, so
+  the owner **can join the crew of another rider's ride in their own club**, and
+  `private.is_ride_crew` then opens `ride_messages` SELECT and INSERT.
+
+  **This is intended, because it is exactly what a member can already do.** Any member of C who
+  can see ride R can insert their own crew row and thereby reach R's chat — that is the RSVP
+  affordance, not a loophole. The capability is *"reaches their own club as a member does"*, so
+  granting the owner the same path is the rule working, not escaping. An earlier revision of this
+  proposal claimed in bold that *"no chat access is gained"*; that claim was false in two steps
+  and is corrected here rather than deleted, because it is exactly the kind of guarantee a build
+  agent would write an assertion against and get a green pass for a capability the system has.
+
+  What SHALL remain true, and is the real guarantee:
+  - **Ownership alone yields no chat.** `ride-chat`'s standing requirement *"Chat visibility
+    SHALL be the intersection of ride visibility and crew membership, never crew membership
+    alone"* is preserved: the owner needs both halves, and this change widens only the ride half.
+  - **Joining is a recorded, visible act.** It writes a `ride_members` row that appears in the
+    crew list, identically to any other rider's. There is no silent reach.
+  - **Blocking still dominates the join.** An owner blocked by R's organizer reads zero rows for
+    R, so the `EXISTS` fails and the crew insert is refused. They cannot join, and therefore
+    cannot reach the chat, by any route.
+  - **No moderation is gained.** `ride_messages` DELETE stays author-or-organizer, so the owner
+    cannot delete another rider's message in a ride they did not organize.
 - **N8 — No moderation power is created.** The owner SHALL NOT be able to edit or delete another
   rider's ride in C (`rides` UPDATE/DELETE stay `organizer_id`-keyed), another rider's postcard
   (`postcards` UPDATE stays author-keyed), or another rider's comment beyond the existing
@@ -235,6 +271,19 @@ directions.
 
 **Rollback** is the current body, reproduced verbatim in `design.md` §D5 as a copy rather than a
 reconstruction.
+
+**A new dependency on `clubs` NOT forcing row-level security, which SHALL be stated because
+nothing else records it.** The owner arm makes `is_club_member` read `public.clubs`, and `clubs`
+SELECT calls `is_club_member` — a direct self-edge. It does not recurse only because
+`pg_class.relforcerowsecurity` is **false** for `public.clubs` and the function's definer is the
+table owner (`postgres`), so RLS is not applied to the read inside the body. Verified on DEV
+2026-08-12.
+
+**`ALTER TABLE public.clubs FORCE ROW LEVEL SECURITY` would therefore turn every club read into
+`42P17` infinite recursion** — not one screen, the whole app. That is ordinary hardening which no
+security advisor asks for and which a future session could plausibly apply as a tidy-up. It is
+recorded in the migration header (task 2.5) so the trap is discoverable from the object itself
+and not only from this file.
 
 **Security advisors.** No new finding expected. `private.is_club_member` is already
 `security definer`, `authenticated` holds no EXECUTE on the `private` schema, and neither

@@ -10,9 +10,13 @@ hypothetical future callers; they are live defects today, and fixing two of nine
 issue closed is how the remaining seven get inherited as covered.
 
 The auditability objection to option 1 is real and is answered by *enumeration*, not by
-narrowness: the caller set is fixed and small (ten policies, zero in `storage`, zero in other
-functions — read from `pg_policies` and `pg_proc`, not recalled), the transitive set is six more,
-and both are written down in the proposal. A future policy that calls `is_club_member` inherits
+narrowness: the **direct** caller set is fixed and small (ten policies, zero *direct* callers in
+`storage`, zero in other functions — read from `pg_policies` and `pg_proc`, not recalled), the
+inherited set adds eleven more **including two `storage.objects` policies**, and both are written
+down in the proposal. **Direct closure is not total closure**, and the difference matters most
+precisely where it is easiest to miss: `Riders read postcard images their audience predicate
+allows` names no function and carries no `auth.uid()` arm, inheriting `postcards` SELECT whole,
+so the widening reaches image bytes. A future policy that calls `is_club_member` inherits
 the owner arm silently — which is the correct default once `club-owner-authority` states the rule
 capability-wide, and is exactly what a per-policy fix cannot give.
 
@@ -55,22 +59,38 @@ Defence in depth, in the direction that fails safe.
 ## D4. The block interaction, verified conjunct by conjunct
 
 The rule being protected is decision #2: **widening a membership test must not step past a
-block.** It holds structurally, not by luck — in every block-carrying policy in the caller and
-transitive sets, `private.is_blocked` is a conjunct at the *top level* of the predicate, while
-`is_club_member` sits inside a disjunction beneath it. Read from `pg_policies` on DEV
-2026-08-12:
+block.**
 
-| Policy | Shape | Consequence |
+**State it as domination, not as position.** An earlier revision of this section claimed
+`private.is_blocked` is "a conjunct at the top level of the predicate", and **the database
+contradicts that for two of the four policies it named**: in `rides` and `postcards` SELECT the
+top-level operator is `OR`, not `AND`. The conclusion was right and the stated reason was wrong,
+which is worse than useless in a document a build agent checks its work against — it makes a
+pre-flight gate fire on its own examples. The invariant that is actually true, read from
+`pg_policies` on DEV 2026-08-12:
+
+> **Every `is_club_member` occurrence is dominated by a `private.is_blocked` conjunct. The sole
+> disjunct that escapes that domination is the viewer's own row, and self-identity cannot be
+> blocked.**
+
+That last clause is what closes it: the escaping disjuncts are `organizer_id = auth.uid()` and
+`author_id = auth.uid()`, and `blocks_no_self_block CHECK (blocker_id <> blocked_id)` makes
+`private.is_blocked(x, x)` false for every `x`. So the escape hatch can only ever return the
+viewer's own content, which no block conceals.
+
+| Policy | Shape | Why the arm cannot escape |
 |---|---|---|
-| `rides` SELECT | `organizer_id = auth.uid() OR (NOT is_blocked(…, organizer_id) AND (… OR is_club_member(club_id)))` | The owner arm sits inside the second disjunct's inner `OR`. The block conjunct dominates it |
-| `postcards` SELECT | `author_id = auth.uid() OR (NOT is_blocked(…, author_id) AND (club_id IS NULL OR is_club_member(club_id)) AND NOT hidden)` | Same |
-| `club_members` SELECT | `(is_club_member(club_id) OR public) AND (user_id = auth.uid() OR NOT is_blocked(auth.uid(), user_id))` | Block conjunct is the outer `AND`. Blocked members stay off the roster the owner can now read |
+| `rides` SELECT | `organizer_id = auth.uid() OR (NOT is_blocked(…, organizer_id) AND (… OR is_club_member(club_id)))` | Top level is `OR`. The `is_club_member` call lives only in the second disjunct, under the block conjunct. The first disjunct is self-identity |
+| `postcards` SELECT | `author_id = auth.uid() OR (NOT is_blocked(…, author_id) AND (club_id IS NULL OR is_club_member(club_id)) AND NOT hidden)` | Same shape, same reason |
+| `club_members` SELECT | `(is_club_member(club_id) OR public) AND (user_id = auth.uid() OR NOT is_blocked(auth.uid(), user_id))` | Top level **is** `AND` here. Blocked members stay off the roster the owner can now read |
+| `ride_members` SELECT | `EXISTS(rides …) AND (user_id = auth.uid() OR NOT is_blocked(auth.uid(), user_id))` | Inherits ride visibility, keeps its own block conjunct |
+| `ride_messages` SELECT | `EXISTS(rides …) AND is_ride_crew(ride_id) AND (author_id = auth.uid() OR NOT is_blocked(…))` | Same |
 | `postcard_comments` / `postcard_likes` SELECT | `EXISTS(postcards …) AND (author_id = auth.uid() OR NOT is_blocked(…))` | Inherits postcard visibility, keeps its own block conjunct |
 
-So `NOT is_blocked(...) AND (X OR owner)` is what the change produces everywhere, never
-`(NOT is_blocked(...) AND X) OR owner`. **A reviewer's fastest check is that the owner arm went
-inside `is_club_member`'s body and nowhere else** — because any arm added at *policy* level is
-the shape that could escape the block conjunct, and this change adds none.
+**A reviewer's fastest check is that the owner arm went inside `is_club_member`'s body and
+nowhere else** — because any arm added at *policy* level is the shape that could escape a block
+conjunct, and this change adds none. That check is positional and is sound; the *invariant* is
+not, which is why the two are stated separately.
 
 ## D5. Rollback
 
