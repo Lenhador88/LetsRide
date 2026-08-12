@@ -38,6 +38,17 @@ import type { RideFilter } from '@/types'
  * padding stay outside it: both are the same whether the list has arrived or
  * not, and the padding in particular is what keeps the skeleton clear of the
  * sticky action exactly as the loaded list is.
+ *
+ * ## Two gates, not one (PD-210)
+ *
+ * The filter bar and the list are gated **separately**, because only one of
+ * them changes when a filter is tapped. The list key carries the filter
+ * segment, so a new filter is a cache entry with no data yet; a single
+ * `if (!rides.data || !filters.data)` therefore swapped the bar for the
+ * skeleton too — the whole screen flashed to pick a filter, and the bar came
+ * back with its horizontal scroll reset to the left. The bar's own key has no
+ * filter segment, so its data is already there and there is nothing to wait
+ * for. Whatever gates a subtree must be what that subtree reads.
  */
 export default function RidesPage() {
   return (
@@ -89,14 +100,17 @@ function RidesScreen() {
   if (gate.error) return <ErrorState onRetry={gate.refetch} />
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
-  // where `isLoading` is false and there is still nothing to draw.
-  if (!rides.data || !filters.data) return <SkeletonList />
+  // where `isLoading` is false and there is still nothing to draw. Only the
+  // bar's own read is waited on here; the list has its own gate below.
+  if (!filters.data) return <SkeletonList />
 
   return (
     <>
       <RideFilterBar filters={filters.data} active={filter} />
 
-      {rides.data.length === 0 ? (
+      {!rides.data ? (
+        <SkeletonList />
+      ) : rides.data.length === 0 ? (
         <EmptyList filter={filter} />
       ) : (
         <div className="flex flex-col gap-2 px-4 py-2">
