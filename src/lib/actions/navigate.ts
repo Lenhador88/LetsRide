@@ -4,6 +4,7 @@ import { useCallback, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from '@/lib/actions/auth'
 import type { ActionState } from '@/lib/actions/state'
+import { BACK_ORIGIN_PARAM, resolveBackDestination } from '@/lib/back-navigation'
 
 /**
  * The honouring half of `ActionState.redirectTo` — task 5.8.
@@ -38,6 +39,44 @@ export function useActionRedirect(state: ActionState): void {
     router.replace(state.redirectTo)
     // `state` rather than `state.redirectTo` — see the identity note above.
   }, [state, router])
+}
+
+/**
+ * The handler behind `Header`'s `onBack` — a back control for a screen with more
+ * than one way in, where a static `backHref` would have to guess which.
+ * `@/lib/back-navigation` carries the whole decision, including why this
+ * navigates to a carried origin rather than popping the history.
+ *
+ * **`window.location` is read inside the handler, never during render**, which
+ * is also why this reads the parameter itself instead of `useSearchParams()`.
+ * That hook is the right tool for the ten detail routes, which need their id
+ * *during* render to issue a read and therefore pay for a `<Suspense>` boundary
+ * Next requires of a prerendered route. Nothing here is wanted until the rider
+ * taps, so the boundary would buy nothing — and `/notifications` keeps
+ * prerendering static, which is the check that this stayed true.
+ *
+ * `replace` rather than `push`: the rider is leaving this screen, and pushing
+ * would leave it one entry back for their next system-back gesture to return to.
+ *
+ * **The residual cost of `replace`, stated rather than left to be rediscovered.**
+ * It overwrites the current entry, so a rider who came from `/rides` ends up with
+ * `[/rides, /rides]` — and their next *system* back gesture moves to index 0 and
+ * renders `/rides` again. The screen does not change and the gesture reads as
+ * dead, which is the same perceived failure `back-navigation.ts` calls
+ * unacceptable, arriving from the OS rather than from this control.
+ *
+ * It is still the right trade and the alternatives are both worse: `push` sends
+ * that gesture back to `/notifications`, and `router.back()` reintroduces a dead
+ * in-app arrow on a cold deeplink carrying `?from=` — the failure this design
+ * exists to refuse. Fixing it properly needs history the app does not own.
+ */
+export function useBack(): () => void {
+  const router = useRouter()
+
+  return useCallback(() => {
+    const from = new URLSearchParams(window.location.search).get(BACK_ORIGIN_PARAM)
+    router.replace(resolveBackDestination(from))
+  }, [router])
 }
 
 /**

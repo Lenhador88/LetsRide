@@ -17,8 +17,21 @@ type HeaderProps = {
    * URL, so it is live immediately and only the title waits.
    */
   title: string | undefined
-  /** Renders the 40×40 back control at the left of the title row. */
+  /** Renders the 40×40 back control at the left of the title row, as a link. */
   backHref?: string
+  /**
+   * The same 40×40 back control, as a button — for a screen whose way back is
+   * not a fixed URL. `/notifications` is the only one so far and the reason this
+   * slot exists (PD-209): it is reached from the mailbox on all four tab roots,
+   * so `backHref` would have to name one of them and be wrong from the other
+   * three. `useBack` in `@/lib/actions/navigate` is the handler to pass.
+   *
+   * Ignored when `backHref` is also given — one control, and a caller supplying
+   * both has not decided which it wants. Everything else about the two is
+   * identical by construction: they share `BACK_CONTROL` rather than repeating a
+   * class list that would drift the moment one of them was restyled.
+   */
+  onBack?: () => void
   /**
    * The 20px sub-page row beneath the title, centred. The ride detail puts its
    * `Ride plan ⌄` switcher here.
@@ -111,9 +124,18 @@ type HeaderProps = {
  * The avatar-and-name title of `Type=User` / `Type=Club` is `titleLeading`,
  * built for the club detail. The profile screen does not use it yet.
  */
+/**
+ * `v2 / Component / Button / Icon` at 40×40 — the design's own size for this
+ * control, and the tap target on every screen that draws one. Shared by the link
+ * and button forms so the two cannot drift apart.
+ */
+const BACK_CONTROL =
+  'absolute left-0 flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border'
+
 export function Header({
   title,
   backHref,
+  onBack,
   subRow,
   action,
   secondaryAction,
@@ -130,15 +152,15 @@ export function Header({
       {/* The title centres on the header, not on the space left over beside the
           back button — so it must not share a flex row with it. */}
       <div className="relative flex h-10 items-center justify-center">
-        {backHref && (
-          <Link
-            href={backHref}
-            aria-label="Back"
-            className="absolute left-0 flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
-          >
+        {backHref ? (
+          <Link href={backHref} aria-label="Back" className={BACK_CONTROL}>
             <ArrowLeftIcon className="h-6 w-6" />
           </Link>
-        )}
+        ) : onBack ? (
+          <button type="button" onClick={onBack} aria-label="Back" className={BACK_CONTROL}>
+            <ArrowLeftIcon className="h-6 w-6" />
+          </button>
+        ) : null}
         {/* Symmetric so the title stays centred on the header rather than on the
             space left beside the back button. Asymmetric padding would shift it
             off-centre, which the design does not do. */}

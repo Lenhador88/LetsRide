@@ -44,6 +44,7 @@ src/
 │   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore; boot-restore.ts — the shell's cold start (PD-142)
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
 │   ├── routes.ts           # every href that names a resource id — /rides/detail?id= and its nine siblings (PD-142)
+│   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
 │   ├── realtime/           # useRideMessageStream — the app's only Supabase Realtime subscription
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
