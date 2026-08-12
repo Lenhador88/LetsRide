@@ -72,7 +72,7 @@ function EditRideScreen() {
     return (
       <>
         {header}
-        <p className="px-6 pt-8 text-center text-sm font-medium text-muted">
+        <p className="motion-safe:animate-fade-in px-6 pt-8 text-center text-sm font-medium text-muted">
           Only the organizer can edit this ride.
         </p>
       </>
@@ -82,7 +82,7 @@ function EditRideScreen() {
   return (
     <>
       {header}
-      <div className="px-4 pb-8">
+      <div className="px-4 pb-8 motion-safe:animate-fade-in">
         <EditRideForm ride={ride.data} clubs={clubs.error ? null : clubs.data} />
       </div>
     </>

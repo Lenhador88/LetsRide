@@ -115,6 +115,39 @@
      value cannot drift from its source. */
   --color-disabled: var(--color-border);
   --color-disabled-foreground: var(--color-border-strong);
+
+  /* The gentle fade-in loaded content gets wherever it replaces a skeleton
+     — product owner: "a gentle fade out fade in of the content that loads".
+     180ms lands inside the requested 150–200ms; `ease-out` front-loads the
+     motion so it reads as arriving rather than drifting in. Registering it
+     here (Tailwind v4's `--animate-*` namespace) is what turns it into the
+     `animate-fade-in` utility used below, always behind `motion-safe:` —
+     the same guard `Skeleton.tsx`'s own `animate-pulse` already uses. */
+  --animate-fade-in: fade-in 180ms ease-out;
+}
+
+/* **Applying this class to an element that is already on screen is enough to
+   run it**, which is what every call site relies on and is worth stating once
+   here rather than re-deriving per screen. An animation starts whenever
+   `animation-name` computes from `none` to a name, so a skeleton branch and a
+   content branch that React reconciles as one persistent node — same element
+   type, same position, no key — still fade: the class arrives, the name
+   changes, the animation runs. No `key` is needed to force a remount, and one
+   added for that reason is dead weight that reads as load-bearing.
+
+   `from` only, with no `to`. The implicit final keyframe is synthesized from
+   the element's own computed `opacity`, so the animation cannot disagree with
+   the resting state no matter what a call site sets — which is the property
+   worth having on a loading treatment, where the failure mode is content that
+   stays invisible. (`--animate-*` compiles to the `animation` shorthand, which
+   resets `animation-fill-mode` to `none`, so an explicit `to` would be safe
+   too; this is one less thing to keep in agreement rather than a fix for
+   something broken.) If the class never applies at all, opacity is 1 and the
+   content is simply there. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* Custom utility (Tailwind v4 CSS-first) rather than Tailwind's `bg-gradient-to-*`

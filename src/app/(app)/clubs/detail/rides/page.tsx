@@ -82,7 +82,7 @@ function ClubRidesScreen() {
     <>
       {header}
 
-      <div className="px-4">
+      <div className="px-4 motion-safe:animate-fade-in">
         {rides.data.length === 0 ? (
           <p className="py-8 text-center text-sm font-medium text-muted">
             No rides are planned, yet!

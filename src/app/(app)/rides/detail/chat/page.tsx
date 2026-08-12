@@ -233,7 +233,7 @@ function ChatBody({
 
   if (!isCrew) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center motion-safe:animate-fade-in">
         <p className="text-base font-semibold text-foreground">This chat is for the crew</p>
         <p className="text-sm text-muted">
           Say you are going and you will be able to read and post here.
@@ -258,12 +258,12 @@ function ChatBody({
   return (
     <>
       {shown.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center motion-safe:animate-fade-in">
           <p className="text-base font-semibold text-foreground">No messages yet</p>
           <p className="text-sm text-muted">Say hello to the riders coming along.</p>
         </div>
       ) : (
-        <RideChatThread messages={shown} />
+        <RideChatThread messages={shown} className="motion-safe:animate-fade-in" />
       )}
       <RideChatComposer onSend={send} />
     </>

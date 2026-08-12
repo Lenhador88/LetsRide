@@ -90,7 +90,7 @@ function PostcardThread() {
   }
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6">
+    <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6 motion-safe:animate-fade-in">
       <Button href="/postcards" variant="link">
         Back to postcards
       </Button>

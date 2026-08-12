@@ -160,7 +160,7 @@ function NotificationsScreen() {
     // empty are not told apart, because distinguishing them would disclose a
     // block. Spec requirement, not an oversight.
     return (
-      <p className="px-4 py-24 text-center text-sm font-medium text-muted">
+      <p className="motion-safe:animate-fade-in px-4 py-24 text-center text-sm font-medium text-muted">
         You have no notifications yet.
       </p>
     )
@@ -173,7 +173,7 @@ function NotificationsScreen() {
   })).filter((section) => section.rows.length > 0)
 
   return (
-    <div className="flex flex-col pb-8">
+    <div className="flex flex-col pb-8 motion-safe:animate-fade-in">
       {sections.map((section) => (
         <section key={section.label}>
           <SectionHeader title={section.label} />
