@@ -280,7 +280,7 @@ iOS or Android behaviour. That needs a device.
 **The static export builds, and `webDir` now has something in it — PD-142, 2026-08-10.**
 
 ```bash
-npm run build:native          # CAPACITOR_BUILD=1 next build, then the bundle check
+NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native
 ls out/index.html             # exists; .next-capacitor/ does not
 ```
 
@@ -314,10 +314,10 @@ PD-188, 2026-08-12.** Two things landed:
   the shared postcard link and both GoTrue redirects. It returns `NEXT_PUBLIC_CANONICAL_ORIGIN`
   when set and `window.location.origin` otherwise, so **the web build is unchanged with the
   variable unset**. `next.config.ts` fails a `CAPACITOR_BUILD=1` build when it is missing and a
-  **web** build when it is set, both reading it trimmed — a guard that disagrees with `origin.ts`
-  about what "set" means is not fail-closed. Why it matters, measured against PROD's auth server
-  2026-08-12: docs/ENVIRONMENTS.md §The redirect allowlist. No dashboard action is needed —
-  PD-106 already allowlisted `https://app.letsride.social`.
+  **web** build when it is set, both asking `normaliseConfiguredOrigin()` so they cannot disagree
+  with `origin.ts` about what "set" means. Why it matters, measured against PROD's auth server
+  2026-08-12: docs/ENVIRONMENTS.md §The redirect allowlist. No dashboard action needed — PD-106
+  allowlisted `https://app.letsride.social` already.
 - **`npm run release:check` is the pre-submission gate** over the built `out/`: the PROD ref
   present, no other ref (DEV by name), the canonical origin baked in, no `localhost` one — and a
   **failure when it finds no ref at all**, so an empty `out/` cannot read as clean. Deliberately

@@ -132,15 +132,15 @@ npm run release:check
 refuses the bundle unless it carries `zwprydcyryvudhurbnye` (`letsride`) and **no other** project
 ref, and the canonical origin above and no `localhost` one. **It fails when it finds no ref at
 all**, because a stale or empty `out/` otherwise reads exactly like a clean bundle — the same
-skip-is-not-a-pass rule `docs:check --cheap` follows. Its detectors are tested against planted
-failures in `scripts/native/__tests__/release-guards.test.mjs`, and both directions were run
-against real builds on 2026-08-12: a PROD-ref bundle passes, a DEV-ref bundle is refused by name.
+skip-is-not-a-pass rule `docs:check --cheap` follows. Detectors tested against planted failures
+in `scripts/native/__tests__/release-guards.test.mjs`; run against real builds 2026-08-12, a
+PROD-ref bundle passes and a DEV-ref one is refused by name.
 
 **It is deliberately not part of `npm run build:native`.** That runs `check-export.mjs` on every
-native build, including the local and on-device ones which may point wherever they like as long as
-they never reach a store (`openspec/changes/add-static-export-bundle/design.md` §D7). Wiring the
-release gate in there would either block
-every test build or get switched off.
+native build, including the local, CI and on-device ones which may point wherever they like as long
+as they never reach a store (`openspec/changes/add-static-export-bundle/design.md` §D7) — CI's own
+bundle step builds against DEV. Wiring the release gate in there would either block every test
+build or get switched off.
 
 **`NEXT_PUBLIC_CANONICAL_ORIGIN` is the third variable a bundle bakes in permanently**, and it is
 required for a native build — `next.config.ts` fails a `CAPACITOR_BUILD=1` build without it, and
@@ -151,18 +151,16 @@ therefore opens `app.letsride.social`, the **web** app, rather than deep-linking
 shell; that is acceptable, and universal/app links are separate work.
 
 **Do not set it in any Vercel target — a web build now REFUSES it rather than tolerating it.**
-This is the one hazard the variable introduces, and it arrives through the same door as the split
-that once left Preview holding the Supabase URL and not the key: somebody sets it in Vercel,
-having read that a release needs it, and unless it is scoped to a single target it lands on
-**Preview** as well. Every DEV and feature-branch build then emails confirmation and recovery
-links pointing at `app.letsride.social`, where the token was minted by the wrong project and is
-invalid — green deploy, right-looking link, and the rider who clicks it is the first thing that
-fails. On the web the variable cannot even help: `window.location.origin` is already the host
-that served the app, so a configured value can only agree with the default or contradict it.
+This is the one hazard the variable introduces, through the same door as the split that once left
+Preview holding the Supabase URL and not the key: somebody sets it in Vercel, having read that a
+release needs it, and unless it is scoped to a single target it lands on **Preview** too. Every
+DEV and feature-branch build then emails confirmation and recovery links pointing at
+`app.letsride.social`, where the token was minted by the wrong project and is invalid — green
+deploy, right-looking link, and the rider clicking it is the first thing that fails. It cannot
+even help when right: `window.location.origin` is already the host that served the app.
 
-`next.config.ts` throws on a web build that has it set, which is stronger than an assertion over
-the built output — the build produces no artifact at all, so there is nothing that can ship
-wrong. Both directions are checked:
+`next.config.ts` throws rather than asserting over the built output — no artifact is produced, so
+nothing can ship wrong. Both directions are checked:
 
 ```bash
 # expect exit 1 and "NEXT_PUBLIC_CANONICAL_ORIGIN is set, but this is a web build"
