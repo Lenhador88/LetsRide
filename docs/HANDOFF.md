@@ -95,12 +95,22 @@ npm run release:check                 # only before a store submission — see �
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
 - **`main` is at `ee0cde0`** — promoted via #191 as a merge commit, back-merged by fast-forward,
-  so both branches sit on that sha. That promotion carried **28** commits and is the largest so
-  far: the ride map tiles (PD-104, PD-202), crew-wide ride-join notifications (PD-129), a club
-  owner reaching their own club as a member does (PD-128), the form-retention pair (PD-199,
-  PD-196), bounded place search with the index loaded in production (PD-150, PD-195), and the
-  release bundle's baked-in backend and origin (PD-188). The three before it were #150, #148 and
-  #100.
+  so both branches sit on that sha. That promotion carried **27** commits — `p1..p2`, the same
+  rule the counts beside the earlier promotions use; the incl-merge number is 28 — and is the
+  largest so far: the ride map tiles (PD-104, PD-202), crew-wide ride-join notifications
+  (PD-129), a club owner reaching their own club as a member does (PD-128), the form-retention
+  pair (PD-199, PD-196), bounded place search with the index loaded in production (PD-150,
+  PD-195), and the release bundle's baked-in backend and origin (PD-188). The three before it
+  were #163, #154 and #150.
+
+  **Re-derive both numbers rather than editing the tail of this list** — a previous revision
+  prepended a new promotion to ids that were already wrong, which is how one stale entry becomes
+  three:
+
+  ```bash
+  git log --oneline --merges -5 origin/main            # the promotions, newest first
+  git rev-list --count <sha>^1..<sha>^2                # what one carried
+  ```
 
   **This line goes stale on every promotion and nothing updates it automatically** — #148 shipped
   without moving it, which is why it read two promotions out of date. Re-derive rather than trust
@@ -733,8 +743,10 @@ identical and invisible to every other check, so nothing but comparing `md5(pros
 two projects would have found it.
 
 **`md5sum` of the file therefore equals neither database's recorded statement for `055`** —
-DEV's because a comments-only fix landed after its apply, PROD's for the reason above. Same class
-as `036`–`040` and `049`. Compare the digest of the object, never the recorded text.
+DEV's because a comments-only fix landed after its apply, PROD's for the reason above. That is
+the ordinary case rather than a named exception: a reduced recorded statement is the norm for a
+large migration on both projects, and `CLAUDE.md` §Supabase Rules carries the query that measures
+it instead of a list to check against. Compare the digest of the object, never the recorded text.
 
 **It carries a KNOWN GAP that is asserted rather than latent, and the assertions are the record.**
 `rides` SELECT holds neither a `ride_members` nor an `is_ride_crew` arm, so *on this crew* and *can
