@@ -40,7 +40,7 @@ import type { RideAttendance, RideListItem } from '@/types'
  * and a tile that fails to load falls back to exactly that.
  *
  * The pin gains a `White/100` disc **only** over a tile. Bare `Grey/100` on a
- * warm `Grey/10%` container is 15.3:1, but on an arbitrary map tile it is
+ * warm `Grey/10%` container is 13.82:1, but on an arbitrary map tile it is
  * whatever the tile happens to be; the disc makes it 17.4:1 whatever is behind
  * it, and reads as the map marker it is.
  */
@@ -59,8 +59,14 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
 
   // A tile that 404s or whose signature has expired must cost this row its
   // picture, never its layout — one image cannot be allowed to break a list.
-  const [tileFailed, setTileFailed] = useState(false)
-  const showsTile = !!ride.map_card_url && !tileFailed
+  // Keyed on the URL that failed, NOT a boolean latch. The row keeps its
+  // component instance across a refetch — `key={ride.id}` — while the signed
+  // URL is re-minted every SIGNED_URL_TTL_SECONDS, so a boolean would hide the
+  // tile for the rest of the mount after one expiry, with a working URL in
+  // hand. That is reachable in the native shell, where a list can stay mounted
+  // for hours across a background/resume.
+  const [failedTileUrl, setFailedTileUrl] = useState<string | null>(null)
+  const showsTile = !!ride.map_card_url && ride.map_card_url !== failedTileUrl
 
   return (
     <Link
@@ -80,7 +86,7 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
             // third line of the card, in text, right beside it.
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
-            onError={() => setTileFailed(true)}
+            onError={() => setFailedTileUrl(ride.map_card_url ?? null)}
             loading="lazy"
             draggable={false}
           />

@@ -326,9 +326,10 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
       (`051`, PD-104): `rides` now carries `map_card_path` beside a coordinate, and the strip
       draws that tile with the `Location Filled` pin over it — the design's
       photo-carrying-a-pin, with the static map thumbnail decision #3 calls for as the photo.
-      The pin gains a `White/100` disc **only** over a tile: bare `Grey/100` is 15.3:1 on the
-      `Grey/10%` container and unknowable on an arbitrary map, and the disc makes it 17.4:1
-      whatever is behind it.
+      The pin gains a `White/100` disc **only** over a tile: bare `Grey/100` is 13.82:1 on the
+      `Grey/10%` container — `#0000001A` is 10.196% black, which over the card's own opaque
+      `bg-surface` composites to `#E5E5E5`, not the ~6% fill 15.3:1 would imply — and unknowable
+      on an arbitrary map, and the disc makes it 17.4:1 whatever is behind it.
 
       **What has not landed is anything that writes the column**, so the honest state of the
       screen is unchanged: every ride in both databases has a NULL path and every card draws

@@ -656,10 +656,15 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
 #   DEV 53 rows, ending 053_ride_map_ledger_comment_and_052_verification · PROD
 #   50, ending 050_search_places_candidate_cap. NOT level — 051, 052 and 053 are
-#   DEV-only, and DELIBERATELY so: they are additive, but nothing reads the tile
-#   columns until PD-104 §2-3 ship, so applying them to PROD now buys a schema no
-#   rider can reach and a second thing to keep level. tasks.md 1.11b is the open
-#   box, and CLAUDE.md's additive-first ordering is why it applies with the code.
+#   DEV-only, and that is now a BLOCKER ON THE PROMOTION rather than a deliberate
+#   gap. It was deliberate for one day: purely additive columns nothing read. But
+#   PD-104 §2-3 shipped, RIDE_SELECT names map_card_path, and PROD has NONE of the
+#   five columns (measured, not assumed) — so a development -> main promotion
+#   would 400 every rides read in production, green through CI, green through the
+#   merge, broken only for riders. APPLY 051-053 TO PROD BEFORE PROMOTING.
+#   051 is 40 KB: reduce-and-diff against DEV per CLAUDE.md's paragraph on
+#   applying a migration too large to pass as a string, never a hand
+#   transcription. tasks.md 1.11b is the open box.
 #   050 IS on PROD: #179 loaded places into production behind it rather than after
 #   it, which is the right order — PROD carries 736,538 places rows, so the
 #   candidate cap is guarding a loaded table there, not an empty one.

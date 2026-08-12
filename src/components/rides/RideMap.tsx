@@ -75,8 +75,12 @@ export function RideMap({
   // A tile that 404s or whose signature has expired falls back to the panel
   // this screen has always drawn, rather than leaving a broken image under the
   // address.
-  const [tileFailed, setTileFailed] = useState(false)
-  const showsTile = !!tileUrl && !tileFailed
+  // Keyed on the URL that failed, NOT a boolean latch — same reason as
+  // RideCard: this component survives the refetch that re-mints the signed URL,
+  // so a boolean would keep the panel on its fallback for the rest of the mount
+  // after a single expiry.
+  const [failedTileUrl, setFailedTileUrl] = useState<string | null>(null)
+  const showsTile = !!tileUrl && tileUrl !== failedTileUrl
 
   // `meeting_point` is NOT NULL but not non-empty, and nothing rejects blank:
   // the create form's `required` accepts `"   "`, the insert does not trim,
@@ -109,7 +113,7 @@ export function RideMap({
             // over it, and again in the location row above the panel.
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
-            onError={() => setTileFailed(true)}
+            onError={() => setFailedTileUrl(tileUrl ?? null)}
             loading="lazy"
             draggable={false}
           />
