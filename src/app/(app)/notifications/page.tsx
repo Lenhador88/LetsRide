@@ -97,6 +97,15 @@ function NotificationsScreen() {
     }
   }
 
+  // `combineQueries` surfaces the FIRST error of either, so a failed profile
+  // read blanks the whole list even when all 30 rows are already in hand. That
+  // is deliberate rather than overlooked, and it is the same argument as the
+  // data gate below: the alternative is to fall through with `viewerId`
+  // undefined, which does not degrade to "unknown" — it degrades to a positive
+  // claim that the reader is NOT the organizer, silently, on every row. A loud
+  // retryable error beats a quiet wrong sentence, and `gate.refetch` retries
+  // both. The cost is an availability regression on a transient `profiles`
+  // failure, which is the trade being made.
   const gate = combineQueries(first, profile)
   if (gate.error) {
     return (

@@ -34,7 +34,7 @@ The live set as last read back off the board:
 | `Backlog AI` | backlog | Captured, not triaged. **Was `Backlog`** | Either |
 | `Todo Human` | unstarted | Triaged; owner chores live here | Either |
 | `Todo AI` | unstarted | Triaged, and a session could do it. **Not a start signal** | Either |
-| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
+| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner**, and an agent at STEP 2d |
 | `Queued (AI)` | started | **Approved to build. The only start signal** | **Owner** |
 | `Development (AI)` | started | An agent has it *now*. **The concurrency lock** | Agent |
 | `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |

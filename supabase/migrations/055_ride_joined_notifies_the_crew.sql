@@ -316,11 +316,19 @@ revoke all on function private.notify_ride_joined() from public, anon, authentic
 --    where oid = 'private.notify_ride_joined()'::regprocedure
 --      and prosrc like '%auth.uid()%';
 --
---   -- 1 trigger, still bound, still carrying NO when clause
+--   -- 1 row — still bound, still carrying NO when clause. The tgname filter is
+--   -- REQUIRED and not tidiness: ride_members is one of the ten tables carrying
+--   -- enforce_participation_gate, so the unfiltered query returns TWO rows with
+--   -- the gate's no_when_clause reading false — a correct database that reads as
+--   -- a failed apply, at exactly the moment (the PROD promotion) this block is
+--   -- run. rls_test.sql already carries the filtered form.
 --   select tgname, tgqual is null as no_when_clause from pg_trigger
---    where tgrelid = 'public.ride_members'::regclass and not tgisinternal;
+--    where tgrelid = 'public.ride_members'::regclass and not tgisinternal
+--      and tgname = 'notify_ride_joined';
 --
---   -- 5 — the type CHECK is untouched, no sixth type was added
+--   -- 2 rows, naming 5 types between them — the type CHECK is untouched and no
+--   -- sixth type was added. The 5 is the type count INSIDE the CHECK, not a row
+--   -- count; the neighbouring comments here are row counts.
 --   select pg_get_constraintdef(oid) from pg_constraint
 --    where conname in ('notifications_type_check','notifications_subject_shape');
 --

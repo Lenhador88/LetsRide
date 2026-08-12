@@ -719,6 +719,14 @@ three ways rather than eyeballed: the file's `$$` block, DEV's `prosrc`, and a l
 `a4c1332fe109aa3c56111794a37aaab2`. The live RSVP path was exercised on DEV inside a rolled-back
 transaction, notifying exactly the three expected riders with nothing raised and no residue.
 
+**`md5sum` of the file will NOT equal DEV's recorded statement for `055`, and that is expected** —
+the same class as `036`–`040` and `049`. The review pass found a wrong expectation in the file's
+own post-apply verification block (the unfiltered `pg_trigger` query returns two rows on
+`ride_members`, because `enforce_participation_gate` is on it too, so a correct database reads as
+a failed apply). The fix is **comments only** — zero non-comment lines changed — so the applied
+object needs nothing: DEV's `prosrc` still reads `a4c1332fe109aa3c56111794a37aaab2`, re-checked
+after the edit. Compare the digest, never the recorded text.
+
 **It carries a KNOWN GAP that is asserted rather than latent, and the assertions are the record.**
 `rides` SELECT holds neither a `ride_members` nor an `is_ride_crew` arm, so *on this crew* and *can
 see this ride* are different sets — the crew fan-out writes some rows `036` §3's resolvability
