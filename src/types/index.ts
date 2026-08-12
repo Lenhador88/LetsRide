@@ -690,9 +690,16 @@ export type NotificationRow = {
   actor: PublicProfile | null
   /** Set for `postcard_liked` and `postcard_commented`. */
   postcard: { id: string; image_path: string; image_url: string | null } | null
-  /** Set for `ride_joined` and `ride_created_in_club`. No image — `rides` has
-   * no image column, so there is no trailing thumbnail for either type. */
-  ride: { id: string; title: string } | null
+  /**
+   * Set for `ride_joined` and `ride_created_in_club`. No image — the frame's
+   * trailing tile for both is a map with a pin, which is still an open design
+   * question rather than a column to select.
+   *
+   * `organizer_id` is what tells the two readers of a `ride_joined` row apart:
+   * the fan-out reaches the whole crew, and the organizer created the ride
+   * rather than joining it, so the copy branches on it (`notificationCopy`).
+   */
+  ride: { id: string; title: string; organizer_id: string } | null
   /** Set for `club_joined`, and for `ride_created_in_club` as *context* — the
    * copy names the club even though the row's destination is the ride. */
   club: EmbeddedClub | null

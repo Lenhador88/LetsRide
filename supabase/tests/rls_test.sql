@@ -5270,9 +5270,17 @@ select assert_eq(
   3, '036: ... and every other member of that club is');
 
 -- ---------------------------------------------------------------------------
--- 7.4 / 7.7 — ride_joined is the organizer and nobody else, and an UPDATE is
---      not an event
+-- 7.4 / 7.7 — ride_joined reaches the organizer, and an UPDATE is not an event
 -- ---------------------------------------------------------------------------
+-- ** 055 WIDENED THIS TYPE TO THE WHOLE CREW. ** Every count in this block still
+-- reads what it did under 036, and that is a property of the fixture rather than
+-- of the fan-out: d002's only crew members are its organizer and the actor, so
+-- the widened set and the organizer-only set coincide here. The block is left in
+-- place because what it asserts — the organizer is reached, an UPDATE is not an
+-- event, a rejoin does not stack — all still holds. The one label that claimed
+-- the NARROWNESS is corrected below; the crew set itself is asserted in §055,
+-- against a fixture with four distinct recipients, which is the only shape that
+-- can tell the two apart.
 -- ** Every count below is scoped to THIS section's own ride. ** seed.sql's own
 -- RSVPs, likes and comments fire these same triggers when the fixtures load, so
 -- an unscoped `where type = 'ride_joined'` counts rows this section did not
@@ -5295,7 +5303,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-00000036d002'),
-  1, '036: ... and nobody else on the crew, notwithstanding what the design draws');
+  1, '036/055: ... and nobody else HERE — not because the set is organizer-only, which 055 widened, but because d002''s only other crew member IS the organizer. The crew set is asserted in §055 against four distinct recipients');
 
 update ride_members set status = 'maybe'
  where ride_id = '00000000-0000-0000-0000-00000036d002'
@@ -11628,6 +11636,587 @@ select assert_eq((select count(*)::int from pg_policies
 
 set role authenticated;
 rollback to savepoint club_owner_reach_054;
+
+-- ===========================================================================
+-- 055. `ride_joined` fans out to the WHOLE CREW — everyone Going or Maybe,
+--      unioned with the organizer, minus the actor, minus anyone blocked with
+--      them. PD-129, widening 036 §7.4's organizer-only set.
+--
+-- ** THE LABELS BELOW ARE PREFIXED `055:` AND SIT UNDER THIS HEADER, WHICH IS
+-- NOT A FORMALITY. ** PD-169 records that 042's assertions were filed under the
+-- wrong header and have been misread as belonging to the migration above them
+-- ever since. A label is the only thing a failing run prints, so it is the only
+-- place the reader learns which migration is on the hook.
+--
+-- ** EVERY COUNT IS SCOPED TO THIS SECTION'S OWN RIDE *AND* ITS OWN ACTOR. **
+-- The widened fan-out fires on every fixture RSVP in this section, and on the
+-- seed's, so an unscoped `where type = 'ride_joined'` counts rows this block did
+-- not write. Scoping to the ride alone is not enough either, now that a single
+-- ride accumulates one fan-out per joiner: the assertion under test is the fan-
+-- out caused by ONE join, so `actor_id` is part of every scope below.
+-- ===========================================================================
+savepoint ride_joined_crew_055;
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- Eight riders of this section's own, so no count asserted anywhere above this
+-- line moves. Same rule 009's and 054's fixtures follow.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000129001', 'pd129organizer@example.com'),
+  ('00000000-0000-0000-0000-000000129002', 'pd129going@example.com'),
+  ('00000000-0000-0000-0000-000000129003', 'pd129maybe@example.com'),
+  ('00000000-0000-0000-0000-000000129004', 'pd129actor@example.com'),
+  ('00000000-0000-0000-0000-000000129005', 'pd129blockedactor@example.com'),
+  ('00000000-0000-0000-0000-000000129006', 'pd129leaver@example.com'),
+  ('00000000-0000-0000-0000-000000129007', 'pd129otherride@example.com'),
+  ('00000000-0000-0000-0000-000000129008', 'pd129blockedorg@example.com');
+
+update profiles set username = 'pd129organizer', location = 'Lisbon',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000129001';
+update profiles set username = 'pd129going', location = 'Porto',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000129002';
+update profiles set username = 'pd129maybe', location = 'Faro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000129003';
+update profiles set username = 'pd129actor', location = 'Braga',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000129004';
+update profiles set username = 'pd129blockedactor', location = 'Aveiro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000129005';
+update profiles set username = 'pd129leaver', location = 'Evora',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000129006';
+update profiles set username = 'pd129otherride', location = 'Coimbra',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000129007';
+update profiles set username = 'pd129blockedorg', location = 'Setubal',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000129008';
+
+-- d01 is the ride under test. d02 exists only so a rider can be on a DIFFERENT
+-- ride — a negative that passes vacuously without one. d03 carries the organizer
+-- arm ALONE: nobody RSVPs the organizer onto it, so a row reaching them there
+-- can only have come through the union.
+--
+-- All three are PUBLIC and club-less on purpose. This section is about the
+-- recipient SET, and a club or a private flag would make every read assertion
+-- below depend on `rides` SELECT's second disjunct as well — which is 017's,
+-- 022's and 054's territory, already covered there, and would mask which
+-- conjunct a failure came from.
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id) values
+  ('00000000-0000-0000-0000-0000129d0001', 'PD129 Crew Run',  'The Quay',  now() + interval '6 days',
+   true, '00000000-0000-0000-0000-000000129001'),
+  ('00000000-0000-0000-0000-0000129d0002', 'PD129 Other Run', 'The Bend',  now() + interval '7 days',
+   true, '00000000-0000-0000-0000-000000129001'),
+  ('00000000-0000-0000-0000-0000129d0003', 'PD129 Union Run', 'The Ridge', now() + interval '8 days',
+   true, '00000000-0000-0000-0000-000000129001');
+
+-- ---------------------------------------------------------------------------
+-- 055.0  No JWT, which is what proves the actor is read from NEW
+-- ---------------------------------------------------------------------------
+-- Everything in this fixture is inserted as the TABLE OWNER with `test.uid`
+-- empty, so auth.uid() is NULL throughout. 036 trap (b): had the widened
+-- recipient set been written `where candidates.recipient <> auth.uid()`, that
+-- predicate would be NULL rather than TRUE and would filter out EVERY
+-- recipient — so every count below would read 0, every negative assertion here
+-- would pass vacuously, and only the positives would fail.
+select assert_eq(auth.uid(), null::uuid,
+  '055: the widened fan-out is exercised with NO JWT — auth.uid() is NULL, so a recipient set written against it would filter everyone out');
+
+-- ** ONE STATEMENT PER JOIN, AND IT MATTERS MORE HERE THAN IT DID FOR 036. **
+-- An AFTER ROW trigger fires once the whole STATEMENT completes, so a batched
+-- multi-row INSERT makes every row visible to every invocation. 036's club
+-- fan-out already had that property; this one now reads `ride_members`, so a
+-- batched RSVP would have each joiner notify riders who "already" joined in the
+-- same statement. The app cannot produce that — every RSVP is one rider's own
+-- request — so seeding in one batch would assert against a shape the product
+-- never reaches.
+
+-- ---------------------------------------------------------------------------
+-- 055.1  The organizer's own RSVP still notifies nobody — the after-union
+--        exclusion, which is the single easiest thing to break here
+-- ---------------------------------------------------------------------------
+-- The organizer now qualifies through BOTH arms: as `rides.organizer_id` and,
+-- the instant this statement lands, as a `ride_members` row. Move the actor
+-- exclusion inside either arm and the other one still yields them, so every
+-- organizer RSVPing to their own ride tells themselves they joined it. 036 §7.6
+-- paid for this on club creation; this is the same trap on a different table.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129001', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'),
+  0, '055: the organizer RSVPing to their own ride still notifies nobody — the actor exclusion sits AFTER the union, so qualifying through both arms does not leak one through');
+
+-- ---------------------------------------------------------------------------
+-- 055.2  Building the crew. Each of these fans out in its own right; the
+--        assertions under test come after, scoped to the LAST joiner.
+-- ---------------------------------------------------------------------------
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129002', 'going');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129003', 'maybe');
+
+-- The leaver joins and then leaves, so they are off the crew BEFORE the fan-out
+-- under test. Written as a join-then-leave rather than simply omitting them,
+-- because "a rider who never joined is not notified" is a different and much
+-- weaker claim than "a rider who left is not".
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129006', 'going');
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-0000129d0001'
+   and user_id = '00000000-0000-0000-0000-000000129006';
+
+-- On the crew, and blocked with the ACTOR. The block is directional in the row
+-- and symmetric in effect, so it is written one way only and asserted to bite.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129005', 'going');
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000129005', '00000000-0000-0000-0000-000000129004');
+
+-- On the crew, and blocked with the ORGANIZER rather than the actor. This is
+-- 055's KNOWN GAP fixture — see 055.6.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129008', 'going');
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000129008', '00000000-0000-0000-0000-000000129001');
+
+-- A rider on a different ride entirely.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0002', '00000000-0000-0000-0000-000000129007', 'going');
+
+-- ---------------------------------------------------------------------------
+-- 055.3  THE FAN-OUT UNDER TEST. One join, and the whole recipient set.
+-- ---------------------------------------------------------------------------
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129004', 'going');
+
+-- The positives. Each names WHY the rider is in the set, because a bare count
+-- cannot distinguish "the crew arm works" from "the organizer arm fired twice".
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'
+      and user_id = '00000000-0000-0000-0000-000000129002'),
+  1, '055: a GOING crew member is notified — this is the widening 036 §7.4 deferred');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'
+      and user_id = '00000000-0000-0000-0000-000000129003'),
+  1, '055: a MAYBE crew member is notified too — a Maybe rider is still on the crew, and a ride filling up is what flips them to Going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'
+      and user_id = '00000000-0000-0000-0000-000000129001'),
+  1, '055: the ORGANIZER is still notified — they stay in the union and their copy differs at render time, not by type');
+
+-- The negatives. Every one of these is a rider the widened set could plausibly
+-- have swept in.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'
+      and user_id = '00000000-0000-0000-0000-000000129004'),
+  0, '055: the ACTOR is never notified of their own join, though they are on the crew they just joined');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'
+      and user_id = '00000000-0000-0000-0000-000000129005'),
+  0, '055: a crew member BLOCKED with the actor is not notified — blocking is applied at fan-out, and the block row points the other way');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'
+      and user_id = '00000000-0000-0000-0000-000000129006'),
+  0, '055: a rider who ALREADY LEFT the crew is not notified — the crew arm is a live read of ride_members, not a history of it');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'
+      and user_id = '00000000-0000-0000-0000-000000129007'),
+  0, '055: a rider on a DIFFERENT ride is not notified — the crew arm is scoped by ride_id');
+
+-- The whole set in one number, so a recipient nobody thought to name still fails
+-- this. The four are: organizer, going, maybe, and 055.6's blocked-with-organizer
+-- crew member.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  4, '055: FOUR rows and no fifth — organizer, going, maybe and the blocked-with-organizer crew member; the actor, the leaver, the blocked-with-actor rider and the other ride''s rider are all out');
+
+-- ---------------------------------------------------------------------------
+-- 055.4  The ORGANIZER ARM IN ISOLATION, which 055.3 cannot prove
+-- ---------------------------------------------------------------------------
+-- In 055.3 the organizer holds a `ride_members` row of their own, so their
+-- notification is over-determined — the crew arm alone would have delivered it
+-- and a broken union would still pass. d03 has no organizer RSVP at all, so a
+-- row reaching them there came through `rides.organizer_id` and nowhere else.
+-- Without this, "the organizer stays in the union" is untested.
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000129d0003'
+      and user_id = '00000000-0000-0000-0000-000000129001'),
+  0, '055: the organizer holds NO ride_members row on d03 — without this precondition the next assertion passes through the crew arm and proves nothing');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0003', '00000000-0000-0000-0000-000000129002', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0003'
+      and actor_id = '00000000-0000-0000-0000-000000129002'
+      and user_id = '00000000-0000-0000-0000-000000129001'),
+  1, '055: an organizer holding no crew row is STILL notified — this is the union arm on its own, and the only assertion that fails if it is dropped');
+
+-- ---------------------------------------------------------------------------
+-- 055.5  READ-TIME RESOLVABILITY — the subset rule, applied to the widening
+-- ---------------------------------------------------------------------------
+-- ** THIS IS THE ASSERTION THAT ANSWERS 036 §7.5's QUESTION FOR THIS TYPE. **
+-- The recipient set and the SELECT policy live in different files and a widening
+-- on one side is invisible from the other, so counting rows WRITTEN cannot see
+-- the failure — the whole failure is a row that exists and cannot be read.
+--
+-- The organizer union is safe here because `rides` SELECT leads with an
+-- unconditional `organizer_id = auth.uid()` arm, unlike `ride_created_in_club`,
+-- whose only club arm is a membership test. That is asserted structurally in
+-- 055.7 and behaviourally right here.
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000129001', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  1, '055: the ORGANIZER can READ the row the union wrote them — the union is safe for ride_joined, which is exactly what 036 §7.5 refuses for ride_created_in_club');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000129002', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  1, '055: ... and so can a GOING crew member — the widened rows are not write-only');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000129003', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  1, '055: ... and so can a MAYBE crew member');
+
+-- The negative side of the read: a rider outside the recipient set reads none of
+-- it, addressed to somebody else. 036 §3 conjunct 1 is what does this, and it
+-- would be the first thing a careless widening broke.
+select set_config('test.uid', '00000000-0000-0000-0000-000000129007', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'),
+  0, '055: the other ride''s rider reads NOTHING about d01 — widening the recipient set widened no read');
+select set_config('test.uid', '00000000-0000-0000-0000-000000129004', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  0, '055: the actor cannot read a single row their own join caused — the actor learns nothing about delivery, 036 §3 conjunct 1');
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 055.6  THE KNOWN GAP, PINNED. A crew member blocked with the ORGANIZER gets
+--        a row they can never read.
+-- ---------------------------------------------------------------------------
+-- ** THIS ASSERTION DOCUMENTS A DEFECT, NOT A DESIGN. ** It is written so the
+-- behaviour is a named, tested property with a story behind it rather than
+-- something a future session discovers and mistakes for intent — and so that the
+-- day it is closed, the assertion that has to flip is already here.
+--
+-- A `ride_members` row does not imply its holder can still SELECT the ride:
+-- blocking removes nobody from a roster. So a rider who blocks the organizer
+-- stays on the crew, keeps receiving `ride_joined` rows about that ride, and
+-- `036` §3 conjunct 4 discards every one of them on read. That is 036 §7.5's
+-- hazard — a row nobody can read — reached through the CREW arm rather than the
+-- organizer arm.
+--
+-- It is accepted here rather than fixed for two reasons, both recorded in 055's
+-- header: it fails CLOSED (a notification never shown, never a row shown to
+-- someone who should not see it), and it is REVERSIBLE (unblocking makes the row
+-- readable, which 036 §4 argues is the correct outcome). §7.5's ownerless owner
+-- was permanent by construction, which is what made narrowing mandatory there.
+-- The complete fix wants a `private.can_read_ride(candidate, ride)` definer
+-- helper taking its subject as an argument; the cheap half-fix — excluding
+-- riders blocked with the organizer — leaves the left-the-club half open while
+-- reading as complete, so it is deliberately NOT applied.
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and user_id = '00000000-0000-0000-0000-000000129008'),
+  1, '055: the blocked-with-organizer rider is STILL on the crew — blocking removes nobody from a roster, which is what makes the gap below reachable rather than contrived');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000129008', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0000129d0001'),
+  0, '055: ... and cannot SELECT the ride, because rides SELECT''s organizer arm is not theirs and its second disjunct is gated on not being blocked with the organizer');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  0, '055: KNOWN GAP — the row written to them in 055.3 is unreadable on arrival, 036 §3 conjunct 4. Fails CLOSED and reverses on unblock. Flip this to 1 only together with a fan-out that can test a CANDIDATE''s ride visibility');
+reset role;
+select set_config('test.uid', '', false);
+
+-- Unblocking returns it, which is the property that distinguishes this from
+-- §7.5's permanently-dead row and is the reason the gap is accepted.
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-000000129008'
+   and blocked_id = '00000000-0000-0000-0000-000000129001';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000129008', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  1, '055: ... and UNBLOCKING returns it — eviction, never loss. This is why the gap is bounded: reversible, unlike 036 §7.5''s ownerless owner, which was permanent by construction');
+reset role;
+select set_config('test.uid', '', false);
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000129008', '00000000-0000-0000-0000-000000129001');
+
+-- ---------------------------------------------------------------------------
+-- 055.6b  THE SAME GAP BY THE OTHER ROUTE: a crew member who LEFT THE CLUB.
+-- ---------------------------------------------------------------------------
+-- ** TWO MECHANISMS, ONE GAP, AND THIS IS WHY THE CHEAP FIX IS REFUSED. **
+-- 055.6 reaches it through a block. This reaches it through club membership,
+-- with no block anywhere in the fixture — a rider RSVPs to a PRIVATE club's ride
+-- while a member, then leaves the club and keeps their `ride_members` row.
+--
+-- The two are worth separating because a fan-out that excluded candidates
+-- blocked with the organizer would close 055.6 and leave THIS untouched, while
+-- reading as a complete repair. Any future fix has to satisfy both, which is
+-- what makes `private.can_read_ride(candidate, ride)` — a helper taking its
+-- subject as an argument — the shape rather than another `is_blocked` call.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000129c0001', 'PD129 Private MC', false,
+   '00000000-0000-0000-0000-000000129001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000129c0001', '00000000-0000-0000-0000-000000129001', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000129c0001', '00000000-0000-0000-0000-000000129006', 'member');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000129d0004', 'PD129 Club Run', 'The Gate',
+   now() + interval '9 days', false, '00000000-0000-0000-0000-0000129c0001',
+   '00000000-0000-0000-0000-000000129001');
+
+-- The leaver joins the club's ride while still a member, and can read it.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0004', '00000000-0000-0000-0000-000000129006', 'going');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000129006', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0000129d0004'),
+  1, '055: the club member CAN read the private club''s ride while their membership stands — the precondition, without which the eviction below proves nothing');
+reset role;
+select set_config('test.uid', '', false);
+
+-- They leave the CLUB. Nothing removes them from the ride's crew: club_members
+-- DELETE is a bare `auth.uid() = user_id`, and no trigger reaches ride_members.
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000129c0001'
+   and user_id = '00000000-0000-0000-0000-000000129006';
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000129d0004'
+      and user_id = '00000000-0000-0000-0000-000000129006'),
+  1, '055: leaving the club leaves them ON THE RIDE''S CREW — no trigger reaches ride_members, which is what makes them a live fan-out candidate who can no longer resolve the ride');
+
+-- A third rider joins that ride, so the ex-member is fanned out to as crew.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000129c0001', '00000000-0000-0000-0000-000000129002', 'member');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0004', '00000000-0000-0000-0000-000000129002', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0004'
+      and actor_id = '00000000-0000-0000-0000-000000129002'
+      and user_id = '00000000-0000-0000-0000-000000129006'),
+  1, '055: the ex-member IS written a row — the crew arm is a live read of ride_members and knows nothing about club membership');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000129006', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0004'
+      and actor_id = '00000000-0000-0000-0000-000000129002'
+      and user_id = '00000000-0000-0000-0000-000000129006'),
+  0, '055: KNOWN GAP, second route — and they read back ZERO, with no block anywhere in this fixture. A fan-out that only excluded riders blocked with the organizer would close 055.6 and miss this one entirely');
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 055.7  The policy text the union's safety DEPENDS ON, pinned structurally
+-- ---------------------------------------------------------------------------
+-- 055.5 proves the organizer can read their row today. This proves WHY, so that
+-- a future rewrite of `rides` SELECT — it has already been rewritten by 017 and
+-- by 022, and 054 changed a function underneath it this week — fails here with a
+-- pointer rather than silently turning every organizer notification into a dead
+-- row. 036 §3 makes the same argument for not deriving one policy from another.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'rides' and cmd = 'SELECT'
+      and qual like '((organizer_id = auth.uid()) OR %'),
+  1, '055: rides SELECT still LEADS with an unconditional organizer arm, at the top level of an OR — this is the whole reason unioning rides.organizer_id is safe for ride_joined and not for ride_created_in_club');
+
+-- ** AND THE OTHER HALF: THERE IS NO CREW ARM AT ALL. ** Measured on DEV
+-- 2026-08-12 and asserted here because it is the exact reason 055.6's gap
+-- exists. `rides` SELECT resolves through organizer, public, or club membership
+-- — a `ride_members` row is NOT one of the ways in. So crew membership does not
+-- imply ride visibility, and the recipient set is deliberately wider than
+-- `rides` SELECT can resolve. The day someone adds a crew arm, this assertion
+-- fails and points at 055.6, which would then be closeable.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'rides' and cmd = 'SELECT'
+      and (qual like '%ride_members%' or qual like '%is_ride_crew%')),
+  0, '055: rides SELECT has NO crew arm — neither ride_members nor is_ride_crew appears in it, so being on a crew is not a way to see the ride. That asymmetry IS 055.6''s known gap, and closing it here would close that too');
+
+-- The status domain the crew arm names. `status in ('going','maybe')` is total
+-- against today's CHECK, so it currently excludes nothing; the day a third
+-- status is added it stops being total and the recipient set silently changes
+-- meaning. This turns that into a failing test rather than a silent widening.
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conrelid = 'public.ride_members'::regclass
+      and conname = 'ride_members_status_check'),
+  'CHECK ((status = ANY (ARRAY[''going''::text, ''maybe''::text])))',
+  '055: ride_members.status is still exactly {going, maybe} — the crew arm names both, so a third status added without revisiting 055 changes who gets notified');
+
+-- ---------------------------------------------------------------------------
+-- 055.8  Idempotence and the INSERT-only shape, on the WIDENED set
+-- ---------------------------------------------------------------------------
+-- 036 asserted both against the organizer alone. A recipient set of one cannot
+-- distinguish "the uniqueness index caught the rejoin" from "the second fan-out
+-- addressed a different rider", so both are re-asserted against a set of four.
+update ride_members set status = 'maybe'
+ where ride_id = '00000000-0000-0000-0000-0000129d0001'
+   and user_id = '00000000-0000-0000-0000-000000129004';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  4, '055: flipping going<->maybe writes nothing to any of the four — the fan-out is on INSERT and there is no trigger on UPDATE');
+
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-0000129d0001'
+   and user_id = '00000000-0000-0000-0000-000000129004';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  4, '055: leaving retracts nothing from the crew either — no AFTER DELETE trigger on ride_members, and the join really happened');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129004', 'going');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'),
+  4, '055: leaving and rejoining does not stack a second row in ANY crew member''s list — notifications_event_key, nulls not distinct, still absorbs it');
+
+-- ---------------------------------------------------------------------------
+-- 055.9  The function itself, and the contract 055 must not have relaxed
+-- ---------------------------------------------------------------------------
+-- `create or replace` is the one shape that can quietly drop a property: the
+-- replacement carries whatever the new text says and nothing warns that the old
+-- text said more. Each of these is a clause the widening could have lost.
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'private.notify_ride_joined()'::regprocedure),
+  true, '055: the widened fan-out is STILL security definer — without it the trigger is refused outright, since authenticated holds no INSERT grant on notifications');
+-- Note the stored form: `set search_path = ''` is recorded as the four
+-- characters `search_path=""`, NOT as `search_path=`. Asserting the latter fails
+-- against a perfectly correct function, which is how this assertion was first
+-- written. Compared against a SIBLING fan-out as well, so the pair cannot drift
+-- and so a Postgres change to the representation fails neither.
+select assert_eq(
+  (select proconfig[1] from pg_proc where oid = 'private.notify_ride_joined()'::regprocedure),
+  'search_path=""', '055: ... and still pins an EMPTY search_path, so every name in the body resolves schema-qualified or not at all');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'private.notify_ride_joined()'::regprocedure)
+  = (select proconfig from pg_proc where oid = 'private.notify_club_joined()'::regprocedure),
+  true, '055: ... identical to the sibling fan-out 055 was modelled on, so the two cannot drift apart');
+select assert_eq(
+  (select prosrc like '%auth.uid()%' from pg_proc
+    where oid = 'private.notify_ride_joined()'::regprocedure),
+  false, '055: auth.uid() appears NOWHERE in the widened body — 036 trap (b); against a NULL uid a self-suppression written that way filters out every recipient');
+select assert_eq(
+  (select prosrc like '%is_ride_crew%' from pg_proc
+    where oid = 'private.notify_ride_joined()'::regprocedure),
+  false, '055: and private.is_ride_crew is NOT reached for — its name is the recipient set, but it reads auth.uid() internally, so it answers for the CALLER and would make the set everybody');
+
+-- The grant posture, named by ROLE rather than attempted — 031's lesson, and the
+-- suite runs as the table owner, for whom the barrier does not exist.
+select assert_eq(
+  (select count(*)::int from (values ('authenticated'), ('anon'), ('service_role')) as r(role)
+    where has_function_privilege(r.role, 'private.notify_ride_joined()', 'execute')),
+  0, '055: no client role and not service_role can execute the widened fan-out — create or replace preserves privileges, and 055 re-issues the revoke anyway');
+
+-- The trigger binding survives `create or replace` because the OID does, so no
+-- trigger DDL was issued. Asserted because re-creating it would have been the
+-- obvious wrong move, and a WHEN clause is what would have arrived with it.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.ride_members'::regclass
+      and not tgisinternal and tgname = 'notify_ride_joined' and tgqual is null),
+  1, '055: the trigger is still bound to ride_members and still carries NO when clause — create or replace keeps the OID, so 055 issues no trigger DDL');
+
+-- The comment 036 §7.7 wrote is now false and had to move with the body. A
+-- database comment is the one piece of documentation no edit to CLAUDE.md can
+-- reach, which is why 028 and 033 exist.
+select assert_eq(
+  (select obj_description('private.notify_ride_joined()'::regprocedure, 'pg_proc')
+     like '%organizer and nobody else%'),
+  false, '055: the function comment no longer claims the organizer and nobody else — 036 §7.7''s text would have become a lie');
+select assert_eq(
+  (select obj_description('private.notify_ride_joined()'::regprocedure, 'pg_proc')
+     like '%WHOLE CREW%'),
+  true, '055: ... and says what it now does instead');
+
+-- ---------------------------------------------------------------------------
+-- 055.10  Nothing else moved. 055 is one function and one comment.
+-- ---------------------------------------------------------------------------
+-- The product owner's decision was explicitly that the organizer keeps a
+-- DISTINCT STRING CHOSEN AT RENDER TIME rather than a new notification type. So
+-- the type CHECK and the subject shape must be untouched — a sixth type here
+-- would be the change that decision refused.
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conrelid = 'public.notifications'::regclass
+      and conname = 'notifications_type_check'),
+  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text])))',
+  '055: the type CHECK is UNTOUCHED at five types — the organizer''s distinct copy is chosen at render time by comparing the reader against rides.organizer_id, not by a sixth type');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'),
+  2, '055: still exactly two policies on notifications, SELECT and UPDATE — 055 created none, dropped none, and added no INSERT policy');
+select assert_eq(
+  (select count(*)::int from (values ('authenticated'), ('anon')) as r(role)
+    where has_table_privilege(r.role, 'public.notifications', 'insert')),
+  0, '055: and neither client role gained an INSERT grant — fan-out stays trigger-only, which is what the absent grant enforces');
+
+set role authenticated;
+rollback to savepoint ride_joined_crew_055;
 
 rollback;
 

@@ -1050,14 +1050,20 @@ absent from the mock or a product decision this pass had to make without one:
       no rides, yet!"`) rather than read from a frame — the design draws no empty variant of this
       screen at all.
 - [ ] **`ride_joined` and `ride_created_in_club` rows render no trailing thumbnail.** The frame
-      shows a 56×56 "Image Container" with a `Location Filled` pin overlay for both, but `rides`
-      has no image or coordinate column to source one from — the same gap
-      `docs/FIGMA-FIDELITY-TODO.md` §Rides list already logs for ride cover images and map
-      thumbnails. `NotificationsListItem` omits the slot rather than drawing a placeholder.
-- [ ] **The `ride_joined` copy is rewritten from the drawn string.** `Inbox - Notifications`
-      draws "joined a ride you also joined." — written for an attendee — but this build's
-      recipient is the organizer alone (`design.md` Q1's default), so the copy is Q2b's default,
-      "joined your ride." Reverts to the drawn string the day Q1 is answered the other way.
+      shows a 56×56 "Image Container" with a `Location Filled` pin overlay for both. The tile
+      itself is sourceable — `051` added `rides.map_card_path` and `rides.map_detail_path`
+      (`git grep -n "map_card_path" -- supabase/migrations/051*.sql`), and
+      `resolveRideMapUrls` already signs both — so what is open is the **pin overlay**, which is
+      the per-subject trailing treatment logged three bullets above and needs the same designer
+      answer. `NotificationsListItem` omits the slot rather than drawing a placeholder, and
+      `NOTIFICATION_SELECT` does not select either path until it does.
+- [x] ~~**The `ride_joined` copy is rewritten from the drawn string.**~~ — **both strings ship
+      now (PD-129).** `Inbox - Notifications` draws "joined a ride you also joined.", written
+      for an attendee, and that is what a fellow crew member reads, verbatim. The organizer
+      reads "joined your ride." instead, because they created the ride rather than joining it
+      and the frame draws no row for that reader. One `ride_joined` type either way: the
+      sentence branches on `rides.organizer_id`, read live under the reader's own RLS, in
+      `src/components/notifications/copy.ts`.
 - [ ] **The header title reads "Notifications", not the design's two-tier "Inbox" ›
       "Notifications".** The frame nests this screen inside the dropped Inbox tab, with "Inbox"
       as the page name and "Notifications" as the sub-page. With no Inbox wrapper to nest under,

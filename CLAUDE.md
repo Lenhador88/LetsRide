@@ -480,9 +480,10 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 54 files. DEV and PROD are both at `054` — LEVEL, 2026-08-12.** Do not
+**Applied state: 55 files. DEV is at `055`, PROD at `054` — DEV AHEAD, 2026-08-12.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead.
+`ls supabase/migrations/` instead. DEV-ahead is the ordinary state of a migration between its
+merge and its promotion, not drift; `055` reaches PROD with PD-129's promotion.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -512,7 +513,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1385** assertions — re-derive rather than trust it:
+Suite **1428** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -1148,6 +1149,28 @@ This is the same rule as the two above, and it is written separately because it 
 differently: those produce a long reply, this one produces *many* replies, which is worse. A
 session that says one line six times has said more than one that said six lines once, and has
 interrupted six times to do it.
+
+**Report the things they must ACT on, and nothing else.** Product owner, 2026-08-12: *"just come
+back to me with the outcome of points questions etc. That I need to act upon."* This is the test
+the three rules above were all reaching for, stated directly — apply it to every reply, including
+the wrap-up.
+
+**It governs CHAT REPLIES, exactly like the three rules it restates, and nothing else.** The
+`Done ; )` push notification above is by construction a report of landed work needing no action,
+so a reading of this rule that reaches it deletes the one message meant for an owner who is *not*
+watching — which is the whole reason that notification exists. The record is likewise out of
+scope: commit, PR and Linear stay as long as they need to be.
+
+Before sending anything, ask what the owner **does** with it. A question only they can answer, a
+blocked capability, a decision between options, a thing that is now broken: send it. Work that
+landed and needs nothing from them: the commit, the PR and the Linear issue already say it, and
+they will read it there if they ever need to. **Sending it again costs them the time it takes to
+find the one line that was actually for them.**
+
+A gate result is not an outcome. Neither is a summary of what a subagent found, a recap of a
+decision they already made, or a list of what was filed. **If a paragraph has no action in it,
+delete it** — this rule outranks the impulse to show the work, because the work is on the record
+already.
 
 Three things stay long however brief the commentary gets, because each is a *decision* rather
 than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,

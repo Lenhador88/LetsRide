@@ -34,7 +34,7 @@ The live set as last read back off the board:
 | `Backlog AI` | backlog | Captured, not triaged. **Was `Backlog`** | Either |
 | `Todo Human` | unstarted | Triaged; owner chores live here | Either |
 | `Todo AI` | unstarted | Triaged, and a session could do it. **Not a start signal** | Either |
-| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
+| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner**, and an agent at STEP 2d |
 | `Queued (AI)` | started | **Approved to build. The only start signal** | **Owner** |
 | `Development (AI)` | started | An agent has it *now*. **The concurrency lock** | Agent |
 | `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
@@ -626,6 +626,76 @@ stop** — same rule as §If you get stuck. This exit is named there as one of t
 without reaching STEP 5, and STEP 4b deliberately creates nothing, so a follow-up rated on the
 way here is lost unless this step writes it out. **Put the sub-4 items in the `Needs help`
 comment**, since there is no PR body here to hold them.
+
+---
+
+## STEP 2d — Is the premise still true? Check before you claim.
+
+STEP 2b checks what somebody wrote down as a blocker. **This checks the thing nobody writes
+down: whether the story is still worth building at all.** An issue states a fact about the
+codebase — "the tile was never built", "nine forms are wired and two are asserted", "PROD is
+two migrations behind" — and that fact is a snapshot taken the day it was filed. The backlog
+outlives the sessions that read it, so a premise can be closed by work that never mentioned it:
+by another story, by a STEP 4b fold-in, or by an *absorb on contact* fix in a branch that
+happened to have the file open.
+
+**This is the general form of something `docs/HANDOFF.md` §Owner actions already records for one
+column.** Two `Owner only` issues in a row were found already-fixed, because a dashboard setting
+has no file to change and nothing marks it done except someone re-measuring. Every story has
+that property, not only the dashboard ones — an issue is closed by whoever notices, and nobody
+is assigned to notice.
+
+### What counts as stale, and what does not
+
+**Find the issue's load-bearing claim and run the check it implies.** Almost every body here
+names one, and most name the command beside it — a file that should not exist, a count, a grep,
+a migration number, a policy's text. That is the check, and it is usually one command. If the
+body states no checkable claim, it cannot go stale this way: go to STEP 3.
+
+A premise is stale when one of these holds, **with the command and its output to show for it**:
+
+| | What it looks like |
+|---|---|
+| **Already done** | The code now does what the issue asks, by whatever route |
+| **Superseded** | A later decision or migration makes it moot — the screen it fixes is gone, the column it adds arrived in another shape |
+| **Void premise** | The thing it describes does not exist. Typically a count that has moved, or a file that was deleted |
+
+**None of these is staleness, and reading them as staleness is the failure this step invites:**
+disagreeing with the approach, thinking the priority is wrong, finding the story hard, finding
+it bigger than it looked, or noticing it is old. **Age is not evidence** — `PD-129` sat five
+days and its premise was entirely intact. `CLAUDE.md`'s rule against manufacturing an objection
+to look diligent covers this exactly: a staleness verdict reached without a command is one.
+
+### What to do about it — and what NOT to do
+
+**Do not build it, and do not close it.** Every verdict here is a measurement plus an inference,
+and the inference is the half worth a human glance. Cancelling a story the owner filed is theirs.
+
+1. Comment on the issue with **the command you ran and what it returned**, plus one line naming
+   which row above it falls under.
+2. Move it to **`Needs decision`**.
+3. Go back to STEP 2 and take the next candidate by priority.
+
+**`Needs decision`, never `Needs help`.** `Needs help` is one of the two names STEP 1 matches as
+the concurrency lock, so parking a stale story there freezes the entire queue over work nobody
+is doing — and freezes it in the state that looks healthiest, a busy column above a quiet job.
+`Needs decision` is typed `unstarted` and holds no lock. Re-derive both off the board rather
+than trusting this paragraph: §The status names.
+
+**If every candidate in the column is stale, exit silently**, as STEP 2b does. A queue full of
+finished work is a real answer, and it is now visible on the board instead of costing a build.
+
+### The asymmetry, so the bar sits in the right place
+
+The two ways to be wrong do not cost the same, and they pull in opposite directions:
+
+- **Building something already done** costs one build and ends in a PR that changes nothing.
+  Loud, cheap, self-correcting.
+- **Parking a live story** costs the owner a round trip, and it sits in a column nothing drains
+  on a schedule until they happen to look.
+
+So the bar is **evidence, or build it.** A feeling that a story is stale is a reason to read the
+code once, never a verdict on its own. An ambiguous check is a build.
 
 ---
 
