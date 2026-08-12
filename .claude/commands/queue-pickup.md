@@ -949,31 +949,47 @@ live RLS hole letting any signed-in rider post a ride into any club.
    unreviewed file — but it only reports what it can see, and a packet is not a substitute for
    rebuilding it.
 
-   **Confirm the pass returned a result before you push, and read a missing result as a missing
-   review rather than a clean one.** That reading is what does the damage: it reaches a merge
-   with no review at all — CI green, a PR merged and a `Deployed to DEV` status all looking
-   correct — which is the same outcome STEP 0.6 describes for a build agent that cannot spawn
-   `reviewer` at all, arrived at by a different route. **A dead agent and a slow one
-   are indistinguishable from the main thread**: no error, no notification, nothing on the board.
-   The signal is an *absence*, and every other gate here that can fail silently already has a
-   tripwire for one — `docs:check` fails a skip instead of passing it, `no-service-role-key`
-   proves its own detector still matches. This is that tripwire, and it is one call:
+   **Spawn it in the background**, so the thread is free for bullet 2 and so the check below has
+   something to read. The two are the same decision: a foreground spawn blocks the main thread
+   inside the tool call, which leaves no moment at which `ListAgents` can be called at all.
+
+   **The pass is a gate on the MERGE, and a missing result is a missing review rather than a
+   clean one.** Anchor it on bullet 3 and nowhere earlier: `CLAUDE.md` §Delegating while the
+   owner is at the keyboard names push, PR and Linear as steps that do *not* depend on the
+   review — *"the findings still land before the merge, which is the threshold that matters"* —
+   so a gate placed at the push both contradicts that and, worse, checks at the one moment a
+   still-listed agent is most likely to look healthy. **Never merge holding no report.** That is
+   the reading that does the damage: it reaches a merge with no review at all — CI green, a PR
+   merged and a `Deployed to DEV` status all looking correct — which is the same outcome
+   STEP 0.6 describes for a build agent that cannot spawn `reviewer` at all, arrived at by a
+   different route.
+
+   **A dead agent and a slow one are indistinguishable from the main thread**: no error, no
+   notification, nothing on the board. The signal is an *absence*, and every other gate here that
+   can fail silently already has a tripwire for one — `check.mjs` holds that a skip must never
+   read as a pass, `no-service-role-key` proves its own detector still matches. This is that
+   tripwire, and it is one call, made **immediately before the merge**:
 
    ```
    ListAgents     # still listed -> running · not listed, and no report -> it died
    ```
 
-   - **You hold a report** → covered. Carry on.
+   - **You hold a report** → covered. Merge when bullet 3's other conditions are met.
    - **No report, agent still listed** → it is running. Do not re-spawn and do not idle — the
-     completion re-invokes you, so do everything that does not depend on it (`CLAUDE.md`
-     §Delegating while the owner is at the keyboard).
-   - **No report, agent not listed** → it died. **Re-run it once**, with a freshly built packet.
-   - **The re-run also returns nothing** → **`Needs help`, and do not merge.** §If you get stuck.
+     completion re-invokes you, so do everything that does not depend on it (push, the PR, CI,
+     Linear). **Come back to this check before merging**; nothing else will bring you back,
+     because a death emits no event.
+   - **No report, agent not listed** → it died. **Re-run it once**, with a freshly built packet,
+     and re-enter this table.
+   - **Re-run also died — no report and not listed a second time** → **`Needs help`, and do not
+     merge.** §If you get stuck. **Only this state parks the story**: a re-run that is merely
+     still listed is branch 2, and reading it as this one holds STEP 1's lock over a review that
+     was working.
 
-   Observed rather than feared: the pass spawned on the `PD-151` firing (2026-08-09) never
-   returned, with `ListAgents` empty 1h45m later; the re-run came back in ~5 minutes and found
-   two real issues. **The delta re-review above is the same gate and gets the same check** — it
-   is spawned the same way and can die the same way.
+   Observed rather than feared — the `PD-151` firing, 2026-08-09; `PD-172` has the account.
+   **The delta re-review above is the same gate and gets the same check**: spawned the same way,
+   it can die the same way, and its triggers land after the push, so the merge is the only
+   anchor that covers it too.
 2. **Push the branch — again, if STEP 4b built anything.** Then open a PR against
    **`development`**, with the `## Folded in` section from STEP 4b in the body, or nothing there
    if nothing travelled.
@@ -995,8 +1011,9 @@ live RLS hole letting any signed-in rider post a ride into any club.
    branch's commits straight onto `development`, which `CLAUDE.md` forbids outright, and then the
    must-be-empty guard fails and stalls the firing with no PR open. Unset, it is worse in the
    honest direction: `fatal: invalid refspec ''`.
-3. Drive CI to green and merge. Do not merge red. **Never push to `main` and never open a PR
-   against `main`** — production promotion belongs to the owner.
+3. Drive CI to green and merge. Do not merge red, and **do not merge holding no review result** —
+   run bullet 1's `ListAgents` check here, immediately before the merge. **Never push to `main`
+   and never open a PR against `main`** — production promotion belongs to the owner.
 
 ---
 
