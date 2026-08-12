@@ -660,8 +660,14 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   gap. It was deliberate for one day: purely additive columns nothing read. But
 #   PD-104 §2-3 shipped, RIDE_SELECT names map_card_path, and PROD has NONE of the
 #   five columns (measured, not assumed) — so a development -> main promotion
-#   would 400 every rides read in production, green through CI, green through the
-#   merge, broken only for riders. APPLY 051-053 TO PROD BEFORE PROMOTING.
+#   breaks the rides LIST and every ride DETAIL, green through CI, green through
+#   the merge, broken only for riders. APPLY 051-053 TO PROD BEFORE PROMOTING.
+#   Exactly 2 of the 10 from('rides') call sites name a missing column —
+#   getRides (RIDE_SELECT's map_card_path) and getRide (map_detail_path). The
+#   other eight do not, so ride create, edit, cancel, the filter bar and the club
+#   counts all keep working. That partial breakage is the debugging trap: a
+#   session poking at PROD finds most of rides healthy and concludes 051 IS
+#   applied. Count the columns, do not infer them from what still works.
 #   051 is 40 KB: reduce-and-diff against DEV per CLAUDE.md's paragraph on
 #   applying a migration too large to pass as a string, never a hand
 #   transcription. tasks.md 1.11b is the open box.

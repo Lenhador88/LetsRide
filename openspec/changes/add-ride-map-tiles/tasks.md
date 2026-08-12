@@ -535,8 +535,11 @@ exactly what they render today.** That is the intended intermediate state.
 - [ ] 8.1 **The migration first, on BOTH projects, on its own.** Purely additive; nothing reads the
   columns yet. **"Nothing reads them" stopped being true when §2 shipped**, and that turns this from
   housekeeping into the gate on the promotion: `RIDE_SELECT` now names `map_card_path`, PROD sits at
-  `050` without it, and a `development → main` promotion would 400 every rides read — green through
-  CI, green through the merge, broken only for riders. 1.11b is the open box, and `051` is 40 KB, so
+  `050` without it, and a `development → main` promotion breaks the rides **list** and every ride
+  **detail** — green through CI, green through the merge, broken only for riders. Exactly 2 of the
+  10 `from('rides')` call sites name a missing column, so create, edit, cancel, the filter bar and
+  the club counts keep working; that partial breakage is the trap, because most of rides looks
+  healthy. 1.11b is the open box, and `051` is 40 KB, so
   it needs the reduce-and-diff-against-DEV technique — reduce to executing statements, apply, then
   prove it by diffing the resulting objects against DEV, which already has the file applied
   correctly. `CLAUDE.md` §Supabase Rules carries it, under *Applying a migration too large to pass

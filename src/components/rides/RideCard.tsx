@@ -40,7 +40,11 @@ import type { RideAttendance, RideListItem } from '@/types'
  * and a tile that fails to load falls back to exactly that.
  *
  * The pin gains a `White/100` disc **only** over a tile. Bare `Grey/100` on a
- * warm `Grey/10%` container is 13.82:1, but on an arbitrary map tile it is
+ * neutral `Grey/10%` container is 13.82:1 — `bg-border` is `#0000001A`, 10.196%
+ * black, which over this card's opaque `bg-surface` composites to `#E5E5E5`.
+ * NOT the warm `bg-track` `#E5DACF`, which is 12.65:1 and is what `RideMap`
+ * cites; reading "warm" here and recomputing against that token is how this
+ * figure gets called wrong. On an arbitrary map tile it is
  * whatever the tile happens to be; the disc makes it 17.4:1 whatever is behind
  * it, and reads as the map marker it is.
  */
