@@ -118,12 +118,14 @@
 
   /* The gentle fade-in loaded content gets wherever it replaces a skeleton
      — product owner: "a gentle fade out fade in of the content that loads".
-     180ms lands inside the requested 150–200ms; `ease-out` front-loads the
-     motion so it reads as arriving rather than drifting in. Registering it
-     here (Tailwind v4's `--animate-*` namespace) is what turns it into the
+     230ms is the product owner's own number, asked for after watching 180ms
+     on DEV — so treat it as measured against the real thing rather than as a
+     value to re-tune from first principles. `ease-out` front-loads the motion
+     so it reads as arriving rather than drifting in. Registering it here
+     (Tailwind v4's `--animate-*` namespace) is what turns it into the
      `animate-fade-in` utility used below, always behind `motion-safe:` —
      the same guard `Skeleton.tsx`'s own `animate-pulse` already uses. */
-  --animate-fade-in: fade-in 180ms ease-out;
+  --animate-fade-in: fade-in 230ms ease-out;
 }
 
 /* **Applying this class to an element that is already on screen is enough to
