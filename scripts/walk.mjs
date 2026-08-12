@@ -21,13 +21,19 @@
  * screen, or as a redirect, an error boundary, or an empty body — and nothing
  * about what the screen then does.
  *
- * The named phases are the exception — refused sign-in before the walk, and
- * refused create, refused edit, client-side navigation, the route guard and
- * sign-out after it. They are named
- * individually rather than covered by a general claim: each exists because a
- * specific defect is invisible to every other gate in this repo, and each
- * asserts exactly that one behaviour. Adding a phase means adding a reason, not
- * broadening a remit.
+ * The named phases are the exception — refused sign-in before the real sign-in,
+ * refused signup right after it (it needs the session it establishes — see
+ * `runRefusedSignup`), and refused ride create, refused club create, refused
+ * ride or club edit, refused profile edit, client-side navigation, the route
+ * guard and sign-out after that. They are named individually rather than
+ * covered by a general claim: each exists because a specific defect is
+ * invisible to every other gate in this repo, and each asserts exactly that
+ * one behaviour. Adding a phase means adding a reason, not broadening a remit
+ * — PD-203 added three (club create, profile edit, signup) because
+ * `retaining` (PD-199) was wired on nine forms and only two were rendered by
+ * anything; the other two of the nine (`/auth/forgot-password`,
+ * `CreatePostcardForm`) are recorded as deliberately unexercised where
+ * `checkRefusedSignup` is defined below, rather than covered here.
  *
  * ## Running it, and the one thing that will otherwise waste an hour
  *
@@ -108,6 +114,17 @@ const STATIC_PATHS = [
   '/clubs/new',
   '/profile',
 ]
+
+/**
+ * The projects this walk may write to. **An allowlist, so an unrecognised
+ * project fails closed** — a denylist of PROD's ref would wave through a
+ * second production project the day one exists.
+ *
+ * Declared this early because `runRefusedSignup` (below) needs it before the
+ * fixtures section that used to be its only reader — see that function for
+ * why.
+ */
+const WRITABLE_REFS = new Set(['fpmrimzxadewsaiwpsel']) // Letsride-dev
 
 const isFullWalk = process.argv.slice(2).length === 0
 let paths = isFullWalk ? [...STATIC_PATHS] : process.argv.slice(2)
@@ -270,6 +287,152 @@ async function checkRefusedSignIn() {
   return bad
 }
 
+/**
+ * A literal for the same reason `WRONG_PASSWORD` is one — this has to satisfy
+ * `newPasswordSchema`'s length rule regardless of `WALK_PASSWORD`, and its own
+ * value never matters: the account already exists, so `signUp` refuses on the
+ * duplicate email before it would ever compare a password to anything.
+ */
+const SIGNUP_PROBE_PASSWORD = 'walk-signup-probe-PD-203'
+
+/**
+ * `/auth/signup`, signed out, with the walk's own address — PD-203. It is
+ * already registered (this same account signs in a few lines below), so the
+ * refusal is `signUp`'s `alreadyRegistered` branch, and `retaining(signUp,
+ * ['email', 'password'])` is what has to put both fields back once React
+ * resets the form. The defect class is PD-196's: a misspelled or unread key in
+ * `retaining`'s field list type-checks and renders exactly like a field the
+ * reset was supposed to restore.
+ *
+ * **This proves only the DEV branch, and that is a property of the
+ * environment, not of this phase.** `signUp` takes the `alreadyRegistered`
+ * branch only when `supabase.auth.signUp` itself errors on the duplicate —
+ * which is what happens with `mailer_autoconfirm: true` (DEV, decision #6,
+ * and where this walk always runs, per docs/HANDOFF.md §The walk). With
+ * confirmation ON (PROD) GoTrue's own duplicate-signup mitigation returns
+ * **success** with an empty `identities` array instead, so `signUp` never
+ * reaches this branch at all there — see the comment above the
+ * `alreadyRegistered` check in `src/lib/actions/auth.ts`. A green run here is
+ * DEV-only coverage; it says nothing about PROD's configuration of this path.
+ *
+ * **Runs against `targetPage`, not the module-level `page`** — see
+ * `runRefusedSignup` for why it is a throwaway signed-out context rather than
+ * the browser this file drives everywhere else.
+ */
+async function checkRefusedSignup(targetPage) {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nrefused signup (already registered):')
+
+  await targetPage.goto(`${BASE}/auth/signup`, { waitUntil: 'domcontentloaded' })
+  await targetPage.waitForSelector('input[name="email"]')
+  await targetPage.fill('input[name="email"]', EMAIL)
+  await targetPage.fill('input[name="password"]', SIGNUP_PROBE_PASSWORD)
+  // Controlled, and the submit stays disabled until it is ticked — Q9's own
+  // note that a disabled button is not a trust boundary is about the server
+  // side, but Playwright still has to get past the button being unclickable.
+  await targetPage.click('label:has(input[name="acceptedTerms"])')
+  await targetPage.click('button[type="submit"]')
+
+  await targetPage
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('[role="alert"]')].some((n) => n.textContent.trim().length),
+      null,
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
+
+  const refusal = (
+    await targetPage.$$eval('[role="alert"]', (ns) =>
+      ns.map((n) => n.textContent.trim()).filter(Boolean)
+    )
+  ).join(' | ')
+  report(Boolean(refusal), 'the refusal is reported', 'no alert text on screen')
+  report(
+    (await targetPage.inputValue('input[name="email"]')) === EMAIL,
+    'the email survives it',
+    'the field was cleared'
+  )
+  report(
+    (await targetPage.inputValue('input[name="password"]')) === SIGNUP_PROBE_PASSWORD,
+    'the password survives it',
+    'the field was cleared'
+  )
+
+  return { bad, ran }
+}
+
+/**
+ * Two forms `retaining` is wired on that this walk still does not exercise —
+ * recorded so the next session does not re-derive the same dead end (PD-203).
+ *
+ * - **`/auth/forgot-password`.** `requestPasswordReset` never returns an error
+ *   by design (Q13/Q16 — the screen must not reveal which addresses have
+ *   accounts), and its one Zod refusal (`resetRequestSchema`, a malformed
+ *   address) is unreachable through the DOM: the field is `type="email"` with
+ *   `required` and the form carries no `noValidate`, so the browser's own
+ *   constraint validation blocks a bad address before any submit reaches the
+ *   action. Effectively unreachable, not merely untested.
+ * - **`CreatePostcardForm`.** Its submit stays `disabled` until an upload
+ *   finishes, so exercising a refusal here would mean a real Storage write on
+ *   every walk — and Storage from this container's Chromium hangs with no
+ *   `onload`/`onerror` (docs/HANDOFF.md §The walk).
+ */
+
+/**
+ * Gates `checkRefusedSignup` behind the same project-ref allowlist
+ * `fixturesPermitted()` gates fixture writes behind — review finding on
+ * PD-203's first pass.
+ *
+ * **Unlike `checkFormRetention`'s ride** (`max_riders = 0`, refused by both
+ * `rideSchema`'s `.positive()` and `018`'s CHECK, so it cannot write at
+ * either layer and needs no gate), nothing makes `signUp`'s refusal
+ * unconditional. "The walk's own address is already registered" is a fact
+ * about the environment this session measured, not a schema or database
+ * guarantee — so pointed at a project where that address is *not*
+ * registered, this phase would create a real account; pointed at a project
+ * with confirmation ON (PROD), it would hit GoTrue's duplicate-signup
+ * mitigation, which **emails the real address owner**.
+ *
+ * `authenticatedProjectRef()` needs a live session to read `iss` from, which
+ * is why this cannot run where `checkRefusedSignup` used to — beside
+ * `checkRefusedSignIn`, before the walk has signed in to anything. It runs
+ * here instead, right after the real sign-in below establishes one, and in a
+ * **throwaway signed-out context** rather than on the now-authenticated
+ * `page` — `/auth/signup` redirects a signed-in rider to `/postcards`
+ * (`GUARD_CASES_SIGNED_IN`), so the phase would never reach the form on
+ * `page` itself, and the phase is supposed to be probing an anonymous
+ * rider's browser in the first place.
+ *
+ * **Calls `refWritable` rather than re-testing `ref` inline** — the
+ * allowlist check itself has to live in exactly one place (`fixturesPermitted`
+ * below is the other caller), or a session tightening the rule later (a
+ * confirmation-ON project must never be writable, say) does it there and
+ * this write silently keeps the old, looser one.
+ */
+async function runRefusedSignup() {
+  const permit = refWritable(await authenticatedProjectRef(), 'sign up')
+  if (!permit.ok) {
+    console.log(`\n(refused-signup phase skipped — ${permit.why})`)
+    return { bad: 0, ran: 0 }
+  }
+
+  const signupContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const signupPage = await signupContext.newPage()
+  try {
+    return await checkRefusedSignup(signupPage)
+  } finally {
+    await signupContext.close()
+  }
+}
+
 // Full walks only, matching the guard cases below: a subset invocation is
 // someone debugging one screen, and this one costs a whole extra sign-in.
 const refusedSignInFailures = isFullWalk ? await checkRefusedSignIn() : 0
@@ -287,6 +450,25 @@ const landed = new URL(page.url()).pathname
 console.log(`sign-in landed on ${landed}`)
 if (landed.startsWith('/auth/login')) {
   console.error('  sign-in failed — every route below will be a redirect, not a result')
+}
+
+// A phase that throws must fail, not abort — see the note beside the other
+// three `.catch()`s below. This one additionally has an environment path
+// that legitimately throws rather than reports (PROD's confirmation-ON
+// signup response replaces the form entirely, so the field reads inside
+// `checkRefusedSignup` reject on timeout instead of returning ""), and
+// `runRefusedSignup`'s ref gate is what should keep that path from ever
+// being reached — this `.catch()` is the defense behind that gate, not a
+// substitute for it.
+let refusedSignupFailures = 0
+let refusedSignupRan = 0
+if (isFullWalk) {
+  const signup = await runRefusedSignup().catch((e) => {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    return { bad: 1, ran: 1 }
+  })
+  refusedSignupFailures = signup.bad
+  refusedSignupRan = signup.ran
 }
 
 /**
@@ -391,12 +573,6 @@ async function discoverDetailPaths({ quiet = false } = {}) {
  * `onload` or `onerror` (docs/HANDOFF.md). A fixture that cannot be created is
  * better skipped loudly than half-built.
  */
-/**
- * The projects this walk may write to. **An allowlist, so an unrecognised
- * project fails closed** — a denylist of PROD's ref would wave through a
- * second production project the day one exists.
- */
-const WRITABLE_REFS = new Set(['fpmrimzxadewsaiwpsel']) // Letsride-dev
 
 /**
  * Which Supabase project the browser **actually** authenticated against, read
@@ -443,12 +619,16 @@ async function authenticatedProjectRef() {
 }
 
 /**
- * Writes are off by default, and turning them on is not enough on its own — the
- * project has to be one this walk is allowed to write to, established from the
- * session rather than from anything the runner typed.
+ * The one place the project-ref allowlist is checked — every write this walk
+ * can make (`fixturesPermitted` below, and `runRefusedSignup` above) calls
+ * this rather than testing `ref` itself, so a rule change (tightening it to
+ * refuse a confirmation-ON project outright, say) happens once and binds
+ * every write rather than whichever ones a session remembered to touch.
+ *
+ * `context` names what the caller was about to do, for the skip message
+ * only — the allowlist logic itself never varies by caller.
  */
-function fixturesPermitted(ref) {
-  if (process.env.WALK_FIXTURES !== '1') return { ok: false, quiet: true }
+function refWritable(ref, context) {
   if (!ref) {
     return {
       ok: false,
@@ -458,10 +638,20 @@ function fixturesPermitted(ref) {
   if (!WRITABLE_REFS.has(ref)) {
     return {
       ok: false,
-      why: `refusing to create fixtures against "${ref}" — only ${[...WRITABLE_REFS].join(', ')} is writable`,
+      why: `refusing to ${context} against "${ref}" — only ${[...WRITABLE_REFS].join(', ')} is writable`,
     }
   }
   return { ok: true }
+}
+
+/**
+ * Writes are off by default, and turning them on is not enough on its own — the
+ * project has to be one this walk is allowed to write to, established from the
+ * session rather than from anything the runner typed.
+ */
+function fixturesPermitted(ref) {
+  if (process.env.WALK_FIXTURES !== '1') return { ok: false, quiet: true }
+  return refWritable(ref, 'create fixtures')
 }
 
 async function provision({ ride, club }) {
@@ -913,6 +1103,97 @@ async function checkFormRetention() {
 }
 
 /**
+ * `CreateClubForm` — PD-199 wired `retaining` on nine forms and this walk
+ * asserted it on two (the phase above, and `checkEditRetention` below); this
+ * is one of the seven that had nothing rendering it. PD-203.
+ *
+ * **One submit covers three different control types, which is why this form
+ * rather than another of the seven.** `name` is a *controlled* input — it
+ * needs no `retaining` entry at all, because component state already
+ * survives the reset (`CreateClubForm`'s own comment says so) — so asserting
+ * it here proves that claim rather than assuming it. `description` is an
+ * uncontrolled textarea and `is_public` an uncontrolled checkbox, both named
+ * in `retaining(createClub, ['description', 'is_public'])`. No other form in
+ * this repo exercises a controlled text field, an uncontrolled textarea and
+ * an uncontrolled checkbox in the same refusal.
+ *
+ * **The submit cannot create a club, at either layer — same shape as the ride
+ * phase above.** The form carries `noValidate`, so a whitespace-only `name`
+ * reaches `createClub`'s action, and `clubSchema`'s `.trim().min(1)` refuses
+ * it before any query runs; `018`'s `clubs_name_length` CHECK
+ * (`length(btrim(name)) >= 1`) refuses the same whitespace at the database,
+ * exactly as `018` bounds `rides.max_riders`. (`clubSchema`'s own header
+ * comment still says `clubs.name` carries no CHECK — that predates `018` and
+ * is stale; tracked separately, not by this phase.)
+ */
+async function checkCreateClubRetention() {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nrefused club create keeps what was typed:')
+  const field = (name) => `form [name="${name}"]`
+
+  await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
+  await page.waitForSelector(field('name'), { timeout: 20_000 })
+
+  const description = 'Two lines\nof description'
+  await page.fill(field('name'), '   ')
+  await page.fill(field('description'), description)
+  // Public by default (`clubSchema`'s own note, and `001`'s column default) —
+  // unticking is what proves the restore reads the submission rather than
+  // reinstating the literal default, same reasoning as the ride phase.
+  //
+  // **Clicked by its label**, like the ride phase's checkbox: `<Checkbox>`
+  // draws an `sr-only` input under a styled span, so a direct click is either
+  // intercepted or lands on the span and toggles nothing.
+  await page.click('form label:has(input[name="is_public"])')
+  if (await page.isChecked(field('is_public'))) {
+    throw new Error('could not clear the "public" checkbox — the harness, not the app')
+  }
+
+  await page.click('button[type="submit"]')
+  // Scoped to the form, like the ride phase — see its comment on why a
+  // document-wide `role="status"` query would pass for the wrong reason.
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('form [role="status"]')].some(
+          (n) => n.textContent.trim().length > 0
+        ),
+      null,
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
+
+  const refusal = (
+    await page.$$eval('form [role="status"]', (ns) =>
+      ns.map((n) => n.textContent.trim()).filter(Boolean)
+    )
+  ).join(' | ')
+  report(Boolean(refusal), 'the refusal is reported', 'no status text on screen')
+
+  const nameAfter = await page.inputValue(field('name')).catch(() => null)
+  report(nameAfter === '   ', 'name (controlled) survives it', `read ${JSON.stringify(nameAfter)}`)
+
+  const descriptionAfter = await page.inputValue(field('description')).catch(() => null)
+  report(
+    descriptionAfter === description,
+    'description survives it',
+    `read ${JSON.stringify(descriptionAfter)}`
+  )
+
+  const stillPublic = await page.isChecked(field('is_public')).catch(() => null)
+  report(stillPublic === false, 'the cleared "public" box stays cleared', 'it was re-ticked')
+
+  return { bad, ran }
+}
+
+/**
  * The edit forms, which fail the same way and cost more when they do.
  *
  * **The create form's fields are uncontrolled and these are controlled, which
@@ -953,14 +1234,38 @@ async function checkEditRetention(candidates) {
   // and `/clubs/detail/edit` both answer 200 for a rider who does not own the
   // row — they draw a "not yours" message rather than 404ing (PD-101) — and the
   // walk discovers ids from lists that include other riders' rows. So a missing
-  // `is_public` here means "not this rider's", not "the control is gone", and
-  // waiting 20s for it to appear is how this phase first read as a harness
-  // failure on a perfectly good build.
+  // `is_public` here means "not this rider's", not "the control is gone".
+  //
+  // **A `waitForSelector` here, uncaught, is how an earlier draft of this loop
+  // once read a "not yours" candidate as a harness failure rather than a
+  // skip** — a rejected wait with nothing catching it took the whole phase
+  // down. The flat `waitForTimeout` that replaced it fixed that, but a fixed
+  // 1500ms can read the `is_public` field before an owned form's data —
+  // fetched through the relay, one round trip slower than a direct
+  // connection — has actually arrived, silently reading an owned candidate
+  // as "not yours" and falling through to the next one, skipping the
+  // `club_id` restore assertion below (the control type `retain.ts` singles
+  // out as hardest to get right). `waitForSelector` **with** a `.catch()`
+  // removes that risk without reintroducing the harness failure: it settles
+  // the moment the form is actually there, and a genuine "not yours"
+  // candidate degrades to a bounded wait instead of an uncaught rejection.
   let chosen = null
   for (const candidate of candidates) {
     await page.goto(`${BASE}${candidate.path}`, { waitUntil: 'networkidle' })
-    await page.waitForTimeout(1500)
-    if ((await page.isChecked(field('is_public')).catch(() => null)) !== null) {
+    // `state: 'attached'`, not the default `'visible'` — `Checkbox`'s real
+    // input is `className="peer sr-only"` (visually hidden, not absent), and
+    // the old `isChecked(...).catch(() => null)` this replaced resolved on
+    // attachment too. Requiring visibility would make this probe agree with
+    // the old one only by accident, on the current CSS: a future move to
+    // `hidden`/zero-size would make an *owned* form read as "not yours" on
+    // both candidates, and the phase returns `{bad: 0, ran: 0}` — a skip
+    // that reads as a pass, on the one thing this file's own conventions
+    // exist to catch.
+    const rendered = await page
+      .waitForSelector(field('is_public'), { state: 'attached', timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (rendered) {
       chosen = candidate
       break
     }
@@ -1031,6 +1336,85 @@ async function checkEditRetention(candidates) {
   return { bad, ran }
 }
 
+/**
+ * `EditProfileForm` — the ninth form `retaining` was wired on, and the only
+ * one of the nine where `defaultValue` falls back to a *stored* value rather
+ * than an empty string: `state.retained.location ?? profile.location ?? ''`.
+ * Every create form starts blank, and the ride/club edit forms above are
+ * controlled rather than `retaining`-backed, so this is the one place that
+ * `??` chain runs at all. PD-203.
+ *
+ * **The first assertion is the `??` chain's read of the stored value, before
+ * anything is submitted** — `state.retained.location` is `{}` on first
+ * render, so a non-empty field on load can only have come from `profile`.
+ * The walk account is fully onboarded, and `023`'s completion trigger refuses
+ * the onboarding stamp while `location` is NULL, so a non-empty value here is
+ * guaranteed rather than assumed for this account.
+ *
+ * **The error region is `role="alert"` (`FormError`), not `role="status"`
+ * like the ride/club forms above** — this form draws no live alert while
+ * typing, unlike the ones with a public/private checkbox, so there is no
+ * false-positive trap to guard against and alert text is safe to wait on
+ * directly.
+ *
+ * Refused the same way as the create phase: `noValidate` lets a
+ * whitespace-only `location` reach `updateProfile`, and `profileEditSchema`'s
+ * `.trim().min(1)` refuses it before any query runs.
+ */
+async function checkEditProfileRetention() {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nrefused profile edit keeps what was typed:')
+  const field = (name) => `form [name="${name}"]`
+
+  await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
+  await page.waitForSelector(field('location'), { timeout: 20_000 })
+
+  const initialLocation = await page.inputValue(field('location')).catch(() => null)
+  report(
+    Boolean(initialLocation && initialLocation.trim().length > 0),
+    'location loads from the stored profile (the `??` fallback)',
+    `read ${JSON.stringify(initialLocation)}`
+  )
+
+  const bikeModel = `Walk probe bike ${Date.now()}`
+  await page.fill(field('location'), '   ')
+  await page.fill(field('bike_model'), bikeModel)
+
+  await page.click('button[type="submit"]')
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('form [role="alert"]')].some(
+          (n) => n.textContent.trim().length > 0
+        ),
+      null,
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
+
+  const refusal = (
+    await page.$$eval('form [role="alert"]', (ns) =>
+      ns.map((n) => n.textContent.trim()).filter(Boolean)
+    )
+  ).join(' | ')
+  report(Boolean(refusal), 'the refusal is reported', 'no alert text on screen')
+
+  const locationAfter = await page.inputValue(field('location')).catch(() => null)
+  report(locationAfter === '   ', 'location survives it', `read ${JSON.stringify(locationAfter)}`)
+
+  const bikeAfter = await page.inputValue(field('bike_model')).catch(() => null)
+  report(bikeAfter === bikeModel, 'bike_model survives it', `read ${JSON.stringify(bikeAfter)}`)
+
+  return { bad, ran }
+}
+
 let guardFailures = 0
 let retentionRan = 0
 if (isFullWalk) {
@@ -1044,6 +1428,13 @@ if (isFullWalk) {
   })
   guardFailures += retention.bad
   retentionRan = retention.ran
+
+  const clubRetention = await checkCreateClubRetention().catch((e) => {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    return { bad: 1, ran: 1 }
+  })
+  guardFailures += clubRetention.bad
+  retentionRan += clubRetention.ran
 
   // Discovered, like the screens above — with no ride to edit there is no form,
   // and the phase says so rather than passing on an empty page.
@@ -1074,6 +1465,13 @@ if (isFullWalk) {
   })
   guardFailures += edit.bad
   retentionRan += edit.ran
+
+  const profileRetention = await checkEditProfileRetention().catch((e) => {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    return { bad: 1, ran: 1 }
+  })
+  guardFailures += profileRetention.bad
+  retentionRan += profileRetention.ran
 
   // Before the guard cases, which end on /auth/reset-password, and well before
   // `checkSignOut` takes the session away.
@@ -1108,9 +1506,15 @@ if (isFullWalk) {
     TAB_NAV_CHECKS +
     REFUSED_SIGN_IN_CHECKS +
     // Counted from what ran, not from a constant: the club `<select>` exists
-    // only for a rider in a club. See checkFormRetention.
-    retentionRan
-  const bad = guardFailures + refusedSignInFailures
+    // only for a rider in a club, the ride/club edit phase runs only for a
+    // rider who owns one, and `runRefusedSignup` skips entirely off the
+    // project-ref gate. See checkFormRetention, checkEditRetention and
+    // runRefusedSignup.
+    retentionRan +
+    refusedSignupRan
+  const bad = guardFailures + refusedSignInFailures + refusedSignupFailures
   console.log(`${total - bad}/${total} guard, navigation and sign-out checks correct`)
 }
-process.exit(failures || guardFailures || refusedSignInFailures || fixtureFailures ? 1 : 0)
+process.exit(
+  failures || guardFailures || refusedSignInFailures || refusedSignupFailures || fixtureFailures ? 1 : 0
+)

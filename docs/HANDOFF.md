@@ -64,7 +64,7 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1442/1442 across 46 files
+npm run test:unit                     # 1456/1456 across 47 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 32 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
@@ -445,7 +445,7 @@ the postcard thread still carry inferred composition; the design has frames for 
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1428**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD); `054` by **+64 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `036: an ownerless owner cannot see their own private club's ride TODAY` pinned the defect as current behaviour, and `054` fixes it, so the line is now `036/054:` and expects 1 where it expected 0. **A session diffing label sets against `development` will find the old label simply gone**; reinstating it re-asserts the defect and turns a correct database red. `036` §7.12c's *behaviour* is unchanged and still right — the club-ride fan-out reads `club_members` directly because a caller-relative helper cannot compute a recipient set — but its stated justification is void, and the withheld notification is now a gap (N10) owned by `enforce-creator-membership`; `055` by **+44 new and −1 relabelled**, and that one is a plain rename — `036: … and nobody else on the crew` still reads 1, but only because that fixture's sole other crew member IS the organizer, so it is now `036/055:` with the reason stated |
-| Unit tests | `npm run test:unit` — **1442 across 46 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **1456 across 47 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -515,19 +515,45 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `36/36 guard, navigation and sign-out checks correct` on a DEV where the walk
-account owns a ride and a club.** Two phases count what they *ran* rather than a constant,
-because two controls are drawn only for a rider who has somewhere to put them, so the total
-falls to 35 or 33 on a thinner database and the run says which parts it skipped. Count them from
-the output rather than from here: 5 refused-sign-in assertions, 9 refused-create assertions (8
-with no club, so the club `<select>` is not drawn), 3 refused-edit assertions (2 on the club edit
-form, which has no select), then `all N taps navigated`,
-`no stamp re-read`, `the shell stayed mounted`, `the splash never painted`, then 6 signed-in
-guard rules, 4 sign-out assertions and 5 signed-out guard rules. The walk discovers detail
-routes from the lists, checks eleven route-guard redirects in both signed-in and signed-out
-states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no
-reachable screen, and taps five bottom tabs to prove a navigation costs no
-`my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
+**A clean run is `47/47 guard, navigation and sign-out checks correct` on a DEV where the walk
+account owns a ride and a club** — measured 2026-08-12. **The account that measures the full total
+is whoever currently organises the earliest-departing ride, not a fixed name**: `checkEditRetention`
+picks the first candidate whose form actually renders, and `getRides` orders `/rides` by
+`departure_at` ascending, so `discoverDetailPaths` hands it whichever ride is soonest regardless of
+who created it or when. Re-derive who currently qualifies rather than trusting a name written here:
+
+```sql
+select p.username, r.title, r.departure_at
+  from public.rides r join public.profiles p on p.id = r.organizer_id
+ where r.departure_at >= now() order by r.departure_at asc limit 1;
+```
+
+The account that organises that row is the one whose run exercises the `club_id` restore
+assertion — `retain.ts`'s hardest control type — rather than landing on that ride's edit form as
+someone else ("not this rider's"), falling through to the club one, and skipping it. A
+freshly-minted account usually measures one lower for exactly that reason: its own fixture ride is
+dated a year out **on creation** (`provision()`, below), so it is rarely the earliest row on a DEV
+that has accumulated others; the SQL to mint a password for whichever account the query above
+names is in §Test accounts.
+
+Five phases count what they *ran* rather than a fixed constant — `checkFormRetention`,
+`checkCreateClubRetention`, `checkEditRetention`, `checkEditProfileRetention` and
+`checkRefusedSignup` all return it — and three of the five actually vary at runtime: the club
+`<select>` and the ride/club edit form are drawn only for a rider who has somewhere to put them,
+and `runRefusedSignup` skips entirely when the browser's session is not on the writable-project
+allowlist. So the total falls on a thinner database or a wrongly configured environment, and the
+run says which parts it skipped rather than shrinking silently. Count them from the output rather
+than from here: 5 refused-sign-in assertions, 3 refused-signup assertions when the ref gate passes
+(0 when it does not), 9 refused-ride-create assertions (8 with no club, so the club `<select>` is
+not drawn), 4 refused-club-create assertions, 2 or 3 refused-edit assertions (2 on the club edit
+form, which has no select), 4 refused-profile-edit assertions, then `all N taps navigated`,
+`no stamp re-read`, `the shell stayed mounted`, `the splash never painted`, then 6 signed-in guard
+rules, 4 sign-out assertions and 5 signed-out guard rules. The walk discovers detail routes from
+the lists, checks eleven route-guard redirects in both signed-in and signed-out states, asserts
+sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no reachable screen, and makes
+five bottom-tab taps across the four tabs to prove a navigation costs no `my_onboarding_state()`
+re-read, does not remount
+the shell and never paints the splash.
 
 **The refused-edit phase is the one that has been wrong twice, and both times it read green.**
 It flips the public checkbox, submits a **whitespace-only** required field — which satisfies HTML
@@ -546,6 +572,32 @@ reads every field back. It reported seven text fields and a checkbox surviving w
 made controlled. `src/lib/actions/retain.ts` carries what that measured, and it is the reason
 the two selects also need an effect.
 
+**PD-203's three phases close most of the gap between "wired on nine forms" and "asserted on
+two", and record what they deliberately still leave open.** `checkCreateClubRetention` submits
+a whitespace-only `name` — refused at both layers, by `clubSchema`'s `.trim().min(1)` and by
+`018`'s `clubs_name_length` CHECK, exactly as `018` bounds `rides.max_riders` — and is the one
+phase covering a controlled text
+input, an uncontrolled textarea and an uncontrolled checkbox in a single refusal.
+`checkEditProfileRetention` is the only phase touching the one form where `retaining`'s
+`defaultValue` fallback ever reaches a *stored* value (`state.retained.location ?? profile.location
+?? ''`) rather than an empty string, and asserts that fallback on load before submitting anything.
+`checkRefusedSignup` reuses the walk's own already-registered address and proves only the DEV
+branch of `signUp` — with confirmation ON (PROD) GoTrue's duplicate-signup mitigation returns
+success instead, so the `alreadyRegistered` branch this phase exercises is unreachable there; the
+comment above it in `scripts/walk.mjs` says so. **It runs after the real sign-in below, not beside
+`checkRefusedSignIn`, and only behind `refWritable` — the one place the project-ref allowlist is
+checked, shared with `fixturesPermitted`'s gate on `provision()`'s writes** (`runRefusedSignup`) —
+a real `signUp` call is a write with no schema or database layer backing its refusal the way
+`max_riders = 0` backs the ride phase, so "the address is already registered" being true is a fact
+about the environment, not a guarantee, and it needed a session to read the project ref from
+before it could be trusted to run at all. The phase call site also carries the `.catch()`
+every other new PD-203 phase has; broken and reverted by hand to confirm it reports a failure
+rather than aborting the run. The remaining two of the nine `retaining` forms are recorded as
+deliberately unexercised in the same file, next to `checkRefusedSignup`:
+`/auth/forgot-password`'s one refusal is blocked by the browser's own `type="email"` validation
+before any submit reaches the action, and `CreatePostcardForm`'s submit stays disabled until a
+Storage upload finishes, which this container's Chromium cannot complete.
+
 **The refused-sign-in phase submits a wrong password twice, and the second attempt is the one
 that matters** (PD-196). React resets a `<form action={fn}>` on the failure path too, so the
 email is restored from `defaultValue` rather than held in component state. The two attempts
@@ -558,10 +610,10 @@ leaves the field filled too.
 
 **The screens figure is data-dependent and is not a pass/fail number.** The detail routes are
 discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
-`13/13` against a DEV with a club but no ride, `16/16` once the ride is there. **Read the `N/N`
-for equality, not for the value**, and read the skip notices above it for what was not covered.
-`36/36` above is the pass/fail one — read it for equality too, since its total moves with what
-the walk account owns.
+`13/13` against a DEV with a club but no ride, `16/16` once the ride is there, `18/18` measured
+2026-08-12 with a ride, a club and one visible postcard. **Read the `N/N` for equality, not for
+the value**, and read the skip notices above it for what was not covered. `47/47` above is the
+pass/fail one — read it for equality too, since its total moves with what the walk account owns.
 
 **So the walk provisions what it needs** — a shrunken figure looks exactly like success while
 meaning the ride detail was never opened, which is how PD-125 shipped a switcher nobody had
@@ -569,7 +621,7 @@ seen:
 
 ```bash
 WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV.supabase.co \
-  WALK_EMAIL=... WALK_PASSWORD=... npm run walk     # 16/16 on a DEV that reported 13/13 without it
+  WALK_EMAIL=... WALK_PASSWORD=... npm run walk     # 18/18 on a DEV that reported 13/13 without it
 ```
 
 It creates a ride and a club **through `/rides/new` and `/clubs/new`** rather than by insert,
