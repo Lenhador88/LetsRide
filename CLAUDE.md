@@ -480,10 +480,9 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 55 files. DEV is at `055`, PROD at `054` — DEV AHEAD, 2026-08-12.** Do not
+**Applied state: 55 files. DEV and PROD are both at `055` — LEVEL, 2026-08-12.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead. DEV-ahead is the ordinary state of a migration between its
-merge and its promotion, not drift; `055` reaches PROD with PD-129's promotion.
+`ls supabase/migrations/` instead.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -502,9 +501,24 @@ objects against the database that already has the file applied correctly** — `
 over `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`, `information_schema.columns`,
 `pg_indexes` and the grants. That is *stronger* than comparing the text that produced them.
 
-**The cost, and it reads exactly like drift: PROD's recorded statement for `036`–`040` is the
-reduced form, so `md5(statements[1])` on those five will NOT equal `md5sum` of the file.**
-Expected. DEV carries one asymmetry of the same class on `034`;
+**The cost, and it reads exactly like drift: a recorded statement that does NOT equal `md5sum` of
+its file is the NORM for a large migration, on both projects.** Measured 2026-08-12 — PROD records
+a materially reduced statement for `036`–`040`, `047`, `048`, `049`, `050`, `051` and `055`, and
+DEV for `034`, `040`, `049`, `050`, `053` and `055`. **Do not read this as a list to check against**;
+it was one for a while, it was wrong in both directions within a day, and a closed list is exactly
+what turns a correct database into apparent drift the first time a file is missing from it.
+
+Measure instead. A normally-applied file records within a couple of hundred bytes of its size, so
+the reduced ones stand out by ratio rather than by name:
+
+```sql
+select version, name, length(statements[1]) as recorded   -- against ls -l on the file
+  from supabase_migrations.schema_migrations order by version;
+```
+
+**Compare the OBJECT, never the recorded text** — `md5(prosrc)`, `pg_get_functiondef`,
+`pg_policies` — which is the check the paragraph above already prescribes and the only one that
+distinguishes a reduced apply from a real difference.
 [`docs/reference/migrations.md`](docs/reference/migrations.md) has the reconciliation SQL.
 
 **A migration that hangs triggers off an already-shipped write path needs a hand-exercise gate

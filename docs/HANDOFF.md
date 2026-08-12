@@ -94,11 +94,23 @@ npm run release:check                 # only before a store submission — see �
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` is at `a9cf1e5`** — promoted via #150 as a merge commit, back-merged by fast-forward,
-  production `READY` on that sha as a real rebuild (`target: production`, ref `main`) rather than
-  a promoted preview. That promotion carried **one** commit, #149's squash: `047`, `048` and
-  PD-177. The two promotions before it were #148 and #100, the latter carrying the 19 that brought
-  ride chat, the guard cache, the Inbox removal and the native shell's first half.
+- **`main` is at `ee0cde0`** — promoted via #191 as a merge commit, back-merged by fast-forward,
+  so both branches sit on that sha. That promotion carried **27** commits — `p1..p2`, the same
+  rule the counts beside the earlier promotions use; the incl-merge number is 28 — and is the
+  largest so far: the ride map tiles (PD-104, PD-202), crew-wide ride-join notifications
+  (PD-129), a club owner reaching their own club as a member does (PD-128), the form-retention
+  pair (PD-199, PD-196), bounded place search with the index loaded in production (PD-150,
+  PD-195), and the release bundle's baked-in backend and origin (PD-188). The three before it
+  were #163, #154 and #150.
+
+  **Re-derive both numbers rather than editing the tail of this list** — a previous revision
+  prepended a new promotion to ids that were already wrong, which is how one stale entry becomes
+  three:
+
+  ```bash
+  git log --oneline --merges -5 origin/main            # the promotions, newest first
+  git rev-list --count <sha>^1..<sha>^2                # what one carried
+  ```
 
   **This line goes stale on every promotion and nothing updates it automatically** — #148 shipped
   without moving it, which is why it read two promotions out of date. Re-derive rather than trust
@@ -655,7 +667,7 @@ publication membership is asserted, the *delivery* is not), and whether the comp
 `crypto.randomUUID` path is on a secure origin — it is over HTTPS, and the fallback exists for
 `http://<lan-ip>` device testing.
 
-## Migrations — the repo and DEV hold 55, PROD holds 54
+## Migrations — the repo, DEV and PROD all hold 55
 
 **`049` and `050` both reached PROD on 2026-08-11**, so the chain is level across both databases
 for the first time since `048`. `050` was applied *ahead of* the PROD places load rather than
@@ -684,12 +696,9 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV at 55 rows ending 055_ride_joined_notifies_the_crew; PROD at 54 ending
-#   054_club_owner_is_a_member. DEV AHEAD by one as of 2026-08-12 — 055 is
-#   PD-129's and reaches PROD with that promotion. DEV-ahead is the ordinary
-#   state between a merge and a promotion, not drift.
-#   They were LEVEL at 054, applied by PD-201, and everything below describes
-#   that apply rather than 055's:
+#   BOTH at 55 rows ending 055_ride_joined_notifies_the_crew. LEVEL as of
+#   2026-08-12, 055 applied to PROD at the #191 promotion. Everything below
+#   describes the earlier PD-201 apply of 051-054 rather than 055's:
 #   Verified by OBJECT FINGERPRINT, not by trusting the row count: 19 labelled
 #   components as md5(string_agg(...)) over pg_get_functiondef, pg_get_triggerdef,
 #   pg_policies, information_schema.columns, pg_indexes, pg_constraint, the
@@ -713,19 +722,31 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 ls supabase/migrations/ | wc -l          # 55
 ```
 
-**`055` is PD-129's and was applied to DEV only, deliberately.** It replaces one function body —
-`private.notify_ride_joined()` — and adds no table, policy, grant or trigger DDL. Digest checked
-three ways rather than eyeballed: the file's `$$` block, DEV's `prosrc`, and a local psql apply all
-`a4c1332fe109aa3c56111794a37aaab2`. The live RSVP path was exercised on DEV inside a rolled-back
-transaction, notifying exactly the three expected riders with nothing raised and no residue.
+**`055` is PD-129's and is now on both projects.** It replaces one function body —
+`private.notify_ride_joined()` — and adds no table, policy, grant or trigger DDL. Both databases
+agree on the object, which is the check that matters: `md5(prosrc)` is
+`a4c1332fe109aa3c56111794a37aaab2` at **1035 characters** on DEV and PROD, and the function
+comment digests agree too. `prosecdef`, an empty `search_path`, and no EXECUTE for `authenticated`
+or `anon` all re-verified on PROD. The live RSVP path was exercised on **both** inside rolled-back
+transactions — on PROD, two RSVPs wrote three rows, the organizer notified by each, the `maybe`
+rider notified by the actor's join, the actor never, nothing raised and zero residue.
 
-**`md5sum` of the file will NOT equal DEV's recorded statement for `055`, and that is expected** —
-the same class as `036`–`040` and `049`. The review pass found a wrong expectation in the file's
-own post-apply verification block (the unfiltered `pg_trigger` query returns two rows on
-`ride_members`, because `enforce_participation_gate` is on it too, so a correct database reads as
-a failed apply). The fix is **comments only** — zero non-comment lines changed — so the applied
-object needs nothing: DEV's `prosrc` still reads `a4c1332fe109aa3c56111794a37aaab2`, re-checked
-after the edit. Compare the digest, never the recorded text.
+**PROD's recorded statement for `055` is a comment-stripped form, and this one was an error rather
+than a technique.** The first PROD apply extracted the file's executing statements with a bare
+`grep -v '^--'`, which strips the comments **inside** the `$$` body too — the exact thing
+`CLAUDE.md` §Supabase Rules says to preserve, because it changes `prosrc`. It was caught
+immediately by the digest check (PROD read `98a46c7f…` at 586 characters against DEV's 1035) and
+reconciled by re-issuing `create or replace` through **`execute_sql`, not `apply_migration`** —
+the ledger already carried a `055` row and a second is drift of a worse kind, which is the `050`
+precedent. **The lesson is the digest, not the mistake:** a stripped body is behaviourally
+identical and invisible to every other check, so nothing but comparing `md5(prosrc)` across the
+two projects would have found it.
+
+**`md5sum` of the file therefore equals neither database's recorded statement for `055`** —
+DEV's because a comments-only fix landed after its apply, PROD's for the reason above. That is
+the ordinary case rather than a named exception: a reduced recorded statement is the norm for a
+large migration on both projects, and `CLAUDE.md` §Supabase Rules carries the query that measures
+it instead of a list to check against. Compare the digest of the object, never the recorded text.
 
 **It carries a KNOWN GAP that is asserted rather than latent, and the assertions are the record.**
 `rides` SELECT holds neither a `ride_members` nor an `is_ride_crew` arm, so *on this crew* and *can
