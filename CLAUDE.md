@@ -131,11 +131,11 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **ten** tables on DEV and
-   **nine** on PROD — `postcards`,
+   gets inherited as covered.** `enforce_participation_gate` is on **ten** tables on both DEV and
+   PROD — `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
-   `postcard_reports`, `ride_messages`, plus `ride_map_render_attempts`, which is `051`'s and is
-   therefore DEV-only until `051`–`053` reach production — and **not** on `profiles` UPDATE, `profile_countries`,
+   `postcard_reports`, `ride_messages`, plus `ride_map_render_attempts`, which `051` added and
+   which was DEV-only until PD-201 levelled the projects — and **not** on `profiles` UPDATE, `profile_countries`,
    `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy, which check the path
    prefix only. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
    calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
@@ -480,7 +480,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 54 files. DEV is at `054`, PROD at `050` — NOT level, 2026-08-12.** Do not
+**Applied state: 54 files. DEV and PROD are both at `054` — LEVEL, 2026-08-12.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 

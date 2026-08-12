@@ -182,16 +182,36 @@ export function RideMap({
             loading="lazy"
             draggable={false}
           />
-          {/* White/100 on a LOCAL `bg-scrim` pill, not the full-panel scrim this
-              panel used to carry. The scrim existed to hold the address legible
-              over an unknown map; with the address gone there is nothing left to
-              darken the whole tile for, and this string is the only thing still
-              needing a bounded background. Same 8.59:1 worst case, over ~120px
-              instead of the entire panel. */}
-          <span className="pointer-events-none absolute top-1 left-1 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white">
-            Powered by Geoapify
-          </span>
         </>
+      )}
+
+      {/* **Keyed on the ride HAVING a tile, not on the tile currently drawing** —
+          `tileUrl`, not `showsTile`, and that is the last step of PD-202 rather
+          than a nicety.
+
+          The render function now writes both tile paths or neither, so a ride
+          with imagery on the rides list always has imagery here too and this
+          credit always has a home. That closes the split at the source. What it
+          does NOT close is `onError`: an expired signature or a 404 on THIS image
+          drops `showsTile` while the card's tile is still on screen a tap away,
+          and the Free-plan obligation is service-level rather than per-image — it
+          is owed while the vendor's imagery is anywhere in the app, not only
+          while this particular `<img>` succeeded.
+
+          Rendered over the fallback panel in that case, which looks odd for a
+          second and is the correct trade: the alternative is a credit that
+          disappears exactly when a network is flaky. It carries its own
+          `bg-scrim` pill, so it is legible on `bg-track` and over a tile alike —
+          White/100 on the Grey/70% composite, 8.59:1 at worst.
+
+          White/100 on a LOCAL pill, not the full-panel scrim this panel used to
+          carry: that scrim existed to hold the ADDRESS legible over an unknown
+          map, and with the address gone there is nothing left to darken the whole
+          tile for. ~120px instead of the entire panel. */}
+      {!!tileUrl && (
+        <span className="pointer-events-none absolute top-1 left-1 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white">
+          Powered by Geoapify
+        </span>
       )}
 
       {/* The pin and the address are the NO-TILE rendering, and only that.
