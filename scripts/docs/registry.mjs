@@ -213,7 +213,10 @@ export const claims = [
     // DEV-only migration turns it red again and the sentence gets re-read.
     // The pin is on the RELATIONSHIP in both directions; do not relax it to the
     // count just because the two projects agree today.
-    pattern: /\*\*Applied state: (\d+) files\. DEV and PROD are both at `\d+` — LEVEL/,
+    // 2026-08-12: 055 landed on DEV alone (PD-129), so the pin moved off LEVEL
+    // to DEV AHEAD. It goes red again the moment PROD catches up, which is the
+    // half of "both directions" that is easy to forget when editing this line.
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV AHEAD/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
