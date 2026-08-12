@@ -124,7 +124,18 @@ function RidesScreen() {
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
   // where `isLoading` is false and there is still nothing to draw.
-  if (!filters.data) return <SkeletonList />
+  //
+  // Wrapped in the same `py-2` the list slot's skeleton carries below, because
+  // on a cold load both are drawn in turn: this one while the filter read is
+  // in flight, that one while the list read still is. Bare, the rows shift 8px
+  // as the bar arrives — the same jump the wrapper below exists to prevent,
+  // one gate earlier.
+  if (!filters.data)
+    return (
+      <div className="py-2">
+        <SkeletonList />
+      </div>
+    )
 
   return (
     <>
@@ -138,11 +149,13 @@ function RidesScreen() {
         // list rather than replacing the screen — so without it every filter
         // tap ends with the cards jumping 8px as the data lands.
         //
-        // `key` is what makes the fade below fire: this and the loaded
-        // branch are both a bare `div`, and without distinct keys React
-        // reconciles them as the *same* node across the swap — updating its
-        // className and children in place rather than mounting a fresh one
-        // — so `animate-fade-in` on the loaded branch would never restart.
+        // The keys are belt-and-braces rather than load-bearing, and saying
+        // which matters: React reconciles this and the loaded branch as the
+        // *same* node without them, both being a bare `div` at one position —
+        // but a className changing from no animation to `fade-in` starts the
+        // animation anyway, which is the ordinary add-a-class mechanism. The
+        // keys make it a remount so the fade does not rest on that, and this
+        // container cannot be watched from the build container.
         <div key="skeleton" className="py-2">
           <SkeletonList />
         </div>

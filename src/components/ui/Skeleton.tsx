@@ -21,10 +21,16 @@ import { cn } from '@/lib/utils'
  * file — they share the base `Skeleton` primitive and would otherwise
  * duplicate its import four times over.
  *
- * **`SkeletonRegion`'s root also carries `motion-safe:animate-fade-in`**
- * (`globals.css`), the other half of the fade the loaded content that
- * replaces each of these carries at its own call site. Defined once here so
- * every shape gets it rather than four screens re-adding it by hand.
+ * **The skeleton itself does not fade in, and that is deliberate.** The fade
+ * belongs to the content that replaces one of these — `globals.css`'s
+ * `animate-fade-in`, applied at each screen's content slot. Putting it here
+ * as well looks like symmetry and is a defect on the two screens that render
+ * a skeleton at *two* positions either side of a gate: `/rides` and
+ * `/postcards` show one while the filter read is in flight and a second,
+ * inside the deck's slot, while the list read is. Those are different tree
+ * positions, so the second is a fresh mount — the rider watches the skeleton
+ * fade in, blink out and fade in again, on exactly the boundary PD-210 was
+ * merged to make seamless. A skeleton that simply appears has none of that.
  */
 export function Skeleton({ className }: { className?: string }) {
   return (
@@ -55,13 +61,7 @@ function SkeletonRegion({
   children: React.ReactNode
 }) {
   return (
-    // Shared by all four shapes, so the region itself fades in once rather
-    // than snapping to full opacity — the flash a sub-100ms fetch would
-    // otherwise cause, since the skeleton would appear and disappear in the
-    // same frame. `motion-safe:` for the same reason `animate-pulse` above
-    // carries it: `prefers-reduced-motion` gets the skeleton with no motion
-    // at all, not a softer version of it.
-    <div role="status" aria-label={label} className={cn('motion-safe:animate-fade-in', className)}>
+    <div role="status" aria-label={label} className={className}>
       {children}
     </div>
   )

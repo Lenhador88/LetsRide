@@ -37,7 +37,14 @@ export function PostcardDeck({
   postcards: Postcard[]
   /** Merged onto whichever root renders — the empty state and the fanned
    * stack both need it applied at the same node `SkeletonDeck` shares
-   * `h-full` with, rather than on a wrapper that would break that chain. */
+   * `h-full` with, rather than on a wrapper that would break that chain.
+   *
+   * **The fade therefore plays once, on arrival, and not again when the
+   * rider swipes the last card away.** Both roots are a `div` at one
+   * position, so React updates in place and `animation-name` never changes
+   * — which is the behaviour wanted here: a swipe is not a load, and
+   * re-fading on it would read as the flash this animation exists to
+   * remove. */
   className?: string
 }) {
   // The ids the rider has swiped past — see `remainingPostcards` for why this is

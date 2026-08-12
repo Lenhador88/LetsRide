@@ -92,12 +92,13 @@ function PostcardThread() {
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6">
       {/* An inner wrapper rather than the fade class on the outer `div`
-          above: that outer element is this component's root in BOTH the
-          skeleton return and this one, so React reconciles it as the same
-          persistent node across the swap and never remounts it — the
-          animation would only ever play once, while `SkeletonDetail` was
-          still showing. This div has no counterpart in the skeleton branch,
-          so it is always a fresh mount when the thread arrives. */}
+          above, which is this component's root in BOTH the skeleton return
+          and this one. React reconciles that outer node as one persistent
+          element across the swap; adding the class to it would still start
+          the animation, since `animation-name` changes from `none`, but it
+          would fade the whole frame including the container the skeleton was
+          already occupying. This div is a fresh mount and holds only what
+          actually arrived. */}
       <div className="flex flex-col gap-4 motion-safe:animate-fade-in">
         <Button href="/postcards" variant="link">
           Back to postcards

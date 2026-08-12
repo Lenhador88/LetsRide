@@ -126,16 +126,15 @@
   --animate-fade-in: fade-in 180ms ease-out;
 }
 
-/* `from` only, deliberately with no `to`. An animation that owns BOTH ends
-   leaves content sitting at its keyframe's final value only for as long as
-   the animation is still "current" — if the stylesheet carrying it fails to
-   apply, or applies after paint, content stranded at the keyframe's `from`
-   value has no fallback. `next build` prerenders every page once at build
-   time (`output: 'export'` still runs that pass — see CLAUDE.md), so a
-   loading treatment that can end up permanently invisible is a build-time
-   risk, not just a runtime one. Ending on nothing means the browser falls
-   through to the element's own resting `opacity` (1, the default), which
-   holds whether or not the animation ever ran. */
+/* `from` only, with no `to`. The implicit final keyframe is synthesized from
+   the element's own computed `opacity`, so the animation cannot disagree with
+   the resting state no matter what a call site sets — which is the property
+   worth having on a loading treatment, where the failure mode is content that
+   stays invisible. (`--animate-*` compiles to the `animation` shorthand, which
+   resets `animation-fill-mode` to `none`, so an explicit `to` would be safe
+   too; this is one less thing to keep in agreement rather than a fix for
+   something broken.) If the class never applies at all, opacity is 1 and the
+   content is simply there. */
 @keyframes fade-in {
   from {
     opacity: 0;
