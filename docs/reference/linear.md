@@ -214,3 +214,9 @@ neither. Ask first.
 - **Verify before you write.** An issue asserting a stale fact is worse than no issue, because a
   tracker reads as current by construction.
 - **A new owner action goes in Linear the moment it is found**, labelled `Owner only`.
+- **A story's premise ages, and nothing marks it done except someone re-measuring.** Check it
+  before building, not after — `.claude/commands/queue-pickup.md` STEP 2d is the procedure, and
+  it applies to a story picked up by hand just as much as to one a firing takes off the queue.
+  **A stale story goes to `Needs decision` with the command and its output in a comment, never
+  to `Needs help`** — that name is half the concurrency lock, so parking finished work there
+  freezes the queue over nothing. **Only the owner cancels**; a session measures and reports.

@@ -194,6 +194,11 @@ describe('agent briefs do not describe a world that has moved on', () => {
       'CLAUDE.md',
       'docs/HANDOFF.md',
       '.claude/agents/reviewer.md',
+      // Cites steps in the §-less form, which the crossrefs gate cannot see at
+      // all — a `§STEP 2d` would bind to `STEP` and resolve ambiguously against
+      // all ten STEP headings, so this list is the only check those references
+      // get.
+      'docs/reference/linear.md',
     ]
     const dangling: string[] = []
     for (const rel of consumers) {
