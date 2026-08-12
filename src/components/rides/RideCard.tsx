@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
 import { LocationFilledIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
@@ -22,12 +25,24 @@ import type { RideAttendance, RideListItem } from '@/types'
  * content column is 8-padded top and bottom with a 4 gap; the club chip is
  * Grey/5, radius 4, padding 8/3; avatars are 28 overlapping by 4.
  *
- * **The 80×148 image strip has no data behind it.** The design fills it with a
- * photo carrying a location pin — almost certainly the static map thumbnail
- * decision #3 calls for — but `rides` has neither an image column nor
- * coordinates, and `meeting_point` is free text. It renders as the design's
- * container plus the pin, which is the honest subset. Recorded in
- * docs/FIGMA-FIDELITY-TODO.md; it needs schema and a tile provider, not design.
+ * **The 80×148 strip draws the ride's static map tile when there is one, and the
+ * design's container plus the pin when there is not.** `051` added
+ * `rides.map_card_path` and the data layer signs it into `map_card_url`, so the
+ * strip is the design's photo-carrying-a-pin once a tile exists — the tile is
+ * the photo and the pin sits over it, exactly as the component set composes
+ * them.
+ *
+ * **No tile is the ordinary state, not a degraded one, and it is the state of
+ * every ride today**: nothing writes `map_card_path` until the render function
+ * ships, and a ride whose address never resolved keeps a NULL path for ever.
+ * The strip must therefore never draw a spinner, a broken-image icon or a "map
+ * unavailable" message — the pin container it has always drawn is the answer,
+ * and a tile that fails to load falls back to exactly that.
+ *
+ * The pin gains a `White/100` disc **only** over a tile. Bare `Grey/100` on a
+ * warm `Grey/10%` container is 15.3:1, but on an arbitrary map tile it is
+ * whatever the tile happens to be; the disc makes it 17.4:1 whatever is behind
+ * it, and reads as the map marker it is.
  */
 type RideCardProps = {
   ride: RideListItem
@@ -42,13 +57,41 @@ type RideCardProps = {
 export function RideCard({ ride, showClub = true }: RideCardProps) {
   const overflow = ride.riders_count - ride.riders.length
 
+  // A tile that 404s or whose signature has expired must cost this row its
+  // picture, never its layout — one image cannot be allowed to break a list.
+  const [tileFailed, setTileFailed] = useState(false)
+  const showsTile = !!ride.map_card_url && !tileFailed
+
   return (
     <Link
       href={routes.ride(ride.id)}
       className="flex gap-4 rounded-lg bg-surface p-1 pr-4 transition-colors active:bg-background"
     >
       <div className="relative w-20 shrink-0 self-stretch overflow-hidden rounded bg-border">
-        <LocationFilledIcon className="absolute inset-0 m-auto h-6 w-6 text-foreground" />
+        {showsTile && (
+          /* A signed URL that expires hourly, so next/image would key its
+             optimiser cache on a URL that changes every hour — every render a
+             miss, and the private bucket proxied for no benefit. Same reason
+             PostcardCard and Avatar use a bare img. */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={ride.map_card_url ?? undefined}
+            // Decorative: the meeting point this tile is centred on is the
+            // third line of the card, in text, right beside it.
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+            onError={() => setTileFailed(true)}
+            loading="lazy"
+            draggable={false}
+          />
+        )}
+        {showsTile ? (
+          <span className="absolute inset-0 m-auto flex h-9 w-9 items-center justify-center rounded-full bg-surface">
+            <LocationFilledIcon className="h-6 w-6 text-foreground" />
+          </span>
+        ) : (
+          <LocationFilledIcon className="absolute inset-0 m-auto h-6 w-6 text-foreground" />
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1 py-2">
