@@ -480,10 +480,9 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 55 files. DEV is at `055`, PROD at `054` — DEV AHEAD, 2026-08-12.** Do not
+**Applied state: 55 files. DEV and PROD are both at `055` — LEVEL, 2026-08-12.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead. DEV-ahead is the ordinary state of a migration between its
-merge and its promotion, not drift; `055` reaches PROD with PD-129's promotion.
+`ls supabase/migrations/` instead.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
