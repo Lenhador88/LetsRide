@@ -2,10 +2,16 @@ import type { NextConfig } from "next";
 
 // The same normalisation `canonicalOrigin()` applies, imported rather than
 // re-spelled: the two guards below are only fail-closed if "set" means to them
-// exactly what it means to the code that reads the value. Two review rounds
-// found hand-matched spellings drifting — `origin-normalise.ts` has both.
-// Relative, not the `@/` alias: this file is loaded by Node before the alias
-// resolver exists.
+// exactly what it means to the code that reads the value. `origin-normalise.ts`
+// carries the two escapes that bought this.
+//
+// **Relative, not the `@/` alias — and the reason is not that the alias fails
+// today.** Measured on Next 16.2.9: `resolveSWCOptions` feeds tsconfig `paths`
+// to SWC precisely so a TS config can use aliases, and both forms load. The
+// reason is `--experimental-next-config-strip-types`, where Node's native type
+// stripping does no path mapping and only the relative form survives. Stated
+// because the obvious test — swap in `@/` and watch it work — argues for
+// exactly the change that breaks under that loader.
 import { normaliseConfiguredOrigin } from './src/lib/origin-normalise'
 
 /**
@@ -87,18 +93,9 @@ const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1'
  *
  * **It asks `normaliseConfiguredOrigin()` rather than testing the variable, so
  * that "set" cannot mean one thing here and another in `canonicalOrigin()`.**
- * That is not defensive style — it is the fix for two measured escapes, each
- * found by a separate review round, each the same defect at a narrower value:
- *
- * - raw truthiness vs `.trim()` — `" "` was set here, unset there;
- * - `.trim()` vs `.trim().replace(/\/+$/, '')` — `"/"` likewise, because it
- *   trims to something and normalises to nothing.
- *
- * Both produced exit 0 and a bundle whose links were built from
- * `https://localhost` — precisely what this guard exists to refuse — off one
- * stray character in a CI secret. The pattern is the lesson: a third
- * hand-matched spelling would have been a third escape, so there is one
- * definition and both readers call it.
+ * Not defensive style — the fix for two measured escapes, both of which built
+ * and shipped clean off one stray character in a CI secret.
+ * `src/lib/origin-normalise.ts` carries them; do not re-spell the check here.
  */
 if (isCapacitorBuild && !normaliseConfiguredOrigin(process.env.NEXT_PUBLIC_CANONICAL_ORIGIN)) {
   throw new Error(

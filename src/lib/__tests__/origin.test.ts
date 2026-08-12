@@ -74,23 +74,20 @@ describe('canonicalOrigin', () => {
 })
 
 describe('normaliseConfiguredOrigin — the definition the build guards share', () => {
-  // `next.config.ts` fails a CAPACITOR_BUILD=1 build when the origin is unset
-  // and a web build when it is set. Those guards are only fail-closed while
-  // "set" means to them exactly what it means to `canonicalOrigin()`, and this
-  // is the assertion that keeps that true — a divergence is not a style
-  // difference, it is a bundle whose links are `https://localhost`.
+  // `next.config.ts`'s two build guards call this function, so "set" cannot
+  // mean one thing to them and another to `canonicalOrigin()` — see
+  // `origin-normalise.ts` for the two escapes that bought the shared
+  // definition. What is asserted here is the **pair**: for one input, that the
+  // guard sees falsy *and* the consumer falls back. Asserting either alone is
+  // what let both escapes through.
   //
-  // Twice measured, twice the same defect one value narrower: `" "` escaped a
-  // raw-truthiness guard, then `"/"` escaped a `.trim()` one. Both built and
-  // shipped clean. A third spelling would be a third escape, so both callers
-  // ask this function instead.
+  // `undefined` is passed to `stubEnv` rather than `''`, which deletes the
+  // variable — an absent variable and an empty one are different inputs and the
+  // `?? ''` branch only exists for the first.
   it.each([undefined, '', '   ', '/', '//', '  //  '])('treats %j as not configured', (value) => {
     expect(normaliseConfiguredOrigin(value)).toBe('')
-    // The property that matters is the *pair*: the guard sees falsy and the
-    // consumer falls back, for the same input.
     withRuntimeOrigin(RUNTIME)
-    if (value === undefined) vi.stubEnv('NEXT_PUBLIC_CANONICAL_ORIGIN', '')
-    else vi.stubEnv('NEXT_PUBLIC_CANONICAL_ORIGIN', value)
+    vi.stubEnv('NEXT_PUBLIC_CANONICAL_ORIGIN', value)
     expect(canonicalOrigin()).toBe(RUNTIME)
   })
 
