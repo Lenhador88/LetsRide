@@ -202,8 +202,15 @@ removal landing without its code repair is an outage.
   rather than reading it here:
 
   ```sql
-  select distinct split_part(name, '/', 1) as prefix from storage.objects
-   where bucket_id = 'media' order by prefix;
+  -- From the POLICIES, not from storage.objects — an objects query lists only
+  -- folders that already CONTAIN something, and a prefix is empty at exactly
+  -- the moment it is introduced. See the requirement in
+  -- specs/account-erasure-cascade/spec.md for the measured failure.
+  select distinct substring(coalesce(qual, with_check)
+         from '\(storage\.foldername\(name\)\)\[1\] = ''([a-z-]+)''') as prefix
+    from pg_policies
+   where schemaname = 'storage' and tablename = 'objects'
+   order by prefix;
   ```
 - [ ] 2.3a **OWNER ACTION — `delete-account` must be redeployed, and it is not this change's own
   deploy that is outstanding.** `PREFIXES` in `supabase/functions/delete-account/index.ts` gained

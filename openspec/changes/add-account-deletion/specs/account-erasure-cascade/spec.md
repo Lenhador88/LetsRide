@@ -291,10 +291,32 @@ uid SHALL be deleted, through the Storage API, before the database rows are remo
 not a remembered one:
 
 ```sql
--- every folder any policy names, against the sweep list in the function
-select distinct split_part(name, '/', 1) as prefix from storage.objects
- where bucket_id = 'media' order by prefix;
+-- every folder any POLICY names — compare this against PREFIXES in
+-- supabase/functions/delete-account/index.ts
+select distinct substring(coalesce(qual, with_check)
+       from '\(storage\.foldername\(name\)\)\[1\] = ''([a-z-]+)''') as prefix
+  from pg_policies
+ where schemaname = 'storage' and tablename = 'objects'
+ order by prefix;
 ```
+
+**Derive it from the POLICIES, never from `storage.objects`.** The obvious query — `select
+distinct split_part(name, '/', 1) from storage.objects` — is wrong in the one direction that
+matters, and it is wrong *silently*:
+
+```sql
+-- DO NOT USE. Returns five on DEV today, omitting ride-maps.
+select distinct split_part(name, '/', 1) from storage.objects where bucket_id = 'media';
+```
+
+It lists folders that currently **contain** an object, so it cannot see a prefix nothing has
+written yet — and **a prefix is empty at exactly the moment it is introduced, which is the moment
+this list needs updating.** Measured on DEV 2026-08-12 it returns the five-prefix answer this
+requirement exists to correct, because `resolve-ride-location` is undeployed and no tile has ever
+been written. A reader obeying it concludes the six-element `PREFIXES` array has one entry too
+many. By the time the objects query *can* discover `ride-maps/`, the first such object is a
+rendered picture of a rider's home address that the sweep has been missing — the harm this
+requirement names.
 
 **The sixth prefix is new and is the one this requirement was written without.** `ride-maps/`
 arrived with `add-ride-map-tiles` (`051`, PD-104): two static map tiles per ride, centred on

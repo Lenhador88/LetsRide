@@ -384,8 +384,19 @@ than reading them here** — they were stated as "fifteen across five folders", 
 true of PROD only:
 
 ```sql
-select cmd, count(*) from pg_policies
- where schemaname = 'storage' and tablename = 'objects' group by cmd order by cmd;
+-- Returns BOTH numbers the sentence above states, plus the grantee it asserts.
+-- Grouping by cmd alone gives no folder count, which is the environment-dependent
+-- half — so an archiver falls back to the remembered "five folders".
+select cmd,
+       count(*)                                                  as policies,
+       count(distinct substring(coalesce(qual, with_check)
+             from '\(storage\.foldername\(name\)\)\[1\] = ''([a-z-]+)'''))
+                                                                 as folders,
+       array_agg(distinct roles::text)                           as grantees
+  from pg_policies
+ where schemaname = 'storage' and tablename = 'objects'
+ group by cmd order by cmd;
+-- Expect no UPDATE row, and every grantee {authenticated}.
 ```
 
 **`016`'s two club CHECKs are the ones account deletion touches, and the constraint is weaker

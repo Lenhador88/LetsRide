@@ -51,8 +51,6 @@
  * `docs/HANDOFF.md` records a run that reported "0 orphans" and was read as
  * settling a question about two objects it could not have seen.
  *
- * **Both of those lists were written as counts — "the other four" — and both
- * went stale the day a sixth prefix landed, in the same commit, silently.**
  * `ride-maps/` is the case that matters most here: a rendered tile is centred on
  * a ride's meeting point, which is frequently a rider's home address, so an
  * orphan under it is the one worth finding. Prefer deriving the set from
