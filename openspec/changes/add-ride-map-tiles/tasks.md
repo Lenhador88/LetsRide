@@ -532,10 +532,19 @@ exactly what they render today.** That is the intended intermediate state.
 
 ## 8. Deploy — the ordering, and the one owner action
 
-- [ ] 8.1 **The migration first**, on its own. Purely additive; nothing reads the columns yet.
+- [ ] 8.1 **The migration first, on BOTH projects, on its own.** Purely additive; nothing reads the
+  columns yet. **"Nothing reads them" stopped being true when §2 shipped**, and that turns this from
+  housekeeping into the gate on the promotion: `RIDE_SELECT` now names `map_card_path`, PROD sits at
+  `050` without it, and a `development → main` promotion would 400 every rides read — green through
+  CI, green through the merge, broken only for riders. 1.11b is the open box, and `051` is 40 KB, so
+  it needs the reduce-and-diff-against-DEV technique in `CLAUDE.md` §Applying a migration too large
+  to pass as a string rather than a hand transcription.
 - [ ] 8.2 Groups 2–5 merge to `development` and deploy. Tiles are NULL everywhere and both screens
-  render the fallback. **This state is correct and shippable indefinitely.**
-- [ ] 8.3 **OWNER ACTION — deploy the Edge Function.** There is no `supabase` CLI in this container
+  render the fallback. **This state is correct and shippable indefinitely.** §2–3 are merged and are
+  exactly this state.
+- [ ] 8.3 **OWNER ACTION — deploy the Edge Function. §6's attribution must be settled and rendered
+  BEFORE this step, not merely before §6 is ticked** — this is the moment a tile first exists, so it
+  is the moment an uncredited tile first reaches a rider. There is no `supabase` CLI in this container
   and the Supabase MCP has no deploy tool, so no session can do it. Same blocker as PD-86. Label
   `Owner only` in Linear and set the Geoapify key in the function's secret store — never in `src/`,
   `.env.local.example`, Vercel or any `NEXT_PUBLIC_*`.
