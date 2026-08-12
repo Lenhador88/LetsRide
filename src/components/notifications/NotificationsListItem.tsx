@@ -1,8 +1,20 @@
 import Link from 'next/link'
+import { notificationCopy } from '@/components/notifications/copy'
 import { NotificationRow } from '@/components/ui/NotificationRow'
 import { routes } from '@/lib/routes'
 import { formatNotificationStamp } from '@/lib/utils'
 import type { NotificationRow as NotificationRowData } from '@/types'
+
+type NotificationsListItemProps = {
+  row: NotificationRowData
+  /**
+   * The signed-in reader, or undefined if the session went away mid-render.
+   * `ride_joined` says something different to the ride's organizer than to the
+   * rest of its crew, so the row cannot write its own copy without it — see
+   * `notificationCopy`.
+   */
+  viewerId: string | undefined
+}
 
 /**
  * Resolves one `NotificationRow` (the data shape, `@/types`) into the
@@ -17,10 +29,11 @@ import type { NotificationRow as NotificationRowData } from '@/types'
  * so this degrades to an unlinked row rather than asserting the invariant and
  * crashing on it.
  */
-export function NotificationsListItem({ row }: { row: NotificationRowData }) {
+export function NotificationsListItem({ row, viewerId }: NotificationsListItemProps) {
   const actorName = row.actor?.username ?? 'Rider'
   const stamp = formatNotificationStamp(row.created_at)
-  const { copy, href, trailing } = describe(row)
+  const { href, trailing } = describe(row)
+  const copy = notificationCopy(row, viewerId)
 
   const content = (
     <NotificationRow
@@ -41,44 +54,32 @@ export function NotificationsListItem({ row }: { row: NotificationRowData }) {
   )
 }
 
+/**
+ * Where the row goes and what sits in its trailing slot. The copy is
+ * `notificationCopy`'s, because it depends on the reader as well as the row and
+ * is the one piece of this with no JSX in it.
+ */
 function describe(row: NotificationRowData): {
-  copy: string
   href: string | null
   trailing?: React.ReactNode
 } {
   switch (row.type) {
     case 'postcard_liked':
-      return {
-        copy: 'liked your postcard.',
-        href: row.postcard ? routes.postcard(row.postcard.id) : null,
-        trailing: postcardThumbnail(row),
-      }
     case 'postcard_commented':
       return {
-        copy: 'commented on your postcard.',
         href: row.postcard ? routes.postcard(row.postcard.id) : null,
         trailing: postcardThumbnail(row),
       }
     case 'ride_joined':
-      // Q2b's default: the drawn copy ("joined a ride you also joined.") is
-      // written for an attendee, and Q1's default recipient — the organizer
-      // alone — is who this app actually notifies. This is the minimal
-      // rewrite that matches the recipient it is shown to; it reverts to the
-      // drawn string the day Q1 is answered the other way. No trailing
-      // thumbnail: `rides` has no image column, so there is nothing to sign —
-      // logged in docs/FIGMA-FIDELITY-TODO.md rather than a placeholder.
-      return { copy: 'joined your ride.', href: row.ride ? routes.ride(row.ride.id) : null }
     case 'ride_created_in_club':
-      // Q2's default: the issue's own string, verbatim, in the same shape as
-      // the drawn rows. Destination is the ride, not the club — the club is
-      // context the copy names, per `036`'s comment on `notifications.club_id`.
-      return {
-        copy: `created a ride in ${row.club?.name ?? 'a club'}.`,
-        href: row.ride ? routes.ride(row.ride.id) : null,
-      }
+      // Destination is the ride for both — for `ride_created_in_club` the club
+      // is context the copy names rather than where the row leads, per `036`'s
+      // comment on `notifications.club_id`. No trailing thumbnail either: the
+      // frame draws a map tile with a pin overlay, which is an open design
+      // question logged in docs/FIGMA-FIDELITY-TODO.md rather than a guess.
+      return { href: row.ride ? routes.ride(row.ride.id) : null }
     case 'club_joined':
       return {
-        copy: `joined club ${row.club?.name ?? 'a club'}.`,
         href: row.club ? routes.club(row.club.id) : null,
         trailing: row.club?.avatar_url ? (
           <img src={row.club.avatar_url} alt="" className="h-full w-full object-cover" />

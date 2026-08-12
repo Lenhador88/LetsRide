@@ -13,11 +13,22 @@ import type { NotificationCursor, NotificationRow } from '@/types'
  */
 export const NOTIFICATIONS_PAGE_SIZE = 30
 
+/**
+ * `organizer_id` is here for the copy, not for a filter: `ride_joined` reaches
+ * the whole crew, and the sentence the organizer reads is not the one everyone
+ * else reads (PD-129, `NotificationsListItem`). It is read live through this
+ * embed rather than stamped on the notification, which is what `036` §2 asks of
+ * every string drawn from one — a reader who loses the ride loses the row.
+ *
+ * No new exposure: the column already ships on every card `RIDE_SELECT` draws,
+ * and this embed only resolves for a ride `036` §3's SELECT policy already lets
+ * this reader see.
+ */
 const NOTIFICATION_SELECT = `
   id, type, created_at, read_at,
   actor:profiles!actor_id(${PUBLIC_PROFILE_COLUMNS}),
   postcard:postcards(id, image_path),
-  ride:rides(id, title),
+  ride:rides(id, title, organizer_id),
   club:clubs(${CLUB_EMBED_COLUMNS})
 `
 
