@@ -50,6 +50,19 @@ group by 1 having count(*) filter (where a.attacl is not null) > 0 order by 1;
 warning, and the paragraph that used to record its shape was an apply note that PD-187 deleted
 as spent — correctly, except that this clause was the only durable thing in it.
 
+**`054` has NO ordering relationship, and that is recorded rather than left open.** It is a single
+`CREATE OR REPLACE FUNCTION` on `private.is_club_member` plus its `COMMENT`: no grant, no column
+list, no policy, no table DDL. It is purely additive to a predicate — every read and write that
+succeeded before it still succeeds — and no application code reads or depends on the function, so
+it may be applied to either project at any time, before or after any pending code deploy, and in
+either order relative to `enforce-creator-membership`. **What it does add is a dependency that is
+not an ordering one and would not show up in a chain check**: the new arm reads `public.clubs`
+while `clubs` SELECT calls the function, and that self-edge is not `42P17` only because
+`public.clubs` does not force row-level security. `ALTER TABLE public.clubs FORCE ROW LEVEL
+SECURITY` would take every club read in the app down. The RLS suite asserts
+`relforcerowsecurity = false` for exactly that reason, and `054`'s header carries the warning so
+it is discoverable from `pg_class` rather than only from here.
+
 ## Rollback — `git revert` is not the path
 
 **`git revert` of the squash commit is NOT the rollback path.** It would take the files out of the
