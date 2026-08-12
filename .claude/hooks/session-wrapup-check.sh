@@ -33,7 +33,7 @@
 # at", and useless for "you still have two things to do". The only Stop output
 # the model actually reads is `decision: block` + `reason`. The looping risk that
 # argument usually carries is closed twice over here: `stop_hook_active` catches
-# immediate re-entry, and the sha marker means it cannot fire twice for the same
+# immediate re-entry, and the branch marker means it cannot fire twice for the same
 # state even across turns. Worst case is one extra turn.
 #
 # It deliberately does NOT check whether the PR already exists. The GitHub REST
@@ -177,6 +177,6 @@ printf '%s' "$key" >"$marker" 2>/dev/null
 jq -cn --arg b "$branch" --arg base "${base#origin/}" --arg n "$ahead" '
 {
   decision: "block",
-  reason: ("Wrap-up check — \($b) is pushed, clean, and \($n) commit(s) ahead of \($base).\n\nTwo standing instructions from the product owner apply before this session ends:\n\n1. Open a PR against `\($base)` (NOT main) and drive it to merged. Committed and pushed is not shipped. If it genuinely cannot merge, say so plainly as the last thing in the session, with the reason.\n2. Send the push notification `Done ; ) <name of the session>` — the name being what the session was about, so it identifies itself when read on a phone hours later. One at the end, not per milestone.\n\nIf both are already done, or this is not the wrap-up, say which in one line and stop. This fires once per pushed commit, so it will not ask again for this one."),
+  reason: ("Wrap-up check — \($b) is pushed, clean, and \($n) commit(s) ahead of \($base).\n\nTwo standing instructions from the product owner apply before this session ends:\n\n1. Open a PR against `\($base)` (NOT main) and drive it to merged. Committed and pushed is not shipped. If it genuinely cannot merge, say so plainly as the last thing in the session, with the reason.\n2. Send the push notification `Done ; ) <name of the session>` — the name being what the session was about, so it identifies itself when read on a phone hours later. One at the end, not per milestone.\n\nIf both are already done, or this is not the wrap-up, say which in one line and stop. This fires ONCE for the whole unit of work on this branch — not once per commit — so a later commit will NOT re-arm it. Declining now means nothing asks again before the session ends."),
   systemMessage: ("Wrap-up check on \($b): \($n) commit(s) ahead of \($base), pushed and clean. Reminding the session to open the PR and send the done notification.")
 }'

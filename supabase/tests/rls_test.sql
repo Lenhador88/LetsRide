@@ -11583,7 +11583,7 @@ select assert_eq((select count(*)::int from pg_policies
 select assert_eq((select array_to_string(proconfig, ',') from pg_proc
                    where oid = 'private.is_club_member(uuid)'::regprocedure),
   'search_path=""',
-  '054: is_club_member''s search_path is now empty, matching the other fifteen functions in private — safe because its body schema-qualifies every reference, so the setting has no name left to resolve');
+  '054: is_club_member''s search_path is now empty, matching the other fourteen functions in private — safe because its body schema-qualifies every reference, so the setting has no name left to resolve');
 select assert_eq((select prosecdef from pg_proc
                    where oid = 'private.is_club_member(uuid)'::regprocedure),
   true, '054: ... and it is still SECURITY DEFINER, which is what lets it read club_members and clubs on behalf of a caller who can read neither');
@@ -11598,7 +11598,21 @@ select assert_eq(has_schema_privilege('authenticated', 'private', 'usage'),
 -- every club read in the app into 42P17. This assertion is what makes that a
 -- red suite rather than a production outage.
 select assert_eq((select relforcerowsecurity from pg_class where oid = 'public.clubs'::regclass),
-  false, '054: public.clubs does not FORCE row-level security — the sole reason is_club_member reading clubs, while clubs SELECT calls is_club_member, is not 42P17 infinite recursion');
+  false, '054: public.clubs does not FORCE row-level security — one of the TWO reasons is_club_member reading clubs, while clubs SELECT calls is_club_member, is not 42P17 infinite recursion');
+
+-- **The second condition, and the header above names both while this section
+-- used to assert only the first.** RLS is skipped inside the definer body only
+-- because the function owner IS the table owner; a later migration that
+-- recreates the function under a different owner, or reassigns public.clubs,
+-- re-applies RLS inside the body and every club read in the app becomes 42P17 —
+-- while `relforcerowsecurity` stays false and the assertion above stays green.
+-- Asserting one of two stated conditions reads as covering both, which is worse
+-- than asserting neither.
+select assert_eq(
+  (select pg_get_userbyid(relowner) from pg_class where oid = 'public.clubs'::regclass)
+  = (select pg_get_userbyid(proowner) from pg_proc
+      where oid = 'private.is_club_member(uuid)'::regprocedure),
+  true, '054: ... and the definer owns public.clubs, which is the other reason — RLS is not applied inside a definer body owned by the table owner');
 
 -- No policy was recreated by 054, and no direct caller lives outside `public`.
 -- The second is the security-relevant half: the widening DOES reach two

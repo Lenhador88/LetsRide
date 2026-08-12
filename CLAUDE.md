@@ -512,7 +512,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1384** assertions — re-derive rather than trust it:
+Suite **1385** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -1117,6 +1117,24 @@ is the one that produces a paragraph before every tool call. *"Checking X before
 the tool call itself already shows all of that. **Announce a decision only when the owner could
 still change it**; otherwise act, and say what came back. A reply whose content is its own
 preamble should not have been sent.
+
+**While a subagent is running, say nothing.** Product owner, 2026-08-12, twice in one session:
+*"didn't we agree that you run it in the background?"* — asked about a session that was
+correctly backgrounding its agents and then narrating each one. Backgrounding buys the owner
+their attention back; spending it on status updates returns the cost and keeps none of the
+benefit.
+
+So between spawning an agent and its result landing, the only things worth sending are a
+**question the owner must answer** and a **blocked capability**. Not what the agent is doing,
+not what you will do with its answer, not a restatement of the plan, and above all **not a
+status line every time a hook or a background shell wakes the turn** — those fire on their own
+schedule and are not prompts to report in. **The next words after a spawn should be the
+result.**
+
+This is the same rule as the two above, and it is written separately because it fails
+differently: those produce a long reply, this one produces *many* replies, which is worse. A
+session that says one line six times has said more than one that said six lines once, and has
+interrupted six times to do it.
 
 Three things stay long however brief the commentary gets, because each is a *decision* rather
 than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,

@@ -71,7 +71,7 @@
 -- Why `search_path` changes in the same statement, deliberately
 -- ---------------------------------------------------------------------------
 -- This is the ONLY function in `private` whose `search_path` is `'public'`
--- rather than `''`; the other fifteen — `is_blocked`, `is_club_public`,
+-- rather than `''`; the other fourteen — `is_blocked`, `is_club_public`,
 -- `is_ride_crew` among them — use the empty path with schema-qualified
 -- references. Changing it on a function ten policies call is its own risk, so
 -- it is stated rather than slipped in: it is safe here because the replacement
@@ -80,7 +80,7 @@
 -- setting has no name left to resolve and cannot change what this function
 -- means. Leaving `'public'` behind on a body being rewritten anyway would keep a
 -- known inconsistency for no gain, and a `security definer` function whose
--- search path is a writable schema is the standing hazard the other fifteen
+-- search path is a writable schema is the standing hazard the other fourteen
 -- already avoid.
 --
 -- ---------------------------------------------------------------------------
