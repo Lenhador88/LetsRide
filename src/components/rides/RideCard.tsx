@@ -39,6 +39,39 @@ import type { RideAttendance, RideListItem } from '@/types'
  * unavailable" message — the pin container it has always drawn is the answer,
  * and a tile that fails to load falls back to exactly that.
  *
+ * **Attribution — PD-104 §6.2, and the credit this strip carries is the one
+ * burned into the tile.** The Static Maps response arrives with map-style
+ * attribution rendered into the image itself, bottom-right, which is *composed
+ * into the strip* per tile and survives a scroll — exactly what the spec means by
+ * refusing a single shared credit elsewhere on the screen. Two consequences for
+ * this file, and both are load-bearing rather than tidy:
+ *
+ * - **Nothing suppresses it.** The render request passes no attribution,
+ *   watermark or logo parameter, and `ride-geocode-gates.test.ts` asserts their
+ *   absence. Suppressing the credit would not remove the obligation, it would
+ *   move it onto 80px of width that cannot carry `© OpenStreetMap contributors`
+ *   at this design system's smallest token.
+ * - **`object-bottom`, so a crop cannot take it.** The tile is rendered at
+ *   80×148, which is this strip in the ordinary 156-tall card. On the
+ *   club-filtered screen the card is 128 tall and the strip is 120, and a centred
+ *   `object-cover` would crop 14px off the bottom — precisely where the credit
+ *   sits. Anchoring the bottom moves the whole crop to the top.
+ *
+ * `Powered by Geoapify` — the Free plan's separate, *service*-level obligation —
+ * is not here. It has one legible home, on `RideMap`'s 358×160 panel; that string
+ * is not the tile's data attribution, so the spec's rejection of a shared credit
+ * does not reach it.
+ *
+ * **The open half, stated rather than assumed: whether the burned-in credit is
+ * legible at 80×148.** If it is not, `specs/ride-map-tiles`' *A credit that cannot
+ * fit means no tile* applies and this strip must render the pin fallback with no
+ * tile — which is a specified outcome and not a failure, and is one condition on
+ * `showsTile` below. It could not be measured when this was written:
+ * `*.geoapify.com` is egress-blocked from the build container, so no tile existed
+ * to look at. Task 8.4 answers it against a real one. Do not resolve it by
+ * shrinking type below the system's floor, clipping, or truncating the vendor's
+ * name.
+ *
  * The pin gains a `White/100` disc **only** over a tile. Bare `Grey/100` on a
  * neutral `Grey/10%` container is 13.82:1 — `bg-border` is `#0000001A`, 10.196%
  * black, which over this card's opaque `bg-surface` composites to `#E5E5E5`.
@@ -89,7 +122,10 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
             // Decorative: the meeting point this tile is centred on is the
             // third line of the card, in text, right beside it.
             alt=""
-            className="absolute inset-0 h-full w-full object-cover"
+            // `object-bottom` — see the header. The vendor's credit is burned
+            // into the bottom of the tile, and a centred crop removes it on the
+            // 128-tall club-filtered card.
+            className="absolute inset-0 h-full w-full object-cover object-bottom"
             onError={() => setFailedTileUrl(ride.map_card_url ?? null)}
             loading="lazy"
             draggable={false}
