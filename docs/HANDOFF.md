@@ -515,22 +515,31 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `46/46 guard, navigation and sign-out checks correct` on a DEV where the walk
-account owns a ride and a club** — measured 2026-08-12 against a freshly minted, freshly onboarded
-DEV account with `WALK_FIXTURES=1`. It was `36/36` before PD-203 added three phases — refused club
-create, refused profile edit and refused signup — because `retaining` (PD-199) was wired on nine
-forms and only two were rendered by anything. Two phases still count what they *ran* rather than a
-constant, because a club `<select>` and the ride/club edit form are drawn only for a rider who has
-somewhere to put them, so the total falls on a thinner database and the run says which parts it
-skipped. Count them from the output rather than from here: 5 refused-sign-in assertions, 3
-refused-signup assertions, 9 refused-ride-create assertions (8 with no club, so the club
-`<select>` is not drawn), 4 refused-club-create assertions, 2 or 3 refused-edit assertions (2 on
-the club edit form, which has no select), 4 refused-profile-edit assertions, then
-`all N taps navigated`, `no stamp re-read`, `the shell stayed mounted`, `the splash never
-painted`, then 6 signed-in guard rules, 4 sign-out assertions and 5 signed-out guard rules. The
-walk discovers detail routes from the lists, checks eleven route-guard redirects in both signed-in
-and signed-out states, asserts sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie
-and no reachable screen, and taps five bottom tabs to prove a navigation costs no
+**A clean run is `47/47 guard, navigation and sign-out checks correct` on a DEV where the walk
+account owns a ride and a club** — measured 2026-08-12, `devrider093453` (`rider-1786033088990@…`,
+§Test accounts below). **A freshly minted account will usually measure one lower, and
+that is not a bug to chase**: `checkEditRetention` picks the first candidate whose form actually
+renders, `getRides` orders by `departure_at` ascending, and fixture rides are deliberately dated a
+year out and never cleaned up (below, "idempotence with an expiry date is not idempotence") —
+so on a DEV that has accumulated fixture rides from earlier sessions, a brand-new account's own
+ride almost never sorts first, the walk correctly lands on someone else's ride edit form instead
+("not this rider's"), falls through to the club one, and the `club_id` restore assertion —
+`retain.ts`'s hardest control type — is skipped rather than run. Reproduce the reference figure
+against an account that already organises the earliest-departing ride, not a fresh one; the SQL to
+mint a password for either named account is in §Test accounts. Three phases count what they *ran*
+rather than a constant: the club `<select>` and the ride/club edit form are drawn only for a rider
+who has somewhere to put them, and `runRefusedSignup` skips entirely when the browser's session is
+not on the writable-project allowlist — so the total falls on a thinner database or a wrongly
+configured environment, and the run says which parts it skipped rather than shrinking silently.
+Count them from the output rather than from here: 5 refused-sign-in assertions, 3 refused-signup
+assertions when the ref gate passes (0 when it does not), 9 refused-ride-create assertions (8 with
+no club, so the club `<select>` is not drawn), 4 refused-club-create assertions, 2 or 3
+refused-edit assertions (2 on the club edit form, which has no select), 4 refused-profile-edit
+assertions, then `all N taps navigated`, `no stamp re-read`, `the shell stayed mounted`, `the
+splash never painted`, then 6 signed-in guard rules, 4 sign-out assertions and 5 signed-out guard
+rules. The walk discovers detail routes from the lists, checks eleven route-guard redirects in
+both signed-in and signed-out states, asserts sign-out leaves no `sb-*` key in `localStorage`, no
+`sb-*` cookie and no reachable screen, and taps five bottom tabs to prove a navigation costs no
 `my_onboarding_state()` re-read, does not remount the shell and never paints the splash.
 
 **The refused-edit phase is the one that has been wrong twice, and both times it read green.**
@@ -561,8 +570,15 @@ input, an uncontrolled textarea and an uncontrolled checkbox in a single refusal
 `checkRefusedSignup` reuses the walk's own already-registered address and proves only the DEV
 branch of `signUp` — with confirmation ON (PROD) GoTrue's duplicate-signup mitigation returns
 success instead, so the `alreadyRegistered` branch this phase exercises is unreachable there; the
-comment above it in `scripts/walk.mjs` says so. The remaining two of the nine `retaining` forms are
-recorded as deliberately unexercised in the same file, next to `checkRefusedSignup`:
+comment above it in `scripts/walk.mjs` says so. **It runs after the real sign-in below, not beside
+`checkRefusedSignIn`, and only behind the same project-ref gate `provision()`'s fixture writes use**
+(`runRefusedSignup`) — a real `signUp` call is a write with no schema or database layer backing its
+refusal the way `max_riders = 0` backs the ride phase, so "the address is already registered" being
+true is a fact about the environment, not a guarantee, and it needed a session to read the project
+ref from before it could be trusted to run at all. The phase call site also carries the `.catch()`
+every other new PD-203 phase has; broken and reverted by hand to confirm it reports a failure
+rather than aborting the run. The remaining two of the nine `retaining` forms are recorded as
+deliberately unexercised in the same file, next to `checkRefusedSignup`:
 `/auth/forgot-password`'s one refusal is blocked by the browser's own `type="email"` validation
 before any submit reaches the action, and `CreatePostcardForm`'s submit stays disabled until a
 Storage upload finishes, which this container's Chromium cannot complete.
@@ -581,7 +597,7 @@ leaves the field filled too.
 discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
 `13/13` against a DEV with a club but no ride, `16/16` once the ride is there, `18/18` measured
 2026-08-12 with a ride, a club and one visible postcard. **Read the `N/N` for equality, not for
-the value**, and read the skip notices above it for what was not covered. `46/46` above is the
+the value**, and read the skip notices above it for what was not covered. `47/47` above is the
 pass/fail one — read it for equality too, since its total moves with what the walk account owns.
 
 **So the walk provisions what it needs** — a shrunken figure looks exactly like success while
