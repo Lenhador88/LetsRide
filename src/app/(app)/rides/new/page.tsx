@@ -48,7 +48,9 @@ export default function NewRidePage() {
         ) : !clubs.data ? (
           <SkeletonForm />
         ) : (
-          <CreateRideForm clubs={clubs.data} />
+          <div className="motion-safe:animate-fade-in">
+            <CreateRideForm clubs={clubs.data} />
+          </div>
         )}
       </div>
     </>

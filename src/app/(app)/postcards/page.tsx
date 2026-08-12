@@ -99,7 +99,11 @@ function PostcardsScreen() {
         {feed.error ? (
           <ErrorState onRetry={feed.refetch} />
         ) : feed.data ? (
-          <PostcardDeck key={`${filter?.kind}-${filter?.id}`} postcards={feed.data} />
+          <PostcardDeck
+            key={`${filter?.kind}-${filter?.id}`}
+            postcards={feed.data}
+            className="motion-safe:animate-fade-in"
+          />
         ) : (
           <SkeletonDeck />
         )}

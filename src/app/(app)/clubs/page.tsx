@@ -56,7 +56,7 @@ export default function ClubsPage() {
           // still gets its turn.
           <SkeletonList />
         ) : (
-          <div className="px-4">
+          <div className="px-4 motion-safe:animate-fade-in">
             {clubs.data.length === 0 ? (
               // The design's empty state is one line of Grey/80 at
               // Poppins/14/Medium and nothing else — no illustration, and no

@@ -20,6 +20,11 @@ import { cn } from '@/lib/utils'
  * family of related exports sharing one file rather than one export per
  * file — they share the base `Skeleton` primitive and would otherwise
  * duplicate its import four times over.
+ *
+ * **`SkeletonRegion`'s root also carries `motion-safe:animate-fade-in`**
+ * (`globals.css`), the other half of the fade the loaded content that
+ * replaces each of these carries at its own call site. Defined once here so
+ * every shape gets it rather than four screens re-adding it by hand.
  */
 export function Skeleton({ className }: { className?: string }) {
   return (
@@ -50,7 +55,13 @@ function SkeletonRegion({
   children: React.ReactNode
 }) {
   return (
-    <div role="status" aria-label={label} className={className}>
+    // Shared by all four shapes, so the region itself fades in once rather
+    // than snapping to full opacity — the flash a sub-100ms fetch would
+    // otherwise cause, since the skeleton would appear and disappear in the
+    // same frame. `motion-safe:` for the same reason `animate-pulse` above
+    // carries it: `prefers-reduced-motion` gets the skeleton with no motion
+    // at all, not a softer version of it.
+    <div role="status" aria-label={label} className={cn('motion-safe:animate-fade-in', className)}>
       {children}
     </div>
   )

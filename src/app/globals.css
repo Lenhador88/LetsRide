@@ -115,6 +115,31 @@
      value cannot drift from its source. */
   --color-disabled: var(--color-border);
   --color-disabled-foreground: var(--color-border-strong);
+
+  /* The gentle fade-in loaded content gets wherever it replaces a skeleton
+     — product owner: "a gentle fade out fade in of the content that loads".
+     180ms lands inside the requested 150–200ms; `ease-out` front-loads the
+     motion so it reads as arriving rather than drifting in. Registering it
+     here (Tailwind v4's `--animate-*` namespace) is what turns it into the
+     `animate-fade-in` utility used below, always behind `motion-safe:` —
+     the same guard `Skeleton.tsx`'s own `animate-pulse` already uses. */
+  --animate-fade-in: fade-in 180ms ease-out;
+}
+
+/* `from` only, deliberately with no `to`. An animation that owns BOTH ends
+   leaves content sitting at its keyframe's final value only for as long as
+   the animation is still "current" — if the stylesheet carrying it fails to
+   apply, or applies after paint, content stranded at the keyframe's `from`
+   value has no fallback. `next build` prerenders every page once at build
+   time (`output: 'export'` still runs that pass — see CLAUDE.md), so a
+   loading treatment that can end up permanently invisible is a build-time
+   risk, not just a runtime one. Ending on nothing means the browser falls
+   through to the element's own resting `opacity` (1, the default), which
+   holds whether or not the animation ever ran. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* Custom utility (Tailwind v4 CSS-first) rather than Tailwind's `bg-gradient-to-*`

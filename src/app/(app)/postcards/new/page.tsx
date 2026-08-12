@@ -31,7 +31,9 @@ export default function NewPostcardPage() {
       ) : !clubs.data ? (
         <SkeletonForm fields={2} />
       ) : (
-        <CreatePostcardForm clubs={clubs.data} />
+        <div className="motion-safe:animate-fade-in">
+          <CreatePostcardForm clubs={clubs.data} />
+        </div>
       )}
     </div>
   )

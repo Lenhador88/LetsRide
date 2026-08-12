@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { remainingPostcards } from '@/components/postcards/deck'
+import { cn } from '@/lib/utils'
 import type { Postcard } from '@/types'
 import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
 
@@ -29,7 +30,16 @@ const BEHIND = [
 
 type DragState = { pointerId: number; startX: number; startY: number } | null
 
-export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
+export function PostcardDeck({
+  postcards,
+  className,
+}: {
+  postcards: Postcard[]
+  /** Merged onto whichever root renders — the empty state and the fanned
+   * stack both need it applied at the same node `SkeletonDeck` shares
+   * `h-full` with, rather than on a wrapper that would break that chain. */
+  className?: string
+}) {
   // The ids the rider has swiped past — see `remainingPostcards` for why this is
   // a set of ids rather than a position. The feed is bounded by FEED_PAGE_SIZE,
   // so this cannot grow beyond a page.
@@ -113,7 +123,7 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
 
   if (!front) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+      <div className={cn('flex h-full flex-col items-center justify-center gap-4 px-8 text-center', className)}>
         <p className="text-sm font-medium text-muted">
           {postcards.length === 0
             ? 'There are no new postcards, yet!'
@@ -141,7 +151,7 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
   const visible = remaining.slice(0, 3)
 
   return (
-    <div className="relative flex h-full items-center justify-center px-6">
+    <div className={cn('relative flex h-full items-center justify-center px-6', className)}>
       {/* The stack is 342×448 in a 390 frame — 24px either side. Capped rather
           than fixed so it still fits a 320px phone. */}
       <div className="relative aspect-[342/448] w-full max-w-[342px]">

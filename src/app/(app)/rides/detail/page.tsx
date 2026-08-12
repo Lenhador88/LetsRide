@@ -137,7 +137,14 @@ function RideScreen() {
 
 function RidePlan({ ride }: { ride: RideDetail }) {
   return (
-    <>
+    // A `div` rather than the Fragment this used to be: the parent's own
+    // `gap-4` used to apply directly between these elements once React
+    // flattened the Fragment into it, so this carries the same `flex
+    // flex-col gap-4` itself now that it is also the thing that needs to
+    // fade in as one unit — `SkeletonDetail` is a different component, so
+    // swapping to this is always a fresh mount and the animation always
+    // fires exactly once, on arrival.
+    <div className="flex flex-col gap-4 motion-safe:animate-fade-in">
       {ride.club && (
         <Link
           href={`/rides?club=${ride.club.id}`}
@@ -189,7 +196,7 @@ function RidePlan({ ride }: { ride: RideDetail }) {
       >
         See who’s riding
       </Link>
-    </>
+    </div>
   )
 }
 

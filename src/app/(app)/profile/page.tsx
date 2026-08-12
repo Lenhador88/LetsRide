@@ -128,7 +128,7 @@ function ProfileScreen({ profile }: { profile: Profile }) {
     // screen uses the plain 96px header rather than the ride detail's 120px
     // variant, so it owes no top-up either. Re-deriving that padding per page
     // is what globals.css warns about.
-    <div className="flex flex-col gap-4 pb-4">
+    <div className="flex flex-col gap-4 pb-4 motion-safe:animate-fade-in">
       {/* The 390x200 cover. Drawn now that there is a column behind it AND an
           affordance on it — the ride detail's banner is still omitted because
           it has neither. An empty state is a real state here rather than dead

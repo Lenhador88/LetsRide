@@ -263,7 +263,7 @@ function ChatBody({
           <p className="text-sm text-muted">Say hello to the riders coming along.</p>
         </div>
       ) : (
-        <RideChatThread messages={shown} />
+        <RideChatThread messages={shown} className="motion-safe:animate-fade-in" />
       )}
       <RideChatComposer onSend={send} />
     </>

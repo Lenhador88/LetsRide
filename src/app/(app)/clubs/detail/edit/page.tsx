@@ -74,7 +74,7 @@ function EditClubScreen() {
     return (
       <>
         {header}
-        <p className="px-6 pt-8 text-center text-sm font-medium text-muted">
+        <p className="motion-safe:animate-fade-in px-6 pt-8 text-center text-sm font-medium text-muted">
           Only the owner can edit this club.
         </p>
       </>
@@ -84,7 +84,7 @@ function EditClubScreen() {
   return (
     <>
       {header}
-      <div className="px-4 pb-8">
+      <div className="px-4 pb-8 motion-safe:animate-fade-in">
         <EditClubForm club={club.data} />
       </div>
     </>

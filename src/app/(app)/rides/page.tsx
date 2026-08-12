@@ -57,6 +57,16 @@ import type { RideFilter } from '@/types'
  * It is *gating a subtree wider than the read that was re-keyed*: those three
  * scope the pending state to the text that reads it, and every other re-key in
  * the app comes from a route change, where replacing the screen is correct.
+ *
+ * ## The fade belongs to this gate, not to PD-210's
+ *
+ * `animate-fade-in` sits on the loaded list only — never on `RideFilterBar`,
+ * which PD-210 exists specifically to stop swapping. A background refetch of
+ * the same filter does not replay it: `rides.data` stays defined across a
+ * revalidation, so this branch's `div` is never unmounted, only its children
+ * update. A new filter does replay it, correctly — a new `filterKey` is a
+ * cache entry with no data yet, so the screen genuinely returns to the
+ * skeleton branch first.
  */
 export default function RidesPage() {
   return (
@@ -127,13 +137,19 @@ function RidesScreen() {
         // is `px-4` only, and it now stands in the same slot as the loaded
         // list rather than replacing the screen — so without it every filter
         // tap ends with the cards jumping 8px as the data lands.
-        <div className="py-2">
+        //
+        // `key` is what makes the fade below fire: this and the loaded
+        // branch are both a bare `div`, and without distinct keys React
+        // reconciles them as the *same* node across the swap — updating its
+        // className and children in place rather than mounting a fresh one
+        // — so `animate-fade-in` on the loaded branch would never restart.
+        <div key="skeleton" className="py-2">
           <SkeletonList />
         </div>
       ) : rides.data.length === 0 ? (
         <EmptyList filter={filter} />
       ) : (
-        <div className="flex flex-col gap-2 px-4 py-2">
+        <div key="content" className="flex flex-col gap-2 px-4 py-2 motion-safe:animate-fade-in">
           {rides.data.map((ride) => (
             <RideCard key={ride.id} ride={ride} showClub={filter?.kind !== 'club'} />
           ))}
@@ -157,6 +173,8 @@ function EmptyList({ filter }: { filter?: RideFilter }) {
         : 'There are no rides, yet!'
 
   return (
-    <p className="px-4 py-24 text-center text-sm font-medium text-muted">{message}</p>
+    <p className="motion-safe:animate-fade-in px-4 py-24 text-center text-sm font-medium text-muted">
+      {message}
+    </p>
   )
 }

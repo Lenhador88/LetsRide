@@ -91,32 +91,41 @@ function PostcardThread() {
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6">
-      <Button href="/postcards" variant="link">
-        Back to postcards
-      </Button>
+      {/* An inner wrapper rather than the fade class on the outer `div`
+          above: that outer element is this component's root in BOTH the
+          skeleton return and this one, so React reconciles it as the same
+          persistent node across the swap and never remounts it — the
+          animation would only ever play once, while `SkeletonDetail` was
+          still showing. This div has no counterpart in the skeleton branch,
+          so it is always a fresh mount when the thread arrives. */}
+      <div className="flex flex-col gap-4 motion-safe:animate-fade-in">
+        <Button href="/postcards" variant="link">
+          Back to postcards
+        </Button>
 
-      <PostcardCard postcard={postcard.data} linkToThread={false} />
+        <PostcardCard postcard={postcard.data} linkToThread={false} />
 
-      <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-base font-semibold text-foreground">
-          {comments.data.length === 0
-            ? 'Comments'
-            : `${comments.data.length} ${comments.data.length === 1 ? 'comment' : 'comments'}`}
-        </h2>
+        <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4">
+          <h2 className="text-base font-semibold text-foreground">
+            {comments.data.length === 0
+              ? 'Comments'
+              : `${comments.data.length} ${comments.data.length === 1 ? 'comment' : 'comments'}`}
+          </h2>
 
-        {/* `profile` is in the error gate but not in the loading one. It only
-            decides which comments show a delete control, so holding the whole
-            thread behind the least important of the three reads would be the
-            wrong trade — a momentarily absent control is smaller than a
-            momentarily absent thread. */}
-        <CommentList
-          comments={comments.data}
-          viewerId={profile.data?.id}
-          postcardAuthorId={postcard.data.author_id}
-        />
+          {/* `profile` is in the error gate but not in the loading one. It only
+              decides which comments show a delete control, so holding the whole
+              thread behind the least important of the three reads would be the
+              wrong trade — a momentarily absent control is smaller than a
+              momentarily absent thread. */}
+          <CommentList
+            comments={comments.data}
+            viewerId={profile.data?.id}
+            postcardAuthorId={postcard.data.author_id}
+          />
 
-        <CommentForm postcardId={postcard.data.id} />
-      </section>
+          <CommentForm postcardId={postcard.data.id} />
+        </section>
+      </div>
     </div>
   )
 }

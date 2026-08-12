@@ -82,7 +82,7 @@ function ClubAboutScreen() {
     <>
       {header}
 
-      <div className="flex flex-col gap-6 px-4">
+      <div className="flex flex-col gap-6 px-4 motion-safe:animate-fade-in">
         <div className="flex flex-col gap-2 rounded-lg bg-surface p-4">
           <p className="flex items-center gap-1 text-sm font-medium text-muted">
             <TypeIcon className="h-6 w-6 shrink-0" />
