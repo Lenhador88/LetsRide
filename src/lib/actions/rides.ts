@@ -1,6 +1,7 @@
-import { resolveSupabase } from '@/lib/supabase/resolve'
+import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { MEDIA_BUCKET } from '@/lib/media/constants'
 import { routes } from '@/lib/routes'
 import { rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
@@ -25,6 +26,94 @@ import type { RideAttendance } from '@/types'
  */
 function invalidateRide() {
   invalidate(queryKeys.rides.all())
+}
+
+/**
+ * Asks `resolve-ride-location` to geocode this ride's meeting point and render
+ * its two tiles — PD-104 §5.1.
+ *
+ * **Fire-and-forget, and both halves of that are requirements rather than
+ * style.** The ride is already saved by the time this runs; the map is an
+ * enrichment. Awaiting it would put a geocode and two vendor renders — bounded
+ * at 8s each inside the function — between the rider pressing Save and the
+ * redirect they are waiting for, for a picture they have not asked about. And
+ * there is no error to surface: the function answers 200 for every vendor
+ * failure, and `specs/ride-map-tiles` requires that a refused render never
+ * shows the rider anything.
+ *
+ * **The caller passes only a ride id.** No organizer id, no club id, no uid —
+ * the function takes its subject from the JWT `invoke` forwards and decides
+ * entitlement by reading the ride under that caller's own RLS. Sending an
+ * identifier would be handing it something to get wrong.
+ *
+ * `rendered: true` is the only thing acted on, and it means at least one path
+ * was written. `rides.all()` is a **prefix** over `rides.detail(id)`, so this one
+ * call satisfies both claims task 5.2 names; no key is added, because the paths
+ * ride on rows those keys already cover (5.3).
+ *
+ * **Nothing awaits the invalidation either**, so a rider who has already
+ * navigated on simply gets the tile on their next read. The tab closing before
+ * the round trip completes costs the tile and nothing else — the ride, its crew
+ * row and the rider's redirect are all long since committed.
+ */
+function requestRideMapRender(supabase: DataClient, rideId: string): void {
+  void supabase.functions
+    .invoke<{ rendered?: boolean }>('resolve-ride-location', { body: { rideId } })
+    .then(({ data }) => {
+      if (data?.rendered) invalidate(queryKeys.rides.all())
+    })
+    .catch(() => {
+      // Swallowed on purpose. The function is not deployed yet (task 8.3 is an
+      // owner action), so today every one of these is a 404 — and that must look
+      // exactly like the vendor being down, which is to say like nothing at all.
+    })
+}
+
+/**
+ * Removes a ride's tile objects, best-effort.
+ *
+ * **Called after the write is CONFIRMED, not before it — and the earlier
+ * "always before" rule was wrong in a way worth spelling out, because the
+ * argument for it is genuinely persuasive and will be made again.**
+ *
+ * That argument: `051`'s stale-tile trigger NULLs both path columns in the same
+ * UPDATE that changes `meeting_point`, and the ride row is the only place those
+ * names were ever recorded, so afterwards nothing knows them. Every clause of
+ * that is true **of the database** and false **of the caller**, which is holding
+ * both names in a local across the statement. So the premise does not reach the
+ * conclusion, and the ordering it recommends is strictly worse:
+ *
+ * **the UPDATE can be refused.** An organizer who has left the ride's club
+ * raises 42501 on the WITH CHECK arm, on a save that need not have touched
+ * `club_id` — `ride-lifecycle`'s ex-member case, reachable the moment
+ * `leaveClub` runs. Delete first and both JPEGs are gone, `meeting_point` never
+ * changed so the trigger never fired, both columns still name the deleted
+ * objects, and the re-render is gated on the success that did not happen. Pin
+ * fallback for ever, from a save that returned an error.
+ *
+ * Deleting after a confirmed write fails only into an orphaned object, which is
+ * recoverable; the other order fails into a row naming objects that do not
+ * exist, which is not.
+ *
+ * **`deleteRide` is the one caller where the old ordering is still correct**, and
+ * that is why it keeps it rather than being an inconsistency: its DELETE policy
+ * is `auth.uid() = organizer_id` with no WITH CHECK arm to fail, so it cannot be
+ * refused past a test the caller already passed.
+ *
+ * Swallowed, and the failure it leaves is the recoverable one. If this refuses,
+ * the row still names two objects that are about to become unnamed — the tile
+ * 404s and `RideCard`/`RideMap` fall back to their pin rendering on the broken
+ * load, which is exactly the state they were built for. The object itself stays
+ * listable and deletable by its organizer through `051`'s own-folder read arm, so
+ * ordering is the primary rule and that arm is the recovery path.
+ */
+async function removeRideMapTiles(
+  supabase: DataClient,
+  paths: (string | null | undefined)[]
+): Promise<void> {
+  const present = paths.filter((path): path is string => !!path)
+  if (present.length === 0) return
+  await supabase.storage.from(MEDIA_BUCKET).remove(present)
 }
 
 /**
@@ -137,6 +226,11 @@ export async function createRide(
     }
     return { error: 'That ride could not be created.' }
   }
+
+  // PD-104 §5.1. After the crew row and not before it: a rollback above deletes
+  // the ride, and a render already in flight against a deleted ride would spend
+  // a ledger row on a ride that no longer exists.
+  requestRideMapRender(supabase, ride.id)
 
   invalidate(queryKeys.rides.all())
   // A ride created into a club appears on that club's Rides sub-page, which
@@ -275,6 +369,40 @@ export async function updateRide(
   const { departure_at, title, description, route_description, meeting_point, max_riders, is_public, club_id } =
     parsed.data
 
+  // PD-104 §5.1a. Read fresh rather than taking the paths off `getRideForEdit`'s
+  // cached row: the cache can hold a path a later render has already superseded,
+  // and deleting the wrong object is worse than deleting none. `updateClub` reads
+  // its previous image paths the same way and for the same reason.
+  const { data: previous } = await supabase
+    .from('rides')
+    .select('meeting_point, map_card_path, map_detail_path')
+    .eq('id', rideId)
+    .maybeSingle()
+
+  // `IS DISTINCT FROM` is the whole comparison the trigger makes, so this is the
+  // same test — a whitespace-only or case-only edit clears the tile, because
+  // deciding whether two strings denote the same place is the problem geocoding
+  // exists to solve and an over-eager clear costs one render.
+  const addressChanged = !!previous && previous.meeting_point !== meeting_point
+
+  // **AFTER the UPDATE, and only once it is confirmed.** 5.1a asks for the
+  // delete first, on the reasoning that the stale-tile trigger NULLs both path
+  // columns inside the same statement so afterwards nothing knows the names.
+  // That is true of the DATABASE and false of this function, which holds both
+  // names in `previous` across the call — so the premise of the ordering does
+  // not apply here, and deleting first is strictly worse:
+  //
+  // this UPDATE can be REFUSED. An organizer who has left the ride's club hits
+  // the 42501 below on a save that need not have touched `club_id` at all —
+  // the case documented a few lines down as "reachable the moment `leaveClub`
+  // runs". Deleting first means both JPEGs are gone, `meeting_point` never
+  // changed so the trigger never fired, both path columns still name the
+  // deleted objects, and the re-render is gated on the same success that did
+  // not happen. Pin fallback for ever, from a save that returned an error.
+  //
+  // Deleting after a confirmed write costs nothing and fails only into an
+  // orphaned object, which is recoverable; the other order fails into a broken
+  // row, which is not.
   const { data: ride, error } = await supabase
     .from('rides')
     .update({
@@ -319,6 +447,18 @@ export async function updateRide(
   // which `USING` filters out silently rather than refusing loudly.
   if (!ride) return { error: 'That ride is not yours to edit.' }
 
+  // PD-104 §5.1, the second of its two triggers. Only on an address change:
+  // the trigger has just NULLed all five columns, so this is what puts a tile
+  // back, and a title or time edit has nothing to re-render.
+  //
+  // The delete rides here rather than before the UPDATE — see the note above.
+  // Awaited before the re-render is asked for, so the two cannot race over a
+  // path the render is about to reuse.
+  if (addressChanged) {
+    await removeRideMapTiles(supabase, [previous!.map_card_path, previous!.map_detail_path])
+    requestRideMapRender(supabase, rideId)
+  }
+
   // `rides.all()`, not `rides.detail(rideId)` alone: `club_id` and
   // `is_public` are both editable, and an edit can move the ride between
   // filter segments — narrower invalidation would leave it visible in a list
@@ -350,6 +490,26 @@ export async function deleteRide(rideId: string): Promise<ActionState> {
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to do that.' }
+
+  // PD-104 §5.1b. Objects first, then the row that names them — the same
+  // ordering the address edit uses, and for a sharper version of the same
+  // reason: once the row is gone `051`'s Storage SELECT policy matches nothing,
+  // so no rider but the organizer can even *see* the object to delete it.
+  //
+  // The `organizer_id` test is not a re-filter of RLS. The `rides` SELECT policy
+  // deliberately admits crew, club members and any signed-in rider on a public
+  // ride, and the Storage DELETE policy is own-folder only — so a non-organizer
+  // reaching here would issue a `remove()` that is guaranteed to be refused.
+  // This skips a doomed round trip; it decides nothing.
+  const { data: existing } = await supabase
+    .from('rides')
+    .select('organizer_id, map_card_path, map_detail_path')
+    .eq('id', rideId)
+    .maybeSingle()
+
+  if (existing?.organizer_id === user.id) {
+    await removeRideMapTiles(supabase, [existing.map_card_path, existing.map_detail_path])
+  }
 
   const { data: deleted, error } = await supabase
     .from('rides')

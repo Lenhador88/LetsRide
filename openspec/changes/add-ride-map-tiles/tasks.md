@@ -409,34 +409,59 @@ exactly what they render today.** That is the intended intermediate state.
 
 ## 4. The Edge Function — written, not deployed
 
-- [ ] 4.1 `supabase/functions/resolve-ride-location/`. Follow `delete-account/` as the pattern,
-  including its header conventions.
-- [ ] 4.2 **Verify the JWT itself** rather than trusting the gateway. Assert in review that a
+**Written 2026-08-12 and NEVER EXERCISED AGAINST THE VENDOR.** `*.geoapify.com` is egress-blocked
+from the build container — `WebFetch` returns `EGRESS_BLOCKED`, and so does `curl` through the
+agent proxy — so not one request in this function has been issued. Every vendor-facing constant
+says in `gates.ts` whether it was measured or assumed; the assumed ones are the static-map
+parameter names (`style`, `scaleFactor`), the map style, and the `result_type` vocabulary. Task 8.4
+is where they stop being assumptions. **Do not read a green `npm run test:unit` as the vendor
+agreeing.**
+
+**It is two files, where `delete-account/` is one, and the split is deliberate.** `index.ts` is the
+Deno wiring; `gates.ts` holds every *decision* — the three gates, both URL builders, the path shape,
+the distance function — in plain TypeScript with no Deno global and no `jsr:` import. That is what
+lets `src/__tests__/ride-geocode-gates.test.ts` import it, which drags that half back under both
+`npx tsc --noEmit` and Vitest. **A decision that migrates into `index.ts` is a decision that leaves
+the test suite**, silently, and that is the thing to watch for in review.
+
+- [x] 4.1 `supabase/functions/resolve-ride-location/`. Follow `delete-account/` as the pattern,
+  including its header conventions. Both files carry the same header shape: the not-deployed
+  banner, the `tsconfig` exclusion note, the rules that make it safe, and the order of operations
+  with what a failure between steps leaves.
+- [x] 4.2 **Verify the JWT itself** rather than trusting the gateway. Assert in review that a
   request bearing the **publishable key** is refused — it is a valid JWT and sails past a
-  decode-only check.
-- [ ] 4.3 **No service-role key.** Construct the Supabase client with the caller's forwarded token
+  decode-only check. `anon.auth.getUser(token)`, which resolves the token against GoTrue rather
+  than decoding it; the publishable key is not a user session there. **Still owed a live proof**,
+  which is 8.4's — no test in this repo can reach GoTrue.
+- [x] 4.3 **No service-role key.** Construct the Supabase client with the caller's forwarded token
   and use it for the ride read, both uploads and the column write. `design.md` §D2 records the
-  fallback if this is ever refused, and it is not a service-role key.
-- [ ] 4.4 Take **only** a ride id. Establish entitlement by reading the ride under the caller's own
+  fallback if this is ever refused, and it is not a service-role key. One `caller` client built
+  with `global.headers.Authorization`, used for all six statements; the anon client is used for
+  `getUser` and nothing else.
+- [x] 4.4 Take **only** a ride id. Establish entitlement by reading the ride under the caller's own
   RLS and comparing `organizer_id` to the verified subject — no organizer id, club id or uid from
-  the request body.
-- [ ] 4.4a **Pre-flight the club-membership arm before spending anything.** After the ride read,
+  the request body. `no-geoapify-key.test.ts` asserts the body read names `rideId` and nothing else.
+  Not-found and not-yours return the identical 404, disclosing neither.
+- [x] 4.4a **Pre-flight the club-membership arm before spending anything.** After the ride read,
   check `club_id IS NULL OR <caller holds a club_members row for it>` under the caller's own JWT,
   and stop before the geocode if it fails. `private.is_club_member` is unreachable — PostgREST
   routes only to `public` — so read `club_members` directly. Without this, an organizer who left
   the club pays for a geocode and two renders and then has the column write refused.
-- [ ] 4.4b **Insert the ledger row before the vendor call**, and abandon the render if that insert
+- [x] 4.4b **Insert the ledger row before the vendor call**, and abandon the render if that insert
   is refused. Inserting first is what makes the ceiling count **attempts** rather than successes: a
   geocode that returns nothing, returns a city, or times out writes no columns and issues no ride
   UPDATE at all, so a count that rose on a column write would never see it — and that organizer,
   retrying an address that will not resolve, is exactly the one the ceiling exists to bound.
-- [ ] 4.5 **Request more than one candidate, and state the number.** Nothing in this change
+- [x] 4.5 **Request more than one candidate, and state the number.** Nothing in this change
   specified the geocoder *request* until now, and the omission was load-bearing: this change bounds
   vendor spend everywhere else, so narrowing the call to a single result is the natural
   optimisation — and it leaves the separation gate in 4.5b structurally unable to fire while every
   scenario in the spec still passes.
 
-- [ ] 4.5a Geocode, then apply **three** gates in this order. Failing any one: write nothing,
+  **`GEOCODE_CANDIDATE_LIMIT = 5`**, sent as `limit=5`. Enough to see a second town without paying
+  for a page of them; the measured ambiguous case returned two.
+
+- [x] 4.5a Geocode, then apply **three** gates in this order. Failing any one: write nothing,
   return success, do not render, leave the columns NULL. A render costs a call for an image that
   must not be shown.
 
@@ -455,7 +480,20 @@ exactly what they render today.** That is the intended intermediate state.
   street address in a named city, and separation-first rejects it though exactly one usable
   candidate existed.
 
-- [ ] 4.5b **The separation gate: if any two surviving candidates lie further apart than the stated
+  **The vocabulary could NOT be established, and the gate is written as an allowlist because of
+  it.** `*.geoapify.com` is unreachable from this container, so the only observed value is still
+  `building`. `STREET_LEVEL_RESULT_TYPES` is `['building', 'amenity', 'street']` — the three
+  street-level-or-better entries on the vendor's documented `result_type` list — and **everything
+  else, including any value the vendor adds later, is rejected**. That is the fail-closed
+  direction: an unknown type costs a tile, where a denylist would admit it and ship the
+  confident-wrong tile this whole change exists to prevent. `postcode` is the interesting
+  rejection — a Dutch postcode is one side of one street and would be fine, a UK or US one is a
+  district and would not, and the field does not say which convention produced it.
+  `rank.confidence_street_level` is corroboration only: it can *remove* a candidate the primary
+  gates admitted and can never promote one they rejected, so a vendor that stops emitting it
+  changes nothing.
+
+- [x] 4.5b **The separation gate: if any two surviving candidates lie further apart than the stated
   threshold, resolve nothing.** Keyed on **distance**, never on a tie in the confidence score.
 
   The measured case ties at exactly `1` because confidence **saturates**, which is a property of the
@@ -472,48 +510,148 @@ exactly what they render today.** That is the intended intermediate state.
   Picking the more prominent one stores a coordinate indistinguishable from a correct one, which is
   the whole failure this gate exists to prevent.
 
-- [ ] 4.5c **Assert the gate against the measured case AND against the outbound request.** The
+  **Threshold: 500 metres**, keyed on distance and stated with its reasoning in `gates.ts`. Fixed
+  by what it protects rather than by anything in the geocoder — the panel is 1.05 km wide at z15,
+  so two candidates 500 m apart put the rider's actual meeting point at the very edge of the tile
+  drawn for the other one; and it clears the duplicate-datasource case (metres) by two orders of
+  magnitude. The measured ambiguous pair is 12.2 km, so the threshold is not finely balanced
+  against the one sample that motivated it. **`importance` and `popularity` are absent from the
+  response type entirely**, so reaching for one does not compile — the cheapest possible
+  enforcement of "never break a disagreement on a relevance signal". `rank.match_type` is absent
+  for the same reason.
+
+- [x] 4.5c **Assert the gate against the measured case AND against the outbound request.** The
   `Stationsplein 1, Amsterdam` response is the regression fixture: two buildings 12.2 km apart. But
   a fixture is a *response*, so a test built only from one passes green against a pipeline whose
   real call asked for a single candidate — the exact failure 4.5 exists to prevent. Assert the
-  request too.
-
-- [ ] 4.6 Render both tiles as **JPEG** at 2× device pixel ratio, z13 for 80×148 and ~z15 for
+  request too. `src/__tests__/ride-geocode-gates.test.ts`, 22 cases. The response half covers the
+  measured pair, the same pair at `1.00`/`0.97` (a tie test would pass it), one building returned
+  twice at 0 m (a count rule would refuse it), `[building, city]` resolving because granularity runs
+  first, and a far candidate carrying high `importance`/`popularity` still reading as ambiguity. The
+  request half asserts `limit`, `format=jpeg`, both zooms, both containers' dimensions,
+  `scaleFactor=2`, `lonlat` ordering, and the **absence** of every attribution-suppression parameter.
+- [x] 4.6 Render both tiles as **JPEG** at 2× device pixel ratio, z13 for 80×148 and ~z15 for
   358×160. **Not PNG** — the bucket allows `image/jpeg` only and refuses the rest above every
-  policy.
-- [ ] 4.7 Upload, then write the columns. Every vendor and upload failure returns success to the
-  caller with NULL columns; the ride write must never fail because a map did not render.
-- [ ] 4.8 **On a refused column write, delete the objects just uploaded.** That is the only moment
+  policy. Also checked on the response `Content-Type` before upload, so a vendor ignoring
+  `format=jpeg` costs a skipped upload rather than an unexplained Storage error.
+
+  **2× is expressed as `scaleFactor=2`, not by doubling `width`/`height`, and that is a §6
+  decision rather than a stylistic one.** Doubling the pixel dimensions doubles the map *area* at a
+  fixed zoom and leaves the vendor's burned-in credit at its original size — which then displays at
+  **half** size once the browser scales an 80-wide tile into an 80px strip, dropping it below the
+  design system's 10px floor and putting the strip straight into *A credit that cannot fit means no
+  tile*. `scaleFactor` renders the same area at twice the resolution, credit included.
+- [x] 4.7 Upload, then write the columns. Every vendor and upload failure returns success to the
+  caller with NULL columns; the ride write must never fail because a map did not render. Every
+  outcome — empty result, sub-floor confidence, rejected granularity, ambiguity, outage, timeout,
+  quota, refused upload, refused column write — is **200 with `rendered: false`**. The `catch` at
+  the boundary returns 200 too, because the ride is already saved and a 500 would surface in a
+  browser console for a rider whose ride saved perfectly. Vendor calls are bounded at 8s.
+- [x] 4.8 **On a refused column write, delete the objects just uploaded.** That is the only moment
   their paths are still known — the row never recorded them and the trigger would not have kept
   them. Not tidy-up; the compensating action for the mid-flight membership change 4.4a cannot
-  catch. Generate the object names in the function so they are in hand throughout.
-- [ ] 4.9 Key-absence tripwire test in the shape of `src/__tests__/no-service-role-key.test.ts`,
+  catch. Generate the object names in the function so they are in hand throughout. Both names are
+  generated before either render and held for the whole flow. One extra sweep beyond the task: after
+  a **successful** write, the row's *previous* paths are removed, because the stale-tile trigger
+  fires only on a `meeting_point` change — so a re-render of an unchanged address would otherwise
+  orphan the pair it replaced. After the write and never before, or a failed write would take a live
+  tile down with it.
+- [x] 4.9 Key-absence tripwire test in the shape of `src/__tests__/no-service-role-key.test.ts`,
   **including that the detector still catches a real key** — a guard that has quietly stopped
-  matching passes for ever and looks exactly like a clean repo.
-- [ ] 4.10 Note in the function header that **nothing type-checks it**: `tsconfig.json` excludes
+  matching passes for ever and looks exactly like a clean repo. `src/__tests__/no-geoapify-key.test.ts`.
+
+  **Two rules, because a key scanner alone would not have been enough here.** A Geoapify key is 32
+  lowercase hex characters — indistinguishable from a dashless uuid, an MD5 or a git blob — so the
+  key rule is keyed on *context* (`apiKey = '…'`, `?apiKey=…`, `NEXT_PUBLIC_*GEOAPIFY`,
+  `GEOAPIFY_API_KEY`). The second rule is the stronger one and is the spec's own wording: the
+  **hostname** `geoapify.com` must not appear in the bundle at all, because an unauthenticated tile
+  URL still discloses every rider's IP on every scroll, still breaks offline, and still puts a third
+  party's uptime under the rides list. **Hostname and not the word**, because
+  `src/app/legal/privacy/page.tsx` names Geoapify in prose and is *required* to — a word rule would
+  forbid the one page obliged to carry it, which is the shape of guard that gets deleted rather
+  than fixed.
+- [x] 4.10 Note in the function header that **nothing type-checks it**: `tsconfig.json` excludes
   `supabase/functions`, so this is the least-guarded code in the repo and a second reviewer pass on
-  it is worth more than a test that cannot run.
+  it is worth more than a test that cannot run. Stated in both files' headers, with the qualifier
+  the split earns: `gates.ts` **is** now type-checked and unit-tested, because `src/`'s test imports
+  it and `exclude` only stops a file being a compilation *root*. `index.ts` is checked by nothing
+  but ESLint.
 
 ## 5. Wiring the call
 
-- [ ] 5.1 Call the function from `src/lib/actions/rides.ts` after a create, and after an update that
+- [x] 5.1 Call the function from `src/lib/actions/rides.ts` after a create, and after an update that
   changed `meeting_point`. Fire-and-forget: never block the redirect, never surface a map error.
-- [ ] 5.1a **Delete the existing tile objects BEFORE issuing the UPDATE that changes
+  `requestRideMapRender(supabase, rideId)` — `void`-ed, `.catch()`-ed and awaited by nothing. In
+  `createRide` it fires **after** the crew insert, not before: a failed crew insert rolls the ride
+  back, and a render already in flight would spend a ledger row against a ride that no longer
+  exists. Today every call is a 404, because the function is not deployed (8.3) — and that has to
+  look exactly like the vendor being down, which is to say like nothing at all.
+- [x] 5.1a **Delete the existing tile objects BEFORE issuing the UPDATE that changes
   `meeting_point`.** The stale-tile trigger NULLs the path columns in that same statement, so
   afterwards nothing knows their names. Same ordering as the ride-delete path — objects first, then
-  the row that names them (`design.md` §D8).
-- [ ] 5.1b Same ordering in the ride **delete** action: remove both objects, then delete the row.
-- [ ] 5.2 Invalidate `rides.all()` and `rides.detail(id)` when a render reports that it wrote paths.
-  No new key — the paths ride on rows those keys already cover.
-- [ ] 5.3 Extend `keys.ts`'s header table only if a claim changes. Do not add a key for a field.
+  the row that names them (`design.md` §D8). `updateRide` now reads `meeting_point` and both paths
+  first. **Read fresh, not taken off `getRideForEdit`'s cached row** — a cached path can be one a
+  later render already superseded, and deleting the wrong object is worse than deleting none.
+  `updateClub` reads its previous image paths the same way, so `getRideForEdit` is unchanged and
+  gained no tile columns.
+- [x] 5.1b Same ordering in the ride **delete** action: remove both objects, then delete the row.
+  Gated on `organizer_id`, which decides nothing — the `rides` SELECT policy admits crew, club
+  members and any signed-in rider on a public ride, while the Storage DELETE policy is own-folder
+  only, so a non-organizer reaching there would issue a `remove()` guaranteed to be refused.
+- [x] 5.2 Invalidate `rides.all()` and `rides.detail(id)` when a render reports that it wrote paths.
+  No new key — the paths ride on rows those keys already cover. **One call, not two**:
+  `invalidate` matches on prefix and `rides.all()` is `['rides']`, which is a prefix of
+  `['rides','detail',id]`. A second call naming `detail` would be a no-op that reads as a
+  distinct claim.
+- [x] 5.3 Extend `keys.ts`'s header table only if a claim changes. Do not add a key for a field.
+  No claim changed and no key was added — `keys.ts` is untouched.
 
-## 6. Attribution — gated on Q1 and Q2
+## 6. Attribution
 
-- [ ] 6.1 Render the credit on the 358×160 panel, clear of the `Open in Google Maps` button.
+**The gate this heading used to name is closed.** It read *"gated on Q1 and Q2"*; Q1 (§0.2) was
+answered 2026-08-11 — plan **Free**, so both plan-dependent obligations bind — and Q2 (§0.3) was
+answered the same day as far as it can be from a container with no route to the vendor. PD-192
+records the settlement: *OpenStreetMap credit unconditionally, `Powered by Geoapify` because the
+plan is Free.* It had to land before 8.3, because deploying the function is the moment a tile first
+reaches a rider and therefore the moment an uncredited tile would.
+
+**Two obligations, not one, and they take different homes.** OpenStreetMap is required *always*, on
+every plan, and the Static Maps response discharges it by burning the credit into the image — which
+is *composed into* each tile, per tile, surviving a scroll, exactly as the spec's rejection of a
+shared credit requires. `Powered by Geoapify` is a **service**-level obligation rather than a
+property of the tile's data, so it takes one legible home rather than riding on every tile.
+
+- [x] 6.1 Render the credit on the 358×160 panel, clear of the `Open in Google Maps` button.
+  `Powered by Geoapify` at `text-2xs` (Poppins/10/Medium, the system's smallest token), bottom-left,
+  clear of the `Get directions` chip inset bottom-right. `White/100` over `bg-scrim`, so it inherits
+  the address's 8.0:1 floor rather than whatever the map happens to be. Plain text rather than the
+  documented `Powered by <a …>Geoapify</a>`: the whole panel is already an anchor, and nesting one
+  inside another is invalid HTML that browsers resolve by closing the outer link early — which
+  would cost the `Get directions` tap target that component exists to fix.
 - [ ] 6.2 Render the credit **into** the 80×148 strip. If it cannot be legible at the design
   system's smallest token, **the strip renders no tile** — ship the fallback, and record the
   decision rather than shrinking type below the system's floor.
-- [ ] 6.3 Do not render a tile anywhere until Q1 is answered.
+
+  **Half built, and the open half is a measurement nobody in this container can take.** What
+  shipped: the strip's per-tile credit is the vendor's burned-in one, and two things now protect it.
+  Nothing suppresses it — the render request passes no attribution, watermark or logo parameter, and
+  `ride-geocode-gates.test.ts` asserts their absence. And nothing crops it: the tile carried
+  `object-cover` with the default centre origin, which on the **club-filtered** card — 128 tall, so
+  a 120-tall strip against a 148-tall tile — cropped 14px off the bottom, precisely where the credit
+  sits. Both containers are now `object-bottom`, which moves the whole crop to the top. `RideMap`
+  had the same defect on any viewport wider than 390.
+
+  **Still open: whether the burned-in credit is legible at 80×148.** `*.geoapify.com` is
+  egress-blocked, so no tile exists to look at, and §0.3 is right that only this task can answer it
+  — it just cannot be answered before a tile exists. **Task 8.4 must answer it against a real
+  tile**, and if it is not legible the specified outcome applies: the strip renders the pin fallback
+  and no tile, which is one condition on `showsTile` in `RideCard`. Do not resolve it by shrinking
+  type below the floor, clipping, or truncating the vendor's name.
+
+  For the record, so it is not re-derived: drawing the string ourselves is not the escape. At
+  `text-2xs` an 80px strip holds roughly 14 characters, and `© OpenStreetMap contributors` is 28.
+- [x] 6.3 Do not render a tile anywhere until Q1 is answered. Q1 is answered (§0.2, 2026-08-11,
+  plan Free), so this is satisfied rather than waived — and it is what made §6 buildable at all.
 
 ## 7. Coordination — do not let these land silently
 
@@ -550,12 +688,50 @@ exactly what they render today.** That is the intended intermediate state.
   exactly this state.
 - [ ] 8.3 **OWNER ACTION — deploy the Edge Function. §6's attribution must be settled and rendered
   BEFORE this step, not merely before §6 is ticked** — this is the moment a tile first exists, so it
-  is the moment an uncredited tile first reaches a rider. There is no `supabase` CLI in this container
+  is the moment an uncredited tile first reaches a rider.
+
+  **AND redeploy `delete-account` in the SAME window — deploying this one alone opens a privacy
+  hole.** `ride-maps/` is written for the first time by this function, and `delete-account`'s
+  `PREFIXES` sweep is the only thing that ever removes it. The prefix is now in that list in the
+  repo, but **the deployed build predates it** and no session can redeploy either function, so until
+  the owner does both an account deletion leaves two rendered images of the rider's meeting point —
+  frequently their home address — in the bucket, with no row naming them and no credential left in
+  the system that can reach the folder. 7.1 files the wider account-deletion coordination; this line
+  is the deploy-order half of it, because nothing else in §8 blocked on it. **Verify after both:
+  `list_edge_functions` shows a new `ezbr_sha256` for `delete-account` on both projects.**
+
+  There is no `supabase` CLI in this container
   and the Supabase MCP has no deploy tool, so no session can do it. Same blocker as PD-86. Label
   `Owner only` in Linear and set the Geoapify key in the function's secret store — never in `src/`,
   `.env.local.example`, Vercel or any `NEXT_PUBLIC_*`.
 - [ ] 8.4 After deployment, exercise one real ride create and one real address edit on DEV and
   confirm: tiles appear, an edit clears then replaces them, and a non-organizer's call is refused.
+- [ ] 8.4a **The first real call is also the ONLY chance to check three assumed vendor parameters,
+  and nothing else in this plan can.** `*.geoapify.com` is egress-blocked from the build container,
+  so §4 shipped with `gates.ts` §What is measured and what is assumed naming exactly three guesses:
+  the Static Maps parameter names (`style`, `scaleFactor`), the map style value, and the
+  `result_type` vocabulary. Each fails differently and **only one fails loudly**:
+  * a wrong parameter *name* is likely ignored, so the tile renders at the wrong scale or style
+    with a 200 and nothing red;
+  * a wrong `style` value may 400, which the fail-open path swallows into a NULL column — visible
+    only as "tiles never appear";
+  * a wrong `result_type` string silently narrows the allowlist, so addresses that should resolve
+    quietly do not.
+  Read the first response body rather than the status code, and correct `gates.ts` against it.
+- [ ] 8.4b **`scaleFactor` is the one that decides whether 6.2 can pass at all.** §4.6 asks for 2×
+  DPR and §6.2 refuses a tile whose burned-in credit is illegible; doubling `width`/`height` would
+  satisfy the first and break the second by construction, because it doubles the map area at a fixed
+  zoom and leaves the credit at its original pixel size, which then displays at **half** size in an
+  80px strip. `scaleFactor` was chosen because it doubles resolution at the same area and scales the
+  credit with it. **If the parameter does not exist, §4.6 and §6.2 cannot both hold** and 6.2's
+  fail-closed branch fires — the card strip renders the pin fallback and no tile. That is a
+  specified outcome, not a defect; do not resolve it by shrinking type below the system's floor.
+- [ ] 8.4c **Correct `/legal/privacy` in the SAME window as 8.3, not after it.** The page currently
+  ends *"Today no ride has coordinates and nothing is sent anywhere"* — true right up to the moment
+  the function deploys and false immediately after, on a **public, live** page describing where a
+  frequently-home address goes. It is not in §7 or §8's original list, which is why it is written
+  here: nothing else in this plan would have caught it, and the gap between deploying and noticing
+  is the whole exposure.
 - [ ] 8.5 **There is no destructive step in this change.** The additive-first / deploy /
   destructive-last rule is satisfied trivially because the table-level grant is left in place —
   stated explicitly so nobody goes looking for the revoke that `025`'s precedent might suggest.

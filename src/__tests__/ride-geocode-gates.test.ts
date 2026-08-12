@@ -1,0 +1,335 @@
+import { describe, expect, it } from 'vitest'
+import {
+  buildGeocodeUrl,
+  buildRideMapPath,
+  buildTileUrl,
+  CONFIDENCE_FLOOR,
+  distanceMetres,
+  GEOCODE_CANDIDATE_LIMIT,
+  resolveCoordinate,
+  SEPARATION_THRESHOLD_METRES,
+  TILE_SPECS,
+  type GeocodeFeature,
+} from '../../supabase/functions/resolve-ride-location/gates'
+
+/**
+ * The three gates and the two outbound requests of `resolve-ride-location`.
+ *
+ * ---------------------------------------------------------------------------
+ * Why this test reaches outside `src/`
+ * ---------------------------------------------------------------------------
+ * The Edge Function is Deno and `tsconfig.json` excludes `supabase/functions`,
+ * so nothing in CI reads `index.ts` — it is the least-guarded code in the repo.
+ * `gates.ts` is the half that was deliberately kept free of Deno globals and
+ * `jsr:` imports so that this file can import it, which drags it back under both
+ * `npx tsc --noEmit` and `npm run test:unit`. `exclude` stops a file being a
+ * compilation root; it does not stop one being checked once an included file
+ * imports it.
+ *
+ * The relative path is not a violation of the `@/*` rule, which is about imports
+ * *within* `src/`. There is no alias that reaches out of it, and inventing one
+ * would let app code import Edge Function code, which is the thing to avoid.
+ *
+ * ---------------------------------------------------------------------------
+ * What these assertions can and cannot establish
+ * ---------------------------------------------------------------------------
+ * **`*.geoapify.com` is egress-blocked from this container, so every fixture
+ * below is a transcription rather than a capture** — except the ambiguous pair,
+ * which comes from a real response the product owner supplied (`tasks.md` §0.8).
+ * Nothing here proves the vendor's parameter names, its `result_type`
+ * vocabulary, or that `confidence` is on a 0–1 scale. It proves what this
+ * function does with a response of a given shape, and what it asks for.
+ *
+ * The request assertions matter more than they look. The spec calls it out by
+ * name: a fixture is a *response*, so a test built only from one passes green
+ * against a pipeline whose real call asked for a single candidate — under which
+ * the separation gate is structurally unable to fire while every scenario here
+ * still passes.
+ */
+
+const AMSTERDAM = { latitude: 52.3784733, longitude: 4.9031499 }
+/** Weesp, which merged into the Amsterdam *municipality* in 2022. */
+const WEESP = { latitude: 52.3086, longitude: 5.0413 }
+
+function feature(
+  coordinate: { latitude: number; longitude: number },
+  overrides: {
+    result_type?: string
+    confidence?: number
+    confidence_street_level?: number
+  } = {},
+): GeocodeFeature {
+  return {
+    properties: {
+      lat: coordinate.latitude,
+      lon: coordinate.longitude,
+      result_type: overrides.result_type ?? 'building',
+      rank: {
+        confidence: overrides.confidence ?? 1,
+        ...(overrides.confidence_street_level === undefined
+          ? {}
+          : { confidence_street_level: overrides.confidence_street_level }),
+      },
+    },
+  }
+}
+
+const response = (...features: GeocodeFeature[]) => ({ features })
+
+describe('the outbound geocode request', () => {
+  it('asks for more than one candidate, so the separation gate can fire at all', () => {
+    expect(GEOCODE_CANDIDATE_LIMIT).toBeGreaterThan(1)
+    const url = new URL(buildGeocodeUrl('Stationsplein 1, Amsterdam', 'test-key'))
+    expect(url.searchParams.get('limit')).toBe(String(GEOCODE_CANDIDATE_LIMIT))
+  })
+
+  it('sends the meeting point as the query and the key as the key', () => {
+    const url = new URL(buildGeocodeUrl('Stationsplein 1, Amsterdam', 'test-key'))
+    expect(url.searchParams.get('text')).toBe('Stationsplein 1, Amsterdam')
+    expect(url.searchParams.get('apiKey')).toBe('test-key')
+    expect(url.origin).toBe('https://api.geoapify.com')
+  })
+})
+
+describe('the outbound static map requests', () => {
+  it('asks for JPEG, because the bucket refuses everything else above every policy', () => {
+    for (const spec of Object.values(TILE_SPECS)) {
+      const url = new URL(buildTileUrl(spec, AMSTERDAM, 'test-key'))
+      expect(url.searchParams.get('format')).toBe('jpeg')
+    }
+  })
+
+  it('renders two zooms at the two containers’ own dimensions', () => {
+    const card = new URL(buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key'))
+    expect(card.searchParams.get('width')).toBe('80')
+    expect(card.searchParams.get('height')).toBe('148')
+    expect(card.searchParams.get('zoom')).toBe('13')
+
+    const detail = new URL(buildTileUrl(TILE_SPECS.detail, AMSTERDAM, 'test-key'))
+    expect(detail.searchParams.get('width')).toBe('358')
+    expect(detail.searchParams.get('height')).toBe('160')
+    expect(detail.searchParams.get('zoom')).toBe('15')
+  })
+
+  it('doubles resolution with scaleFactor rather than with the pixel dimensions', () => {
+    // Doubling width/height would double the map AREA at a fixed zoom and leave
+    // the vendor's burned-in credit at its original size — halved once the
+    // browser scales an 80-wide tile back into an 80px strip, which is straight
+    // into the spec's "a credit that cannot fit means no tile" branch.
+    const card = new URL(buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key'))
+    expect(card.searchParams.get('scaleFactor')).toBe('2')
+  })
+
+  it('writes the centre as lonlat, longitude first', () => {
+    const url = new URL(buildTileUrl(TILE_SPECS.detail, AMSTERDAM, 'test-key'))
+    // Swapped, this is a valid request for a plausible place somewhere else.
+    expect(url.searchParams.get('center')).toBe('lonlat:4.9031499,52.3784733')
+  })
+
+  it('suppresses no attribution parameter', () => {
+    // The OpenStreetMap obligation binds on every plan and the Static Maps
+    // response discharges it by burning the credit into the image. Suppressing it
+    // does not remove the obligation, it moves it onto an 80px strip that cannot
+    // carry the string.
+    const url = buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key').toLowerCase()
+    for (const parameter of ['attribution', 'nologo', 'no_logo', 'watermark', 'copyright']) {
+      expect(url).not.toContain(parameter)
+    }
+  })
+})
+
+describe('the storage path', () => {
+  it('matches the shape 051 pins with a CHECK and with the INSERT policy', () => {
+    const organizer = '11111111-2222-3333-4444-555555555555'
+    const object = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    expect(buildRideMapPath(organizer, object)).toBe(
+      `ride-maps/${organizer}/${object}.jpg`,
+    )
+    // The regex 051 carries, verbatim.
+    expect(buildRideMapPath(organizer, object)).toMatch(
+      /^ride-maps\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/,
+    )
+  })
+})
+
+describe('distance', () => {
+  it('reproduces the measured 12.2 km between the two Stationsplein 1s', () => {
+    const metres = distanceMetres(AMSTERDAM, WEESP)
+    expect(metres).toBeGreaterThan(11_500)
+    expect(metres).toBeLessThan(12_900)
+  })
+
+  it('is zero for a point against itself', () => {
+    expect(distanceMetres(AMSTERDAM, AMSTERDAM)).toBe(0)
+  })
+})
+
+describe('the separation gate — the measured regression case', () => {
+  it('resolves nothing for two maximally confident buildings 12.2 km apart', () => {
+    // `Stationsplein 1, Amsterdam`, supplied by the product owner. Both features
+    // are `building`, both `confidence: 1`, both `full_match`. Every other gate
+    // in this change passes both of them, and a pipeline taking features[0]
+    // stores a coordinate 12.2 km wrong with the highest possible confidence
+    // attached — at which point it is indistinguishable from a good one.
+    expect(resolveCoordinate(response(feature(AMSTERDAM), feature(WEESP)))).toEqual({
+      resolved: false,
+      reason: 'ambiguous',
+    })
+  })
+
+  it('fires on distance rather than on a tie, so 1.00 against 0.97 still refuses', () => {
+    // Confidence SATURATES. The measured pair tied at the ceiling rather than
+    // because they were equally good, so a tie test is fitted to an artifact.
+    const verdict = resolveCoordinate(
+      response(
+        feature(AMSTERDAM, { confidence: 1 }),
+        feature(WEESP, { confidence: 0.97 }),
+      ),
+    )
+    expect(verdict).toEqual({ resolved: false, reason: 'ambiguous' })
+  })
+
+  it('treats one building returned twice by two datasources as one place', () => {
+    // The other direction, and the reason a count-based rule is wrong: a vendor
+    // merging sources returns the same building tied exactly and 0 m apart, and a
+    // count rule would refuse a perfectly unambiguous address for ever.
+    const verdict = resolveCoordinate(response(feature(AMSTERDAM), feature(AMSTERDAM)))
+    expect(verdict).toEqual({
+      resolved: true,
+      latitude: AMSTERDAM.latitude,
+      longitude: AMSTERDAM.longitude,
+      confidence: 1,
+    })
+  })
+
+  it('admits candidates that disagree by less than the threshold', () => {
+    // ~110 m north — two entrances to one building, or two datasources rounding
+    // differently. One place.
+    const nearby = { latitude: AMSTERDAM.latitude + 0.001, longitude: AMSTERDAM.longitude }
+    expect(distanceMetres(AMSTERDAM, nearby)).toBeLessThan(SEPARATION_THRESHOLD_METRES)
+    expect(resolveCoordinate(response(feature(AMSTERDAM), feature(nearby)))).toMatchObject({
+      resolved: true,
+    })
+  })
+
+  it('never breaks a disagreement on a relevance signal', () => {
+    // `rank.importance` and `rank.popularity` are in every real response and are
+    // absent from `GeocodeFeature` on purpose, so reaching for one does not
+    // compile. This is the behavioural half: a far-away candidate carrying them
+    // is still ambiguity, never a winner.
+    const withRelevance = {
+      properties: {
+        ...feature(WEESP).properties,
+        rank: { confidence: 1, importance: 0.99, popularity: 9.9 },
+      },
+    } as GeocodeFeature
+    expect(resolveCoordinate(response(feature(AMSTERDAM), withRelevance))).toEqual({
+      resolved: false,
+      reason: 'ambiguous',
+    })
+  })
+})
+
+describe('the granularity gate', () => {
+  it('rejects a city-level match however confident it is', () => {
+    expect(
+      resolveCoordinate(response(feature(AMSTERDAM, { result_type: 'city', confidence: 1 }))),
+    ).toEqual({ resolved: false, reason: 'granularity' })
+  })
+
+  it('rejects an unknown result type, because the vocabulary is an allowlist', () => {
+    // The vocabulary could not be measured from this container, so the unknown
+    // value is the one that has to be safe: a new vendor type costs a tile rather
+    // than shipping a wrong one.
+    expect(
+      resolveCoordinate(response(feature(AMSTERDAM, { result_type: 'hamlet_or_whatever' }))),
+    ).toEqual({ resolved: false, reason: 'granularity' })
+  })
+
+  it('admits building, amenity and street', () => {
+    for (const result_type of ['building', 'amenity', 'street']) {
+      expect(resolveCoordinate(response(feature(AMSTERDAM, { result_type })))).toMatchObject({
+        resolved: true,
+      })
+    }
+  })
+
+  it('runs BEFORE separation, so [building, city] resolves rather than refusing', () => {
+    // An ordinary response for a street address in a named city. Separation-first
+    // measures the distance to a candidate granularity is about to discard, and
+    // rejects a request that had exactly one usable answer.
+    const verdict = resolveCoordinate(
+      response(feature(AMSTERDAM), feature(WEESP, { result_type: 'city' })),
+    )
+    expect(verdict).toMatchObject({ resolved: true, latitude: AMSTERDAM.latitude })
+  })
+})
+
+describe('the numeric floor', () => {
+  it('discards a candidate below the floor', () => {
+    expect(
+      resolveCoordinate(response(feature(AMSTERDAM, { confidence: CONFIDENCE_FLOOR - 0.01 }))),
+    ).toEqual({ resolved: false, reason: 'confidence' })
+  })
+
+  it('admits a candidate exactly at the floor, which its own CHECK also admits', () => {
+    // 051 writes `>= 0.70::real` rather than `>= 0.70` for this: a bare numeric
+    // literal widens the real column and `0.70::real >= 0.70` is FALSE, so a
+    // candidate at exactly the floor would pass here and then raise on the
+    // UPDATE — after both renders had been paid for.
+    expect(
+      resolveCoordinate(response(feature(AMSTERDAM, { confidence: CONFIDENCE_FLOOR }))),
+    ).toMatchObject({ resolved: true })
+  })
+
+  it('fails closed above the ceiling, so a mis-scaled vendor value stores nothing', () => {
+    // The 0–1 scale is plausible rather than validated. If the vendor is really
+    // emitting 0–100 this refuses every candidate — no tiles ever, loudly, rather
+    // than every tile carrying a meaningless score.
+    expect(resolveCoordinate(response(feature(AMSTERDAM, { confidence: 87 })))).toEqual({
+      resolved: false,
+      reason: 'confidence',
+    })
+  })
+
+  it('uses confidence_street_level as corroboration only', () => {
+    // It can remove a candidate the primary gates admitted; it can never promote
+    // one they rejected, and a vendor that stops emitting it changes nothing.
+    expect(
+      resolveCoordinate(
+        response(feature(AMSTERDAM, { confidence: 1, confidence_street_level: 0.2 })),
+      ),
+    ).toEqual({ resolved: false, reason: 'confidence' })
+
+    expect(
+      resolveCoordinate(response(feature(AMSTERDAM, { result_type: 'city', confidence: 1 }))),
+    ).toEqual({ resolved: false, reason: 'granularity' })
+  })
+})
+
+describe('the empty and malformed cases', () => {
+  it('stores nothing for an empty result', () => {
+    expect(resolveCoordinate(response())).toEqual({ resolved: false, reason: 'no_candidates' })
+  })
+
+  it('stores nothing for a null or absent response', () => {
+    expect(resolveCoordinate(null)).toEqual({ resolved: false, reason: 'no_candidates' })
+    expect(resolveCoordinate({})).toEqual({ resolved: false, reason: 'no_candidates' })
+  })
+
+  it('discards a candidate with no coordinate rather than storing a partial one', () => {
+    const broken = { properties: { result_type: 'building', rank: { confidence: 1 } } }
+    expect(resolveCoordinate(response(broken))).toEqual({
+      resolved: false,
+      reason: 'no_candidates',
+    })
+  })
+
+  it('discards an out-of-range coordinate before it can cost a render', () => {
+    const impossible = feature({ latitude: 152, longitude: 4.9 })
+    expect(resolveCoordinate(response(impossible))).toEqual({
+      resolved: false,
+      reason: 'no_candidates',
+    })
+  })
+})

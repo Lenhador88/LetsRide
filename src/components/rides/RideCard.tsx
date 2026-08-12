@@ -39,6 +39,49 @@ import type { RideAttendance, RideListItem } from '@/types'
  * unavailable" message — the pin container it has always drawn is the answer,
  * and a tile that fails to load falls back to exactly that.
  *
+ * **Attribution — PD-104 §6.2, and the credit this strip carries is the one
+ * burned into the tile.** The Static Maps response arrives with map-style
+ * attribution rendered into the image itself, bottom-right, which is *composed
+ * into the strip* per tile and survives a scroll — exactly what the spec means by
+ * refusing a single shared credit elsewhere on the screen. Two consequences for
+ * this file, and both are load-bearing rather than tidy:
+ *
+ * - **Nothing suppresses it.** The render request passes no attribution,
+ *   watermark or logo parameter, and `ride-geocode-gates.test.ts` asserts their
+ *   absence. Suppressing the credit would not remove the obligation, it would
+ *   move it onto 80px of width that cannot carry `© OpenStreetMap contributors`
+ *   at this design system's smallest token.
+ * - **`object-right-bottom`, so a crop cannot take it.** The tile is rendered at
+ *   80×148, which is this strip in the ordinary 156-tall card. On the
+ *   club-filtered screen the card is 128 tall and the strip is 120, and a centred
+ *   `object-cover` would crop 14px off the bottom — precisely where the credit
+ *   sits. Anchoring bottom-right moves the whole crop to the top.
+ *
+ *   **The horizontal half of that class is a no-op *here* and is not decoration.**
+ *   The strip is `w-20` against an 80-wide tile, so the cover scale is exactly 1
+ *   and nothing crops sideways — today. `RideMap` uses the same class where it is
+ *   very much not a no-op: its panel is *narrower* than its 358-wide tile below a
+ *   390px viewport, and a bottom-only anchor truncated `© OpenStreetMap
+ *   contributors` mid-string at 375 and 360. **So if you widen this strip past
+ *   `w-20`, that is the failure you inherit** — the credit is burned bottom-RIGHT,
+ *   and the horizontal axis becomes load-bearing the moment the scale factor
+ *   leaves 1.
+ *
+ * `Powered by Geoapify` — the Free plan's separate, *service*-level obligation —
+ * is not here. It has one legible home, on `RideMap`'s 358×160 panel; that string
+ * is not the tile's data attribution, so the spec's rejection of a shared credit
+ * does not reach it.
+ *
+ * **The open half, stated rather than assumed: whether the burned-in credit is
+ * legible at 80×148.** If it is not, `specs/ride-map-tiles`' *A credit that cannot
+ * fit means no tile* applies and this strip must render the pin fallback with no
+ * tile — which is a specified outcome and not a failure, and is one condition on
+ * `showsTile` below. It could not be measured when this was written:
+ * `*.geoapify.com` is egress-blocked from the build container, so no tile existed
+ * to look at. Task 8.4 answers it against a real one. Do not resolve it by
+ * shrinking type below the system's floor, clipping, or truncating the vendor's
+ * name.
+ *
  * The pin gains a `White/100` disc **only** over a tile. Bare `Grey/100` on a
  * neutral `Grey/10%` container is 13.82:1 — `bg-border` is `#0000001A`, 10.196%
  * black, which over this card's opaque `bg-surface` composites to `#E5E5E5`.
@@ -89,7 +132,14 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
             // Decorative: the meeting point this tile is centred on is the
             // third line of the card, in text, right beside it.
             alt=""
-            className="absolute inset-0 h-full w-full object-cover"
+            // `object-right-bottom` — see the header. The vendor's credit is
+            // burned into the bottom-RIGHT of the tile, and a centred crop
+            // removes it on the 128-tall club-filtered card. The horizontal half
+            // is a no-op here (the strip is `w-20` against an 80-wide tile, so
+            // there is no horizontal crop) and is written anyway to match
+            // `RideMap`, where it is not a no-op at all, and so that a future
+            // change to the strip's width cannot silently start truncating it.
+            className="absolute inset-0 h-full w-full object-cover object-right-bottom"
             onError={() => setFailedTileUrl(ride.map_card_url ?? null)}
             loading="lazy"
             draggable={false}
