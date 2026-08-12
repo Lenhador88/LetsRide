@@ -150,6 +150,27 @@ silently — see §The redirect allowlist for the measurement. A confirmation em
 therefore opens `app.letsride.social`, the **web** app, rather than deep-linking back into the
 shell; that is acceptable, and universal/app links are separate work.
 
+**Do not set it in any Vercel target — a web build now REFUSES it rather than tolerating it.**
+This is the one hazard the variable introduces, and it arrives through the same door as the split
+that once left Preview holding the Supabase URL and not the key: somebody sets it in Vercel,
+having read that a release needs it, and unless it is scoped to a single target it lands on
+**Preview** as well. Every DEV and feature-branch build then emails confirmation and recovery
+links pointing at `app.letsride.social`, where the token was minted by the wrong project and is
+invalid — green deploy, right-looking link, and the rider who clicks it is the first thing that
+fails. On the web the variable cannot even help: `window.location.origin` is already the host
+that served the app, so a configured value can only agree with the default or contradict it.
+
+`next.config.ts` throws on a web build that has it set, which is stronger than an assertion over
+the built output — the build produces no artifact at all, so there is nothing that can ship
+wrong. Both directions are checked:
+
+```bash
+# expect exit 1 and "NEXT_PUBLIC_CANONICAL_ORIGIN is set, but this is a web build"
+NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build
+# expect exit 0 — the web build must keep building with it unset
+npm run build && node scripts/native/assert-web-build.mjs
+```
+
 ### The hotfix rule
 
 If anything is ever committed to `main` that did not come through `development` — a

@@ -1439,7 +1439,9 @@ chain to a scratch database and asserts what each role can reach.
   is *discarded* — path and all — rather than refused, so a confirmation email lands the rider on
   the app root with the error in a fragment nothing reads (measured against the live PROD auth
   server 2026-08-12; the probe is `docs/ENVIRONMENTS.md` §The redirect allowlist). Hence
-  `next.config.ts` fails a `CAPACITOR_BUILD=1` build when the variable is unset. **Two commands,
+  `next.config.ts` fails a `CAPACITOR_BUILD=1` build when the variable is unset — and fails a
+  **web** build when it is *set*, because on Preview it would have DEV and feature branches email
+  confirmation links pointing at production, where the token is invalid. **Two commands,
   and the first cannot do the second's job** — a computed origin is invisible to a grep for a
   written one: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0, and
   `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`

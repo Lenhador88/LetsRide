@@ -91,6 +91,47 @@ if (isCapacitorBuild && !process.env.NEXT_PUBLIC_CANONICAL_ORIGIN) {
 }
 
 /**
+ * And the mirror image: a **web** build refuses the variable rather than
+ * tolerating it. This closes the one hazard the variable itself introduces.
+ *
+ * The failure it catches is a checkbox, and it is silent. Somebody sets
+ * `NEXT_PUBLIC_CANONICAL_ORIGIN` in Vercel — reasonably, having read that a
+ * release needs it — and unless it is scoped to a single target it lands on
+ * **Preview** too. Every DEV and feature-branch build then emails confirmation
+ * and recovery links pointing at `app.letsride.social`, where the token was
+ * minted by the wrong project and is invalid. The deploy is green, the link
+ * looks right, and the rider clicking it is the first thing that fails. That is
+ * the same shape as the split that once left Preview holding the Supabase URL
+ * and not the key, arriving through the same door.
+ *
+ * Tolerating it would also be *pointless* rather than merely risky: on the web
+ * `window.location.origin` is already the host that served the app, so a
+ * configured value can only ever agree with the default or contradict it.
+ *
+ * **This is a throw rather than a grep of the built output**, which is the
+ * opposite of `assert-web-build.mjs`'s doctrine and deliberately so. That file
+ * reads artifacts because a config that *says* the right thing and a build that
+ * *did* it are different claims — but a throw here is stronger than either: the
+ * build produces no artifact at all, so there is nothing that can ship wrong.
+ * An assertion is only needed where a wrong build can still finish.
+ */
+if (!isCapacitorBuild && process.env.NEXT_PUBLIC_CANONICAL_ORIGIN) {
+  throw new Error(
+    'NEXT_PUBLIC_CANONICAL_ORIGIN is set, but this is a web build.\n\n' +
+      `It is set to: ${process.env.NEXT_PUBLIC_CANONICAL_ORIGIN}\n\n` +
+      'The variable exists for the native bundle only. On the web, src/lib/origin.ts ' +
+      'follows window.location.origin, which is already the host that served the app — ' +
+      'so setting it here can only pin every deployment to one origin. On a Preview ' +
+      'target that means DEV and feature-branch builds emailing signup-confirmation and ' +
+      'password-recovery links that point at production, where the token is invalid.\n\n' +
+      'If this is a Vercel variable, remove it from every target. If you exported it in ' +
+      'your shell for a native build, run that build with CAPACITOR_BUILD=1 (npm run ' +
+      'build:native).\n\n' +
+      'See docs/ENVIRONMENTS.md §The native build flag.'
+  )
+}
+
+/**
  * The route shapes that shipped before PD-142, kept alive for links already
  * sitting in people's messages — `ShareButton` has been handing out
  * `/postcards/<uuid>` since it was written.
