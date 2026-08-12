@@ -694,6 +694,32 @@ property of the tile's data, so it takes one legible home rather than riding on 
   `.env.local.example`, Vercel or any `NEXT_PUBLIC_*`.
 - [ ] 8.4 After deployment, exercise one real ride create and one real address edit on DEV and
   confirm: tiles appear, an edit clears then replaces them, and a non-organizer's call is refused.
+- [ ] 8.4a **The first real call is also the ONLY chance to check three assumed vendor parameters,
+  and nothing else in this plan can.** `*.geoapify.com` is egress-blocked from the build container,
+  so §4 shipped with `gates.ts` §What is measured and what is assumed naming exactly three guesses:
+  the Static Maps parameter names (`style`, `scaleFactor`), the map style value, and the
+  `result_type` vocabulary. Each fails differently and **only one fails loudly**:
+  * a wrong parameter *name* is likely ignored, so the tile renders at the wrong scale or style
+    with a 200 and nothing red;
+  * a wrong `style` value may 400, which the fail-open path swallows into a NULL column — visible
+    only as "tiles never appear";
+  * a wrong `result_type` string silently narrows the allowlist, so addresses that should resolve
+    quietly do not.
+  Read the first response body rather than the status code, and correct `gates.ts` against it.
+- [ ] 8.4b **`scaleFactor` is the one that decides whether 6.2 can pass at all.** §4.6 asks for 2×
+  DPR and §6.2 refuses a tile whose burned-in credit is illegible; doubling `width`/`height` would
+  satisfy the first and break the second by construction, because it doubles the map area at a fixed
+  zoom and leaves the credit at its original pixel size, which then displays at **half** size in an
+  80px strip. `scaleFactor` was chosen because it doubles resolution at the same area and scales the
+  credit with it. **If the parameter does not exist, §4.6 and §6.2 cannot both hold** and 6.2's
+  fail-closed branch fires — the card strip renders the pin fallback and no tile. That is a
+  specified outcome, not a defect; do not resolve it by shrinking type below the system's floor.
+- [ ] 8.4c **Correct `/legal/privacy` in the SAME window as 8.3, not after it.** The page currently
+  ends *"Today no ride has coordinates and nothing is sent anywhere"* — true right up to the moment
+  the function deploys and false immediately after, on a **public, live** page describing where a
+  frequently-home address goes. It is not in §7 or §8's original list, which is why it is written
+  here: nothing else in this plan would have caught it, and the gap between deploying and noticing
+  is the whole exposure.
 - [ ] 8.5 **There is no destructive step in this change.** The additive-first / deploy /
   destructive-last rule is satisfied trivially because the table-level grant is left in place —
   stated explicitly so nobody goes looking for the revoke that `025`'s precedent might suggest.
