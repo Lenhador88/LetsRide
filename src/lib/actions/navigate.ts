@@ -57,6 +57,18 @@ export function useActionRedirect(state: ActionState): void {
  *
  * `replace` rather than `push`: the rider is leaving this screen, and pushing
  * would leave it one entry back for their next system-back gesture to return to.
+ *
+ * **The residual cost of `replace`, stated rather than left to be rediscovered.**
+ * It overwrites the current entry, so a rider who came from `/rides` ends up with
+ * `[/rides, /rides]` — and their next *system* back gesture moves to index 0 and
+ * renders `/rides` again. The screen does not change and the gesture reads as
+ * dead, which is the same perceived failure `back-navigation.ts` calls
+ * unacceptable, arriving from the OS rather than from this control.
+ *
+ * It is still the right trade and the alternatives are both worse: `push` sends
+ * that gesture back to `/notifications`, and `router.back()` reintroduces a dead
+ * in-app arrow on a cold deeplink carrying `?from=` — the failure this design
+ * exists to refuse. Fixing it properly needs history the app does not own.
  */
 export function useBack(): () => void {
   const router = useRouter()

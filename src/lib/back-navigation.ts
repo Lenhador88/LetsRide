@@ -29,9 +29,15 @@
  * screen rather than a missing affordance.
  *
  * The signal that would actually answer it is the history *index*, and nothing
- * portable exposes one. `navigation.canGoBack` is Chromium-only and absent from
- * WKWebView, so it misses the iOS shell that motivates the fallback in the first
- * place. Owning a depth marker instead means stamping `history.state` on every
+ * portable exposes one. `navigation.canGoBack` was **INFERRED to be** Chromium-
+ * only and absent from WKWebView — not measured, and WebKit has been shipping
+ * Navigation API support, so treat that half as possibly stale. **It does not
+ * change the conclusion**, which rests on something the support matrix cannot
+ * affect: `canGoBack` answers *whether* you can go back and never *where to*,
+ * and this screen's entire problem is that four answers are possible. Carrying
+ * the origin is strictly more informative than any index.
+ *
+ * Owning a depth marker instead means stamping `history.state` on every
  * push and unwinding it on `popstate` — an app-wide navigation subsystem in the
  * root layout, resting on App Router internals this repo pins `next` exact
  * because they change silently. That is materially bigger than PD-209 and fails
@@ -49,11 +55,23 @@
 
 /**
  * The screens that render `NotificationsHeaderControl`, and therefore the only
- * origins it can produce. A fifth entry point means a line here **and** a case
- * in the test — until then it resolves to `DEFAULT_BACK_HREF`, which is the safe
- * direction to be wrong in: a rider goes Home rather than nowhere.
+ * origins it can produce.
+ *
+ * **This list is DERIVED, and `back-navigation.test.ts` fails if it drifts** —
+ * it globs `src/app/(app)/**` for the files importing that component and
+ * compares the set. Stating the obligation in a comment was not enough: the
+ * failure is silent by construction. A fifth entry point added without a line
+ * here makes `linkWithOrigin` refuse the origin, return the bare href, and land
+ * the rider on Home — *"a screen they were never on"*, which is the sentence at
+ * the top of this file describing what the module exists to prevent. Every gate
+ * stays green through it, because the existing cases assert the literals rather
+ * than the coupling. Same instrument as `isomorphic.test.ts` and
+ * `agent-briefs.test.ts`, for the same reason.
+ *
+ * When it does drift, `DEFAULT_BACK_HREF` is the safe direction to be wrong in:
+ * a rider goes Home rather than nowhere.
  */
-const BACK_ORIGINS: readonly string[] = ['/postcards', '/rides', '/clubs', '/profile']
+export const BACK_ORIGINS: readonly string[] = ['/postcards', '/rides', '/clubs', '/profile']
 
 /** Where back goes when the URL carries no usable origin — the cold deeplink. */
 export const DEFAULT_BACK_HREF = '/postcards'

@@ -4,6 +4,7 @@ import {
   DEFAULT_BACK_HREF,
   linkWithOrigin,
   resolveBackDestination,
+  BACK_ORIGINS,
 } from '@/lib/back-navigation'
 
 describe('resolveBackDestination', () => {
@@ -55,5 +56,46 @@ describe('linkWithOrigin', () => {
   it('leaves the href bare rather than writing an origin it would refuse', () => {
     expect(linkWithOrigin('/notifications', '/clubs/explore')).toBe('/notifications')
     expect(linkWithOrigin('/notifications', 'https://example.com')).toBe('/notifications')
+  })
+})
+
+// **The tripwire the allowlist did not have.** `BACK_ORIGINS` is a hand-written
+// copy of "which screens render the mailbox control", and nothing failed when
+// the two drifted: a fifth entry point added without a line there makes
+// `linkWithOrigin` refuse the origin, return the bare href, and land the rider
+// on Home — the exact "screen they were never on" this module exists to
+// prevent — while tsc, ESLint, the other cases here, docs:check and next build
+// all stay green.
+//
+// Derived from the filesystem rather than restated, so the assertion cannot
+// drift with the thing it measures. `/notifications` is excluded because it
+// renders the control as the BACK arrow rather than as an entry point: it is a
+// destination, never an origin.
+describe('BACK_ORIGINS is derived, not remembered', () => {
+  it('matches exactly the (app) pages that render NotificationsHeaderControl', async () => {
+    const { readdirSync, readFileSync } = await import('node:fs')
+
+    // Walked rather than globbed: `fs.globSync` is not in this repo's Node types,
+    // and `tsc` refusing an untyped callback is what caught the first draft.
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = `${dir}/${entry.name}`
+        if (entry.isDirectory()) return walk(path)
+        return entry.name === 'page.tsx' ? [path] : []
+      })
+
+    const root = 'src/app/(app)'
+    const pages: string[] = walk(root)
+
+    const importers: string[] = pages
+      .filter((file: string) => readFileSync(file, 'utf8').includes('NotificationsHeaderControl'))
+      .map((file: string) => `/${file.slice(root.length + 1).replace(/\/page\.tsx$/, '')}`)
+      .filter((route: string) => route !== '/notifications')
+
+    // Guards the guard: a walk that found nothing would make the comparison
+    // vacuously true against an empty allowlist.
+    expect(pages.length).toBeGreaterThan(0)
+    expect(importers.length).toBeGreaterThan(0)
+    expect([...importers].sort()).toEqual([...BACK_ORIGINS].sort())
   })
 })
