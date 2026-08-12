@@ -30,6 +30,17 @@ import { filterSegment, queryKeys } from '@/lib/query/keys'
  * here: it is the same 844 whether the feed has arrived or not, so putting it
  * inside the boundary would let the skeleton lay out at a different height than
  * the content that replaces it.
+ *
+ * ## Two gates, not one (PD-210)
+ *
+ * The filter bar and the deck are gated **separately**, for the reason
+ * `/rides` carries at length: the feed key holds the filter segment, so tapping
+ * a tile lands on a cache entry with no data, while the bar's key has no filter
+ * segment and its data never left. Gating both on both swapped the bar for the
+ * skeleton every time a filter was picked. The deck's skeleton goes inside the
+ * deck's own slot rather than replacing the screen, so the 104 bar row stays
+ * put and only the 492 below it changes — `SkeletonDeck` and `PostcardDeck`
+ * share the same `h-full` root, which is what makes that slot swap exact.
  */
 export default function PostcardsPage() {
   return (
@@ -72,17 +83,26 @@ function PostcardsScreen() {
   const filters = useQuery(queryKeys.postcards.filters(), () => getPostcardFilters())
 
   const gate = combineQueries(feed, filters)
-  if (gate.error) return <ErrorState onRetry={gate.refetch} />
+  // The bar is gated on its own read on the error path too, for the reason
+  // `/rides` gives at the same line: a failed feed read is not a failed filter
+  // read, and swapping the bar out is the defect this change exists to remove.
+  if (filters.error) return <ErrorState onRetry={gate.refetch} />
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
   // where `isLoading` is false and there is still nothing to draw.
-  if (!feed.data || !filters.data) return <SkeletonDeck />
+  if (!filters.data) return <SkeletonDeck />
 
   return (
     <>
       <PostcardFilterBar filters={filters.data} active={filter} />
       <div className="min-h-0 flex-1 py-2">
-        <PostcardDeck key={`${filter?.kind}-${filter?.id}`} postcards={feed.data} />
+        {feed.error ? (
+          <ErrorState onRetry={feed.refetch} />
+        ) : feed.data ? (
+          <PostcardDeck key={`${filter?.kind}-${filter?.id}`} postcards={feed.data} />
+        ) : (
+          <SkeletonDeck />
+        )}
       </div>
     </>
   )
