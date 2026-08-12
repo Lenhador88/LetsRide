@@ -537,8 +537,11 @@ exactly what they render today.** That is the intended intermediate state.
   housekeeping into the gate on the promotion: `RIDE_SELECT` now names `map_card_path`, PROD sits at
   `050` without it, and a `development → main` promotion would 400 every rides read — green through
   CI, green through the merge, broken only for riders. 1.11b is the open box, and `051` is 40 KB, so
-  it needs the reduce-and-diff-against-DEV technique in `CLAUDE.md` §Applying a migration too large
-  to pass as a string rather than a hand transcription.
+  it needs the reduce-and-diff-against-DEV technique — reduce to executing statements, apply, then
+  prove it by diffing the resulting objects against DEV, which already has the file applied
+  correctly. `CLAUDE.md` §Supabase Rules carries it, under *Applying a migration too large to pass
+  as a string*. A hand transcription of production DDL is the failure that paragraph exists to
+  prevent.
 - [ ] 8.2 Groups 2–5 merge to `development` and deploy. Tiles are NULL everywhere and both screens
   render the fallback. **This state is correct and shippable indefinitely.** §2–3 are merged and are
   exactly this state.
