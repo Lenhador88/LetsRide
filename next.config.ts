@@ -59,6 +59,38 @@ if (missingEnv.length > 0) {
 const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1'
 
 /**
+ * A native build additionally requires `NEXT_PUBLIC_CANONICAL_ORIGIN`, and the
+ * asymmetry with the web build is the whole design.
+ *
+ * `src/lib/origin.ts` defaults to `window.location.origin`, so the web build
+ * keeps following whichever host served it — production, DEV, a per-deployment
+ * preview alias — and needs no variable at all. Inside a bundle that runtime
+ * origin is `https://localhost`, and there is no value it could sensibly fall
+ * back to: a shared postcard link built from it is dead the moment it leaves
+ * the device, and a signup or recovery link built from it is **discarded** by
+ * GoTrue and replaced by the Site URL — path included, so the rider lands on
+ * the app root with the failure in a fragment nothing reads (measured against
+ * the live PROD auth server 2026-08-12, `docs/ENVIRONMENTS.md` §The redirect
+ * allowlist).
+ *
+ * So the bundle fails closed. A binary is not a deployment: the fix for a
+ * wrong origin baked into one is a new store review, which is days, and until
+ * then every rider who installs it and signs up is stranded.
+ */
+if (isCapacitorBuild && !process.env.NEXT_PUBLIC_CANONICAL_ORIGIN) {
+  throw new Error(
+    'Missing required environment variable: NEXT_PUBLIC_CANONICAL_ORIGIN.\n\n' +
+      'A CAPACITOR_BUILD=1 build needs it because the webview origin is ' +
+      'https://localhost, which is on no GoTrue redirect allowlist and resolves ' +
+      'to nothing off the device. The web build does not need it and must keep ' +
+      'building without it.\n\n' +
+      'For a release bundle:\n' +
+      '  NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native\n\n' +
+      'See docs/ENVIRONMENTS.md §The native build flag.'
+  )
+}
+
+/**
  * The route shapes that shipped before PD-142, kept alive for links already
  * sitting in people's messages — `ShareButton` has been handing out
  * `/postcards/<uuid>` since it was written.

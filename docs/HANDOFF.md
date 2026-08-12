@@ -64,7 +64,7 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1400/1400 across 44 files
+npm run test:unit                     # 1431/1431 across 46 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 32 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
@@ -75,8 +75,11 @@ PGPASSWORD=postgres npm test          # 1321 assertions, 0 failures
 exactly one of them may deploy:
 
 ```bash
-npm run build:native                  # CAPACITOR_BUILD=1 next build, then the bundle check
+# CAPACITOR_BUILD=1 next build, then the bundle check. The origin is REQUIRED here
+# and the build fails without it (PD-188); the web build above needs it unset.
+NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native
 ls out/index.html                     # exists; .next-capacitor/ does not
+npm run release:check                 # only before a store submission — see §The shell
 ```
 
 **Two traps in running that, both of which produce a confident wrong answer first:**
@@ -304,6 +307,34 @@ runs in CI after the Build step, because a leaked `CAPACITOR_BUILD` produces a *
 of an app with no server. `CAPACITOR_BUILD` is set in no Vercel target — docs/ENVIRONMENTS.md
 §The native build flag.
 
+**A bundle bakes in its backend and its origin, and neither can be changed after submission —
+PD-188, 2026-08-12.** Two things landed:
+
+- **`canonicalOrigin()` (`src/lib/origin.ts`) is what URLs that leave the app are built from** —
+  the shared postcard link and both GoTrue redirects. It returns `NEXT_PUBLIC_CANONICAL_ORIGIN`
+  when set and `window.location.origin` otherwise, so **the web build is unchanged with the
+  variable unset**, and `next.config.ts` *fails* a `CAPACITOR_BUILD=1` build when it is missing.
+  Measured against PROD's auth server 2026-08-12: a `redirect_to` of `https://localhost` or
+  `capacitor://localhost` is discarded and replaced by the Site URL — **path included**, so the
+  rider lands on the app root with the error only in a fragment nothing reads. Probe in
+  docs/ENVIRONMENTS.md §The redirect allowlist. No dashboard action is needed for
+  `https://app.letsride.social` — PD-106 already allowlisted it.
+- **`npm run release:check` is the pre-submission gate** over the built `out/`: the PROD ref
+  present, no other ref (DEV by name), the canonical origin baked in, no `localhost` one — and a
+  **failure when it finds no ref at all**, so an empty `out/` cannot read as clean. Deliberately
+  not in `build:native`, which runs on local and on-device builds that may point at DEV.
+
+```bash
+NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native && npm run release:check
+grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx \
+  | grep -vE ':[0-9]+:\s*(\*|//|/\*)'   # expect: src/lib/origin.ts only
+```
+
+Both directions were run against real builds in this container on 2026-08-12: a PROD-ref bundle
+passes, a DEV-ref bundle is refused by name. **What no container can check is the store side** —
+that the bundle actually submitted was built from `main` is the release procedure's job, and the
+gate only helps if it is run.
+
 **What is still unverified, and it is most of the shell:** nothing here has run on a device, so
 the Capacitor claims above (root-`index.html` routing, the cold-start restore in
 `src/lib/native/boot-restore.ts`) are read out of the vendors' source and are **written and
@@ -403,7 +434,7 @@ the postcard thread still carry inferred composition; the design has frames for 
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1321**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD) |
-| Unit tests | `npm run test:unit` — **1400 across 44 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **1431 across 46 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |

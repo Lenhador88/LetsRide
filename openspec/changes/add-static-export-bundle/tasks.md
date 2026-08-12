@@ -10,7 +10,7 @@ and is no longer a fork:
 | Group 2 — routing | the whole change, `src/` only, verified in this container |
 | Group 3 — cold start | a boot-time `router.replace`, `src/` only, with a unit test |
 | Group 4 — web-build guards | done, and its shape changed with the decision — see 4.1 |
-| Group 5 — the shipped binary | **out of scope for this change**, filed separately; it blocks submission either way |
+| Group 5 — the shipped binary | filed separately and **built as PD-188** (2026-08-12), not by this change. See §5 |
 
 ## 1. The export builds — no routing change
 
@@ -143,25 +143,46 @@ Under **B** this is `src/` only: `src/lib/native/boot-restore.ts`, called from `
       session** — see the PR body. A session can assert on output; only the owner can look at the
       dashboard, and only the main thread files issues from this branch.
 
-## 5. The shipped binary — OUT OF SCOPE for this change
+## 5. The shipped binary — built by PD-188, not by this change
 
-Both are permanent properties of a thing a rider installs, neither has a fix short of a new store
-review, and **neither is built here.** `design.md` §D7 carries them; they are filed as their own
-story. Listed so the split is deliberate rather than an omission.
+Both are permanent properties of a thing a rider installs and neither has a fix short of a new
+store review. `design.md` §D7 carries them. **The split held**: none of this shipped in PD-142,
+and all of it shipped in **PD-188 on 2026-08-12**, on its own branch. The boxes below are ticked
+against that work.
 
-- [ ] 5a.1 Build URLs that leave the app from a **configured canonical origin**, not from
-      `window.location.origin`. **Not done.** `ShareButton.tsx` was edited by this change and its
-      `window.location.origin` was left exactly as it was — only the path it builds moved. Three
-      call sites: `ShareButton.tsx`, `actions/auth.ts` ×2.
-- [ ] 5a.2 Correct `CLAUDE.md` §Branching's `window.location.origin` line. **Not done**, and it
-      moves with 5a.1.
-- [ ] 5a.3 File the GoTrue redirect-allowlist entry as an **`Owner only`** Linear item. **Not
-      done.**
-- [ ] 5a.4 Add a release-checklist assertion that the built bundle carries the **production**
-      Supabase ref. **Not done as an assertion**, but the rule is now written down in
-      `docs/ENVIRONMENTS.md` §The native build flag.
-- [ ] 5a.5 Record in `docs/ENVIRONMENTS.md` that a release bundle is built from `main` against
-      `letsride`. **Done** as part of 4.2 — it is the same section and the same rule.
+- [x] 5a.1 Build URLs that leave the app from a **configured canonical origin**, not from
+      `window.location.origin`. `canonicalOrigin()` in `src/lib/origin.ts` returns
+      `NEXT_PUBLIC_CANONICAL_ORIGIN` when set and the runtime origin otherwise, so **the web build
+      is unchanged by construction** and only the bundle overrides it. All three call sites route
+      through it: `ShareButton.tsx`, `actions/auth.ts` ×2. Empty, whitespace-only and
+      trailing-slash values are normalised, each with a test case — a doubled slash in a
+      confirmation link is invisible until a rider reports it.
+- [x] 5a.1a Make it **required** for a native build. `next.config.ts` fails a `CAPACITOR_BUILD=1`
+      build when the variable is unset, on the same mechanism as the `NEXT_PUBLIC_SUPABASE_*`
+      check. There is no sensible runtime default inside a bundle, and failing closed is what
+      stops one shipping with dead links. Verified both ways: the native build fails with the
+      message, the web build still builds with it unset.
+- [x] 5a.2 Correct `CLAUDE.md` §Branching's `window.location.origin` line. Replaced rather than
+      annotated, and both commands now sit beside the claim: the hardcoded-origin grep (0) **and**
+      the reader count (1), because a computed origin is invisible to the first.
+      `scripts/docs/registry.mjs` gained `runtime-origin-readers` and its anchor for
+      `hardcoded-origin-src` moved with the sentence.
+- [x] 5a.3 File the GoTrue redirect-allowlist entry as an **`Owner only`** Linear item. **Nothing
+      to file — closed by PD-106**, which put `https://app.letsride.social/**` on PROD's allowlist,
+      re-confirmed live on 2026-08-12 by the probe in `docs/ENVIRONMENTS.md` §The redirect
+      allowlist. Ticked rather than left open: an unticked box that is actually done is the same
+      trap as a ticked one that is not.
+- [x] 5a.4 Add a release assertion that the built bundle carries the **production** Supabase ref.
+      `npm run release:check` → `scripts/native/assert-release-bundle.mjs` over
+      `scripts/native/release-guards.mjs`, with planted-failure tests. It asserts the PROD ref is
+      present, that no other ref is (DEV by name, and any undeclared third project), that the
+      canonical origin is baked in and that no `localhost` one is — and it **fails when it finds
+      no ref at all**, so an empty or stale `out/` cannot read as clean. Kept out of
+      `build:native` on purpose: that runs on every local and on-device build, which §D7 allows to
+      point anywhere.
+- [x] 5a.5 Record in `docs/ENVIRONMENTS.md` that a release bundle is built from `main` against
+      `letsride`. Extended by PD-188 with the canonical-origin requirement and the command that
+      asserts all three.
 
 ## 6. Before the PR
 

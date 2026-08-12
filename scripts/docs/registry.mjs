@@ -573,9 +573,9 @@ export const claims = [
   // ---- Hardcoded origin (must stay 0) --------------------------------------
   //
   // The claim exists because the domain move (2026-08-07) needs NO code
-  // change: ShareButton, signUp and requestPasswordReset all build URLs from
-  // window.location.origin. A hardcoded origin would surface only in an email
-  // a rider receives, which no other gate in this repo reads.
+  // change: ShareButton, signUp and requestPasswordReset all build their URLs
+  // from an origin resolved at runtime. A hardcoded origin would surface only
+  // in an email a rider receives, which no other gate in this repo reads.
   {
     id: 'hardcoded-origin-src',
     file: 'CLAUDE.md',
@@ -584,11 +584,38 @@ export const claims = [
     // character-for-character needs a regex whose every escape is itself
     // escaped — the one shape in this file most likely to be "corrected" into
     // silently matching nothing. Both ends are pinned and the pair is unique.
-    pattern: /only surface in email: `grep -rn "letsrideapp.+localhost:3000" src\/` is (\d+)\./,
+    pattern: /`grep -rn "letsrideapp.+localhost:3000" src\/` is (\d+), and/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `grep -rn "letsrideapp\\|vercel\\.app\\|localhost:3000" src/ | wc -l`,
     about: '§Branching & CI: no hardcoded origin anywhere in src/ (must be 0)',
+  },
+
+  // ---- The runtime origin has exactly one reader (must stay 1) -------------
+  //
+  // The claim above cannot do this one's job, and PD-188 exists because the
+  // two were conflated: a URL built from `window.location.origin` carries no
+  // hostname to grep for, so the hardcoded-origin check reads a clean 0 while
+  // every emailed link from the native bundle points at `https://localhost`.
+  // What is countable is the *reader*: `canonicalOrigin()` in
+  // `src/lib/origin.ts` is the only code in `src/` that touches it, and a new
+  // one is how a URL that leaves the app quietly goes back to the webview's
+  // origin.
+  //
+  // Comment lines are excluded, and this claim is why: `origin.ts`'s own doc
+  // block and both call-site comments explain what they moved away from, so
+  // the unfiltered count is higher than the real one — CLAUDE.md's comment
+  // trap, in the file that closed it. No unfiltered companion entry: the raw
+  // count moves with every comment reworded, which would make the claim a
+  // maintenance tax rather than a check.
+  {
+    id: 'runtime-origin-readers',
+    file: 'CLAUDE.md',
+    pattern: /is 1 — the definition inside `canonicalOrigin\(\)`, nowhere else\./,
+    extractStated: () => 1,
+    kind: 'shell',
+    cmd: `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | wc -l`,
+    about: '§Branching & CI: only canonicalOrigin() reads window.location.origin',
   },
 
   // ---- hard_deny entry count -----------------------------------------------
