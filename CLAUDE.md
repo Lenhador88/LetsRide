@@ -1150,6 +1150,22 @@ differently: those produce a long reply, this one produces *many* replies, which
 session that says one line six times has said more than one that said six lines once, and has
 interrupted six times to do it.
 
+**Report the things they must ACT on, and nothing else.** Product owner, 2026-08-12: *"just come
+back to me with the outcome of points questions etc. That I need to act upon."* This is the test
+the three rules above were all reaching for, stated directly — apply it to every reply, including
+the wrap-up.
+
+Before sending anything, ask what the owner **does** with it. A question only they can answer, a
+blocked capability, a decision between options, a thing that is now broken: send it. Work that
+landed and needs nothing from them: the commit, the PR and the Linear issue already say it, and
+they will read it there if they ever need to. **Sending it again costs them the time it takes to
+find the one line that was actually for them.**
+
+A gate result is not an outcome. Neither is a summary of what a subagent found, a recap of a
+decision they already made, or a list of what was filed. **If a paragraph has no action in it,
+delete it** — this rule outranks the impulse to show the work, because the work is on the record
+already.
+
 Three things stay long however brief the commentary gets, because each is a *decision* rather
 than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,
 so the ask needs spelling out), and **anything inferred rather than measured**. Brevity is about
