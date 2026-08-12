@@ -337,31 +337,64 @@ Deno.serve(async (req: Request) => {
       return error ? null : path
     }
 
-    const [storedCardPath, storedDetailPath] = await Promise.all([
-      upload(cardPath, cardTile),
-      upload(detailPath, detailTile),
-    ])
+    // ** BOTH TILES OR NEITHER (PD-202). ** A ride with a card tile and no detail
+    // tile is not a smaller success, it is a licence problem: `Powered by
+    // Geoapify` is mandatory on the Free plan and has exactly one home, the
+    // 358×160 detail panel. A card-only render puts vendor imagery in every
+    // `RideCard` on `/rides` while the credit renders nowhere in the app.
+    //
+    // Product owner's decision, 2026-08-12, choosing this over teaching the
+    // detail screen about the card tile: the two tiles are one render of one
+    // place, and a ride showing a map on the list but not on its own detail page
+    // is a worse artifact than no map at all.
+    //
+    // This REVERSES the "one path present and the other NULL is likewise valid"
+    // position that stood in this file until now — that sentence is corrected at
+    // step 8 rather than left to contradict this block.
+    //
+    // The cost is accepted and stated: one flaky render now costs both tiles
+    // rather than one, and the ride keeps its coordinate and draws the fallback
+    // until its next address edit.
+    const bothRendered = !!cardTile && !!detailTile
+
+    const [storedCardPath, storedDetailPath] = bothRendered
+      ? await Promise.all([upload(cardPath, cardTile), upload(detailPath, detailTile)])
+      : [null, null]
+
+    // An upload can still fail on its own after both fetches succeeded, and that
+    // lands us back in the split state by a different door. Delete the survivor
+    // rather than referencing it — this is the only moment its name exists.
+    if (bothRendered && (!storedCardPath || !storedDetailPath)) {
+      const orphan = [storedCardPath, storedDetailPath].filter(
+        (path): path is string => path !== null,
+      )
+      if (orphan.length > 0) await caller.storage.from(BUCKET).remove(orphan)
+    }
+
+    const bothStored = !!storedCardPath && !!storedDetailPath
 
     // 8. The column write. The coordinate is stored even when both uploads
     //    failed: `051`'s one-directional CHECK requires a coordinate under a path
     //    and NOT the reverse, precisely so a successful geocode with a failed
-    //    upload stays a valid row rather than losing the coordinate too. One path
-    //    present and the other NULL is likewise valid — the screen whose path
-    //    landed draws its tile and the other draws its fallback.
+    //    upload stays a valid row rather than losing the coordinate too.
     //
-    //    ** A path column is written ONLY when its own upload succeeded, and that
-    //    conditional is load-bearing rather than defensive. ** Writing
-    //    `storedCardPath` unconditionally means a *failed* render NULLs whatever
-    //    was already there — so on a re-render of an unchanged address, a brief
-    //    outage at `maps.geoapify.com` clears a live tile, and the sweep below
-    //    then deletes the object it named. The rider loses a working map to a
-    //    transient vendor failure, permanently, because nothing re-renders an
-    //    address that did not change. The header promises every vendor failure
-    //    "leaves the columns NULL"; it must not also mean "clears columns that
-    //    were populated". Omitting the key leaves the existing value untouched.
-    const tileColumns: Record<string, string> = {}
-    if (storedCardPath) tileColumns.map_card_path = storedCardPath
-    if (storedDetailPath) tileColumns.map_detail_path = storedDetailPath
+    //    ** One path present and the other NULL is NO LONGER a valid outcome **
+    //    — PD-202 reversed that; see the both-or-neither block above. The pair is
+    //    written together or not at all.
+    //
+    //    ** The columns are still written ONLY when the pair actually stored, and
+    //    that conditional is load-bearing rather than defensive. ** Writing them
+    //    unconditionally means a *failed* render NULLs whatever was already there
+    //    — so on a re-render of an unchanged address, a brief outage at the
+    //    vendor clears a live tile, and the sweep below then deletes the object it
+    //    named. The rider loses a working map to a transient failure, permanently,
+    //    because nothing re-renders an address that did not change. The header
+    //    promises every vendor failure "leaves the columns NULL"; it must not also
+    //    mean "clears columns that were populated". Omitting the keys leaves the
+    //    existing values untouched.
+    const tileColumns: Record<string, string> = bothStored
+      ? { map_card_path: storedCardPath!, map_detail_path: storedDetailPath! }
+      : {}
 
     const { data: written, error: writeError } = await caller
       .from('rides')
@@ -392,15 +425,15 @@ Deno.serve(async (req: Request) => {
     // Best-effort and after the write, never before — deleting first would take
     // a live tile down if the write then failed.
     //
-    // ** Scoped to the sides that were actually REPLACED. ** An old path is only
-    // orphaned if a new path took its column; if this render's card succeeded and
-    // its detail failed, the old detail path is still in its column and still the
-    // live tile, so sweeping it would delete an object the row points at. Same
-    // defect as the unconditional write above, one step later.
-    const superseded = [
-      storedCardPath ? ride.map_card_path : null,
-      storedDetailPath ? ride.map_detail_path : null,
-    ].filter((path): path is string => !!path && !uploaded.includes(path))
+    // ** Scoped to the case where new paths actually REPLACED the old ones. ** An
+    // old path is only orphaned if a new path took its column. Under
+    // both-or-neither that is all-or-nothing, so the guard is `bothStored` — but
+    // it is still a guard rather than an unconditional sweep, because a run that
+    // stored nothing leaves BOTH old paths in their columns as the live tiles,
+    // and sweeping them would delete objects the row still points at.
+    const superseded = (bothStored ? [ride.map_card_path, ride.map_detail_path] : []).filter(
+      (path): path is string => !!path && !uploaded.includes(path),
+    )
     if (superseded.length > 0) await caller.storage.from(BUCKET).remove(superseded)
 
     return json({ rendered: uploaded.length > 0 }, 200)

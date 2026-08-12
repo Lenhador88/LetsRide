@@ -684,23 +684,25 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV 54 rows, ending 054_club_owner_is_a_member · PROD
-#   50, ending 050_search_places_candidate_cap. NOT level — 051 through 054 are
-#   DEV-only, and that is now a BLOCKER ON THE PROMOTION rather than a deliberate
-#   gap. It was deliberate for one day: purely additive columns nothing read. But
-#   PD-104 §2-3 shipped, RIDE_SELECT names map_card_path, and PROD has NONE of the
-#   five columns (measured, not assumed) — so a development -> main promotion
-#   breaks the rides LIST and every ride DETAIL, green through CI, green through
-#   the merge, broken only for riders. APPLY 051-053 TO PROD BEFORE PROMOTING.
-#   Exactly 2 of the 10 from('rides') call sites name a missing column —
-#   getRides (RIDE_SELECT's map_card_path) and getRide (map_detail_path). The
-#   other eight do not, so ride create, edit, cancel, the filter bar and the club
-#   counts all keep working. That partial breakage is the debugging trap: a
-#   session poking at PROD finds most of rides healthy and concludes 051 IS
-#   applied. Count the columns, do not infer them from what still works.
-#   051 is 40 KB: reduce-and-diff against DEV per CLAUDE.md's paragraph on
-#   applying a migration too large to pass as a string, never a hand
-#   transcription. tasks.md 1.11b is the open box.
+#   BOTH at 54 rows ending 054_club_owner_is_a_member. LEVEL as of 2026-08-12,
+#   applied by PD-201 — the promotion to main is no longer blocked on schema.
+#   Verified by OBJECT FINGERPRINT, not by trusting the row count: 19 labelled
+#   components as md5(string_agg(...)) over pg_get_functiondef, pg_get_triggerdef,
+#   pg_policies, information_schema.columns, pg_indexes, pg_constraint, the
+#   comments and the grants — captured on DEV, re-run identically on PROD, 19/19.
+#   That is the acceptance test for a reduced apply, and it is stronger than
+#   comparing the text that produced the objects.
+#   051 was reduced by script and NOT hand-transcribed, so PROD's recorded
+#   statement for it does not equal md5sum of the file — expected, same class as
+#   036-040. 052, 053 and 054 recorded byte-identical, so they carry no drift.
+#   The reducer had two tokenizer bugs found before applying: it did not handle
+#   double-quoted identifiers, so the apostrophe in the policy name
+#   "Organizers read their own rides' render attempts" opened a false string
+#   literal and left ~30 comment lines unstripped. Every $$ body was separately
+#   proved byte-for-byte against the original, so prosrc is unaltered.
+#   051's trigger was hand-exercised on a real PROD ride in a rolled-back
+#   transaction: an unrelated column edit LEFT THE TILES INTACT (the WHEN clause
+#   scoping correctly), a meeting_point change cleared them, and nothing raised.
 #   050 IS on PROD: #179 loaded places into production behind it rather than after
 #   it, which is the right order — PROD carries 736,538 places rows, so the
 #   candidate cap is guarding a loaded table there, not an empty one.
