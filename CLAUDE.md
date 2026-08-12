@@ -131,9 +131,11 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on nine tables — `postcards`,
+   gets inherited as covered.** `enforce_participation_gate` is on **ten** tables on DEV and
+   **nine** on PROD — `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
-   `postcard_reports`, `ride_messages` — and **not** on `profiles` UPDATE, `profile_countries`,
+   `postcard_reports`, `ride_messages`, plus `ride_map_render_attempts`, which is `051`'s and is
+   therefore DEV-only until `051`–`053` reach production — and **not** on `profiles` UPDATE, `profile_countries`,
    `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy, which check the path
    prefix only. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
    calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
@@ -478,7 +480,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 52 files. DEV is at `052`, PROD at `049` — NOT level, 2026-08-12.** Do not
+**Applied state: 53 files. DEV is at `053`, PROD at `050` — NOT level, 2026-08-12.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 
@@ -510,7 +512,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1317** assertions — re-derive rather than trust it:
+Suite **1321** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.

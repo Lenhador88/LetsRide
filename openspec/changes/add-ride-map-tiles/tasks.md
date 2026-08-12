@@ -330,10 +330,18 @@
   `stored-media-visibility`.
 - [x] 1.10 `PGPASSWORD=postgres npm test` green. Reconcile by **label set**, not by count — a count
   cannot tell a rename from a loss.
-- [x] 1.11 Apply the migration to DEV, then PROD. Re-derive with `list_migrations` against
-  `ls supabase/migrations/` rather than trusting any number in a document.
-- [x] 1.12 Check security advisors after applying. **Expect eight, unchanged.** A new WARN means a
-  `revoke` did not land.
+- [x] 1.11 Apply the migrations to **DEV**. Re-derived with `list_migrations` against
+  `ls supabase/migrations/`: DEV carries 53, ending `053_ride_map_ledger_comment_and_052_verification`.
+- [ ] 1.11b **PROD is deliberately NOT applied yet, and this box stays open until it is.** PROD sits
+  at `050`; `051`–`053` are DEV-only. They are additive and safe to apply, but nothing reads the
+  tile columns until §2–3 ship, so applying them to production now buys a schema riders cannot
+  reach and a second thing to keep level. Apply with the code, per CLAUDE.md's additive-first
+  ordering — and re-derive rather than trusting this line.
+- [x] 1.12 Check security advisors after applying. **Expect nine, unchanged** — seven
+  `authenticated_security_definer_function_executable`, one `rls_enabled_no_policy`, one
+  `auth_leaked_password_protection`. A new WARN means a `revoke` did not land. Measured on DEV
+  2026-08-12 after `053`: nine, and the ceiling helper adds none because a function in `private` is
+  not on PostgREST's search path — the same reason `034`'s `is_ride_crew` added none.
 
 ## 2. Types and reads — still no tiles anywhere
 

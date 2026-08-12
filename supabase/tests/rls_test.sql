@@ -4039,6 +4039,18 @@ select assert_eq(
   has_function_privilege('service_role', 'private.transfer_owned_clubs(uuid)', 'execute'),
   true, '031: ... because service_role also holds EXECUTE on the worker it calls');
 
+-- ** The POSITIVE half, unasserted until 053. ** Everything below pins that the
+-- grant did not spread; nothing pinned that it EXISTS — so revoking it went
+-- red nowhere, and account deletion would simply stop working in production
+-- with the suite still green. That is not hypothetical: `052`'s verification
+-- block tells a reader to expect this false and cites `031` as its authority
+-- (see `053`'s header). A session that "restores" the documented value takes
+-- `private.transfer_owned_clubs` out of service_role's reach, which is the
+-- exact defect `031` exists to fix.
+select assert_eq(
+  has_schema_privilege('service_role', 'private', 'usage'),
+  true, '053: service_role DOES hold USAGE on private — 031 granted it so the deletion function can resolve its worker; 052''s verification block claims otherwise and is wrong');
+
 -- The assertion that matters most in 031: widening `private` for service_role
 -- must not widen it for the client. `005` put the helpers there so PostgREST
 -- could not publish them, and `009`'s footer asserts a direct call answers
@@ -10894,9 +10906,9 @@ select assert_eq((select relrowsecurity from pg_class where oid = 'public.ride_m
 -- raise their own count and must not be able to lower it, and the direction is
 -- the whole design.
 select assert_eq(has_table_privilege('authenticated', 'public.ride_map_render_attempts', 'insert'),
-  true, '051: authenticated may INSERT into the ledger — the function raises its own count under the caller''s JWT');
+  true, '051: authenticated may INSERT into the ledger — recording an attempt is the organizer''s own write');
 select assert_eq(has_table_privilege('authenticated', 'public.ride_map_render_attempts', 'select'),
-  true, '051: ... and may SELECT, which is what the ceiling counts');
+  true, '052: ... and may SELECT, which is how the organizer reads their own spend — NOT how the ceiling counts, which is 052''s definer helper');
 select assert_eq(has_table_privilege('authenticated', 'public.ride_map_render_attempts', 'update'),
   false, '051: ... and holds NO update grant, so an attempted_at cannot be moved out of the window');
 select assert_eq(has_table_privilege('authenticated', 'public.ride_map_render_attempts', 'delete'),
@@ -10970,7 +10982,7 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
 select assert_eq((select count(*)::int from ride_map_render_attempts
                    where ride_id = '00000000-0000-0000-0000-0000000000d2'),
-  10, '051: the organizer reads their own ride''s ledger rows, which is what the ceiling counts under their own RLS');
+  10, '052: the organizer reads their own ride''s ledger rows — their own spend, read under their own RLS; the ceiling counts separately in the definer and is no longer bounded by this policy');
 select assert_denied($$
   insert into ride_map_render_attempts (ride_id)
   values ('00000000-0000-0000-0000-0000000000d2')$$,
@@ -11025,6 +11037,35 @@ select assert_denied($$
     map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000b/bbbbbbbb-0000-4000-8000-00000000beef.jpg'
    where id = '00000000-0000-0000-0000-000000051051'$$,
   '051: ... and is refused the tile write by the UPDATE policy''s WITH CHECK club arm — so the function must pre-flight membership BEFORE spending a geocode');
+
+-- --------------------------------------------------------------------------
+-- 053 — the ledger's table comment, and the one grant it is easy to misread
+-- --------------------------------------------------------------------------
+-- A table comment is what `\d+` prints, so a wrong one is read far more often
+-- than the migration that wrote it. `051`'s described the in-policy aggregate
+-- that `052` proved Postgres refuses outright, which would send the next reader
+-- straight back to the shape that cannot execute.
+--
+-- Pin the CLAIM, not the noun: the corrected comment necessarily contains the
+-- phrase "aggregate over this table" in its negation, so the obvious needle
+-- matches the fix as well as the defect. CLAUDE.md's comment trap, on a table
+-- comment rather than a grep.
+reset role;
+select assert_eq(
+  (select obj_description('public.ride_map_render_attempts'::regclass, 'pg_class')
+            not like '%ceiling is a WITH CHECK aggregate%'),
+  true, '053: the ledger''s comment no longer describes the recursive in-policy count 052 removed');
+select assert_eq(
+  (select obj_description('public.ride_map_render_attempts'::regclass, 'pg_class')
+            like '%ride_map_renders_in_window%'),
+  true, '053: ... and names the definer helper that replaced it');
+
+-- Schema USAGE is not EXECUTE, which is the half of 031 that IS still true and
+-- the reason the positive assertion above is safe to make.
+select assert_eq(
+  has_function_privilege('service_role', 'private.ride_map_renders_in_window(uuid)', 'execute'),
+  false, '053: service_role''s USAGE on private did not hand it the render ceiling');
+set role authenticated;
 
 rollback to savepoint ride_map_tiles_051;
 
