@@ -5198,13 +5198,26 @@ reset role;
 select set_config('test.uid', '', false);
 
 -- ---------------------------------------------------------------------------
--- 7.12c — ride_created_in_club does NOT, and that asymmetry is the point
+-- 7.12c — ride_created_in_club does NOT, and after 054 that is a GAP rather
+--         than a consequence
 -- ---------------------------------------------------------------------------
--- `rides` SELECT's only club arm is private.is_club_member(club_id), whose body
--- has NO owner arm — so a row written to an ownerless owner is one their own
--- SELECT policy drops on every read, for ever. Writing it would be the exact
--- defect the whole design exists to prevent: nothing raises, no count moves, no
--- assertion fails, and it accumulates until its subject is deleted.
+-- The behaviour asserted here is unchanged by 054 and still correct: the
+-- fan-out reads `club_members` by direct query, because `is_club_member` is
+-- caller-relative (it resolves auth.uid()) and a caller-relative helper cannot
+-- compute a recipient set. An ownerless owner is therefore notified of nothing
+-- in their own club.
+--
+-- ** What 054 changed is the REASON, and the reason is the whole point of this
+-- block. ** Until 054, `rides` SELECT's only club arm was
+-- private.is_club_member(club_id), whose body had no owner arm — so a row
+-- written to an ownerless owner was one their own SELECT policy dropped on
+-- every read, for ever, and withholding it was strictly better than writing an
+-- unreadable row. 054 gives that predicate an owner arm, so the owner CAN now
+-- read the ride (asserted below, where this section previously asserted the
+-- defect). The narrowing is consequently no longer self-justifying: it is a
+-- real gap — N10 in PD-128's proposal — and it is closed by the owner's
+-- membership row existing, which is `enforce-creator-membership`'s, not by
+-- anything in the visibility layer.
 insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
   ('00000000-0000-0000-0000-00000036d001', 'N36 Private Club Run', 'The Bridge',
    now() + interval '3 days', false, '00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360a1'),
@@ -5226,14 +5239,15 @@ select assert_eq(
       and user_id = '00000000-0000-0000-0000-0000000360c1'),
   1, '036: ... while the club''s actual members are notified');
 
--- And the narrowing matches what `rides` SELECT already refuses them, which is
--- why it is a consequence of a pre-existing defect rather than a ruling that
--- owners do not want the notification.
+-- The read this narrowing used to track. It is asserted here, in 036's own
+-- section, rather than only in 054's, because this is the assertion whose
+-- EXPECTED VALUE 054 inverts — and an inverted expectation left un-relabelled
+-- is indistinguishable from a regression to the next reader.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000036091', false);
 select assert_eq(
   (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d004'),
-  0, '036: an ownerless owner cannot see their own private club''s ride TODAY — the defect this narrowing tracks');
+  1, '036/054: an ownerless owner CAN see their own private club''s ride — was 0 until 054 gave is_club_member an owner arm, so the withheld notification above is now a gap rather than a consequence');
 reset role;
 select set_config('test.uid', '', false);
 
@@ -11068,6 +11082,552 @@ select assert_eq(
 set role authenticated;
 
 rollback to savepoint ride_map_tiles_051;
+
+\echo ''
+\echo '# 054 — a club owner reaches their own club as a member does (PD-128)'
+
+-- ===========================================================================
+-- 054. `private.is_club_member` gains an owner arm, so a club owner holding no
+--      `club_members` row reaches their own club exactly as a member does.
+--
+-- ** Every assertion below runs under `set role authenticated` with the
+-- harness's `test.uid` set to the rider under test. ** The suite otherwise runs
+-- as the table owner, for whom RLS does not apply — so an assertion that merely
+-- CALLS `private.is_club_member` proves nothing about what a rider reaches.
+-- That is 031's lesson applied to a predicate rather than to a grant, and the
+-- three assertions here that do name a role (`anon`'s table privileges,
+-- `authenticated`'s USAGE on `private`) are written that way for the same
+-- reason.
+--
+-- The fixture is built by WALKING THE ROUTE IN rather than by seeding the end
+-- state: the owner creates the club and their own membership row exactly as
+-- `createClub` does, then leaves. `club_members` DELETE is `auth.uid() =
+-- user_id` with no owner carve-out, so that door needs nothing to fail.
+--
+-- Two things this section deliberately does NOT claim, so their absence is not
+-- read as coverage:
+--   * the fan-out. An ownerless owner still receives no `ride_created_in_club`
+--     notification, because `private.notify_ride_created_in_club` reads
+--     `club_members` directly and must (a caller-relative helper cannot compute
+--     a recipient set). That gap is `enforce-creator-membership`'s — N10.
+--   * anything about the ADMIN role beyond the absolute check below. `admin`
+--     has no representation outside `club_members.role`, so it implies a
+--     membership row and gained nothing here — N3.
+-- ===========================================================================
+savepoint club_owner_reach_054;
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- Four riders of their own rather than the seed's, so no count asserted
+-- anywhere above this line moves. Same rule 009's fixtures follow.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000128001', 'pd128owner@example.com'),
+  ('00000000-0000-0000-0000-000000128002', 'pd128member@example.com'),
+  ('00000000-0000-0000-0000-000000128003', 'pd128stranger@example.com'),
+  ('00000000-0000-0000-0000-000000128004', 'pd128rejoiner@example.com');
+
+update profiles set username = 'pd128owner', location = 'Lisbon',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000128001';
+update profiles set username = 'pd128member', location = 'Porto',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000128002';
+update profiles set username = 'pd128stranger', location = 'Faro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000128003';
+update profiles set username = 'pd128rejoiner', location = 'Braga',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000128004';
+
+-- --------------------------------------------------------------------------
+-- 054.1  The fixture, built through the real route in.
+-- --------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000001c1280', 'Ownerless MC', false,
+   '00000000-0000-0000-0000-000000128001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000001c1280', '00000000-0000-0000-0000-000000128001', 'owner');
+
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000001c1280'
+                     and user_id = '00000000-0000-0000-0000-000000128001'),
+  1, '054: fixture — a new club owner starts out holding their own membership row, as createClub writes it');
+
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001c1280'
+   and user_id = '00000000-0000-0000-0000-000000128001';
+
+-- Checked as the TABLE OWNER, so "the row is gone" cannot be confused with
+-- "the row is invisible to me" — which is exactly what the widened SELECT
+-- predicate would otherwise make ambiguous.
+reset role;
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000001c1280'
+                     and user_id = '00000000-0000-0000-0000-000000128001'),
+  0, '054: fixture — and can simply leave, club_members DELETE being auth.uid() = user_id with no owner carve-out: the door into the ownerless state that needs nothing to fail');
+
+-- The member's row goes in as the table owner because a PRIVATE club cannot be
+-- joined through RLS at all — club_members INSERT's club arm is
+-- `c.is_public OR c.owner_id = auth.uid()`. Modelling an invite the app does
+-- not yet have.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000001c1280', '00000000-0000-0000-0000-000000128002', 'member');
+
+-- Everything else is written by the MEMBER, through the policies, so the
+-- fixture is reachable state rather than asserted state.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128002', false);
+
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000001d1280', 'Ownerless Club Run', 'The Depot',
+   now() + interval '7 days', false, '00000000-0000-0000-0000-0000001c1280',
+   '00000000-0000-0000-0000-000000128002');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000001d1280', '00000000-0000-0000-0000-000000128002', 'going');
+insert into ride_messages (id, ride_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000001a1280', '00000000-0000-0000-0000-0000001d1280',
+   '00000000-0000-0000-0000-000000128002', 'Meeting at the depot at seven.');
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000001e1280', '00000000-0000-0000-0000-000000128002',
+   '00000000-0000-0000-0000-0000001c1280',
+   'postcards/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128e01.jpg',
+   'Posted into the club');
+update rides set latitude = 38.7, longitude = -9.1, geocode_confidence = 0.9,
+       map_card_path = 'ride-maps/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128d01.jpg'
+ where id = '00000000-0000-0000-0000-0000001d1280';
+
+reset role;
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'postcards/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128e01.jpg',
+   '00000000-0000-0000-0000-000000128002', '{"mimetype":"image/jpeg","size":1024}'),
+  ('media', 'ride-maps/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128d01.jpg',
+   '00000000-0000-0000-0000-000000128002', '{"mimetype":"image/jpeg","size":1024}');
+
+-- --------------------------------------------------------------------------
+-- 054.2  The reported bug, both halves. It is not read-only: `rides` INSERT
+--        carries the same predicate in its WITH CHECK, so before 054 the club
+--        rendered, its Rides sub-page rendered, and the write was refused.
+-- --------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  1, '054: the ownerless owner reads a ride in their own private club — the reported bug, read half');
+select assert_allowed($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('00000000-0000-0000-0000-0000001d1281', 'Owner Run', 'The Yard',
+          now() + interval '8 days', false, '00000000-0000-0000-0000-0000001c1280',
+          '00000000-0000-0000-0000-000000128001')$$,
+  '054: ... and can create one in it — the reported bug, write half, which rides INSERT''s WITH CHECK refused before 054');
+
+-- --------------------------------------------------------------------------
+-- 054.3  The rest of the widened set. Nine of the ten calling policies were
+--        wrong in the same way; fixing only the two that were reported would
+--        have left these seven behind.
+-- --------------------------------------------------------------------------
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000001c1280'),
+  1, '054: the ownerless owner reads their private club''s roster');
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000001e1280'),
+  1, '054: ... and a postcard a member posted into it');
+select assert_allowed($$
+  insert into postcards (id, author_id, club_id, image_path, caption)
+  values ('00000000-0000-0000-0000-0000001e1281', '00000000-0000-0000-0000-000000128001',
+          '00000000-0000-0000-0000-0000001c1280',
+          'postcards/00000000-0000-0000-0000-000000128001/aaaaaaaa-0000-4000-8000-000000128e02.jpg',
+          'The owner posts too')$$,
+  '054: ... and can post one into it');
+select assert_allowed($$
+  insert into feed_reads (user_id, club_id)
+  values ('00000000-0000-0000-0000-000000128001', '00000000-0000-0000-0000-0000001c1280')$$,
+  '054: ... and can set their own read watermark for their own club (design.md D7 — an own-row write that leaks nothing, refused before 054)');
+
+-- --------------------------------------------------------------------------
+-- 054.4  The regression floor. A migration that widened EVERYONE would pass
+--        every assertion above, so the plain member's reach is asserted as the
+--        control and the stranger's absence as the bound.
+-- --------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000128002', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  1, '054: a plain member''s reach into the private club is unchanged — ride');
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000001c1280'),
+  1, '054: ... roster');
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000001e1280'),
+  1, '054: ... postcard');
+
+-- N1: neither owner nor member.
+select set_config('test.uid', '00000000-0000-0000-0000-000000128003', false);
+select assert_eq((select count(*)::int from clubs
+                   where id = '00000000-0000-0000-0000-0000001c1280'),
+  0, '054: N1 — a rider who neither owns the club nor belongs to it reads zero: the club itself');
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  0, '054: N1 — ... its rides');
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000001e1280'),
+  0, '054: N1 — ... its postcards');
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000001c1280'),
+  0, '054: N1 — ... its roster');
+select assert_denied($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('00000000-0000-0000-0000-0000001d1282', 'Gatecrash', 'The Gate',
+          now() + interval '9 days', false, '00000000-0000-0000-0000-0000001c1280',
+          '00000000-0000-0000-0000-000000128003')$$,
+  '054: N1 — ... and cannot create a ride in it, the arm keying on clubs.owner_id and on nothing else');
+
+-- N5: owning club A grants nothing in private club B. Read against the seed's
+-- c1, which this rider neither owns nor belongs to.
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000000000d1'),
+  0, '054: N5 — the owner of club A reads zero rides in a private club B they do not own');
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000000000e2'),
+  0, '054: N5 — ... zero of B''s postcards');
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000000000c1'),
+  0, '054: N5 — ... zero of B''s roster rows');
+
+-- N2: the arm keys on the CURRENT clubs.owner_id, never on membership history.
+savepoint ex_member_054;
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000001c1280', '00000000-0000-0000-0000-000000128004', 'member');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128004', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  1, '054: N2 — a rider who owns no club reads the ride while their membership row exists');
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001c1280'
+   and user_id = '00000000-0000-0000-0000-000000128004';
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  0, '054: N2 — ... and zero immediately after leaving, so the owner arm keys on the current clubs.owner_id and never on membership history');
+rollback to savepoint ex_member_054;
+
+-- N3: the admin gains nothing, because `admin` has no representation outside
+-- `club_members.role` — it IMPLIES a membership row. Stated as a property of
+-- the end state, because the suite applies the whole chain to a scratch
+-- database and so has no pre-054 state to compare against.
+savepoint admin_054;
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000001c1280', '00000000-0000-0000-0000-000000128004', 'admin');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128004', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  1, '054: N3 — a club admin reads the ride because they hold a membership row, and for no other reason');
+rollback to savepoint admin_054;
+
+reset role;
+select assert_eq((select count(*)::int from pg_policies
+                   where schemaname = 'public'
+                     and (coalesce(qual, '') || coalesce(with_check, '')) like '%admin%'),
+  0, '054: N3 — no policy predicate in public references admin at all, so 054 added no admin-specific arm and the role''s reach is whatever its membership row already bought');
+
+-- N6: a signed-out visitor gains nothing. Asserted as the ROLE's privilege
+-- rather than only as an empty result, per 031 — and scoped to the grantee,
+-- because postgres and service_role hold everything by Supabase default and a
+-- table-wide count would read non-zero against a correct database.
+select assert_eq(has_table_privilege('anon', 'public.rides', 'select'),
+  false, '054: N6 — anon holds no SELECT on rides, so the owner arm has nothing to widen for a signed-out request');
+select assert_eq(has_table_privilege('anon', 'public.clubs', 'select'),
+  false, '054: N6 — ... nor on clubs');
+select assert_eq(has_table_privilege('anon', 'public.club_members', 'select'),
+  false, '054: N6 — ... nor on club_members');
+select assert_eq(has_table_privilege('anon', 'public.postcards', 'select'),
+  false, '054: N6 — ... nor on postcards');
+select assert_eq(has_table_privilege('anon', 'public.feed_reads', 'insert'),
+  false, '054: N6 — ... nor INSERT on feed_reads');
+select set_config('test.uid', '', false);
+select assert_eq(private.is_club_member('00000000-0000-0000-0000-0000001c1280'),
+  false, '054: N6 — and the predicate itself is false with no session, because BOTH arms resolve auth.uid() and NULL matches no owner_id');
+
+-- --------------------------------------------------------------------------
+-- 054.5  N4 — the block. This is the assertion that matters most: decision #2
+--        says widening a membership test must not step past a block.
+--
+-- ** The property is DOMINATION, not position. ** `rides` SELECT and
+-- `postcards` SELECT are top-level `OR`, so "is_blocked is a top-level
+-- conjunct" is FALSE of them and a gate written that way fires against a
+-- correct database. What closes it is that the only disjunct escaping the block
+-- conjunct is the viewer's own row, and `blocks_no_self_block` makes
+-- is_blocked(x, x) false for every x.
+-- --------------------------------------------------------------------------
+select assert_eq((select pg_get_constraintdef(oid) from pg_constraint
+                   where conname = 'blocks_no_self_block'),
+  'CHECK ((blocker_id <> blocked_id))',
+  '054: N4 — blocks_no_self_block still exists, which is the whole reason the self-identity disjuncts are a safe bypass of the block conjunct');
+
+savepoint owner_blocks_organizer_054;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000128001', '00000000-0000-0000-0000-000000128002');
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  0, '054: N4 — an owner who has blocked the ride''s organizer reads zero rows for it, even though they own the club it sits in');
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000001e1280'),
+  0, '054: N4 — ... and zero for that rider''s postcard in their own club');
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000001c1280'),
+  0, '054: N4 — ... and the blocked rider is absent from the roster the owner can now read');
+rollback to savepoint owner_blocks_organizer_054;
+
+savepoint organizer_blocks_owner_054;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128002', false);
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000128002', '00000000-0000-0000-0000-000000128001');
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  0, '054: N4 — blocking is symmetric though the row is directional: the owner reads zero rows for the ride when the ORGANIZER is the blocker');
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000001e1280'),
+  0, '054: N4 — ... and zero postcards, in that direction too');
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000001c1280'),
+  0, '054: N4 — ... and an empty roster, in that direction too');
+rollback to savepoint organizer_blocks_owner_054;
+
+-- --------------------------------------------------------------------------
+-- 054.6  Storage — the widening that reaches image BYTES, not metadata. Both
+--        policies name no function at all: they inherit `postcards` / `rides`
+--        SELECT through an RLS-filtered EXISTS, so a grep for is_club_member
+--        misses all of this. Asserted deliberately rather than discovered.
+-- --------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128e01.jpg'),
+  1, '054: the ownerless owner can read the storage row for a postcard image a member posted into their club — the widening reaches photographs');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128d01.jpg'),
+  1, '054: ... and the map tile of the club ride they can now see');
+
+savepoint storage_owner_blocks_054;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000128001', '00000000-0000-0000-0000-000000128002');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128e01.jpg'),
+  0, '054: ... and zero when the author is blocked — the guarantee that matters, the image being the payload');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128d01.jpg'),
+  0, '054: ... and zero for the map tile of a ride whose organizer is blocked');
+rollback to savepoint storage_owner_blocks_054;
+
+savepoint storage_author_blocks_054;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128002', false);
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000128002', '00000000-0000-0000-0000-000000128001');
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'postcards/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128e01.jpg'),
+  0, '054: ... zero image bytes in the other block direction too');
+select assert_eq((select count(*)::int from storage.objects
+                   where name = 'ride-maps/00000000-0000-0000-0000-000000128002/aaaaaaaa-0000-4000-8000-000000128d01.jpg'),
+  0, '054: ... zero map tile in the other block direction too');
+rollback to savepoint storage_author_blocks_054;
+
+-- --------------------------------------------------------------------------
+-- 054.7  N7 — ride chat. Ownership alone yields NO chat; joining the crew does,
+--        and that is decided rather than overlooked, because it is exactly what
+--        any member of the club can already do. The rule preserved is
+--        ride-chat's: chat visibility is the INTERSECTION of ride visibility
+--        and crew membership, and 054 widens only the ride half.
+-- --------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+
+-- The crew row's ABSENCE is asserted alongside, so the next assertion cannot
+-- pass merely because the fixture happened to leave the owner off the crew.
+-- The property is "not crew, therefore no chat", not "no chat".
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-0000001d1280'
+                     and user_id = '00000000-0000-0000-0000-000000128001'),
+  0, '054: N7 — the ownerless owner holds no crew row for the member''s ride');
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-0000001d1280'),
+  0, '054: N7 — ... and therefore reads zero chat messages: ownership alone never satisfies the ride-visibility ∩ crew-membership intersection');
+select assert_denied($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000001d1280', '00000000-0000-0000-0000-000000128001',
+          'Owner speaking')$$,
+  '054: N7 — ... nor can they post into it');
+
+savepoint owner_joins_crew_054;
+select assert_allowed($$
+  insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000001d1280', '00000000-0000-0000-0000-000000128001', 'going')$$,
+  '054: N7 — the owner MAY join the crew of a club ride they can now see: ride_members INSERT is auth.uid() = user_id AND an RLS-filtered EXISTS, so this is the RSVP path every member already has, not a loophole');
+
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000001d1280', '00000000-0000-0000-0000-000000128001', 'going');
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-0000001d1280'),
+  1, '054: N7 — and thereafter reaches the chat AS CREW, the intersection satisfied by two independent facts rather than by ownership. Asserted as a positive: without it 054.7 would assert a property the system does not have');
+select assert_allowed($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000001d1280', '00000000-0000-0000-0000-000000128001',
+          'Owner speaking')$$,
+  '054: N7 — ... and may post in it');
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-0000001d1280'
+                     and user_id = '00000000-0000-0000-0000-000000128001'),
+  1, '054: N7 — ... and the crew row is in the ride''s crew list, so the reach is recorded and visible rather than silent');
+
+-- N8 for chat. Counted rather than assert_denied: a DELETE the USING clause
+-- forbids is FILTERED to zero rows, not raised, so assert_denied would fail
+-- against a correct policy. Same reason harness.sql refuses assert_allowed for
+-- UPDATE and DELETE.
+savepoint owner_cannot_moderate_chat_054;
+delete from ride_messages where id = '00000000-0000-0000-0000-0000001a1280';
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-0000001a1280'),
+  1, '054: N8 — a crew-joined owner cannot delete another rider''s message in a ride they did not organize; ride_messages DELETE stays author-or-organizer');
+rollback to savepoint owner_cannot_moderate_chat_054;
+
+rollback to savepoint owner_joins_crew_054;
+
+-- N7, part three: the block dominates the join, so the chat is unreachable by
+-- EVERY route rather than only by the direct one.
+savepoint block_dominates_join_054;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128002', false);
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000128002', '00000000-0000-0000-0000-000000128001');
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+select assert_denied($$
+  insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000001d1280', '00000000-0000-0000-0000-000000128001', 'going')$$,
+  '054: N7 — a block refuses the crew insert, the policy''s EXISTS against rides being RLS-filtered: the owner cannot join');
+select assert_eq((select count(*)::int from ride_messages
+                   where ride_id = '00000000-0000-0000-0000-0000001d1280'),
+  0, '054: N7 — ... and therefore cannot reach the chat by any route');
+rollback to savepoint block_dominates_join_054;
+
+-- --------------------------------------------------------------------------
+-- 054.8  N8 / N9 — reaching a club confers NO moderation power over its
+--        content. Ownership answers "may I see and participate", never "may I
+--        edit, delete or evict".
+--
+-- All four are counted rather than assert_denied, and that is not a stylistic
+-- choice: `rides` UPDATE/DELETE, `postcards` UPDATE and `club_members` DELETE
+-- are all keyed in their USING clause, which FILTERS the statement to zero rows
+-- instead of raising 42501. assert_denied would fail against a correct policy.
+-- --------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000128001', false);
+
+savepoint owner_cannot_edit_ride_054;
+update rides set title = 'Hijacked' where id = '00000000-0000-0000-0000-0000001d1280';
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'
+                     and title = 'Ownerless Club Run'),
+  1, '054: N8 — the owner cannot edit a ride in their club organized by someone else; rides UPDATE stays organizer_id-keyed');
+rollback to savepoint owner_cannot_edit_ride_054;
+
+savepoint owner_cannot_delete_ride_054;
+delete from rides where id = '00000000-0000-0000-0000-0000001d1280';
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000001d1280'),
+  1, '054: N8 — ... nor delete it; rides DELETE stays organizer_id-keyed');
+rollback to savepoint owner_cannot_delete_ride_054;
+
+savepoint owner_cannot_edit_postcard_054;
+update postcards set caption = 'Hijacked' where id = '00000000-0000-0000-0000-0000001e1280';
+select assert_eq((select count(*)::int from postcards
+                   where id = '00000000-0000-0000-0000-0000001e1280'
+                     and caption = 'Posted into the club'),
+  1, '054: N8 — ... nor edit another rider''s postcard in their club; postcards UPDATE stays author_id-keyed');
+rollback to savepoint owner_cannot_edit_postcard_054;
+
+savepoint owner_cannot_evict_054;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001c1280'
+   and user_id = '00000000-0000-0000-0000-000000128002';
+select assert_eq((select count(*)::int from club_members
+                   where club_id = '00000000-0000-0000-0000-0000001c1280'
+                     and user_id = '00000000-0000-0000-0000-000000128002'),
+  1, '054: N9 — ... nor remove another member; club_members DELETE stays auth.uid() = user_id');
+rollback to savepoint owner_cannot_evict_054;
+
+reset role;
+select assert_eq((select count(*)::int from pg_policies
+                   where schemaname = 'public' and tablename = 'club_members' and cmd = 'UPDATE'),
+  0, '054: N9 — club_members still carries no UPDATE policy, so no client can change a role');
+
+-- --------------------------------------------------------------------------
+-- 054.9  The properties of the function itself, and the one that is a tripwire
+--        rather than a description.
+-- --------------------------------------------------------------------------
+select assert_eq((select array_to_string(proconfig, ',') from pg_proc
+                   where oid = 'private.is_club_member(uuid)'::regprocedure),
+  'search_path=""',
+  '054: is_club_member''s search_path is now empty, matching the other fourteen functions in private — safe because its body schema-qualifies every reference, so the setting has no name left to resolve');
+select assert_eq((select prosecdef from pg_proc
+                   where oid = 'private.is_club_member(uuid)'::regprocedure),
+  true, '054: ... and it is still SECURITY DEFINER, which is what lets it read club_members and clubs on behalf of a caller who can read neither');
+select assert_eq(has_schema_privilege('authenticated', 'private', 'usage'),
+  false, '054: authenticated holds no USAGE on private, which is why widening is_club_member adds no security advisor and why no client can call it directly');
+
+-- ** A tripwire, not a description. ** 054's owner arm makes this function read
+-- public.clubs, and clubs' own SELECT policy calls this function — a direct
+-- self-edge. It does not recurse ONLY because clubs does not force RLS and this
+-- function's definer owns the table. `ALTER TABLE public.clubs FORCE ROW LEVEL
+-- SECURITY` is ordinary hardening that no advisor asks for, and it would turn
+-- every club read in the app into 42P17. This assertion is what makes that a
+-- red suite rather than a production outage.
+select assert_eq((select relforcerowsecurity from pg_class where oid = 'public.clubs'::regclass),
+  false, '054: public.clubs does not FORCE row-level security — one of the TWO reasons is_club_member reading clubs, while clubs SELECT calls is_club_member, is not 42P17 infinite recursion');
+
+-- **The second condition, and the header above names both while this section
+-- used to assert only the first.** RLS is skipped inside the definer body only
+-- because the function owner IS the table owner; a later migration that
+-- recreates the function under a different owner, or reassigns public.clubs,
+-- re-applies RLS inside the body and every club read in the app becomes 42P17 —
+-- while `relforcerowsecurity` stays false and the assertion above stays green.
+-- Asserting one of two stated conditions reads as covering both, which is worse
+-- than asserting neither.
+select assert_eq(
+  (select pg_get_userbyid(relowner) from pg_class where oid = 'public.clubs'::regclass)
+  = (select pg_get_userbyid(proowner) from pg_proc
+      where oid = 'private.is_club_member(uuid)'::regprocedure),
+  true, '054: ... and the definer owns public.clubs, which is the other reason — RLS is not applied inside a definer body owned by the table owner');
+
+-- No policy was recreated by 054, and no direct caller lives outside `public`.
+-- The second is the security-relevant half: the widening DOES reach two
+-- storage.objects policies, but transitively, through an RLS-filtered EXISTS
+-- rather than by naming this function.
+select assert_eq((select count(*)::int from pg_policies
+                   where (coalesce(qual, '') || coalesce(with_check, '')) like '%is_club_member%'
+                     and schemaname <> 'public'),
+  0, '054: every DIRECT caller of is_club_member is in public — storage inherits the widening through an RLS-filtered EXISTS, never by naming the function');
+select assert_eq((select count(*)::int from pg_policies
+                   where (coalesce(qual, '') || coalesce(with_check, '')) like '%is_club_member%'),
+  10, '054: exactly ten policies call is_club_member, the count 054 left untouched — it replaced the function body and recreated no policy');
+
+set role authenticated;
+rollback to savepoint club_owner_reach_054;
 
 rollback;
 

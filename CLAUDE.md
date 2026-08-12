@@ -480,7 +480,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 53 files. DEV is at `053`, PROD at `050` — NOT level, 2026-08-12.** Do not
+**Applied state: 54 files. DEV is at `054`, PROD at `050` — NOT level, 2026-08-12.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 
@@ -512,7 +512,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1321** assertions — re-derive rather than trust it:
+Suite **1385** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -1117,6 +1117,37 @@ is the one that produces a paragraph before every tool call. *"Checking X before
 the tool call itself already shows all of that. **Announce a decision only when the owner could
 still change it**; otherwise act, and say what came back. A reply whose content is its own
 preamble should not have been sent.
+
+**While a subagent is running, say nothing.** Product owner, 2026-08-12, twice in one session:
+*"didn't we agree that you run it in the background?"* — asked about a session that was
+correctly backgrounding its agents and then narrating each one. Backgrounding buys the owner
+their attention back; spending it on status updates returns the cost and keeps none of the
+benefit.
+
+**It governs what you SAY UNPROMPTED, and nothing else.** Between spawning an agent and its
+result landing, do not send what the agent is doing, what you will do with its answer, a
+restatement of the plan, or a status line each time a background shell wakes the turn. **The
+next *unprompted* words after a spawn should be the result.**
+
+Three things are still owed and none of them is a status update:
+
+- **Anything the owner just asked.** Answer it immediately and fully. §Delegating while the
+  owner is at the keyboard is explicit — *"spawn the agent, reply at once, and keep answering
+  questions about other stories while it runs"* — and that mode buys **availability**, which
+  is the whole return on backgrounding. It is also the only thing picking work up while they
+  are at the keyboard, since queue-pickup's gate (7) suppresses the Routine. Silence here
+  cancels the mode rather than serving it.
+- **A question only they can answer, and a blocked capability.** Both are decisions, not
+  status.
+- **A one-line answer to a hook that returned `decision: block`.** That is a prompt, unlike a
+  background-shell wake — and `session-wrapup-check.sh` writes its marker *before* it speaks
+  and now fires once per branch, so the ask is spent whether or not you answer. Answer it in
+  the one line it requests.
+
+This is the same rule as the two above, and it is written separately because it fails
+differently: those produce a long reply, this one produces *many* replies, which is worse. A
+session that says one line six times has said more than one that said six lines once, and has
+interrupted six times to do it.
 
 Three things stay long however brief the commentary gets, because each is a *decision* rather
 than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,
