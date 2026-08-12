@@ -1124,12 +1124,25 @@ correctly backgrounding its agents and then narrating each one. Backgrounding bu
 their attention back; spending it on status updates returns the cost and keeps none of the
 benefit.
 
-So between spawning an agent and its result landing, the only things worth sending are a
-**question the owner must answer** and a **blocked capability**. Not what the agent is doing,
-not what you will do with its answer, not a restatement of the plan, and above all **not a
-status line every time a hook or a background shell wakes the turn** — those fire on their own
-schedule and are not prompts to report in. **The next words after a spawn should be the
-result.**
+**It governs what you SAY UNPROMPTED, and nothing else.** Between spawning an agent and its
+result landing, do not send what the agent is doing, what you will do with its answer, a
+restatement of the plan, or a status line each time a background shell wakes the turn. **The
+next *unprompted* words after a spawn should be the result.**
+
+Three things are still owed and none of them is a status update:
+
+- **Anything the owner just asked.** Answer it immediately and fully. §Delegating while the
+  owner is at the keyboard is explicit — *"spawn the agent, reply at once, and keep answering
+  questions about other stories while it runs"* — and that mode buys **availability**, which
+  is the whole return on backgrounding. It is also the only thing picking work up while they
+  are at the keyboard, since queue-pickup's gate (7) suppresses the Routine. Silence here
+  cancels the mode rather than serving it.
+- **A question only they can answer, and a blocked capability.** Both are decisions, not
+  status.
+- **A one-line answer to a hook that returned `decision: block`.** That is a prompt, unlike a
+  background-shell wake — and `session-wrapup-check.sh` writes its marker *before* it speaks
+  and now fires once per branch, so the ask is spent whether or not you answer. Answer it in
+  the one line it requests.
 
 This is the same rule as the two above, and it is written separately because it fails
 differently: those produce a long reply, this one produces *many* replies, which is worse. A
