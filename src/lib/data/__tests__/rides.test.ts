@@ -33,6 +33,8 @@ function row(overrides: Partial<RideRow> = {}): RideRow {
     meeting_point: 'Leiderdorp',
     departure_at: '2026-08-16T10:00:00Z',
     organizer_id: ORGANIZER.id,
+    // NULL on every ride in both databases until the render function ships.
+    map_card_path: null,
     organizer: ORGANIZER,
     club: null,
     riders: [],
@@ -145,6 +147,32 @@ describe('toRideListItem', () => {
 
     expect(item.riders_count).toBe(1)
     expect(item.attendance).toBe('going')
+  })
+
+  it('carries no tile URL for a ride with no tile, which is every ride today', () => {
+    // `RideCard` reads exactly this field to decide between the tile and the
+    // pin container it has always drawn, so null here is what keeps the
+    // fallback the universal rendering.
+    expect(toRideListItem(row(), undefined, NOW).map_card_url).toBeNull()
+  })
+
+  it('copies the URL the signing pass wrote onto the row, rather than the path', () => {
+    const item = toRideListItem(
+      row({ map_card_path: 'ride-maps/o1/a.jpg', map_card_url: 'https://signed.test/a.jpg' }),
+      undefined,
+      NOW,
+    )
+
+    expect(item.map_card_url).toBe('https://signed.test/a.jpg')
+  })
+
+  it('reads a path that never got signed as no tile', () => {
+    // A tile this viewer's Storage policy refuses signs to null, and the card
+    // must draw the ordinary fallback rather than a broken image — the path
+    // itself is never something a component can render.
+    const item = toRideListItem(row({ map_card_path: 'ride-maps/o1/a.jpg' }), undefined, NOW)
+
+    expect(item.map_card_url).toBeNull()
   })
 })
 

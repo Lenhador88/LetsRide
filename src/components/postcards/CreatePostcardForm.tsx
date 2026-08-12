@@ -10,6 +10,16 @@ import { createPostcard } from '@/lib/actions/postcards'
 // evaluation. See the comment at the top of lib/actions/postcards.ts.
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
+import { useRestoreSelection } from '@/lib/actions/retain'
+
+// The caption is controlled already; the audience was not, and it is the one
+// that matters most here. A refusal reset this select to its first option —
+// silently widening a postcard the rider had aimed at one club back to everyone
+// on LetsRide, on the retry they were about to make.
+//
+// Controlled rather than fed back through `retaining`, because a `<select>` is
+// the one control a restored `defaultValue` cannot reach — see the note in
+// CreateRideForm, and the walk phase that measured it.
 import { uploadPostcardImage, validateImageFile } from '@/lib/media'
 import { cn } from '@/lib/utils'
 import { POSTCARD_CAPTION_MAX_LENGTH } from '@/lib/validation/postcards'
@@ -55,6 +65,9 @@ type Upload =
  */
 export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
   const [state, formAction, pending] = useActionState(createPostcard, emptyActionState)
+  const [clubId, setClubId] = useState('')
+  const clubRef = useRef<HTMLSelectElement>(null)
+  useRestoreSelection(clubRef, clubId, state)
   useActionRedirect(state)
   const [upload, setUpload] = useState<Upload>({ status: 'idle' })
   const [preview, setPreview] = useState<string | null>(null)
@@ -189,8 +202,10 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
         </label>
         <select
           id="clubId"
+          ref={clubRef}
           name="clubId"
-          defaultValue=""
+          value={clubId}
+          onChange={(event) => setClubId(event.target.value)}
           className="h-14 w-full rounded-lg border-2 border-border bg-surface px-4 text-base text-foreground transition-colors focus:border-accent focus:outline-none"
         >
           {/* '' is the app-wide feed — postcardClubIdSchema turns it into null,

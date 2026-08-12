@@ -26,12 +26,13 @@ import type { RideDetail } from '@/types'
  * location rows at 64 tall each with their `Grey/10` hairlines, and the 358×160
  * map. The RSVP bar is fixed above the nav bar rather than in it.
  *
- * Two things the design draws that the schema cannot fill — the 200px banner and
- * the map tile — are rendered as their containers and logged in
- * docs/FIGMA-FIDELITY-TODO.md §Ride detail, the same treatment the rides list
- * gave its image strip. The banner is omitted entirely rather than drawn as a
- * 200px grey slab, because unlike the map it carries no affordance at all: an
- * empty fifth of the screen above the fold is worse than a shorter page.
+ * The 200px banner is the one thing the design draws that the schema still
+ * cannot fill, and it is omitted entirely rather than drawn as a 200px grey
+ * slab: unlike the map it carries no affordance at all, so an empty fifth of
+ * the screen above the fold is worse than a shorter page. Logged in
+ * docs/FIGMA-FIDELITY-TODO.md §Ride detail. The map panel now has a column
+ * behind it (`051`) and draws a tile whenever the ride has one, which today is
+ * never — see `RideMap`, which owns both states.
  *
  * ## The three-way answer this screen needs, and why `null` is not `undefined`
  *
@@ -167,7 +168,7 @@ function RidePlan({ ride }: { ride: RideDetail }) {
         />
       </div>
 
-      <RideMap meetingPoint={ride.meeting_point} />
+      <RideMap meetingPoint={ride.meeting_point} tileUrl={ride.map_detail_url} />
 
       {ride.route_description && (
         <div className="flex flex-col gap-1 px-6">

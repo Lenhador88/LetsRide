@@ -131,8 +131,30 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 // with a variable a local `supabase start` injects by default.
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 
-/** The five folder prefixes in the `media` bucket, all keyed on the uploader. */
-const PREFIXES = ['postcards', 'avatars', 'covers', 'club-avatars', 'club-covers'] as const
+/**
+ * The folder prefixes in the `media` bucket, all keyed on the uploader.
+ *
+ * **`ride-maps` was added by PD-104 §4 and this list is the ONLY thing that
+ * deletes it.** Those tiles are static maps centred on a ride's meeting point,
+ * which is frequently the organizer's home address — so leaving them out means
+ * an account deletion removes the `auth.users` row, cascades the `rides` away,
+ * and leaves two rendered images of where that rider lives in the bucket with no
+ * row naming them and no credential in the system able to reach the folder.
+ *
+ * **This file is deployed and no session can redeploy it** (no `supabase` CLI in
+ * the build container, no deploy tool on the MCP server), so this edit is drift
+ * until the owner redeploys — which is why `add-ride-map-tiles/tasks.md` blocks
+ * 8.3 on it: the render function's deploy and this redeploy are the same window,
+ * and deploying the renderer first is what opens the gap.
+ */
+const PREFIXES = [
+  'postcards',
+  'avatars',
+  'covers',
+  'club-avatars',
+  'club-covers',
+  'ride-maps',
+] as const
 const BUCKET = 'media'
 const PAGE = 100
 /** `remove()` takes a path list in one request; a large folder must be chunked. */
@@ -274,7 +296,7 @@ Deno.serve(async (req: Request) => {
 
     if (transferError) throw new Error(`transfer: ${transferError.message}`)
 
-    // 2. Objects, across the five own-folder prefixes plus any club image the
+    // 2. Objects, across every own-folder prefix in PREFIXES plus any club image the
     //    transfer surrendered — those live under this rider's folder but belong
     //    to a club that may now have a different owner, which is why 029 nulls
     //    the path rather than leaving a dangling reference.

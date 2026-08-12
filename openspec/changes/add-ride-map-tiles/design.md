@@ -37,10 +37,23 @@ The path checked in order, and the three facts that had to hold:
    filename regex, and `ride-maps` takes that shape unchanged. The organizer writing their own
    ride's tile needs no permission the app does not already grant for an avatar.
 2. **Can the column write be a policy?** Yes — **conditionally**, and the condition was missed on
-   the first pass. `rides` carries a **table-level** grant to `authenticated` (`relacl` =
-   `arwdDxtm`, `attacl` empty on every column, measured 2026-08-09), so the new columns arrive
-   writable. But the UPDATE policy has **two arms**, and quoting only the first is what hid the
-   hole:
+   the first pass.
+
+   > **CORRECTED 2026-08-12, and the original premise was false by the time the build ran.** This
+   > paragraph said `rides` carries a **table-level** grant to `authenticated` (`relacl` =
+   > `arwdDxtm`, `attacl` empty on every column) — measured 2026-08-09, and true then. **`045`
+   > landed 2026-08-10 and converted `rides` to per-column grants**, which is exactly the
+   > inversion §D2 describes below when it *declines* to do it itself. So the five new columns
+   > arrive with **no UPDATE grant at all**, and the Edge Function's column write would have
+   > failed `42501` above RLS on every ride — with the policy set looking correct and the suite
+   > blind to it, because a grant is not a policy. `051` §5 therefore grants UPDATE on the five
+   > explicitly; INSERT is deliberately not granted.
+   >
+   > **The lesson is the dated measurement, not the number.** §0.1's pre-flight is stamped
+   > 2026-08-09 and was read as current a day after a migration invalidated it. Re-measure a
+   > grant level at build time; do not inherit one from a proposal.
+
+   The UPDATE policy has **two arms**, and quoting only the first is what hid the hole:
 
    ```sql
    -- Organizers update their own rides, within their own clubs
@@ -95,7 +108,7 @@ paths and the coordinate and checks `auth.uid() = organizer_id` internally, matc
 `accept_terms()` / `complete_onboarding()`. **Not** a service-role key. Recorded so that the
 retreat is one step rather than all the way.
 
-## D3 — The confidence floor is `0.70` **and** a granularity gate, and the gate is the real rule
+## D3 — Three gates: granularity, a `0.70` floor, and separation among the survivors
 
 `meeting_point` is free text, so this is a guess, and the failure that matters is not a *missing*
 map — it is a **confident wrong** one. "The usual spot, Leiderdorp" resolves to a city with high
@@ -104,12 +117,21 @@ meeting point. A rider who trusts that tile rides to a town centre. Today's scre
 rider's own words and are never wrong, so a wrong tile is a **regression** in a way an absent tile
 is not.
 
-Hence two parts, and the second is doing most of the work:
+Hence **three** parts, applied in this order, and the numeric floor is the weakest of them:
 
-- **Granularity gate** — street-level or better. A city, district or region match is rejected
-  outright whatever its score, because a numeric score cannot express "confident about the wrong
-  question".
-- **Numeric floor `0.70`** applied after the gate, on the provider's confidence rank.
+1. **Granularity gate** — street-level or better, read from the **result type**. A city, district
+   or region match is rejected outright whatever its score, because a numeric score cannot express
+   "confident about the wrong question".
+2. **Numeric floor `0.70`** on the provider's confidence rank.
+3. **Separation gate** — among the candidates that survive 1 and 2, if any two lie further apart
+   than a stated threshold, resolve nothing. **Added 2026-08-11**; see *What was measured*.
+
+**The order is a correctness rule, not an efficiency one, and it was wrong in the first draft of
+this section.** Separation was placed first, on the reasoning that it is the cheapest test. But
+testing separation across *raw* candidates measures distance between things the granularity gate is
+about to discard: `[building, city]` is an ordinary response for a street address in a named city,
+and separation-first rejects it even though exactly one usable candidate existed. Filter first,
+then ask whether the survivors agree.
 
 `0.70` is **chosen, not measured** — it is a starting value, deliberately conservative, and the
 owner may move it once there is a corpus of real meeting points to score against. The gate should
@@ -120,10 +142,90 @@ and the vocabulary is the vendor's to change. The row stores the numeric confide
 enforces the coupling and the floor, and the gate lives in the function. The spec says so rather
 than implying the database is holding a line it is not.
 
-**The field names are inferred, not measured.** The container has no egress to the vendor's
-documentation, so `rank.confidence` and the match-type vocabulary are written from prior knowledge.
-Task 1.1 verifies them against a live response **before** `042` hardcodes a floor, and the
-migration must not be written from this paragraph.
+### What was measured, 2026-08-11 — and the two things this section had wrong
+
+An earlier version of this paragraph said *"the field names are inferred, not measured"* and told
+task 1.1 to verify them before the migration hardcoded a floor. **That verification has now
+happened**, against a real response for `Stationsplein 1, Amsterdam` supplied by the product owner.
+The floor survived; the field names did not.
+
+**n = 1. Read the Verdict column as "what one response licenses", not as a specification** — the
+fields are now measured, most of their *ranges and vocabularies* are not, and the difference is
+exactly where the first draft of this section overclaimed.
+
+| Path | Measured | What that actually licenses |
+|---|---|---|
+| `properties.result_type` | `building` | **The granularity field exists and is not inside `rank`.** Its *vocabulary* is unmeasured — see below |
+| `properties.rank.match_type` | `full_match` | Describes how the **query** matched, not what came back. Do not gate on it |
+| `properties.rank.confidence` | `1` | The field exists. **The scale is NOT confirmed** — see below |
+| `properties.rank.confidence_street_level` | `1` | Exists. Same caveat as `confidence` |
+| `properties.rank.importance` | `0.00008268` | Not a quality score. Do not gate on it |
+| `properties.rank.popularity` | `8.995` | ~0–10, not 0–1. Do not gate on it |
+| `properties.datasource.license` | `Open Database License` | **This feature's** source is ODbL. Not a claim about the corpus |
+| `properties.datasource.attribution` | `© OpenStreetMap contributors` | The string **this feature** requires |
+
+**What is still NOT measured, and saying otherwise would repeat a mistake this repo has already
+made.**
+
+- **The confidence scale.** One observation of the value `1` is the least informative possible
+  evidence for an upper bound — it is equally consistent with 0–1, 0–10 and 0–100. The `0.70`
+  floor remains **plausible rather than validated**. The internal tell that this was overclaimed:
+  `popularity: 8.995` is hedged as "~0–10" from exactly one sample while `confidence` was written
+  up as confirmed from exactly one sample.
+- **The `result_type` vocabulary.** One value was seen, and it is the easy case. The gate must sort
+  `street`, `amenity`, `postcode`, `suburb`, `locality`, `district` and whatever else the vendor
+  emits onto two sides of a line, and **none of that was observed**. The *field* is measured; the
+  *vocabulary* is not, and the gate cannot be written until it is.
+- **The licence, across the corpus.** `datasource` is **per feature** and Geoapify merges several
+  sources. Generalising one feature's ODbL to "the coordinates are ODbL" is precisely the error
+  already recorded against `places`, where a 527,725-row census named Overture, Foursquare,
+  Microsoft, PinMeTo and others and **zero** OpenStreetMap against an assumed ODbL credit. It also
+  sits oddly beside this change's own note that per-API attribution is unread.
+- **The corpus itself.** One address, one country, one vendor. The Weesp mechanism is a Dutch
+  municipal merger; nothing here establishes what the analogous ambiguity looks like elsewhere.
+
+**Correction 1 — the granularity gate was pointed at the wrong field.** This section said the gate
+reads a match-type vocabulary. `match_type` returns `full_match` for a city as readily as for a
+building, so a gate reading it admits precisely the city-level match this section exists to reject.
+The gate reads `properties.result_type`.
+
+**Correction 2, and it is why this section now has three parts rather than two.** The same query
+returned **two** buildings, in Amsterdam and in Weesp, **12.2 km apart**, both at maximum
+confidence. Weesp merged into the Amsterdam *municipality* in 2022, so the second is a correct
+answer to the text that was typed.
+
+Both gates above pass both candidates. A pipeline taking the first feature stores a coordinate
+12.2 km from where the rider meant **with the highest possible confidence attached**, and it is
+then indistinguishable from a good one — which is exactly the "confident wrong" failure this whole
+section is built to prevent, arriving through a door the section did not know existed.
+
+**The gate keys on distance, and the first draft got this wrong in a way worth recording**, because
+the wrong version is the one a reader re-derives from the same evidence. It rejected on an *exact
+tie at the top confidence* — which the measured case exhibits, so it looked right. But confidence
+**saturates**: those two tied at the ceiling, not because they were equally good. Return the same
+two towns as `1.00` and `0.97` and a tie test does not fire, while the rider still ends up 12.2 km
+wrong. And the tie test fails in the other direction too — a vendor merging datasources returns one
+building twice, tied exactly, 0 m apart, and a count-based rule refuses a perfectly unambiguous
+address for ever. **Distance discriminates between those two situations and tie-ness does not**, and
+the distance was already sitting in the measurement that prompted the rule.
+
+**One thing the separation gate does not do, stated so it is not assumed.** It bounds *ambiguity*,
+never *wrongness*. A response containing only Weesp passes every gate here, and the tile ships. The
+resulting asymmetry — no tile for an ambiguous address, a wrong tile for one that resolves cleanly
+to the wrong building — is a KNOWN GAP in the spec rather than something this design solves.
+
+This is the same shape as `PD-149` (*a nearby street can crowd out a famous landmark of the same
+name*) and as **PD-114**'s note about *"a guess that can silently centre the tile on the wrong Shell
+station"* — that sentence is PD-114's characterisation of this change's approach, not this issue's
+own. **Both were read as low-confidence problems. Neither is.** Confidence answers how
+sure the vendor is about one candidate and is structurally silent on how many candidates there are.
+
+**Do not add a CHECK for any of this.** The ambiguity rule needs the whole response and the
+granularity rule needs a vendor field; both live in the function, and §D3's existing rule against
+hardcoding a vendor vocabulary into the schema covers them. What this does change is how much the
+CHECK is claimed to be doing — see the requirement scenario *The granularity gate is a function-side
+rule and is not overclaimed*, which now understates it: the CHECK bounds **coupling**, and after
+this correction it bounds a smaller share of **correctness** than this section originally implied.
 
 ## D4 — Two zooms, two renders, and why not one crop
 
@@ -307,6 +409,20 @@ retries.
 **Picked: `ride_map_render_attempts`, append-only.** `authenticated` holds **INSERT and SELECT
 only** — no UPDATE grant, no UPDATE policy, no DELETE grant, no DELETE policy. The ceiling is a
 `WITH CHECK` on the INSERT policy counting the caller's rows in a rolling window.
+
+> **CORRECTED 2026-08-12: that ceiling as written is not implementable, and Postgres refuses it
+> structurally rather than semantically.** A `count(*)` over the ledger *inside the ledger's own
+> INSERT policy* raises `infinite recursion detected in policy for relation
+> "ride_map_render_attempts"` — so **no ledger insert could ever have succeeded**, and with the
+> ledger inserted before the vendor call (§D8), no render either. The RLS suite caught it on the
+> first run; no amount of reading the policy would have.
+>
+> `052` moves the count into `private.ride_map_renders_in_window()`, a `security definer` helper.
+>
+> **One side effect, and it lands in the safe direction.** The count no longer runs under the
+> caller's own RLS, so the third soft edge below — *the ceiling silently depends on the ledger's
+> SELECT policy, and narrowing it later widens the ceiling with nothing failing* — **is gone
+> rather than merely documented.** The concurrency overshoot is unchanged.
 
 **This does not contradict the earlier rejection of "move the counter to another table"; it
 refines it.** That rejection was of a table `authenticated` *cannot* write, which the function

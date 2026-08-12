@@ -17,7 +17,12 @@
 # ruler the day the environment split landed: a session that correctly merged
 # its handoff into `development` would still be told it had not shipped, and a
 # warning that fires when the rule was followed is one nobody reads twice.
-# `main` stays as the fallback for a clone that has never fetched development.
+#
+# THERE IS NO `main` FALLBACK, for the same reason session-wrapup-check.sh lost
+# its one on 2026-08-11. `docs/HANDOFF.md` genuinely differs between `main` and
+# `development` most of the time — unreleased work — so falling back to `main`
+# warns that a handoff has not landed when it landed perfectly well. Silence is
+# this hook's designed failure mode; a wrong warning is not.
 #
 # It deliberately does NOT check PR state. The GitHub REST API is unreachable
 # from the shell in this environment (the proxy returns "GitHub access is not
@@ -35,10 +40,25 @@ cd "$root" 2>/dev/null || exit 0
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || exit 0
 case "$branch" in ''|main|master|development|HEAD) exit 0 ;; esac
 
-# The base as last fetched. Deliberately no network call: a Stop hook must not
-# hang the session, and a stale ref only costs a false negative.
+# Resolve the base, fetching once if this clone has never seen it. The old
+# comment here claimed no network call was needed because "a stale ref only
+# costs a false negative" — both halves were wrong: it fell back to `main`, and
+# that costs a false *positive*, which is the expensive kind.
+#
+# Bounded and failure-tolerant, because a Stop hook must not hang the session.
+# The marker is shared with session-wrapup-check.sh on purpose: the two run in
+# the same Stop event against the same clone, so an unreachable remote should
+# cost one timeout between them, not one each. The explicit refspec is required
+# on a --single-branch clone, where the short form writes only FETCH_HEAD.
 base=origin/development
-git rev-parse --verify -q "$base" >/dev/null 2>&1 || base=origin/main
+if ! git rev-parse --verify -q "$base" >/dev/null 2>&1; then
+  gitdir=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+  if [[ ! -f "$gitdir/wrapup-fetch-unreachable" ]]; then
+    timeout --kill-after=2 5 git fetch --quiet origin \
+      "+refs/heads/development:refs/remotes/origin/development" >/dev/null 2>&1 \
+      || : >"$gitdir/wrapup-fetch-unreachable" 2>/dev/null
+  fi
+fi
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || exit 0
 
 # Two comparisons, and the first one is what keeps this quiet.
@@ -53,8 +73,47 @@ git rev-parse --verify -q "$base" >/dev/null 2>&1 || exit 0
 mergebase=$(git merge-base "$base" HEAD 2>/dev/null) || exit 0
 git diff --quiet "$mergebase" -- docs/HANDOFF.md 2>/dev/null && exit 0
 
-# It did touch it. Has that edit landed? If the working tree now matches the base
-# tip, the merge already happened and there is nothing to say.
+# It did touch it. Has that edit landed?
+#
+# ** Ask "is this branch's content already contained in the base", NOT "does this
+# branch match the base tip". ** Those two diverge the moment ANOTHER session
+# lands a handoff change while this branch sits — the normal case here rather
+# than bad luck, since docs/HANDOFF.md is touched by roughly two-thirds of
+# commits and several sessions run at once. A branch whose own handoff edit
+# merged perfectly well then gets warned about somebody else's, which is exactly
+# the wrong warning this file's header promises not to issue.
+#
+# Measured 2026-08-11 against the real case: branch tip 2a0bc68, whose handoff
+# edits had merged in #168 and #177, warned every Stop because `development` had
+# moved ahead by one unrelated handoff change (#176, PD-196's walk phase). Merge
+# base c2679fb, so guard 1 passed and the tip comparison then compared against
+# work that was never this branch's. The session's fix was to reset the branch
+# onto the base — correct, and CLAUDE.md prescribes it — but a warning that fires
+# when the rule was followed is one nobody reads twice.
+#
+# `merge-tree --write-tree` answers containment with no merge-base gymnastics: if
+# merging this branch into the base would produce the base's OWN tree, nothing
+# here is unlanded. Same instrument, and same reason, as CLAUDE.md §Branch
+# cleanup — an ahead-count reports every commit of a squash-merged branch as
+# unlanded for ever, so it cannot tell a merged branch from an unmerged one, and
+# every branch in this repo is squash-merged.
+#
+# COMMITTED CONTENT ONLY, which is why the tip comparison below survives rather
+# than being replaced: merge-tree reads commits, so a handoff edited but not yet
+# committed is invisible to it and must still reach that check.
+#
+# On any failure — git older than 2.38, no merge base, unreadable ref — fall
+# THROUGH to the tip comparison rather than exiting. That preserves this file's
+# previous behaviour exactly, so a failure here can only ever be as noisy as it
+# was before, never quieter.
+if git diff --quiet HEAD -- docs/HANDOFF.md 2>/dev/null; then
+  basetree=$(git rev-parse -q --verify "$base^{tree}" 2>/dev/null || true)
+  merged=$(git merge-tree --write-tree "$base" HEAD 2>/dev/null | head -1 || true)
+  if [[ -n "$basetree" && -n "$merged" && "$merged" == "$basetree" ]]; then exit 0; fi
+fi
+
+# So either the handoff is edited and uncommitted, or this branch genuinely
+# carries something the base does not.
 #
 # Working tree vs a commit, not a commit range: a range only sees commits, so an
 # edited-but-uncommitted handoff would slip through.

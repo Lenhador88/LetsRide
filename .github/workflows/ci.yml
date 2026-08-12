@@ -229,6 +229,22 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          # Required for any CAPACITOR_BUILD=1 build (PD-188) — the webview
+          # origin is https://localhost, which is on no redirect allowlist, so
+          # `next.config.ts` fails the build rather than baking it in.
+          #
+          # **A literal rather than a secret, and this bundle is deliberately
+          # not a release.** It is built to prove the export still works and is
+          # thrown away; `openspec/changes/add-static-export-bundle/design.md`
+          # §D7 allows exactly that. Spelled in full because ten `design.md`
+          # files are tracked here and `crossrefs.mjs` scans `.md`, not YAML —
+          # so nothing would catch this one going stale when the change is
+          # archived and the file moves. The gate that a
+          # *submitted* bundle carries the production ref and origin is
+          # `npm run release:check`, which is deliberately not part of
+          # `build:native` — wiring it here would fail every PR, because this
+          # step builds against DEV.
+          NEXT_PUBLIC_CANONICAL_ORIGIN: https://app.letsride.social
 
   rls:
     name: RLS Policy Tests

@@ -1,0 +1,341 @@
+-- 055: `ride_joined` fans out to the whole crew, not just the organizer.
+--
+-- Linear PD-129. `036` §7.4 shipped this type to the ride's ORGANIZER alone and
+-- said so in its own comment — "the organizer only, per the proposal's Q1
+-- default ... widening it is a recipient-set change with no schema impact, so it
+-- can land later without a migration." This is that later, and it is exactly
+-- that: one `create or replace`, one refreshed comment, and nothing else.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT DOES NOT CHANGE, and the list is the point
+-- ---------------------------------------------------------------------------
+-- No DDL on any table. No new type, so `notifications_type_check` and
+-- `notifications_subject_shape` are untouched — the organizer's copy differs
+-- from the crew's at RENDER time, by comparing the reader against
+-- `rides.organizer_id`, which needs no column and no second type. No policy is
+-- created or dropped. No grant moves. No trigger is recreated: `create or
+-- replace` keeps the function's OID, and `notify_ride_joined` on
+-- `public.ride_members` references it by OID, so the existing binding survives
+-- and re-issuing the `create trigger` would be both unnecessary and an error.
+--
+-- The `revoke` below is re-issued anyway. `create or replace` PRESERVES existing
+-- privileges, so it is a no-op against a database that has `036` — which is the
+-- reason to keep it rather than to drop it: it costs nothing and it means this
+-- file is correct in isolation, including on a scratch database that replays the
+-- chain.
+--
+-- ---------------------------------------------------------------------------
+-- PD-118's inherited contract, restated because this file is where it is easiest
+-- to break
+-- ---------------------------------------------------------------------------
+-- Every one of `036` §7's rules still binds and none is relaxed here:
+--
+--   * Fan-out stays TRIGGER-ONLY. `authenticated` holds no INSERT grant on
+--     `notifications` (`036` §5), which is the outer gate; the absent INSERT
+--     policy is the inner one. Widening the recipient set changes neither.
+--   * `auth.uid()` APPEARS NOWHERE BELOW. The actor is `new.user_id` and the
+--     candidates come from `rides` and `ride_members`. `036` trap (b): a
+--     self-suppression written against `auth.uid()` is NULL in the RLS suite, in
+--     psql and in a seed, which is not TRUE, which filters out every recipient —
+--     so the fan-out would write nothing in exactly the environment that asserts
+--     it, and every negative assertion would pass vacuously.
+--   * `private.is_ride_crew` IS UNUSABLE HERE, and it is the obvious wrong
+--     reach for this particular change because its NAME is the recipient set.
+--     It reads `auth.uid()` internally, so it answers "is the CALLER on this
+--     crew" and never "is this CANDIDATE on it". A fan-out calling it computes
+--     the actor's own membership once — always TRUE here, since the actor just
+--     inserted their own row — and applies that one answer to every candidate,
+--     making the recipient set everybody. `036` trap (c). The crew arm below is
+--     therefore a direct query against `public.ride_members`, exactly as §7.5's
+--     is against `club_members`.
+--   * `security definer`, `set search_path = ''`, every name schema-qualified,
+--     and the function stays in `private` so PostgREST cannot publish it and
+--     `service_role` cannot reach it.
+--   * NO `when` CLAUSE ANYWHERE, and none is added: the trigger is untouched.
+--     `036` trap (a) — a fan-out must fire for every writer, including a seed
+--     and a future `security definer` RPC.
+--   * `on conflict do nothing` STAYS. `notifications_event_key` is
+--     `(user_id, type, actor_id, postcard_id, comment_id, ride_id, club_id)`
+--     `nulls not distinct`, so leave-and-rejoin cannot stack a second row in any
+--     crew member's list any more than it could in the organizer's.
+--   * INSERT only. A going<->maybe change is an UPDATE and there is no trigger
+--     on it, so flipping status still notifies nobody.
+--
+-- ---------------------------------------------------------------------------
+-- THE ACTOR IS EXCLUDED AFTER THE UNION, NEVER INSIDE AN ARM
+-- ---------------------------------------------------------------------------
+-- `036` §7.6 pays for this lesson on `club_joined` and it applies here for the
+-- same structural reason: a rider can qualify through BOTH arms, so excluding
+-- them inside one leaves them in through the other.
+--
+-- The path is not hypothetical — it is the organizer's own RSVP. An organizer
+-- who RSVPs to their own ride is `rides.organizer_id` AND, one statement later,
+-- a `ride_members` row with status `going`. Filter the actor inside the crew arm
+-- only and the organizer arm still yields them, so **every organizer RSVPing to
+-- their own ride tells themselves that they joined it.** Filter inside the
+-- organizer arm only and the crew arm does the same. `036`'s existing assertion
+-- "the organizer RSVPing to their own ride notifies nobody" is the tripwire, and
+-- it only stays true because the exclusion sits in the outer WHERE.
+--
+-- ---------------------------------------------------------------------------
+-- IS UNIONING `rides.organizer_id` SAFE FOR THIS TYPE? — YES, and §7.5 is why
+-- the question has to be asked
+-- ---------------------------------------------------------------------------
+-- `036` §7.5 REFUSES the equivalent union for `ride_created_in_club`, and that
+-- refusal is the most important line in that file: a recipient whose own SELECT
+-- policy discards the row gets a notification that is unreadable from the
+-- instant it is written, for ever, with nothing to raise and no count to move.
+-- **A row nobody can ever read is worse than no row.** So the union is not
+-- safe-by-default; it is safe or not depending on the SUBJECT's policy, and it
+-- has to be checked per type rather than reasoned by analogy.
+--
+-- For `ride_joined` the subject is the RIDE itself, and `rides` SELECT leads
+-- with an unconditional organizer arm. Read from `pg_policies` on DEV
+-- (fpmrimzxadewsaiwpsel) on 2026-08-12, immediately before this file was
+-- written, and reproduced verbatim so the derivation is checkable by eye:
+--
+--     (organizer_id = auth.uid())
+--     OR ((NOT private.is_blocked(auth.uid(), organizer_id))
+--         AND (((is_public AND ((club_id IS NULL)
+--                               OR private.is_club_public(club_id))))
+--              OR ((club_id IS NOT NULL) AND private.is_club_member(club_id))))
+--
+-- The first disjunct is `organizer_id = auth.uid()`, at the top level of an OR,
+-- with no block conjunct and no membership conjunct over it. So an organizer
+-- resolves their own ride unconditionally — whatever its `is_public`, whatever
+-- its `club_id`, and whether or not they hold a `ride_members` row or a
+-- `club_members` row. `036` §3's own table already records this ("ride_joined :
+-- `rides` SELECT's first arm is `organizer_id = auth.uid()`"); this file
+-- re-measured it rather than inheriting it, because that policy has been
+-- rewritten twice already — by `017` and by `022` — and `054` changed
+-- `private.is_club_member` underneath it as recently as this week.
+--
+-- **The contrast with §7.5 is a fact about the two policies, not about the two
+-- clubs.** `ride_created_in_club`'s subject conjunction includes `rides`, whose
+-- only CLUB arm is `private.is_club_member(club_id)` — a membership test that
+-- had no owner arm when `036` was written, which is what made the ownerless
+-- owner unreachable there. Here the organizer never needs that arm at all.
+--
+-- Note for whoever revisits §7.5: `054` gave `private.is_club_member` an owner
+-- arm, so the ownerless owner now resolves their own club's rides and §7.5's
+-- narrowing has become a gap rather than a consequence. The suite already says
+-- so — see the `036/054` assertion in `supabase/tests/rls_test.sql`. That is a
+-- separate change and is NOT made here; this file touches one function.
+--
+-- ---------------------------------------------------------------------------
+-- KNOWN GAP, MEASURED AND DELIBERATELY NOT CLOSED HERE: a crew member who
+-- cannot resolve the ride
+-- ---------------------------------------------------------------------------
+-- The organizer arm is safe, as above. The CREW arm admits a narrow set of
+-- recipients for whom the §7.5 hazard is real, and it is recorded here rather
+-- than discovered later, because nothing about it is visible from either side on
+-- its own.
+--
+-- **THE RECIPIENT SET IS DELIBERATELY WIDER THAN `rides` SELECT CAN RESOLVE,
+-- AND THAT IS THE SAFE DIRECTION.** The root cause is one measured fact:
+-- `rides` SELECT HAS NO CREW ARM. Read from `pg_policies` on DEV 2026-08-12 —
+-- neither `ride_members` nor `private.is_ride_crew` appears anywhere in its
+-- `qual`. The three ways into a ride are organizer, public, and club member. So
+-- "is on this ride's crew" and "can see this ride" are DIFFERENT SETS, and this
+-- fan-out addresses the first while `036` §3 conjunct 4 filters on the second.
+--
+-- Being wider is the correct direction of the two. A set wider than the read
+-- policy loses notifications; a set narrower than it would be fine too, but a
+-- fan-out that tried to *predict* the read policy and got it wrong in the other
+-- direction is not possible here at all — the read policy is what actually
+-- decides, so nothing this file writes can ever be shown to someone who should
+-- not see it. The failure mode is bounded to a row that renders nowhere.
+--
+-- A `ride_members` row does NOT imply the holder can still SELECT the ride.
+-- Blocking does not remove anyone from a roster, and leaving a club does not
+-- either. Two routes in, both measured on the local suite database on
+-- 2026-08-12 and both asserted in §055:
+--
+--   * **A block.** A rider on a PUBLIC ride who blocks its organizer keeps their
+--     `ride_members` row (1) and reads the ride as 0 rows — the organizer arm is
+--     not theirs, and the second disjunct is gated on
+--     `NOT private.is_blocked(auth.uid(), organizer_id)`.
+--   * **Leaving a club**, with no block anywhere. A rider RSVPs to a PRIVATE
+--     club's ride while a member, then leaves the club; `club_members` DELETE is
+--     a bare `auth.uid() = user_id` and no trigger reaches `ride_members`, so
+--     they stay on the crew and lose the ride. `051.8` already fixtures this
+--     state for a different reason.
+--
+-- **The two routes are why the cheap fix is refused rather than merely
+-- deferred.** Excluding candidates blocked with the organizer closes the first
+-- and leaves the second untouched, while reading as a complete repair.
+--
+-- Such a recipient gets a row that `036` §3 conjunct 4 discards on every read.
+-- Two properties bound it and are the reason it is accepted rather than fixed
+-- in this file:
+--
+--   1. **It fails CLOSED.** The defect is a notification that is never shown,
+--      never a row shown to someone who should not see it. Nothing leaks, and
+--      decision #2 is not weakened — the read policy is doing the discarding.
+--   2. **It is reversible.** Unblocking, or rejoining the club, makes the row
+--      readable again — `036` §4 argues at length that a row returning UNREAD
+--      after such a reversal is the correct answer. §7.5's ownerless owner was
+--      permanent by construction, which is the property that made the narrowing
+--      there mandatory rather than optional.
+--
+-- Closing BOTH routes means restating `rides` SELECT inside this trigger — a
+-- second implementation of a policy that has already been rewritten twice, which
+-- is precisely what `036` §3 warns against ("the conjunction is cheap and does
+-- not go stale; the derivation does"). Done properly it wants a
+-- `private.can_read_ride(candidate uuid, ride uuid)` definer helper taking its
+-- subject as an argument — the only shape that satisfies both routes at once,
+-- and the same shape `036` trap (c) demands of any predicate a fan-out applies
+-- per candidate. That is a design decision of its own and is filed as its own
+-- story rather than smuggled in here.
+--
+-- **The other end is cheaper and may be the real answer**: giving `rides` SELECT
+-- a crew arm would make the gap disappear without any fan-out change at all,
+-- since a crew member would then resolve the ride by virtue of being on it. It
+-- is a widening of a read policy and therefore squarely a `data` + `reviewer`
+-- decision rather than a detail of this migration. §055 asserts the arm's
+-- ABSENCE, so that change fails this suite and arrives here to be reconsidered.
+--
+-- `supabase/tests/rls_test.sql` §055 pins this as a NAMED, ASSERTED property, so
+-- it reads as a known gap with a story behind it rather than as an oversight —
+-- and so the day it is closed, the assertion that has to flip is already
+-- written.
+--
+-- ---------------------------------------------------------------------------
+-- VOLUME: quadratic in crew size, deliberately unbounded, stated so nobody
+-- rediscovers it
+-- ---------------------------------------------------------------------------
+-- Product owner's decision, 2026-08-12: ship crew-wide as the design draws, with
+-- no cap, no digest and no batching. The cost is written down here so the next
+-- session reading this function does not have to derive it a second time and
+-- does not mistake it for an oversight.
+--
+-- **Joiner number N notifies the N-1 riders already on the crew, so a ride that
+-- fills to N riders writes about N^2/2 rows over its life.** A 30-rider ride
+-- writes ~450 rows in total, spread across 30 separate transactions — each
+-- individual join writes at most 29 rows in one set-based statement, which is an
+-- order of magnitude below the 500-row club fan-out `036` §7 already accepts and
+-- measured. At a motorcycle ride's realistic ceiling this is nothing.
+--
+-- **It becomes worth bounding only if crews ever get large**, and the trigger to
+-- watch is the crew-size distribution rather than the row count: 200 riders on
+-- one ride is ~20,000 rows and a 199-row write on the last join. Nothing on the
+-- roadmap creates a crew that size. If one ever does, the fix is a cap or a
+-- digest at fan-out, not an index — the reads are already served by
+-- `notifications_user_created_idx`.
+--
+-- Retention is unchanged and is still the cascade window: every row here dies
+-- with its ride, its actor or its recipient. Widening the recipient set adds no
+-- personal-data category and no new table, so `036`'s retention statement and
+-- the account-deletion reach both carry over untouched.
+
+-- ---------------------------------------------------------------------------
+-- The function
+-- ---------------------------------------------------------------------------
+-- Structurally identical to `036` §7.6's `notify_club_joined`: a UNION of two
+-- arms in a subquery, with BOTH the actor exclusion and the block check in the
+-- outer WHERE. The parallel is deliberate — the two are the only fan-outs in
+-- this schema with a multi-arm recipient set, and a reviewer should be able to
+-- read one against the other.
+--
+-- `status in ('going', 'maybe')` is TOTAL against today's schema:
+-- `ride_members_status_check` is `status = ANY (ARRAY['going', 'maybe'])`, so
+-- the predicate currently excludes nothing. It is written anyway, because the
+-- recipient set is "everyone who is Going or Maybe" rather than "every row in
+-- the table", and those two stop being the same thing the day a third status is
+-- added. Stating it now costs nothing; inferring it later from a CHECK that has
+-- since changed is how a declined rider starts getting notified. The suite
+-- asserts the CHECK's domain is still exactly those two values, so a third
+-- status turns this comment into a failing test rather than a silent widening.
+--
+-- `maybe` is included ON PURPOSE and is not an oversight to be tidied away: a
+-- Maybe rider is still on the crew, and a ride filling up is exactly the signal
+-- that flips them to Going.
+create or replace function private.notify_ride_joined()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.notifications (user_id, actor_id, type, ride_id)
+  select candidates.recipient, new.user_id, 'ride_joined', new.ride_id
+    from (
+      select r.organizer_id as recipient
+        from public.rides r
+       where r.id = new.ride_id
+      union
+      -- Index-served by ride_members_pkey (ride_id, user_id) — leading column.
+      select m.user_id
+        from public.ride_members m
+       where m.ride_id = new.ride_id
+         and m.status in ('going', 'maybe')
+    ) candidates
+   -- AFTER the union, never inside an arm: the organizer's own RSVP qualifies
+   -- through both, and filtering inside one leaves them in through the other.
+   where candidates.recipient <> new.user_id
+     -- Blocking, symmetric from one directional row, so one call per candidate
+     -- covers both directions. The rider's own RSVP still succeeds — a block
+     -- suppresses the notification, not the action.
+     and not private.is_blocked(new.user_id, candidates.recipient)
+  on conflict do nothing;
+  return null;
+end;
+$$;
+
+-- The previous text said "notifies the ride's organizer and nobody else", which
+-- this file makes false. A database comment is the one piece of documentation no
+-- edit to CLAUDE.md can reach (`028` and `033` exist because of exactly that),
+-- so it changes in the same statement that makes it wrong.
+comment on function private.notify_ride_joined() is
+  'Fan-out: an RSVP notifies the ride''s WHOLE CREW — everyone Going or Maybe, unioned with rides.organizer_id, minus the actor and minus anyone blocked with them (055, widening 036 §7.4). The organizer union IS safe for this type because rides SELECT leads with an unconditional organizer_id = auth.uid() arm, unlike ride_created_in_club — see 055. The actor is excluded AFTER the union or an organizer RSVPing to their own ride notifies themselves. INSERT only, so a going<->maybe change notifies nobody. Volume is quadratic in crew size by decision, not by oversight: a ride filling to N riders writes ~N^2/2 rows over its life.';
+
+-- Re-issued rather than assumed. `create or replace` preserves privileges, so
+-- this is a no-op against any database carrying `036` — and it is what makes
+-- this file correct standing alone. Asserted by naming the ROLE with
+-- `has_function_privilege`, never by attempting the call: the suite runs as the
+-- table owner, for whom the barrier does not exist (`031`'s lesson).
+revoke all on function private.notify_ride_joined() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the live project after applying
+-- ---------------------------------------------------------------------------
+--   -- t, {"search_path=\"\""} — still a definer with the path pinned. Note the
+--   -- stored form: `set search_path = ''` records as `search_path=""`, NOT as
+--   -- `search_path=`. Expecting the latter fails against a correct function,
+--   -- which is how 055's own assertion was first written.
+--   select prosecdef, proconfig from pg_proc
+--    where oid = 'private.notify_ride_joined()'::regprocedure;
+--
+--   -- f, f, f — no client role, and not service_role either
+--   select has_function_privilege('authenticated','private.notify_ride_joined()','execute'),
+--          has_function_privilege('anon','private.notify_ride_joined()','execute'),
+--          has_function_privilege('service_role','private.notify_ride_joined()','execute');
+--
+--   -- 0 — auth.uid() appears nowhere in the body
+--   select count(*) from pg_proc
+--    where oid = 'private.notify_ride_joined()'::regprocedure
+--      and prosrc like '%auth.uid()%';
+--
+--   -- 1 row — still bound, still carrying NO when clause. The tgname filter is
+--   -- REQUIRED and not tidiness: ride_members is one of the ten tables carrying
+--   -- enforce_participation_gate, so the unfiltered query returns TWO rows with
+--   -- the gate's no_when_clause reading false — a correct database that reads as
+--   -- a failed apply, at exactly the moment (the PROD promotion) this block is
+--   -- run. rls_test.sql already carries the filtered form.
+--   select tgname, tgqual is null as no_when_clause from pg_trigger
+--    where tgrelid = 'public.ride_members'::regclass and not tgisinternal
+--      and tgname = 'notify_ride_joined';
+--
+--   -- 2 rows, naming 5 types between them — the type CHECK is untouched and no
+--   -- sixth type was added. The 5 is the type count INSIDE the CHECK, not a row
+--   -- count; the neighbouring comments here are row counts.
+--   select pg_get_constraintdef(oid) from pg_constraint
+--    where conname in ('notifications_type_check','notifications_subject_shape');
+--
+--   -- 2 — SELECT and UPDATE only. No policy moved.
+--   select cmd from pg_policies
+--    where schemaname='public' and tablename='notifications';
+--
+-- And `get_advisors(security)` must still return the documented NINE. This file
+-- adds no function to `public` and moves no grant, so a tenth is a failed apply
+-- rather than a finding to file.

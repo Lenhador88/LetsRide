@@ -186,23 +186,37 @@ export const claims = [
   {
     id: 'migrations-count-claude',
     file: 'CLAUDE.md',
-    // The tail of this pattern tracks the DEV/PROD RELATIONSHIP, which has
-    // changed six times since 2026-08-09 — 041, 042, 043, 044, 045, 046, each
-    // applied to DEV by itself. Keep this list in step with the regex below when
-    // you move it: the comment stopped a migration short once already, which
-    // reads as the pin being stale when it was the prose that was.
-    // It is deliberately NOT relaxed to
-    // /Applied state: (\d+) files/: the numeric half is the only thing this
-    // entry verifies, so pinning the prose is what forces the next session to
-    // re-read the sentence when the relationship changes again (i.e. when PROD
-    // catches up) rather than leaving a stale "AGREE" behind a correct count.
-    // A pattern miss here is the check working, not breaking.
-    // 2026-08-10: PROD caught up, so the pinned prose moved from "DEV is SIX
-    // AHEAD of PROD" to "DEV and PROD are LEVEL". That transition is the one
-    // this entry's comment predicted, and it worked — the pattern stopped
-    // matching and the check reported SKIPPED rather than passing on a claim
-    // it was no longer reading.
-    pattern: /\*\*Applied state: (\d+) files, and DEV and PROD are LEVEL/,
+    // The tail of this pattern pins the DEV/PROD RELATIONSHIP prose, and it is
+    // deliberately NOT relaxed to /Applied state: (\d+) files/. The numeric half
+    // is the only thing this entry verifies, so pinning the prose is what forces
+    // the next session to re-read the sentence when the relationship changes
+    // rather than leaving a stale "AGREE" behind a correct count. Relaxing the
+    // regex is the obvious repair and it is the wrong one.
+    //
+    // ** A pattern miss here FAILS, and this comment said "skipped" until
+    // 2026-08-11. ** check.mjs was changed on 2026-08-10 to make an unmatched
+    // anchor a ClaimLocateError with status 'fail' — see its own comment saying
+    // both "read as a skip until 2026-08-10". This entry is kind: 'shell', so it
+    // is in CHEAP_KINDS and runs under `docs:check --cheap` in CI on every PR
+    // that touches code. So the day 051 lands on DEV alone — the ordinary state
+    // of a migration between its merge and its promotion — this claim goes RED
+    // on every unrelated PR until someone edits the prose and this pattern
+    // together. That is the tripwire working, but budget for it: the fix is two
+    // edits in one commit, never a relaxed regex.
+    //
+    // The flip-by-flip history of this pin lives in `git log -p` and is not
+    // recopied here; it grew a paragraph every time PROD caught up.
+    // 2026-08-12: 051 and 052 landed on DEV alone, which is the exact case the
+    // paragraph above predicted. Prose and pattern edited together, as it says.
+    // Later the same day PD-201 applied 051-054 to PROD and this went red on cue
+    // — the mechanism working, not failing. Now pinned to LEVEL, so the next
+    // DEV-only migration turns it red again and the sentence gets re-read.
+    // The pin is on the RELATIONSHIP in both directions; do not relax it to the
+    // count just because the two projects agree today.
+    // 2026-08-12: 055 landed on DEV alone (PD-129), so the pin moved off LEVEL
+    // to DEV AHEAD. It goes red again the moment PROD catches up, which is the
+    // half of "both directions" that is easy to forget when editing this line.
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV AHEAD/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -564,9 +578,9 @@ export const claims = [
   // ---- Hardcoded origin (must stay 0) --------------------------------------
   //
   // The claim exists because the domain move (2026-08-07) needs NO code
-  // change: ShareButton, signUp and requestPasswordReset all build URLs from
-  // window.location.origin. A hardcoded origin would surface only in an email
-  // a rider receives, which no other gate in this repo reads.
+  // change: ShareButton, signUp and requestPasswordReset all build their URLs
+  // from an origin resolved at runtime. A hardcoded origin would surface only
+  // in an email a rider receives, which no other gate in this repo reads.
   {
     id: 'hardcoded-origin-src',
     file: 'CLAUDE.md',
@@ -575,11 +589,42 @@ export const claims = [
     // character-for-character needs a regex whose every escape is itself
     // escaped — the one shape in this file most likely to be "corrected" into
     // silently matching nothing. Both ends are pinned and the pair is unique.
-    pattern: /only surface in email: `grep -rn "letsrideapp.+localhost:3000" src\/` is (\d+)\./,
+    pattern: /`grep -rn "letsrideapp.+localhost:3000" src\/` is (\d+), and/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `grep -rn "letsrideapp\\|vercel\\.app\\|localhost:3000" src/ | wc -l`,
     about: '§Branching & CI: no hardcoded origin anywhere in src/ (must be 0)',
+  },
+
+  // ---- The runtime origin has exactly one reader (must stay 1) -------------
+  //
+  // The claim above cannot do this one's job, and PD-188 exists because the
+  // two were conflated: a URL built from `window.location.origin` carries no
+  // hostname to grep for, so the hardcoded-origin check reads a clean 0 while
+  // every emailed link from the native bundle points at `https://localhost`.
+  // What is countable is the *reader*: `canonicalOrigin()` in
+  // `src/lib/origin.ts` is the only code in `src/` that touches it, and a new
+  // one is how a URL that leaves the app quietly goes back to the webview's
+  // origin.
+  //
+  // Comment lines are excluded, and this claim is why: `origin.ts`'s own doc
+  // block explains what the app moved away from, so the unfiltered count reads
+  // 2 against a real 1 — CLAUDE.md's comment trap, in the file that closed it.
+  // (Measured 2026-08-12: 3 raw hits, in `origin.ts` ×2 and
+  // `origin-normalise.ts` ×1 — two doc blocks and the one real read. Do not
+  // restate that split; it moves whenever a comment is reworded, and this
+  // sentence has already been wrong twice by trying. The three call sites name
+  // `canonicalOrigin()` and do not match.) No unfiltered companion entry: the raw
+  // count moves with every comment reworded, which would make the claim a
+  // maintenance tax rather than a check.
+  {
+    id: 'runtime-origin-readers',
+    file: 'CLAUDE.md',
+    pattern: /is 1 — the definition inside `canonicalOrigin\(\)`, nowhere else\./,
+    extractStated: () => 1,
+    kind: 'shell',
+    cmd: `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | wc -l`,
+    about: '§Branching & CI: only canonicalOrigin() reads window.location.origin',
   },
 
   // ---- hard_deny entry count -----------------------------------------------

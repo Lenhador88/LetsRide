@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:native": "CAPACITOR_BUILD=1 next build && node scripts/native/check-export.mjs",
+    "release:check": "node scripts/native/assert-release-bundle.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "./supabase/tests/run.sh",

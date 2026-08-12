@@ -102,12 +102,13 @@ describe('the token cap', () => {
 
     await searchPlaces([...repeated, 'Maastricht'].join(' '), null)
 
-    // Under the cap once deduped (2 unique tokens), so nothing is truncated —
-    // the original term, repeats and all, is sent unchanged and the database
-    // does its own dedup on the far side (`039` §5d).
+    // `Maastricht` survives — the point of deduping before the slice. The
+    // repeats do NOT reach the database: normalisation is unconditional now, so
+    // the deduped list is what is sent rather than the raw term. That only
+    // helps, since `similarity(term, name)` was being diluted by them.
     expect(rpc).toHaveBeenCalledWith(
       'search_places',
-      expect.objectContaining({ q: [...repeated, 'Maastricht'].join(' ') })
+      expect.objectContaining({ q: 'Jumbo Maastricht' })
     )
   })
 
@@ -120,6 +121,68 @@ describe('the token cap', () => {
       'search_places',
       expect.objectContaining({ q: distinct.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ') })
     )
+  })
+
+  /**
+   * **The assertion that survives an ICU upgrade, which is the one that
+   * matters.** Everything else here pins a number; this pins the PROPERTY the
+   * correctness argument actually rests on — the database receives at most
+   * eight tokens separated by single U+0020, and containing no character any
+   * locale's `\s` could split on.
+   *
+   * The two inputs are the measured divergence vectors, not invented ones. The
+   * first defeats a client that predicts Postgres's SPLIT (`U+001F` separates
+   * there and not in JavaScript); the second defeats one that predicts its
+   * FOLD (`U+1C89`/`U+1C8A` are one token to V8's `toLowerCase` and two to the
+   * server's ICU). Both reached the database as nine before `boundTerm` began
+   * normalising unconditionally.
+   */
+  it.each([
+    ['a control character Postgres splits on and JavaScript does not', 'aabb cc dd ee ff gg hh ii'],
+    ['a case pair V8 folds and ICU does not', 'Ᲊx ᲊx abc def ghi jkl mno pqr stu'],
+    ['ordinary text', 'Albert Heijn XL Hoog Catharijne Utrecht'],
+    ['whitespace of every kind', 'aa bb cc\tdd　eeffgg hh ii jj'],
+  ])('sends at most eight single-space-separated tokens — %s', async (_label, term) => {
+    await searchPlaces(term, null)
+
+    const { q } = rpc.mock.calls[0][1] as { q: string }
+
+    expect(q.split(' ').length).toBeLessThanOrEqual(PLACE_SEARCH_MAX_TOKENS)
+    // No leading, trailing or doubled separator, and nothing but U+0020 between
+    // tokens — so Postgres's own split cannot find a boundary this one did not.
+    expect(q).toBe(q.trim())
+    expect(q).not.toMatch(/[\s\p{Zs}\p{Cc}]{2}|^[\s\p{Zs}\p{Cc}]|[\s\p{Zs}\p{Cc}]$/u)
+    expect(q.replace(/ /g, '')).not.toMatch(/[\s\p{Zs}\p{Cc}]/u)
+  })
+
+  /**
+   * **A second copy of a number is the shape that goes stale, so this reads the
+   * live one.** The database's cap and `PLACE_SEARCH_MAX_TOKENS` must stay
+   * equal in one direction: drop the database's below this one and every
+   * seven-or-eight-token query silently returns zero rows.
+   *
+   * It scans for the LAST migration that sets a cap rather than naming `049`.
+   * Migrations are append-only, so a future `050` lowering it would leave a
+   * hardcoded `049` reading a frozen file — green, while the live database
+   * refused at the new number. That is precisely the dead zone this exists to
+   * catch, so the test has to follow the supersession rather than the filename.
+   */
+  it('is the same number the newest migration refuses above', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs')
+
+    const caps = readdirSync('supabase/migrations')
+      .filter((f) => f.endsWith('.sql'))
+      .sort()
+      .map((f) => ({
+        file: f,
+        cap: readFileSync(`supabase/migrations/${f}`, 'utf8').match(
+          /array_length\(tk\.pats, 1\), 0\) <= (\d+) as searchable/
+        ),
+      }))
+      .filter((m) => m.cap !== null)
+
+    expect(caps.length, 'no migration carries a search_places token cap in the form this reads').toBeGreaterThan(0)
+    expect(Number(caps[caps.length - 1].cap![1])).toBe(PLACE_SEARCH_MAX_TOKENS)
   })
 })
 

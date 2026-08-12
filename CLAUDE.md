@@ -131,9 +131,11 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on nine tables — `postcards`,
+   gets inherited as covered.** `enforce_participation_gate` is on **ten** tables on both DEV and
+   PROD — `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
-   `postcard_reports`, `ride_messages` — and **not** on `profiles` UPDATE, `profile_countries`,
+   `postcard_reports`, `ride_messages`, plus `ride_map_render_attempts`, which `051` added and
+   which was DEV-only until PD-201 levelled the projects — and **not** on `profiles` UPDATE, `profile_countries`,
    `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy, which check the path
    prefix only. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
    calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
@@ -261,8 +263,8 @@ Formik; the forms in this app are one to three fields.
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
 | Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (36 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
-| Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
-| End-to-end | Playwright | Still deferred as a full suite — the walk makes no assertions about behaviour, only about whether a screen rendered |
+| Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in and checks the email survives it, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. It then refuses a create and an edit and checks every field and choice of each survives. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
+| End-to-end | Playwright | Still deferred as a full suite. **The walk is not the gap being filled**: it asks one question per route — did this render — and asserts behaviour only in its six named phases, each covering a defect no other gate here can see (PD-196's cleared email, PD-199's cleared create form and its silently-rewritten edit form, PD-111's navigation cost, the guard's redirects, what sign-out leaves behind). Adding a phase means adding a reason, not broadening a remit |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
 
@@ -410,10 +412,18 @@ introduce a service-role key into the app" — **the function is not the app**:
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**It is written, not deployed, and has never run.** There is no `supabase` CLI in the build
-container and the Supabase MCP server has no deploy tool, so deploying is an **owner action**.
-A function deployed by hand and never redeployed is the same class of drift as an unapplied
-migration, and CI has no path that would catch it.
+**It is deployed to both projects and `ACTIVE`, as of 2026-08-11** — and it stays an **owner
+action**, which is why it is still drift waiting to happen. There is no `supabase` CLI in the
+build container and the Supabase MCP server has no deploy tool, so nothing in a session can
+redeploy it after an edit to `supabase/functions/delete-account/index.ts`, and CI has no path that
+would notice. Check the deploy rather than trusting this line, and check that both projects run
+the *same* build:
+
+```
+mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
+mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
+# status ACTIVE, verify_jwt true, and ezbr_sha256 equal across the two
+```
 
 **There is one doorway now, and almost nothing should reach past it:**
 - **Anything in `src/lib/data/` or `src/lib/actions/`** →
@@ -470,9 +480,10 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 48 files, and DEV and PROD are LEVEL — both at `048`, 2026-08-10.** Do not
+**Applied state: 55 files. DEV is at `055`, PROD at `054` — DEV AHEAD, 2026-08-12.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead.
+`ls supabase/migrations/` instead. DEV-ahead is the ordinary state of a migration between its
+merge and its promotion, not drift; `055` reaches PROD with PD-129's promotion.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -502,7 +513,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1213** assertions — re-derive rather than trust it:
+Suite **1428** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -813,8 +824,9 @@ node -p "Math.round(require('fs').statSync('CLAUDE.md').size/4)"                
 node -p "Math.round(require('fs').statSync('.claude/agents/reviewer.md').size/4)"   # + its brief
 ```
 
-So `reviewer` costs ~42k before it reads one line of the diff. **Delegate when the agent will read
-more than ~40k of material and return a paragraph.** `Explore` sweeping forty files for one
+So `reviewer` costs ~34k before it reads one line of the diff — measured 2026-08-11, and it moves
+with the files, which is why the commands are here rather than the number. **Delegate when the
+agent will read more of the codebase than its own fixed cost and return a paragraph.** `Explore` sweeping forty files for one
 conclusion clears that easily. A subagent that just runs the build does not — a green run is ~1k
 of output — `tsc` prints nothing, lint 3.4k, `test:unit` 0.6k — so it spends ~38k, its own brief
 included, to save ~1k.
@@ -833,6 +845,78 @@ the brief costs more than the task.
 produces work that is individually correct and collectively inconsistent. Under-delegating
 produces work with no fresh eyes on it, where every assumption the author made at the start
 survives to the end unchallenged. The second is the one this repo has actually suffered from.
+
+### Delegating while the owner is at the keyboard
+
+**Adopted 2026-08-11.** The grant above answers *whether* to delegate. This answers the case where
+the owner is present and asking about other stories — a session that is a conversation as much as
+a build.
+
+**Default: one build in flight, in the background, and the thread stays free.** Spawn the agent,
+reply at once, and keep answering questions about other stories while it runs. What this buys is
+**availability, not throughput** — and the Routine is not the fallback a session assumes it is,
+because gate (7) of `.claude/commands/queue-pickup.md` stops a firing when any of the owner's
+sessions was touched in the last 15 minutes. **So while the owner is at the keyboard the queue is
+suppressed, not merely slow**, and this mode is the only thing picking work up at all.
+
+**Backgrounding it and then waiting on it is the same as not backgrounding it.** Product owner,
+2026-08-11: *"shouldn't all of that be running on the background?"* — said to a session that had
+correctly spawned `reviewer` with `run_in_background`, then stopped and idled until it returned.
+The point of the background is the *thread*, not the agent. While one runs, do every step that
+does not depend on its answer: push, open the PR so CI starts, update Linear, write the handoff.
+**A long-running thing you cannot act on yet is never a reason to stop** — the completion
+notification re-invokes you, so there is nothing to wait for and nothing to poll.
+
+This is also the one place `reviewer`-before-the-PR bends, and only in ordering: opening the PR
+starts CI in parallel and the findings still land before the **merge**, which is the threshold
+that matters. Never merge on an unfinished review.
+
+**The break-even is CLAUDE.md plus the agent's own brief — nothing else.** A subagent is handed
+this file and its brief; `docs/HANDOFF.md` is not auto-loaded into one, so counting it inflates
+every estimate and argues against delegating work that clears the bar comfortably:
+
+```bash
+node -p "Math.round(require('fs').statSync('CLAUDE.md').size/4)"                  # every agent
+for b in .claude/agents/*.md; do
+  echo "$b $(node -p "Math.round(require('fs').statSync('$b').size/4)")"; done   # + one brief
+```
+
+Measured 2026-08-11 that is **~27k** for a `feature` story and **~34k** for `reviewer`, the most
+expensive brief — so the material an agent must read to be worth spawning is lower than the ~40k
+above suggests, and the rule bites in the direction this repo already errs. A copy fix or a
+one-liner still stays in the main thread.
+
+**The one real quality regression: the owner sees an assumption only after it has been built on.**
+Inline, an assumption is a line in a reply and is corrected in the same minute; from a background
+agent it arrives in a report, by which time it is load-bearing across a dozen files.
+§Working With the Product Owner still governs, **including the half that is easiest to lose here:
+disagreement means stop and *wait*, not stop and mention it in the report.** Attended delegation
+is the mode where waiting is cheapest — the owner is at the keyboard by definition. **Resolve the
+ambiguities into the brief before spawning**; the defect this mode adds is latency, not judgement.
+
+**A second concurrent build is not free, and the collisions are resources rather than files.** Two
+agents on unrelated stories barely touch the same source, but they share:
+
+- **One test database.** `supabase/tests/run.sh` defaults `TEST_DB=letsride_test` and opens with
+  `drop database if exists`. **Do not read a refused drop as proof this is safe** — Postgres
+  refuses `DROP DATABASE` while another session is connected and `run.sh` passes no `WITH (FORCE)`,
+  so the obvious experiment says "protected". It is not: every step is its own `psql`, so the
+  database is unconnected between them and a drop landing in one of those gaps takes the other run
+  down mid-chain on a missing relation.
+- **Two fixed ports.** The relay defaults to `:3001` (`scripts/supabase-relay.mjs`) and the walk
+  targets `http://localhost:3000` (`scripts/walk.mjs`). `npm run dev` pins no port, so the second
+  agent's server slides to the next free one while its walk still calls `:3000` — it signs in,
+  walks the **first** agent's tree, and reports **green**.
+
+Both are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. Set them per agent
+or serialise the verification step. The database half fails loudly; the port half passes, which is
+why it is the dangerous one.
+
+**The docs spine collides even when the code does not** — §Working Principles already carries the
+measurement and the command, so re-derive it there rather than trusting a second copy. What
+follows from it here: **agents do not write `CLAUDE.md` or `docs/HANDOFF.md`; the main thread
+does**, once the reports are in. That also keeps the git index single-writer, which is what
+actually corrupts a shared tree.
 
 ## Architectural Decisions
 
@@ -865,12 +949,13 @@ project's whole life while PROD was "on", and three places in `src/` drove real 
 sentence. `signUp` now branches on `data.session` and is correct under either configuration.
 
 **A second setting behind the same door has the same property**, and it is worse when wrong: if
-`letsride`'s Site URL is `http://localhost:3000` and the production origin is off the redirect
-allowlist, every link the app emails lands on a dead address. **`http://localhost:3000/**` was
-still honoured on PROD's redirect allowlist at the last probe — a permanently open redirect
-target on a production auth server, and the half most likely to be forgotten once the dead-link
-half is fixed.** Re-run the credential-free probe in `docs/ENVIRONMENTS.md` §The redirect
-allowlist rather than trusting this line; that file holds the dated result.
+`letsride`'s Site URL points at a host that does not serve the app and the real origin is off the
+redirect allowlist, every link the app emails lands on a dead address — silently, because an
+unlisted `redirect_to` is discarded and replaced by the Site URL rather than refused. Both
+projects were repointed at `letsride.social` on 2026-08-11 and PROD's `http://localhost:3000/**`
+entry went with the move. Re-run the credential-free probe in `docs/ENVIRONMENTS.md` §The
+redirect allowlist rather than trusting this line; that file holds the dated result, and it has
+gone stale twice.
 
 **7. Username, not full name.** `profiles.full_name` is dropped. Onboarding collects a **username**, which is `UNIQUE` — so that step needs live availability checking, a taken error state, and character/length rules. Every place the design shows a person's name (postcard bylines, profile headers, member lists, chat) renders the username.
 
@@ -1026,6 +1111,67 @@ where the reasoning belongs, and they stay as long as they need to be. Do not al
 into chat — link it. If something is worth saying twice it is worth saying once, in the place
 that survives the session.
 
+**Do not narrate the step you are about to take.** Product owner, 2026-08-11: *"output less
+information."* The rule above covers recapping work already done; this is the other half, and it
+is the one that produces a paragraph before every tool call. *"Checking X before I do Y"*,
+*"Making both edits together"*, *"Prepping the body so it opens the moment the review lands"* —
+the tool call itself already shows all of that. **Announce a decision only when the owner could
+still change it**; otherwise act, and say what came back. A reply whose content is its own
+preamble should not have been sent.
+
+**While a subagent is running, say nothing.** Product owner, 2026-08-12, twice in one session:
+*"didn't we agree that you run it in the background?"* — asked about a session that was
+correctly backgrounding its agents and then narrating each one. Backgrounding buys the owner
+their attention back; spending it on status updates returns the cost and keeps none of the
+benefit.
+
+**It governs what you SAY UNPROMPTED, and nothing else.** Between spawning an agent and its
+result landing, do not send what the agent is doing, what you will do with its answer, a
+restatement of the plan, or a status line each time a background shell wakes the turn. **The
+next *unprompted* words after a spawn should be the result.**
+
+Three things are still owed and none of them is a status update:
+
+- **Anything the owner just asked.** Answer it immediately and fully. §Delegating while the
+  owner is at the keyboard is explicit — *"spawn the agent, reply at once, and keep answering
+  questions about other stories while it runs"* — and that mode buys **availability**, which
+  is the whole return on backgrounding. It is also the only thing picking work up while they
+  are at the keyboard, since queue-pickup's gate (7) suppresses the Routine. Silence here
+  cancels the mode rather than serving it.
+- **A question only they can answer, and a blocked capability.** Both are decisions, not
+  status.
+- **A one-line answer to a hook that returned `decision: block`.** That is a prompt, unlike a
+  background-shell wake — and `session-wrapup-check.sh` writes its marker *before* it speaks
+  and now fires once per branch, so the ask is spent whether or not you answer. Answer it in
+  the one line it requests.
+
+This is the same rule as the two above, and it is written separately because it fails
+differently: those produce a long reply, this one produces *many* replies, which is worse. A
+session that says one line six times has said more than one that said six lines once, and has
+interrupted six times to do it.
+
+**Report the things they must ACT on, and nothing else.** Product owner, 2026-08-12: *"just come
+back to me with the outcome of points questions etc. That I need to act upon."* This is the test
+the three rules above were all reaching for, stated directly — apply it to every reply, including
+the wrap-up.
+
+**It governs CHAT REPLIES, exactly like the three rules it restates, and nothing else.** The
+`Done ; )` push notification above is by construction a report of landed work needing no action,
+so a reading of this rule that reaches it deletes the one message meant for an owner who is *not*
+watching — which is the whole reason that notification exists. The record is likewise out of
+scope: commit, PR and Linear stay as long as they need to be.
+
+Before sending anything, ask what the owner **does** with it. A question only they can answer, a
+blocked capability, a decision between options, a thing that is now broken: send it. Work that
+landed and needs nothing from them: the commit, the PR and the Linear issue already say it, and
+they will read it there if they ever need to. **Sending it again costs them the time it takes to
+find the one line that was actually for them.**
+
+A gate result is not an outcome. Neither is a summary of what a subagent found, a recap of a
+decision they already made, or a list of what was filed. **If a paragraph has no action in it,
+delete it** — this rule outranks the impulse to show the work, because the work is on the record
+already.
+
 Three things stay long however brief the commentary gets, because each is a *decision* rather
 than a status: **the rating block below**, a **blocked capability** (the owner has to act on it,
 so the ask needs spelling out), and **anything inferred rather than measured**. Brevity is about
@@ -1126,6 +1272,31 @@ number.
 C" instead of a quoted sentence. One letter per thing that can be independently said yes to; a
 single suggestion needs no letter. **Say who does each one** — an owner-only item mixed into a
 list of build tasks hides the one nobody but them can do.
+
+**Every lettered option opens with a title and one line of context saying what it actually is.**
+Product owner, 2026-08-11. A bare imperative — *"Cap the candidate rows"* — assumes the reader
+carries the problem in their head, and by the time they read it they do not. Name the thing, then
+say in a sentence what it does and what it costs. The ratings justify it; the context is what
+makes them mean anything.
+
+### The debrief shape — Points, Proposals, Question
+
+**Standing format, product owner 2026-08-11, for closing out a build and for any reply that puts
+a decision to them.** It arrived as *"that's so much better"* after a long analysis was cut to
+nine lines, and the point is the **compression**, not the headings:
+
+- **Points** — what you found, one line each. Three or four, not eight.
+- **Proposals** — the lettered blocks above, each with its title, its line of context, and its
+  ratings. Skip entirely when there is nothing to decide.
+- **Question** — the single thing you need answered, phrased so a one-word reply works.
+
+**The reasoning goes in the commit, the PR and the Linear issue — never in the reply.** That is
+§The record is not the reply, applied to the shape rather than only to the length. If a point
+needs a paragraph to defend, the paragraph belongs in the record and the reply gets the sentence.
+
+**This replaces the long-form debrief for every session, not just long ones.** A wrap-up that
+re-explains findings already written into three durable places is the failure this exists to
+stop.
 
 **Give every lettered option its own blockquote, with the letter and its description *outside*
 the bar.** The bar groups the ratings so a reader scanning three options can see where each one
@@ -1304,15 +1475,31 @@ chain to a scratch database and asserts what each role can reach.
 - **`main` = production, `development` = DEV.** Both auto-deploy to Vercel; `main` builds the
   Production target against the `letsride` project, `development` builds a Preview against
   `letsride-dev`. Feature branches are Previews too, so they also point at DEV.
-- **The domain is `letsride.social`, bought 2026-08-07, and the app does not live at its apex.**
-  `app.letsride.social` is production, `app-dev.letsride.social` is `development`, and the apex
-  is the marketing website in a **separate Vercel project that is not this repo**. Nothing is
-  attached yet and the `*.vercel.app` URLs still work; `docs/ENVIRONMENTS.md` §Domains is the
-  contract, including the one ordering rule (attach and confirm the host *before* moving
-  Supabase's Site URL) and why the apex redirect must be a 307 rather than a 301. **No code
-  changes with the domain** — `ShareButton`, `signUp` and `requestPasswordReset` all build URLs
-  from `window.location.origin`, so a hardcoded origin anywhere in `src/` is a bug that would
-  only surface in email: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0.
+- **The domain is `letsride.social`, and the app does not live at its apex.**
+  `app.letsride.social` is production and `app-dev.letsride.social` is `development` — both
+  attached since 2026-08-11, with Supabase's Site URLs pointed at them. Only the production half
+  is *verified* serving: `app-dev` sits behind Vercel SSO, so its branch binding is set rather
+  than observed and `docs/ENVIRONMENTS.md` §Domains carries the check. The apex is the marketing website
+  in a **separate Vercel project that is not this repo** and is still unattached (`PD-34`), so it
+  serves nothing today. The `*.vercel.app` URLs keep working alongside the new hosts.
+  `docs/ENVIRONMENTS.md` §Domains is the contract, including the one ordering rule (attach and
+  confirm the host *before* moving Supabase's Site URL), the name.com CNAME trap that makes step
+  2 fail on a correct value, and why the apex redirect must be a 307 rather than a 301. **No code
+  changed with the domain**, and what keeps that true is `canonicalOrigin()` in
+  `src/lib/origin.ts`: it returns `NEXT_PUBLIC_CANONICAL_ORIGIN` when set and `window.location.origin`
+  otherwise, so the **web** app still follows whichever host served it — production, DEV, a
+  per-deployment preview alias — with the variable unset. **In the native bundle the runtime origin
+  is `https://localhost`**, which is on no GoTrue redirect allowlist, and an unlisted `redirect_to`
+  is *discarded* — path and all — rather than refused, so a confirmation email lands the rider on
+  the app root with the error in a fragment nothing reads (measured against the live PROD auth
+  server 2026-08-12; the probe is `docs/ENVIRONMENTS.md` §The redirect allowlist). Hence
+  `next.config.ts` fails a `CAPACITOR_BUILD=1` build when the variable is unset — and fails a
+  **web** build when it is *set*, because on Preview it would have DEV and feature branches email
+  confirmation links pointing at production, where the token is invalid. **Two commands,
+  and the first cannot do the second's job** — a computed origin is invisible to a grep for a
+  written one: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0, and
+  `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`
+  is 1 — the definition inside `canonicalOrigin()`, nowhere else.
 - **Branch off `development`, and open PRs against `development` — not `main`.** This is the one
   an agent gets wrong by habit. `main` receives exactly one kind of PR: the promotion from
   `development`, which is what ships to riders.
@@ -1343,7 +1530,7 @@ chain to a scratch database and asserts what each role can reach.
     permissions diff touches nothing else). **So a PR touching only `design/`, `.claude/hooks/`
     or the rest of `.claude/` runs zero jobs.**
   - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
-    is a grep, a `jq` or a contrast ratio — 21 of 33. The ones needing Postgres, a second full
+    is a grep, a `jq` or a contrast ratio — 22 of 34. The ones needing Postgres, a second full
     build or a **test runner** stay out, so `npm run docs:check` locally is still the complete
     answer. That last exclusion was learned rather than designed: the two claims that spawn
     `vitest` on one file passed locally — including under `CI=true GITHUB_ACTIONS=true` — and

@@ -1,0 +1,427 @@
+/**
+ * The decisions `resolve-ride-location` makes, split out from the Deno wiring
+ * so that something can actually check them.
+ *
+ * ---------------------------------------------------------------------------
+ * Why this is a second file when `delete-account/` is one
+ * ---------------------------------------------------------------------------
+ * `index.ts` is Deno — `Deno.env`, `Deno.serve`, `jsr:` specifiers — and
+ * `tsconfig.json` excludes `supabase/functions` for exactly that reason, so
+ * nothing in CI reads it. That is tolerable for `delete-account`, whose logic is
+ * three ordered calls. It is not tolerable here: `add-ride-map-tiles`'
+ * `specs/ride-map-tiles/spec.md` requires the ambiguity gate to be asserted
+ * against a measured response **and** the outbound request to be asserted
+ * against the number of candidates it asks for, because
+ *
+ *   > a fixture cannot observe a request that asked for one candidate
+ *
+ * So everything with a decision in it lives here, with **no Deno global, no
+ * `jsr:` import and no network call anywhere in the file**. That is what lets
+ * `src/__tests__/ride-geocode-gates.test.ts` import it, and it is what drags
+ * this half of the function back under `npx tsc --noEmit`: `exclude` stops a
+ * file being a compilation *root*, it does not stop one being type-checked once
+ * an included file imports it.
+ *
+ * **`index.ts` is still unchecked by anything.** Keep the split that way — a
+ * decision that moves into `index.ts` is a decision that leaves the test suite.
+ *
+ * ---------------------------------------------------------------------------
+ * What is measured here and what is assumed — read this before trusting a value
+ * ---------------------------------------------------------------------------
+ * `*.geoapify.com` is egress-blocked from the build container, so **not one
+ * request in this file has ever been issued.** Per `CLAUDE.md`'s rule that an
+ * inferred value must never pass silently as a known one, each constant below
+ * says which it is. The three that are genuinely assumed:
+ *
+ *   - `MAP_STYLE`, `SCALE_FACTOR` and the static-map endpoint's parameter names
+ *     are taken from the vendor's documentation as this repo understands it and
+ *     have not been exercised. A wrong parameter name is a fail-open case here:
+ *     `index.ts` treats every non-2xx as "no tile", so the ride still saves.
+ *   - `STREET_LEVEL_RESULT_TYPES` is an **allowlist** precisely because the
+ *     vocabulary is unmeasured — see its own comment.
+ *   - `CONFIDENCE_FLOOR`'s scale. One observation of the value `1` is equally
+ *     consistent with 0–1, 0–10 and 0–100.
+ *
+ * Task 8.4's live exercise is where those stop being assumptions.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* The vendor's surface                                                        */
+/* -------------------------------------------------------------------------- */
+
+/** Geocoding. The measured response in `tasks.md` §0.8 came from this endpoint. */
+export const GEOCODE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/search'
+
+/** Static Maps. UNEXERCISED — see the header. */
+export const STATIC_MAP_ENDPOINT = 'https://maps.geoapify.com/v1/staticmap'
+
+/**
+ * ASSUMED, not measured. A light OSM raster style; the two containers put text
+ * over the tile (`RideMap`'s `bg-scrim`, `RideCard`'s `White/100` pin disc), so
+ * the style only has to be neutral, not chosen.
+ */
+export const MAP_STYLE = 'osm-bright'
+
+/**
+ * 2× device pixel ratio, `design.md` §D4: an 80×148 CSS-pixel tile drawn 1:1 on
+ * a 3× phone is mush.
+ *
+ * **Expressed as `scaleFactor` rather than by doubling `width`/`height`, and the
+ * difference is load-bearing for §6.** Doubling the pixel dimensions doubles the
+ * *map area* at a fixed zoom and leaves the vendor's burned-in attribution at
+ * its original size — which then displays at **half** its natural size once the
+ * browser scales the tile back down to 80 CSS px, dropping it below the design
+ * system's 10px floor and putting the strip straight into the spec's
+ * *A credit that cannot fit means no tile* branch. `scaleFactor` renders the
+ * same map area at twice the resolution, labels and credit included, so the
+ * credit lands back at its natural apparent size.
+ *
+ * ASSUMED: that the parameter exists and takes `2`. If it does not, the request
+ * fails and the ride saves with no tile, which is the fail-open path.
+ */
+export const SCALE_FACTOR = 2
+
+/* -------------------------------------------------------------------------- */
+/* The three gates                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How many candidates the geocode asks for.
+ *
+ * **Stated, per the spec, because narrowing it to 1 is the natural
+ * optimisation** — this change bounds vendor spend everywhere else — and it
+ * would leave the separation gate below structurally unable to fire while every
+ * scenario still passed. Five is enough to see a second town without paying for
+ * a page of them; the measured ambiguous case returned two.
+ */
+export const GEOCODE_CANDIDATE_LIMIT = 5
+
+/**
+ * The numeric floor, `design.md` §D3. **Chosen, not measured** — a starting
+ * value, deliberately conservative. `051`'s CHECK carries the same number as
+ * `>= 0.70::real`, and the two must move together or a candidate this gate
+ * admits is refused by its own constraint.
+ */
+export const CONFIDENCE_FLOOR = 0.7
+
+/**
+ * The fail-closed upper arm, matching `051`'s `<= 1.0::real`.
+ *
+ * The 0–1 scale is plausible rather than validated, so if the vendor is really
+ * emitting 0–100 every candidate is rejected here and no tile is ever stored —
+ * which is the direction that fails loudly rather than storing every tile with a
+ * meaningless score. Without this the same value would reach the `UPDATE` and
+ * raise a `23514` **after** both uploads had been paid for.
+ */
+export const CONFIDENCE_CEILING = 1.0
+
+/**
+ * Street-level or better, read from `properties.result_type`.
+ *
+ * **An allowlist, and that is the whole design.** The spec asks for the
+ * vocabulary to be established before the gate is written; it cannot be, from
+ * this container. So the unknown value is the one that must be safe: an
+ * allowlist rejects anything it has not been told about, which costs a tile,
+ * where a denylist would admit it, which is the confident-wrong tile this whole
+ * change exists to prevent. A new vendor type therefore shows up as "no tile"
+ * and never as "wrong tile".
+ *
+ * `building` is the only value anyone here has observed (`tasks.md` §0.8).
+ * `amenity` and `street` come from the vendor's documented `result_type` list.
+ * Everything else on that list — `postcode`, `suburb`, `district`, `city`,
+ * `county`, `state`, `country`, `unknown` — is deliberately absent. `postcode`
+ * is the interesting rejection: a Dutch postcode is one side of one street and
+ * would be fine, a UK or US one is a district and would not, and the field does
+ * not say which country's convention produced it.
+ */
+export const STREET_LEVEL_RESULT_TYPES: readonly string[] = ['building', 'amenity', 'street']
+
+/**
+ * The separation gate's threshold, **500 metres**.
+ *
+ * Chosen against what it protects rather than against anything in the geocoder:
+ * how far wrong a rider can be sent before the tile is worse than no tile. Three
+ * things fix it at roughly this size.
+ *
+ *   - **The panel is 1.05 km wide at z15.** Two candidates 500 m apart put the
+ *     rider's actual meeting point at the very edge of the tile drawn for the
+ *     other one; past that the panel is centred on somewhere they are not going.
+ *   - **A wrong tile misleads orientation, not navigation.** `Get directions`
+ *     deeplinks the `meeting_point` **text**, never the coordinate, so the harm
+ *     is "this ride starts over there" pointing at the wrong there.
+ *   - **It has to clear the duplicate-datasource case comfortably.** A vendor
+ *     merging sources returns one building two or three times, metres apart;
+ *     500 m keeps those together as one place, which is what stops a
+ *     count-based rule refusing a perfectly unambiguous address for ever.
+ *
+ * The measured ambiguous case — Amsterdam and Weesp, 12.2 km — clears it by a
+ * factor of 24, so the threshold is not finely balanced against the one sample
+ * that motivated it.
+ */
+export const SEPARATION_THRESHOLD_METRES = 500
+
+/* -------------------------------------------------------------------------- */
+/* The two tiles                                                               */
+/* -------------------------------------------------------------------------- */
+
+export type TileSpec = {
+  /** CSS pixels, before `SCALE_FACTOR`. */
+  readonly width: number
+  readonly height: number
+  readonly zoom: number
+}
+
+/**
+ * Two renders at two zooms, `design.md` §D4 — **not** one render cropped twice.
+ * Zoom is not scale: at z15 an 80px-wide crop covers ~235 m and reads as
+ * texture rather than as a place, and the strip's job is "this ride starts over
+ * there", which needs the town in frame.
+ *
+ * The dimensions are the containers' own: `RideCard`'s strip is `w-20` (80) by
+ * 148, `RideMap`'s panel is `h-40` (160) across the page's 358. Matching them
+ * exactly is what keeps `object-cover` from cropping the vendor's burned-in
+ * credit out of the bottom of the image on the ordinary card.
+ */
+export const TILE_SPECS = {
+  card: { width: 80, height: 148, zoom: 13 },
+  detail: { width: 358, height: 160, zoom: 15 },
+} as const satisfies Record<string, TileSpec>
+
+export type TileKind = keyof typeof TILE_SPECS
+
+/* -------------------------------------------------------------------------- */
+/* Storage paths                                                               */
+/* -------------------------------------------------------------------------- */
+
+export const RIDE_MAPS_FOLDER = 'ride-maps'
+
+/**
+ * `ride-maps/<organizer uuid>/<object uuid>.jpg` — the shape `051` pins with a
+ * CHECK on both path columns *and* with the filename regex in its Storage INSERT
+ * policy, and the same shape every other folder in the bucket uses.
+ *
+ * `.jpg`, never `.png`: the `media` bucket carries
+ * `allowed_mime_types = ['image/jpeg']`, which refuses at the bucket, **above
+ * every policy**, with nothing in the policy set to explain it.
+ *
+ * The names are generated by the caller and held for the whole flow, because the
+ * compensating delete in `index.ts` needs them at a moment when no row records
+ * them — see that file's §8.
+ */
+export function buildRideMapPath(organizerId: string, objectId: string): string {
+  return `${RIDE_MAPS_FOLDER}/${organizerId}/${objectId}.jpg`
+}
+
+/* -------------------------------------------------------------------------- */
+/* The outbound requests                                                       */
+/* -------------------------------------------------------------------------- */
+
+export function buildGeocodeUrl(meetingPoint: string, apiKey: string): string {
+  const url = new URL(GEOCODE_ENDPOINT)
+  url.searchParams.set('text', meetingPoint)
+  url.searchParams.set('limit', String(GEOCODE_CANDIDATE_LIMIT))
+  url.searchParams.set('format', 'geojson')
+  url.searchParams.set('apiKey', apiKey)
+  return url.toString()
+}
+
+/**
+ * **Nothing here suppresses the vendor's attribution, and that is a decision
+ * rather than an omission.** The Static Maps response carries map-style
+ * attribution burned into the image, bottom-right, and that is what discharges
+ * the OpenStreetMap obligation in practice (`tasks.md` §0.2, obligation 1 —
+ * required *always*, on every plan, so there is no upgrade that removes it).
+ * Suppressing it would not remove the obligation, it would move it onto a 80px
+ * strip that cannot carry the string. `ride-geocode-gates.test.ts` asserts the
+ * absence of every suppression parameter this vendor is known to offer.
+ */
+export function buildTileUrl(
+  spec: TileSpec,
+  coordinate: { latitude: number; longitude: number },
+  apiKey: string,
+): string {
+  const url = new URL(STATIC_MAP_ENDPOINT)
+  url.searchParams.set('style', MAP_STYLE)
+  url.searchParams.set('width', String(spec.width))
+  url.searchParams.set('height', String(spec.height))
+  url.searchParams.set('scaleFactor', String(SCALE_FACTOR))
+  // `lonlat:` — longitude first, which is the opposite order to every other
+  // place this repo writes a coordinate. Swapping them yields a valid request
+  // for a plausible-looking place somewhere else entirely.
+  url.searchParams.set('center', `lonlat:${coordinate.longitude},${coordinate.latitude}`)
+  url.searchParams.set('zoom', String(spec.zoom))
+  // JPEG, never PNG — see `buildRideMapPath`.
+  url.searchParams.set('format', 'jpeg')
+  url.searchParams.set('apiKey', apiKey)
+  return url.toString()
+}
+
+/* -------------------------------------------------------------------------- */
+/* The response, and what this file refuses to read from it                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **`rank.importance` and `rank.popularity` are deliberately absent from this
+ * type.** Both are in every response and both are vendor *relevance* signals —
+ * how prominent a place is — which carry no information about which town the
+ * rider meant. Breaking a disagreement on either stores a coordinate
+ * indistinguishable from a correct one, which is the exact failure the
+ * separation gate exists to prevent. Leaving them out of the type is the cheapest
+ * possible enforcement: reaching for one does not compile.
+ *
+ * `rank.match_type` is absent for the same reason. It describes how the *query*
+ * matched and returns `full_match` for a city as readily as for a building, so a
+ * gate reading it admits precisely the city-level match this change rejects.
+ */
+export type GeocodeFeature = {
+  properties?: {
+    lat?: unknown
+    lon?: unknown
+    /** The granularity field, and note it is NOT inside `rank`. */
+    result_type?: unknown
+    rank?: {
+      confidence?: unknown
+      /** Corroboration only — never the primary granularity test. */
+      confidence_street_level?: unknown
+    }
+  }
+}
+
+export type GeocodeResponse = { features?: GeocodeFeature[] | null }
+
+export type Candidate = {
+  latitude: number
+  longitude: number
+  confidence: number
+  resultType: string
+  streetLevelConfidence: number | null
+}
+
+export type GeocodeVerdict =
+  | { resolved: true; latitude: number; longitude: number; confidence: number }
+  | {
+      resolved: false
+      /**
+       * Why nothing was stored. Carried for the function's log line only — every
+       * value produces the identical rider-visible outcome, which is the ride
+       * saving normally with NULL columns and both screens on their fallback.
+       */
+      reason: 'no_candidates' | 'granularity' | 'confidence' | 'ambiguous'
+    }
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value)
+
+function toCandidate(feature: GeocodeFeature): Candidate | null {
+  const properties = feature?.properties
+  const latitude = properties?.lat
+  const longitude = properties?.lon
+  const resultType = properties?.result_type
+  const confidence = properties?.rank?.confidence
+  const streetLevel = properties?.rank?.confidence_street_level
+
+  if (!isFiniteNumber(latitude) || !isFiniteNumber(longitude)) return null
+  if (!isFiniteNumber(confidence)) return null
+  if (typeof resultType !== 'string') return null
+  // Out-of-range coordinates would be refused by `051`'s coupling CHECK anyway;
+  // catching them here means the refusal costs no render rather than two.
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null
+
+  return {
+    latitude,
+    longitude,
+    confidence,
+    resultType,
+    streetLevelConfidence: isFiniteNumber(streetLevel) ? streetLevel : null,
+  }
+}
+
+/** Haversine, metres. Earth radius 6 371 008.8 m (IUGG mean). */
+export function distanceMetres(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const R = 6_371_008.8
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const dLat = toRad(b.latitude - a.latitude)
+  const dLon = toRad(b.longitude - a.longitude)
+  const lat1 = toRad(a.latitude)
+  const lat2 = toRad(b.latitude)
+
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/**
+ * The three gates, **in this order**, on the candidates the vendor returned.
+ *
+ * **The order is correctness, not cost**, and the first draft of `design.md`
+ * §D3 had it the other way round on the reasoning that separation is the
+ * cheapest test. Testing separation across *raw* candidates measures the
+ * distance between things granularity is about to discard: `[building, city]` is
+ * an ordinary response for a street address in a named city, and separation-first
+ * rejects it although exactly one usable candidate existed.
+ *
+ * Failing any gate writes nothing, renders nothing, and leaves all five columns
+ * NULL. That is not an error path — an ambiguous address is a legitimate thing
+ * to type, and today's screens print the rider's own words and are never wrong.
+ *
+ * **What this does not do, stated so it is not assumed.** It bounds *ambiguity*
+ * and *granularity*, never *wrongness*. A response containing only Weesp passes
+ * every gate here and the tile ships. The asymmetry — no tile for an ambiguous
+ * address, a wrong tile for one that resolves cleanly to the wrong building — is
+ * a KNOWN GAP in the spec rather than something this function solves.
+ */
+export function resolveCoordinate(response: GeocodeResponse | null | undefined): GeocodeVerdict {
+  const candidates = (response?.features ?? [])
+    .map(toCandidate)
+    .filter((candidate): candidate is Candidate => candidate !== null)
+
+  if (candidates.length === 0) return { resolved: false, reason: 'no_candidates' }
+
+  // 1. Granularity, from `result_type`.
+  const streetLevel = candidates.filter((candidate) =>
+    STREET_LEVEL_RESULT_TYPES.includes(candidate.resultType),
+  )
+  if (streetLevel.length === 0) return { resolved: false, reason: 'granularity' }
+
+  // 2. The numeric floor, with its fail-closed upper arm. `confidence_street_level`
+  //    is corroboration and nothing more: it can only ever *remove* a candidate
+  //    the primary gates already admitted, never promote one they rejected, so a
+  //    vendor that stops emitting it changes nothing.
+  const confident = streetLevel.filter(
+    (candidate) =>
+      candidate.confidence >= CONFIDENCE_FLOOR &&
+      candidate.confidence <= CONFIDENCE_CEILING &&
+      (candidate.streetLevelConfidence === null ||
+        candidate.streetLevelConfidence >= CONFIDENCE_FLOOR),
+  )
+  if (confident.length === 0) return { resolved: false, reason: 'confidence' }
+
+  // 3. Separation, among the survivors of 1 and 2 only, keyed on DISTANCE and
+  //    never on a tie in the score. Confidence SATURATES — the measured pair tied
+  //    at the ceiling rather than because they were equally good — so the same two
+  //    towns returned as 1.00 and 0.97 carry the identical harm and would sail past
+  //    a tie test, while two datasource copies of one building tie exactly at 0 m
+  //    and are not ambiguous at all.
+  for (let i = 0; i < confident.length; i += 1) {
+    for (let j = i + 1; j < confident.length; j += 1) {
+      if (distanceMetres(confident[i], confident[j]) > SEPARATION_THRESHOLD_METRES) {
+        return { resolved: false, reason: 'ambiguous' }
+      }
+    }
+  }
+
+  // Every survivor is within the threshold of every other, so they describe one
+  // place and the vendor's own ordering picks among equals. This is NOT breaking
+  // a disagreement — there is none left — and it reads no relevance signal to do
+  // it, because `GeocodeFeature` does not carry one.
+  const best = confident[0]
+  return {
+    resolved: true,
+    latitude: best.latitude,
+    longitude: best.longitude,
+    confidence: best.confidence,
+  }
+}

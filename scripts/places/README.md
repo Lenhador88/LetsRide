@@ -149,15 +149,22 @@ The load runs as the table owner, which is how it bypasses RLS and the absent
 INSERT grant. That asymmetry is deliberate: the operator can write, and nothing
 reachable through PostgREST can.
 
-**The table is empty until someone runs this, and an empty index is
-indistinguishable from a working search that finds nothing.** `037` creates the
-schema; it cannot create the rows.
+**Both projects are LOADED as of 2026-08-11 — 736,538 rows each.** `037` creates
+the schema; it cannot create the rows, and for most of this file's life it had
+none. That is no longer the state: DEV loaded earlier that day (`PD-195`), PROD
+later the same day. An empty index is indistinguishable from a working search
+that finds nothing, so count rather than assume.
 
-**Loading is also what arms the open cost in §Searching.** Linear **PD-150** —
-~5.9 s of database CPU per request from a 49-character term — is 0 ms today only
-because there is nothing to scan. Land it before this load reaches PROD; the
-workflow's PROD arm requires a typed confirmation that says so, which is a human
-gate and not a check.
+**Loading is what ARMED the cost in §Searching, and PD-150 is closed.** Both
+halves shipped and both are applied to both databases: `049` bounds the
+caller-chosen multiplier at eight distinct tokens, and **`050` caps candidate
+rows at 2,000 per pass**, which is the option B this file used to call open.
+Measured on the loaded PROD table, warm: `straat` — one token, 28.7% of the rows
+— is 96 ms nationally and 227 ms near Amsterdam, against 11,458 ms and 4,011 ms
+without `050`. The workflow's PROD arm still requires a typed confirmation
+naming PD-150, and that wording is a human gate rather than a check — read the
+issue's current state
+rather than the prompt.
 
 ### What it costs — measured on the real extract, 2026-08-09
 
@@ -190,11 +197,12 @@ phase together, so all four new indexes coexist with all four old ones, and
 162 + 175 + 141 = 478 MB against a 500 MB cap is a quota exhaustion *after* the
 commit.
 
-**So the free tier fits the first load and nothing after it.** DEV was 13 MB
-before, and a first load lands it at ~346 MB against the 500 MB database cap. A
-refresh measures 465 MB before counting the reindex peak or WAL. **`PD-87` (move
-off the free tier) is therefore this pipeline's precondition for refreshes**, not
-only a launch concern — the first load is the only one that fits.
+**So the free tier fits the first load and nothing after it.** Each project was
+13 MB before; measured after the real loads, DEV landed at **351 MB** and PROD at
+**350 MB** against the 500 MB database cap. A refresh measures 465 MB before
+counting the reindex peak or WAL. **`PD-87` (move off the free tier) is therefore
+this pipeline's precondition for refreshes**, not only a launch concern — and it
+now binds on BOTH projects, each of which has spent its one load.
 
 ## Refreshing
 
@@ -281,8 +289,10 @@ sequential scan, and two contracts the UI has to honour:
 
 - **Debounce the input — required, not advisable.** Cost is roughly linear in
   matched rows (8–11 µs each), and **the broadest tokens are street-type
-  suffixes, not city names**. On a 750k-row *synthetic* bench (`039` §5c — not
-  the real table, which is empty), national pass, best of five:
+  suffixes, not city names**. On a 750k-row *synthetic* bench (`039` §5c —
+  superseded by the real table since 2026-08-11, and it was 3.9x–138x optimistic
+  on time, so read these as shape rather than magnitude), national pass, best of
+  five:
 
   | term | rows matched | national | with a location |
   |---|---|---|---|
@@ -305,10 +315,11 @@ sequential scan, and two contracts the UI has to honour:
   Nothing exceeds the 8 s statement timeout, so no rider sees an error — which is
   the hazard as much as the reassurance.
 
-- **A long multi-token term is an OPEN cost — gate it, do not just debounce it.**
+- **A long multi-token term multiplied the whole query. `049` bounds it at eight
+  distinct tokens, and `050` bounds the floor `049` leaves.**
   Per-candidate work is linear in the *number of distinct patterns*, so a term
   that holds many patterns matching the same rows multiplies the whole query.
-  `039` §5d closes one half of this and leaves the other open, and the README
+  `039` §5d closed one half of this and left the other open, and the README
   said the opposite for one revision:
 
   | payload | chars | before `lower()` | after |
@@ -320,10 +331,23 @@ sequential scan, and two contracts the UI has to honour:
   Case-insensitively repeated tokens are collapsed (`group by lower(s.tok)`),
   because `ILIKE` is case-insensitive and byte-equality dedup misses exactly the
   vector someone would choose deliberately. **Distinct co-extensive substrings
-  are not collapsed by anything** — nothing is duplicated — so the worst measured
-  term costs ~5.9 s from 49 characters, half the cap. A function-level
-  `statement_timeout` does *not* bound it: measured on PG 16.13, the timer is
-  armed before the function is entered, so the setting is applied and inert.
+  are not collapsed by anything** — nothing is duplicated — so that row measured
+  ~5.9 s from 49 characters, half the cap. A function-level `statement_timeout`
+  does *not* bound it: measured on PG 16.13, the timer is armed before the
+  function is entered, so the setting is applied and inert.
 
-  Until a cap lands, **the client is the only bound**: reject or truncate terms
-  with more than a handful of tokens before calling the RPC.
+  **`049` closed it by refusing above eight distinct tokens** (PD-150 option A),
+  which is the same number `boundTerm` in `src/lib/data/places.ts` normalises
+  to — at most eight tokens joined by single spaces, on every call rather than
+  only on long terms, so the database's count cannot exceed its own cap. **State
+  it as a property of what the client sends, never as "the app cannot trip the
+  refusal" via a prediction of Postgres's tokenising**: that version was
+  disproved on both the whitespace class and the ICU case fold, and `places.ts`
+  carries both measurements. What
+  it bounds is the *multiplier a caller chooses*, not the cost of the data, and
+  the 100-character cap previously allowed roughly twice the ten patterns above.
+  **Capping candidate rows before scoring is what lowers the floor, and `050`
+  did it** — PD-150 option B, `Done (in production)` 2026-08-11, 2,000 candidate
+  rows per pass. On the real table that took the single-broad-token floor from
+  11,458 ms to 96 ms; the synthetic bench's ~2.8 s estimate for it was never
+  right.

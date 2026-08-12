@@ -137,6 +137,23 @@ export type RideListItem = {
   riders_count: number
   attendance: RideAttendance
   /**
+   * The 80×148 strip's static map tile — a signed URL minted for **this** viewer,
+   * or null when the ride has no tile.
+   *
+   * A URL rather than `rides.map_card_path`, for the same reason
+   * `PublicProfile` carries `avatar_url`: the data layer keeps one promise —
+   * *this is something you can put in `src`* — and owns how it got there. The
+   * path stays in the database and never reaches a component.
+   *
+   * **Null is the ordinary state, not a failure.** Nothing writes
+   * `map_card_path` until the render function ships, so today it is null on
+   * every row and `RideCard` draws the pin container it has always drawn.
+   * A path this viewer's Storage policy refuses signs to null too, and that
+   * conflation is deliberate — the rider cannot act on the difference, and
+   * saying "there is a tile but not for you" would leak the ride's audience.
+   */
+  map_card_url: string | null
+  /**
    * Read once per list in the data layer rather than per card at render, so
    * every card in one response agrees about what "now" is — and so the card
    * stays a pure function of its props.
@@ -174,6 +191,17 @@ export type RideDetail = {
   club: EmbeddedClub | null
   /** This viewer's own RSVP. The organizer reads as `going` without a row. */
   attendance: RideAttendance
+  /**
+   * The 358×160 panel's static map tile — a signed URL minted for **this**
+   * viewer, or null when the ride has no tile. Same rules as
+   * `RideListItem.map_card_url`, and read that one for why null is ordinary.
+   *
+   * A **second** tile rather than the card's, scaled: the two are rendered at
+   * different zooms (z13 for the strip, ~z15 for the panel), so reusing one for
+   * the other shows a single street cropped to 80px and reads as texture rather
+   * than as a place.
+   */
+  map_detail_url: string | null
   is_organizer: boolean
   is_upcoming: boolean
   /**
@@ -662,9 +690,16 @@ export type NotificationRow = {
   actor: PublicProfile | null
   /** Set for `postcard_liked` and `postcard_commented`. */
   postcard: { id: string; image_path: string; image_url: string | null } | null
-  /** Set for `ride_joined` and `ride_created_in_club`. No image — `rides` has
-   * no image column, so there is no trailing thumbnail for either type. */
-  ride: { id: string; title: string } | null
+  /**
+   * Set for `ride_joined` and `ride_created_in_club`. No image — the frame's
+   * trailing tile for both is a map with a pin, which is still an open design
+   * question rather than a column to select.
+   *
+   * `organizer_id` is what tells the two readers of a `ride_joined` row apart:
+   * the fan-out reaches the whole crew, and the organizer created the ride
+   * rather than joining it, so the copy branches on it (`notificationCopy`).
+   */
+  ride: { id: string; title: string; organizer_id: string } | null
   /** Set for `club_joined`, and for `ride_created_in_club` as *context* — the
    * copy names the club even though the row's destination is the ride. */
   club: EmbeddedClub | null
@@ -753,7 +788,7 @@ export type Place = {
  * purpose, so the UI draws one line instead of an empty second one. Trust this
  * type over the generated one.
  *
- * Five behaviours the caller has to know, all enforced in the function body
+ * Six behaviours the caller has to know, all enforced in the function body
  * rather than by validation the client could skip:
  *
  *  - **Matching is PER TOKEN and ANDed, over `name`, `brand`, `street` and
@@ -776,6 +811,17 @@ export type Place = {
  *    rendering an empty state. The guard is on the WHOLE term, not per token, so
  *    `Kerkstraat 40` is fine and its two-character token is honoured rather than
  *    dropped — but `ab 40` is refused.
+ *  - **More than EIGHT distinct tokens returns zero rows** (`049`), by the same
+ *    refusal as the guard above rather than by an error. Deduplication is
+ *    applied first and it is case-insensitive, so `Jumbo jumbo` spends one slot,
+ *    not two. `boundTerm` in `src/lib/data/places.ts` normalises every term to
+ *    at most eight space-separated tokens before calling, so this app's count
+ *    cannot exceed the cap — note the direction of that claim: it is a property
+ *    of what the client SENDS, not a prediction of how Postgres will tokenise a
+ *    raw string. Predicting it was wrong on both the whitespace class and the
+ *    case fold, and `places.ts` carries the measurements. The refusal itself
+ *    exists for a caller reaching PostgREST directly, which no client-side rule
+ *    can reach.
  *  - **`near_lat`/`near_lon` are optional, and they are a bias with a sharp
  *    edge.** Matches within roughly 28 km fill the list first and the rest of
  *    the country fills only what is left — so when five nearby matches exist,
@@ -803,15 +849,18 @@ export type Place = {
  *  - **Always pass `near_lat`/`near_lon` when you have them.** With a location
  *    every term above measured 29–152 ms, because the bbox applies. Without one
  *    there is nothing to narrow the scan.
- *  - **Gate the token COUNT, not just the timing — this one is not optional and
- *    the database cannot do it for you.** Per-candidate work is linear in the
- *    number of distinct patterns, so a term holding many patterns that match the
- *    same rows multiplies the whole query: ten substrings of one word inside 49
+ *  - **Gate the token COUNT, not just the timing — still worth doing, but for a
+ *    different reason since `049`.** Per-candidate work is linear in the number
+ *    of distinct patterns, so a term holding many patterns that match the same
+ *    rows multiplies the whole query: ten substrings of one word inside 49
  *    characters measured **5,914 ms**. `039` §5d collapses case-insensitively
- *    duplicate tokens, which closes the repeat vector, but nothing collapses
+ *    duplicate tokens, which closes the repeat vector; nothing collapses
  *    genuinely distinct substrings and a function-level `statement_timeout`
- *    cannot bound it (the timer is armed before the function is entered).
- *    Refuse or truncate terms beyond a handful of tokens client-side.
+ *    cannot bound it (the timer is armed before the function is entered), so
+ *    **`049` refuses above eight distinct tokens** and that is now the real
+ *    bound. The client-side truncation is no longer the only thing standing
+ *    between a rider and a six-second query — it is what keeps a rider from
+ *    meeting the refusal, which is a UX job rather than a safety one.
  *
  * Nothing exceeds the 8 s statement timeout, so a slow query surfaces as a slow
  * screen rather than an error — which is why this is worth reading rather than

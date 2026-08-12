@@ -34,7 +34,7 @@ The live set as last read back off the board:
 | `Backlog AI` | backlog | Captured, not triaged. **Was `Backlog`** | Either |
 | `Todo Human` | unstarted | Triaged; owner chores live here | Either |
 | `Todo AI` | unstarted | Triaged, and a session could do it. **Not a start signal** | Either |
-| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner** |
+| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner**, and an agent at STEP 2d |
 | `Queued (AI)` | started | **Approved to build. The only start signal** | **Owner** |
 | `Development (AI)` | started | An agent has it *now*. **The concurrency lock** | Agent |
 | `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
@@ -629,6 +629,76 @@ comment**, since there is no PR body here to hold them.
 
 ---
 
+## STEP 2d — Is the premise still true? Check before you claim.
+
+STEP 2b checks what somebody wrote down as a blocker. **This checks the thing nobody writes
+down: whether the story is still worth building at all.** An issue states a fact about the
+codebase — "the tile was never built", "nine forms are wired and two are asserted", "PROD is
+two migrations behind" — and that fact is a snapshot taken the day it was filed. The backlog
+outlives the sessions that read it, so a premise can be closed by work that never mentioned it:
+by another story, by a STEP 4b fold-in, or by an *absorb on contact* fix in a branch that
+happened to have the file open.
+
+**This is the general form of something `docs/HANDOFF.md` §Owner actions already records for one
+column.** Two `Owner only` issues in a row were found already-fixed, because a dashboard setting
+has no file to change and nothing marks it done except someone re-measuring. Every story has
+that property, not only the dashboard ones — an issue is closed by whoever notices, and nobody
+is assigned to notice.
+
+### What counts as stale, and what does not
+
+**Find the issue's load-bearing claim and run the check it implies.** Almost every body here
+names one, and most name the command beside it — a file that should not exist, a count, a grep,
+a migration number, a policy's text. That is the check, and it is usually one command. If the
+body states no checkable claim, it cannot go stale this way: go to STEP 3.
+
+A premise is stale when one of these holds, **with the command and its output to show for it**:
+
+| | What it looks like |
+|---|---|
+| **Already done** | The code now does what the issue asks, by whatever route |
+| **Superseded** | A later decision or migration makes it moot — the screen it fixes is gone, the column it adds arrived in another shape |
+| **Void premise** | The thing it describes does not exist. Typically a count that has moved, or a file that was deleted |
+
+**None of these is staleness, and reading them as staleness is the failure this step invites:**
+disagreeing with the approach, thinking the priority is wrong, finding the story hard, finding
+it bigger than it looked, or noticing it is old. **Age is not evidence** — `PD-129` sat five
+days and its premise was entirely intact. `CLAUDE.md`'s rule against manufacturing an objection
+to look diligent covers this exactly: a staleness verdict reached without a command is one.
+
+### What to do about it — and what NOT to do
+
+**Do not build it, and do not close it.** Every verdict here is a measurement plus an inference,
+and the inference is the half worth a human glance. Cancelling a story the owner filed is theirs.
+
+1. Comment on the issue with **the command you ran and what it returned**, plus one line naming
+   which row above it falls under.
+2. Move it to **`Needs decision`**.
+3. Go back to STEP 2 and take the next candidate by priority.
+
+**`Needs decision`, never `Needs help`.** `Needs help` is one of the two names STEP 1 matches as
+the concurrency lock, so parking a stale story there freezes the entire queue over work nobody
+is doing — and freezes it in the state that looks healthiest, a busy column above a quiet job.
+`Needs decision` is typed `unstarted` and holds no lock. Re-derive both off the board rather
+than trusting this paragraph: §The status names.
+
+**If every candidate in the column is stale, exit silently**, as STEP 2b does. A queue full of
+finished work is a real answer, and it is now visible on the board instead of costing a build.
+
+### The asymmetry, so the bar sits in the right place
+
+The two ways to be wrong do not cost the same, and they pull in opposite directions:
+
+- **Building something already done** costs one build and ends in a PR that changes nothing.
+  Loud, cheap, self-correcting.
+- **Parking a live story** costs the owner a round trip, and it sits in a column nothing drains
+  on a schedule until they happen to look.
+
+So the bar is **evidence, or build it.** A feeling that a story is stale is a reason to read the
+code once, never a verdict on its own. An ambiguous check is a build.
+
+---
+
 ## STEP 3 — Claim it
 
 Move the issue to **`Development (AI)`** *before* starting work. That status is the
@@ -948,6 +1018,16 @@ live RLS hole letting any signed-in rider post a ride into any club.
    packet rather than trusting it, so forgetting costs a line in the report instead of an
    unreviewed file — but it only reports what it can see, and a packet is not a substitute for
    rebuilding it.
+
+   **Spawn it in the background, and stamp the spawn in the same turn.** Both are inputs to
+   §Confirm the pass returned, which gates the merge at bullet 3 — a foreground spawn blocks the
+   main thread inside the tool call, leaving no moment at which `ListAgents` can be called at
+   all, and an unstamped spawn leaves that section's bound with no clock. **The stamp cannot be
+   taken retroactively**, which is why it is here rather than beside the check that consumes it.
+
+   ```bash
+   date -u +%FT%TZ     # at spawn — and again at each check; the elapsed time is the bound's clock
+   ```
 2. **Push the branch — again, if STEP 4b built anything.** Then open a PR against
    **`development`**, with the `## Folded in` section from STEP 4b in the body, or nothing there
    if nothing travelled.
@@ -969,8 +1049,79 @@ live RLS hole letting any signed-in rider post a ride into any club.
    branch's commits straight onto `development`, which `CLAUDE.md` forbids outright, and then the
    must-be-empty guard fails and stalls the firing with no PR open. Unset, it is worse in the
    honest direction: `fatal: invalid refspec ''`.
-3. Drive CI to green and merge. Do not merge red. **Never push to `main` and never open a PR
-   against `main`** — production promotion belongs to the owner.
+3. Drive CI to green and merge. Do not merge red, and **do not merge holding no review result** —
+   run §Confirm the pass returned here, immediately before the merge. **Never push to `main`
+   and never open a PR against `main`** — production promotion belongs to the owner.
+
+### Confirm the pass returned — the gate bullet 3 runs
+
+**The `reviewer` pass is a gate on the MERGE, and a missing result is a missing review rather
+than a clean one.** Anchor it on bullet 3 and nowhere earlier. The push and the PR do not depend
+on the review — they only start CI — so a gate at the push buys nothing and costs the thing that
+matters: it asks the question at the one moment a still-listed agent is most likely to look
+healthy, hours before the answer is needed. **Never merge holding no report.** That is the
+reading that does the damage: it reaches a merge with no review at all — CI green, a PR merged
+and a `Deployed to DEV` status all looking correct — which is the same outcome STEP 0.6 describes
+for a build agent that cannot spawn `reviewer` at all, arrived at by a different route.
+
+*(`CLAUDE.md` §Delegating while the owner is at the keyboard reaches the same anchor — *"the
+findings still land before the merge, which is the threshold that matters"* — but do **not** cite
+it as governing here. That section is explicitly the **attended** mode, and gate (7) means a
+firing is never in it; the rest of it — reply at once, keep answering — is wrong unattended. The
+argument above stands on its own.)*
+
+**A dead agent and a slow one are indistinguishable from the main thread**: no error, no
+notification, nothing on the board. The signal is an *absence*, and every other gate here that
+can fail silently already has a tripwire for one — `check.mjs` holds that a skip must never read
+as a pass, `no-service-role-key` proves its own detector still matches. This is that tripwire,
+and it is one call plus the stamp bullet 1 took at spawn:
+
+```bash
+date -u +%FT%TZ   # now, against bullet 1's spawn stamp — the elapsed time is the bound's clock
+```
+
+```
+ListAgents     # listed -> alive, but read it WITH the elapsed time · not listed -> it died
+```
+
+The question each branch answers is **has this pass given you an answer, and is it still
+plausibly going to** — so a hang and a death land in the same place, which is what keeps the
+table total:
+
+- **You hold a report** → covered. Merge when bullet 3's other conditions are met.
+- **No report, still listed, spawned less than 30 minutes ago** → it is running. Do not re-spawn
+  and do not idle — the completion re-invokes you, so do bullet 2 and drive CI. **Not the Linear
+  writes**: STEP 5's are ordered behind the merge, and moving the issue to `Deployed to DEV`
+  early would release STEP 1's lock — it is not one of the two names. STEP 0.5's gates (3) and
+  (4) still stop the next firing, but do not spend that backstop on a write this step tells you
+  not to make. **Come back to this check before merging**; nothing else will bring you back,
+  because neither a death nor a hang emits an event.
+- **No report and it is not coming — not listed at all, or listed 30 minutes or more — and you
+  have not re-run it yet** → **re-run it once**, with a freshly built packet, and re-enter this
+  table with a fresh stamp.
+- **Same again after the re-run** → **`Needs help`, and do not merge.** §If you get stuck.
+- **`ListAgents` will not answer** — the call fails, or the tool is absent. It is a native tool
+  rather than a connector's, so STEP 0's rotation hazard does not reach it; the plausible failure
+  is a deferred schema, which `select:` fixes. If it genuinely will not answer: **this is not
+  "not listed"**, and reading it as one re-runs a healthy pass and then parks it. **Fall back to
+  the clock alone** — wait out the bound, then re-run once, then park. The table stays total
+  without the tool; it just loses the early death signal.
+
+**The bound is what makes those branches distinguishable, and losing it fails in both
+directions.** Without it a hang has no exit at all: it cannot merge, and if it also cannot park
+it holds STEP 1's lock for ever with nothing on the board — the permanently-held-lock symptom
+STEP 1 warns about, reached from the other side. Set too tight, it is the inverse: a re-run
+spawned a minute ago has no report *yet*, and parking on that spends a `Needs help` — a lock
+name — on a review that was working. **30 minutes is ~6× a measured pass**, and the multiplier is
+deliberately generous because those two directions do not cost the same: setting it too long
+merely delays a merge, while setting it too short is the `Needs help` in the sentence above.
+Re-derive the ~5 minutes from a couple of recent passes rather than trusting it, and move the
+bound with it.
+
+Observed rather than feared — the `PD-151` firing, 2026-08-09; `PD-172` has the account.
+**The delta re-review in bullet 1 is the same gate and gets the same check**: spawned the same
+way, it can die the same way, and its triggers land after the push, so the merge is the only
+anchor that covers it too.
 
 ---
 
@@ -1078,7 +1229,8 @@ it look handled.
 
 Use it whenever you would otherwise guess: an ambiguous requirement, a visibility rule
 nobody wrote down, a migration whose ordering you cannot verify, a design frame that does not
-exist, CI red for a reason outside the story, or a decision that is the owner's to make.
+exist, CI red for a reason outside the story, a `reviewer` pass that will not return even on a
+re-run (STEP 4c bullet 1), or a decision that is the owner's to make.
 `CLAUDE.md` §Working Principles forbids letting an unlabelled guess pass as a known value —
 `Needs help` is where those go.
 

@@ -50,6 +50,19 @@ group by 1 having count(*) filter (where a.attacl is not null) > 0 order by 1;
 warning, and the paragraph that used to record its shape was an apply note that PD-187 deleted
 as spent — correctly, except that this clause was the only durable thing in it.
 
+**`054` has NO ordering relationship, and that is recorded rather than left open.** It is a single
+`CREATE OR REPLACE FUNCTION` on `private.is_club_member` plus its `COMMENT`: no grant, no column
+list, no policy, no table DDL. It is purely additive to a predicate — every read and write that
+succeeded before it still succeeds — and no application code reads or depends on the function, so
+it may be applied to either project at any time, before or after any pending code deploy, and in
+either order relative to `enforce-creator-membership`. **What it does add is a dependency that is
+not an ordering one and would not show up in a chain check**: the new arm reads `public.clubs`
+while `clubs` SELECT calls the function, and that self-edge is not `42P17` only because
+`public.clubs` does not force row-level security. `ALTER TABLE public.clubs FORCE ROW LEVEL
+SECURITY` would take every club read in the app down. The RLS suite asserts
+`relforcerowsecurity = false` for exactly that reason, and `054`'s header carries the warning so
+it is discoverable from `pg_class` rather than only from here.
+
 ## Rollback — `git revert` is not the path
 
 **`git revert` of the squash commit is NOT the rollback path.** It would take the files out of the
@@ -90,6 +103,37 @@ predict, so it is worth a line. None of it is drift.
 - **`npm run db:drift` reports nothing missing from either project** — `041`–`046` applied on
   2026-08-10 and `047`/`048` later the same day. Every remaining entry on this list is a recording
   artefact.
+- **`050` is the first entry where DEV's LEDGER cannot reproduce DEV's OBJECT, and that was done
+  deliberately.** DEV's recorded statement embeds a function body of 6,680 characters
+  (`md5(prosrc)` of the embedded body: `43d7c861…`); DEV's live `search_places` is 6,744
+  (`1fc795cf…`). The difference is 64 characters — one comment line, `-- See §2 for where the
+  resulting imprecision actually lands.`, absent from the national-pass block — plus a differing
+  function comment. Comment-only, so nothing a rider could observe, but a body comment **is**
+  `prosrc`, so it broke `md5(prosrc)` as a cross-project check.
+
+  Reconciled 2026-08-11 by re-issuing `create or replace` and `comment on` against DEV through
+  **`execute_sql` rather than `apply_migration`**: the ledger already carried a `050` row and a
+  second one is drift of a worse kind than the one being fixed. The cost of that choice is this
+  bullet — DEV's ledger is now one revision behind its own object, which is `034`'s class made
+  permanent on purpose. **Replaying DEV's ledger would not reproduce DEV's object**, so if `050`
+  ever needs replaying, take it from the file.
+
+  **PROD's `050` is comment-reduced** (11,444 characters recorded against a 21,753-byte file),
+  which is `036`–`040`'s class. Unlike those, this file HAS a `$$` body, so the reduction
+  deliberately preserved every comment inside `$fn$` and stripped only the header prose.
+
+  Both projects, and the file, now agree on the thing that matters:
+
+  ```sql
+  select md5(prosrc), md5(obj_description(oid, 'pg_proc')) from pg_proc
+   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure;
+  -- DEV and PROD both: 1fc795cfb8fc6e631c4bab6e056ed89e · 3d03b3859a949834c7f3f387ffb935d2
+  -- and both equal the repo file's $fn$ block (6,744 chars) and its comment string
+  ```
+
+  **`049` needs no entry of its own beyond DEV's reduced form**, already noted in
+  `docs/HANDOFF.md` §Migrations: same reduction, same class, and its body was verified by the same
+  digest.
 - **`047` and `048` match their files on NEITHER project, and both are comment edits rather than
   drift.** DEV ran each file verbatim and the recorded statement was byte-identical at apply time;
   the pre-PR review then corrected one wrong sentence in each header — `048`'s policy count (nine,

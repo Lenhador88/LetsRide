@@ -10,7 +10,8 @@ import { useOnlineStatus } from '@/components/ui/OfflineState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getNotificationsPage, NOTIFICATIONS_PAGE_SIZE } from '@/lib/data/notifications'
-import { useQuery } from '@/lib/query'
+import { getCurrentProfile } from '@/lib/data/profile'
+import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { notificationSection } from '@/lib/utils'
 import type { NotificationCursor, NotificationRow } from '@/types'
@@ -47,6 +48,11 @@ export default function NotificationsPage() {
 function NotificationsScreen() {
   const online = useOnlineStatus()
   const first = useQuery(queryKeys.notifications.list(), () => getNotificationsPage())
+  // A `ride_joined` row reads differently to the ride's organizer than to the
+  // rest of its crew (PD-129), so the list needs the reader's own id. Shares
+  // `profile.me()` with `/profile` and the postcard thread rather than adding a
+  // narrower read of its own, so a rider arriving from either already has it.
+  const profile = useQuery(queryKeys.profile.me(), getCurrentProfile)
 
   // Pages beyond the first are **not** cached under a key — `keys.ts`'s
   // `notifications.list()` covers page one only, matching the shape every
@@ -91,18 +97,40 @@ function NotificationsScreen() {
     }
   }
 
-  if (first.error) {
+  // `combineQueries` surfaces the FIRST error of either, so a failed profile
+  // read blanks the whole list even when all 30 rows are already in hand. That
+  // is deliberate, and the alternative is worse than it looks: dropping
+  // `profile` from THIS gate alone does not fall through, because the data gate
+  // below still holds on `profile.data === undefined` and `useQuery` leaves
+  // `data` undefined after a failed first fetch. That is a permanent skeleton
+  // with no retry affordance. The ErrorState is the same failure, made loud and
+  // recoverable — `gate.refetch` retries both.
+  //
+  // **The data gate below is what prevents the wrong sentence; this one does
+  // not, and reading it as redundant with that is the trap.** The first-tick
+  // defect PD-129 removes arrives through `undefined`, which that gate holds on
+  // deliberately. Trimming it as covered by this error gate reinstates it.
+  const gate = combineQueries(first, profile)
+  if (gate.error) {
     return (
       <ErrorState
         message={online ? undefined : "You're offline — try again once you're back."}
-        onRetry={first.refetch}
+        onRetry={gate.refetch}
       />
     )
   }
 
   // Gated on the data, never on `isLoading` — `useQuery` starts its fetch in
   // an effect, so the first render pass has neither.
-  if (!first.data) return <SkeletonList />
+  //
+  // **The profile is in this gate, where the postcard thread deliberately keeps
+  // it out of its own, and the difference is a control against a sentence.**
+  // There it decides whether a delete affordance is drawn, so arriving late
+  // costs nothing. Here it decides whether a row claims "your ride" — a
+  // statement about the reader, which would render wrong for one round trip and
+  // then silently rewrite itself, which is the defect PD-129 exists to remove.
+  // `null` is a decided answer and passes; only `undefined` holds the screen.
+  if (!first.data || profile.data === undefined) return <SkeletonList />
 
   if (rows.length === 0) {
     // **The three kinds of zero rows collapse to one empty state,
@@ -118,6 +146,7 @@ function NotificationsScreen() {
     )
   }
 
+  const viewerId = profile.data?.id
   const sections = SECTIONS.map((label) => ({
     label,
     rows: rows.filter((row) => notificationSection(row.created_at) === label),
@@ -131,7 +160,7 @@ function NotificationsScreen() {
           <ul className="flex flex-col">
             {section.rows.map((row) => (
               <li key={row.id}>
-                <NotificationsListItem row={row} />
+                <NotificationsListItem row={row} viewerId={viewerId} />
               </li>
             ))}
           </ul>

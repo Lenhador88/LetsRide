@@ -103,3 +103,60 @@ export async function resolveAvatarUrls(
     if (row.avatar_path) row.avatar_url = urls.get(row.avatar_path) ?? null
   }
 }
+
+type RideMapRow = {
+  map_card_path?: string | null
+  map_card_url?: string | null
+  map_detail_path?: string | null
+  map_detail_url?: string | null
+}
+
+/**
+ * Resolves a ride's `map_card_path` and `map_detail_path` into signed URLs, in
+ * one signing request across every row.
+ *
+ * Deliberately the same shape as `resolveAvatarUrls` — mutate in place, write
+ * into a `_url` sibling, one batched request — rather than a second idea about
+ * how a Storage path becomes something a component can render. Read that
+ * function's header for the reasoning; all of it applies here.
+ *
+ * **Per viewer, and never cached across riders.** `createSignedUrls` runs under
+ * the caller's own session, so a URL minted here is only ever as good as the
+ * signature it carries and only ever for the rider it was minted for. Nothing
+ * persists one: it lives on the row this call returns, in the in-memory query
+ * cache that `signOut` clears, and it expires at `SIGNED_URL_TTL_SECONDS`. Do
+ * not move it into a shared cache, a build-time constant or a `public` URL —
+ * `051`'s Storage policies are what decide who may read a tile, and a URL
+ * handed to the wrong rider is outside their reach.
+ *
+ * **Both paths in one request rather than one call per column.** The detail
+ * screen reads one ride and the list reads thirty; splitting the two columns
+ * would double a round trip for nothing, and `signImagePaths` already
+ * de-duplicates.
+ *
+ * **Costs nothing while every tile is NULL**, which is every ride today: with
+ * no paths to sign this returns before it builds a client, so neither screen
+ * pays a request for a column that has no writer yet.
+ *
+ * Signing is not authorization. `051`'s `storage.objects` SELECT policy joins
+ * the object back to its ride under the caller's RLS and is what decides
+ * readability; a tile this viewer may not see comes back unsigned and lands as
+ * null. Never read "got a URL" as "the viewer is allowed" — the rides SELECT
+ * policy already decided that upstream by returning the row.
+ */
+export async function resolveRideMapUrls(
+  rows: (RideMapRow | null | undefined)[],
+  supabase?: DataClient
+): Promise<void> {
+  const present = rows.filter((row): row is RideMapRow => !!row)
+  const paths = present
+    .flatMap((row) => [row.map_card_path, row.map_detail_path])
+    .filter((path): path is string => !!path)
+  if (paths.length === 0) return
+
+  const urls = await signImagePaths(paths, supabase)
+  for (const row of present) {
+    if (row.map_card_path) row.map_card_url = urls.get(row.map_card_path) ?? null
+    if (row.map_detail_path) row.map_detail_url = urls.get(row.map_detail_path) ?? null
+  }
+}

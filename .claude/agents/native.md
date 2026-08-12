@@ -35,6 +35,10 @@ The hard part is finished. Do not redo it, and do not assume it is half-done:
 `webDir`.** PD-142 shipped it: `next.config.ts` carries a whole alternative config object under
 that flag, so the Vercel build is unchanged by construction rather than by review.
 
+**It fails without `NEXT_PUBLIC_CANONICAL_ORIGIN` now** (PD-188 — the webview origin is
+`https://localhost`, which GoTrue *discards*): `NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social
+npm run build:native`. A bundle to *submit* also has to clear `npm run release:check`.
+
 **There are no dynamic route segments left.** The ten detail screens read their id from
 `?id=<uuid>` — `/rides/detail?id=`, `/clubs/detail/members?id=`, `/postcards/detail?id=` — so
 `generateStaticParams` is not needed anywhere and the export has nothing to prerender per id.
