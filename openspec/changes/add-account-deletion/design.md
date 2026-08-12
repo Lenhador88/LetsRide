@@ -16,7 +16,7 @@ quoted from documentation.
 | FKs into `public.profiles` | **11**, every one `ON DELETE CASCADE` | `grep -n "references .*profiles(id)" supabase/migrations/*.sql` |
 | `postcards.club_id` | `ON DELETE CASCADE` — the second cascade level | `009_postcards_and_blocks.sql:161` |
 | `rides.club_id` | `ON DELETE SET NULL` — deliberately different, see `009`'s comment | `001_initial_schema.sql:64` |
-| Storage | **one** bucket `media`, five folder prefixes | `scripts/storage/sweep-orphans.mjs:49` |
+| Storage | **one** bucket `media`, five folder prefixes — **STALE: six since `051` added `ride-maps/` (PD-104, 2026-08-12)** | `select distinct split_part(name,'/',1) from storage.objects where bucket_id='media'` |
 | Edge Functions today | **zero**; no `supabase/functions/` directory | `ls supabase/` |
 | Admin/moderator role | none, recorded as a KNOWN GAP | `011_postcard_interactions.sql` |
 | Next free migration number | **028** — `026` and `027` landed in the same session this was written in | `ls supabase/migrations/` |
@@ -178,10 +178,19 @@ storage tables is not allowed`), which `sweep-orphans.mjs` documents at length a
 right — the row is metadata and the bytes live elsewhere. So the Storage API is the only path,
 and the function is the only caller with rights over a folder that is not its own.
 
-Five prefixes in the `media` bucket: `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`,
-`club-avatars/<uid>/`, `club-covers/<uid>/`. All five go. The last two are keyed on the
-**uploader**, so they hold images for clubs that may now belong to somebody else — which is
-exactly why D2 nulls those paths rather than leaving a dangling reference.
+Six prefixes in the `media` bucket: `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`,
+`club-avatars/<uid>/`, `club-covers/<uid>/` and `ride-maps/<uid>/`. All six go. The two club
+prefixes are keyed on the **uploader**, so they hold images for clubs that may now belong to
+somebody else — which is exactly why D2 nulls those paths rather than leaving a dangling
+reference.
+
+**`ride-maps/` was the fifth-plus-one and arrived after this document was written** (`051`,
+PD-104): two rendered map tiles per ride, keyed on the **organizer's** uid, depicting
+`rides.meeting_point` — frequently a home address. It is keyed on the organizer and not on the
+crew, so this sweep takes only the tiles of rides the departing rider organised; tiles for rides
+they merely joined belong to another organizer's folder and stay. Treat the list as derived from
+the bucket rather than remembered, because a folder added without a sweep entry looks exactly like
+this paragraph being complete.
 
 **Order: objects first, rows second.** The reverse loses the paths that say what to delete, and
 leaves bytes nothing can enumerate — the failure `sweep-orphans.mjs` was written to clean up

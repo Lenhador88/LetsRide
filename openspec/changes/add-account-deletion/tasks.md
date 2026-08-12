@@ -187,11 +187,36 @@ removal landing without its code repair is an outage.
   resolve the subject from the token; **take no id parameter of any kind**; require the
   re-authentication proof from 3.4; run the club transfer, then the Storage sweep, then
   `deleteUser(sub)` with **hard delete**, never Supabase's soft-delete mode.
-- [x] 2.3 Storage sweep across all five prefixes in the `media` bucket — `postcards/<uid>/`,
-  `avatars/<uid>/`, `covers/<uid>/`, `club-avatars/<uid>/`, `club-covers/<uid>/` — through the
+- [x] 2.3 Storage sweep across every prefix in the `media` bucket keyed on the rider's uid —
+  `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`, `club-avatars/<uid>/`,
+  `club-covers/<uid>/` and, since PD-104, `ride-maps/<uid>/` — through the
   Storage API. `delete from storage.objects` is refused by Supabase's own guard, which
   `scripts/storage/sweep-orphans.mjs` documents; paging matters, because `list()` truncates
   silently and a truncated sweep reports success.
+
+  **This task read "all five prefixes" until 2026-08-12 and the sixth is the dangerous one.** A
+  `ride-maps/` tile is a static map centred on `rides.meeting_point`, frequently the organizer's
+  home address. `rides_organizer_id_fkey` is `ON DELETE CASCADE`, so the rows naming the tiles go
+  with the rider regardless — a missed prefix therefore fails as a **non-event**, with nothing
+  logged, nothing red, and no screen showing the difference. Count the list against the bucket
+  rather than reading it here:
+
+  ```sql
+  select distinct split_part(name, '/', 1) as prefix from storage.objects
+   where bucket_id = 'media' order by prefix;
+  ```
+- [ ] 2.3a **OWNER ACTION — `delete-account` must be redeployed, and it is not this change's own
+  deploy that is outstanding.** `PREFIXES` in `supabase/functions/delete-account/index.ts` gained
+  `'ride-maps'` in PD-104's PR #183, but **the deployed build predates it** and no session can
+  redeploy: there is no `supabase` CLI in the build container and the MCP server exposes no deploy
+  tool. Until the owner does it, an account deletion runs the five-prefix sweep and leaves the
+  tiles.
+
+  It is not urgent *yet* and the reason is worth stating rather than assuming: nothing writes
+  `ride-maps/` until `resolve-ride-location` is deployed, which is PD-104 task 8.3 — and that task
+  already blocks its own deploy on this redeploy, so the two are one window. Deploying the renderer
+  first is what opens the gap. **Verify with `list_edge_functions` on both projects: a new
+  `ezbr_sha256` for `delete-account`, equal across PROD and DEV.**
 - [ ] 2.4 Idempotency and failure handling per design D7: already-deleted returns success; a
   failure before the auth delete leaves everything intact; the transfer and the cascade are one
   transaction; concurrent invocations do not double-transfer a club and never select a candidate

@@ -19,6 +19,29 @@
 > `openspec/specs/database-enforced-integrity/spec.md` as the first one left it, and rewrite this
 > delta against *that* text rather than against the version you drafted.
 
+> **⚠ COORDINATION, SECOND AND UNRELATED — `Storage object ownership SHALL remain
+> database-enforced` is modified by this change AND by the active `add-ride-map-tiles`
+> (PD-104).** Same mechanism, different requirement, and it needs its own note because a reader
+> who has already absorbed the banner above will not look for a second collision in the same file.
+>
+> They are reconcilable and they pull in different directions: this change extends the requirement
+> toward **deletion ordering** — objects deleted before the rows that name them, and no widened
+> grant while doing it — and `add-ride-map-tiles` extends it toward **read audience** and the
+> folder enumeration, adding `ride-maps/` as a sixth folder with an `EXISTS` against `rides`. The
+> merged text keeps **both scenario sets** and one opening paragraph that states neither count
+> from memory.
+>
+> **The count is the thing that will be lost.** The standing text reads *"Fifteen
+> `storage.objects` policies exist across five folders"*, which was measured and is now true of
+> PROD only: `051` is applied to DEV, where it is 18 across six (measured 2026-08-12). Whichever
+> of the two archives second and pastes its own opening paragraph back reinstates whichever
+> number it was drafted with.
+>
+> Before archiving whichever of these goes second: re-read
+> `openspec/specs/database-enforced-integrity/spec.md` as the first one left it and rewrite the
+> delta against *that* text, diffing **prose and every scenario body**, not scenario names — see
+> the banner further down this file on what `openspec archive` does and does not catch.
+
 ## MODIFIED Requirements
 
 ### Requirement: Club membership role SHALL NOT be self-assignable
@@ -346,14 +369,24 @@ assumption.
 
 ### Requirement: Storage object ownership SHALL remain database-enforced
 
+**Modified by two active changes — see the second coordination banner at the top of this file
+before archiving.**
+
 A rider MUST NOT be able to upload outside their own folder, nor reference an object in another
 rider's folder from a row they author. **An ownership transfer SHALL NOT be the exception**: no
 club row MUST ever name an image path under a uid that is not its own `owner_id`.
 
 Every upload surface binds its path to the uploader in SQL: `postcards` through the INSERT
-policy's `image_path like 'postcards/' || auth.uid() || '/%'`, and `profiles` and `clubs`
-through CHECK constraints on the row. Fifteen `storage.objects` policies exist across five
-folders, none granted to anything but `authenticated`, and none of them UPDATE.
+policy's `image_path like 'postcards/' || auth.uid() || '/%'`, and `profiles`, `clubs` and `rides`
+through CHECK constraints on the row. Every `storage.objects` policy is granted to `authenticated`
+and nothing else, and none of them is an UPDATE. **Re-derive the folder and policy counts rather
+than reading them here** — they were stated as "fifteen across five folders", which `051` made
+true of PROD only:
+
+```sql
+select cmd, count(*) from pg_policies
+ where schemaname = 'storage' and tablename = 'objects' group by cmd order by cmd;
+```
 
 **`016`'s two club CHECKs are the ones account deletion touches, and the constraint is weaker
 evidence against a transfer than it first appears.** `clubs_avatar_path_owned` is
@@ -370,8 +403,8 @@ a relaxation is nonetheless proposed, it carries the burden below.
 - **THEN** the write SHALL be rejected by the INSERT policy
 
 #### Scenario: A rider cannot upload outside their own folder
-- **WHEN** a rider uploads to `avatars/<another uid>/…`, `covers/`, `club-avatars/` or
-  `club-covers/` outside their own folder
+- **WHEN** a rider uploads to `avatars/<another uid>/…`, `covers/`, `club-avatars/`,
+  `club-covers/` or `ride-maps/` outside their own folder
 - **THEN** Storage SHALL refuse the upload
 
 #### Scenario: Unenforced capacity is recorded, not silently assumed
@@ -394,9 +427,12 @@ a relaxation is nonetheless proposed, it carries the burden below.
   member point a club's imagery at any rider's folder
 
 #### Scenario: Sweeping a departed rider's folders widens nobody's grant
-- **WHEN** the deletion removes objects under all five of the departing rider's prefixes
+- **WHEN** the deletion removes objects under every one of the departing rider's prefixes,
+  `ride-maps/<uid>/` included
 - **THEN** no new `storage.objects` policy SHALL be created, and no existing one SHALL be
   widened
 - **AND** the count of `storage.objects` policies granted to anything other than `authenticated`
   SHALL remain zero, so no owner, admin, member, non-member or blocked rider gains reach into a
   folder that is not their own
+- **AND** the sweep SHALL keep working through the service-role key alone, so no folder's own
+  DELETE policy is relaxed to make a departed rider's objects reachable

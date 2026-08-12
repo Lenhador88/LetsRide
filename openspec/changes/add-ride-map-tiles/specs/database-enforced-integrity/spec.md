@@ -11,7 +11,18 @@
 >
 > **Before archiving whichever of these goes second: re-read
 > `openspec/specs/database-enforced-integrity/spec.md` as the first one left it and rewrite this
-> delta against *that* text**, not against the version below.
+> delta against *that* text**, not against the version below. Diff **prose and every scenario
+> body**, not scenario names: `openspec archive` compares names only, so a reverted body is
+> exactly as silent as a reverted paragraph.
+>
+> **The other delta now names `ride-maps/` too (2026-08-12, PD-104 task 7.1)**, so the two no
+> longer disagree about the folder set — but it carries three scenarios this one does not
+> (*Sweeping a departed rider's folders widens nobody's grant*, *An ownership transfer leaves no
+> path pointing at a departed rider*, *A relaxation, if adopted at all, still refuses a forged
+> path*) and this one carries three that it does not (*A rider cannot read another rider's object
+> whose owning row is invisible to them*, *A row cannot widen an object's audience by naming it*,
+> *A ride's map tile is visible to exactly the ride's audience*). **All six survive into the
+> merged text.** Neither delta states a policy count any more; do not reintroduce one.
 
 ## MODIFIED Requirements
 

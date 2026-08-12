@@ -284,20 +284,71 @@ that tells a rider they are forbidden when they are merely late.
 
 ### Requirement: Storage objects SHALL be deleted before the rows that name them
 
-Every object in the `media` bucket under the departing rider's five prefixes — `postcards/<uid>/`,
-`avatars/<uid>/`, `covers/<uid>/`, `club-avatars/<uid>/`, `club-covers/<uid>/` — SHALL be deleted,
-through the Storage API, before the database rows are removed.
+Every object in the `media` bucket under **every** folder prefix keyed on the departing rider's
+uid SHALL be deleted, through the Storage API, before the database rows are removed. The set is
+**six** as of 2026-08-12 — `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`,
+`club-avatars/<uid>/`, `club-covers/<uid>/` and `ride-maps/<uid>/` — and it is a **derived** set,
+not a remembered one:
+
+```sql
+-- every folder any policy names, against the sweep list in the function
+select distinct split_part(name, '/', 1) as prefix from storage.objects
+ where bucket_id = 'media' order by prefix;
+```
+
+**The sixth prefix is new and is the one this requirement was written without.** `ride-maps/`
+arrived with `add-ride-map-tiles` (`051`, PD-104): two static map tiles per ride, centred on
+`rides.meeting_point`, stored under the **organizer's** uid. A meeting point is frequently the
+organizer's home address, so a tile is a rendered picture of where that rider lives, and this
+sweep is the only thing in the system that ever removes one.
 
 A row cascade does not touch Storage. `delete from storage.objects` is refused by Supabase's own
 guard (`42501: Direct deletion from storage tables is not allowed`), which
 `scripts/storage/sweep-orphans.mjs` documents and which is correct: the row is metadata, the bytes
 are elsewhere.
 
-#### Scenario: All five prefixes are swept, not just postcards
+**A prefix added after this feature deploys is a silent regression, because the failure is a
+non-event.** `rides_organizer_id_fkey` is `ON DELETE CASCADE` (measured on DEV 2026-08-12), so the
+rows naming the tiles disappear with the rider whether or not the objects do; nothing errors,
+nothing is logged, and no screen shows the difference. The only observable is the bytes still
+sitting in a bucket nobody can enumerate.
+
+#### Scenario: All six prefixes are swept, not just postcards
 - **WHEN** a deletion runs
-- **THEN** objects under all five prefixes SHALL be removed
+- **THEN** objects under every prefix in the derived set SHALL be removed, `ride-maps/<uid>/`
+  included
 - **AND** the two club prefixes SHALL be included even though the objects may depict a club that
   now belongs to somebody else, which is why the club transfer nulls those paths
+- **AND** a prefix introduced by a later change SHALL be added to this list in the same change
+  that creates the folder, not in the change that discovers the gap
+
+#### Scenario: The sweep is keyed on the uploader's uid and takes nothing else
+- **WHEN** the departing rider was crew on, or a club member alongside, rides organised by other
+  riders
+- **THEN** those rides' tiles SHALL survive untouched, because `ride-maps/<other uid>/` is not one
+  of the departing rider's prefixes
+- **AND** no rider — owner, admin, member, non-member, blocked in either direction or signed-out —
+  SHALL lose an object because somebody else deleted their account
+- **AND** the sweep SHALL NOT be widened to "every tile of every ride the rider appears on", which
+  would delete another organizer's stored bytes on a stranger's action
+
+#### Scenario: An incomplete sweep is unrecoverable, not merely untidy
+- **WHEN** an object under any of the rider's prefixes survives the deletion
+- **THEN** it SHALL be treated as permanently orphaned personal data rather than as debris: the
+  `rides` row that named it is gone with the cascade, and the rider's credential — which is what
+  `010`'s own-folder DELETE policy requires — no longer exists
+- **AND** no session SHALL be able to remedy it, because only the service-role key reaches another
+  rider's folder and it lives solely in the Edge Function's secret store
+
+#### Scenario: A new folder SHALL NOT start receiving objects before the sweep that empties it is deployed
+- **WHEN** a change introduces a Storage prefix and adds it to this function's sweep list
+- **THEN** the writer of that folder SHALL NOT be deployed ahead of the redeployed
+  `delete-account`, because the deployed build is what runs, not the repo
+- **AND** the two deploys SHALL be treated as one window, verified by `list_edge_functions`
+  reporting a new `ezbr_sha256` for `delete-account` on **both** projects
+- **AND** for `ride-maps/` specifically this is `add-ride-map-tiles` task 8.3, which already blocks
+  the render function's deploy on this redeploy — a rider deleting their account in the gap
+  between the two leaves two pictures of their home address behind
 
 #### Scenario: Rows are not removed while their objects remain
 - **WHEN** the object deletion fails for any prefix
