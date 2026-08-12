@@ -1,3 +1,5 @@
+import { normaliseConfiguredOrigin } from '@/lib/origin-normalise'
+
 /**
  * The origin to build a URL from when that URL **leaves the app**.
  *
@@ -50,18 +52,15 @@
  * stay the runtime one, or the app would navigate itself off the device.
  */
 export function canonicalOrigin(): string {
-  const configured = process.env.NEXT_PUBLIC_CANONICAL_ORIGIN?.trim().replace(/\/+$/, '')
+  // Shared with `next.config.ts`'s two build guards rather than spelled twice —
+  // see `origin-normalise.ts` for the two bugs that came from spelling it twice.
+  const configured = normaliseConfiguredOrigin(process.env.NEXT_PUBLIC_CANONICAL_ORIGIN)
 
   // An empty or whitespace-only value falls through to the runtime origin
   // rather than producing `''`, which would build a same-origin *relative* URL
   // — silently correct on the web and silently `https://localhost/...` in the
   // shell, i.e. exactly the bug this function exists to remove, wearing a
-  // configured-looking value.
-  //
-  // Trailing slashes are stripped for the same class of reason: every caller
-  // appends a rooted path, so `https://app.letsride.social/` would emit
-  // `https://app.letsride.social//auth/callback`. GoTrue's `/**` allowlist
-  // match still honours that, so it would not fail — it would just send riders
-  // to a doubled-slash URL nobody notices until one of them reports it.
+  // configured-looking value. `"/"` is the same case and the one that got
+  // through review twice: it trims to something and normalises to nothing.
   return configured ? configured : window.location.origin
 }

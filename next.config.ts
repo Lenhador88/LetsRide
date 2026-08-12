@@ -1,5 +1,13 @@
 import type { NextConfig } from "next";
 
+// The same normalisation `canonicalOrigin()` applies, imported rather than
+// re-spelled: the two guards below are only fail-closed if "set" means to them
+// exactly what it means to the code that reads the value. Two review rounds
+// found hand-matched spellings drifting — `origin-normalise.ts` has both.
+// Relative, not the `@/` alias: this file is loaded by Node before the alias
+// resolver exists.
+import { normaliseConfiguredOrigin } from './src/lib/origin-normalise'
+
 /**
  * Fail the build when a `NEXT_PUBLIC_SUPABASE_*` variable is missing.
  *
@@ -77,17 +85,22 @@ const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1'
  * wrong origin baked into one is a new store review, which is days, and until
  * then every rider who installs it and signs up is stranded.
  *
- * **`.trim()` rather than raw truthiness, and the two must agree.**
- * `canonicalOrigin()` treats a whitespace-only value as unset and falls back to
- * the runtime origin; a guard testing the raw string calls the same value *set*
- * and lets the build through. The bundle then ships with `https://localhost` —
- * precisely what this guard exists to refuse — off one leading space in a CI
- * secret. Measured: `NEXT_PUBLIC_CANONICAL_ORIGIN=" " npm run build:native`
- * exited 0 before this, and `release:check` then reported the origin missing.
- * A fail-closed gate that disagrees with its consumer about what "set" means
- * is not fail-closed.
+ * **It asks `normaliseConfiguredOrigin()` rather than testing the variable, so
+ * that "set" cannot mean one thing here and another in `canonicalOrigin()`.**
+ * That is not defensive style — it is the fix for two measured escapes, each
+ * found by a separate review round, each the same defect at a narrower value:
+ *
+ * - raw truthiness vs `.trim()` — `" "` was set here, unset there;
+ * - `.trim()` vs `.trim().replace(/\/+$/, '')` — `"/"` likewise, because it
+ *   trims to something and normalises to nothing.
+ *
+ * Both produced exit 0 and a bundle whose links were built from
+ * `https://localhost` — precisely what this guard exists to refuse — off one
+ * stray character in a CI secret. The pattern is the lesson: a third
+ * hand-matched spelling would have been a third escape, so there is one
+ * definition and both readers call it.
  */
-if (isCapacitorBuild && !process.env.NEXT_PUBLIC_CANONICAL_ORIGIN?.trim()) {
+if (isCapacitorBuild && !normaliseConfiguredOrigin(process.env.NEXT_PUBLIC_CANONICAL_ORIGIN)) {
   throw new Error(
     'Missing required environment variable: NEXT_PUBLIC_CANONICAL_ORIGIN.\n\n' +
       'A CAPACITOR_BUILD=1 build needs it because the webview origin is ' +
@@ -119,7 +132,7 @@ if (isCapacitorBuild && !process.env.NEXT_PUBLIC_CANONICAL_ORIGIN?.trim()) {
  * build produces no artifact at all, so there is nothing that can ship wrong.
  * An assertion is only needed where a wrong build can still finish.
  */
-if (!isCapacitorBuild && process.env.NEXT_PUBLIC_CANONICAL_ORIGIN?.trim()) {
+if (!isCapacitorBuild && normaliseConfiguredOrigin(process.env.NEXT_PUBLIC_CANONICAL_ORIGIN)) {
   throw new Error(
     'NEXT_PUBLIC_CANONICAL_ORIGIN is set, but this is a web build.\n\n' +
       `It is set to: ${process.env.NEXT_PUBLIC_CANONICAL_ORIGIN}\n\n` +

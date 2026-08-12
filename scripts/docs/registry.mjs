@@ -605,9 +605,9 @@ export const claims = [
   // Comment lines are excluded, and this claim is why: `origin.ts`'s own doc
   // block explains what the app moved away from, so the unfiltered count reads
   // 2 against a real 1 — CLAUDE.md's comment trap, in the file that closed it.
-  // (Only that doc block, measured; the three call sites say "the runtime
-  // origin" and do not match. Naming more files than match is how a later
-  // session concludes the filter is wrong.) No unfiltered companion entry: the raw
+  // (Measured: both raw hits are in `origin.ts`. The three call sites name
+  // `canonicalOrigin()` and do not match. Naming more files than match is how a
+  // later session concludes the filter is wrong.) No unfiltered companion entry: the raw
   // count moves with every comment reworded, which would make the claim a
   // maintenance tax rather than a check.
   {

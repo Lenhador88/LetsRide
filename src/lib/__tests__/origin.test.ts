@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { canonicalOrigin } from '@/lib/origin'
+import { normaliseConfiguredOrigin } from '@/lib/origin-normalise'
 
 /**
  * The suite runs under `environment: 'node'`, so there is no `window` — which
@@ -69,5 +70,38 @@ describe('canonicalOrigin', () => {
   it('does not normalise the runtime origin, which never carries a trailing slash', () => {
     withRuntimeOrigin(RUNTIME)
     expect(canonicalOrigin()).toBe(RUNTIME)
+  })
+})
+
+describe('normaliseConfiguredOrigin — the definition the build guards share', () => {
+  // `next.config.ts` fails a CAPACITOR_BUILD=1 build when the origin is unset
+  // and a web build when it is set. Those guards are only fail-closed while
+  // "set" means to them exactly what it means to `canonicalOrigin()`, and this
+  // is the assertion that keeps that true — a divergence is not a style
+  // difference, it is a bundle whose links are `https://localhost`.
+  //
+  // Twice measured, twice the same defect one value narrower: `" "` escaped a
+  // raw-truthiness guard, then `"/"` escaped a `.trim()` one. Both built and
+  // shipped clean. A third spelling would be a third escape, so both callers
+  // ask this function instead.
+  it.each([undefined, '', '   ', '/', '//', '  //  '])('treats %j as not configured', (value) => {
+    expect(normaliseConfiguredOrigin(value)).toBe('')
+    // The property that matters is the *pair*: the guard sees falsy and the
+    // consumer falls back, for the same input.
+    withRuntimeOrigin(RUNTIME)
+    if (value === undefined) vi.stubEnv('NEXT_PUBLIC_CANONICAL_ORIGIN', '')
+    else vi.stubEnv('NEXT_PUBLIC_CANONICAL_ORIGIN', value)
+    expect(canonicalOrigin()).toBe(RUNTIME)
+  })
+
+  it.each([
+    ['https://app.letsride.social', 'https://app.letsride.social'],
+    ['https://app.letsride.social/', 'https://app.letsride.social'],
+    ['  https://app.letsride.social//  ', 'https://app.letsride.social'],
+  ])('treats %j as configured, as %j', (value, expected) => {
+    expect(normaliseConfiguredOrigin(value)).toBe(expected)
+    withRuntimeOrigin('https://localhost')
+    vi.stubEnv('NEXT_PUBLIC_CANONICAL_ORIGIN', value)
+    expect(canonicalOrigin()).toBe(expected)
   })
 })
