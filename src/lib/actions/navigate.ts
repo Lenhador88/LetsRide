@@ -4,7 +4,7 @@ import { useCallback, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from '@/lib/actions/auth'
 import type { ActionState } from '@/lib/actions/state'
-import { resolveBackDestination } from '@/lib/back-navigation'
+import { BACK_ORIGIN_PARAM, resolveBackDestination } from '@/lib/back-navigation'
 
 /**
  * The honouring half of `ActionState.redirectTo` — task 5.8.
@@ -42,26 +42,29 @@ export function useActionRedirect(state: ActionState): void {
 }
 
 /**
- * The handler behind `Header`'s `onBack` — a back control for a screen with
- * more than one way in, where a static `backHref` would have to guess which.
- * `@/lib/back-navigation` carries why the destination is resolved rather than
- * written down, and why the fallback is the case that matters.
+ * The handler behind `Header`'s `onBack` — a back control for a screen with more
+ * than one way in, where a static `backHref` would have to guess which.
+ * `@/lib/back-navigation` carries the whole decision, including why this
+ * navigates to a carried origin rather than popping the history.
  *
- * **`window.history` is read inside the handler, never during render.** Next
- * still server-renders this client component on first load, and `next build`
- * prerenders it, and neither pass has a `window` to read a length off — the same
- * rule `lib/data/` follows, for the same reason.
+ * **`window.location` is read inside the handler, never during render**, which
+ * is also why this reads the parameter itself instead of `useSearchParams()`.
+ * That hook is the right tool for the ten detail routes, which need their id
+ * *during* render to issue a read and therefore pay for a `<Suspense>` boundary
+ * Next requires of a prerendered route. Nothing here is wanted until the rider
+ * taps, so the boundary would buy nothing — and `/notifications` keeps
+ * prerendering static, which is the check that this stayed true.
+ *
+ * `replace` rather than `push`: the rider is leaving this screen, and pushing
+ * would leave it one entry back for their next system-back gesture to return to.
  */
-export function useBack(fallbackHref: string): () => void {
+export function useBack(): () => void {
   const router = useRouter()
 
   return useCallback(() => {
-    const destination = resolveBackDestination(window.history.length, fallbackHref)
-    // `replace` rather than `push`: pushing the fallback leaves the screen just
-    // left sitting one entry back, so the rider's next back press returns to it.
-    if (destination.kind === 'replace') router.replace(destination.href)
-    else router.back()
-  }, [router, fallbackHref])
+    const from = new URLSearchParams(window.location.search).get(BACK_ORIGIN_PARAM)
+    router.replace(resolveBackDestination(from))
+  }, [router])
 }
 
 /**

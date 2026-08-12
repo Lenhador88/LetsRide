@@ -42,9 +42,11 @@ const SECTIONS = ['Today', 'Yesterday', 'This week', 'All time'] as const
  * ## Where back goes
  *
  * `onBack` rather than `backHref`, because the four departure points make any
- * single URL wrong from three of them. `useBack` pops the history, falling back
- * to `/postcards` when there is none to pop — the cold push-notification open in
- * the native shell. See `@/lib/back-navigation`.
+ * single URL wrong from three of them. `useBack` reads the origin
+ * `NotificationsHeaderControl` wrote into the URL and navigates there, falling
+ * back to `/postcards` when there is none — the cold push-notification open in
+ * the native shell. It never pops the history: `@/lib/back-navigation` carries
+ * why that test cannot be written portably and no-ops in a reachable case.
  *
  * `MarkNotificationsRead` mounts unconditionally, independent of whether the
  * list has loaded — the same shape `MarkClubSeen`/`MarkFeedSeen` use — so
@@ -52,7 +54,7 @@ const SECTIONS = ['Today', 'Yesterday', 'This week', 'All time'] as const
  * in flight or later fails.
  */
 export default function NotificationsPage() {
-  const goBack = useBack('/postcards')
+  const goBack = useBack()
 
   return (
     <>
