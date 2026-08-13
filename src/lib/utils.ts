@@ -121,7 +121,38 @@ export function wallClockToUtc(local: string): string {
  * `toLocaleString`, matching `zoneOffsetMs`'s own reasoning: a `datetime-local`
  * value has one required shape (`YYYY-MM-DDTHH:mm`) and no locale of its own.
  */
-/** What a fresh Create ride form opens on. Product owner, PD-197: "tomorrow at 10h00". */
+export function formatRideDepartureInput(date: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(new Date(date))
+
+  const find = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+
+  // Same `24` at midnight quirk `zoneOffsetMs` guards against — `datetime-local`
+  // rejects an hour of 24, and it means 00 here regardless.
+  const hour = find('hour') === '24' ? '00' : find('hour')
+
+  return `${find('year')}-${find('month')}-${find('day')}T${hour}:${find('minute')}`
+}
+
+/**
+ * What a fresh Create ride form opens on. Product owner, PD-197: "tomorrow at
+ * 10h00".
+ *
+ * **Keep it outside 02:00–03:00.** The date arithmetic below is DST-proof, but
+ * the *time* half is only safe because Amsterdam transitions inside that hour:
+ * a default of 02:30 would, one Sunday a year, hand `wallClockToUtc` a
+ * nonexistent hour and stop round-tripping — the form would open on a value it
+ * cannot save back unchanged. Nothing enforces this, so it is written here
+ * rather than left to be rediscovered on that Sunday.
+ */
 const DEFAULT_DEPARTURE_TIME = '10:00'
 
 /**
@@ -161,27 +192,6 @@ export function defaultRideDepartureInput(): string {
   const tomorrow = new Date(Date.UTC(find('year'), find('month') - 1, find('day') + 1))
 
   return `${tomorrow.toISOString().slice(0, 10)}T${DEFAULT_DEPARTURE_TIME}`
-}
-
-export function formatRideDepartureInput(date: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: APP_TIME_ZONE,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).formatToParts(new Date(date))
-
-  const find = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? ''
-
-  // Same `24` at midnight quirk `zoneOffsetMs` guards against — `datetime-local`
-  // rejects an hour of 24, and it means 00 here regardless.
-  const hour = find('hour') === '24' ? '00' : find('hour')
-
-  return `${find('year')}-${find('month')}-${find('day')}T${hour}:${find('minute')}`
 }
 
 /**

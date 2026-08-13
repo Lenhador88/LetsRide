@@ -936,9 +936,11 @@ the owner files, and a loose top-level story is the shape that rule exists to pr
 The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
 the five-rating block, **the relatedness verdict** — which for a filed item is the line
 saying why it is *separate* work, not a justification for travel it never claimed — and the
-issue or PR it came out of. **The block goes at the top, above the prose**, and its fifth rating
-is `Ready` rather than `This session` — `docs/reference/linear.md` §What an issue body opens with
-says why the name changes when a rating moves from a chat reply onto a board. **A story that grows a specification is a bug** — that belongs in
+issue or PR it came out of. **The block goes at the top, above the prose**, and its fifth rating is
+`Ready` rather than `This session` — a different question, **recomputed rather than carried
+across**. This step answers `This session` **N** in order to file something at all, and most of
+those are `Ready` **Y**: another session could start them, they just were not this branch's work.
+`docs/reference/linear.md` §What an issue body opens with has the rest. **A story that grows a specification is a bug** — that belongs in
 a proposal.
 
 Pass the project id `88f3f224-ecf0-46f0-a032-c86b7a12f81c`, never the name, and **read

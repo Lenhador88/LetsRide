@@ -224,11 +224,23 @@ wrong in the owner's client without it.
 It goes **above** the prose rather than under it, because the point is triage without opening
 anything: a board is scanned far more often than any single issue is read.
 
-**`This session` becomes `Ready` on an issue, and that is the one deviation.** The original asks
-"should the session in front of this pick it up *next*", which means nothing on a row nobody is
-holding. `Ready` asks what the board actually needs to know — **Y** if a session could start it
-today, **N** plus the half-line of why not: an owner action, a blocker, wants a proposal. That is
-the same question STEP 2b asks before a firing builds anything.
+**The fifth rating is `Ready` on an issue, and it is a different question rather than a renamed
+one.** `This session` asks whether the session in front of it should pick this up *next*, which
+means nothing on a row nobody is holding. `Ready` asks whether **any** session could start it
+today — **Y**, or **N** plus the half-line of why not: an owner action, a recorded blocker, wants
+a proposal.
+
+**Recompute it; do not carry the value across.** For the most common way an issue gets created
+here the two answers are *opposite*. `.claude/commands/queue-pickup.md` STEP 4b has a session
+answer `This session` **N** precisely in order to file something — *"wants its own branch"*, *"an
+owner action is filed whatever it rates"* — and STEP 5 then writes that item out as an issue. Most
+of those are `Ready` **Y**: a session could start them today, they simply were not that branch's
+work. Carrying the N across writes `Ready: N` onto nearly every follow-up this repo files, and the
+backlog then reads as entirely unstartable.
+
+Only the second of those three reasons has any automated backstop, and a weak one: STEP 2b checks
+`blockedBy` relations somebody wrote down. An owner action and a story wanting a proposal both
+sail straight through it.
 
 **An issue parked in `Needs decision` or `Needs help` also owes a comparison table of the ways
 forward.** Product owner, PD-182: *"give me a comparison table here in the linear story with your
