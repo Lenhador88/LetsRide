@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { remainingPostcards } from '@/components/postcards/deck'
+import { SWIPE_THRESHOLD, remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
 
 const card = (id: string) => ({ id })
 const feed = (...ids: string[]) => ids.map(card)
@@ -49,5 +49,34 @@ describe('remainingPostcards', () => {
     remainingPostcards(postcards, dismissed)
     expect(postcards.map((p) => p.id)).toEqual(['a', 'b'])
     expect([...dismissed]).toEqual(['a'])
+  })
+})
+
+describe('resolveSwipe', () => {
+  it('leaves the way the card was pushed', () => {
+    expect(resolveSwipe(SWIPE_THRESHOLD)).toBe(1)
+    expect(resolveSwipe(-SWIPE_THRESHOLD)).toBe(-1)
+    expect(resolveSwipe(600)).toBe(1)
+    expect(resolveSwipe(-600)).toBe(-1)
+  })
+
+  it('returns to centre below the threshold, in both directions', () => {
+    expect(resolveSwipe(0)).toBeNull()
+    expect(resolveSwipe(SWIPE_THRESHOLD - 1)).toBeNull()
+    expect(resolveSwipe(-(SWIPE_THRESHOLD - 1))).toBeNull()
+  })
+
+  it('returns to centre when the offset is not a number', () => {
+    // The reported "I swipe right and it exits left". A terminating event that
+    // populates no coordinate yields NaN, and the obvious `offset > 0 ? 1 : -1`
+    // resolves that to a confident left swipe: `NaN > 0` is false, and the
+    // magnitude test does not catch it either because `NaN < 56` is false too.
+    expect(resolveSwipe(Number.NaN)).toBeNull()
+    expect(resolveSwipe(Number.POSITIVE_INFINITY)).toBeNull()
+    expect(resolveSwipe(Number.NEGATIVE_INFINITY)).toBeNull()
+  })
+
+  it('treats -0 as no movement rather than a left swipe', () => {
+    expect(resolveSwipe(-0)).toBeNull()
   })
 })

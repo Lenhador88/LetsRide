@@ -28,3 +28,29 @@ export function remainingPostcards<T extends { id: string }>(
 ): T[] {
   return postcards.filter((postcard) => !dismissed.has(postcard.id))
 }
+
+/** How far the card must travel before releasing it advances the deck. */
+export const SWIPE_THRESHOLD = 56
+
+/**
+ * What releasing the card at `offset` does: `1` leaves to the right, `-1` to the
+ * left, `null` returns to centre.
+ *
+ * **`offset` is the offset the card is *drawn* at, never a coordinate read off
+ * the terminating event, and that is the fix rather than a style choice.** The
+ * deck used to compute `event.clientX - startX` at release while rendering the
+ * last `pointermove`; a terminating event whose coordinates disagree with that
+ * move — which is exactly what `pointercancel` is permitted to deliver — sends
+ * the card out the side it was never leaning towards. Deciding from the drawn
+ * offset makes "it leaves the way you pushed it" true by construction.
+ *
+ * The finite check is load-bearing for the same reason: a user agent that
+ * populates no coordinate yields `NaN`, and `NaN > 0` is `false`, so the
+ * obvious `offset > 0 ? 1 : -1` resolves an *absent* coordinate to a confident
+ * left swipe. Returning to centre is the only honest answer to "we do not know
+ * where the finger was".
+ */
+export function resolveSwipe(offset: number): 1 | -1 | null {
+  if (!Number.isFinite(offset) || Math.abs(offset) < SWIPE_THRESHOLD) return null
+  return offset > 0 ? 1 : -1
+}

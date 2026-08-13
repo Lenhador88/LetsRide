@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
-import { remainingPostcards } from '@/components/postcards/deck'
+import { remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
 import { cn } from '@/lib/utils'
 import type { Postcard } from '@/types'
 import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
@@ -21,14 +21,33 @@ import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
  * behaviour the product owner described. That means the deck only ever moves
  * forward; "Start over" at the end is the only way back, because a back
  * affordance would be UI the design does not draw.
+ *
+ * **Only a lift advances the deck, and only in the direction the card is drawn
+ * in** (PD-221). Both halves were one defect: `pointercancel` was wired
+ * straight to the release handler, so a gesture the platform took away
+ * mid-touch committed as though the rider had finished it, judged on
+ * coordinates a cancelled event is under no obligation to populate. See
+ * `onPointerCancel` below and `resolveSwipe` in `./deck`.
  */
-const SWIPE_THRESHOLD = 56
 const BEHIND = [
   { rotate: -2, scale: 1, z: 20 },
   { rotate: 2, scale: 1, z: 10 },
 ]
 
-type DragState = { pointerId: number; startX: number; startY: number } | null
+/**
+ * `offset` is the authority on where the card is, and `dx` is its mirror for
+ * rendering — not the other way round. A release is decided from the ref
+ * because `pointermove` is a continuous event: React is free to batch its
+ * `setDx`, so the `pointerup` handler can be a closure over a `dx` one move
+ * out of date. The ref is written synchronously and cannot be.
+ *
+ * `frontId` is the card the gesture *started* on. The feed revalidates
+ * underneath the deck — a block, a hide, a delete — so the front card can be a
+ * different postcard by the time the finger lifts, and dismissing whichever
+ * card happens to be there is the same defect `advance` already guards its
+ * timeout against.
+ */
+type DragState = { pointerId: number; startX: number; offset: number; frontId: string } | null
 
 export function PostcardDeck({
   postcards,
@@ -87,7 +106,7 @@ export function PostcardDeck({
   const front = remaining[0]
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (leaving !== null) return
+    if (leaving !== null || !front) return
 
     /**
      * A gesture starting on a control is that control's, not the deck's.
@@ -106,7 +125,7 @@ export function PostcardDeck({
      */
     if ((event.target as HTMLElement).closest('button, a')) return
 
-    drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+    drag.current = { pointerId: event.pointerId, startX: event.clientX, offset: 0, frontId: front.id }
     setDragging(true)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -114,7 +133,10 @@ export function PostcardDeck({
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = drag.current
     if (!state || state.pointerId !== event.pointerId) return
-    setDx(event.clientX - state.startX)
+    // Written to the ref first, mirrored to state for the transform. The two are
+    // the same number, so the card cannot commit in a direction it was never drawn in.
+    state.offset = event.clientX - state.startX
+    setDx(state.offset)
   }
 
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -123,9 +145,30 @@ export function PostcardDeck({
     drag.current = null
 
     setDragging(false)
-    const travelled = event.clientX - state.startX
-    if (Math.abs(travelled) >= SWIPE_THRESHOLD && front) advance(travelled > 0 ? 1 : -1, front.id)
+    const direction = resolveSwipe(state.offset)
+    // A revalidation can swap the front card mid-drag. Advancing then would
+    // dismiss a postcard that was never under the finger, so the gesture is
+    // spent returning the deck to centre instead.
+    if (direction !== null && front && front.id === state.frontId) advance(direction, state.frontId)
     else setDx(0)
+  }
+
+  /**
+   * **A cancel aborts the gesture; it does not complete it.** The two are
+   * opposite intents and the deck used to route both here: `pointercancel`
+   * means the platform took the touch away *while the finger was still down* —
+   * iOS and WKWebView's left-edge back-swipe, a second touch landing, or this
+   * card unmounting under its own pointer capture when the feed revalidates —
+   * so treating it as a release flung the card away mid-touch and marked a
+   * postcard the rider never finished reading as seen.
+   */
+  const onPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = drag.current
+    if (!state || state.pointerId !== event.pointerId) return
+    drag.current = null
+
+    setDragging(false)
+    setDx(0)
   }
 
   if (!front) {
@@ -188,7 +231,7 @@ export function PostcardDeck({
               onPointerDown={isFront ? onPointerDown : undefined}
               onPointerMove={isFront ? onPointerMove : undefined}
               onPointerUp={isFront ? onPointerUp : undefined}
-              onPointerCancel={isFront ? onPointerUp : undefined}
+              onPointerCancel={isFront ? onPointerCancel : undefined}
             >
               <PostcardCard postcard={postcard} fill />
             </div>
