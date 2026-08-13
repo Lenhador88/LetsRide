@@ -6,6 +6,7 @@ import { FormError } from '@/components/auth/FormError'
 import {
   normaliseUsername,
   rememberRefusal,
+  usernameCheckUnanswered,
   usernameVerdict,
   type UsernameCheck,
 } from '@/components/auth/username-verdict'
@@ -47,6 +48,10 @@ const initialState: UsernameFormState = { ...emptyActionState, refused: [] }
 export default function OnboardingUsernamePage() {
   const [username, setUsernameValue] = useState('')
   const [checked, setChecked] = useState<UsernameCheck | null>(null)
+  // The folded value whose availability read failed, or null. See
+  // `usernameCheckUnanswered` for why a failure is a third state rather than
+  // `available: false`.
+  const [checkFailedFor, setCheckFailedFor] = useState<string | null>(null)
 
   // The wrapper exists only to carry the refused list forward: `setUsername` is
   // a plain async function that a test calls the same way, and accumulating a
@@ -89,7 +94,13 @@ export default function OnboardingUsernamePage() {
   // carries it only in the gap where the field is blank. Everything else in
   // `state.error` — a network failure, a lost session — is about the submit
   // rather than about a value, and always belongs at the button.
+  //
+  // A failed *check* deliberately does not count as the field speaking here.
+  // This flag decides where a REFUSAL is drawn, and "we could not look it up"
+  // is not one — folding it in would suppress a real submit error at the button
+  // whenever the advisory read happened to be down.
   const fieldSilent = tooShort || !verdict
+  const checkUnanswered = usernameCheckUnanswered(username, verdict, checkFailedFor)
 
   useEffect(() => {
     if (tooShort) return
@@ -101,9 +112,21 @@ export default function OnboardingUsernamePage() {
       // case-insensitive (056), so one entry covers every case-variant — but the
       // charset and reserved-name messages the check also returns should be
       // about the value the rider actually wrote, not a lowercased copy of it.
-      checkUsernameAvailability(username).then((result) => {
-        if (!cancelled) setChecked({ value, ...result })
-      })
+      checkUsernameAvailability(username)
+        .then((result) => {
+          if (cancelled) return
+          setCheckFailedFor(null)
+          setChecked({ value, ...result })
+        })
+        // `unwrap` throws on a PostgREST error, so this rejects on a dropped
+        // connection, an expired session, or the RPC being absent — which is
+        // exactly what a database running ahead of or behind this bundle looks
+        // like. Without a catch the rejection notifies nothing and the field
+        // stays blank for ever; the rider is not told, and the submit they can
+        // still make is the only thing that would tell them.
+        .catch(() => {
+          if (!cancelled) setCheckFailedFor(value)
+        })
     }, DEBOUNCE_MS)
 
     return () => {
@@ -134,7 +157,27 @@ export default function OnboardingUsernamePage() {
           <Input
             name="username"
             label="Username"
-            autoComplete="off"
+            // NOT `off`, and not `username`. A field named `username`, alone in
+            // a form, is exactly Chrome's "username-first sign-in flow" shape,
+            // so a password manager offers to fill a saved credential — or to
+            // save one — on a screen that has no password on it at all. Every
+            // major manager documents `autocomplete="off"` as advisory and
+            // ignores it here, which is why `off` did not stop it.
+            //
+            // `nickname` is a real WHATWG autofill token, and it is the honest
+            // one: a rider signs in with their EMAIL and password, so this
+            // value is not a credential in this app — it is the handle drawn on
+            // bylines and member lists. Declaring it as profile data rather
+            // than as a login identifier is what moves it out of the password
+            // manager's scope, and it happens to be true.
+            autoComplete="nickname"
+            // Inert vendor opt-outs, one per manager that ignores the standard
+            // token as well. They render as plain data attributes to anything
+            // that does not know them.
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore
+            data-form-type="other"
             autoCapitalize="none"
             spellCheck={false}
             required
@@ -160,6 +203,24 @@ export default function OnboardingUsernamePage() {
                 }
               >
                 {verdict.available ? 'Username is available.' : verdict.error}
+              </p>
+            )}
+            {/* Muted rather than danger, and no `errorBorder`: the check failed,
+                the name did not. Saying so in red would refuse a name that is
+                probably free, on a step decision #5 makes unskippable.
+
+                "You can still continue" is dropped once the submit itself has
+                failed, and that is not a nicety. Whatever breaks the advisory
+                read usually breaks the write too, so the rider would otherwise
+                be told to carry on by the field and told the save failed by the
+                button, in the same frame. The 23505 path never reaches this —
+                a refusal produces a verdict, which switches the note off — so
+                this only ever fires on the errors that really are about the
+                submit rather than about the name. */}
+            {!tooShort && checkUnanswered && (
+              <p className="text-sm font-medium text-muted">
+                Couldn&rsquo;t check that name right now
+                {state.error ? '.' : ' — you can still continue.'}
               </p>
             )}
           </div>

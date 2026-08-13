@@ -72,6 +72,32 @@ export function usernameVerdict(
 }
 
 /**
+ * Whether the field should say the availability check did not answer at all.
+ *
+ * The check is advisory — `setUsername` and the unique index are what decide —
+ * so a failed read must not be drawn as "taken": that would refuse a name that
+ * is very probably free, on the step a rider cannot skip. But it must not be
+ * drawn as *nothing* either, which is what a `.then()` with no `.catch()` gave.
+ * A rejected promise notifies no one, so the field simply stays blank and the
+ * rider is left waiting for an answer that is never coming.
+ *
+ * A verdict outranks a failure: a remembered refusal is the authority (PD-146)
+ * and a landed answer is fresher than a read that failed before it.
+ *
+ * Keyed by the folded value for the same reason `usernameVerdict` is — the note
+ * must disappear the moment the rider edits the field, or it describes a name
+ * nobody tried to check.
+ */
+export function usernameCheckUnanswered(
+  input: string,
+  verdict: UsernameCheck | null,
+  failedFor: string | null
+): boolean {
+  if (verdict || !failedFor) return false
+  return normaliseUsername(input) === failedFor
+}
+
+/**
  * The refused list after a submit — the accumulating half of the rule above.
  *
  * It lives in the form's own `useActionState` state rather than in a ref or an
