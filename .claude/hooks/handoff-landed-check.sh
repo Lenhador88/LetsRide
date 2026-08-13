@@ -144,10 +144,19 @@ git diff --quiet "$base" -- docs/HANDOFF.md 2>/dev/null && exit 0
 # correct because those three conditions ARE the wrap-up; copying the marker
 # without them was copying half the mechanism.
 #
-# Nothing is lost by staying quiet before that. An uncommitted handoff edit is
-# already nagged about by the global `stop-hook-git-check.sh`, every turn, and
-# an unpushed one by the sibling — this hook's unique claim is the *landed*
-# check, which cannot even be answered until there is something pushed to land.
+# Nothing is lost by staying quiet before that, and the cover is ONE file rather
+# than two: `~/.claude/stop-hook-git-check.sh` handles all three gated states —
+# uncommitted, untracked, and pushed-behind — and it `exit 2`s, so unlike this
+# warning it reaches the model rather than only the user.
+#
+# **Do not credit the sibling with the unpushed half.** `session-wrapup-check.sh`
+# runs this same `[[ "$head" == "$pushed" ]] || exit 0` and is therefore silent
+# on unpushed for exactly the reason this hook now is — an audit that follows
+# the wrong attribution lands on the one file that disproves it, and concludes
+# there is a gap here worth reopening. There is not.
+#
+# This hook's unique claim is the *landed* check, which cannot even be answered
+# until there is something pushed to land.
 git diff --quiet 2>/dev/null || exit 0
 git diff --cached --quiet 2>/dev/null || exit 0
 [[ -z "$(git ls-files --others --exclude-standard 2>/dev/null)" ]] || exit 0
