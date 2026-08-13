@@ -59,6 +59,12 @@ const BEHIND = [
 type DragState = {
   pointerId: number
   startX: number
+  /**
+   * Only ever used to decide whether the gesture has started moving. It is
+   * deliberately not part of `offset`, which the card is drawn from and which
+   * `resolveSwipe` judges — the deck moves on one axis.
+   */
+  startY: number
   offset: number
   frontId: string
   /**
@@ -186,6 +192,7 @@ export function PostcardDeck({
     drag.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
+      startY: event.clientY,
       offset: 0,
       frontId: front.id,
       armed: false,
@@ -202,7 +209,14 @@ export function PostcardDeck({
     if (!state.armed) {
       // Still inside the slop: the card is not drawn as moving, so a tap that
       // wobbles a pixel or two does not nudge the deck.
-      if (!armsDrag(state.offset)) return
+      //
+      // Measured on TOTAL travel, vertical included, even though the deck only
+      // moves horizontally. Arming is what takes capture, and capture is what
+      // stops the browser claiming the gesture and firing `pointercancel` — so
+      // a swipe with any upward or downward lean has to arm on its vertical
+      // frames too, or the deck is still unarmed while the browser decides
+      // whose gesture it is. See `armsDrag`.
+      if (!armsDrag(state.offset, event.clientY - state.startY)) return
       state.armed = true
       setDragging(true)
       // Taken now rather than at `pointerdown`, which is what lets a control

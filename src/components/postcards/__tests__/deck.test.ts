@@ -138,4 +138,41 @@ describe('armsDrag', () => {
     expect(armsDrag(shortDrag)).toBe(true)
     expect(resolveSwipe(shortDrag)).toBeNull()
   })
+
+  /**
+   * The reported symptom, as a test. "Swipe gently up or down and the card goes
+   * back to place": a swipe with vertical lean moves vertically first, and an
+   * x-only threshold leaves the deck unarmed and UNCAPTURED through exactly the
+   * frames in which the browser decides whether the gesture is a scroll. It
+   * takes it, fires `pointercancel`, and PD-221's abort — which is correct —
+   * returns the card to centre.
+   *
+   * Arming is therefore about movement, not direction. Only `resolveSwipe`
+   * cares which way.
+   */
+  it('arms on a purely vertical gesture, which is what stops the browser stealing it', () => {
+    expect(armsDrag(0, DRAG_ARM_THRESHOLD)).toBe(true)
+    expect(armsDrag(0, -DRAG_ARM_THRESHOLD)).toBe(true)
+  })
+
+  it('arms on a diagonal whose horizontal travel alone would not', () => {
+    // 5px across and 7px down is 8.6px of travel: plainly a drag, and under the
+    // threshold on the x axis alone.
+    expect(armsDrag(5, 7)).toBe(true)
+    expect(armsDrag(5)).toBe(false)
+  })
+
+  it('still treats a vertical wobble within the slop as a tap', () => {
+    expect(armsDrag(2, 3)).toBe(false)
+  })
+
+  /**
+   * Arming vertically must not make the deck advance vertically. A gesture that
+   * goes straight up arms, captures, draws the card at x=0 and springs back —
+   * which is the whole point of keeping the two thresholds separate.
+   */
+  it('does not turn a vertical gesture into a swipe', () => {
+    expect(armsDrag(0, 300)).toBe(true)
+    expect(resolveSwipe(0)).toBeNull()
+  })
 })

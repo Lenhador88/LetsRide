@@ -62,9 +62,24 @@ export const DRAG_ARM_THRESHOLD = 8
  * so a tap is never retargeted and the control's click arrives untouched; once
  * the pointer has travelled this far the gesture is plainly not a tap, the deck
  * captures, and the click that would have followed is suppressed.
+ *
+ * **It measures TOTAL distance, and the vertical half is not a nicety — an
+ * x-only threshold is a bug.** Capture is also what stops the browser claiming
+ * the gesture for a scroll and firing `pointercancel`, which PD-221 correctly
+ * made abort the swipe. A rider who swipes with any upward or downward lean
+ * moves vertically first, so under an x-only rule the deck is still unarmed and
+ * uncaptured through exactly the frames where the browser decides whose gesture
+ * this is — it takes it, cancels, and the card slides back to centre. That is
+ * the "swipe gently up or down and it goes back to place" report, and arming on
+ * horizontal travel alone would have caused it rather than fixed it.
+ *
+ * So any real movement arms, in any direction, and the deck holds the pointer
+ * from then on. Which way the card LEAVES is still decided by horizontal travel
+ * alone — see `resolveSwipe`. Arming and committing are different questions and
+ * only the second one is about direction.
  */
-export function armsDrag(offset: number): boolean {
-  return Math.abs(offset) >= DRAG_ARM_THRESHOLD
+export function armsDrag(dx: number, dy: number = 0): boolean {
+  return Math.hypot(dx, dy) >= DRAG_ARM_THRESHOLD
 }
 
 /**
