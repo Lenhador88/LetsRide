@@ -64,9 +64,13 @@ import type { RideFilter } from '@/types'
  * (PD-217)** — a skeleton that draws no bar leaves the rows to fall by the
  * bar's ~104px when `filters.data` lands, so the height has to be *reserved* by
  * a shape standing in for it.
- * `/postcards` has the same two-skeleton shape and needs nothing at all: its
- * deck skeleton is a centred, width-driven card, so vertical padding moves
- * neither its centre nor its size.
+ * **`/postcards` has the same shape and the same defect, half the size**, and
+ * this comment said the opposite until PD-218. The card is centred and
+ * width-driven, so its *size* never changes — that half was right — but the
+ * slot it is centred in loses the bar's 104px when the bar lands, which moves
+ * a centred child by half the difference. 52px, in the same direction. Whether
+ * a jump shows in full or halved is a property of the *alignment*, not of the
+ * skeleton: top-aligned here, centred there.
  *
  * `animate-fade-in` sits on the loaded list only — never on `RideFilterBar`,
  * which PD-210 exists specifically to stop swapping. A background refetch of

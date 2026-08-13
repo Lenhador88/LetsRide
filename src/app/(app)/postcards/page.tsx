@@ -7,7 +7,7 @@ import { NotificationsHeaderControl } from '@/components/notifications/Notificat
 import { PostcardDeck } from '@/components/postcards/PostcardDeck'
 import { PostcardFilterBar } from '@/components/postcards/PostcardFilterBar'
 import { ErrorState } from '@/components/ui/ErrorState'
-import { SkeletonDeck } from '@/components/ui/Skeleton'
+import { SkeletonDeck, SkeletonFilterBar } from '@/components/ui/Skeleton'
 import { getFeed, getPostcardFilters, type FeedFilter } from '@/lib/data/postcards'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
@@ -41,15 +41,51 @@ import { filterSegment, queryKeys } from '@/lib/query/keys'
  * deck's own slot rather than replacing the screen, so the 104 bar row stays
  * put and only the 492 below it changes — `SkeletonDeck` and `PostcardDeck`
  * share the same `h-full` root, which is what makes that slot swap exact.
+ *
+ * That reasoning is about a filter *change*, where the bar is already drawn.
+ * The **cold** load is a different boundary and it did move the card — see
+ * `PostcardsLoading`.
  */
+
 export default function PostcardsPage() {
   return (
     <>
       <Header title="Home" secondaryAction={<NotificationsHeaderControl />} />
       <div className="pb-navbar-action pt-header fixed inset-0 flex flex-col">
-        <Suspense fallback={<SkeletonDeck />}>
+        <Suspense fallback={<PostcardsLoading />}>
           <PostcardsScreen />
         </Suspense>
+      </div>
+    </>
+  )
+}
+
+/**
+ * The cold-load shape, standing in for the settled screen rather than for the
+ * deck alone — PD-218.
+ *
+ * **A centred child moves when its slot resizes, which is what the skeleton
+ * without a bar was doing.** The frame is 596 tall (844 less the 96 header and
+ * the 152 nav); drawing the deck alone centres the card at 298, and the bar
+ * landing takes the slot to 492 and the centre to 350. The card settles ~52px
+ * downward on every cold load. Half `/rides`' jump, and for the same reason —
+ * *that* screen is top-aligned so the whole 104 shows, this one is centred so
+ * half does. PD-217 got this wrong by reasoning about whether the card moved
+ * **within** its slot, which it does not.
+ *
+ * It mirrors the loaded return below exactly — bar, then the deck inside the
+ * same `min-h-0 flex-1 py-2` wrapper — because anything less is a second
+ * boundary to get wrong. Used at **both** cold-load positions: the `<Suspense>`
+ * fallback while `useSearchParams` resolves, and the `!filters.data` gate.
+ * `SkeletonFilterBar` is `aria-hidden`, so it adds no second announcement
+ * beside `SkeletonDeck`'s own `role="status"`.
+ */
+function PostcardsLoading() {
+  return (
+    <>
+      <SkeletonFilterBar />
+      <div className="min-h-0 flex-1 py-2">
+        <SkeletonDeck />
       </div>
     </>
   )
@@ -90,7 +126,7 @@ function PostcardsScreen() {
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
   // where `isLoading` is false and there is still nothing to draw.
-  if (!filters.data) return <SkeletonDeck />
+  if (!filters.data) return <PostcardsLoading />
 
   return (
     <>
