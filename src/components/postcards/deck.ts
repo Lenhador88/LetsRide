@@ -63,23 +63,30 @@ export const DRAG_ARM_THRESHOLD = 8
  * the pointer has travelled this far the gesture is plainly not a tap, the deck
  * captures, and the click that would have followed is suppressed.
  *
- * **It measures TOTAL distance, and the vertical half is not a nicety — an
- * x-only threshold is a bug.** Capture is also what stops the browser claiming
- * the gesture for a scroll and firing `pointercancel`, which PD-221 correctly
- * made abort the swipe. A rider who swipes with any upward or downward lean
- * moves vertically first, so under an x-only rule the deck is still unarmed and
- * uncaptured through exactly the frames where the browser decides whose gesture
- * this is — it takes it, cancels, and the card slides back to centre. That is
- * the "swipe gently up or down and it goes back to place" report, and arming on
- * horizontal travel alone would have caused it rather than fixed it.
+ * **It measures HORIZONTAL travel only, and a version measuring total travel
+ * was written, reviewed and reverted before it shipped.** The argument for
+ * `Math.hypot(dx, dy)` was that capture is what stops the browser claiming the
+ * gesture for a scroll and firing `pointercancel`, so a swipe with vertical
+ * lean had to arm on its vertical frames. **That argument is wrong on both
+ * halves**, and it is recorded here because it is convincing and would be
+ * re-derived:
  *
- * So any real movement arms, in any direction, and the deck holds the pointer
- * from then on. Which way the card LEAVES is still decided by horizontal travel
- * alone — see `resolveSwipe`. Arming and committing are different questions and
- * only the second one is about direction.
+ * - Capture does not defend against scrolling. Per Pointer Events L3 a
+ *   `pointercancel` fires *when* the pointer starts manipulating the viewport,
+ *   and capture is implicitly *released* at that moment. It retargets events;
+ *   it does not arbitrate whose gesture this is.
+ * - The lever that does arbitrate is `touch-action`, and it is already set —
+ *   `touch-none` on the front card wrapper, which intersects down the whole
+ *   subtree. There is nothing beneath the deck that scrolls anyway: the
+ *   postcards screen is a fixed-viewport `flex-1` column.
+ *
+ * So arming vertically bought nothing and cost something real: 8px of vertical
+ * drift is well inside normal touch slop, so it would swallow taps on the like,
+ * comment, share and overflow controls — a partial regression of the very thing
+ * this threshold exists to protect.
  */
-export function armsDrag(dx: number, dy: number = 0): boolean {
-  return Math.hypot(dx, dy) >= DRAG_ARM_THRESHOLD
+export function armsDrag(dx: number): boolean {
+  return Math.abs(dx) >= DRAG_ARM_THRESHOLD
 }
 
 /**

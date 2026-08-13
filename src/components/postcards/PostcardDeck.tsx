@@ -59,12 +59,6 @@ const BEHIND = [
 type DragState = {
   pointerId: number
   startX: number
-  /**
-   * Only ever used to decide whether the gesture has started moving. It is
-   * deliberately not part of `offset`, which the card is drawn from and which
-   * `resolveSwipe` judges — the deck moves on one axis.
-   */
-  startY: number
   offset: number
   frontId: string
   /**
@@ -156,15 +150,63 @@ export function PostcardDeck({
   useEffect(() => {
     if (!drag.current) return
     drag.current = null
+    // A drag that never armed cannot have set this, but a click can still be on
+    // its way from before the card changed. Cleared here so it cannot swallow a
+    // control's click — including a keyboard Enter, which arrives as a `click`
+    // with no `pointerdown` in front of it to clear the flag.
+    suppressClick.current = false
     setDragging(false)
     setDx(0)
   }, [front?.id])
+
+  /**
+   * **An unarmed gesture holds no capture, so its end may never reach this
+   * card — and without this the deck jams.**
+   *
+   * Touch and pen get *implicit* capture at `pointerdown` (Pointer Events L3),
+   * so a finger always delivers its own `pointerup`. **A mouse does not**: its
+   * events are hit-tested, so a press on the card followed by a flick off it —
+   * one `pointermove` sample is ~8ms, so an ordinary brisk gesture leaves in a
+   * single step — delivers no further move, no up and no cancel. `drag.current`
+   * would then stay set for ever, and everything downstream of it is worse than
+   * a stuck flag:
+   *
+   *   - every later `pointerdown` bails on `drag.current`, so the deck accepts
+   *     no swipes at all until the front card changes, which needs a swipe;
+   *   - a mouse's `pointerId` is stable, so a later *hover* move matches the
+   *     dead gesture, arms it against the old `startX`, and the card starts
+   *     tracking a cursor with no button held;
+   *   - the next click then arrives as a `pointerup` on an armed gesture with a
+   *     large offset, and **dismisses a postcard nobody swiped** — which breaks
+   *     this component's own invariant that only a lift advances the deck.
+   *
+   * Listening on the window is the fix rather than capturing earlier, because
+   * capturing earlier is what took the controls' clicks away in the first
+   * place. An unarmed gesture has drawn nothing and captured nothing, so
+   * forgetting it is the whole cleanup.
+   */
+  useEffect(() => {
+    const forgetUnarmed = () => {
+      if (!drag.current || drag.current.armed) return
+      drag.current = null
+    }
+    window.addEventListener('pointerup', forgetUnarmed)
+    window.addEventListener('pointercancel', forgetUnarmed)
+    return () => {
+      window.removeEventListener('pointerup', forgetUnarmed)
+      window.removeEventListener('pointercancel', forgetUnarmed)
+    }
+  }, [])
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     // A second finger landing must not re-anchor the gesture: overwriting the
     // drag state moves `startX` to the new touch while the card keeps the first
     // one's offset, which makes the card jump.
-    if (leaving !== null || !front || drag.current) return
+    // Only an ARMED gesture blocks a new one. A second finger landing mid-swipe
+    // must not re-anchor `startX` — the card would jump — but an unarmed entry
+    // has drawn nothing and captured nothing, so replacing it is free and is a
+    // second line of defence against one being stranded (see `forgetUnarmed`).
+    if (leaving !== null || !front || drag.current?.armed) return
 
     suppressClick.current = false
 
@@ -192,7 +234,6 @@ export function PostcardDeck({
     drag.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
-      startY: event.clientY,
       offset: 0,
       frontId: front.id,
       armed: false,
@@ -210,13 +251,7 @@ export function PostcardDeck({
       // Still inside the slop: the card is not drawn as moving, so a tap that
       // wobbles a pixel or two does not nudge the deck.
       //
-      // Measured on TOTAL travel, vertical included, even though the deck only
-      // moves horizontally. Arming is what takes capture, and capture is what
-      // stops the browser claiming the gesture and firing `pointercancel` — so
-      // a swipe with any upward or downward lean has to arm on its vertical
-      // frames too, or the deck is still unarmed while the browser decides
-      // whose gesture it is. See `armsDrag`.
-      if (!armsDrag(state.offset, event.clientY - state.startY)) return
+      if (!armsDrag(state.offset)) return
       state.armed = true
       setDragging(true)
       // Taken now rather than at `pointerdown`, which is what lets a control
