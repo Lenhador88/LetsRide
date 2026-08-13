@@ -1309,6 +1309,24 @@ it ever matters, which is the whole reason the accepted cost above is affordable
 *"the walk phase"*, *"the leaked-password toggle"*. Two or three words. A name that could describe
 two different pieces of work is the same defect as a letter, arriving more slowly.
 
+**Never write a bare issue id in a chat reply — put a short title in front of it.** Product owner,
+2026-08-13: *"when you say PD-223 or any linear ticket can you also add a very brief title in
+front? I don't know which ticket you are referring to from a number."* So it is **the caption
+swipe (PD-224)**, never **PD-224** — two or three words, by the same rule as the option names
+above, and for the same reason: the number means something to whoever just wrote it and nothing to
+whoever is reading it on a phone.
+
+It bites hardest exactly where it is most tempting to skip — a status line listing four ids, which
+is the one sentence in a reply that is *entirely* references. If naming them all makes the line
+long, that is the line telling you it was never readable.
+
+**This is a chat rule and it does not extend to the record.** In a Linear issue body, a comment, a
+commit message or a PR body, `PD-224` is auto-linked with its title by Linear and GitHub, so the
+title is already there and repeating it is noise. **Nothing can gate this** — the same reason the
+issue-body rules in [`docs/reference/linear.md`](docs/reference/linear.md) §What an issue body
+opens with have none: a chat reply is not a file, so no CI job and no `docs:check` claim can see
+it. It holds because it is written down.
+
 ### The debrief shape — Points, Proposals, Question
 
 **Standing format, product owner 2026-08-11, for closing out a build and for any reply that puts
