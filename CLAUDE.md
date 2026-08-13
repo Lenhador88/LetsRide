@@ -1282,33 +1282,28 @@ Rate your own ideas honestly, including low — an unrated suggestion reads as a
 reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so in the
 number.
 
-**Name every option you offer, and the name is how it is referred to. Never a letter.** One name
-per thing that can be independently said yes to, so the reply can be *"do the promotion and the
-walk phase"*. **Say who does each one** — an owner-only item mixed into a list of build tasks
-hides the one nobody but them can do.
+**Letter them — A), B), C) — every option you offer, including a lone one**, so the reply can be
+"do A and C" instead of a quoted sentence. One letter per thing that can be independently said
+yes to. **Say who does each one** — an owner-only item mixed into a list of build tasks hides the
+one nobody but them can do.
 
-**A), B), C) are banned outright, and the reason is not style.** Several sessions run against this
-repo at once and the owner reads them all in one place. Nothing coordinates a counter between
-them, so each starts at A and *"do A"* names a different thing in every conversation open that
-day. Product owner, 2026-08-13, pasting an option this session never wrote: *"This is what i see
-— A) Promote development → main… I think we need to fix the lettering!! This is very important!!!"*
+**The letters count up for the whole session and never restart at A**, so the fourth option
+offered is **D** even if it is the first in its reply. Product owner, 2026-08-13: *"we used A
+letter before as well. So I wanted to refer now to the previous B, but then it gets confusing."*
 
-**Per-session counters do not fix it, and one shipped before this did.** The first attempt made
-letters count up across a session and never restart — correct for the collision *inside* one
-conversation, useless against the one that actually bit, because the second session is not
-reading the first's counter. Recorded because it is the obvious fix and it is the wrong scope: a
-handle that needs coordination between independent sessions cannot be made unique by discipline
-inside one of them.
+**A letter lives inside one session and nothing more is expected of it.** Product owner, same day,
+after a naming scheme was tried and rejected: *"I want letters, A, B, C etc. as before. and they
+should only live within the session. nothing else."* So another session's **A** naming something
+different is **not** a defect to engineer around — it is the accepted cost, and two attempts to
+remove it (a cross-session counter, then names instead of letters) were both more machinery than
+the problem was worth. Do not reach for a third.
 
-**A name needs no coordination.** Two sessions offering *"the promotion"* are offering the same
-work, so agreeing is the correct outcome rather than a collision. Nothing has to be tracked,
-nothing is lost to a compaction, and there is no counter to get wrong.
-
-**Every option opens with that name in bold and one line of context saying what it actually is.**
+**Every lettered option opens with a title and one line of context saying what it actually is.**
 Product owner, 2026-08-11. A bare imperative — *"Cap the candidate rows"* — assumes the reader
 carries the problem in their head, and by the time they read it they do not. Name the thing, then
 say in a sentence what it does and what it costs. The ratings justify it; the context is what
-makes them mean anything.
+makes them mean anything. **That title is also what disambiguates a letter across sessions** when
+it ever matters, which is the whole reason the accepted cost above is affordable.
 
 **Make the name short enough to say and specific enough to be unique** — *"the team-scoped pick"*,
 *"the walk phase"*, *"the leaked-password toggle"*. Two or three words. A name that could describe
@@ -1321,7 +1316,7 @@ a decision to them.** It arrived as *"that's so much better"* after a long analy
 nine lines, and the point is the **compression**, not the headings:
 
 - **Points** — what you found, one line each. Three or four, not eight.
-- **Proposals** — the named blocks above, each with its name, its line of context, and its
+- **Proposals** — the lettered blocks above, each with its title, its line of context, and its
   ratings. Skip entirely when there is nothing to decide.
 - **Question** — the single thing you need answered, phrased so a one-word reply works.
 
@@ -1333,12 +1328,12 @@ needs a paragraph to defend, the paragraph belongs in the record and the reply g
 re-explains findings already written into three durable places is the failure this exists to
 stop.
 
-**Give every named option its own blockquote, with the name and its description *outside* the
-bar.** The bar groups the ratings so a reader scanning three options can see where each one ends;
-the description is the thing being chosen between, and inside the bar it reads as a sixth rating
-instead of a heading. Two options means two headings and two bars:
+**Give every lettered option its own blockquote, with the letter and its description *outside*
+the bar.** The bar groups the ratings so a reader scanning three options can see where each one
+ends; the description is the thing being chosen between, and inside the bar it reads as a sixth
+rating instead of a heading. Two options means two headings and two bars:
 
-**Drop the dead column.**
+**A) Drop the dead column.**
 
 > **Recommendation** 7/10
 >
@@ -1360,7 +1355,7 @@ instead of a heading. Two options means two headings and two bars:
 >
 > wants its own branch, and the open PR should land first
 
-**Enable leaked-password protection.**
+**B) Enable leaked-password protection.**
 
 > **Recommendation** 9/10
 >

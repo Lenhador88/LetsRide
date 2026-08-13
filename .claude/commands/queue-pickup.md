@@ -953,10 +953,8 @@ in one batch.
 The owner did not get to make this call, so the call has to be visible without opening a diff:
 
 - **The PR body** gets a `## Folded in` section — one heading per item with its relatedness
-  sentence and its ratings, in the shape §Working Principles specifies: the item's **name** and
-  description *outside* the bar, the five ratings *inside* it. Named rather than lettered, for
-  the reason that section gives — several sessions run at once, nothing coordinates a counter
-  between them, and `A)` therefore names a different thing in every conversation open that day.
+  sentence and its ratings, in the shape §Working Principles specifies: the letter and
+  description *outside* the bar, the five ratings *inside* it.
 - **The STEP 5 Linear comment** names what was folded in and links every story filed.
 
 An unrated fold-in reads as advocacy and cannot be cheaply declined, which is the entire reason
