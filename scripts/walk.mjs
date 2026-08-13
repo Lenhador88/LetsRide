@@ -368,13 +368,21 @@ async function checkRefusedSignup(targetPage) {
   // PD-214. The two fields above are uncontrolled and restore through
   // `retaining`; this box is controlled, so it restores through
   // `useRestoreChecked` — a different mechanism, and it was the one control on
-  // this form with neither. Read as a DOM property rather than with
-  // `isChecked()`: the input is `sr-only`, and the defect is precisely that
-  // the property disagrees with the React state that draws the tick.
+  // this form with neither.
+  //
+  // `$eval` rather than `isChecked()` is a plain preference, not a workaround:
+  // both resolve here, and `sr-only` is not the reason to avoid either — the
+  // `checkEditRetention` note near `state: 'attached'` below measured that
+  // `isChecked` resolves on this exact `peer sr-only` input, and three green
+  // assertions in that phase read one today.
   report(
     await targetPage.$eval('input[name="acceptedTerms"]', (n) => n.checked),
     'the consent box survives it',
-    'the box reverted to unticked, so the retry is refused with nothing on screen saying why'
+    // Not "with nothing on screen saying why": `signUpSchema` reports issues in
+    // key order and email/password are valid by this point, so the retry's
+    // `FormError` reads "Accept the terms to continue." The cost is a cleared
+    // consent and an extra round trip, not an invisible blocker.
+    'the box reverted to unticked, so the rider must re-tick a box they never cleared'
   )
 
   return { bad, ran }

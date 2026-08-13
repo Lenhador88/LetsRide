@@ -60,12 +60,10 @@ import type { RideFilter } from '@/types'
  *
  * ## The fade belongs to this gate, not to PD-210's
  *
- * **The cold-load jump this gate used to leave behind is `RidesLoading`'s job,
- * and a padding class cannot do it (PD-217).** The pre-bar skeleton drew with
- * no filter bar at all, so every row dropped the bar's ~104px the moment
- * `filters.data` landed. A pass before that one wrapped the branch in `py-2`
- * believing it was the same gap and closed 8px of ~112 — the height has to be
- * *reserved*, which means a shape standing in for the bar.
+ * **The cold-load jump is `RidesLoading`'s job, and no padding class can do it
+ * (PD-217)** — a skeleton that draws no bar leaves the rows to fall by the
+ * bar's ~104px when `filters.data` lands, so the height has to be *reserved* by
+ * a shape standing in for it.
  * `/postcards` has the same two-skeleton shape and needs nothing at all: its
  * deck skeleton is a centred, width-driven card, so vertical padding moves
  * neither its centre nor its size.
@@ -168,12 +166,11 @@ function RidesScreen() {
  * The screen before either read has landed, and it must be the *loaded* shape
  * with the content taken out — that is the whole fix for PD-217.
  *
- * Both cold-load positions render this one component: the `<Suspense>`
+ * Both cold-load positions render this one component — the `<Suspense>`
  * fallback, which stands in while `useSearchParams` resolves, and the
- * `!filters.data` gate below it. They were two different trees before — a bare
- * `SkeletonList` in each — so the bar's ~104px and the list wrapper's 8px both
- * appeared out of nowhere, one at each boundary, and every row moved down
- * twice on the way to a settled screen.
+ * `!filters.data` gate below it — so the bar's 104px and the list wrapper's
+ * 8px are reserved at both, rather than each appearing at a different boundary
+ * and moving every row down twice on the way to a settled screen.
  */
 function RidesLoading() {
   return (

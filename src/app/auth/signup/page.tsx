@@ -25,14 +25,15 @@ export default function SignupPage() {
   const [state, formAction, pending] = useActionState(retainCredentials, initialState)
   useActionRedirect(state)
   const [accepted, setAccepted] = useState(false)
-  // The other two controlled checkboxes in the app restore because a refused
-  // retry would silently re-publish something private. This one is worse than
-  // that: `form.reset()` puts the box back to its mount-time `checked`
-  // attribute — `false`, because nobody has ever opened this screen with it
-  // ticked — while `accepted` still says `true`. So the retry after any
-  // refusal is rejected by `signUpSchema` on a box the rider never unticked,
-  // and `disabled={!accepted}` reads the state that still agrees with them, so
-  // the one affordance that would hint at it never fires.
+  // `form.reset()` puts this box back to its mount-time `checked` attribute —
+  // `false`, because nobody opens this screen with it ticked — while
+  // `accepted` still says `true`. The tick is drawn by `peer-checked:` CSS, so
+  // it follows the DOM property and visibly clears; React state does not, so
+  // `disabled={!accepted}` leaves the submit enabled and the retry is refused
+  // by `signUpSchema` on a box the rider never cleared. The refusal does name
+  // it ("Accept the terms to continue."), so the cost is a lost consent and a
+  // wasted round trip rather than a dead end — the same class as PD-199, on
+  // the one control on this form that `retaining` cannot reach.
   const acceptedRef = useRef<HTMLInputElement>(null)
   useRestoreChecked(acceptedRef, accepted, state)
 

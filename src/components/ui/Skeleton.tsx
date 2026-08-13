@@ -176,11 +176,21 @@ function DetailRowSkeleton() {
  * Tile count is cosmetic: the bar is a horizontal scroller, so only its height
  * can move anything. The first two are circles because "Your rides" and "All
  * rides" are always present and always round; clubs are the rounded squares.
+ *
+ * **`aria-hidden`, not a `role="status"` region like the other four.** This one
+ * describes nothing — it reserves height — and it draws *above* a
+ * `SkeletonList` that already announces the load. A region here would make a
+ * cold `/rides` announce twice, which is the thing the base `Skeleton`'s own
+ * `aria-hidden` note exists to avoid.
+ *
+ * `shrink-0` is copied from the real `FilterBar` and is load-bearing: the
+ * parent is `flex flex-col`, so without it the reservation compresses under
+ * pressure and the height it promises is a lie.
  */
 export function SkeletonFilterBar({ tiles = 4 }: { tiles?: number }) {
   return (
-    <SkeletonRegion
-      label="Loading filters"
+    <div
+      aria-hidden
       className="flex shrink-0 gap-0 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {Array.from({ length: tiles }, (_, i) => (
@@ -197,7 +207,7 @@ export function SkeletonFilterBar({ tiles = 4 }: { tiles?: number }) {
           </span>
         </div>
       ))}
-    </SkeletonRegion>
+    </div>
   )
 }
 
