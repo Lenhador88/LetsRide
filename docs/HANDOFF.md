@@ -720,9 +720,9 @@ publication membership is asserted, the *delivery* is not), and whether the comp
 `crypto.randomUUID` path is on a secure origin — it is over HTTPS, and the fallback exists for
 `http://<lan-ip>` device testing.
 
-## Migrations — the repo and DEV hold 56, PROD holds 55
+## Migrations — the repo, DEV and PROD all hold 56
 
-**`056` is PD-226's and is DEV-ONLY, applied 2026-08-13.** It relaxes
+**`056` is PD-226's and is on BOTH projects, applied 2026-08-13.** It relaxes
 `profiles_username_format` to `^[A-Za-z0-9_]{3,20}$` so a username keeps the case the rider
 typed, makes `profiles_username_not_reserved` fold with `lower()` — without which `Admin` walks
 through a list that was exhaustive only because the charset forced lowercase — and adds
@@ -730,14 +730,38 @@ through a list that was exhaustive only because the charset forced lowercase —
 the block-aware `profiles` SELECT policy. **`profiles_username_lower_key` is untouched**, so
 `003` Q4's impersonation fix stands: `Pedro` and `pedro` still cannot coexist.
 
-Verified by object rather than by row count on DEV: both constraint definitions, the index still
-unique on `lower(username)`, `prosecdef` false, `proconfig {search_path=""}`, EXECUTE true for
-`authenticated` and false for `anon`, 0 violating rows. `md5(statements[1])` equals the file's
-md5 byte-for-byte minus its trailing newline — no reduced apply here. Advisors still nine.
+Verified by object rather than by row count on **both**: both constraint definitions, the index
+still unique on `lower(username)`, `prosecdef` false, `proconfig {search_path=""}`, EXECUTE true
+for `authenticated` and false for `anon`, 0 violating rows. Five object digests — `md5(prosrc)`,
+the two `pg_get_constraintdef`s, the function comment and `pg_get_indexdef` on
+`profiles_username_lower_key` — captured on DEV and re-read identically on PROD, 5/5.
+`md5(statements[1])` on PROD equals the file's md5 byte-for-byte minus its trailing newline, so
+the hand-transcribed apply carries no drift. Advisors still nine on both, with **no tenth**
+`authenticated_security_definer_function_executable`, which is the check that `security invoker`
+really survived the transcription. Advisory: DEV's recorded statement no longer equals the file,
+because the §Ordering heading was corrected after DEV's apply — a comment outside every `$$`
+body, so all five object digests are unchanged. Compare the object, never the recorded text.
 
-**It goes to PROD at the next promotion, and needs no ordering care**: the charset only ever
-widens and every existing username already satisfies it, so there is no window in which stored
-data violates either version.
+**It needed ordering care, and the claim here used to say the opposite.** The charset only widens,
+so no *stored row* is ever in violation — that part was right and is why there is no data
+migration. But `056` is **additive** (it adds `public.username_exists`), so it is
+`docs/ENVIRONMENTS.md`'s apply-**then**-deploy case: new code against the old database does not
+compose. Deploy first and `username_exists` is absent, the availability read 42883s behind a
+`.then()` with no `.catch()` so nothing renders, and — the rider-visible half — `usernameSchema`
+no longer lowercases, so `Pedro` reaches the *old* CHECK, is refused `23514`, and
+`src/lib/actions/onboarding.ts` renders **"That username is not available."** for a name that is
+free. On the one screen this change exists to fix, with onboarding not skippable (decision #5).
+
+So it was applied to PROD **before** the promotion merged, not after. Behaviour re-proved on PROD
+inside a `DO` block that raised to roll back: `PedroCase` stored as typed, every case-variant
+refused `23505` by the index rather than `23514` by the charset, `Admin` and `LetsRide` refused
+`23514`, `username_exists` true for both `PEDROCASE` and `pedrocase` and false for `pedrocas`, and
+true for `my_name` while false for `myXname` — the `_`-as-LIKE-wildcard trap that ruled `.ilike()`
+out. 4 rows, 2 named, 0 residue afterwards.
+
+**`ENVIRONMENTS.md`'s numbered steps put the apply at 5 and the `main` merge at 4**, which is the
+right order for a *destructive* migration and the wrong one for an additive migration whose code
+ships in the same promotion. Read the migration's own §Ordering header, not the step number.
 
 
 **`049` and `050` both reached PROD on 2026-08-11**, so the chain is level across both databases
@@ -767,11 +791,10 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   DEV at 56 rows ending 056_username_keeps_its_case, PROD at 55 ending
-#   055_ride_joined_notifies_the_crew — DEV AHEAD as of 2026-08-13, levelling
-#   at the next promotion. They were level 2026-08-12, 055 having reached PROD
-#   at the #191 promotion. Everything below describes the earlier PD-201 apply
-#   of 051-054 rather than 055's or 056's:
+#   BOTH at 56 rows ending 056_username_keeps_its_case — LEVEL as of 2026-08-13,
+#   056 applied to PROD ahead of the promotion that deploys its code, which is
+#   the ordering the section above explains. Everything below describes the
+#   earlier PD-201 apply of 051-054 rather than 055's or 056's:
 #   Verified by OBJECT FINGERPRINT, not by trusting the row count: 19 labelled
 #   components as md5(string_agg(...)) over pg_get_functiondef, pg_get_triggerdef,
 #   pg_policies, information_schema.columns, pg_indexes, pg_constraint, the

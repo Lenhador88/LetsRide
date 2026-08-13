@@ -480,8 +480,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 56 files. DEV is at `056`, PROD at `055` — DEV AHEAD until the next
-promotion, 2026-08-13.** Do not
+**Applied state: 56 files. DEV is at `056`, PROD at `056` — LEVEL as of 2026-08-13.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 

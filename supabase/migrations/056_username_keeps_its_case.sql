@@ -132,7 +132,7 @@
 -- a charset rule. Recorded as an accepted cost of the decision, not as a defect.
 --
 -- ---------------------------------------------------------------------------
--- Ordering: applies in either direction relative to the code deploy
+-- Ordering: ADDITIVE — apply BEFORE the code deploy, never after
 -- ---------------------------------------------------------------------------
 -- Both constraint changes are pure widenings, and §3 is additive. Old code
 -- against this database keeps working: it sends lowercase, which is still legal,
@@ -142,6 +142,16 @@
 -- check would 42883 — so the only rule is the ordinary one: apply before the
 -- code deploy, or with it. Additive first, which is 021's lesson and not this
 -- file's.
+--
+-- The heading above said "applies in either direction" until the review pass
+-- before this file's PROD apply, and that is kept as a warning rather than
+-- silently corrected: it is the SCANNABLE half, a session skimming headings
+-- before a promotion gets the opposite of the paragraph beneath it, and it had
+-- already propagated into docs/HANDOFF.md as "needs no ordering care". Only one
+-- direction composes. The reversed order is not a slow migration or a locking
+-- risk — it is a rider on the onboarding username step being told "That username
+-- is not available" for a name that is free, because the old CHECK refuses the
+-- capital and the client reads 23514 as a taken name.
 
 -- ---------------------------------------------------------------------------
 -- 1. The charset admits capitals
