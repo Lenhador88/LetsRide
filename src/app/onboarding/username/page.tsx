@@ -207,10 +207,20 @@ export default function OnboardingUsernamePage() {
             )}
             {/* Muted rather than danger, and no `errorBorder`: the check failed,
                 the name did not. Saying so in red would refuse a name that is
-                probably free, on a step decision #5 makes unskippable. */}
+                probably free, on a step decision #5 makes unskippable.
+
+                "You can still continue" is dropped once the submit itself has
+                failed, and that is not a nicety. Whatever breaks the advisory
+                read usually breaks the write too, so the rider would otherwise
+                be told to carry on by the field and told the save failed by the
+                button, in the same frame. The 23505 path never reaches this —
+                a refusal produces a verdict, which switches the note off — so
+                this only ever fires on the errors that really are about the
+                submit rather than about the name. */}
             {!tooShort && checkUnanswered && (
               <p className="text-sm font-medium text-muted">
-                Couldn&rsquo;t check that name right now — you can still continue.
+                Couldn&rsquo;t check that name right now
+                {state.error ? '.' : ' — you can still continue.'}
               </p>
             )}
           </div>
