@@ -28,3 +28,42 @@ export function remainingPostcards<T extends { id: string }>(
 ): T[] {
   return postcards.filter((postcard) => !dismissed.has(postcard.id))
 }
+
+/** How far the card must travel before releasing it advances the deck. */
+export const SWIPE_THRESHOLD = 56
+
+/**
+ * What releasing the card does: `1` leaves to the right, `-1` to the left,
+ * `null` returns to centre.
+ *
+ * `offset` is where the card is **drawn** — the last `pointermove`. `released`
+ * is the coordinate the terminating event carried. They are separate arguments
+ * because they answer different halves, and collapsing them either way is a
+ * bug this deck has now had in both directions:
+ *
+ * **Direction comes from `offset`.** The deck used to take both from the
+ * terminating event, and a coordinate disagreeing with what was drawn sends
+ * the card out the side it was never leaning towards. `clientX` is an IDL
+ * `double` on every pointer event, so a user agent cannot deliver an *absent*
+ * coordinate — only a **wrong** one, and the reachable wrong value is the
+ * pointerdown position or `0`. For any card touched right of `SWIPE_THRESHOLD`
+ * that is a large *negative* travel, which is why the reported symptom was a
+ * right swipe exiting left and why it was always that way round.
+ *
+ * **Magnitude may take `released`, but only to extend the travel.** A genuine
+ * lift carries an authoritative coordinate up to one frame of travel ahead of
+ * the last `pointermove` — ~25px at a brisk flick — so judging on `offset`
+ * alone reads a fast short flick under the threshold and springs it back. A
+ * `released` that disagrees in *sign* is discarded rather than averaged: the
+ * rider saw the card leaning one way, and no release coordinate should be able
+ * to argue them out of it.
+ */
+export function resolveSwipe(offset: number, released: number = offset): 1 | -1 | null {
+  const travelled =
+    Math.sign(released) === Math.sign(offset) && Math.abs(released) > Math.abs(offset)
+      ? released
+      : offset
+
+  if (Math.abs(travelled) < SWIPE_THRESHOLD) return null
+  return travelled > 0 ? 1 : -1
+}
