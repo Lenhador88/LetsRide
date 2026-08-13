@@ -1468,6 +1468,10 @@ call" would never have fired for them. What must be true without reading it:
 - **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`. A
   `save_issue` naming a status that no longer exists comes back looking successful with the field
   silently dropped.
+- **An issue opens with the five-rating block, and a parked one owes a comparison table.** Both are
+  owner requests (PD-183, PD-182) and neither can have a gate, because an issue body is not a file.
+  `docs/reference/linear.md` §What an issue body opens with carries the format, the one rating that
+  changes name on a board, and why a total belongs in the table and never in the block.
 - **An issue body is a pointer and a reason.** A Linear issue that grows a specification is a bug;
   that belongs in a proposal.
 

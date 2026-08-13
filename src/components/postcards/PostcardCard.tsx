@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { LikeButton } from '@/components/postcards/LikeButton'
 import { CommentsLink } from '@/components/postcards/CommentsLink'
@@ -45,8 +46,29 @@ type PostcardCardProps = {
  * the location does not, rather than borrowing the author's profile location,
  * which is where they live and not where the photo was taken. Registered in
  * docs/FIGMA-FIDELITY-TODO.md.
+ *
+ * **Memoised, and it is the deck that needs it (PD-198).** `PostcardDeck`
+ * writes the drag offset to state on every `pointermove`, so a swipe re-renders
+ * the deck at up to display refresh rate — and without this each of those
+ * renders reconciled all three visible cards, every `Avatar`, `LikeButton`,
+ * `CommentsLink`, `ShareButton` and `PostcardMenu` among them. The deck passes
+ * `postcard` straight through from its own `postcards` prop and `fill` as a
+ * literal, so both are referentially stable through a drag and every one of
+ * those renders now bails at the comparison.
+ *
+ * The alternative — writing the transform to the DOM imperatively and keeping
+ * `dx` out of state — was built and reverted. React diffs `style` against the
+ * *previous props*, never the DOM, so a below-threshold release re-rendered
+ * with an unchanged `translateX(0px)` string, emitted no write, and left the
+ * card stranded wherever the finger dropped it. Every drag that does not commit
+ * — the common case — ended worse than before the fix, and nothing in this repo
+ * could have seen it: `vitest.config.ts` is `environment: 'node'`.
  */
-export function PostcardCard({ postcard, linkToThread = true, fill = false }: PostcardCardProps) {
+function PostcardCardComponent({
+  postcard,
+  linkToThread = true,
+  fill = false,
+}: PostcardCardProps) {
   const username = postcard.author?.username ?? 'Rider'
 
   return (
@@ -146,3 +168,5 @@ export function PostcardCard({ postcard, linkToThread = true, fill = false }: Po
     </article>
   )
 }
+
+export const PostcardCard = memo(PostcardCardComponent)

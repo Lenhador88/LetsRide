@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  defaultRideDepartureInput,
   formatNotificationStamp,
   formatPostcardDate,
   formatRelativeTime,
@@ -451,5 +452,53 @@ describe('formatRideMessageDay', () => {
       const label = formatRideMessageDay(day, now)
       expect(label).toBe(label.toUpperCase())
     }
+  })
+})
+
+describe('defaultRideDepartureInput', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const at = (iso: string) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(iso))
+  }
+
+  it('opens on tomorrow at 10:00', () => {
+    at('2026-08-13T09:00:00Z')
+    expect(defaultRideDepartureInput()).toBe('2026-08-14T10:00')
+  })
+
+  // The assertion `TZ=UTC` exists to let through. At 22:30Z on the 13th it is
+  // already 00:30 on the **14th** in Amsterdam, so tomorrow is the 15th — an
+  // implementation reading the runtime's own day answers the 14th, which is
+  // today by the only clock this screen uses and is a date `wallClockToUtc`
+  // then resolves into the past.
+  it('takes tomorrow from APP_TIME_ZONE, not from the runtime', () => {
+    at('2026-08-13T22:30:00Z')
+    expect(defaultRideDepartureInput()).toBe('2026-08-15T10:00')
+  })
+
+  it('rolls over the end of a month', () => {
+    at('2026-08-31T09:00:00Z')
+    expect(defaultRideDepartureInput()).toBe('2026-09-01T10:00')
+  })
+
+  it('rolls over the end of a year', () => {
+    at('2026-12-31T09:00:00Z')
+    expect(defaultRideDepartureInput()).toBe('2027-01-01T10:00')
+  })
+
+  // Not a date-shape check: it is the whole round trip. What this function
+  // seeds has to survive `wallClockToUtc` as 10:00 Amsterdam on both sides of a
+  // DST boundary, which is where an offset-arithmetic implementation lands an
+  // hour out — 09:00Z in summer, 08:00Z... the other way round in winter.
+  it('seeds a value that resolves to 10:00 Amsterdam in summer and in winter', () => {
+    at('2026-07-01T09:00:00Z')
+    expect(wallClockToUtc(defaultRideDepartureInput())).toBe('2026-07-02T08:00:00.000Z')
+
+    at('2026-12-01T09:00:00Z')
+    expect(wallClockToUtc(defaultRideDepartureInput())).toBe('2026-12-02T09:00:00.000Z')
   })
 })
