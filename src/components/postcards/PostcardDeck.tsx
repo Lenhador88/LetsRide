@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
-import { remainingPostcards } from '@/components/postcards/deck'
+import { remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
+import { cn } from '@/lib/utils'
 import type { Postcard } from '@/types'
 import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
 
@@ -20,16 +21,52 @@ import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
  * behaviour the product owner described. That means the deck only ever moves
  * forward; "Start over" at the end is the only way back, because a back
  * affordance would be UI the design does not draw.
+ *
+ * **No touch advances the deck except a lift, and only in the direction the
+ * card is drawn in** (PD-221) — the sr-only "Next postcard" button below is
+ * the one deliberate non-touch route. Both halves were one defect:
+ * `pointercancel` was wired straight to the release handler, so a gesture the
+ * platform took away mid-touch committed as though the rider had finished it,
+ * judged on a coordinate that need not agree with what was drawn. See
+ * `onPointerCancel` below and `resolveSwipe` in `./deck`.
  */
-const SWIPE_THRESHOLD = 56
 const BEHIND = [
   { rotate: -2, scale: 1, z: 20 },
   { rotate: 2, scale: 1, z: 10 },
 ]
 
-type DragState = { pointerId: number; startX: number; startY: number } | null
+/**
+ * `offset` is the authority on where the card is, and `dx` is its mirror for
+ * rendering — not the other way round. A release is decided from the ref
+ * because `pointermove` is a continuous event: React is free to batch its
+ * `setDx`, so the `pointerup` handler can be a closure over a `dx` one move
+ * out of date. The ref is written synchronously and cannot be.
+ *
+ * `frontId` is the card the gesture *started* on. The feed revalidates
+ * underneath the deck — a block, a hide, a delete — so the front card can be a
+ * different postcard by the time the finger lifts, and dismissing whichever
+ * card happens to be there is the same defect `advance` already guards its
+ * timeout against.
+ */
+type DragState = { pointerId: number; startX: number; offset: number; frontId: string } | null
 
-export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
+export function PostcardDeck({
+  postcards,
+  className,
+}: {
+  postcards: Postcard[]
+  /** Merged onto whichever root renders — the empty state and the fanned
+   * stack both need it applied at the same node `SkeletonDeck` shares
+   * `h-full` with, rather than on a wrapper that would break that chain.
+   *
+   * **The fade therefore plays once, on arrival, and not again when the
+   * rider swipes the last card away.** Both roots are a `div` at one
+   * position, so React updates in place and `animation-name` never changes
+   * — which is the behaviour wanted here: a swipe is not a load, and
+   * re-fading on it would read as the flash this animation exists to
+   * remove. */
+  className?: string
+}) {
   // The ids the rider has swiped past — see `remainingPostcards` for why this is
   // a set of ids rather than a position. The feed is bounded by FEED_PAGE_SIZE,
   // so this cannot grow beyond a page.
@@ -69,8 +106,29 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
   const remaining = remainingPostcards(postcards, dismissed)
   const front = remaining[0]
 
+  /**
+   * The front card can be replaced *under an active drag* — `useQuery` refetches
+   * on reconnect and on tab focus, and the feed can come back without it. React
+   * unmounts that card's div and every pointer handler on it, `onPointerCancel`
+   * included, so no event can ever arrive to end the gesture: without this the
+   * deck sits at the vanished card's offset with transitions still suppressed
+   * until the rider touches it again.
+   *
+   * This is the half `onPointerCancel` structurally cannot cover, because the
+   * node it is attached to is the one being removed.
+   */
+  useEffect(() => {
+    if (!drag.current) return
+    drag.current = null
+    setDragging(false)
+    setDx(0)
+  }, [front?.id])
+
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (leaving !== null) return
+    // A second finger landing must not re-anchor the gesture: overwriting the
+    // drag state moves `startX` to the new touch while the card keeps the first
+    // one's offset, which makes the card jump.
+    if (leaving !== null || !front || drag.current) return
 
     /**
      * A gesture starting on a control is that control's, not the deck's.
@@ -89,7 +147,7 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
      */
     if ((event.target as HTMLElement).closest('button, a')) return
 
-    drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+    drag.current = { pointerId: event.pointerId, startX: event.clientX, offset: 0, frontId: front.id }
     setDragging(true)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -97,7 +155,10 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = drag.current
     if (!state || state.pointerId !== event.pointerId) return
-    setDx(event.clientX - state.startX)
+    // Written to the ref first, mirrored to state for the transform. The two are
+    // the same number, so the card cannot commit in a direction it was never drawn in.
+    state.offset = event.clientX - state.startX
+    setDx(state.offset)
   }
 
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -106,14 +167,42 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
     drag.current = null
 
     setDragging(false)
-    const travelled = event.clientX - state.startX
-    if (Math.abs(travelled) >= SWIPE_THRESHOLD && front) advance(travelled > 0 ? 1 : -1, front.id)
+    // A lift's own coordinate is authoritative and can be a frame of travel
+    // ahead of the last `pointermove`; `resolveSwipe` lets it extend the travel
+    // without letting it choose the direction.
+    const direction = resolveSwipe(state.offset, event.clientX - state.startX)
+    // A revalidation can swap the front card mid-drag. Advancing then would
+    // dismiss a postcard that was never under the finger, so the gesture is
+    // spent returning the deck to centre instead.
+    if (direction !== null && front && front.id === state.frontId) advance(direction, state.frontId)
     else setDx(0)
+  }
+
+  /**
+   * **A cancel aborts the gesture; it does not complete it.** The two are
+   * opposite intents and the deck used to route both here, so a touch the
+   * platform took away *while the finger was still down* flung the card off
+   * and marked a postcard the rider never finished reading as seen.
+   *
+   * **Which platform behaviours actually raise it here is INFERRED, not
+   * measured** — iOS Safari's left-edge back-swipe is the likeliest (the deck's
+   * left edge sits ~24px in, inside the edge region), and a Capacitor WKWebView
+   * has `allowsBackForwardNavigationGestures` off by default, so the shell may
+   * never see it at all. The fix does not depend on which is true: a cancel is
+   * not a release whatever caused it. Do not repeat this list as established.
+   */
+  const onPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = drag.current
+    if (!state || state.pointerId !== event.pointerId) return
+    drag.current = null
+
+    setDragging(false)
+    setDx(0)
   }
 
   if (!front) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+      <div className={cn('flex h-full flex-col items-center justify-center gap-4 px-8 text-center', className)}>
         <p className="text-sm font-medium text-muted">
           {postcards.length === 0
             ? 'There are no new postcards, yet!'
@@ -141,7 +230,7 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
   const visible = remaining.slice(0, 3)
 
   return (
-    <div className="relative flex h-full items-center justify-center px-6">
+    <div className={cn('relative flex h-full items-center justify-center px-6', className)}>
       {/* The stack is 342×448 in a 390 frame — 24px either side. Capped rather
           than fixed so it still fits a 320px phone. */}
       <div className="relative aspect-[342/448] w-full max-w-[342px]">
@@ -171,7 +260,7 @@ export function PostcardDeck({ postcards }: { postcards: Postcard[] }) {
               onPointerDown={isFront ? onPointerDown : undefined}
               onPointerMove={isFront ? onPointerMove : undefined}
               onPointerUp={isFront ? onPointerUp : undefined}
-              onPointerCancel={isFront ? onPointerUp : undefined}
+              onPointerCancel={isFront ? onPointerCancel : undefined}
             >
               <PostcardCard postcard={postcard} fill />
             </div>

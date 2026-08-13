@@ -95,10 +95,14 @@ function RideCrewScreen() {
           // the tick where `isLoading` is false and there is nothing to draw.
           <SkeletonList />
         ) : (
-          <>
+          // A `div` rather than a Fragment so the fade has one node to sit
+          // on; it carries `flex flex-col gap-4` itself now, since the
+          // parent's own gap used to apply directly between the two
+          // sections once React flattened the Fragment into it.
+          <div className="flex flex-col gap-4 motion-safe:animate-fade-in">
             <CrewSection title="Going" members={crew.going} />
             {crew.maybe.length > 0 && <CrewSection title="May be going" members={crew.maybe} />}
-          </>
+          </div>
         )}
       </div>
     </>

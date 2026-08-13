@@ -84,7 +84,7 @@ function ClubMembersScreen() {
     <>
       {header}
 
-      <div className="px-4">
+      <div className="px-4 motion-safe:animate-fade-in">
         <p className="mb-2 text-sm font-medium text-muted">
           {club.data.members_count} {club.data.members_count === 1 ? 'member' : 'members'}
         </p>

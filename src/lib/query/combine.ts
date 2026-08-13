@@ -33,10 +33,23 @@ import type { UseQueryResult } from '@/lib/query/useQuery'
  *     return <Deck postcards={feed.data} />   // undefined on the first tick
  *
  * falls straight through on that tick with `undefined` where its data should
- * be. Gate on the data instead — `if (!feed.data || !filters.data)` — which is
- * true on the first tick, true while loading, and false exactly when there is
- * something to draw. It also keeps a background refetch invisible, because the
- * previous data is still there.
+ * be. Gate on the data instead — `if (!feed.data) return <Skeleton />` — which
+ * is true on the first tick, true while loading, and false exactly when there
+ * is something to draw. It also keeps a background refetch invisible, because
+ * the previous data is still there.
+ *
+ * **Gate each subtree on the read it actually uses, never on every read the
+ * screen issues.** One `if` over all of them is the tempting shape and PD-210
+ * is what it cost: on `/rides` the list key carries the filter segment and the
+ * bar's key does not, so tapping a filter emptied only the list's cache entry
+ * — and a gate gathering both swapped the bar out too, resetting its
+ * horizontal scroll under the finger that had just used it.
+ *
+ * That holds for the **error** this function returns as much as for the
+ * loading state. Collapsing errors is right only where the reads share a fate;
+ * where they do not, gate per subtree — `rides/page.tsx`, `postcards/page.tsx`
+ * and `clubs/detail/page.tsx` all render a control above their error gate
+ * because it reads none of what failed.
  */
 export function combineQueries(...queries: readonly UseQueryResult<unknown>[]): {
   error: Error | null

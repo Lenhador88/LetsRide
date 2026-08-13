@@ -67,21 +67,37 @@ export async function getMyLocationText(): Promise<string | null> {
 }
 
 /**
- * Stored usernames are always lowercase — 003's CHECK constraint enforces the
- * charset — so an exact match against the normalised input is equivalent to the
- * case-insensitive uniqueness the unique index provides.
+ * Case-insensitive, because since `056` a stored username keeps the case the
+ * rider typed while `profiles_username_lower_key` still folds. This used to be
+ * `.eq('username', …)`, which was correct only while every stored value was
+ * lowercase — with `Pedro` in the table it reports `pedro` free and the rider is
+ * refused `23505` on submit, PD-146's shape by a new road.
  *
- * This is advisory only. Two riders can pass the check on the same name in the
- * same instant; the unique index is what actually decides, and the action that
- * writes must handle the conflict.
+ * **`.ilike()` is not the repair**, which is why this is an RPC and not a
+ * one-word edit: LIKE reads `_` as a single-character wildcard and the charset
+ * allows underscores, so `my_name` would match a stored `myXname` and report a
+ * free name taken. PostgREST exposes no ESCAPE clause, so nothing at this call
+ * site can fix that. `056`'s `username_exists` does the fold in the database,
+ * against the `lower(username)` index `003` built for exactly this query.
+ *
+ * It is `security invoker`, so this still reads through the block-aware
+ * `profiles` SELECT policy exactly as the filter it replaced did — **including
+ * the one direction in which it is permanently wrong**: to a rider blocked by a
+ * name's holder it reports free, every time. `usernameVerdict` reconciles that
+ * on screen; making this function see past the block would leak the blocked
+ * rider's name, which is the thing the policy exists to stop.
+ *
+ * Advisory only, unchanged. Two riders can pass the check on the same name in
+ * the same instant; the unique index is what actually decides, and the action
+ * that writes must handle the conflict.
  */
 export async function isUsernameTaken(username: string): Promise<boolean> {
   const supabase = await resolveSupabase()
-  const data = unwrap(
-    await supabase.from('profiles').select('id').eq('username', username).maybeSingle(),
+  const exists = unwrap(
+    await supabase.rpc('username_exists', { p_username: username }),
     'that username',
   )
-  return data !== null
+  return exists === true
 }
 
 /**

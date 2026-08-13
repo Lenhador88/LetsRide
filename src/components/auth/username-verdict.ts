@@ -14,8 +14,13 @@ export type UsernameCheck = {
 }
 
 /**
- * Matches `usernameSchema`'s own normalisation, so a verdict is stored and
- * looked up under the value the database will actually see.
+ * The case-insensitive key a verdict is stored and looked up under.
+ *
+ * It matches **`profiles_username_lower_key`, not `usernameSchema`** — since
+ * `056` the schema preserves the rider's capitals and the index folds them, so
+ * the key has to follow the authority rather than the input. A refusal of
+ * `Pedro` is equally a refusal of `pedro` and `PEDRO`, because the index cannot
+ * tell those apart, and all three therefore have to land on one entry.
  */
 export function normaliseUsername(input: string): string {
   return input.trim().toLowerCase()
@@ -79,11 +84,20 @@ export function usernameVerdict(
  *
  * Returns the same array when there is nothing to add, so a re-render caused by
  * something else does not hand the field a new identity.
+ *
+ * **It folds on the way in, and that is load-bearing since `056`.** `setUsername`
+ * reports the value the index refused with the rider's own capitals — `Pedro` —
+ * while `usernameVerdict` reads the list back through `normaliseUsername`.
+ * Storing the raw value would write the refusal under one key and look it up
+ * under another: the field flips straight back to green for a name that can
+ * never be saved, which is PD-146 reintroduced with every other test passing.
  */
 export function rememberRefusal(
   refused: readonly string[],
   taken: string | undefined
 ): readonly string[] {
-  if (!taken || refused.includes(taken)) return refused
-  return [...refused, taken]
+  if (!taken) return refused
+  const key = normaliseUsername(taken)
+  if (refused.includes(key)) return refused
+  return [...refused, key]
 }

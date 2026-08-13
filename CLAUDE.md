@@ -480,10 +480,9 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 55 files. DEV is at `055`, PROD at `054` — DEV AHEAD, 2026-08-12.** Do not
+**Applied state: 56 files. DEV is at `056`, PROD at `056` — LEVEL as of 2026-08-13.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead. DEV-ahead is the ordinary state of a migration between its
-merge and its promotion, not drift; `055` reaches PROD with PD-129's promotion.
+`ls supabase/migrations/` instead.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -502,9 +501,24 @@ objects against the database that already has the file applied correctly** — `
 over `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`, `information_schema.columns`,
 `pg_indexes` and the grants. That is *stronger* than comparing the text that produced them.
 
-**The cost, and it reads exactly like drift: PROD's recorded statement for `036`–`040` is the
-reduced form, so `md5(statements[1])` on those five will NOT equal `md5sum` of the file.**
-Expected. DEV carries one asymmetry of the same class on `034`;
+**The cost, and it reads exactly like drift: a recorded statement that does NOT equal `md5sum` of
+its file is the NORM for a large migration, on both projects.** Measured 2026-08-12 — PROD records
+a materially reduced statement for `036`–`040`, `047`, `048`, `049`, `050`, `051` and `055`, and
+DEV for `034`, `040`, `049`, `050`, `053` and `055`. **Do not read this as a list to check against**;
+it was one for a while, it was wrong in both directions within a day, and a closed list is exactly
+what turns a correct database into apparent drift the first time a file is missing from it.
+
+Measure instead. A normally-applied file records within a couple of hundred bytes of its size, so
+the reduced ones stand out by ratio rather than by name:
+
+```sql
+select version, name, length(statements[1]) as recorded   -- against ls -l on the file
+  from supabase_migrations.schema_migrations order by version;
+```
+
+**Compare the OBJECT, never the recorded text** — `md5(prosrc)`, `pg_get_functiondef`,
+`pg_policies` — which is the check the paragraph above already prescribes and the only one that
+distinguishes a reduced apply from a real difference.
 [`docs/reference/migrations.md`](docs/reference/migrations.md) has the reconciliation SQL.
 
 **A migration that hangs triggers off an already-shipped write path needs a hand-exercise gate
@@ -513,7 +527,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1428** assertions — re-derive rather than trust it:
+Suite **1457** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -1268,16 +1282,50 @@ Rate your own ideas honestly, including low — an unrated suggestion reads as a
 reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so in the
 number.
 
-**Letter them — A), B), C) — whenever you offer more than one**, so the reply can be "do A and
-C" instead of a quoted sentence. One letter per thing that can be independently said yes to; a
-single suggestion needs no letter. **Say who does each one** — an owner-only item mixed into a
-list of build tasks hides the one nobody but them can do.
+**Letter them — A), B), C) — every option you offer, including a lone one**, so the reply can be
+"do A and C" instead of a quoted sentence. One letter per thing that can be independently said
+yes to. **Say who does each one** — an owner-only item mixed into a list of build tasks hides the
+one nobody but them can do.
+
+**The letters count up for the whole session and never restart at A**, so the fourth option
+offered is **D** even if it is the first in its reply. Product owner, 2026-08-13: *"we used A
+letter before as well. So I wanted to refer now to the previous B, but then it gets confusing."*
+
+**A letter lives inside one session and nothing more is expected of it.** Product owner, same day,
+after a naming scheme was tried and rejected: *"I want letters, A, B, C etc. as before. and they
+should only live within the session. nothing else."* So another session's **A** naming something
+different is **not** a defect to engineer around — it is the accepted cost, and two attempts to
+remove it (a cross-session counter, then names instead of letters) were both more machinery than
+the problem was worth. Do not reach for a third.
 
 **Every lettered option opens with a title and one line of context saying what it actually is.**
 Product owner, 2026-08-11. A bare imperative — *"Cap the candidate rows"* — assumes the reader
 carries the problem in their head, and by the time they read it they do not. Name the thing, then
 say in a sentence what it does and what it costs. The ratings justify it; the context is what
-makes them mean anything.
+makes them mean anything. **That title is also what disambiguates a letter across sessions** when
+it ever matters, which is the whole reason the accepted cost above is affordable.
+
+**Make the name short enough to say and specific enough to be unique** — *"the team-scoped pick"*,
+*"the walk phase"*, *"the leaked-password toggle"*. Two or three words. A name that could describe
+two different pieces of work is the same defect as a letter, arriving more slowly.
+
+**Never write a bare issue id in a chat reply — put a short title in front of it.** Product owner,
+2026-08-13: *"when you say PD-223 or any linear ticket can you also add a very brief title in
+front? I don't know which ticket you are referring to from a number."* So it is **the caption
+swipe (PD-224)**, never **PD-224** — two or three words, by the same rule as the option names
+above, and for the same reason: the number means something to whoever just wrote it and nothing to
+whoever is reading it on a phone.
+
+It bites hardest exactly where it is most tempting to skip — a status line listing four ids, which
+is the one sentence in a reply that is *entirely* references. If naming them all makes the line
+long, that is the line telling you it was never readable.
+
+**This is a chat rule and it does not extend to the record.** In a Linear issue body, a comment, a
+commit message or a PR body, `PD-224` is auto-linked with its title by Linear and GitHub, so the
+title is already there and repeating it is noise. **Nothing can gate this** — the same reason the
+issue-body rules in [`docs/reference/linear.md`](docs/reference/linear.md) §What an issue body
+opens with have none: a chat reply is not a file, so no CI job and no `docs:check` claim can see
+it. It holds because it is written down.
 
 ### The debrief shape — Points, Proposals, Question
 
@@ -1454,6 +1502,10 @@ call" would never have fired for them. What must be true without reading it:
 - **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`. A
   `save_issue` naming a status that no longer exists comes back looking successful with the field
   silently dropped.
+- **An issue opens with the five-rating block, and a parked one owes a comparison table.** Both are
+  owner requests (PD-183, PD-182) and neither can have a gate, because an issue body is not a file.
+  `docs/reference/linear.md` §What an issue body opens with carries the format, the one rating that
+  changes name on a board, and why a total belongs in the table and never in the block.
 - **An issue body is a pointer and a reason.** A Linear issue that grows a specification is a bug;
   that belongs in a proposal.
 

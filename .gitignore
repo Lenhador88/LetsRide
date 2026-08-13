@@ -79,3 +79,27 @@ nl-places.csv
 # real time, the fix is an exclusion in that test, not here.
 __pycache__/
 *.py[cod]
+
+# Isolated git worktrees the Agent tool creates for a subagent. Untracked
+# rather than harmless: `git status --porcelain` is queue-pickup STEP 0.5's
+# gate 2, so an unignored worktree reads as a dirty tree and every hourly
+# firing exits silently — the queue freezes while looking healthy, which is
+# the failure shape this repo keeps paying for.
+#
+# **That is ALL this line does, and the limit is worth stating** because the
+# other half of the problem looks like it should be covered here and is not.
+# `eslint.config.mjs` carries a fixed four-entry `globalIgnores` and no
+# `includeIgnoreFile`, so ESLint reads none of this file and a bare `eslint`
+# descends into a dot-directory happily — a live worktree is a second copy of
+# `src/` and doubles `npm run lint`'s output whatever is written here. Remove
+# the worktree when the agent is done; ignoring it only keeps the queue
+# running.
+#
+# `tsc` is the one that needs no help, for a reason that is easy to get
+# backwards: it is not git-awareness but glob expansion — `include`'s
+# `**/*.ts[x]` does not descend into a directory whose name starts with `.`,
+# so a subagent's half-written file in `.claude/worktrees/` is invisible to
+# `npx tsc --noEmit` rather than merely ignored. Measured against a replica of
+# this repo's `include`/`exclude`: the same broken file exits 0 under a dotted
+# path and TS2322 at the same depth without the dot.
+.claude/worktrees/

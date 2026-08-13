@@ -146,7 +146,7 @@ function ClubTimelineScreen() {
       {header}
       {club.data.viewer_role && <MarkClubSeen clubId={club.data.id} />}
 
-      <div className="px-4">
+      <div className="px-4 motion-safe:animate-fade-in">
         {upcoming.length > 0 && (
           <section className="mb-6">
             <h2 className="mb-2 text-sm font-medium text-muted">Upcoming rides</h2>

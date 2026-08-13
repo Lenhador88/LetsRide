@@ -50,7 +50,13 @@ import type { RideChatMessage } from '@/types'
  * pass and `'smooth'` afterwards: animating the initial jump means the rider
  * watches the whole thread fly past before landing, which reads as a bug.
  */
-export function RideChatThread({ messages }: { messages: RideChatMessage[] }) {
+export function RideChatThread({
+  messages,
+  className,
+}: {
+  messages: RideChatMessage[]
+  className?: string
+}) {
   const endRef = useRef<HTMLDivElement>(null)
   const settled = useRef(false)
 
@@ -64,7 +70,12 @@ export function RideChatThread({ messages }: { messages: RideChatMessage[] }) {
     // can be a sibling of the `ol` rather than a `div` child of it — only `li`,
     // `script` and `template` are permitted there, which is the same rule that
     // put the day separator *inside* its `li` further down.
-    <div className="flex flex-1 flex-col overflow-y-auto px-2 py-4">
+    //
+    // `className` is merged here rather than on a wrapper: this root carries
+    // `flex-1`, which it needs from its actual flex parent — a wrapper added
+    // only to hold a fade class would not have that parent and the thread
+    // would stop growing to fill the chat column.
+    <div className={cn('flex flex-1 flex-col overflow-y-auto px-2 py-4', className)}>
       <ol className="flex flex-col">
       {messages.map((message) => (
         <li
