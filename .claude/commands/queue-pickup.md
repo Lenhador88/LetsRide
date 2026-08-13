@@ -936,7 +936,9 @@ the owner files, and a loose top-level story is the shape that rule exists to pr
 The body is a pointer and a reason, per §The roadmap lives in Linear: one line on what and why,
 the five-rating block, **the relatedness verdict** — which for a filed item is the line
 saying why it is *separate* work, not a justification for travel it never claimed — and the
-issue or PR it came out of. **A story that grows a specification is a bug** — that belongs in
+issue or PR it came out of. **The block goes at the top, above the prose**, and its fifth rating
+is `Ready` rather than `This session` — `docs/reference/linear.md` §What an issue body opens with
+says why the name changes when a rating moves from a chat reply onto a board. **A story that grows a specification is a bug** — that belongs in
 a proposal.
 
 Pass the project id `88f3f224-ecf0-46f0-a032-c86b7a12f81c`, never the name, and **read
@@ -1219,6 +1221,13 @@ bullet 2.** Then:
 
 Move the issue to **`Needs help`**, comment with *exactly* what you need from the owner, and
 stop. Leave the branch and any PR open and say so in the comment.
+
+**Parking owes a comparison table of the ways forward** — one row per option, columns scored 0–10,
+a total, sorted by it descending. `docs/reference/linear.md` §What an issue body opens with carries
+the format and why a total is right there and wrong in the five-rating block. It applies to every
+parking exit in this file: here, STEP 2c, and STEP 2d's `Needs decision`. **"Tell me what you
+need" and "here are your options, ranked" are different messages**, and only the second is one the
+owner can act on without reconstructing the problem first.
 
 **File any follow-up you already rated before you stop — every exit path owes that, not just
 STEP 5's.** STEP 4b decides where each one goes but deliberately creates nothing, so this path

@@ -79,3 +79,12 @@ nl-places.csv
 # real time, the fix is an exclusion in that test, not here.
 __pycache__/
 *.py[cod]
+
+# Isolated git worktrees the Agent tool creates for a subagent. Untracked
+# rather than harmless: `git status --porcelain` is queue-pickup STEP 0.5's
+# gate 2, so an unignored worktree reads as a dirty tree and every hourly
+# firing exits silently — the queue freezes while looking healthy, which is
+# the failure shape this repo keeps paying for. It also doubles ESLint's
+# output, because a worktree under the repo root is a second copy of `src/`
+# for every lint and type check run here.
+.claude/worktrees/

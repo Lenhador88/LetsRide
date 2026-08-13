@@ -207,6 +207,46 @@ The one thing this does **not** cover: deleting anything a human authored — an
 a document, or a label that is in use. Closing is reversible and leaves the record; deleting is
 neither. Ask first.
 
+### What an issue body opens with
+
+Two owner requests, covering different moments — one is how *every* issue reads, the other is what
+a **parked** issue owes. Neither has an automated gate and neither can have one: an issue body is
+not a file, so nothing in CI or `docs:check` can see it. These hold because they are written down.
+
+**Every issue a session creates or updates opens with the five-rating block.** Product owner,
+PD-183: *"add the Recommended, rider value, complexity, etc. at the 'top' (whenever possible) of
+the story. The same we use when listing choices. so there's a clear view on these values per
+story."* Same five, same order, same format `CLAUDE.md` already specifies for a suggestion in
+chat — including the **blank `>` line** between each score and its reason. That
+separator is a paragraph break rather than a line break, and it is the half that silently renders
+wrong in the owner's client without it.
+
+It goes **above** the prose rather than under it, because the point is triage without opening
+anything: a board is scanned far more often than any single issue is read.
+
+**`This session` becomes `Ready` on an issue, and that is the one deviation.** The original asks
+"should the session in front of this pick it up *next*", which means nothing on a row nobody is
+holding. `Ready` asks what the board actually needs to know — **Y** if a session could start it
+today, **N** plus the half-line of why not: an owner action, a blocker, wants a proposal. That is
+the same question STEP 2b asks before a firing builds anything.
+
+**An issue parked in `Needs decision` or `Needs help` also owes a comparison table of the ways
+forward.** Product owner, PD-182: *"give me a comparison table here in the linear story with your
+best recommendations to move forward, with comparison columns scoring 0-10, also include a total
+score order by it desc."*
+
+One row per option, each column scored 0–10, **with a total, sorted by it descending** — the table
+exists to be *chosen from*, and someone deciding between four options wants them pre-ordered.
+Name the columns for whatever actually separates the options in *that* decision rather than
+reusing a fixed set; a table whose columns do not discriminate is decoration with arithmetic on it.
+
+**The total is right here and wrong in the block above, and that is not a contradiction.** They
+are different artifacts answering different questions. The block rates **one** suggestion on five
+deliberately uncorrelated axes, where summing destroys exactly the information the five exist to
+carry — `CLAUDE.md` is explicit that a 1/10 complexity can be a 9/10 recommendation. The table
+ranks **several** options against each other, where the total *is* the ranking. Do not add a total
+to the block, and do not drop it from the table.
+
 ### Keep it current, or it rots like the docs did
 
 - **Moving an issue is part of doing the work, not paperwork after it.** `Development (AI)` when
