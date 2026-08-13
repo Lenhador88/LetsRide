@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { remainingPostcards } from '@/components/postcards/deck'
 import { cn } from '@/lib/utils'
@@ -60,6 +60,25 @@ export function PostcardDeck({
   // when it changed.
   const [dragging, setDragging] = useState(false)
   const drag = useRef<DragState>(null)
+  // The live offset while a finger is down. `onPointerMove` used to call
+  // `setDx`, which re-rendered this component on every event — reconciling all
+  // three cards (avatar, three action buttons, the overflow menu, none of them
+  // memoized) up to display refresh rate. Written to the DOM directly instead;
+  // `dx` state is only committed at the end of a drag (PD-198).
+  const dxRef = useRef(0)
+  const frontRef = useRef<HTMLDivElement>(null)
+
+  // `dx` state stays stale (0) for the whole drag, so a render triggered mid-drag
+  // for an unrelated reason (a feed revalidation) would reset the front card's
+  // `style.transform` to centre on commit — this reapplies `dxRef`'s real value
+  // before the browser paints. A ref may not be read during render (the lint
+  // rule above), only in an effect, which is why this can't just live inline.
+  useLayoutEffect(() => {
+    if (!dragging) return
+    const node = frontRef.current
+    if (!node) return
+    node.style.transform = `translateX(${dxRef.current}px) rotate(${dxRef.current / 40}deg)`
+  })
 
   /**
    * `frontId` is captured at the call rather than read when the timeout fires.
@@ -107,6 +126,7 @@ export function PostcardDeck({
     if ((event.target as HTMLElement).closest('button, a')) return
 
     drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+    dxRef.current = 0
     setDragging(true)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -114,7 +134,11 @@ export function PostcardDeck({
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = drag.current
     if (!state || state.pointerId !== event.pointerId) return
-    setDx(event.clientX - state.startX)
+    const next = event.clientX - state.startX
+    dxRef.current = next
+    // Straight to the node, no setState: see `dxRef`'s comment above.
+    const node = frontRef.current
+    if (node) node.style.transform = `translateX(${next}px) rotate(${next / 40}deg)`
   }
 
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -169,11 +193,15 @@ export function PostcardDeck({
           return (
             <div
               key={postcard.id}
+              ref={isFront ? frontRef : undefined}
               // Vertical panning is not wanted here — the home screen fills the
               // viewport and does not scroll — so the front card owns the gesture.
               className={isFront ? 'absolute inset-0 touch-none' : 'absolute inset-0'}
               style={{
                 zIndex: isFront ? 30 : behind.z,
+                // `dx` is stale while dragging (see the `useLayoutEffect` above
+                // `dxRef`) — this is only what the first paint of a drag and the
+                // settled/released states draw.
                 transform: isFront
                   ? `translateX(${dx}px) rotate(${dx / 40}deg)`
                   : `rotate(${behind.rotate}deg)`,
