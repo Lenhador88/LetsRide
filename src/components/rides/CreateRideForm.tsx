@@ -9,7 +9,7 @@ import { createRide } from '@/lib/actions/rides'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, useRestoreSelection, wasChecked } from '@/lib/actions/retain'
-import { APP_TIME_ZONE } from '@/lib/utils'
+import { APP_TIME_ZONE, defaultRideDepartureInput } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
   RIDE_MEETING_POINT_MAX,
@@ -89,6 +89,22 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
   // thrown — so re-reading the live DOM in the effect below would find an
   // empty form regardless of what was actually submitted.
   const submittedData = useRef<FormData | null>(null)
+
+  // Seed the departure with tomorrow 10:00 (PD-197). **In an effect and onto
+  // the DOM node, rather than as a `defaultValue`** — `/rides/new` is
+  // prerendered at build time, so computing "tomorrow" during render would bake
+  // the build date into the static HTML and every rider would open the form on
+  // a default as stale as the deploy. `defaultRideDepartureInput` carries the
+  // rest, including why tomorrow is Amsterdam's rather than the rider's.
+  //
+  // Guarded on the field being empty, and mount-only, so it can never overwrite
+  // what the rider typed: after a refused submit React restores every
+  // uncontrolled field to its `defaultValue`, which `retaining` has already set
+  // to the submitted value.
+  useEffect(() => {
+    const el = formRef.current?.elements.namedItem('departure_at')
+    if (el instanceof HTMLInputElement && !el.value) el.value = defaultRideDepartureInput()
+  }, [])
 
   // A disabled submit was tried here first and reverted by review: it left the
   // control out of the tab order on first paint of an untouched form (WCAG

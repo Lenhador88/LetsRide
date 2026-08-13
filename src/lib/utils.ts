@@ -121,6 +121,48 @@ export function wallClockToUtc(local: string): string {
  * `toLocaleString`, matching `zoneOffsetMs`'s own reasoning: a `datetime-local`
  * value has one required shape (`YYYY-MM-DDTHH:mm`) and no locale of its own.
  */
+/** What a fresh Create ride form opens on. Product owner, PD-197: "tomorrow at 10h00". */
+const DEFAULT_DEPARTURE_TIME = '10:00'
+
+/**
+ * The `datetime-local` value a fresh `Create ride` form opens on — tomorrow at
+ * 10:00 (PD-197).
+ *
+ * **Tomorrow in `APP_TIME_ZONE`, not in the rider's own zone**, for the reason
+ * the form states out loud beneath the field: every time on that screen is
+ * Amsterdam wall-clock, and `wallClockToUtc` resolves what is typed there
+ * against that zone. A rider in Auckland whose own calendar has already rolled
+ * over would otherwise seed a date the app then reads as a different day —
+ * and one already in the past by Amsterdam's reckoning.
+ *
+ * **Calendar arithmetic, never instant arithmetic.** The day is incremented on
+ * the date *parts* through `Date.UTC`, which rolls months and years for free,
+ * so no offset is ever added to a timestamp and the two DST days a year cannot
+ * move it. Adding 24h to an instant is the version that breaks on those days.
+ *
+ * **Call it from an effect, never during render.** `/rides/new` is prerendered
+ * at build time; computing "tomorrow" in a component body bakes the *build*
+ * date into the static HTML, and riders would then open the form on a default
+ * that is however many days stale the deploy is.
+ */
+export function defaultRideDepartureInput(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+
+  const find = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value)
+
+  // Constructed at UTC midnight purely so `toISOString` reads the same calendar
+  // day back out — this is a date, not a moment, and it is never used as one.
+  const tomorrow = new Date(Date.UTC(find('year'), find('month') - 1, find('day') + 1))
+
+  return `${tomorrow.toISOString().slice(0, 10)}T${DEFAULT_DEPARTURE_TIME}`
+}
+
 export function formatRideDepartureInput(date: string): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: APP_TIME_ZONE,
