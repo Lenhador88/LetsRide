@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   normaliseUsername,
   rememberRefusal,
+  usernameCheckUnanswered,
   usernameVerdict,
   type UsernameCheck,
 } from '@/components/auth/username-verdict'
@@ -154,6 +155,49 @@ describe('a refusal written from usernameSchema is found by usernameVerdict', ()
     // apart, so neither may the field.
     expect(usernameVerdict(stored.toLowerCase(), null, refused)?.available).toBe(false)
     expect(usernameVerdict(stored.toUpperCase(), null, refused)?.available).toBe(false)
+  })
+})
+
+describe('usernameCheckUnanswered', () => {
+  it('says nothing when no check has failed', () => {
+    expect(usernameCheckUnanswered('roadking', null, null)).toBe(false)
+  })
+
+  it('speaks when the check for what is in the field failed', () => {
+    expect(usernameCheckUnanswered('roadking', null, 'roadking')).toBe(true)
+  })
+
+  /**
+   * The whole reason the failure is keyed by value rather than a bare boolean.
+   * A rider whose check failed on `roadking` and who then types `nightrider`
+   * must not be told the app could not check the name they are now looking at —
+   * nothing has failed for that one yet.
+   */
+  it('goes quiet the moment the rider edits the field', () => {
+    expect(usernameCheckUnanswered('nightrider', null, 'roadking')).toBe(false)
+  })
+
+  it('folds the way the index does, so a retyped case-variant is still the same failure', () => {
+    expect(usernameCheckUnanswered('  RoadKing ', null, 'roadking')).toBe(true)
+  })
+
+  /**
+   * A verdict outranks a failure in both directions, and the refusal case is
+   * the one that matters: PD-146's remembered `23505` is the authority, and a
+   * later failed read must not downgrade "that name is taken" to "we could not
+   * check". The rider would retype it for ever.
+   */
+  it('is outranked by a remembered refusal', () => {
+    const refused = rememberRefusal([], 'roadking')
+    const verdict = usernameVerdict('roadking', null, refused)
+
+    expect(verdict?.available).toBe(false)
+    expect(usernameCheckUnanswered('roadking', verdict, 'roadking')).toBe(false)
+  })
+
+  it('is outranked by a landed answer, which is fresher than the read that failed', () => {
+    expect(usernameCheckUnanswered('roadking', free('roadking'), 'roadking')).toBe(false)
+    expect(usernameCheckUnanswered('roadking', taken('roadking'), 'roadking')).toBe(false)
   })
 })
 
