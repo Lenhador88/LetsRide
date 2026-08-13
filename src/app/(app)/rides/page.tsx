@@ -7,7 +7,7 @@ import { NotificationsHeaderControl } from '@/components/notifications/Notificat
 import { RideCard } from '@/components/rides/RideCard'
 import { RideFilterBar } from '@/components/rides/RideFilterBar'
 import { ErrorState } from '@/components/ui/ErrorState'
-import { SkeletonList } from '@/components/ui/Skeleton'
+import { SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
 import { getRideFilters, getRides } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
@@ -60,11 +60,12 @@ import type { RideFilter } from '@/types'
  *
  * ## The fade belongs to this gate, not to PD-210's
  *
- * **What this gate does not fix, and no wrapper can:** the skeleton above it
- * draws with no filter bar, so when `filters.data` lands the rows move down by
- * the bar's ~104px. Reserving that space needs a skeleton for the bar itself,
- * which is PD-217 rather than a class here — an earlier pass wrapped this
- * branch in `py-2` believing it closed the gap, and it closed 8px of ~112.
+ * **The cold-load jump this gate used to leave behind is `RidesLoading`'s job,
+ * and a padding class cannot do it (PD-217).** The pre-bar skeleton drew with
+ * no filter bar at all, so every row dropped the bar's ~104px the moment
+ * `filters.data` landed. A pass before that one wrapped the branch in `py-2`
+ * believing it was the same gap and closed 8px of ~112 — the height has to be
+ * *reserved*, which means a shape standing in for the bar.
  * `/postcards` has the same two-skeleton shape and needs nothing at all: its
  * deck skeleton is a centred, width-driven card, so vertical padding moves
  * neither its centre nor its size.
@@ -85,7 +86,7 @@ export default function RidesPage() {
           variant, so it owes the sticky action's own height. The number lives
           in globals.css beside the other two, not here. */}
       <div className="pb-navbar-action-extra flex flex-col">
-        <Suspense fallback={<SkeletonList />}>
+        <Suspense fallback={<RidesLoading />}>
           <RidesScreen />
         </Suspense>
       </div>
@@ -133,7 +134,7 @@ function RidesScreen() {
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
   // where `isLoading` is false and there is still nothing to draw.
-  if (!filters.data) return <SkeletonList />
+  if (!filters.data) return <RidesLoading />
 
   return (
     <>
@@ -159,6 +160,30 @@ function RidesScreen() {
           ))}
         </div>
       )}
+    </>
+  )
+}
+
+/**
+ * The screen before either read has landed, and it must be the *loaded* shape
+ * with the content taken out — that is the whole fix for PD-217.
+ *
+ * Both cold-load positions render this one component: the `<Suspense>`
+ * fallback, which stands in while `useSearchParams` resolves, and the
+ * `!filters.data` gate below it. They were two different trees before — a bare
+ * `SkeletonList` in each — so the bar's ~104px and the list wrapper's 8px both
+ * appeared out of nowhere, one at each boundary, and every row moved down
+ * twice on the way to a settled screen.
+ */
+function RidesLoading() {
+  return (
+    <>
+      <SkeletonFilterBar />
+      {/* `py-2` on the wrapper, not the skeleton — same reason as the loaded
+          branch: `SkeletonList`'s root is `px-4` only. */}
+      <div className="py-2">
+        <SkeletonList />
+      </div>
     </>
   )
 }

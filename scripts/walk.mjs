@@ -365,6 +365,17 @@ async function checkRefusedSignup(targetPage) {
     'the password survives it',
     'the field was cleared'
   )
+  // PD-214. The two fields above are uncontrolled and restore through
+  // `retaining`; this box is controlled, so it restores through
+  // `useRestoreChecked` — a different mechanism, and it was the one control on
+  // this form with neither. Read as a DOM property rather than with
+  // `isChecked()`: the input is `sr-only`, and the defect is precisely that
+  // the property disagrees with the React state that draws the tick.
+  report(
+    await targetPage.$eval('input[name="acceptedTerms"]', (n) => n.checked),
+    'the consent box survives it',
+    'the box reverted to unticked, so the retry is refused with nothing on screen saying why'
+  )
 
   return { bad, ran }
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useState } from 'react'
+import { useActionState, useRef, useState } from 'react'
 import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { signUp } from '@/lib/actions/auth'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
-import { retaining, seedRetained } from '@/lib/actions/retain'
+import { retaining, seedRetained, useRestoreChecked } from '@/lib/actions/retain'
 import { NEW_PASSWORD_MIN_LENGTH } from '@/lib/validation/auth'
 
 // **The password is retained here and not on `/auth/login`.** The error a
@@ -25,6 +25,16 @@ export default function SignupPage() {
   const [state, formAction, pending] = useActionState(retainCredentials, initialState)
   useActionRedirect(state)
   const [accepted, setAccepted] = useState(false)
+  // The other two controlled checkboxes in the app restore because a refused
+  // retry would silently re-publish something private. This one is worse than
+  // that: `form.reset()` puts the box back to its mount-time `checked`
+  // attribute — `false`, because nobody has ever opened this screen with it
+  // ticked — while `accepted` still says `true`. So the retry after any
+  // refusal is rejected by `signUpSchema` on a box the rider never unticked,
+  // and `disabled={!accepted}` reads the state that still agrees with them, so
+  // the one affordance that would hint at it never fires.
+  const acceptedRef = useRef<HTMLInputElement>(null)
+  useRestoreChecked(acceptedRef, accepted, state)
 
   // `signUp` sets `sent` when the account was created but no session came back,
   // which is what Supabase returns while email confirmation is on. There is
@@ -77,6 +87,7 @@ export default function SignupPage() {
         </div>
         <div className="rounded-lg bg-background p-4">
           <Checkbox
+            ref={acceptedRef}
             name="acceptedTerms"
             checked={accepted}
             onChange={(e) => setAccepted(e.target.checked)}

@@ -1,14 +1,15 @@
 import { cn } from '@/lib/utils'
 
 /**
- * The four loading treatments the render migration needs (design D7 /
- * task 5.2). The committed Figma snapshot has zero loading, error or offline
- * frames (design.md §Context constraint 3), so nothing here is measured —
- * geometry is copied from the real component each shape stands in for
- * (`PostcardCard`/`PostcardDeck`, `RideCard`/`ClubCard`, the ride/club detail
- * pages, `CreateRideForm`/`AuthScreen`), and colour is `bg-foreground/10`,
- * the same translucent fallback tint `Avatar`'s initials circle already
- * uses — no new token is introduced.
+ * The loading treatments the render migration needs (design D7 / task 5.2),
+ * plus `SkeletonFilterBar`, which PD-217 added for a different reason — see
+ * its own note. The committed Figma snapshot has zero loading, error or
+ * offline frames (design.md §Context constraint 3), so nothing here is
+ * measured — geometry is copied from the real component each shape stands in
+ * for (`PostcardCard`/`PostcardDeck`, `RideCard`/`ClubCard`, the ride/club
+ * detail pages, `FilterBar`/`FilterTile`, `CreateRideForm`/`AuthScreen`), and
+ * colour is `bg-foreground/10`, the same translucent fallback tint `Avatar`'s
+ * initials circle already uses — no new token is introduced.
  *
  * **One treatment per screen *shape*, not per screen.** `SkeletonList` alone
  * stands in for the rides list, the clubs list, a member list and a search
@@ -16,10 +17,10 @@ import { cn } from '@/lib/utils'
  * a design nobody has drawn, and D7 is explicit that the fix for "the design
  * has no answer" is fewer guesses, not more of them.
  *
- * All four live in this one file, matching `Card.tsx`'s precedent of a small
+ * They all live in this one file, matching `Card.tsx`'s precedent of a small
  * family of related exports sharing one file rather than one export per
  * file — they share the base `Skeleton` primitive and would otherwise
- * duplicate its import four times over.
+ * duplicate its import once each.
  *
  * **The skeleton itself does not fade in, and that is deliberate.** The fade
  * belongs to the content that replaces one of these — `globals.css`'s
@@ -157,6 +158,46 @@ function DetailRowSkeleton() {
         <Skeleton className="h-3 w-20 rounded" />
       </div>
     </div>
+  )
+}
+
+/**
+ * Stands in for `RideFilterBar`/`PostcardFilterBar` — and unlike the other
+ * shapes here it exists to reserve height rather than to describe content.
+ *
+ * `/rides` gates its bar and its list separately (PD-210), so the bar arrives
+ * on its own read and every row below it dropped ~104px when it did (PD-217).
+ * That number is not chosen: `FilterBar` is `py-2` (16) around a `FilterTile`
+ * column of `h-[68px]` image + `gap-1` (4) + the label's `text-2xs` line box
+ * (16) = 88. **The label slot is a `h-4` box holding a shorter bar** rather
+ * than a 10px bar on its own — reserving the drawn height instead of the line
+ * height is what leaves a 6px jump behind.
+ *
+ * Tile count is cosmetic: the bar is a horizontal scroller, so only its height
+ * can move anything. The first two are circles because "Your rides" and "All
+ * rides" are always present and always round; clubs are the rounded squares.
+ */
+export function SkeletonFilterBar({ tiles = 4 }: { tiles?: number }) {
+  return (
+    <SkeletonRegion
+      label="Loading filters"
+      className="flex shrink-0 gap-0 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {Array.from({ length: tiles }, (_, i) => (
+        <div key={i} className="flex w-20 shrink-0 flex-col items-center gap-1">
+          <div className="flex h-[68px] w-[68px] items-center justify-center">
+            <Skeleton
+              className={
+                i < 2 ? 'h-16 w-16 rounded-full' : 'h-[60px] w-[60px] rounded-lg'
+              }
+            />
+          </div>
+          <span className="flex h-4 items-center">
+            <Skeleton className="h-2.5 w-12 rounded" />
+          </span>
+        </div>
+      ))}
+    </SkeletonRegion>
   )
 }
 
