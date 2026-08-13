@@ -1282,36 +1282,37 @@ Rate your own ideas honestly, including low — an unrated suggestion reads as a
 reader cannot cheaply decline it. If you would not spend your own afternoon on it, say so in the
 number.
 
-**Letter them — A), B), C) — every option you offer, including a lone one**, so the reply can be
-"do A and C" instead of a quoted sentence. One letter per thing that can be independently said
-yes to. **Say who does each one** — an owner-only item mixed into a list of build tasks hides the
-one nobody but them can do.
+**Name every option you offer, and the name is how it is referred to. Never a letter.** One name
+per thing that can be independently said yes to, so the reply can be *"do the promotion and the
+walk phase"*. **Say who does each one** — an owner-only item mixed into a list of build tasks
+hides the one nobody but them can do.
 
-**The letters keep counting up for the whole session and never restart at A.** Product owner,
-2026-08-13: *"we used A letter before as well. So I wanted to refer now to the previous B, but
-then it gets confusing."* Restarting makes a letter a name for one reply rather than for one
-option, and the owner reads these hours apart on a phone — by the fourth batch "do B" names three
-different things and the only way to disambiguate is to quote a sentence, which is what the
-letters exist to avoid. So the fourth option offered in a session is **D** even if it is the first
-in its reply. Past Z, keep going: **AA**, **AB**.
+**A), B), C) are banned outright, and the reason is not style.** Several sessions run against this
+repo at once and the owner reads them all in one place. Nothing coordinates a counter between
+them, so each starts at A and *"do A"* names a different thing in every conversation open that
+day. Product owner, 2026-08-13, pasting an option this session never wrote: *"This is what i see
+— A) Promote development → main… I think we need to fix the lettering!! This is very important!!!"*
 
-A lone suggestion is lettered for the same reason: unambiguous in its own reply, unnameable in the
-next one. No letter is ever spent on something that was not labelled.
+**Per-session counters do not fix it, and one shipped before this did.** The first attempt made
+letters count up across a session and never restart — correct for the collision *inside* one
+conversation, useless against the one that actually bit, because the second session is not
+reading the first's counter. Recorded because it is the obvious fix and it is the wrong scope: a
+handle that needs coordination between independent sessions cannot be made unique by discipline
+inside one of them.
 
-**When the count is lost, say so rather than quietly restarting.** It lives only in the
-conversation, so a compaction takes it — and this file's own rule is that a claim about state
-needs the command that checks it, which this one cannot have. Continue from the highest letter
-still visible, and **treat a gap as a loss**: if the visible letters do not run unbroken from
-**A**, a reply carrying earlier ones was dropped and the highest survivor under-counts. Then, and
-when nothing is visible at all, restart and add one line saying the lettering restarted — so an
-owner scrolling back knows there are two **A**s rather than discovering it by acting on the wrong
-one.
+**A name needs no coordination.** Two sessions offering *"the promotion"* are offering the same
+work, so agreeing is the correct outcome rather than a collision. Nothing has to be tracked,
+nothing is lost to a compaction, and there is no counter to get wrong.
 
-**Every lettered option opens with a title and one line of context saying what it actually is.**
+**Every option opens with that name in bold and one line of context saying what it actually is.**
 Product owner, 2026-08-11. A bare imperative — *"Cap the candidate rows"* — assumes the reader
 carries the problem in their head, and by the time they read it they do not. Name the thing, then
 say in a sentence what it does and what it costs. The ratings justify it; the context is what
 makes them mean anything.
+
+**Make the name short enough to say and specific enough to be unique** — *"the team-scoped pick"*,
+*"the walk phase"*, *"the leaked-password toggle"*. Two or three words. A name that could describe
+two different pieces of work is the same defect as a letter, arriving more slowly.
 
 ### The debrief shape — Points, Proposals, Question
 
@@ -1320,7 +1321,7 @@ a decision to them.** It arrived as *"that's so much better"* after a long analy
 nine lines, and the point is the **compression**, not the headings:
 
 - **Points** — what you found, one line each. Three or four, not eight.
-- **Proposals** — the lettered blocks above, each with its title, its line of context, and its
+- **Proposals** — the named blocks above, each with its name, its line of context, and its
   ratings. Skip entirely when there is nothing to decide.
 - **Question** — the single thing you need answered, phrased so a one-word reply works.
 
@@ -1332,12 +1333,12 @@ needs a paragraph to defend, the paragraph belongs in the record and the reply g
 re-explains findings already written into three durable places is the failure this exists to
 stop.
 
-**Give every lettered option its own blockquote, with the letter and its description *outside*
-the bar.** The bar groups the ratings so a reader scanning three options can see where each one
-ends; the description is the thing being chosen between, and inside the bar it reads as a sixth
-rating instead of a heading. Two options means two headings and two bars:
+**Give every named option its own blockquote, with the name and its description *outside* the
+bar.** The bar groups the ratings so a reader scanning three options can see where each one ends;
+the description is the thing being chosen between, and inside the bar it reads as a sixth rating
+instead of a heading. Two options means two headings and two bars:
 
-**A) Drop the dead column.**
+**Drop the dead column.**
 
 > **Recommendation** 7/10
 >
@@ -1359,7 +1360,7 @@ rating instead of a heading. Two options means two headings and two bars:
 >
 > wants its own branch, and the open PR should land first
 
-**B) Enable leaked-password protection.**
+**Enable leaked-password protection.**
 
 > **Recommendation** 9/10
 >
