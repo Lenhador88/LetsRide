@@ -52,16 +52,27 @@ export default function PrivacyPage() {
         Nothing below is happening today. It is listed in advance because it will involve sending
         data to someone new, and that should not be a surprise when it starts.
       </p>
+      {/* MOVE THIS `li` INTO THE LIST ABOVE IN THE SAME WINDOW AS THE
+          `resolve-ride-location` DEPLOY — `add-ride-map-tiles/tasks.md` 8.4c.
+          The heading is the only thing here that depends on whether the
+          function is live; the bullet itself describes what happens when a
+          ride is saved and reads true on either side of that deploy. It was
+          rewritten that way deliberately, because the sentence it used to end
+          on — "Today no ride has coordinates and nothing is sent anywhere" —
+          was true up to the deploy and false one second after it, on a public
+          page describing where a home address goes. A claim that flips on an
+          owner action nobody in a session can take is a claim nothing will
+          catch. Do not reintroduce one. */}
       <ul className="text-muted list-disc pl-5 space-y-2">
         <li>
-          <span className="font-medium">Geoapify</span> — will turn a ride&rsquo;s meeting point
-          into map coordinates and render the small map shown on a ride. When that is switched on,
-          creating or editing a ride will send the meeting point you typed to Geoapify.{' '}
+          <span className="font-medium">Geoapify</span> — turns a ride&rsquo;s meeting point into
+          map coordinates and renders the small map shown on a ride. Saving a ride sends the
+          meeting point you typed to Geoapify, and editing it sends the new one.{' '}
           <span className="font-medium">
             A meeting point is often a home address, so treat it as one.
           </span>{' '}
-          The resulting coordinates and map image will be stored by us, and your device will not
-          contact Geoapify directly. Today no ride has coordinates and nothing is sent anywhere.
+          The coordinates and the map image are stored by us; your device never contacts Geoapify,
+          and the map you see is served from our own storage.
         </li>
       </ul>
       <p className="text-muted">
