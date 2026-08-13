@@ -1287,6 +1287,17 @@ C" instead of a quoted sentence. One letter per thing that can be independently 
 single suggestion needs no letter. **Say who does each one** — an owner-only item mixed into a
 list of build tasks hides the one nobody but them can do.
 
+**The letters keep counting up for the whole session and never restart at A.** Product owner,
+2026-08-13: *"we used A letter before as well. So I wanted to refer now to the previous B, but
+then it gets confusing."* Restarting makes a letter a name for one reply rather than for one
+option, and the owner reads these hours apart on a phone — by the fourth batch "do B" names three
+different things and the only way to disambiguate is to quote a sentence, which is what the
+letters exist to avoid. So the fourth option offered in a session is **D** even if it is the first
+in its reply, and a reply offering one option still spends the next letter.
+
+Past Z, keep going: **AA**, **AB**. A session that gets there has offered twenty-six choices and
+the pair reads fine; resetting is the thing that does not.
+
 **Every lettered option opens with a title and one line of context saying what it actually is.**
 Product owner, 2026-08-11. A bare imperative — *"Cap the candidate rows"* — assumes the reader
 carries the problem in their head, and by the time they read it they do not. Name the thing, then
