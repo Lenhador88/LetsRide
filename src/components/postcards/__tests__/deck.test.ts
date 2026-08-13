@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { SWIPE_THRESHOLD, remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
+import {
+  DRAG_ARM_THRESHOLD,
+  SWIPE_THRESHOLD,
+  armsDrag,
+  remainingPostcards,
+  resolveSwipe,
+} from '@/components/postcards/deck'
 
 const card = (id: string) => ({ id })
 const feed = (...ids: string[]) => ids.map(card)
@@ -93,5 +99,43 @@ describe('resolveSwipe', () => {
   it('defaults the release to the drawn offset', () => {
     expect(resolveSwipe(SWIPE_THRESHOLD)).toBe(1)
     expect(resolveSwipe(SWIPE_THRESHOLD - 1)).toBeNull()
+  })
+})
+
+describe('armsDrag', () => {
+  it('treats a still finger as a tap', () => {
+    expect(armsDrag(0)).toBe(false)
+  })
+
+  it('treats a pixel of jitter as a tap, in both directions', () => {
+    // The point of the slop. A press on the like button that wobbles must stay
+    // a press, or every control on the card becomes unreliable.
+    expect(armsDrag(3)).toBe(false)
+    expect(armsDrag(-3)).toBe(false)
+  })
+
+  it('arms at the threshold, in both directions', () => {
+    expect(armsDrag(DRAG_ARM_THRESHOLD)).toBe(true)
+    expect(armsDrag(-DRAG_ARM_THRESHOLD)).toBe(true)
+  })
+
+  it('arms well before the deck would advance', () => {
+    // The two thresholds answer different questions, and this ordering is what
+    // makes a below-threshold drag possible at all: the card has to follow the
+    // finger and spring back, which it cannot do if it only starts moving at
+    // the point it would commit.
+    expect(DRAG_ARM_THRESHOLD).toBeLessThan(SWIPE_THRESHOLD)
+    expect(armsDrag(SWIPE_THRESHOLD)).toBe(true)
+  })
+
+  /**
+   * The regression that would undo the fix: arming only past the commit
+   * distance would leave every gesture shorter than a full swipe invisible,
+   * and re-break exactly the strip of card this change exists to make draggable.
+   */
+  it('arms on a drag far too short to advance the deck', () => {
+    const shortDrag = Math.floor((DRAG_ARM_THRESHOLD + SWIPE_THRESHOLD) / 2)
+    expect(armsDrag(shortDrag)).toBe(true)
+    expect(resolveSwipe(shortDrag)).toBeNull()
   })
 })

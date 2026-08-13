@@ -33,6 +33,41 @@ export function remainingPostcards<T extends { id: string }>(
 export const SWIPE_THRESHOLD = 56
 
 /**
+ * How far a pointer must travel before the deck claims the gesture as a swipe.
+ *
+ * Deliberately much smaller than `SWIPE_THRESHOLD`, because the two answer
+ * different questions: this one is *is the rider dragging or tapping*, and that
+ * one is *has the drag gone far enough to advance*. Between them the card
+ * follows the finger and springs back on release, which is the normal
+ * below-threshold drag.
+ *
+ * 8px is the usual slop for distinguishing a tap from a drag — under a finger's
+ * own jitter on a tap, and reached within a frame or two of a real swipe.
+ */
+export const DRAG_ARM_THRESHOLD = 8
+
+/**
+ * Whether a gesture has moved far enough to be a swipe rather than a tap.
+ *
+ * **This is what lets a swipe start anywhere on the card**, including on the
+ * like, comment, share and overflow controls. The deck used to refuse a gesture
+ * outright when it began on a control — `closest('button, a')` at `pointerdown`
+ * — because `setPointerCapture` retargets every later event to the card and the
+ * browser then never delivers the control's `click`. Bailing kept the buttons
+ * working and made the bottom of the card dead to swiping, which is the half
+ * the rider notices: the action row and the controls in it are a wide strip
+ * across a card whose photo is under half its height.
+ *
+ * Arming on distance keeps both. Capture is not taken at `pointerdown` at all,
+ * so a tap is never retargeted and the control's click arrives untouched; once
+ * the pointer has travelled this far the gesture is plainly not a tap, the deck
+ * captures, and the click that would have followed is suppressed.
+ */
+export function armsDrag(offset: number): boolean {
+  return Math.abs(offset) >= DRAG_ARM_THRESHOLD
+}
+
+/**
  * What releasing the card does: `1` leaves to the right, `-1` to the left,
  * `null` returns to centre.
  *

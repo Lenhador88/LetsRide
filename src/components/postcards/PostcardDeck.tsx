@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
-import { remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
+import { armsDrag, remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
 import { cn } from '@/lib/utils'
 import type { Postcard } from '@/types'
 import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
@@ -29,6 +29,14 @@ import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
  * platform took away mid-touch committed as though the rider had finished it,
  * judged on a coordinate that need not agree with what was drawn. See
  * `onPointerCancel` below and `resolveSwipe` in `./deck`.
+ *
+ * **A swipe starts anywhere on the card, controls included.** Pointer capture
+ * is taken on distance rather than at `pointerdown` (`armsDrag` in `./deck`),
+ * which is what lets the like, comment, share and overflow controls keep their
+ * clicks while the strip they sit in still drags. The card's photo is under
+ * half its height, so refusing a gesture that began on a control — the shape
+ * this deck carried until then — read to a rider as swiping working only on
+ * the picture.
  */
 const BEHIND = [
   { rotate: -2, scale: 1, z: 20 },
@@ -48,7 +56,19 @@ const BEHIND = [
  * card happens to be there is the same defect `advance` already guards its
  * timeout against.
  */
-type DragState = { pointerId: number; startX: number; offset: number; frontId: string } | null
+type DragState = {
+  pointerId: number
+  startX: number
+  offset: number
+  frontId: string
+  /**
+   * True once the pointer has travelled `DRAG_ARM_THRESHOLD` and the deck has
+   * captured it. Before that the gesture is still potentially a tap and the
+   * card is not drawn as moving, so a press on a control behaves exactly as it
+   * did before the deck existed.
+   */
+  armed: boolean
+} | null
 
 export function PostcardDeck({
   postcards,
@@ -80,6 +100,16 @@ export function PostcardDeck({
   // when it changed.
   const [dragging, setDragging] = useState(false)
   const drag = useRef<DragState>(null)
+  /**
+   * Set when a gesture became a drag, so the click the browser fires afterwards
+   * is swallowed rather than reaching whatever the finger started on. A drag
+   * that begins on the like button must not also like the postcard.
+   *
+   * Cleared on the next `pointerdown` as well as on use, because a drag does
+   * not always produce a click — leaving the flag set would eat the next real
+   * tap instead.
+   */
+  const suppressClick = useRef(false)
 
   /**
    * `frontId` is captured at the call rather than read when the timeout fires.
@@ -130,26 +160,36 @@ export function PostcardDeck({
     // one's offset, which makes the card jump.
     if (leaving !== null || !front || drag.current) return
 
-    /**
-     * A gesture starting on a control is that control's, not the deck's.
-     *
-     * `setPointerCapture` below retargets every subsequent pointer event to the
-     * card, so the browser never delivers a `click` to whatever was pressed —
-     * which made **every button on the front card dead**: the overflow menu,
-     * like, comment and share. Verified against the real app on 2026-08-05: a
-     * pointer click left `aria-expanded` false with no dialog in the DOM, while
-     * dispatching `.click()` from JS opened the sheet correctly. The React
-     * handlers were never the problem.
-     *
-     * Bailing out here rather than calling `releasePointerCapture` later,
-     * because capture has to not happen at all — releasing it mid-gesture does
-     * not resurrect the click the browser already withheld.
-     */
-    if ((event.target as HTMLElement).closest('button, a')) return
+    suppressClick.current = false
 
-    drag.current = { pointerId: event.pointerId, startX: event.clientX, offset: 0, frontId: front.id }
-    setDragging(true)
-    event.currentTarget.setPointerCapture(event.pointerId)
+    /**
+     * **Capture is deliberately NOT taken here**, and that is the whole fix for
+     * a card whose bottom half would not swipe.
+     *
+     * `setPointerCapture` retargets every later pointer event to the card, so
+     * the browser never delivers a `click` to whatever was pressed — which once
+     * made every control on the front card dead: the overflow menu, like,
+     * comment and share (verified against the real app 2026-08-05; a pointer
+     * click left `aria-expanded` false with no dialog in the DOM). The fix then
+     * was to refuse the gesture whenever it began on a `button` or `a`.
+     *
+     * That traded one defect for a quieter one. The photo is under half the
+     * card's 448px, and the action row plus its controls is a wide strip across
+     * the rest, so a rider swiping anywhere but the picture was often starting
+     * on a control and getting nothing at all.
+     *
+     * Arming on distance keeps both behaviours: no capture until the pointer
+     * has plainly stopped being a tap, so a press on a control is never
+     * retargeted and its click arrives intact, and once `armsDrag` is true the
+     * deck takes the gesture and suppresses the click that would have followed.
+     */
+    drag.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      offset: 0,
+      frontId: front.id,
+      armed: false,
+    }
   }
 
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -158,6 +198,19 @@ export function PostcardDeck({
     // Written to the ref first, mirrored to state for the transform. The two are
     // the same number, so the card cannot commit in a direction it was never drawn in.
     state.offset = event.clientX - state.startX
+
+    if (!state.armed) {
+      // Still inside the slop: the card is not drawn as moving, so a tap that
+      // wobbles a pixel or two does not nudge the deck.
+      if (!armsDrag(state.offset)) return
+      state.armed = true
+      setDragging(true)
+      // Taken now rather than at `pointerdown`, which is what lets a control
+      // keep its click. From here the gesture is the deck's and every later
+      // event arrives at the card even if the finger leaves it.
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+
     setDx(state.offset)
   }
 
@@ -165,6 +218,15 @@ export function PostcardDeck({
     const state = drag.current
     if (!state || state.pointerId !== event.pointerId) return
     drag.current = null
+
+    // Never armed, so this was a tap. The deck neither moved nor captured, and
+    // the click is on its way to whatever was pressed — leave both alone.
+    if (!state.armed) return
+
+    // It became a drag, so the click the browser is about to fire is a phantom
+    // of where the finger landed. A swipe that started on the like button must
+    // not also like the postcard.
+    suppressClick.current = true
 
     setDragging(false)
     // A lift's own coordinate is authoritative and can be a frame of travel
@@ -196,8 +258,25 @@ export function PostcardDeck({
     if (!state || state.pointerId !== event.pointerId) return
     drag.current = null
 
+    if (!state.armed) return
+
     setDragging(false)
     setDx(0)
+  }
+
+  /**
+   * Swallows the click that follows a drag, in the capture phase so it never
+   * reaches the control the gesture started on.
+   *
+   * `preventDefault` as well as `stopPropagation` because `CommentsLink` is an
+   * anchor: stopping React's propagation leaves the browser's own navigation
+   * untouched, and a swipe would open the thread it swiped past.
+   */
+  const onClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!suppressClick.current) return
+    suppressClick.current = false
+    event.preventDefault()
+    event.stopPropagation()
   }
 
   if (!front) {
@@ -261,6 +340,7 @@ export function PostcardDeck({
               onPointerMove={isFront ? onPointerMove : undefined}
               onPointerUp={isFront ? onPointerUp : undefined}
               onPointerCancel={isFront ? onPointerCancel : undefined}
+              onClickCapture={isFront ? onClickCapture : undefined}
             >
               <PostcardCard postcard={postcard} fill />
             </div>
