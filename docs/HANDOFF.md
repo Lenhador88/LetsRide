@@ -94,14 +94,18 @@ npm run release:check                 # only before a store submission — see �
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` is at `ee0cde0`** — promoted via #191 as a merge commit, back-merged by fast-forward,
-  so both branches sit on that sha. That promotion carried **27** commits — `p1..p2`, the same
-  rule the counts beside the earlier promotions use; the incl-merge number is 28 — and is the
-  largest so far: the ride map tiles (PD-104, PD-202), crew-wide ride-join notifications
-  (PD-129), a club owner reaching their own club as a member does (PD-128), the form-retention
-  pair (PD-199, PD-196), bounded place search with the index loaded in production (PD-150,
-  PD-195), and the release bundle's baked-in backend and origin (PD-188). The three before it
-  were #163, #154 and #150.
+- **`main` is at `f2c75f2`** — promoted via #207 as a merge commit, back-merged by fast-forward,
+  so both branches sit on that sha. That promotion carried **15** commits — `p1..p2`, the same
+  rule the counts beside the earlier promotions use; the incl-merge number is 16: a username
+  keeping the case the rider typed (PD-226), the postcard swipe committing on lift (PD-221), the
+  app-wide content fade (PD-216), both lists reserving their filter bar's height (PD-217,
+  PD-218), the rides filter bar gating on its own read (PD-210), a refused signup keeping its
+  consent box (PD-214), and a back button on notifications (PD-209). The three before it were
+  #191 (27 commits), #163 and #154.
+
+  **`056` was applied to PROD BEFORE this promotion merged**, because it is additive and its code
+  shipped in it. That is the ordering rule, not a preference — §Migrations has what the reversed
+  order costs a rider, and it is not a rollback.
 
   **Re-derive both numbers rather than editing the tail of this list** — a previous revision
   prepended a new promotion to ids that were already wrong, which is how one stale entry becomes
