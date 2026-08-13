@@ -515,8 +515,9 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `47/47 guard, navigation and sign-out checks correct` on a DEV where the walk
-account owns a ride and a club** — measured 2026-08-12. **The account that measures the full total
+**A clean run is `48/48 guard, navigation and sign-out checks correct` on a DEV where the walk
+account owns a ride and a club** — 47/47 measured 2026-08-12, plus the consent-box assertion
+PD-214 added to the refused-signup phase, which has **not** been run against DEV. **The account that measures the full total
 is whoever currently organises the earliest-departing ride, not a fixed name**: `checkEditRetention`
 picks the first candidate whose form actually renders, and `getRides` orders `/rides` by
 `departure_at` ascending, so `discoverDetailPaths` hands it whichever ride is soonest regardless of
@@ -543,7 +544,7 @@ Five phases count what they *ran* rather than a fixed constant — `checkFormRet
 and `runRefusedSignup` skips entirely when the browser's session is not on the writable-project
 allowlist. So the total falls on a thinner database or a wrongly configured environment, and the
 run says which parts it skipped rather than shrinking silently. Count them from the output rather
-than from here: 5 refused-sign-in assertions, 3 refused-signup assertions when the ref gate passes
+than from here: 5 refused-sign-in assertions, 4 refused-signup assertions when the ref gate passes
 (0 when it does not), 9 refused-ride-create assertions (8 with no club, so the club `<select>` is
 not drawn), 4 refused-club-create assertions, 2 or 3 refused-edit assertions (2 on the club edit
 form, which has no select), 4 refused-profile-edit assertions, then `all N taps navigated`,
@@ -612,7 +613,7 @@ leaves the field filled too.
 discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
 `13/13` against a DEV with a club but no ride, `16/16` once the ride is there, `18/18` measured
 2026-08-12 with a ride, a club and one visible postcard. **Read the `N/N` for equality, not for
-the value**, and read the skip notices above it for what was not covered. `47/47` above is the
+the value**, and read the skip notices above it for what was not covered. `48/48` above is the
 pass/fail one — read it for equality too, since its total moves with what the walk account owns.
 
 **So the walk provisions what it needs** — a shrunken figure looks exactly like success while
