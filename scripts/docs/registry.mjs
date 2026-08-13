@@ -209,11 +209,11 @@ export const claims = [
     // 2026-08-12: 051 and 052 landed on DEV alone, which is the exact case the
     // paragraph above predicted. Prose and pattern edited together, as it says.
     // Later the same day PD-201 applied 051-054 to PROD and this went red on cue
-    // — the mechanism working, not failing. Now pinned to LEVEL, so the next
-    // DEV-only migration turns it red again and the sentence gets re-read.
-    // The pin is on the RELATIONSHIP in both directions; do not relax it to the
-    // count just because the two projects agree today.
-    pattern: /\*\*Applied state: (\d+) files\. DEV and PROD are both at `\d+` — LEVEL/,
+    // — the mechanism working, not failing. Now pinned to DEV AHEAD (056 is
+    // DEV-only), so the promotion that levels them turns it red again and the
+    // sentence gets re-read. The pin is on the RELATIONSHIP in both directions;
+    // do not relax it to the count just because the two projects agree today.
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV AHEAD/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
