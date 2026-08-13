@@ -659,9 +659,11 @@ choice, not part of this contract — `design.md` §D2 makes it and owns it.
   `profiles.username`
 - **THEN** the database SHALL reject the write with `23514`, unchanged from `003`
 - **AND** this SHALL be enforced by `profiles_username_format`
-  (`username IS NULL OR username ~ '^[a-z0-9_]{3,20}$'`), which admits neither the empty string
-  nor whitespace nor an embedded newline — verified against the live constraint rather than
-  assumed, because "NULL is the only hole" is only true if the empty string is genuinely closed
+  (`username IS NULL OR username ~ '^[A-Za-z0-9_]{3,20}$'` since `056`; `'^[a-z0-9_]{3,20}$'` when
+  this requirement was written, and the widening admits capitals and nothing else), which admits
+  neither the empty string nor whitespace nor an embedded newline — verified against the live
+  constraint rather than assumed, because "NULL is the only hole" is only true if the empty string
+  is genuinely closed
 
 #### Scenario: Deleting the profile row is not an alternative route to invisibility
 

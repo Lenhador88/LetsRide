@@ -97,7 +97,11 @@ export default function OnboardingUsernamePage() {
     const value = normaliseUsername(username)
     let cancelled = false
     const timeout = setTimeout(() => {
-      checkUsernameAvailability(value).then((result) => {
+      // Checked as typed, keyed as folded. The availability answer is
+      // case-insensitive (056), so one entry covers every case-variant — but the
+      // charset and reserved-name messages the check also returns should be
+      // about the value the rider actually wrote, not a lowercased copy of it.
+      checkUsernameAvailability(username).then((result) => {
         if (!cancelled) setChecked({ value, ...result })
       })
     }, DEBOUNCE_MS)
@@ -135,7 +139,12 @@ export default function OnboardingUsernamePage() {
             spellCheck={false}
             required
             value={username}
-            onChange={(e) => setUsernameValue(e.target.value.toLowerCase())}
+            // Not lowercased on the way in: 056 stores the case the rider
+            // typed, so forcing it here would make `Pedro` unreachable through
+            // the only screen that writes a username. `autoCapitalize="none"`
+            // stays — it stops a phone keyboard capitalising the first letter on
+            // the rider's behalf, which is a different thing from refusing one.
+            onChange={(e) => setUsernameValue(e.target.value)}
             errorBorder={!tooShort && verdict?.available === false}
           />
           {/* Always mounted, so the flip from "available" to "taken" is

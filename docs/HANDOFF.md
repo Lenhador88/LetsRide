@@ -64,11 +64,11 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1481/1481 across 48 files
+npm run test:unit                     # 1523/1523 across 48 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 32 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
-PGPASSWORD=postgres npm test          # 1428 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 1457 assertions, 0 failures
 ```
 
 **And the second build shape, which nothing above covers** — PD-142 left the repo with two, and
@@ -444,8 +444,8 @@ the postcard thread still carry inferred composition; the design has frames for 
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1428**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD); `054` by **+64 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `036: an ownerless owner cannot see their own private club's ride TODAY` pinned the defect as current behaviour, and `054` fixes it, so the line is now `036/054:` and expects 1 where it expected 0. **A session diffing label sets against `development` will find the old label simply gone**; reinstating it re-asserts the defect and turns a correct database red. `036` §7.12c's *behaviour* is unchanged and still right — the club-ride fan-out reads `club_members` directly because a caller-relative helper cannot compute a recipient set — but its stated justification is void, and the withheld notification is now a gap (N10) owned by `enforce-creator-membership`; `055` by **+44 new and −1 relabelled**, and that one is a plain rename — `036: … and nobody else on the crew` still reads 1, but only because that fixture's sole other crew member IS the organizer, so it is now `036/055:` with the reason stated |
-| Unit tests | `npm run test:unit` — **1481 across 48 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1457**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD); `054` by **+64 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `036: an ownerless owner cannot see their own private club's ride TODAY` pinned the defect as current behaviour, and `054` fixes it, so the line is now `036/054:` and expects 1 where it expected 0. **A session diffing label sets against `development` will find the old label simply gone**; reinstating it re-asserts the defect and turns a correct database red. `036` §7.12c's *behaviour* is unchanged and still right — the club-ride fan-out reads `club_members` directly because a caller-relative helper cannot compute a recipient set — but its stated justification is void, and the withheld notification is now a gap (N10) owned by `enforce-creator-membership`; `055` by **+44 new and −1 relabelled**, and that one is a plain rename — `036: … and nobody else on the crew` still reads 1, but only because that fixture's sole other crew member IS the organizer, so it is now `036/055:` with the reason stated; `056` by **+29 new and −1 relabelled**, and that relabel is an **expected-value flip** like `054`'s rather than a rename — `an uppercase username is rejected` asserted the rule `056` removes, so it is now `a username with a non-ASCII letter is rejected — 056 widened the charset to A-Z, not to Unicode`, checked on **both** `C.UTF-8` and `en_US.UTF-8` because a collation-dependent `[A-Za-z]` range would pass locally and fail hosted. One assertion got strictly stronger with no label change: `lower(username) rejects a case-variant of an existing username` used to drop `profiles_username_format` inside a savepoint to reach the index at all, so it was true of a database this repo never ran; capitals now reach the index for real and the scaffolding is gone |
+| Unit tests | `npm run test:unit` — **1523 across 48 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -720,7 +720,49 @@ publication membership is asserted, the *delivery* is not), and whether the comp
 `crypto.randomUUID` path is on a secure origin — it is over HTTPS, and the fallback exists for
 `http://<lan-ip>` device testing.
 
-## Migrations — the repo, DEV and PROD all hold 55
+## Migrations — the repo, DEV and PROD all hold 56
+
+**`056` is PD-226's and is on BOTH projects, applied 2026-08-13.** It relaxes
+`profiles_username_format` to `^[A-Za-z0-9_]{3,20}$` so a username keeps the case the rider
+typed, makes `profiles_username_not_reserved` fold with `lower()` — without which `Admin` walks
+through a list that was exhaustive only because the charset forced lowercase — and adds
+`public.username_exists(text)`, `security invoker` so the availability read keeps running under
+the block-aware `profiles` SELECT policy. **`profiles_username_lower_key` is untouched**, so
+`003` Q4's impersonation fix stands: `Pedro` and `pedro` still cannot coexist.
+
+Verified by object rather than by row count on **both**: both constraint definitions, the index
+still unique on `lower(username)`, `prosecdef` false, `proconfig {search_path=""}`, EXECUTE true
+for `authenticated` and false for `anon`, 0 violating rows. Five object digests — `md5(prosrc)`,
+the two `pg_get_constraintdef`s, the function comment and `pg_get_indexdef` on
+`profiles_username_lower_key` — captured on DEV and re-read identically on PROD, 5/5.
+`md5(statements[1])` on PROD equals the file's md5 byte-for-byte minus its trailing newline, so
+the hand-transcribed apply carries no drift. Advisors still nine on both, with **no tenth**
+`authenticated_security_definer_function_executable`, which is the check that `security invoker`
+really survived the transcription. Advisory: DEV's recorded statement no longer equals the file,
+because the §Ordering heading was corrected after DEV's apply — a comment outside every `$$`
+body, so all five object digests are unchanged. Compare the object, never the recorded text.
+
+**It needed ordering care, and the claim here used to say the opposite.** The charset only widens,
+so no *stored row* is ever in violation — that part was right and is why there is no data
+migration. But `056` is **additive** (it adds `public.username_exists`), so it is
+`docs/ENVIRONMENTS.md`'s apply-**then**-deploy case: new code against the old database does not
+compose. Deploy first and `username_exists` is absent, the availability read 42883s behind a
+`.then()` with no `.catch()` so nothing renders, and — the rider-visible half — `usernameSchema`
+no longer lowercases, so `Pedro` reaches the *old* CHECK, is refused `23514`, and
+`src/lib/actions/onboarding.ts` renders **"That username is not available."** for a name that is
+free. On the one screen this change exists to fix, with onboarding not skippable (decision #5).
+
+So it was applied to PROD **before** the promotion merged, not after. Behaviour re-proved on PROD
+inside a `DO` block that raised to roll back: `PedroCase` stored as typed, every case-variant
+refused `23505` by the index rather than `23514` by the charset, `Admin` and `LetsRide` refused
+`23514`, `username_exists` true for both `PEDROCASE` and `pedrocase` and false for `pedrocas`, and
+true for `my_name` while false for `myXname` — the `_`-as-LIKE-wildcard trap that ruled `.ilike()`
+out. 4 rows, 2 named, 0 residue afterwards.
+
+**`ENVIRONMENTS.md`'s numbered steps put the apply at 5 and the `main` merge at 4**, which is the
+right order for a *destructive* migration and the wrong one for an additive migration whose code
+ships in the same promotion. Read the migration's own §Ordering header, not the step number.
+
 
 **`049` and `050` both reached PROD on 2026-08-11**, so the chain is level across both databases
 for the first time since `048`. `050` was applied *ahead of* the PROD places load rather than
@@ -749,9 +791,10 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   BOTH at 55 rows ending 055_ride_joined_notifies_the_crew. LEVEL as of
-#   2026-08-12, 055 applied to PROD at the #191 promotion. Everything below
-#   describes the earlier PD-201 apply of 051-054 rather than 055's:
+#   BOTH at 56 rows ending 056_username_keeps_its_case — LEVEL as of 2026-08-13,
+#   056 applied to PROD ahead of the promotion that deploys its code, which is
+#   the ordering the section above explains. Everything below describes the
+#   earlier PD-201 apply of 051-054 rather than 055's or 056's:
 #   Verified by OBJECT FINGERPRINT, not by trusting the row count: 19 labelled
 #   components as md5(string_agg(...)) over pg_get_functiondef, pg_get_triggerdef,
 #   pg_policies, information_schema.columns, pg_indexes, pg_constraint, the
@@ -772,7 +815,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   050 IS on PROD: #179 loaded places into production behind it rather than after
 #   it, which is the right order — PROD carries 736,538 places rows, so the
 #   candidate cap is guarding a loaded table there, not an empty one.
-ls supabase/migrations/ | wc -l          # 55
+ls supabase/migrations/ | wc -l          # 56
 ```
 
 **`055` is PD-129's and is now on both projects.** It replaces one function body —

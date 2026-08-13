@@ -480,7 +480,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 55 files. DEV and PROD are both at `055` — LEVEL, 2026-08-12.** Do not
+**Applied state: 56 files. DEV is at `056`, PROD at `056` — LEVEL as of 2026-08-13.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 
@@ -527,7 +527,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1428** assertions — re-derive rather than trust it:
+Suite **1457** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -1308,6 +1308,24 @@ it ever matters, which is the whole reason the accepted cost above is affordable
 **Make the name short enough to say and specific enough to be unique** — *"the team-scoped pick"*,
 *"the walk phase"*, *"the leaked-password toggle"*. Two or three words. A name that could describe
 two different pieces of work is the same defect as a letter, arriving more slowly.
+
+**Never write a bare issue id in a chat reply — put a short title in front of it.** Product owner,
+2026-08-13: *"when you say PD-223 or any linear ticket can you also add a very brief title in
+front? I don't know which ticket you are referring to from a number."* So it is **the caption
+swipe (PD-224)**, never **PD-224** — two or three words, by the same rule as the option names
+above, and for the same reason: the number means something to whoever just wrote it and nothing to
+whoever is reading it on a phone.
+
+It bites hardest exactly where it is most tempting to skip — a status line listing four ids, which
+is the one sentence in a reply that is *entirely* references. If naming them all makes the line
+long, that is the line telling you it was never readable.
+
+**This is a chat rule and it does not extend to the record.** In a Linear issue body, a comment, a
+commit message or a PR body, `PD-224` is auto-linked with its title by Linear and GitHub, so the
+title is already there and repeating it is noise. **Nothing can gate this** — the same reason the
+issue-body rules in [`docs/reference/linear.md`](docs/reference/linear.md) §What an issue body
+opens with have none: a chat reply is not a file, so no CI job and no `docs:check` claim can see
+it. It holds because it is written down.
 
 ### The debrief shape — Points, Proposals, Question
 

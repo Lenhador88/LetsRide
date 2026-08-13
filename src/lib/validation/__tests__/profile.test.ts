@@ -19,20 +19,24 @@ const repoRoot = path.resolve(thisDir, '../../../..')
 
 /**
  * Pulls the reserved-username list out of the migration's CHECK constraint by
- * reading it as text, not by importing anything — 003_onboarding.sql is SQL,
- * not a module, and this file is what the running database actually enforces.
+ * reading it as text, not by importing anything — the migration is SQL, not a
+ * module, and it is what the running database actually enforces.
+ *
+ * **Pointed at 056, not at 003.** `003` added `profiles_username_not_reserved`
+ * and `056` replaced it with a case-blind comparison against the same names, so
+ * `003`'s copy is now a superseded definition that happens to parse. Reading it
+ * would keep this test green while the live constraint drifted.
  */
+const LIVE_RESERVED_CONSTRAINT = 'supabase/migrations/056_username_keeps_its_case.sql'
+
 function reservedNamesFromMigration(): string[] {
-  const sql = readFileSync(
-    path.join(repoRoot, 'supabase/migrations/003_onboarding.sql'),
-    'utf-8'
-  )
+  const sql = readFileSync(path.join(repoRoot, LIVE_RESERVED_CONSTRAINT), 'utf-8')
   const constraint = sql.match(
-    /profiles_username_not_reserved[\s\S]*?not in\s*\(([\s\S]*?)\)/
+    /add constraint profiles_username_not_reserved[\s\S]*?not in\s*\(([\s\S]*?)\)/
   )
   if (!constraint) {
     throw new Error(
-      'Could not find profiles_username_not_reserved CHECK constraint in 003_onboarding.sql — did it move or get renamed?'
+      `Could not find the profiles_username_not_reserved CHECK constraint in ${LIVE_RESERVED_CONSTRAINT} — did it move or get renamed?`
     )
   }
   const names = [...constraint[1].matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1])
@@ -116,6 +120,12 @@ describe('usernameSchema — charset', () => {
     expect(result.success).toBe(true)
     if (result.success) expect(result.data).toBe('road_rash')
   })
+
+  it('accepts capitals, matching 056’s relaxed profiles_username_format', () => {
+    expect(usernameSchema.safeParse('Pedro').success).toBe(true)
+    expect(usernameSchema.safeParse('PEDRO').success).toBe(true)
+    expect(usernameSchema.safeParse('PeDrO').success).toBe(true)
+  })
 })
 
 describe('usernameSchema — normalisation', () => {
@@ -125,16 +135,21 @@ describe('usernameSchema — normalisation', () => {
     if (result.success) expect(result.data).toBe('ripper')
   })
 
-  it('lowercases rather than rejecting uppercase', () => {
-    const result = usernameSchema.safeParse('RIPPER')
+  /**
+   * PD-226. The schema used to lowercase, and a `.toLowerCase()` reappearing
+   * here would undo the whole change with nothing else going red — the database
+   * would still accept the write, the rider would just never be able to make it.
+   */
+  it('keeps the case the rider typed rather than lowercasing it', () => {
+    const result = usernameSchema.safeParse('Pedro')
     expect(result.success).toBe(true)
-    if (result.success) expect(result.data).toBe('ripper')
+    if (result.success) expect(result.data).toBe('Pedro')
   })
 
-  it('lowercases mixed case combined with trimming', () => {
+  it('keeps mixed case combined with trimming', () => {
     const result = usernameSchema.safeParse('  Road_Rash9  ')
     expect(result.success).toBe(true)
-    if (result.success) expect(result.data).toBe('road_rash9')
+    if (result.success) expect(result.data).toBe('Road_Rash9')
   })
 })
 
@@ -143,6 +158,22 @@ describe('usernameSchema — reserved denylist', () => {
 
   it.each(reserved)('rejects reserved name %s', (name) => {
     expect(usernameSchema.safeParse(name).success).toBe(false)
+  })
+
+  /**
+   * The trap PD-226 had to close in both places at once. The denylist is written
+   * in lowercase because `003`'s charset forced lowercase; relax the charset and
+   * leave the comparison exact, and `Admin` is a registerable username that
+   * renders as `Admin` on every byline. `056` folds the column, this refine
+   * folds the value, and these are the assertions that hold them together.
+   */
+  it.each(reserved)('rejects reserved name %s in title case', (name) => {
+    const titleCase = name[0].toUpperCase() + name.slice(1)
+    expect(usernameSchema.safeParse(titleCase).success).toBe(false)
+  })
+
+  it.each(reserved)('rejects reserved name %s in upper case', (name) => {
+    expect(usernameSchema.safeParse(name.toUpperCase()).success).toBe(false)
   })
 
   it('rejects a reserved name even after case/whitespace normalisation', () => {
@@ -162,8 +193,8 @@ describe('the TS denylist and the migration denylist', () => {
 })
 
 describe('checkUsername', () => {
-  it('returns ok:true with the normalised value on success', () => {
-    expect(checkUsername('  Ripper  ')).toEqual({ ok: true, username: 'ripper' })
+  it('returns ok:true with the trimmed value, capitals intact', () => {
+    expect(checkUsername('  Ripper  ')).toEqual({ ok: true, username: 'Ripper' })
   })
 
   it('returns ok:false with a message on failure', () => {
