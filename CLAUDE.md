@@ -1283,9 +1283,9 @@ reader cannot cheaply decline it. If you would not spend your own afternoon on i
 number.
 
 **Letter them — A), B), C) — whenever you offer more than one**, so the reply can be "do A and
-C" instead of a quoted sentence. One letter per thing that can be independently said yes to; a
-single suggestion needs no letter. **Say who does each one** — an owner-only item mixed into a
-list of build tasks hides the one nobody but them can do.
+C" instead of a quoted sentence. One letter per thing that can be independently said yes to.
+**Say who does each one** — an owner-only item mixed into a list of build tasks hides the one
+nobody but them can do.
 
 **The letters keep counting up for the whole session and never restart at A.** Product owner,
 2026-08-13: *"we used A letter before as well. So I wanted to refer now to the previous B, but
@@ -1293,10 +1293,18 @@ then it gets confusing."* Restarting makes a letter a name for one reply rather 
 option, and the owner reads these hours apart on a phone — by the fourth batch "do B" names three
 different things and the only way to disambiguate is to quote a sentence, which is what the
 letters exist to avoid. So the fourth option offered in a session is **D** even if it is the first
-in its reply, and a reply offering one option still spends the next letter.
+in its reply. Past Z, keep going: **AA**, **AB**.
 
-Past Z, keep going: **AA**, **AB**. A session that gets there has offered twenty-six choices and
-the pair reads fine; resetting is the thing that does not.
+**A lone suggestion gets a letter too, and that is a change** — this rule used to exempt it. An
+unlettered option is unambiguous in its own reply and unnameable in the next one, which is exactly
+the case the owner hit. Every offered option is labelled, and no letter is ever spent on something
+that was not.
+
+**When the count is genuinely lost, say so rather than quietly restarting.** It lives only in the
+conversation, so a compaction takes it — and this file's own rule is that a claim about state
+needs the command that checks it, which this one cannot have. Continue from the highest letter
+still visible; if none is, restart and add one line saying the lettering restarted, so an owner
+scrolling back knows there are two **A**s rather than discovering it by acting on the wrong one.
 
 **Every lettered option opens with a title and one line of context saying what it actually is.**
 Product owner, 2026-08-11. A bare imperative — *"Cap the candidate rows"* — assumes the reader

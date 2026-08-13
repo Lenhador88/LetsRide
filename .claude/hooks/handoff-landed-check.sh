@@ -37,6 +37,12 @@
 # session-wrapup-check.sh keys its own marker. See the marker near the bottom;
 # the condition here stays true from the handoff edit until the merge, which is
 # most of a session, and a Stop hook runs at the end of every turn.
+#
+# The marker alone was not enough, and the near-miss is worth carrying: the
+# condition goes true at the EDIT, so a bare marker spent the single warning on
+# the turn before the PR was even opened and then went quiet through the wrap-up
+# this file was written for. The wrap-up gates further down are what put the one
+# firing where it is worth reading.
 set -uo pipefail
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
@@ -124,6 +130,31 @@ fi
 # edited-but-uncommitted handoff would slip through.
 git diff --quiet "$base" -- docs/HANDOFF.md 2>/dev/null && exit 0
 
+# WAIT FOR A WRAP-UP STATE, and this is what makes the single warning below land
+# where it is worth reading rather than where it is merely first true.
+#
+# The condition above goes true the instant `docs/HANDOFF.md` is edited — the
+# check is against the working tree, deliberately. Speaking then spends the one
+# warning on the turn whose honest answer is "I am about to open the PR", and
+# leaves the session silent through the exact state this file exists for: header
+# §Why this exists — committed, pushed, PR open, wrapped up without merging.
+#
+# So require what `session-wrapup-check.sh` requires before it speaks: nothing
+# uncommitted, nothing untracked, and HEAD already pushed. Its single firing is
+# correct because those three conditions ARE the wrap-up; copying the marker
+# without them was copying half the mechanism.
+#
+# Nothing is lost by staying quiet before that. An uncommitted handoff edit is
+# already nagged about by the global `stop-hook-git-check.sh`, every turn, and
+# an unpushed one by the sibling — this hook's unique claim is the *landed*
+# check, which cannot even be answered until there is something pushed to land.
+git diff --quiet 2>/dev/null || exit 0
+git diff --cached --quiet 2>/dev/null || exit 0
+[[ -z "$(git ls-files --others --exclude-standard 2>/dev/null)" ]] || exit 0
+head=$(git rev-parse HEAD 2>/dev/null) || exit 0
+pushed=$(git rev-parse --verify -q "origin/$branch" 2>/dev/null) || exit 0
+[[ "$head" == "$pushed" ]] || exit 0
+
 # ONCE PER UNIT OF WORK, keyed exactly as session-wrapup-check.sh keys its own —
 # `<branch>@<merge-base with the base>`. Product owner, 2026-08-13: *"I also keep
 # seeing the example below here"*, about this hook's paragraph.
@@ -160,5 +191,5 @@ marker="$gitdir/handoff-reminded"
 printf '%s' "$key" >"$marker" 2>/dev/null
 
 jq -cn --arg b "$branch" --arg base "${base#origin/}" '{
-  systemMessage: ("docs/HANDOFF.md differs from \($base) on branch \($b).\nIf you rewrote the handoff, it is not shipped until it is merged — committed and pushed is not enough. Merge it, or say why it is being left. An unmerged handoff is how a shared branch once told a new session that a finished epic was half-done.")
+  systemMessage: ("docs/HANDOFF.md differs from \($base) on branch \($b).\nIf you rewrote the handoff, it is not shipped until it is merged — committed and pushed is not enough. Merge it, or say why it is being left. An unmerged handoff is how a shared branch once told a new session that a finished epic was half-done.\n\nThis fires ONCE for the whole unit of work on this branch, so a later commit will NOT re-arm it. Declining now means nothing asks again before the session ends.")
 }'
