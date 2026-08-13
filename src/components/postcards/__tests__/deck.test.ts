@@ -66,17 +66,32 @@ describe('resolveSwipe', () => {
     expect(resolveSwipe(-(SWIPE_THRESHOLD - 1))).toBeNull()
   })
 
-  it('returns to centre when the offset is not a number', () => {
-    // The reported "I swipe right and it exits left". A terminating event that
-    // populates no coordinate yields NaN, and the obvious `offset > 0 ? 1 : -1`
-    // resolves that to a confident left swipe: `NaN > 0` is false, and the
-    // magnitude test does not catch it either because `NaN < 56` is false too.
-    expect(resolveSwipe(Number.NaN)).toBeNull()
-    expect(resolveSwipe(Number.POSITIVE_INFINITY)).toBeNull()
-    expect(resolveSwipe(Number.NEGATIVE_INFINITY)).toBeNull()
+  it('never lets the release coordinate choose the direction', () => {
+    // The reported "I swipe right and it exits left". `clientX` is an IDL
+    // double, so a terminating event cannot deliver an *absent* coordinate —
+    // only a wrong one, and the reachable wrong value is the pointerdown
+    // position or 0. Against a card dragged right that is a large negative
+    // travel, which is why the symptom was always that way round.
+    expect(resolveSwipe(80, -240)).toBe(1)
+    expect(resolveSwipe(-80, 240)).toBe(-1)
   })
 
-  it('treats -0 as no movement rather than a left swipe', () => {
-    expect(resolveSwipe(-0)).toBeNull()
+  it('lets the release coordinate extend a flick past the threshold', () => {
+    // A lift can be a frame of travel ahead of the last pointermove. Judging on
+    // the drawn offset alone springs a fast short flick back to centre.
+    expect(resolveSwipe(SWIPE_THRESHOLD - 20, SWIPE_THRESHOLD + 20)).toBe(1)
+    expect(resolveSwipe(-(SWIPE_THRESHOLD - 20), -(SWIPE_THRESHOLD + 20))).toBe(-1)
+  })
+
+  it('does not let a release coordinate manufacture a swipe from a tap', () => {
+    // No pointermove at all means the card never left centre, so a release
+    // claiming 200px of travel is a coordinate to distrust, not a swipe.
+    expect(resolveSwipe(0, 200)).toBeNull()
+    expect(resolveSwipe(0, -200)).toBeNull()
+  })
+
+  it('defaults the release to the drawn offset', () => {
+    expect(resolveSwipe(SWIPE_THRESHOLD)).toBe(1)
+    expect(resolveSwipe(SWIPE_THRESHOLD - 1)).toBeNull()
   })
 })

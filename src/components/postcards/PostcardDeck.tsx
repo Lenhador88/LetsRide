@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
 import { cn } from '@/lib/utils'
@@ -22,11 +22,12 @@ import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
  * forward; "Start over" at the end is the only way back, because a back
  * affordance would be UI the design does not draw.
  *
- * **Only a lift advances the deck, and only in the direction the card is drawn
- * in** (PD-221). Both halves were one defect: `pointercancel` was wired
- * straight to the release handler, so a gesture the platform took away
- * mid-touch committed as though the rider had finished it, judged on
- * coordinates a cancelled event is under no obligation to populate. See
+ * **No touch advances the deck except a lift, and only in the direction the
+ * card is drawn in** (PD-221) — the sr-only "Next postcard" button below is
+ * the one deliberate non-touch route. Both halves were one defect:
+ * `pointercancel` was wired straight to the release handler, so a gesture the
+ * platform took away mid-touch committed as though the rider had finished it,
+ * judged on a coordinate that need not agree with what was drawn. See
  * `onPointerCancel` below and `resolveSwipe` in `./deck`.
  */
 const BEHIND = [
@@ -105,8 +106,29 @@ export function PostcardDeck({
   const remaining = remainingPostcards(postcards, dismissed)
   const front = remaining[0]
 
+  /**
+   * The front card can be replaced *under an active drag* — `useQuery` refetches
+   * on reconnect and on tab focus, and the feed can come back without it. React
+   * unmounts that card's div and every pointer handler on it, `onPointerCancel`
+   * included, so no event can ever arrive to end the gesture: without this the
+   * deck sits at the vanished card's offset with transitions still suppressed
+   * until the rider touches it again.
+   *
+   * This is the half `onPointerCancel` structurally cannot cover, because the
+   * node it is attached to is the one being removed.
+   */
+  useEffect(() => {
+    if (!drag.current) return
+    drag.current = null
+    setDragging(false)
+    setDx(0)
+  }, [front?.id])
+
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (leaving !== null || !front) return
+    // A second finger landing must not re-anchor the gesture: overwriting the
+    // drag state moves `startX` to the new touch while the card keeps the first
+    // one's offset, which makes the card jump.
+    if (leaving !== null || !front || drag.current) return
 
     /**
      * A gesture starting on a control is that control's, not the deck's.
@@ -145,7 +167,10 @@ export function PostcardDeck({
     drag.current = null
 
     setDragging(false)
-    const direction = resolveSwipe(state.offset)
+    // A lift's own coordinate is authoritative and can be a frame of travel
+    // ahead of the last `pointermove`; `resolveSwipe` lets it extend the travel
+    // without letting it choose the direction.
+    const direction = resolveSwipe(state.offset, event.clientX - state.startX)
     // A revalidation can swap the front card mid-drag. Advancing then would
     // dismiss a postcard that was never under the finger, so the gesture is
     // spent returning the deck to centre instead.
@@ -155,12 +180,16 @@ export function PostcardDeck({
 
   /**
    * **A cancel aborts the gesture; it does not complete it.** The two are
-   * opposite intents and the deck used to route both here: `pointercancel`
-   * means the platform took the touch away *while the finger was still down* —
-   * iOS and WKWebView's left-edge back-swipe, a second touch landing, or this
-   * card unmounting under its own pointer capture when the feed revalidates —
-   * so treating it as a release flung the card away mid-touch and marked a
-   * postcard the rider never finished reading as seen.
+   * opposite intents and the deck used to route both here, so a touch the
+   * platform took away *while the finger was still down* flung the card off
+   * and marked a postcard the rider never finished reading as seen.
+   *
+   * **Which platform behaviours actually raise it here is INFERRED, not
+   * measured** — iOS Safari's left-edge back-swipe is the likeliest (the deck's
+   * left edge sits ~24px in, inside the edge region), and a Capacitor WKWebView
+   * has `allowsBackForwardNavigationGestures` off by default, so the shell may
+   * never see it at all. The fix does not depend on which is true: a cancel is
+   * not a release whatever caused it. Do not repeat this list as established.
    */
   const onPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = drag.current

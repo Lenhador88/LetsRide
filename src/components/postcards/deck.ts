@@ -33,24 +33,37 @@ export function remainingPostcards<T extends { id: string }>(
 export const SWIPE_THRESHOLD = 56
 
 /**
- * What releasing the card at `offset` does: `1` leaves to the right, `-1` to the
- * left, `null` returns to centre.
+ * What releasing the card does: `1` leaves to the right, `-1` to the left,
+ * `null` returns to centre.
  *
- * **`offset` is the offset the card is *drawn* at, never a coordinate read off
- * the terminating event, and that is the fix rather than a style choice.** The
- * deck used to compute `event.clientX - startX` at release while rendering the
- * last `pointermove`; a terminating event whose coordinates disagree with that
- * move — which is exactly what `pointercancel` is permitted to deliver — sends
- * the card out the side it was never leaning towards. Deciding from the drawn
- * offset makes "it leaves the way you pushed it" true by construction.
+ * `offset` is where the card is **drawn** — the last `pointermove`. `released`
+ * is the coordinate the terminating event carried. They are separate arguments
+ * because they answer different halves, and collapsing them either way is a
+ * bug this deck has now had in both directions:
  *
- * The finite check is load-bearing for the same reason: a user agent that
- * populates no coordinate yields `NaN`, and `NaN > 0` is `false`, so the
- * obvious `offset > 0 ? 1 : -1` resolves an *absent* coordinate to a confident
- * left swipe. Returning to centre is the only honest answer to "we do not know
- * where the finger was".
+ * **Direction comes from `offset`.** The deck used to take both from the
+ * terminating event, and a coordinate disagreeing with what was drawn sends
+ * the card out the side it was never leaning towards. `clientX` is an IDL
+ * `double` on every pointer event, so a user agent cannot deliver an *absent*
+ * coordinate — only a **wrong** one, and the reachable wrong value is the
+ * pointerdown position or `0`. For any card touched right of `SWIPE_THRESHOLD`
+ * that is a large *negative* travel, which is why the reported symptom was a
+ * right swipe exiting left and why it was always that way round.
+ *
+ * **Magnitude may take `released`, but only to extend the travel.** A genuine
+ * lift carries an authoritative coordinate up to one frame of travel ahead of
+ * the last `pointermove` — ~25px at a brisk flick — so judging on `offset`
+ * alone reads a fast short flick under the threshold and springs it back. A
+ * `released` that disagrees in *sign* is discarded rather than averaged: the
+ * rider saw the card leaning one way, and no release coordinate should be able
+ * to argue them out of it.
  */
-export function resolveSwipe(offset: number): 1 | -1 | null {
-  if (!Number.isFinite(offset) || Math.abs(offset) < SWIPE_THRESHOLD) return null
-  return offset > 0 ? 1 : -1
+export function resolveSwipe(offset: number, released: number = offset): 1 | -1 | null {
+  const travelled =
+    Math.sign(released) === Math.sign(offset) && Math.abs(released) > Math.abs(offset)
+      ? released
+      : offset
+
+  if (Math.abs(travelled) < SWIPE_THRESHOLD) return null
+  return travelled > 0 ? 1 : -1
 }
