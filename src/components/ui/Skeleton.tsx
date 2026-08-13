@@ -165,23 +165,35 @@ function DetailRowSkeleton() {
  * Stands in for `RideFilterBar`/`PostcardFilterBar` — and unlike the other
  * shapes here it exists to reserve height rather than to describe content.
  *
- * `/rides` gates its bar and its list separately (PD-210), so the bar arrives
- * on its own read and every row below it dropped ~104px when it did (PD-217).
- * That number is not chosen: `FilterBar` is `py-2` (16) around a `FilterTile`
- * column of `h-[68px]` image + `gap-1` (4) + the label's `text-2xs` line box
- * (16) = 88. **The label slot is a `h-4` box holding a shorter bar** rather
- * than a 10px bar on its own — reserving the drawn height instead of the line
- * height is what leaves a 6px jump behind.
+ * **Both list screens use it, and the second one is not an afterthought.**
+ * `/rides` and `/postcards` each gate their bar and their content separately
+ * (PD-210), so the bar arrives on its own read — and whatever sits below it
+ * moves when it lands. That number is not chosen: `FilterBar` is `py-2` (16)
+ * around a `FilterTile` column of `h-[68px]` image + `gap-1` (4) + the label's
+ * `text-2xs` line box (16) = 88. **The label slot is a `h-4` box holding a
+ * shorter bar** rather than a 10px bar on its own — reserving the drawn height
+ * instead of the line height is what leaves a 6px jump behind.
+ *
+ * **How much of the 104 a rider sees is a property of the alignment below it,
+ * not of this component.** `/rides` is a top-aligned list, so the whole 104
+ * shows (PD-217). `/postcards` centres a card in the slot, so it moves by half
+ * — 52 (PD-218). The second went unnoticed for a day because PD-217 asked
+ * whether the card moved *within* its slot, which it does not, rather than
+ * whether the slot itself resized. **The bar carries no `env()`**, so both
+ * numbers hold on every device, unlike the frame heights either screen's own
+ * doc quotes.
  *
  * Tile count is cosmetic: the bar is a horizontal scroller, so only its height
  * can move anything. The first two are circles because "Your rides" and "All
  * rides" are always present and always round; clubs are the rounded squares.
  *
  * **`aria-hidden`, not a `role="status"` region like the other four.** This one
- * describes nothing — it reserves height — and it draws *above* a
- * `SkeletonList` that already announces the load. A region here would make a
- * cold `/rides` announce twice, which is the thing the base `Skeleton`'s own
- * `aria-hidden` note exists to avoid.
+ * describes nothing — it reserves height — and it draws *above* a shape that
+ * already announces the load (`SkeletonList` on `/rides`, `SkeletonDeck` on
+ * `/postcards`). A region here would add a second announcement beside that
+ * one, which is what the base `Skeleton`'s own `aria-hidden` note exists to
+ * avoid. It does **not** fix the separate double-announce those two screens
+ * already have across their `<Suspense>` fallback and their gate — PD-220.
  *
  * `shrink-0` is copied from the real `FilterBar` and is load-bearing: the
  * parent is `flex flex-col`, so without it the reservation compresses under

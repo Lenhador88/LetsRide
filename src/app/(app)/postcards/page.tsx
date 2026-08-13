@@ -65,13 +65,22 @@ export default function PostcardsPage() {
  * deck alone — PD-218.
  *
  * **A centred child moves when its slot resizes, which is what the skeleton
- * without a bar was doing.** The frame is 596 tall (844 less the 96 header and
- * the 152 nav); drawing the deck alone centres the card at 298, and the bar
- * landing takes the slot to 492 and the centre to 350. The card settles ~52px
- * downward on every cold load. Half `/rides`' jump, and for the same reason —
- * *that* screen is top-aligned so the whole 104 shows, this one is centred so
- * half does. PD-217 got this wrong by reasoning about whether the card moved
- * **within** its slot, which it does not.
+ * without a bar was doing.** The bar is 104 and a centred child moves half of
+ * it, so the card settled **~52px** downward on every cold load. Half
+ * `/rides`' jump, and for the same reason — *that* screen is top-aligned so
+ * the whole 104 shows, this one is centred so half does. PD-217 got this wrong
+ * by reasoning about whether the card moved **within** its slot, which it does
+ * not, rather than whether the slot itself resized.
+ *
+ * **Stated as `bar / 2` rather than as centres, because the centres are not
+ * device-independent and the delta is.** The 844/96/152 triple above is the
+ * design frame's, as that block says; a real viewport computes the header and
+ * the nav through `env()` — 56 and 132 with no safe areas, 95 and 154 on the
+ * device the frame is drawn for — so the card's centre is 328, or 297.5, and
+ * never the 298 an idealised sum gives. The bar carries no `env()`, so 104 and
+ * 52 hold everywhere. This whole issue exists because someone reasoned
+ * confidently from CSS numbers, which is reason enough not to leave a new set
+ * of them here asserting more precision than they have.
  *
  * It mirrors the loaded return below exactly — bar, then the deck inside the
  * same `min-h-0 flex-1 py-2` wrapper — because anything less is a second
