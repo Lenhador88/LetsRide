@@ -397,9 +397,17 @@ select assert_rejected($$update profiles set username = 'twenty_one_chars_long'
 select assert_rejected($$update profiles set username = 'has space'
   where id = '00000000-0000-0000-0000-00000000000e'$$,
   '23514', 'a username with an illegal character is rejected');
-select assert_rejected($$update profiles set username = 'Ripper'
+-- 056 relaxed profiles_username_format to '^[A-Za-z0-9_]{3,20}$', so the
+-- assertion that stood here — "an uppercase username is rejected" — now states
+-- the opposite of the rule. Its positive replacement is in §056 below. What is
+-- worth pinning in its place is the boundary 056 did NOT move: the charset was
+-- widened to ASCII letters, not to Unicode, and the range is collation-stable
+-- (checked f on both C.UTF-8 and the hosted en_US.UTF-8, because a
+-- collation-sensitive `[A-Za-z]` would have made this pass locally and fail in
+-- production, or worse).
+select assert_rejected($$update profiles set username = 'Riddér'
   where id = '00000000-0000-0000-0000-00000000000e'$$,
-  '23514', 'an uppercase username is rejected');
+  '23514', 'a username with a non-ASCII letter is rejected — 056 widened the charset to A-Z, not to Unicode');
 select assert_rejected($$update profiles set username = 'admin'
   where id = '00000000-0000-0000-0000-00000000000e'$$,
   '23514', 'a reserved username is rejected');
@@ -423,22 +431,24 @@ rollback to savepoint legal_username_accepted;
 \echo ''
 \echo '# Case-insensitive uniqueness lives in the index, not in the charset rule'
 
--- profiles_username_format already forbids uppercase, so "reject Ripper" above
--- passes against 001's plain unique(username) too — it proves nothing about
--- case folding. Dropping the charset check inside a savepoint is the only way
--- to put profiles_username_lower_key itself under test, and without it the
--- impersonation vector Q4 describes would be untested while looking covered.
+-- This assertion used to need scaffolding, and 056 removed the need for it.
+--
+-- While profiles_username_format forbade uppercase, `Clubowner` failed as a
+-- 23514 before it ever reached the index — Postgres evaluates CHECK constraints
+-- first — so the only way to put profiles_username_lower_key itself under test
+-- was to DROP the charset check inside a savepoint and put it back. That made
+-- the assertion true of a database this repo has never run.
+--
+-- 056 admits capitals, so `Clubowner` now reaches the index for real and the
+-- refusal is the index's. The scaffolding is gone and the assertion is
+-- strictly stronger: it runs against the whole live constraint set, which is
+-- what the impersonation vector Q4 describes actually meets.
 
-reset role;
-savepoint charset_check_off;
-alter table profiles drop constraint profiles_username_format;
-set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
 select assert_rejected($$update profiles set username = 'Clubowner'
   where id = '00000000-0000-0000-0000-00000000000e'$$,
   '23505', 'lower(username) rejects a case-variant of an existing username');
 reset role;
-rollback to savepoint charset_check_off;
 
 -- indisunique is a catalog boolean rather than rendered SQL, so only the
 -- expression half depends on how this Postgres major version prints an index.
@@ -454,10 +464,11 @@ select assert_eq(
     where conrelid = 'public.profiles'::regclass and conname = 'profiles_username_key'),
   0, '001''s case-sensitive unique constraint is gone');
 
--- The savepoint rollback above restores the session role, so the catalog
--- assertions below run unprivileged-free as they always have. has_function_
--- privilege() on a private.* function needs USAGE on that schema, which
--- `authenticated` deliberately does not hold.
+-- The `reset role` above is what lets the catalog assertions below run
+-- unprivileged-free, as they always have — it used to be the savepoint rollback
+-- that did it, and 056 removed the savepoint. has_function_privilege() on a
+-- private.* function needs USAGE on that schema, which `authenticated`
+-- deliberately does not hold.
 
 \echo ''
 \echo '# Security definer functions stay off the public API (migrations 003, 004)'
@@ -6789,9 +6800,11 @@ rollback to savepoint operator_038;
 -- 038.7 — NULL really was the only hole
 -- ---------------------------------------------------------------------------
 -- Verified against the live constraint rather than assumed: '' does not match
--- '^[a-z0-9_]{3,20}$', and neither does a value carrying a newline — Postgres's
--- `~` is not anchored to the whole string across newlines unless it is written
--- this way, so the newline case is the one worth stating.
+-- '^[A-Za-z0-9_]{3,20}$' (056's charset; '^[a-z0-9_]{3,20}$' when 038 was
+-- written, and the widening changes none of these four), and neither does a
+-- value carrying a newline — Postgres's `~` is not anchored to the whole string
+-- across newlines unless it is written this way, so the newline case is the one
+-- worth stating.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000038003', false);
 select assert_rejected($$update profiles set username = ''
@@ -12217,6 +12230,212 @@ select assert_eq(
 
 set role authenticated;
 rollback to savepoint ride_joined_crew_055;
+
+\echo ''
+\echo '# 056 — a username keeps the case the rider typed; uniqueness still folds (PD-226)'
+
+-- ===========================================================================
+-- 056. `profiles_username_format` relaxes to '^[A-Za-z0-9_]{3,20}$', so `Pedro`
+--      stores as `Pedro`. Exactly one of 003 §4's two rules moved: the unique
+--      index on `lower(username)` is UNTOUCHED, which is why `pedro`, `PEDRO`
+--      and `PeDrO` are unavailable to everyone else.
+--
+-- ** Every assertion here runs under `set role authenticated` with the harness's
+-- `test.uid` set. ** The suite otherwise runs as the table owner, for whom RLS
+-- does not apply — and 056.4 in particular is meaningless without it, since its
+-- whole content is what one rider can see of another.
+--
+-- Two of the four sections exist because the relaxation is not self-contained:
+--
+--   056.2  the reserved list was written lowercase BECAUSE the charset forced
+--          lowercase (003 §4 says so in as many words). Relax one and leave the
+--          other and `Admin` is a registerable username — no error, no red, a
+--          rider rendering as `Admin` on every byline.
+--   056.4  the availability check had to move off `.eq('username', …)`, and the
+--          two things that must survive that move are (a) it is still
+--          block-aware and (b) it does not treat `_` as a wildcard.
+-- ===========================================================================
+savepoint username_case_056;
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- Two riders of their own, so no count asserted anywhere above this line moves.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000226001', 'pd226holder@example.com'),
+  ('00000000-0000-0000-0000-000000226002', 'pd226rival@example.com');
+
+update profiles set location = 'Lisbon',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id in ('00000000-0000-0000-0000-000000226001',
+               '00000000-0000-0000-0000-000000226002');
+
+set role authenticated;
+
+-- --------------------------------------------------------------------------
+-- 056.1  POSITIVE: the case the rider typed is the case that is stored
+-- --------------------------------------------------------------------------
+-- Written for real and read back, never `assert_allowed`: an UPDATE filtered to
+-- zero rows does not raise, so "allowed" passes against a policy that permits
+-- nothing. Same rule as 003's own positive case.
+select set_config('test.uid', '00000000-0000-0000-0000-000000226001', false);
+
+update profiles set username = 'Pedro' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'Pedro',
+  '056: a username stores the case the rider typed — `Pedro` is written and read back as `Pedro`, not folded');
+
+savepoint mixed_case_056;
+update profiles set username = 'Road_King_99' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'Road_King_99', '056: ... including mixed case beside the digits and underscore 003 already allowed');
+rollback to savepoint mixed_case_056;
+
+-- The boundaries 056 did NOT move, restated against the widened charset so a
+-- future relaxation cannot quietly take them with it.
+select assert_rejected($$update profiles set username = 'Ab'
+  where id = '00000000-0000-0000-0000-000000226001'$$,
+  '23514', '056: two characters is still too short, capitals or not');
+select assert_rejected($$update profiles set username = 'Twenty_One_Chars_Long'
+  where id = '00000000-0000-0000-0000-000000226001'$$,
+  '23514', '056: twenty-one characters is still too long, capitals or not');
+select assert_rejected($$update profiles set username = 'Road King'
+  where id = '00000000-0000-0000-0000-000000226001'$$,
+  '23514', '056: a space is still an illegal character');
+
+-- --------------------------------------------------------------------------
+-- 056.2  NEGATIVE: every case-variant of a taken name is refused
+-- --------------------------------------------------------------------------
+-- 23505 in all four, not 23514: the refusal is the INDEX's, which is the whole
+-- reason 003 put uniqueness on `lower(username)` rather than on the raw value.
+-- Before 056 three of these four failed the charset CHECK first and could not
+-- reach the index at all — which is why 003's own header called a `Ripper`
+-- attempt "testing the check constraint, not the index".
+select set_config('test.uid', '00000000-0000-0000-0000-000000226002', false);
+
+select assert_rejected($$update profiles set username = 'Pedro'
+  where id = '00000000-0000-0000-0000-000000226002'$$,
+  '23505', '056: a second rider cannot take the name exactly as it is written');
+select assert_rejected($$update profiles set username = 'pedro'
+  where id = '00000000-0000-0000-0000-000000226002'$$,
+  '23505', '056: ... nor its all-lowercase variant');
+select assert_rejected($$update profiles set username = 'PEDRO'
+  where id = '00000000-0000-0000-0000-000000226002'$$,
+  '23505', '056: ... nor its all-uppercase variant');
+select assert_rejected($$update profiles set username = 'PeDrO'
+  where id = '00000000-0000-0000-0000-000000226002'$$,
+  '23505', '056: ... nor any mixed-case variant — the impersonation vector 003 Q4 closed stays closed');
+
+-- --------------------------------------------------------------------------
+-- 056.3  NEGATIVE: `Admin` does not walk through a lowercase denylist
+-- --------------------------------------------------------------------------
+-- The trap this migration existed to close as much as the charset itself. Each
+-- of these passes `username <> ALL (ARRAY['admin', …])` — the 003 comparison —
+-- and is refused only because 056 folds the column before comparing.
+select assert_rejected($$update profiles set username = 'Admin'
+  where id = '00000000-0000-0000-0000-000000226002'$$,
+  '23514', '056: a reserved name in title case is refused — the denylist compares folded, not exact');
+select assert_rejected($$update profiles set username = 'ADMIN'
+  where id = '00000000-0000-0000-0000-000000226002'$$,
+  '23514', '056: ... and in upper case');
+select assert_rejected($$update profiles set username = 'LetsRide'
+  where id = '00000000-0000-0000-0000-000000226002'$$,
+  '23514', '056: ... and the brand name in the casing anyone would actually try');
+select assert_rejected($$update profiles set username = 'Rides'
+  where id = '00000000-0000-0000-0000-000000226002'$$,
+  '23514', '056: ... and a route segment, which is the half of the list nobody thinks about');
+
+-- The constraint definitions themselves, because both assertions above would
+-- also pass against a database where someone had added seventeen capitalised
+-- entries to the list instead of folding the column — which is the maintenance
+-- burden 056 exists to avoid rather than an equivalent implementation.
+reset role;
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conrelid = 'public.profiles'::regclass and conname = 'profiles_username_format'),
+  'CHECK (((username IS NULL) OR (username ~ ''^[A-Za-z0-9_]{3,20}$''::text)))',
+  '056: profiles_username_format admits capitals, and still nothing else');
+select assert_eq(
+  (select pg_get_constraintdef(oid) like '%lower(username) <> ALL%' from pg_constraint
+    where conrelid = 'public.profiles'::regclass and conname = 'profiles_username_not_reserved'),
+  true,
+  '056: profiles_username_not_reserved compares lower(username), so the list stays seventeen lowercase names');
+set role authenticated;
+
+-- --------------------------------------------------------------------------
+-- 056.4  The availability check: case-insensitive, still block-aware, no wildcards
+-- --------------------------------------------------------------------------
+-- `username_exists` replaced `.eq('username', …)`, which PostgREST cannot make
+-- case-insensitive. The three properties that had to survive that move are the
+-- three failure modes of the obvious alternatives, so each has its own
+-- assertion rather than being implied by the others.
+select set_config('test.uid', '00000000-0000-0000-0000-000000226002', false);
+
+select assert_eq(public.username_exists('Pedro'), true,
+  '056: username_exists finds a taken name spelled exactly as stored');
+select assert_eq(public.username_exists('pedro'), true,
+  '056: ... and spelled in lower case');
+select assert_eq(public.username_exists('PEDRO'), true,
+  '056: ... and in upper case — a `.eq()` filter answered false here and sent the rider to a 23505 on submit');
+select assert_eq(public.username_exists('pedr'), false,
+  '056: ... and does not find a name nobody holds');
+
+-- ** The assertion that fails if anyone "simplifies" this to `.ilike()`. **
+-- LIKE reads `_` as a single-character wildcard and the charset allows
+-- underscores, so `ilike 'road_king'` matches a stored `roadXking` and reports
+-- a free name taken. PostgREST exposes no ESCAPE clause, so that defect could
+-- not be repaired at the call site — which is the whole reason this is a
+-- function. The fixture is the collision itself: the name in the table differs
+-- from the probe only where the wildcard would be.
+savepoint underscore_wildcard_056;
+select set_config('test.uid', '00000000-0000-0000-0000-000000226002', false);
+update profiles set username = 'roadXking' where id = auth.uid();
+select assert_eq(public.username_exists('road_king'), false,
+  '056: username_exists does not read `_` as a wildcard — `road_king` is free while `roadXking` is taken (this is what .ilike() would get wrong)');
+select assert_eq(public.username_exists('roadXking'), true,
+  '056: ... and still finds the literal name, so the assertion above is not passing by finding nothing');
+rollback to savepoint underscore_wildcard_056;
+
+-- ** The security-relevant one: it is `security invoker`, so it answers under
+-- the block-aware SELECT policy. ** As `security definer` the first of these
+-- would read `true` — which does not fix the asymmetry 038.3 pins, it converts
+-- it into a channel reporting the EXISTENCE of a blocked rider's username to
+-- the party they blocked. 1a blocked 1b; the seed's fixtures.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq(public.username_exists('blocker'), false,
+  '056: username_exists answers under the block-aware policy — a name held by a rider who blocked the caller still reads FREE, exactly as the .eq() filter it replaced did');
+select assert_eq(public.username_exists('BLOCKER'), false,
+  '056: ... in every case, so folding did not widen what the caller can see');
+select assert_rejected($$update profiles set username = 'Blocker'
+  where id = '00000000-0000-0000-0000-00000000001b'$$,
+  '23505',
+  '056: ... while the index still refuses the name in any case — 038.3''s asymmetry is unchanged, not reopened');
+
+-- The catalog half, per 031: a function the client cannot reach is worse than
+-- none, and the suite runs as the table owner, for whom no grant barrier
+-- exists. So EXECUTE is asserted BY ROLE rather than by the calls above.
+reset role;
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.username_exists(text)'::regprocedure),
+  false,
+  '056: username_exists is security INVOKER — the one keyword that would silently turn the availability check into a block-piercing read');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'public.username_exists(text)'::regprocedure),
+  array['search_path=""'],
+  '056: ... with its search_path pinned, so a caller cannot shadow `profiles` with their own table');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.username_exists(text)', 'execute'),
+  true, '056: `authenticated` can actually call it — 031''s lesson, asserted by role rather than by calling it as the owner');
+select assert_eq(
+  has_function_privilege('anon', 'public.username_exists(text)', 'execute'),
+  false, '056: ... and `anon` cannot, because decision #1 grants that role nothing anywhere');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where p.proname = 'username_exists' and n.nspname = 'public'),
+  1, '056: ... and it lives in `public`, which is the only schema PostgREST routes to (029''s defect, which 031 had to undo)');
+
+set role authenticated;
+rollback to savepoint username_case_056;
 
 rollback;
 

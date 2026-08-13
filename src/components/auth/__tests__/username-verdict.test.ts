@@ -70,10 +70,10 @@ describe('usernameVerdict', () => {
   })
 
   /**
-   * The action refuses the value `usernameSchema` produced, which is trimmed and
-   * lowercased. The field is not: it lowercases on change but a trailing space
-   * survives, and nothing stops a paste. Looking the set up under a different
-   * normalisation than it was written with would lose the refusal silently.
+   * The field carries whatever the rider typed — since `056` that includes
+   * capitals, and nothing stops a paste or a trailing space. The refused set is
+   * keyed by `normaliseUsername`, so the lookup has to fold too or the refusal
+   * is lost silently.
    */
   it('matches a refusal through the same normalisation the schema applies', () => {
     const refused = ['roadking']
@@ -105,10 +105,19 @@ describe('rememberRefusal', () => {
   })
 
   /**
-   * The two halves have to agree on normalisation or the refusal is written
-   * under one key and looked up under another. `setUsername` returns
-   * `usernameSchema`'s output, so this is what that pairing looks like.
+   * PD-226. `setUsername` reports the refusal with the rider's own capitals,
+   * because that is what the index refused. The list is keyed folded, so this
+   * has to fold on the way in — and `RoadKing` after `roadking` is the same
+   * refusal, not a second one.
    */
+  it('folds the value it stores, so capitals do not open a second entry', () => {
+    expect(rememberRefusal([], 'RoadKing')).toEqual(['roadking'])
+
+    const refused = ['roadking']
+    expect(rememberRefusal(refused, 'RoadKing')).toBe(refused)
+    expect(rememberRefusal(refused, 'ROADKING')).toBe(refused)
+  })
+
   it('round-trips with usernameVerdict', () => {
     const refused = rememberRefusal([], normaliseUsername('  RoadKing  '))
     expect(usernameVerdict('roadking', free('roadking'), refused)?.available).toBe(false)
@@ -119,24 +128,46 @@ describe('rememberRefusal', () => {
  * The invariant the whole mechanism rests on, and the one thing neither module's
  * own tests can see.
  *
- * `setUsername` writes the refused key as `usernameSchema`'s output;
- * `usernameVerdict` reads it back through `normaliseUsername`. Nothing but this
- * ties the two, and the test above cannot catch a divergence because it uses the
- * *reader* on both sides. Add any step to the schema — an NFKC pass, a stripped
- * separator — and the refusal is stored under one string and looked up under
- * another: the field flips straight back to green for a name that can never be
- * saved, PD-146 reintroduced with every other test still passing.
+ * `setUsername` hands `rememberRefusal` exactly what `usernameSchema` produced;
+ * `usernameVerdict` reads the list back through `normaliseUsername`. Nothing but
+ * this ties the two — and `rememberRefusal`'s own tests cannot catch a
+ * divergence, because they use string literals rather than the schema.
+ *
+ * **The two sides deliberately no longer agree, and that is the change PD-226
+ * made.** The schema preserves case; the key folds it. So the invariant is not
+ * "these produce the same string" — it is "a refusal written from the schema's
+ * output is found again under every case the rider might retype". Add any step
+ * to the schema — an NFKC pass, a stripped separator — and this goes red, which
+ * is the point: the field would otherwise flip back to green for a name that can
+ * never be saved, PD-146 reintroduced with every other test still passing.
  */
-describe('normaliseUsername against usernameSchema', () => {
-  const cases = ['roadking', '  RoadKing  ', 'ROADKING', 'road_king_99', '\tnightrider\n']
+describe('a refusal written from usernameSchema is found by usernameVerdict', () => {
+  const cases = ['roadking', '  RoadKing  ', 'ROADKING', 'Road_King_99', '\tNightRider\n']
 
-  it.each(cases)('produces exactly what the schema stores for %j', (raw) => {
-    expect(normaliseUsername(raw)).toBe(usernameSchema.parse(raw))
+  it.each(cases)('survives the schema and every case-variant of %j', (raw) => {
+    const stored = usernameSchema.parse(raw)
+    const refused = rememberRefusal([], stored)
+
+    // What the rider had in the field when they were refused.
+    expect(usernameVerdict(raw, free(normaliseUsername(raw)), refused)?.available).toBe(false)
+    // And every case they might retype it in — the index cannot tell these
+    // apart, so neither may the field.
+    expect(usernameVerdict(stored.toLowerCase(), null, refused)?.available).toBe(false)
+    expect(usernameVerdict(stored.toUpperCase(), null, refused)?.available).toBe(false)
   })
 })
 
 describe('normaliseUsername', () => {
-  it('trims and lowercases, matching usernameSchema', () => {
+  it('trims and folds, matching profiles_username_lower_key', () => {
     expect(normaliseUsername('  RoadKing  ')).toBe('roadking')
+  })
+
+  /**
+   * The line that would silently undo PD-226 if it were "simplified" to match
+   * the schema again. The schema keeps `Pedro`; this key must not.
+   */
+  it('does not agree with usernameSchema, and must not', () => {
+    expect(usernameSchema.parse('Pedro')).toBe('Pedro')
+    expect(normaliseUsername('Pedro')).toBe('pedro')
   })
 })
