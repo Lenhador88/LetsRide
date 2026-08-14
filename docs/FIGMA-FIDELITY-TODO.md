@@ -758,6 +758,45 @@ Deviations that are ours, not the design's:
       newest. The design draws no pagination for this list, so the honest fix needs a design
       before it needs code. Same trade as the crew roster's 200.
 
+### View someone else's profile — built 2026-08-14
+
+`/profile/detail?id=<uuid>`, from `Profile / View someone else's profile / Profile - Prescoll
+header` (`2084:9006`) — `openspec/changes/view-rider-profile/`. Reached from a postcard byline
+today (`PostcardCard`); the other four reach paths (comments, ride crew, club rosters, chat) are
+a deliberate follow-up, not this change.
+
+**Three things the frame draws and this does not render, per the proposal's spec rather than by
+omission:**
+
+- [ ] **Follow, and the followers count.** `013` dropped `friendships` on 2026-08-04 — there is
+      no follower graph in this app, manual or derived, and this frame is exactly the "prose that
+      still names it" CLAUDE.md warns a dropped table returns through. No table, column or action
+      implementing it exists, and none should be added without reopening that decision.
+- [ ] **The motorcycles count and the Timeline/Garage switcher.** Same gap `/profile` already
+      logs above: the Garage epic is unbuilt, `bike_model` is one text column standing in for it,
+      and there is nothing here for a switcher to switch to.
+
+**The header composition is the shipped `/profile`'s, not the isolated frame's.** The frame
+floats a back button and an Options control over a 200px banner with the avatar overlapping it;
+`/profile` already deviates from that shape (a standard fixed `Header` bar, then a banner that
+scrolls with the content) and this screen matches that shipped precedent instead of inventing a
+second header composition nothing else in the app uses.
+
+**Countries render as the own-profile screen's "Countries" section, not the frame's single flag
+beside the name.** `profile_countries` is a list, the frame's "Name + Country" slot holds exactly
+one flag instance, and `/profile` itself already draws the plural read as a section below the
+bio rather than inline with the name — this screen reuses that treatment read-only (`CountryFlags`,
+extracted out of `ProfileCountries` so the editor and the viewer draw one markup rather than two
+that can drift), per design.md Q1's "if the own-profile screen's treatment transfers cleanly".
+
+**No stats row at all** — design.md Q2. Followers and motorcycles are unbuildable and a lone
+postcards count in a three-slot row reads as broken layout; `/profile` already omits its own
+Badges count for the same reason.
+
+**Options is block only** — design.md Q3, reusing `blockRider` rather than a second write path.
+No report row: `009`/`011` build reporting for a postcard, and there is no analogue of it for a
+rider's identity in this change.
+
 
 ### Create postcard
 

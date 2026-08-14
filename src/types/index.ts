@@ -73,6 +73,35 @@ export type PublicProfile = Pick<
   'id' | 'username' | 'avatar_url' | 'avatar_path' | 'bike_model'
 >
 
+/**
+ * Another rider as `/profile/detail` renders them — `VIEWED_PROFILE_COLUMNS`'
+ * seven columns, plus the two signed URLs the screen draws from the two
+ * Storage paths.
+ *
+ * Deliberately not `Profile`: that type carries `bike_model`, which this
+ * screen never reads (there is no Motorcycles section here — design.md §D7),
+ * and sharing the type would let a future reader assume the field is there.
+ * Deliberately not `PublicProfile` either: that four-column shape is what
+ * every OTHER reach into a rider's identity uses, and widening it would ship
+ * a bio and a cover path to every list that renders a name.
+ *
+ * `username` is typed non-null, unlike `Profile.username`: the `profiles`
+ * SELECT policy withholds a NULL-username row entirely (`rider-profile-
+ * viewing`'s own requirement), so `getProfile` never returns one — a screen
+ * reaching this type already has a rider whose username resolved.
+ */
+export type ViewedProfile = {
+  id: string
+  username: string
+  avatar_path: string | null
+  avatar_url: string | null
+  cover_image_path: string | null
+  cover_image_url: string | null
+  bio: string | null
+  location: string | null
+  created_at: string
+}
+
 export type Ride = {
   id: string
   title: string
