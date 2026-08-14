@@ -17,10 +17,18 @@
  * on the objects this layer returns*, holding the signed URL `resolveAvatarUrls`
  * writes, which is the one meaning it now has.
  *
- * `cover_image_path` is deliberately ABSENT for a different reason: only the
- * profile screen renders a cover, and that screen reads its own row with
- * `select('*')`. Adding it here would ship a column to every member list and
- * postcard byline that none of them draws.
+ * `cover_image_path` is deliberately ABSENT for a different reason: no list
+ * renders a cover. **TWO screens do** — `/profile` through
+ * `OWN_PROFILE_COLUMNS` and `/profile/detail` through
+ * `VIEWED_PROFILE_COLUMNS` — and each reads it through its own projection.
+ * Adding it here would ship the column to every member list, ride crew and
+ * postcard byline instead, none of which draws one.
+ *
+ * (This said "only the profile screen renders a cover, and that screen reads
+ * its own row with `select('*')`". Both halves are now false: `021` ended the
+ * `select('*')` — see `OWN_PROFILE_COLUMNS` — and `view-rider-profile` added
+ * the second screen. The rule the sentence was protecting is unchanged, which
+ * is why it is restated rather than deleted.)
  *
  * Your own row is **no longer exempt** — see `OWN_PROFILE_COLUMNS` below.
  *
@@ -57,6 +65,32 @@ export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
  */
 export const OWN_PROFILE_COLUMNS =
   'id, username, bio, bike_model, created_at, location, avatar_path, cover_image_path'
+
+/**
+ * The columns of *another* rider's profile that `/profile/detail` — and only
+ * that screen — may read.
+ *
+ * A **projection** decision, not a permission one: every column below is
+ * already granted to `authenticated` by `025` (`columns.test.ts` pins this as
+ * a subset check against that grant list), so nothing here changes what the
+ * database allows. It states what one screen actually draws, the same reason
+ * `PUBLIC_PROFILE_COLUMNS` stays at four columns for every OTHER reach into a
+ * rider's identity — a club roster, a ride crew, a postcard byline, a filter
+ * tile. None of those draws a bio or a cover; widening the shared constant
+ * would ship both to every list that renders a name (`openspec/changes/
+ * view-rider-profile/design.md` §D5).
+ *
+ * `bike_model` is deliberately absent even though `025` grants it: the header
+ * this screen draws has no Motorcycles section — the Garage epic is unbuilt —
+ * so there is nothing here to read it for.
+ *
+ * `terms_accepted_at`, `onboarding_completed_at` and `terms_version` are
+ * absent for the other reason `PUBLIC_PROFILE_COLUMNS`'s header gives: they
+ * carry no grant to `authenticated` at all, so naming one turns the whole
+ * read into a bare `42501`.
+ */
+export const VIEWED_PROFILE_COLUMNS =
+  'id, username, avatar_path, cover_image_path, bio, location, created_at'
 
 /**
  * The club columns an embed needs to draw a club's **image**.

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { CheckIcon, CloseIcon, PlusIcon } from '@/components/icons/generated'
+import { CountryBadge } from '@/components/profile/CountryFlags'
 import { Input } from '@/components/ui/Input'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { addCountry, removeCountry } from '@/lib/actions/profile'
@@ -78,8 +79,7 @@ export function ProfileCountries({ codes }: { codes: string[] }) {
                 aria-label={`Remove ${countryName(code)}`}
                 className="flex items-center gap-1 rounded bg-surface px-2 py-1 text-sm text-foreground"
               >
-                <span aria-hidden="true">{countryFlag(code)}</span>
-                <span className="sr-only">{countryName(code)}</span>
+                <CountryBadge code={code} />
                 <CloseIcon className="h-4 w-4 text-muted" aria-hidden="true" />
               </button>
             </li>

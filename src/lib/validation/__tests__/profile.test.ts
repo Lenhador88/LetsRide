@@ -9,6 +9,7 @@ import {
   bioSchema,
   checkUsername,
   profileEditSchema,
+  profileIdSchema,
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
   usernameSchema,
@@ -82,23 +83,30 @@ describe('usernameSchema — length boundaries', () => {
     if (result.success) expect(result.data).toBe('abc')
   })
 
-  it('accepts 20 characters (the maximum)', () => {
+  it('accepts 25 characters (the maximum)', () => {
     const name = 'a'.repeat(USERNAME_MAX_LENGTH)
-    expect(name).toHaveLength(20)
+    expect(name).toHaveLength(25)
     expect(usernameSchema.safeParse(name).success).toBe(true)
   })
 
-  it('rejects 21 characters', () => {
+  it('rejects 26 characters', () => {
     const name = 'a'.repeat(USERNAME_MAX_LENGTH + 1)
-    expect(name).toHaveLength(21)
+    expect(name).toHaveLength(26)
     expect(usernameSchema.safeParse(name).success).toBe(false)
   })
 
   it('USERNAME_MIN_LENGTH and USERNAME_MAX_LENGTH match the values used above', () => {
     // Guards the boundary tests themselves against a constant changing
-    // without the literal 2/3/20/21 tests above being updated to match.
+    // without the literal 2/3/25/26 tests above being updated to match.
+    //
+    // It is also half of the pairing with the database: `057` writes 25 into
+    // `profiles_username_format`, and the RLS suite asserts that constraint's
+    // definition verbatim. Change one bound and exactly one of the two suites
+    // goes red, which is the point — a client bound quietly below the
+    // database's costs a rider nothing, and one quietly above it hands them a
+    // Postgres error in place of a field message.
     expect(USERNAME_MIN_LENGTH).toBe(3)
-    expect(USERNAME_MAX_LENGTH).toBe(20)
+    expect(USERNAME_MAX_LENGTH).toBe(25)
   })
 })
 
@@ -239,6 +247,27 @@ describe('bioSchema / bikeModelSchema', () => {
 
   it('measures length after trimming, so trailing spaces cannot fail a valid bio', () => {
     expect(bioSchema.safeParse(`${'x'.repeat(BIO_MAX_LENGTH)}   `).success).toBe(true)
+  })
+})
+
+/**
+ * `/profile/detail?id=`, matching `rideIdSchema`/`clubIdSchema` — a malformed
+ * id must become not-found through `getProfile` rather than surface a
+ * Postgres `22P02` as an error state.
+ */
+describe('profileIdSchema', () => {
+  it('accepts a uuid', () => {
+    expect(profileIdSchema.safeParse('dd7c6d53-3a12-481c-96f6-efd5249693b4').success).toBe(true)
+  })
+
+  it('rejects an absent, empty or malformed id', () => {
+    // `''` is what an absent `?id=` becomes on every one of the ten existing
+    // detail routes and this is the eleventh; `'new'` and `'not-a-uuid'`
+    // cover a stray path segment reaching this schema the same way it once
+    // reached `rideIdSchema`.
+    for (const bad of ['', 'new', 'not-a-uuid', '123', 'undefined', 'null']) {
+      expect(profileIdSchema.safeParse(bad).success).toBe(false)
+    }
   })
 })
 

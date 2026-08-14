@@ -517,17 +517,17 @@ async function discoverDetailPaths({ quiet = false } = {}) {
    * discovery that silently finds nothing prints a skip notice that reads
    * exactly like a database with no rides in it.
    */
-  const firstDetailId = async (listPath, detailPath) => {
+  const firstDetailId = async (listPath, detailPath, exclude = null) => {
     await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
     await page.waitForTimeout(800)
     return page.evaluate(
-      (p) =>
+      ([p, skip]) =>
         [...document.querySelectorAll('a[href]')]
           .map((a) => new URL(a.href, location.origin))
           .filter((u) => u.pathname === p)
           .map((u) => u.searchParams.get('id'))
-          .find((id) => id && /^[0-9a-f-]{36}$/.test(id)) ?? null,
-      detailPath
+          .find((id) => id && /^[0-9a-f-]{36}$/.test(id) && id !== skip) ?? null,
+      [detailPath, exclude]
     )
   }
 
@@ -539,6 +539,30 @@ async function discoverDetailPaths({ quiet = false } = {}) {
 
   const postcard = await firstDetailId('/postcards', '/postcards/detail')
   if (!postcard) say('  (no postcard thread link — /postcards/detail unwalked)')
+
+  // The byline link `view-rider-profile` adds to `PostcardCard` — same page,
+  // same discovery shape, with ONE extra condition: it must be somebody else's
+  // byline.
+  //
+  // `/profile/detail` redirects a self-view to `/profile`, and this walk counts
+  // any redirect as a failure, so taking whichever byline sorts first turns the
+  // run red on a correct app. That is not a hypothetical to guard against out of
+  // caution: on DEV today every postcard is authored by the walking account, so
+  // the unfiltered version fails deterministically the first time anyone runs it.
+  //
+  // Excluding self makes the step measure the thing worth measuring — the
+  // STRANGER render, which is the whole screen. When no other author has posted,
+  // there is no stranger to walk to and the step says so and is skipped, rather
+  // than quietly passing on a redirect.
+  const me = await signedInRiderId()
+  const profile = await firstDetailId('/postcards', '/profile/detail', me)
+  if (!profile) {
+    say(
+      me
+        ? '  (no postcard by another rider — /profile/detail unwalked; seed one to cover it)'
+        : '  (could not read the signed-in rider id — /profile/detail unwalked)'
+    )
+  }
 
   const detail = (path, id) => `${path}?id=${id}`
 
@@ -562,8 +586,9 @@ async function discoverDetailPaths({ quiet = false } = {}) {
         ].map((p) => detail(p, club))
       : []),
     ...(postcard ? [detail('/postcards/detail', postcard)] : []),
+    ...(profile ? [detail('/profile/detail', profile)] : []),
   ]
-  return { ride, club, postcard, paths }
+  return { ride, club, postcard, profile, paths }
 }
 
 /**
@@ -609,7 +634,7 @@ async function discoverDetailPaths({ quiet = false } = {}) {
  * browser through `http://localhost:3001`. It is the only value here that
  * describes the database the writes will actually land in.
  */
-async function authenticatedProjectRef() {
+async function accessTokenClaims() {
   const token = await page
     .evaluate(() => {
       for (const key of Object.keys(localStorage)) {
@@ -629,12 +654,36 @@ async function authenticatedProjectRef() {
 
   if (!token) return null
   try {
-    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+    return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+  } catch {
+    return null
+  }
+}
+
+async function authenticatedProjectRef() {
+  const claims = await accessTokenClaims()
+  if (!claims?.iss) return null
+  try {
     // `https://<ref>.supabase.co/auth/v1`
     return new URL(claims.iss).hostname.split('.')[0]
   } catch {
     return null
   }
+}
+
+/**
+ * The signed-in rider's own id, off the same token `authenticatedProjectRef`
+ * reads — `sub` is the one claim GoTrue guarantees is the user.
+ *
+ * It exists so the `/profile/detail` step can target somebody ELSE. That screen
+ * redirects a self-view to `/profile`, and the walk counts ANY redirect as a
+ * failure (`flags.push('redirected -> …')` → `failures += 1`), so discovering a
+ * byline without excluding your own turns the run red on a correct app. Not
+ * hypothetical: every postcard on DEV is authored by the walking account.
+ */
+async function signedInRiderId() {
+  const claims = await accessTokenClaims()
+  return typeof claims?.sub === 'string' ? claims.sub : null
 }
 
 /**

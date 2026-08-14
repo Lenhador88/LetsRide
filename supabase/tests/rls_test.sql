@@ -391,13 +391,18 @@ select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
 select assert_rejected($$update profiles set username = 'ab'
   where id = '00000000-0000-0000-0000-00000000000e'$$,
   '23514', 'a username shorter than 3 characters is rejected');
-select assert_rejected($$update profiles set username = 'twenty_one_chars_long'
+-- 057 widened the bound from 20 to 25, so the name that used to sit one over it
+-- — `twenty_one_chars_long` — is now legal, and this refusal moved up five
+-- characters with it. The matching POSITIVE at exactly 25 is below, with the
+-- other one: a `{3,}` typo removes the bound entirely and only this line fails.
+select assert_rejected($$update profiles set username = 'aaaaaaaaaaaaaaaaaaaaaaaaaa'
   where id = '00000000-0000-0000-0000-00000000000e'$$,
-  '23514', 'a username longer than 20 characters is rejected');
+  '23514', '057: a username longer than 25 characters is rejected');
 select assert_rejected($$update profiles set username = 'has space'
   where id = '00000000-0000-0000-0000-00000000000e'$$,
   '23514', 'a username with an illegal character is rejected');
--- 056 relaxed profiles_username_format to '^[A-Za-z0-9_]{3,20}$', so the
+-- 056 relaxed profiles_username_format's CHARSET to `A-Za-z0-9_` — the length
+-- bound in it is 057's and reads `{3,25}` today — so the
 -- assertion that stood here — "an uppercase username is rejected" — now states
 -- the opposite of the rule. Its positive replacement is in §056 below. What is
 -- worth pinning in its place is the boundary 056 did NOT move: the charset was
@@ -427,6 +432,17 @@ update profiles set username = 'rookie_99'
 select assert_eq((select username from profiles where id = '00000000-0000-0000-0000-00000000000e'),
   'rookie_99', 'a legal username is accepted (guards against over-tightening)');
 rollback to savepoint legal_username_accepted;
+
+-- 057's boundary from the accepting side, written for real for the same reason.
+-- The rejection at 26 above cannot stand alone: a bound left at 20 by a
+-- half-applied 057 refuses this and passes every negative in this file.
+savepoint max_length_username_accepted;
+update profiles set username = 'aaaaaaaaaaaaaaaaaaaaaaaaa'   -- 25
+  where id = '00000000-0000-0000-0000-00000000000e';
+select assert_eq(
+  (select length(username) from profiles where id = '00000000-0000-0000-0000-00000000000e'),
+  25, '057: a username of exactly 25 characters is accepted');
+rollback to savepoint max_length_username_accepted;
 
 \echo ''
 \echo '# Case-insensitive uniqueness lives in the index, not in the charset rule'
@@ -6800,8 +6816,8 @@ rollback to savepoint operator_038;
 -- 038.7 — NULL really was the only hole
 -- ---------------------------------------------------------------------------
 -- Verified against the live constraint rather than assumed: '' does not match
--- '^[A-Za-z0-9_]{3,20}$' (056's charset; '^[a-z0-9_]{3,20}$' when 038 was
--- written, and the widening changes none of these four), and neither does a
+-- '^[A-Za-z0-9_]{3,25}$' (056's charset and 057's length; '^[a-z0-9_]{3,20}$'
+-- when 038 was written, and neither widening changes these four), and neither does a
 -- value carrying a newline — Postgres's `~` is not anchored to the whole string
 -- across newlines unless it is written this way, so the newline case is the one
 -- worth stating.
@@ -12235,7 +12251,7 @@ rollback to savepoint ride_joined_crew_055;
 \echo '# 056 — a username keeps the case the rider typed; uniqueness still folds (PD-226)'
 
 -- ===========================================================================
--- 056. `profiles_username_format` relaxes to '^[A-Za-z0-9_]{3,20}$', so `Pedro`
+-- 056. `profiles_username_format` relaxes its charset to `A-Za-z0-9_`, so `Pedro`
 --      stores as `Pedro`. Exactly one of 003 §4's two rules moved: the unique
 --      index on `lower(username)` is UNTOUCHED, which is why `pedro`, `PEDRO`
 --      and `PeDrO` are unavailable to everyone else.
@@ -12296,9 +12312,14 @@ rollback to savepoint mixed_case_056;
 select assert_rejected($$update profiles set username = 'Ab'
   where id = '00000000-0000-0000-0000-000000226001'$$,
   '23514', '056: two characters is still too short, capitals or not');
-select assert_rejected($$update profiles set username = 'Twenty_One_Chars_Long'
+-- The length bound is 057's rather than 056's, and it is restated here in the
+-- widened charset for this block's own reason: `Aaaa…` and `aaaa…` are one
+-- constraint away from being different lengths if the two rules are ever merged
+-- into a per-case alternation. 26, not 21 — 057 moved the bound, and the
+-- assertion that stood here refused a name the database now accepts.
+select assert_rejected($$update profiles set username = 'Aaaaaaaaaaaaaaaaaaaaaaaaaa'
   where id = '00000000-0000-0000-0000-000000226001'$$,
-  '23514', '056: twenty-one characters is still too long, capitals or not');
+  '23514', '056/057: twenty-six characters is still too long, capitals or not');
 select assert_rejected($$update profiles set username = 'Road King'
   where id = '00000000-0000-0000-0000-000000226001'$$,
   '23514', '056: a space is still an illegal character');
@@ -12353,8 +12374,8 @@ reset role;
 select assert_eq(
   (select pg_get_constraintdef(oid) from pg_constraint
     where conrelid = 'public.profiles'::regclass and conname = 'profiles_username_format'),
-  'CHECK (((username IS NULL) OR (username ~ ''^[A-Za-z0-9_]{3,20}$''::text)))',
-  '056: profiles_username_format admits capitals, and still nothing else');
+  'CHECK (((username IS NULL) OR (username ~ ''^[A-Za-z0-9_]{3,25}$''::text)))',
+  '056/057: profiles_username_format admits capitals and nothing else, up to 25 characters');
 select assert_eq(
   (select pg_get_constraintdef(oid) like '%lower(username) <> ALL%' from pg_constraint
     where conrelid = 'public.profiles'::regclass and conname = 'profiles_username_not_reserved'),

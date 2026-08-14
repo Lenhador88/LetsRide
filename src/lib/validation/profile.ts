@@ -22,7 +22,13 @@ const RESERVED_USERNAMES: readonly string[] = [
 ]
 
 export const USERNAME_MIN_LENGTH = 3
-export const USERNAME_MAX_LENGTH = 20
+/**
+ * 25 since `057`. It must equal the upper bound of `profiles_username_format`
+ * or the client accepts a name the database then refuses with a raw `23514`
+ * instead of a field message — the same failure the reserved-list comment above
+ * describes, by way of a number rather than a list.
+ */
+export const USERNAME_MAX_LENGTH = 25
 
 /**
  * The one wording for "somebody already has this name", shared by the live
@@ -43,7 +49,8 @@ export const USERNAME_TAKEN_MESSAGE = 'That username is taken.'
 
 /**
  * Trims, and **deliberately does not lowercase**. `056` relaxed
- * `profiles_username_format` to `^[A-Za-z0-9_]{3,20}$` so a username stores the
+ * `profiles_username_format` to `^[A-Za-z0-9_]{3,25}$` (`{3,20}` until `057`
+ * widened the bound) so a username stores the
  * case the rider typed: `Pedro` has to survive this schema as `Pedro`, and a
  * `.toLowerCase()` here would silently undo the whole change while every test
  * still passed.
@@ -153,6 +160,13 @@ export function checkUsername(value: string): { ok: true; username: string } | {
     ? { ok: true, username: result.data }
     : { ok: false, error: result.error.issues[0].message }
 }
+
+/**
+ * A rider id in `/profile/detail?id=`. Same reasoning as `rideIdSchema`/
+ * `clubIdSchema`: a malformed id means "no such rider", and not-found is the
+ * honest answer for a route that already renders the same state for a block.
+ */
+export const profileIdSchema = z.uuid()
 
 /**
  * One ISO 3166-1 alpha-2 code, matching 014's CHECK constraint character for

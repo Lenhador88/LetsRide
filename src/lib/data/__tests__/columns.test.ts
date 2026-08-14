@@ -2,7 +2,12 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { CLUB_EMBED_COLUMNS, OWN_PROFILE_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import {
+  CLUB_EMBED_COLUMNS,
+  OWN_PROFILE_COLUMNS,
+  PUBLIC_PROFILE_COLUMNS,
+  VIEWED_PROFILE_COLUMNS,
+} from '@/lib/data/columns'
 
 const SRC = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)))
 
@@ -135,6 +140,56 @@ describe('OWN_PROFILE_COLUMNS matches 025 grant list', () => {
     for (const withheld of ['terms_accepted_at', 'onboarding_completed_at']) {
       expect(OWN_PROFILE_COLUMNS).not.toContain(withheld)
       expect(granted).not.toContain(withheld)
+    }
+  })
+})
+
+/**
+ * `VIEWED_PROFILE_COLUMNS` is a **subset** of the same `025` grant list,
+ * unlike `OWN_PROFILE_COLUMNS`'s exact-equality assertion above — this
+ * constant is a projection decision for one screen (`/profile/detail`), not
+ * the whole grant. `columns.ts`'s own header says why it is not equal: it
+ * deliberately omits `bike_model` even though `025` grants it, because the
+ * viewed-profile header draws no Motorcycles section.
+ */
+describe('VIEWED_PROFILE_COLUMNS is a subset of the 025 grant list', () => {
+  const migration = readFileSync(
+    path.join(SRC, '..', 'supabase', 'migrations', '025_profile_column_privileges.sql'),
+    'utf8'
+  )
+
+  const granted = (() => {
+    const match = migration.match(
+      /grant\s+select\s*\(([^)]*)\)\s*\n?\s*on\s+public\.profiles\s+to\s+authenticated/i
+    )
+    if (!match) throw new Error('no `grant select (...) on public.profiles` found in 025')
+    return match[1]
+      .split(',')
+      .map((c) => c.replace(/--.*$/gm, '').trim())
+      .filter(Boolean)
+  })()
+
+  const constant = VIEWED_PROFILE_COLUMNS.split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+
+  it('finds a real grant list, so this cannot pass by matching nothing', () => {
+    expect(granted.length).toBeGreaterThan(4)
+  })
+
+  it('names at least one column, so the subset check below cannot pass on an empty list', () => {
+    expect(constant.length).toBeGreaterThan(0)
+  })
+
+  it('selects only columns 025 actually grants', () => {
+    for (const column of constant) {
+      expect(granted, `${column} is not in 025's grant list`).toContain(column)
+    }
+  })
+
+  it('never selects a stamp the grant deliberately withholds', () => {
+    for (const withheld of ['terms_accepted_at', 'onboarding_completed_at', 'terms_version']) {
+      expect(VIEWED_PROFILE_COLUMNS).not.toContain(withheld)
     }
   })
 })
