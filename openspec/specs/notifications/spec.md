@@ -266,8 +266,9 @@ correct to any reviewer, because the value in it was true when it was written.
 - **THEN** it SHALL be recorded as **reachable in one request by any rider**, verified against
   `zwprydcyryvudhurbnye` on 2026-08-07, and not as a defect that cannot occur:
   `has_column_privilege('authenticated','public.profiles','username','UPDATE')` is **true**; the
-  CHECK is `username IS NULL OR username ~ '^[A-Za-z0-9_]{3,20}$'` (`'^[a-z0-9_]{3,20}$'` when
-  this was measured; `056` widened it to admit capitals), which NULL passes; and
+  CHECK is `username IS NULL OR username ~ '^[A-Za-z0-9_]{3,25}$'` (`'^[a-z0-9_]{3,20}$'` when
+  this was measured; `056` widened it to admit capitals and `057` the length to 25), which NULL
+  passes; and
   `enforce_onboarding_completion` guards only `terms_accepted_at` and `onboarding_completed_at` —
   for an already-onboarded rider it pins completion and **returns early**, so `username` is never
   reached

@@ -77,12 +77,23 @@ export const DRAG_ARM_THRESHOLD = 8
  *   it does not arbitrate whose gesture this is.
  * - The lever that does arbitrate is `touch-action`, and it is set on the front
  *   card wrapper. **It does not reach the whole subtree, which is the trap that
- *   cost PD-224**: the walk deciding an element's effective touch-action stops
- *   at a scroll container, so any scroll container inside the card is outside
- *   the wrapper's `touch-none` and must set its own. The caption row is one
- *   (`overflow-y-auto` in `PostcardCard`, which now does) — measured in
+ *   cost PD-224**: the walk deciding an element's effective touch-action is
+ *   reset at an element that **scrolls** its overflow, so such an element sits
+ *   outside the wrapper's `touch-none` and must set its own. The caption row is
+ *   one (`overflow-y-auto` in `PostcardCard`, which now does) — measured in
  *   Chromium 2026-08-14, every swipe starting on it was cancelled and every
  *   swipe on the photo was not, at 0px of vertical drift as much as at 30.
+ *
+ *   **Scrolls, not clips — do not widen this to "any scroll container".** The
+ *   `<article>` and the photo wrapper are both `overflow-hidden`, which is a
+ *   scroll container in the CSS sense, and the wrapper's `touch-none` reaches
+ *   straight through both (measured: `overflow: hidden` on the caption, no
+ *   cancel). The broader rule predicts the deck's `touch-none` reaches nothing
+ *   at all, which is false, and it would argue either for deleting it or for
+ *   spraying `touch-none` down the subtree. One gotcha under the narrow rule:
+ *   `overflow-y: hidden` alone is NOT clipping-only — CSS computes the other
+ *   axis to `auto`, so it scrolls horizontally and does reset (measured too).
+ *
  *   Nothing *outside* the deck scrolls: the postcards screen is a
  *   fixed-viewport `flex-1` column.
  *

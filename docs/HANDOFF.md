@@ -727,7 +727,7 @@ publication membership is asserted, the *delivery* is not), and whether the comp
 ## Migrations — the repo, DEV and PROD all hold 57
 
 **`056` is PD-226's and is on BOTH projects, applied 2026-08-13.** It relaxes
-`profiles_username_format` to `^[A-Za-z0-9_]{3,20}$` so a username keeps the case the rider
+`profiles_username_format`'s charset to `A-Za-z0-9_` so a username keeps the case the rider
 typed, makes `profiles_username_not_reserved` fold with `lower()` — without which `Admin` walks
 through a list that was exhaustive only because the charset forced lowercase — and adds
 `public.username_exists(text)`, `security invoker` so the availability read keeps running under
@@ -777,9 +777,13 @@ untouched — uniqueness still folds and the seventeen reserved names are still 
 is a strict *subset* of the new one, so no stored row can be orphaned in either direction and
 neither order loses anything. They are still not equally good. Applying first leaves the client
 merely stricter than the database — the status quo of every unwidened field in this app.
-Deploying first has the client accept 25 while the database refuses `23514`, and `setUsername`
-reads `23514` only as the UNIQUE violation, so it would surface as a raw Postgres error on the
-one screen onboarding cannot be skipped past. It was applied first, on both.
+Deploying first has the client accept 25 while the database refuses `23514`, which
+`setUsername` maps to **"That username is not available."** — so a rider is told a free name is
+taken, on the one screen onboarding cannot be skipped past, with the live availability check
+saying "available" right up to the submit that refuses it. **That is a graceful WRONG answer
+rather than a raw error**, and stating it the other way round is what makes a session relax about
+ordering: `src/lib/actions/onboarding.ts` has always handled `23505` (the unique index, PD-146's
+shape) and `23514` (this CHECK) separately. It was applied first, on both.
 
 Verified by object on **both**: `pg_get_constraintdef` reads
 `CHECK (((username IS NULL) OR (username ~ '^[A-Za-z0-9_]{3,25}$'::text)))`, 0 rows violating the

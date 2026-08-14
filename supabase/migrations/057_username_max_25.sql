@@ -45,16 +45,27 @@
 --                                  bound. The rider sees "Must be 20 characters
 --                                  or fewer." — the status quo, unchanged.
 --
---   code first, migration second   the client accepts 25 and the database
---                                  refuses with 23514. `setUsername` reads
---                                  23514 only for the UNIQUE violation, so this
---                                  surfaces as a raw Postgres error on submit.
+--   code first, migration second   the client accepts 25, the database refuses
+--                                  23514, and `setUsername` maps 23514 to
+--                                  "That username is not available." The rider
+--                                  is told a free name is taken, with no way to
+--                                  tell that from a real collision — and the
+--                                  live availability check says "available"
+--                                  right up to the submit that refuses it.
+--
+-- ** That second row is a GRACEFUL wrong answer, not a raw error, and an
+-- earlier draft of this header said the opposite. ** src/lib/actions/
+-- onboarding.ts handles 23505 and 23514 separately and always has: 23505 is the
+-- unique index (PD-146's shape) and 23514 is this CHECK. Worth stating because
+-- "it would blow up loudly" is the reasoning that makes a session relax about
+-- ordering — the failure here is quiet and lands on a rider, which is worse.
 --
 -- Neither loses data and neither strands a row, so this is not a deadlock of
 -- 021's kind. But the two orders are not equally good, and the good one is the
 -- one that needs no coordination: APPLY THIS FIRST. The window it opens is a
--- client that is merely stricter than the database, which is the same thing
--- every unwidened field in this app already is.
+-- client that is merely stricter than the database — every unwidened field in
+-- this app already is that — and the rider sees "Must be 20 characters or
+-- fewer.", which is true of the bundle in front of them.
 --
 -- ---------------------------------------------------------------------------
 -- 1. The bound
