@@ -139,7 +139,47 @@ function PostcardCardComponent({
         )}
       </div>
 
-      <div className={cn('px-3', fill && 'min-h-0 flex-1 overflow-y-auto')}>
+      {/* `touch-none` here is NOT redundant with the deck's, and this is
+          PD-224 — a swipe that starts on the caption is cancelled by the
+          browser, so the card leans a few pixels and springs back.
+
+          **Being a scroll container is what does it**, and the walk that
+          decides an element's effective `touch-action` stops at one. So
+          `PostcardDeck`'s `touch-none` on the front-card wrapper covers the
+          photo, the byline and the action row and stops dead at this div's
+          `overflow-y-auto`, where the value falls back to `auto` and any
+          gesture is the browser's to claim. It claims, it fires
+          `pointercancel`, and `onPointerCancel` returns the card to centre —
+          correctly, per PD-221: a cancel aborts a gesture, it never completes
+          one. The deck is not the thing that was wrong.
+
+          Measured in Chromium 2026-08-14 on this card's own structure, five
+          gestures, and PD-224 lists two candidate causes of which the first is
+          wrong — worth keeping because it is the one anybody reaches for:
+
+            as shipped               cancelled  (photo, identically: not)
+            + user-select: none      cancelled  <- selectable TEXT is exonerated
+            + overflow: visible      not        <- confirms: the container, not the text
+            + touch-action: none     not        <- this line
+
+          Vertical drift is not the trigger — 0px cancels exactly as 30px does —
+          which is why the same swipe fails whether or not the rider keeps it
+          level, and why a fix aimed at tolerating drift would have missed.
+
+          `overflow: visible` also fixes it and is the wrong fix: the overflow
+          is load-bearing (see `fill`), and clipping is what keeps the action
+          row on the card. `touch-action: pan-y` is the tempting middle — the
+          deck takes horizontal, the caption keeps vertical — and it is also
+          wrong, because the browser picks the axis from the first few pixels,
+          so a gesture that starts slightly vertical is claimed and this bug is
+          back for exactly the riders who reported it.
+
+          The cost is deliberate and small: on the front card of the deck a long
+          caption no longer pans under a finger. Wheel and keyboard scrolling
+          are untouched (neither is governed by `touch-action`), and tapping
+          through to the thread renders the caption in full at `fill={false}`,
+          where there is no swipe to compete with. */}
+      <div className={cn('px-3', fill && 'min-h-0 flex-1 overflow-y-auto touch-none')}>
         <p className="text-sm whitespace-pre-line text-foreground">{postcard.caption}</p>
       </div>
 

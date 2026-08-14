@@ -75,10 +75,16 @@ export const DRAG_ARM_THRESHOLD = 8
  *   `pointercancel` fires *when* the pointer starts manipulating the viewport,
  *   and capture is implicitly *released* at that moment. It retargets events;
  *   it does not arbitrate whose gesture this is.
- * - The lever that does arbitrate is `touch-action`, and it is already set —
- *   `touch-none` on the front card wrapper, which intersects down the whole
- *   subtree. There is nothing beneath the deck that scrolls anyway: the
- *   postcards screen is a fixed-viewport `flex-1` column.
+ * - The lever that does arbitrate is `touch-action`, and it is set on the front
+ *   card wrapper. **It does not reach the whole subtree, which is the trap that
+ *   cost PD-224**: the walk deciding an element's effective touch-action stops
+ *   at a scroll container, so any scroll container inside the card is outside
+ *   the wrapper's `touch-none` and must set its own. The caption row is one
+ *   (`overflow-y-auto` in `PostcardCard`, which now does) — measured in
+ *   Chromium 2026-08-14, every swipe starting on it was cancelled and every
+ *   swipe on the photo was not, at 0px of vertical drift as much as at 30.
+ *   Nothing *outside* the deck scrolls: the postcards screen is a
+ *   fixed-viewport `flex-1` column.
  *
  * So arming vertically bought nothing and cost something real: 8px of vertical
  * drift is well inside normal touch slop, so it would swallow taps on the like,

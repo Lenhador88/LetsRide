@@ -82,23 +82,30 @@ describe('usernameSchema — length boundaries', () => {
     if (result.success) expect(result.data).toBe('abc')
   })
 
-  it('accepts 20 characters (the maximum)', () => {
+  it('accepts 25 characters (the maximum)', () => {
     const name = 'a'.repeat(USERNAME_MAX_LENGTH)
-    expect(name).toHaveLength(20)
+    expect(name).toHaveLength(25)
     expect(usernameSchema.safeParse(name).success).toBe(true)
   })
 
-  it('rejects 21 characters', () => {
+  it('rejects 26 characters', () => {
     const name = 'a'.repeat(USERNAME_MAX_LENGTH + 1)
-    expect(name).toHaveLength(21)
+    expect(name).toHaveLength(26)
     expect(usernameSchema.safeParse(name).success).toBe(false)
   })
 
   it('USERNAME_MIN_LENGTH and USERNAME_MAX_LENGTH match the values used above', () => {
     // Guards the boundary tests themselves against a constant changing
-    // without the literal 2/3/20/21 tests above being updated to match.
+    // without the literal 2/3/25/26 tests above being updated to match.
+    //
+    // It is also half of the pairing with the database: `057` writes 25 into
+    // `profiles_username_format`, and the RLS suite asserts that constraint's
+    // definition verbatim. Change one bound and exactly one of the two suites
+    // goes red, which is the point — a client bound quietly below the
+    // database's costs a rider nothing, and one quietly above it hands them a
+    // Postgres error in place of a field message.
     expect(USERNAME_MIN_LENGTH).toBe(3)
-    expect(USERNAME_MAX_LENGTH).toBe(20)
+    expect(USERNAME_MAX_LENGTH).toBe(25)
   })
 })
 
