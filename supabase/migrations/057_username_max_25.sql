@@ -1,0 +1,128 @@
+-- 057: a username may be up to 25 characters.
+--
+-- Product owner, 2026-08-14: "I think the username max length right now is about
+-- 20 chars, can we make it 25?" — a widening, deliberate and with no rule behind
+-- the old bound other than 003 having picked it.
+--
+-- ---------------------------------------------------------------------------
+-- What changes, and what deliberately does not
+-- ---------------------------------------------------------------------------
+--   profiles_username_format      username ~ '^[A-Za-z0-9_]{3,20}$'   <- BEFORE
+--   profiles_username_format      username ~ '^[A-Za-z0-9_]{3,25}$'   <- AFTER
+--
+-- Exactly one number moves. The charset stays ASCII letters, digits and
+-- underscore — 056 widened it to `A-Za-z` and explicitly not to Unicode, and
+-- this file inherits that boundary rather than revisiting it. The minimum stays
+-- 3. `profiles_username_lower_key` and `profiles_username_not_reserved` are
+-- untouched: uniqueness is still case-insensitive and the seventeen reserved
+-- names are still compared folded.
+--
+-- ---------------------------------------------------------------------------
+-- Widening is the safe direction, and that is a property of THIS change rather
+-- than of CHECK constraints
+-- ---------------------------------------------------------------------------
+-- `^[A-Za-z0-9_]{3,20}$` is a strict subset of `^[A-Za-z0-9_]{3,25}$`, so every
+-- stored row that satisfied the old rule satisfies the new one. No row can be
+-- orphaned and there is no data repair step, which is why this file carries no
+-- pre-flight census where 056 carried one.
+--
+-- Postgres still validates the whole table on `add constraint`, because it
+-- cannot know the containment. On `profiles` that is an ACCESS EXCLUSIVE lock
+-- for the length of one sequential scan — trivial at this size, and worth
+-- knowing before the table is large. `not valid` + `validate constraint` is the
+-- escape hatch if it ever is; it is not worth the two-step here.
+--
+-- ---------------------------------------------------------------------------
+-- Ordering against the deploy: this one is genuinely free, and saying so is
+-- only useful with the reason
+-- ---------------------------------------------------------------------------
+-- 056 had to apply BEFORE its code deployed, because the code sent capitals the
+-- old CHECK refused. The general rule that produced that — additive first,
+-- destructive last — is in CLAUDE.md, and this file is the additive case:
+--
+--   migration first, code second   a 21-character name is accepted by the
+--                                  database and refused by the client's Zod
+--                                  bound. The rider sees "Must be 20 characters
+--                                  or fewer." — the status quo, unchanged.
+--
+--   code first, migration second   the client accepts 25, the database refuses
+--                                  23514, and `setUsername` maps 23514 to
+--                                  "That username is not available." The rider
+--                                  is told a free name is taken, with no way to
+--                                  tell that from a real collision — and the
+--                                  live availability check says "available"
+--                                  right up to the submit that refuses it.
+--
+-- ** That second row is a GRACEFUL wrong answer, not a raw error, and an
+-- earlier draft of this header said the opposite. ** src/lib/actions/
+-- onboarding.ts handles 23505 and 23514 separately and always has: 23505 is the
+-- unique index (PD-146's shape) and 23514 is this CHECK. Worth stating because
+-- "it would blow up loudly" is the reasoning that makes a session relax about
+-- ordering — the failure here is quiet and lands on a rider, which is worse.
+--
+-- Neither loses data and neither strands a row, so this is not a deadlock of
+-- 021's kind. But the two orders are not equally good, and the good one is the
+-- one that needs no coordination: APPLY THIS FIRST. The window it opens is a
+-- client that is merely stricter than the database — every unwidened field in
+-- this app already is that — and the rider sees "Must be 20 characters or
+-- fewer.", which is true of the bundle in front of them.
+--
+-- ---------------------------------------------------------------------------
+-- 1. The bound
+-- ---------------------------------------------------------------------------
+-- Drop and add in ONE `alter table`, for 056's reason verbatim: no instant, not
+-- even inside a transaction run statement-at-a-time, in which the column has no
+-- format rule at all. The constraint name is reused for 056's reason too —
+-- 038's header, this file, `supabase/tests/rls_test.sql` and the openspec
+-- requirement all name `profiles_username_format`, and a rename orphans them
+-- silently.
+
+alter table public.profiles
+  drop constraint profiles_username_format,
+  add constraint profiles_username_format
+    check (username is null or username ~ '^[A-Za-z0-9_]{3,25}$');
+
+-- ---------------------------------------------------------------------------
+-- 2. What must be true after applying, on BOTH projects
+-- ---------------------------------------------------------------------------
+-- 1. The constraint reads back exactly as the suite asserts it. `pg_get_
+--    constraintdef` normalises whitespace and casts the literal, so compare
+--    against this string rather than against the source above:
+--
+--   select pg_get_constraintdef(oid) from pg_constraint
+--     where conrelid = 'public.profiles'::regclass
+--       and conname = 'profiles_username_format';
+--   --> CHECK (((username IS NULL) OR (username ~ '^[A-Za-z0-9_]{3,25}$'::text)))
+--
+-- 2. No stored row was orphaned. Zero by containment, so this is a check that
+--    the containment argument above was actually true rather than a repair:
+--
+--   select count(*) from public.profiles
+--     where username is not null and username !~ '^[A-Za-z0-9_]{3,25}$';   --> 0
+--
+-- 3. POSITIVE, as `authenticated` rather than as the owner — a CHECK fires for
+--    every role, but running it as the table owner would also pass against a
+--    database where the grant had gone, and the grant is what makes the rider's
+--    own write reach the constraint at all. 25 characters, in a rolled-back
+--    transaction:
+--
+--   begin;
+--     set local role authenticated;
+--     set local request.jwt.claims = '{"sub":"<uuid>","role":"authenticated"}';
+--     update public.profiles set username = 'aaaaaaaaaaaaaaaaaaaaaaaaa'  -- 25
+--       where id = '<uuid>';
+--   rollback;
+--
+-- 4. NEGATIVE: 26 is still refused, expecting 23514. The bound moved; it did not
+--    go away, and a `{3,}` typo would pass every positive check above:
+--
+--   update public.profiles set username = 'aaaaaaaaaaaaaaaaaaaaaaaaaa'  -- 26
+--     where id = '<uuid>';
+--
+-- 5. NEGATIVE: the other three rules are untouched. 2 characters, a space, and
+--    `Admin` are all still refused with 23514 — widening the length must not
+--    have widened the charset or folded the denylist away with it.
+--
+-- 6. The advisors still return the documented nine. This file adds no
+--    `security definer` function, no policy and no table, so any new WARN is
+--    unrelated to it and worth reading before continuing.
