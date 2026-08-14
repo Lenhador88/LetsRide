@@ -1,9 +1,11 @@
 import { memo } from 'react'
+import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { LikeButton } from '@/components/postcards/LikeButton'
 import { CommentsLink } from '@/components/postcards/CommentsLink'
 import { ShareButton } from '@/components/postcards/ShareButton'
 import { PostcardMenu } from '@/components/postcards/PostcardMenu'
+import { routes } from '@/lib/routes'
 import { cn, formatPostcardDate } from '@/lib/utils'
 import type { Postcard } from '@/types'
 
@@ -130,11 +132,35 @@ function PostcardCardComponent({
             shown. There is no full_name column to fall back to. */}
         <span className="truncate text-xs font-semibold text-foreground">{username}</span>
         {/* club_id IS the audience — a club name here means club-members-only,
-            its absence means the app-wide feed. */}
+            its absence means the app-wide feed.
+
+            The name is a link to that club, and the `in` is deliberately NOT
+            part of it: the club is the destination, the preposition is prose.
+
+            **It is safe inside the swipe deck for the reason `CommentsLink`
+            already is** — the deck takes pointer capture on distance rather
+            than at `pointerdown` (`armsDrag`), so a tap is never retargeted and
+            this anchor's click arrives intact, while a swipe that begins on it
+            is swallowed by `onClickCapture`, which calls `preventDefault`
+            precisely because an anchor's own navigation survives React's
+            `stopPropagation`.
+
+            Drawn exactly as the design draws it, with no underline or colour
+            of its own. The frame gives this row one 12px semibold run and
+            adding an affordance here would be inventing v2 rather than
+            reading it. */}
+        {/* Still gated on the NAME rather than on the club, unchanged: a club
+            with no name to draw rendered nothing before this link existed, and
+            it must not start rendering an empty tap target now. */}
         {postcard.club?.name && (
           <>
             <span className="shrink-0 text-xs font-semibold text-foreground">&nbsp;in&nbsp;</span>
-            <span className="truncate text-xs font-semibold text-foreground">{postcard.club.name}</span>
+            <Link
+              href={routes.club(postcard.club.id)}
+              className="truncate text-xs font-semibold text-foreground"
+            >
+              {postcard.club.name}
+            </Link>
           </>
         )}
       </div>
