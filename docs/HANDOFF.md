@@ -370,7 +370,7 @@ build work, the rest are the owner's.
 | | Blocker | Why it blocks |
 |---|---|---|
 | 1 | **The shell itself** | **Started 2026-08-07; the `webDir` gate cleared 2026-08-10 (PD-142).** `capacitor.config.ts`, the secure store and a building `out/` are in; `ios/` and `android/` are not, and cannot be generated here. What is left needs a Mac |
-| 2 | **Account deletion — database and function done, flow not** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, and the Edge Function **deployed and ACTIVE on both projects** since 2026-08-11 (`list_edge_functions`, identical `ezbr_sha256`) — this row said "written but never deployed or run" until 2026-08-14. Nothing in `src/` points at it. Groups 3 and 4 remain, and **Q7 is now decided: re-authenticate with the password** (`PD-102`), which adds an arm the deployed build does not have — so the function is redeployed *before* the client half or the gate is fail-open |
+| 2 | **Account deletion — database done, function deployed but INCOMPLETE, flow not built** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, and the Edge Function **deployed and ACTIVE on both projects** since 2026-08-11 (`list_edge_functions`, identical `ezbr_sha256`). **Do not read that as group 2 closed** — four of its tasks are open (`2.2` the re-auth arm, `2.3a` the `ride-maps` redeploy, `2.4` idempotency, `2.6` the exercise): `grep -c '^- \[ \] 2\.' openspec/changes/add-account-deletion/tasks.md`. Nothing in `src/` points at it. Groups 3, 4 and 7 of `openspec/changes/add-account-deletion/` remain, and **Q7 is now decided: re-authenticate with the password** (`PD-102`), which adds an arm the deployed build does not have — so the function is redeployed *before* the client half or the gate is fail-open |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
@@ -1089,8 +1089,8 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
 
   > **Recommendation** 8/10
   >
-  > the expensive half is done and the context is written down; it gets more expensive the
-  > longer the function sits unexercised
+  > the expensive half is done and the context is written down; what remains is the re-auth arm
+  > Q7 decided on 2026-08-14, which the deployed build has no code for
   >
   > **Complexity** 5/10
   >

@@ -3,11 +3,14 @@
  * `auth.users` row.
  *
  * ===========================================================================
- * DEPLOYED, AND ONE COMMIT BEHIND THIS FILE. Read the state, not this line.
+ * DEPLOYED, AND BEHIND THIS FILE. Read the state, not this line.
  * ===========================================================================
- * This banner said "NOT DEPLOYED YET" until 2026-08-14, four days after the
- * deploy landed. The claim is kept in that shape — a measurement plus the
- * command that re-takes it — because the deploy moves without this file moving:
+ * The deploy moves without this file moving, so every claim below carries the
+ * command that re-takes it. Do not hand-count how far behind the deployed build
+ * is — a headline count here was wrong within one commit of being written:
+ *
+ *   git log --oneline --since=2026-08-11 -- supabase/functions/delete-account/
+ *
  *
  *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
  *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
@@ -32,6 +35,13 @@
  * bearer token alone. **Ship the function change first**, then the client: the
  * stricter build refuses a caller sending no proof, and nothing calls it today,
  * so deploying it early breaks nothing.
+ *
+ * **And "nothing calls it" is not the same as "nobody can", which makes the
+ * ordering stronger than it first reads.** The endpoint is live with
+ * `verify_jwt`, so any signed-in rider's own access token already destroys their
+ * account in one request — no UI required, and anything running in the page
+ * holding that token can do it too. Deploying the stricter build first therefore
+ * CLOSES a gap that is open right now; it does not merely avoid opening one.
  *
  * Deploy — an OWNER action, dashboard rather than CLI (`PD-86`):
  *   supabase functions deploy delete-account --project-ref zwprydcyryvudhurbnye

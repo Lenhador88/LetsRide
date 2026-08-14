@@ -4,7 +4,11 @@
 was asked directly and did not answer, so group 1 was built to each recommended default rather
 than blocking. Every default is recorded in the migration that implements it, so a different
 answer is a new migration and not a rewrite. **Q1 is the only one already cast in applied SQL**;
-Q4 and Q7 are still genuinely open and neither is blocked on the other.
+**Q4 is the only one still open. Q7 was answered on 2026-08-14 — require the password** — and
+0.3 below carries it. This sentence named both until then, which mattered more than it looks:
+it is the closing line of the preamble to *"Before anything — resolve the questions that change
+the shape"*, so it is the **first** thing a session reads about Q7 and it would send them to ask
+a question 0.3 spends two lines forbidding.
 
 - [x] 0.1 **Q1 — product owner.** A club whose owner deletes their account: transfer, or delete?
   **Built as TRANSFER** (design D2's default) in `029`. It is the difference between one rider's
@@ -169,8 +173,10 @@ removal landing without its code repair is an outage.
   **DEFERRED, and deliberately, not overlooked.** Q4 is marked PO *(legal)* and "blocking before
   launch, not before build"; retaining a hash of a deleted person's identifier is a legal
   posture nobody in a session should adopt on the owner's behalf. Deferring costs nothing —
-  "retain nothing" removes work rather than adding it, and the Edge Function that would write
-  the row is not deployed either. `030`'s `terms_version` is the half that had to land first,
+  "retain nothing" removes work rather than adding it. (This clause used to add "and the Edge
+  Function that would write the row is not deployed either" — it has been deployed since
+  2026-08-11, so that half of the deferral argument is gone and the first half carries it alone.)
+  `030`'s `terms_version` is the half that had to land first,
   because it cannot be reconstructed later.
 - [ ] 1.11 Assertions for 1.10 — deferred with it.
 - [x] 1.12 Apply, then check the Supabase security advisors. Expect the two known findings
@@ -193,8 +199,7 @@ removal landing without its code repair is an outage.
   this line read as done while that arm did not exist.** The file reads no request body at all —
   `req.json()` appears nowhere in it — so there is nothing for a proof to arrive in. Q7 was open
   when this was ticked and the clause was written against its recommended default; it is now
-  decided, and the arm is the outstanding work. Do not read the tick that used to be here as
-  evidence the gate exists; read the file.
+  decided, and the arm is the outstanding work.
 - [x] 2.3 Storage sweep across every prefix in the `media` bucket keyed on the rider's uid —
   `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`, `club-avatars/<uid>/`,
   `club-covers/<uid>/` and, since PD-104, `ride-maps/<uid>/` — through the
@@ -270,6 +275,14 @@ removal landing without its code repair is an outage.
   "This action cannot be undone." (`Poppins/14/Regular`), `Button variant="danger"` labelled
   `Delete account`, `secondary` labelled `Cancel`. The title's fill in the frame is the legacy
   `Grey (OLD)/10` — resolve to the nearest v2 token per decision #4 rather than porting it.
+
+  **This enumeration is no longer complete, and it is closed-form, which is the trap.** Q7's
+  answer adds a password field the frame does not draw, so a builder following this list ships
+  the sheet, ticks it, and reaches 3.4 with nowhere to put the input. The field is 3.4's, and
+  **its placement, label, error copy and type token are unspecified by anyone** — the Q7 row
+  offered "draw the field OR bless the deviation" and the owner blessed the deviation, which
+  settles whether to re-authenticate and not what the control looks like. Ask the designer, or
+  build it from the nearest existing `<Input>` usage and say which you did.
 - [ ] 3.4 Re-authentication before the destructive call (design D6, Q7 — **decided 2026-08-14,
   require the password**). Server-verified, not a client-side gate: the client collects the
   password and the **Edge Function** verifies it, because a check the client performs is one a
@@ -280,6 +293,14 @@ removal landing without its code repair is an outage.
   with no gate at all — fail-open, behind a password field implying otherwise. The other order
   is fail-closed: a function requiring the proof refuses a client that sends none, and nothing
   calls it today. **The redeploy is an owner action** (`PD-86`) and it is needed on DEV too.
+
+  **It is the SAME owner action as 2.3a and as `add-ride-map-tiles` 8.3 — one redeploy, three
+  reasons — and that breaks the check all three of them verify with.** Each says "`list_edge_functions`
+  shows a new `ezbr_sha256`", which was a sound test while there was one reason; now whichever
+  redeploy happens first satisfies every one of those checks while saying nothing about whether
+  the other two reasons shipped. So verify the *content*: `ride-maps` present in the deployed
+  `PREFIXES`, and a request with no proof refused. A changed sha is necessary and no longer
+  sufficient.
 - [ ] 3.5 The impact summary: clubs that will change hands, upcoming rides that will be cancelled,
   riders currently RSVP'd to them. Read through `src/lib/data/`, under the rider's own session,
   never through the privileged function. Render nothing rather than zeroes when there is nothing.

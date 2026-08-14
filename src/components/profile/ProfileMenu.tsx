@@ -27,10 +27,9 @@ import { useSignOut } from '@/lib/actions/navigate'
  * postcards, 031 makes that reachable, and the Edge Function that owns the auth
  * delete is at supabase/functions/delete-account/.
  *
- * This comment said the function "is not deployed and has never run" until
- * 2026-08-14, three days after it was deployed. It is ACTIVE on both projects
- * — check with list_edge_functions rather than reading a date here. **What is
- * still missing is the reason no row points at it yet**: Q7 was answered on
+ * The function is deployed and ACTIVE on both projects — check with
+ * list_edge_functions rather than reading a date here. **What is still missing
+ * is the reason no row points at it yet**: Q7 was answered on
  * 2026-08-14 with "require the password", and the deployed build has no arm to
  * verify one. A row added before that lands is a delete with no gate behind a
  * screen that shows a password field. See openspec/changes/add-account-deletion/
