@@ -370,7 +370,7 @@ build work, the rest are the owner's.
 | | Blocker | Why it blocks |
 |---|---|---|
 | 1 | **The shell itself** | **Started 2026-08-07; the `webDir` gate cleared 2026-08-10 (PD-142).** `capacitor.config.ts`, the secure store and a building `out/` are in; `ios/` and `android/` are not, and cannot be generated here. What is left needs a Mac |
-| 2 | **Account deletion — database done, function deployed but INCOMPLETE, flow not built** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, and the Edge Function **deployed and ACTIVE on both projects** since 2026-08-11 (`list_edge_functions`, identical `ezbr_sha256`). **Do not read that as group 2 closed** — four of its tasks are open (`2.2` the re-auth arm, `2.3a` the `ride-maps` redeploy, `2.4` idempotency, `2.6` the exercise): `grep -c '^- \[ \] 2\.' openspec/changes/add-account-deletion/tasks.md`. Nothing in `src/` points at it. Groups 3, 4 and 7 of `openspec/changes/add-account-deletion/` remain, and **Q7 is now decided: re-authenticate with the password** (`PD-102`), which adds an arm the deployed build does not have — so the function is redeployed *before* the client half or the gate is fail-open |
+| 2 | **Account deletion — database done, function deployed but INCOMPLETE, flow not built** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, and the Edge Function **deployed and ACTIVE on both projects** since 2026-08-11 (`list_edge_functions`, identical `ezbr_sha256`). **Do not read that as group 2 closed** — four of its tasks are open (`2.2` the re-auth arm, `2.3a` the `ride-maps` redeploy, `2.4` idempotency, `2.6` the exercise): `grep -c '^- \[ \] 2\.' openspec/changes/add-account-deletion/tasks.md`. Nothing in `src/` points at it. Count what is open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because the groups do not close in order: **`1.6b` is a live defect** (a club's last member leaving can destroy third-party postcards) and `6.1`/`6.3` are the cascade test and the live walk, all outside the "groups 3 and 4" this row used to name. And **Q7 is now decided: re-authenticate with the password** (`PD-102`), which adds an arm the deployed build does not have — so the function is redeployed *before* the client half or the gate is fail-open |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
@@ -1077,8 +1077,14 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   `ezbr_sha256`, all five of task 2.6's cases passing on DEV with case 3 checked against
   `auth.users` rather than the response body, and 0 orphaned `profiles` rows after the cascade.
   Nothing in `src/` calls it yet, deliberately: its own task list says a control ships
-  working or it does not ship, and **that gate is now satisfied for DEV**, which is where group 3
-  will be built and walked. **Store blocker 2** — App Store 5.1.1(v).
+  working or it does not ship. **That gate is NOT satisfied, and this line said it was until
+  2026-08-14** — which is worth the correction because a session reading it builds group 3
+  against the deployed function and ships exactly the fail-open deletion below. Q7 was answered
+  on 2026-08-14 (`PD-102`, require the password) and the deployed build has no arm to verify a
+  proof: it reads no request body at all. So `2.2` is un-ticked and `2.6` stays open because the
+  build that will ship is not the build that was exercised. **The function change lands and is
+  redeployed BEFORE the client half** — the other order puts a password field on screen with
+  nothing behind it. **Store blocker 2** — App Store 5.1.1(v).
 
   Two things to carry into group 3 rather than rediscover. **A second `delete-account` call with
   the same token returns 401, and that is correct** — `getUser` runs first and GoTrue rejects a
@@ -1094,7 +1100,8 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   >
   > **Complexity** 5/10
   >
-  > the flow is four screens and one action; the risk is all in the function, which is written
+  > the flow is four screens and one action; most of the risk is in the function, which is
+  > written except the re-auth arm Q7 decided on 2026-08-14
   >
   > **Urgency** 3/10
   >
@@ -1107,7 +1114,8 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   >
   > **This session** N
   >
-  > needs the function deployed, which is an owner action
+  > it is `PD-102`, queued — and the client half waits on an owner REdeploy carrying the re-auth
+  > arm, not on the original deploy, which landed 2026-08-11
 
 - **Inbox still has no tab, and DMs are what is left of the epic.** Per-ride chat (`034`, PD-115)
   and notifications (`036`, PD-118) both shipped; the tab was dropped rather than built (PD-100),

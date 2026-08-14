@@ -1294,10 +1294,16 @@ and the reader can stop after it. Do not order by complexity, by what is easiest
 order the options occurred to you, or by narrative build-up to a favourite — a reply whose
 recommended option is third has buried its own answer.
 
-Ties break on `Customer value`, then on `This session`. The rule composes with the
-count-up-across-the-session rule above rather than replacing it: within *one* reply the options
-are sorted, and the letters continue from wherever the session had reached, so a reply's first
-option might be **E** and its second **F**. Sorting never renumbers a letter already spent.
+**Ties on `Recommendation` are yours to order — do not break them on `Customer value`.** That
+axis is the one this file already tells you not to optimise: *"Rate it honestly at 0 rather than
+inflating it to justify the work — **Recommendation** already does that job."* Giving it
+positional consequence hands the author a reason to write 2 instead of 0, and would sort the
+revoked grant nobody notices below the toggle, on the axis just declared non-ranking.
+
+The rule composes with the count-up-across-the-session rule below rather than replacing it:
+within *one* reply the options are sorted, and the letters continue from wherever the session had
+reached, so a reply's first option might be **E** and its second **F**. Sorting never renumbers a
+letter already spent.
 
 **The letters count up for the whole session and never restart at A**, so the fourth option
 offered is **D** even if it is the first in its reply. Product owner, 2026-08-13: *"we used A

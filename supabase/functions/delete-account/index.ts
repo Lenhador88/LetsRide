@@ -7,10 +7,12 @@
  * ===========================================================================
  * The deploy moves without this file moving, so every claim below carries the
  * command that re-takes it. Do not hand-count how far behind the deployed build
- * is — a headline count here was wrong within one commit of being written:
+ * is — a headline count here was wrong within one commit of being written, and
+ * do not hardcode the deploy date into the range either, which is how the FIX
+ * for that went wrong on its first pass. Read the date off the deploy, then use
+ * it:
  *
- *   git log --oneline --since=2026-08-11 -- supabase/functions/delete-account/
- *
+ *   git log --oneline --since=<the updated_at below> -- supabase/functions/delete-account/
  *
  *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
  *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
@@ -42,6 +44,18 @@
  * account in one request — no UI required, and anything running in the page
  * holding that token can do it too. Deploying the stricter build first therefore
  * CLOSES a gap that is open right now; it does not merely avoid opening one.
+ *
+ * Measured against DEV 2026-08-14 — the gateway does not want an `apikey` at
+ * all, which is the part that looks wrong and is not:
+ *
+ *   POST .../functions/v1/delete-account
+ *     no headers                      401 UNAUTHORIZED_NO_AUTH_HEADER
+ *     apikey: garbage                 401 UNAUTHORIZED_NO_AUTH_HEADER
+ *     Authorization: Bearer garbage   401 UNAUTHORIZED_INVALID_JWT_FORMAT
+ *
+ * So `Authorization: Bearer <a rider's access token>` is the whole requirement.
+ * An `apikey` header alone does not even count as authentication, and the
+ * publishable key in the Authorization slot is refused at `getUser` below.
  *
  * Deploy — an OWNER action, dashboard rather than CLI (`PD-86`):
  *   supabase functions deploy delete-account --project-ref zwprydcyryvudhurbnye

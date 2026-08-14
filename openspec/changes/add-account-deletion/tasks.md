@@ -5,10 +5,7 @@ was asked directly and did not answer, so group 1 was built to each recommended 
 than blocking. Every default is recorded in the migration that implements it, so a different
 answer is a new migration and not a rewrite. **Q1 is the only one already cast in applied SQL**;
 **Q4 is the only one still open. Q7 was answered on 2026-08-14 — require the password** — and
-0.3 below carries it. This sentence named both until then, which mattered more than it looks:
-it is the closing line of the preamble to *"Before anything — resolve the questions that change
-the shape"*, so it is the **first** thing a session reads about Q7 and it would send them to ask
-a question 0.3 spends two lines forbidding.
+0.3 below carries it.
 
 - [x] 0.1 **Q1 — product owner.** A club whose owner deletes their account: transfer, or delete?
   **Built as TRANSFER** (design D2's default) in `029`. It is the difference between one rider's
@@ -173,10 +170,8 @@ removal landing without its code repair is an outage.
   **DEFERRED, and deliberately, not overlooked.** Q4 is marked PO *(legal)* and "blocking before
   launch, not before build"; retaining a hash of a deleted person's identifier is a legal
   posture nobody in a session should adopt on the owner's behalf. Deferring costs nothing —
-  "retain nothing" removes work rather than adding it. (This clause used to add "and the Edge
-  Function that would write the row is not deployed either" — it has been deployed since
-  2026-08-11, so that half of the deferral argument is gone and the first half carries it alone.)
-  `030`'s `terms_version` is the half that had to land first,
+  "retain nothing" removes work rather than adding it. `030`'s `terms_version` is the half that
+  had to land first,
   because it cannot be reconstructed later.
 - [ ] 1.11 Assertions for 1.10 — deferred with it.
 - [x] 1.12 Apply, then check the Supabase security advisors. Expect the two known findings
@@ -237,6 +232,12 @@ removal landing without its code repair is an outage.
   already blocks its own deploy on this redeploy, so the two are one window. Deploying the renderer
   first is what opens the gap. **Verify with `list_edge_functions` on both projects: a new
   `ezbr_sha256` for `delete-account`, equal across PROD and DEV.**
+
+  **That sha check is necessary and NOT sufficient any more — see 3.4.** Three tasks now demand
+  this one redeploy for three different reasons (this one, 3.4's re-auth arm, and
+  `add-ride-map-tiles` 8.3), so whichever redeploy happens first changes the sha and satisfies
+  all three checks while proving nothing about the other two reasons. Verify the *content*:
+  `ride-maps` present in the deployed `PREFIXES`.
 - [ ] 2.4 Idempotency and failure handling per design D7: already-deleted returns success; a
   failure before the auth delete leaves everything intact; the transfer and the cascade are one
   transaction; concurrent invocations do not double-transfer a club and never select a candidate
