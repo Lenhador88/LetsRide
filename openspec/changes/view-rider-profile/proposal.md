@@ -37,8 +37,14 @@ silently becomes whatever the migration author assumed."*
   `postcards` policy already produce exactly the required rows and columns.
 - **Four things the design draws are deliberately NOT built**, and are specified as absent rather
   than left to a builder's judgement: **Follow**, **followers count**, **motorcycles count**, and
-  the **Timeline/Garage switcher**. See `specs/rider-profile-viewing/spec.md` §The surfaces this
-  change does not build.
+  the **Timeline/Garage switcher**. The last requirement in
+  `specs/rider-profile-viewing/spec.md` carries them, with the reason each is absent.
+
+  (Deliberately not a `§` citation. Every OpenSpec requirement heading begins with the literal
+  word `Requirement:`, so a file-qualified pointer at one is **ambiguous by construction** —
+  `scripts/docs/crossrefs.mjs` matches on leading words and cannot tell nine of them apart.
+  Naming the surfaces here, where they are already listed, beats a pointer that goes stale or
+  turns the cross-reference gate red.)
 
 ## Capabilities
 
