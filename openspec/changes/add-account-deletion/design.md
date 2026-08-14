@@ -221,11 +221,17 @@ one.
 a password field, and a stolen unlocked phone is two taps from destroying an account. Every
 comparable flow re-authenticates.
 
-The recommendation is to require the account password immediately before the destructive call
-(and to accept an OAuth re-consent if federated sign-in ever lands). It is a deviation from a
-`Done` frame, so it is Q7 for the designer rather than a decision taken here, and the default is
-"add it" because the failure it prevents is unrecoverable and the failure it causes is a rider
-mildly annoyed.
+**DECIDED by the product owner 2026-08-14: require the account password** immediately before the
+destructive call (and accept an OAuth re-consent if federated sign-in ever lands). This was
+written as a recommendation awaiting Q7, and the deviation from the `Done` frame is now blessed.
+The reason it was recommended is the reason it was taken: the failure it prevents is
+unrecoverable and the failure it causes is a rider mildly annoyed.
+
+**The proof is verified in the Edge Function, and that ordering is the whole point.** The
+deployed build reads no request body at all, so a client that sends a password proof to *it*
+is deleted with **no gate** — fail-open, behind a password field implying otherwise. Ship the
+stricter function first: it refuses a client that sends no proof, and nothing calls it today,
+so deploying it early breaks nothing. Every redeploy is an owner action (`PD-86`).
 
 `/auth/reset-password`'s recovery grant (`migrate-to-client-rendered-shell` D3) is the wrong
 mechanism to copy: that one exists because the rider does *not* know their password. Here they
@@ -407,7 +413,7 @@ owner only; **Designer** = the design owner; **Eng** = decidable in the work.
 | Q4 | Consent evidence versus erasure: `terms_accepted_at` is what `012` calls evidence, and Art. 17 says erase it. | **Erase the profile row; retain one de-identified `consent_records` row** — salted hash of the uuid, terms version, timestamp, nothing else, no grants (D10). Adopting "retain nothing" later removes work rather than adding it. | **Yes, before launch** — not before build | PO (legal) |
 | Q5 | Is there a grace period? | **No.** Immediate and final, matching the drawn copy "This action cannot be undone." A soft delete adds a predicate to every SELECT policy in the schema. | No | PO |
 | Q6 | Is the username released immediately for anyone else to take? | **Yes**, immediately — it is a UNIQUE column and the row is gone. Reserving it needs a table that outlives the profile, which is retention of an identifier we said we erased. | No | PO |
-| Q7 | Re-authenticate before deleting? The `Done` frame draws no password field. | **Require the password** (D6). A deviation from the frame, justified by an unrecoverable failure mode. Needs the designer to draw the field or bless the deviation. | No | Designer + PO |
+| Q7 | ~~Re-authenticate before deleting? The `Done` frame draws no password field.~~ **ANSWERED 2026-08-14.** | **Require the password** (D6) — taken, and the deviation from the frame is blessed. Verified in the Edge Function, which must be redeployed *before* the client half or the gate is fail-open. | Closed | PO decided *whether*; **Designer still owns what the field looks like** — blessing the deviation does not draw the control (tasks 3.3) |
 | Q8 | Play requires a web-accessible deletion route. Every route but `/auth/*` and `/legal/*` needs a session. | A public **`/legal/account-deletion`** page describing the in-app path and linking to `/profile`. Holds no data, needs no session, adds **no `anon` grant** — decision #1 untouched. | No | PO |
 | Q9 | Moderation reports the deleting rider filed cascade away with them. Keep them? | **Let them go.** No admin role exists to triage them (`011` KNOWN GAP), and a report is an accusation attached to a person who has left. Revisit when moderation gets a role. | No | PO |
 | Q10 | Objects the Storage delete misses become permanent orphans — no credential can reach a departed rider's folder. | Fail the whole deletion if the object delete fails (D7), and log the prefix. A cross-rider sweeper needs a privileged credential and is out of scope; name it rather than build it. | No | Eng |

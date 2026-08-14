@@ -3,20 +3,61 @@
  * `auth.users` row.
  *
  * ===========================================================================
- * NOT DEPLOYED YET. This file is written and unexercised.
+ * DEPLOYED, AND BEHIND THIS FILE. Read the state, not this line.
  * ===========================================================================
- * `supabase` CLI is not installed in the build container and the Supabase MCP
- * server exposes no deploy-function tool, so this could not be deployed or run
- * from the session that wrote it. **Nothing in `src/` points at it, deliberately
- * — the flow's own task list says a dead control ships working or not at all.**
- * Before any UI calls this, it must be deployed and exercised against a
- * disposable account: delete succeeds; a second call succeeds; a request
- * carrying another rider's id in the body still deletes only the caller; a
- * request bearing the publishable key is refused; a request with no token is
- * refused. A live run, not a claim — `docs/HANDOFF.md` records three PRs that
- * merged unverified.
+ * The deploy moves without this file moving, so every claim below carries the
+ * command that re-takes it. Do not hand-count how far behind the deployed build
+ * is — a headline count here was wrong within one commit of being written, and
+ * do not hardcode the deploy date into the range either, which is how the FIX
+ * for that went wrong on its first pass. Read the date off the deploy, then use
+ * it:
  *
- * Deploy:
+ *   git log --oneline --since=<the updated_at below> -- supabase/functions/delete-account/
+ *
+ *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
+ *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
+ *   # status ACTIVE, verify_jwt true, ezbr_sha256 EQUAL across the two
+ *
+ * Measured 2026-08-14: ACTIVE on both, `verify_jwt: true`, identical
+ * `ezbr_sha256`, deployed 2026-08-11. All five of task 2.6's cases passed on
+ * DEV against that build; `PD-86` is the record, and whether PROD's
+ * `SERVICE_ROLE_KEY` is PROD's key remains unproven there.
+ *
+ * **The deployed build is NOT this file.** `ride-maps` joined `PREFIXES` on
+ * 2026-08-12 (`99a2f09`), after the deploy. Harmless while it lasts — the map
+ * renderer is deployed on neither project, so nothing writes that prefix — and
+ * `add-ride-map-tiles` task 8.3 blocks its own deploy on this redeploy for
+ * exactly that reason. Deploying the renderer first is what opens the gap.
+ *
+ * **What is still owed here: the re-authentication proof (task 3.4).** Q7 was
+ * answered on 2026-08-14 — require the password — and this file has no arm for
+ * it: `req.json()` appears nowhere below, so there is nothing for a proof to
+ * arrive in. Until that lands AND is redeployed, a client half that collects a
+ * password is a gate that does not exist, because this build deletes on a valid
+ * bearer token alone. **Ship the function change first**, then the client: the
+ * stricter build refuses a caller sending no proof, and nothing calls it today,
+ * so deploying it early breaks nothing.
+ *
+ * **And "nothing calls it" is not the same as "nobody can", which makes the
+ * ordering stronger than it first reads.** The endpoint is live with
+ * `verify_jwt`, so any signed-in rider's own access token already destroys their
+ * account in one request — no UI required, and anything running in the page
+ * holding that token can do it too. Deploying the stricter build first therefore
+ * CLOSES a gap that is open right now; it does not merely avoid opening one.
+ *
+ * Measured against DEV 2026-08-14 — the gateway does not want an `apikey` at
+ * all, which is the part that looks wrong and is not:
+ *
+ *   POST .../functions/v1/delete-account
+ *     no headers                      401 UNAUTHORIZED_NO_AUTH_HEADER
+ *     apikey: garbage                 401 UNAUTHORIZED_NO_AUTH_HEADER
+ *     Authorization: Bearer garbage   401 UNAUTHORIZED_INVALID_JWT_FORMAT
+ *
+ * So `Authorization: Bearer <a rider's access token>` is the whole requirement.
+ * An `apikey` header alone does not even count as authentication, and the
+ * publishable key in the Authorization slot is refused at `getUser` below.
+ *
+ * Deploy — an OWNER action, dashboard rather than CLI (`PD-86`):
  *   supabase functions deploy delete-account --project-ref zwprydcyryvudhurbnye
  *   supabase secrets set SERVICE_ROLE_KEY=... --project-ref zwprydcyryvudhurbnye
  *
