@@ -162,6 +162,13 @@ export function checkUsername(value: string): { ok: true; username: string } | {
 }
 
 /**
+ * A rider id in `/profile/detail?id=`. Same reasoning as `rideIdSchema`/
+ * `clubIdSchema`: a malformed id means "no such rider", and not-found is the
+ * honest answer for a route that already renders the same state for a block.
+ */
+export const profileIdSchema = z.uuid()
+
+/**
  * One ISO 3166-1 alpha-2 code, matching 014's CHECK constraint character for
  * character. Uppercased rather than rejected on case because the database is
  * strict — `014` stores `NL` and nothing else — so normalising here is
@@ -176,13 +183,6 @@ export function checkUsername(value: string): { ok: true; username: string } | {
  * so without this `ZZ` would be stored happily and then render as a blank flag
  * and its own code forever.
  */
-/**
- * A rider id in `/profile/detail?id=`. Same reasoning as `rideIdSchema`/
- * `clubIdSchema`: a malformed id means "no such rider", and not-found is the
- * honest answer for a route that already renders the same state for a block.
- */
-export const profileIdSchema = z.uuid()
-
 export const countryCodeSchema = z
   .string()
   .trim()

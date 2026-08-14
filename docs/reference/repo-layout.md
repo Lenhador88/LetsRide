@@ -13,7 +13,7 @@ src/
 │   │   ├── rides/          # /rides, /rides/new, /rides/detail (Ride plan), /rides/detail/crew, /rides/detail/chat, /rides/detail/edit (PD-101)
 │   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/detail (Timeline) + /rides, /members, /about, /edit (PD-101)
 │   │   ├── notifications/  # /notifications — PD-118. Becomes /inbox/notifications when the tab returns
-│   │   └── profile/        # /profile
+│   │   └── profile/        # /profile (your own), /profile/detail (another rider's — view-rider-profile)
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
 │   ├── onboarding/         # /onboarding/terms, /onboarding/username, /onboarding/location — see decision #5
 │   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion — public, decision #1
@@ -29,7 +29,7 @@ src/
 │   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, EditClubForm, DeleteClubControl, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem
-│   └── profile/            # EditProfileForm, ProfileCountries, ProfileImageUpload, ProfileMenu
+│   └── profile/            # CountryFlags, EditProfileForm, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
 │   │   ├── resolve.ts      # THE doorway for lib/data and lib/actions. Read its header
