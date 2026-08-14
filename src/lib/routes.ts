@@ -73,6 +73,7 @@ export const detailPaths = {
   clubMembers: '/clubs/detail/members',
   clubAbout: '/clubs/detail/about',
   clubEdit: '/clubs/detail/edit',
+  profile: '/profile/detail',
 } as const
 
 export const routes = {
@@ -86,4 +87,7 @@ export const routes = {
   clubMembers: (id: string) => detail(detailPaths.clubMembers, id),
   clubAbout: (id: string) => detail(detailPaths.clubAbout, id),
   clubEdit: (id: string) => detail(detailPaths.clubEdit, id),
+  /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
+   * rather than resolving here; see that route's own redirect. */
+  profile: (id: string) => detail(detailPaths.profile, id),
 } as const

@@ -262,11 +262,27 @@ link to a screen that will render not-found.
 
 #### Scenario: An unresolvable author
 
-- **WHEN** a postcard's author embed is null, which happens when the author's username is NULL
-  and the `profiles` policy therefore withholds the row while the postcard itself remains visible
+- **WHEN** a postcard's author embed is null
 - **THEN** the byline SHALL render its existing plain-text fallback and SHALL NOT be a link
 - **AND** no empty tap target SHALL be rendered, for the same reason the club link is gated on the
   club's name rather than on the club
+- **AND** the gate SHALL be justified as a defence rather than as a reachable state. An earlier
+  revision grounded it in "the author's username is NULL, so the policy withholds the row", and
+  **that state cannot arise**: authoring requires `may_participate()`, which requires
+  `onboarding_completed_at`; `enforce_onboarding_completion` refuses that stamp without a
+  username; and `038` then makes removal impossible. DEV carries 0 postcards by a NULL-username
+  author. The gate stays because a null embed is *also* what a future audience change would
+  produce, and a link built on an assumption that has no test is how that change breaks silently
+
+#### Scenario: A subject who set a username but never finished onboarding
+
+- **WHEN** a rider set a username and abandoned the wizard before location, and a viewer reaches
+  their profile by a hand-typed URL
+- **THEN** the screen SHALL render, because the audience predicate checks `username IS NOT NULL`
+  and never `onboarding_completed_at` — this rider is admitted, with most optional columns NULL
+- **AND** that SHALL be treated as an ordinary sparse profile rather than an error state, because
+  `may_participate()` requires both stamps, so such a rider can post nothing, join nothing and
+  appear in no list; no link in the app can reach them
 
 #### Scenario: The byline link inside the swipe deck
 
@@ -274,6 +290,38 @@ link to a screen that will render not-found.
 - **THEN** the swipe SHALL be swallowed and SHALL NOT navigate
 - **AND** a tap SHALL navigate, on the same mechanism that already makes the club link and
   `CommentsLink` safe inside the deck
+
+### Requirement: The avatar and cover SHALL carry the profile's audience into Storage, and their signatures SHALL be stated as outliving a block
+
+The avatar and cover SHALL be signed only for a viewer the subject's own audience admits, and a
+signature already minted SHALL be treated as valid until it expires, including after a block.
+
+This screen is the first to sign **another** rider's cover, so `storage.objects` becomes part of
+this change's audience surface rather than a rendering detail. It was measured rather than
+assumed, because CLAUDE.md's "any `storage.objects` policy … checks the path prefix only" is
+scoped to the participation gate but reads as a general claim, and taken generally it would make
+this a data leak.
+
+#### Scenario: A blocked viewer cannot sign either object
+
+- **WHEN** a viewer blocked by, or blocking, the subject attempts to sign the subject's avatar or
+  cover
+- **THEN** Storage SHALL refuse, because the `media` bucket is private and its SELECT policies
+  delegate to the profile's own visibility — `EXISTS (SELECT 1 FROM profiles p WHERE
+  p.cover_image_path = objects.name AND …)`, and RLS applies inside that subquery
+- **AND** this SHALL be treated as composition rather than as a second copy of the rule: the
+  block list is consulted once, in the `profiles` policy, and Storage inherits it
+
+#### Scenario: A signature already minted outlives the block that should end it
+
+- **WHEN** a viewer opens a profile, is issued signed URLs, and then blocks the subject from that
+  same screen
+- **THEN** the row SHALL become unreadable immediately, and the already-minted URLs SHALL remain
+  fetchable until they expire — up to `SIGNED_URL_TTL_SECONDS`, one hour
+- **AND** this SHALL be recorded as accepted rather than fixed. It is a property of every signed
+  URL in the app, not of this screen; shortening the TTL trades it against a re-sign on every
+  render. It is stated here because putting the block control **on this screen** is what makes it
+  a designed path rather than an edge case
 
 ### Requirement: The surfaces this change does not build SHALL be named rather than half-built
 

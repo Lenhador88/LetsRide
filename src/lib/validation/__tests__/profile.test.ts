@@ -9,6 +9,7 @@ import {
   bioSchema,
   checkUsername,
   profileEditSchema,
+  profileIdSchema,
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
   usernameSchema,
@@ -246,6 +247,27 @@ describe('bioSchema / bikeModelSchema', () => {
 
   it('measures length after trimming, so trailing spaces cannot fail a valid bio', () => {
     expect(bioSchema.safeParse(`${'x'.repeat(BIO_MAX_LENGTH)}   `).success).toBe(true)
+  })
+})
+
+/**
+ * `/profile/detail?id=`, matching `rideIdSchema`/`clubIdSchema` — a malformed
+ * id must become not-found through `getProfile` rather than surface a
+ * Postgres `22P02` as an error state.
+ */
+describe('profileIdSchema', () => {
+  it('accepts a uuid', () => {
+    expect(profileIdSchema.safeParse('dd7c6d53-3a12-481c-96f6-efd5249693b4').success).toBe(true)
+  })
+
+  it('rejects an absent, empty or malformed id', () => {
+    // `''` is what an absent `?id=` becomes on every one of the ten existing
+    // detail routes and this is the eleventh; `'new'` and `'not-a-uuid'`
+    // cover a stray path segment reaching this schema the same way it once
+    // reached `rideIdSchema`.
+    for (const bad of ['', 'new', 'not-a-uuid', '123', 'undefined', 'null']) {
+      expect(profileIdSchema.safeParse(bad).success).toBe(false)
+    }
   })
 })
 

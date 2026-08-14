@@ -1,8 +1,9 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
-import { OWN_PROFILE_COLUMNS } from '@/lib/data/columns'
-import type { Profile } from '@/types'
+import { OWN_PROFILE_COLUMNS, VIEWED_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { profileIdSchema } from '@/lib/validation/profile'
+import type { Profile, ViewedProfile } from '@/types'
 
 export async function getCurrentProfile(): Promise<Profile | null> {
   const supabase = await resolveSupabase()
@@ -44,6 +45,55 @@ export async function getCurrentProfile(): Promise<Profile | null> {
         ) ?? null)
       : null
   }
+  return profile
+}
+
+/**
+ * Another rider's profile — `/profile/detail?id=<uuid>`, and the one screen
+ * `VIEWED_PROFILE_COLUMNS` exists for.
+ *
+ * `null` collapses every audience case `rider-profile-viewing` names: a
+ * malformed id, no such row, a NULL-username row the `profiles` policy
+ * withholds, and a block in either direction (`private.is_blocked` is
+ * symmetric — `openspec/changes/view-rider-profile/design.md` §D1). The
+ * screen renders one not-found for all of them, deliberately — telling them
+ * apart would make the route an oracle for whether a given id exists or
+ * whether a block is in place.
+ *
+ * `maybeSingle`, not `single`: a zero-row result is the ordinary "not visible
+ * to you" case here, not a failure to surface as the error boundary.
+ */
+export async function getProfile(userId: string): Promise<ViewedProfile | null> {
+  // Before `resolveSupabase()`, so a malformed id costs no round trip — same
+  // guard as `getRide`/`getClub`. A non-uuid id reaches `.eq('id', …)` as
+  // `22P02`, which PostgREST turns into a 400 and `unwrap` throws, landing the
+  // rider on the error boundary instead of the not-found this deserves.
+  if (!profileIdSchema.safeParse(userId).success) return null
+
+  const supabase = await resolveSupabase()
+
+  const profile = unwrap(
+    await supabase
+      .from('profiles')
+      .select(VIEWED_PROFILE_COLUMNS)
+      .eq('id', userId)
+      .maybeSingle(),
+    'that profile',
+  ) as ViewedProfile | null
+
+  if (!profile) return null
+
+  // Same two-pass signing `getCurrentProfile` uses, for the same reason: the
+  // avatar and the cover are different Storage folders with different SELECT
+  // policies, so a readable profile row does not imply either object is.
+  await resolveAvatarUrls([profile], supabase)
+
+  profile.cover_image_url = profile.cover_image_path
+    ? ((await signImagePaths([profile.cover_image_path], supabase)).get(
+        profile.cover_image_path
+      ) ?? null)
+    : null
+
   return profile
 }
 

@@ -127,10 +127,31 @@ function PostcardCardComponent({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 px-3">
-        <Avatar src={postcard.author?.avatar_url} name={username} size="xs" className="mr-1" />
-        {/* Decision #7: the username is the identity everywhere a person is
-            shown. There is no full_name column to fall back to. */}
-        <span className="truncate text-xs font-semibold text-foreground">{username}</span>
+        {/* The avatar and username are one link to the author's profile —
+            `view-rider-profile`. Gated on `postcard.author` resolving rather
+            than on the username string, matching the club link's own gate a
+            few lines down: an author whose username is NULL is withheld by
+            the profiles policy, so the byline falls back to plain text
+            instead of a link to a screen that can only render not-found.
+
+            Decision #7: the username is the identity everywhere a person is
+            shown. There is no full_name column to fall back to.
+
+            Safe inside the swipe deck for the same reason the club link
+            below already is — see its own comment for the mechanism; only
+            the destination changed. Drawn with no underline and no colour of
+            its own, matching the design's one 12px semibold run. */}
+        {postcard.author ? (
+          <Link href={routes.profile(postcard.author.id)} className="flex items-center gap-0.5">
+            <Avatar src={postcard.author.avatar_url} name={username} size="xs" className="mr-1" />
+            <span className="truncate text-xs font-semibold text-foreground">{username}</span>
+          </Link>
+        ) : (
+          <>
+            <Avatar src={undefined} name={username} size="xs" className="mr-1" />
+            <span className="truncate text-xs font-semibold text-foreground">{username}</span>
+          </>
+        )}
         {/* club_id IS the audience — a club name here means club-members-only,
             its absence means the app-wide feed.
 

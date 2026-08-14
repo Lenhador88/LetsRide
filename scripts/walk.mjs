@@ -540,6 +540,14 @@ async function discoverDetailPaths({ quiet = false } = {}) {
   const postcard = await firstDetailId('/postcards', '/postcards/detail')
   if (!postcard) say('  (no postcard thread link — /postcards/detail unwalked)')
 
+  // The byline link `view-rider-profile` adds to `PostcardCard` — same page,
+  // same discovery shape. Whichever author's byline sorts first: if that is
+  // the walking account's own postcard, this exercises the self-view redirect
+  // rather than the stranger render, which is a real limitation rather than a
+  // bug — nothing here targets a *different* author on purpose.
+  const profile = await firstDetailId('/postcards', '/profile/detail')
+  if (!profile) say('  (no postcard byline link — /profile/detail unwalked)')
+
   const detail = (path, id) => `${path}?id=${id}`
 
   const paths = [
@@ -562,8 +570,9 @@ async function discoverDetailPaths({ quiet = false } = {}) {
         ].map((p) => detail(p, club))
       : []),
     ...(postcard ? [detail('/postcards/detail', postcard)] : []),
+    ...(profile ? [detail('/profile/detail', profile)] : []),
   ]
-  return { ride, club, postcard, paths }
+  return { ride, club, postcard, profile, paths }
 }
 
 /**

@@ -176,6 +176,13 @@ export function checkUsername(value: string): { ok: true; username: string } | {
  * so without this `ZZ` would be stored happily and then render as a blank flag
  * and its own code forever.
  */
+/**
+ * A rider id in `/profile/detail?id=`. Same reasoning as `rideIdSchema`/
+ * `clubIdSchema`: a malformed id means "no such rider", and not-found is the
+ * honest answer for a route that already renders the same state for a block.
+ */
+export const profileIdSchema = z.uuid()
+
 export const countryCodeSchema = z
   .string()
   .trim()

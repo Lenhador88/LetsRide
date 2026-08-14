@@ -103,6 +103,14 @@ export const queryKeys = {
     all: (): QueryKey => ['profile'],
     me: (): QueryKey => ['profile', 'me'],
     countries: (userId: string): QueryKey => ['profile', 'countries', userId],
+    /**
+     * `view-rider-profile` — no `revalidatePath` predecessor, like
+     * `notifications` and `places`. `blockRider`/`unblockRider`'s
+     * `invalidate(EVERYTHING)` already reaches this through the empty
+     * prefix, which is what evicts a viewed profile the instant the viewer
+     * blocks its subject (spec's *Stale after a block*).
+     */
+    detail: (userId: string): QueryKey => ['profile', 'detail', userId],
   },
 
   /**
