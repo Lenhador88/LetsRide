@@ -25,9 +25,16 @@ import { useSignOut } from '@/lib/actions/navigate'
  * treatment Journal got on the ride detail. Its groundwork is in: 029 transfers
  * a departing rider's clubs so the cascade does not destroy other riders'
  * postcards, 031 makes that reachable, and the Edge Function that owns the auth
- * delete is written at supabase/functions/delete-account/. **It is not deployed
- * and has never run**, which is exactly why no row points at it yet. See
- * openspec/changes/add-account-deletion/ group 3.
+ * delete is at supabase/functions/delete-account/.
+ *
+ * This comment said the function "is not deployed and has never run" until
+ * 2026-08-14, three days after it was deployed. It is ACTIVE on both projects
+ * — check with list_edge_functions rather than reading a date here. **What is
+ * still missing is the reason no row points at it yet**: Q7 was answered on
+ * 2026-08-14 with "require the password", and the deployed build has no arm to
+ * verify one. A row added before that lands is a delete with no gate behind a
+ * screen that shows a password field. See openspec/changes/add-account-deletion/
+ * group 3, and PD-102 for the ordering.
  *
  * Sign out goes through `lib/actions/auth.ts`, not a bare
  * `supabase.auth.signOut()` as the v1 button did — and that stays true now that

@@ -15,10 +15,11 @@ Q4 and Q7 are still genuinely open and neither is blocked on the other.
   (design D10). Default: retain. **Still open and deliberately not built** — see 1.10. It is
   listed as blocking *before launch* rather than before build, and deferring it removes work
   rather than adding it.
-- [ ] 0.3 **Q7 — designer.** The `Done` frame draws no re-authentication field. The default adds
-  one (design D6). **Still open**, and it costs nothing yet: group 3 is unbuilt, and the Edge
+- [x] 0.3 **Q7 — ANSWERED by the product owner 2026-08-14: require the password.** The `Done`
+  frame draws no re-authentication field; the deviation is blessed, and design D6's default is
+  now the decision. Do **not** re-open it and do **not** ask before building 3.4. The Edge
   Function's JWT check is not a substitute — re-auth proves the person at the phone knows the
-  password, which is a different claim from "this session is live". Ask before building 3.4.
+  password, which is a different claim from "this session is live".
 - [x] 0.4b **Q14 — the version string is `0-placeholder`, and the owner must replace it.**
   `/legal/terms` is placeholder copy that disclaims being an agreement, so a plausible date
   would assert the opposite of what the page says. It lives in exactly one place,
@@ -183,10 +184,17 @@ removal landing without its code repair is an outage.
   Edge Function and brings a deploy path CI does not have. Record how it is deployed, and that a
   function deployed by hand and never redeployed is the same class of drift as an unapplied
   migration.
-- [x] 2.2 The function itself: verify the JWT in the function rather than trusting the gateway;
+- [ ] 2.2 The function itself: verify the JWT in the function rather than trusting the gateway;
   resolve the subject from the token; **take no id parameter of any kind**; require the
   re-authentication proof from 3.4; run the club transfer, then the Storage sweep, then
   `deleteUser(sub)` with **hard delete**, never Supabase's soft-delete mode.
+
+  **Un-ticked 2026-08-14: every clause here is built except the re-authentication proof, and
+  this line read as done while that arm did not exist.** The file reads no request body at all —
+  `req.json()` appears nowhere in it — so there is nothing for a proof to arrive in. Q7 was open
+  when this was ticked and the clause was written against its recommended default; it is now
+  decided, and the arm is the outstanding work. Do not read the tick that used to be here as
+  evidence the gate exists; read the file.
 - [x] 2.3 Storage sweep across every prefix in the `media` bucket keyed on the rider's uid —
   `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`, `club-avatars/<uid>/`,
   `club-covers/<uid>/` and, since PD-104, `ride-maps/<uid>/` — through the
@@ -239,6 +247,13 @@ removal landing without its code repair is an outage.
   token is refused. **A live run, not a claim** — `docs/HANDOFF.md` records three PRs that merged
   unverified.
 
+  **All five passed on DEV against the build deployed 2026-08-11** — recorded on `PD-86`, which
+  is the evidence rather than this line. It stays unticked on purpose, and the reason is the
+  durable half: **the build that will ship is not the build that was exercised.** Q7's answer
+  adds the re-auth arm, so the five cases plus a sixth — a request with no proof, or a wrong
+  one, is refused and deletes nothing — are owed again against the redeployed function. An
+  exercise pass does not transfer across a redeploy.
+
 ## 3. The flow
 
 - [ ] 3.1 Add the `Delete account` row to `ProfileMenu`'s sheet: last position, own list group,
@@ -255,8 +270,16 @@ removal landing without its code repair is an outage.
   "This action cannot be undone." (`Poppins/14/Regular`), `Button variant="danger"` labelled
   `Delete account`, `secondary` labelled `Cancel`. The title's fill in the frame is the legacy
   `Grey (OLD)/10` — resolve to the nearest v2 token per decision #4 rather than porting it.
-- [ ] 3.4 Re-authentication before the destructive call (design D6, Q7). Server-verified, not a
-  client-side gate.
+- [ ] 3.4 Re-authentication before the destructive call (design D6, Q7 — **decided 2026-08-14,
+  require the password**). Server-verified, not a client-side gate: the client collects the
+  password and the **Edge Function** verifies it, because a check the client performs is one a
+  modified client skips.
+
+  **Land the function change and the client half as separate diffs, function first.** The
+  deployed build reads no request body, so a client sending a proof to it deletes the account
+  with no gate at all — fail-open, behind a password field implying otherwise. The other order
+  is fail-closed: a function requiring the proof refuses a client that sends none, and nothing
+  calls it today. **The redeploy is an owner action** (`PD-86`) and it is needed on DEV too.
 - [ ] 3.5 The impact summary: clubs that will change hands, upcoming rides that will be cancelled,
   riders currently RSVP'd to them. Read through `src/lib/data/`, under the rider's own session,
   never through the privileged function. Render nothing rather than zeroes when there is nothing.
