@@ -10,22 +10,22 @@ const poppins = Poppins({
 })
 
 /**
- * **This description is the only pitch the app ever makes.** Every page is
- * `'use client'`, and Next refuses a `metadata` export from a client module, so
- * every screen inherits these two strings — including the postcard, ride and
- * club URLs that `ShareButton` puts into someone's messages. The unfurl a
- * non-rider sees is this, and the screen they land on is a bare `Login` form
- * (decision #1), so nothing downstream gets a second chance to explain the app.
+ * **Every screen inherits this**, so it is also what unfurls when `ShareButton`
+ * puts a postcard URL into someone's messages — postcards being the only
+ * surface with a share affordance today. Nothing overrides it:
+ * `git grep -ln "export const metadata\|generateMetadata" -- 'src/app/**\/*.tsx'`
+ * names this file alone, because every page is `'use client'` and Next refuses a
+ * `metadata` export from a client module. That is the reason today rather than a
+ * guarantee — a route-segment `layout.tsx` need not be a client module, and two
+ * of the three are not.
  *
- * It is therefore written for the rider who arrives with **nobody**, which is
- * the majority of anyone reaching a shared link. The previous line ended "ride
- * with your crew" and presupposed the one thing they came here to find.
+ * The reader is therefore a rider who is not on LetsRide yet, and decision #1
+ * lands them on `/auth/login`, which passes no `body` to `AuthScreen` and so
+ * pitches nothing. Hence copy written for someone arriving with **nobody**,
+ * rather than for someone who already has a crew to ride with.
  *
- * "Join a club" stays because it is not a feature among three — it is the only
- * discovery path the app actually has. `getRides` scopes to organised, joined
- * and club rides with no public browse, so a club is how a rider with no
- * contacts reaches anything at all. Copy that demoted it would be aspirational
- * rather than true.
+ * Only `<meta name="description">` is emitted — there is no OpenGraph block, so
+ * an unfurler reading `og:*` alone shows no description at all.
  */
 export const metadata: Metadata = {
   title: 'LetsRide — Ride Together',
