@@ -1287,6 +1287,18 @@ number.
 yes to. **Say who does each one** — an owner-only item mixed into a list of build tasks hides the
 one nobody but them can do.
 
+**Order them by `Recommendation` descending — strongest first, always.** Product owner,
+2026-08-14: *"when you offer the lettered options, can you order by your recommendation
+descending?"* The letters are assigned in that order too, so **A is always the one being advised**
+and the reader can stop after it. Do not order by complexity, by what is easiest to build, by the
+order the options occurred to you, or by narrative build-up to a favourite — a reply whose
+recommended option is third has buried its own answer.
+
+Ties break on `Customer value`, then on `This session`. The rule composes with the
+count-up-across-the-session rule above rather than replacing it: within *one* reply the options
+are sorted, and the letters continue from wherever the session had reached, so a reply's first
+option might be **E** and its second **F**. Sorting never renumbers a letter already spent.
+
 **The letters count up for the whole session and never restart at A**, so the fourth option
 offered is **D** even if it is the first in its reply. Product owner, 2026-08-13: *"we used A
 letter before as well. So I wanted to refer now to the previous B, but then it gets confusing."*
