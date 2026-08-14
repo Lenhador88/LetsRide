@@ -200,7 +200,12 @@ layout. Omitting is also what the own-profile screen already does with Badges.
 
 **Q3 — Does the Options button (block/report) ship on this screen in the first cut?**
 *Blocking for the header's right-hand affordance. Product owner.*
-Default: **yes, block only, reusing the existing `blockRider` action.** A profile screen is the
+**ANSWERED 2026-08-14 — yes, ship it, block only.** The owner was given the reviewer's counter —
+that a block affordance is beyond an ask which was only "make the byline a link", and that putting
+it on this screen is what turns the one-hour signed-URL window into a designed path rather than an
+edge case — and kept it, on the description "an option on the menu that opens at the bottom to
+block that profile". Report is still out.
+Default was: **yes, block only, reusing the existing `blockRider` action.** A profile screen is the
 natural place to block someone, `Home / Block account` is a Done epic with a built action, and a
 screen that renders a stranger with no block affordance is the weaker safety position. If this is
 deferred, the button is omitted rather than rendered inert.
