@@ -1558,7 +1558,13 @@ chain to a scratch database and asserts what each role can reach.
   changed with the domain**, and what keeps that true is `canonicalOrigin()` in
   `src/lib/origin.ts`: it returns `NEXT_PUBLIC_CANONICAL_ORIGIN` when set and `window.location.origin`
   otherwise, so the **web** app still follows whichever host served it — production, DEV, a
-  per-deployment preview alias — with the variable unset. **In the native bundle the runtime origin
+  per-deployment preview alias — with the variable unset. **Exactly one origin in `src/` is written
+  down rather than resolved, and it is not a counter-example.** `src/app/layout.tsx` needs an
+  absolute `og:image` URL at *build* time — there is no `window` in the prerender pass, and a web
+  build refuses `NEXT_PUBLIC_CANONICAL_ORIGIN` — so it prefers `VERCEL_PROJECT_PRODUCTION_URL` and
+  falls back to a literal. A domain move updates Vercel's value on its own; the literal is the floor
+  for a build that has none, and it addresses a crawler fetching a static asset rather than a rider
+  following a link. **In the native bundle the runtime origin
   is `https://localhost`**, which is on no GoTrue redirect allowlist, and an unlisted `redirect_to`
   is *discarded* — path and all — rather than refused, so a confirmation email lands the rider on
   the app root with the error in a fragment nothing reads (measured against the live PROD auth
