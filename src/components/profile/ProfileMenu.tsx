@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { LogOutIcon, OptionsIcon, TrashIcon } from '@/components/icons/generated'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { DeleteAccountSheet } from '@/components/profile/DeleteAccountSheet'
+import { accountDeletionEnabled } from '@/lib/flags'
 import { useSignOut } from '@/lib/actions/navigate'
 
 /**
@@ -41,12 +42,17 @@ import { useSignOut } from '@/lib/actions/navigate'
  * auth-row delete.
  *
  * **The deployed Edge Function does not yet enforce the password
- * `DeleteAccountSheet` collects.** The re-authentication arm shipped in the
- * same PR as this row (function commit first, per the ordering rule in
- * `openspec/changes/add-account-deletion/tasks.md` 3.4), but redeploying is an
- * owner action — `list_edge_functions`, `ezbr_sha256` — and until it happens,
- * a password submitted here is checked by nothing on either project. Do not
- * read this row shipping as the gate being live.
+ * `DeleteAccountSheet` collects, and this row is gated behind
+ * `accountDeletionEnabled()` (`src/lib/flags.ts`) for exactly that reason —
+ * reviewer finding #1, 2026-08-16.** Committing the function ahead of the
+ * client inside one branch does not make a redeploy fail-closed: both merge
+ * together, the client half auto-deploys, the function half deploys by hand
+ * later if at all. Without the flag, merging this PR puts a live "Delete
+ * account" affordance on `/profile` whose password is checked by nothing —
+ * three taps and one character destroys the account. The flag defaults off
+ * (unset, or anything but the literal string `'true'`); the owner sets it per
+ * project only after confirming that project's redeploy enforces the proof by
+ * content, never by a changed `ezbr_sha256` alone.
  *
  * Sign out goes through `lib/actions/auth.ts`, not a bare
  * `supabase.auth.signOut()` as the v1 button did — and that stays true now that
@@ -60,6 +66,11 @@ export function ProfileMenu() {
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const { signOut, pending } = useSignOut()
+  // Reviewer finding #1: read once per render rather than hoisted to module
+  // scope, so a test can still exercise both branches by setting the env var
+  // before importing — module-scope evaluation would freeze it at whatever
+  // was set the first time this file loaded.
+  const deletionEnabled = accountDeletionEnabled()
 
   return (
     <>
@@ -82,27 +93,38 @@ export function ProfileMenu() {
           </span>
         </ContextMenuItem>
 
-        {/* Its own list group, matching the frame's separation from Sign out. */}
-        <div className="mt-2 border-t border-border pt-2">
-          <ContextMenuItem
-            variant="warning"
-            onClick={() => {
-              // Close this sheet before opening the next — both render
-              // through the same fixed z-index stack, and ContextMenu's own
-              // focus trap assumes it is the only one mounted open at once.
-              setOpen(false)
-              setDeleting(true)
-            }}
-          >
-            <span className="flex items-center gap-2">
-              <TrashIcon className="h-6 w-6" />
-              Delete account
-            </span>
-          </ContextMenuItem>
-        </div>
+        {/* Its own list group, matching the frame's separation from Sign out.
+            Absent entirely — not disabled, not a dead row — while the flag is
+            off, per this file's own "either work or not be drawn" rule: a
+            visible-but-broken control is worse than an absent one, and here
+            "broken" means "irreversible with no gate behind it". */}
+        {deletionEnabled && (
+          <div className="mt-2 border-t border-border pt-2">
+            <ContextMenuItem
+              variant="warning"
+              onClick={() => {
+                // Close this sheet before opening the next — both render
+                // through the same fixed z-index stack, and ContextMenu's own
+                // focus trap assumes it is the only one mounted open at once.
+                setOpen(false)
+                setDeleting(true)
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <TrashIcon className="h-6 w-6" />
+                Delete account
+              </span>
+            </ContextMenuItem>
+          </div>
+        )}
       </ContextMenu>
 
-      <DeleteAccountSheet open={deleting} onClose={() => setDeleting(false)} />
+      {/* Not mounted at all while the flag is off — `deleting` can only ever
+          become true via the row above, but this is the belt to that
+          braces: nothing can open a sheet that was never rendered. */}
+      {deletionEnabled && (
+        <DeleteAccountSheet open={deleting} onClose={() => setDeleting(false)} />
+      )}
     </>
   )
 }
