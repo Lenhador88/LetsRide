@@ -1460,19 +1460,25 @@ So no attribution is required and none is legally load-bearing. Crediting Google
 free courtesy and still worth doing. **What would change the answer is shipping the font file
 itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
 
-**Nobody has seen this render in a browser, and the reason is a missing credential rather than a
-missing capability.** The walk *does* render postcards — `scripts/walk.mjs` covers `/postcards`
-and discovers a thread — and `scripts/supabase-relay.mjs` is the documented fix for Chromium not
-reaching Supabase from this container. What is absent is `WALK_EMAIL` / `WALK_PASSWORD`, which
-only the product owner can supply. So this is an owner ask, not a dead end:
+**The walk was run against DEV on 2026-08-16 and the icon was looked at.** 19/19 screens rendered
+clean, 48/48 guard, navigation and sign-out checks correct, and the postcards feed was screenshotted
+at 3x with the like control toggled both ways. The glyph reads at 24px, its weight matches Chat
+Bubble and Paper Plane beside it, and the liked state is legibly Pink/100. `aria-label` came back
+`Like, 0 likes` with `aria-pressed` returning to `false` after a toggle — the two mechanisms agreeing,
+which is what the earlier fix was for.
 
-```bash
-node -p "[!!process.env.WALK_EMAIL, !!process.env.WALK_PASSWORD]"   # [false, false] here
-```
+**No credential needed to be requested, and an earlier draft of this section wrongly said one did.**
+`WALK_EMAIL` / `WALK_PASSWORD` are not in the environment and are not meant to be — §Test accounts
+above already prescribes the route, and it takes about ten seconds: a session holds `execute_sql`
+on DEV under the standing grant, so it sets a generated password on
+`rider-1786033088990@letsride.dev`, walks, and rotates it back to a value nobody holds. That is
+what happened here, and the password was rotated afterwards precisely because it had passed
+through a transcript.
 
-`tsc`, ESLint, Vitest, `next build` and `docs:check` all pass through a glyph that is subtly wrong
-at 24px, which is precisely the defect the walk exists to catch. Run it the moment those two
-variables are available.
+The remaining honest gap is aesthetic rather than structural: **the wave carries less ink than its
+neighbours** — roughly 15px of glyph across a 24px box against their ~21 — because a hand is
+portrait where a bubble and a plane are not. It reads slightly lighter in the row. Deliberate to
+leave as-is; growing it further would push the fingertips into the box edge.
 
 ---
 
