@@ -4399,6 +4399,33 @@ select assert_eq(
 -- re-covered here too, redundantly with the named assertions above — no
 -- exclusion list, because the point of a derivation is that it does not
 -- know which tables it "should" skip.
+--
+-- **The row-count sweep below is NOT what catches a future non-cascading FK,
+-- and an earlier revision of this comment implied it was — reviewer finding
+-- #3, 2026-08-16.** All sixteen live FKs happen to be `ON DELETE CASCADE`
+-- today, so the sweep passes vacuously with respect to that risk: under
+-- CASCADE the row is gone and the count is 0 by construction; under
+-- `SET NULL` the row survives with a NULL the sweep's `WHERE col = uid`
+-- cannot see, so it would ALSO read 0 with data left behind; under
+-- `RESTRICT`/`NO ACTION` the `delete from auth.users` above raises before
+-- this block ever runs, so it never gets the chance to read anything. There
+-- is no live state in which the sweep alone goes red for the wrong-FK-type
+-- risk — only the assertion immediately below is falsifiable against it,
+-- checked directly against `confdeltype` rather than inferred from row
+-- counts. Mutation-tested 2026-08-16: flipping one constraint to `SET NULL`
+-- in a rolled-back transaction turns this assertion red and leaves the sweep
+-- green, which is exactly the gap it exists to close.
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where contype = 'f' and confrelid = 'public.profiles'::regclass
+      and confdeltype <> 'c'),
+  0, '6.1: every FK into profiles is ON DELETE CASCADE — a SET NULL or RESTRICT/NO ACTION here strands a departed rider''s row rather than removing it, and the row-count sweep below cannot see that case (see the comment above)');
+
+-- The sweep itself: real proof, for the CASCADE case the assertion above
+-- guarantees is the only live case, that the cascade actually ran end to end
+-- rather than merely being declared. Its own value is bounded by that
+-- guarantee — see the comment above for exactly what it does and does not
+-- catch on its own.
 do $$
 declare
   fk record;
