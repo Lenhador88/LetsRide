@@ -56,6 +56,27 @@ export type OnboardingState = {
 }
 
 /**
+ * The account-deletion confirmation's blast-radius counts (PD-102,
+ * `account-deletion`'s "confirmation names the collateral" requirement) —
+ * read under the rider's OWN RLS, same shape and same caveat as
+ * `ClubDeletionImpact`: a floor, not a total, because a club or ride
+ * belonging to a rider who has blocked this one is invisible to this read
+ * and is affected regardless. Informational only — see that requirement's
+ * "cannot be trusted as authorisation" scenario; the deletion proceeds
+ * against the database's state at execution time, not against this snapshot.
+ */
+export type AccountDeletionImpact = {
+  /** Owned clubs with at least one other member — these transfer rather than
+   * being deleted (design D2), which is why a sole-member club is not
+   * counted here: it goes with the rider, not "to someone else". */
+  clubsChangingHands: number
+  /** Upcoming rides this rider organises — each is cancelled outright. */
+  ridesToCancel: number
+  /** `ride_members` rows across those rides — who finds a ride gone. */
+  ridersAffected: number
+}
+
+/**
  * Another rider as they appear to you. Every embedded profile on the types below
  * is this rather than `Profile`, so that reading a field the query does not
  * fetch — `terms_accepted_at` on a club member, say — is a compile error rather

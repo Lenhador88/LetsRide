@@ -3,7 +3,7 @@ import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { OWN_PROFILE_COLUMNS, VIEWED_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { profileIdSchema } from '@/lib/validation/profile'
-import type { Profile, ViewedProfile } from '@/types'
+import type { AccountDeletionImpact, Profile, ViewedProfile } from '@/types'
 
 export async function getCurrentProfile(): Promise<Profile | null> {
   const supabase = await resolveSupabase()
@@ -163,6 +163,56 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
  * one row per country, so the ceiling is `COUNTRY_TOTAL` — around 250 two-letter
  * strings — and is a property of the schema rather than a hope about behaviour.
  */
+/**
+ * The account-deletion confirmation's blast-radius counts — see
+ * `AccountDeletionImpact`. Read under the caller's own session, never
+ * through the privileged Edge Function, per `deletion-privileged-execution`'s
+ * "the function does no reading a rider could have done themselves".
+ *
+ * Two round trips rather than one: `clubs` and `rides` have no relationship
+ * PostgREST can embed in a single query without also fetching every row's
+ * roster, which is the same reason `getClubDeletionImpact` issues three
+ * separate counts rather than one join.
+ */
+export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { clubsChangingHands: 0, ridesToCancel: 0, ridersAffected: 0 }
+
+  const [clubRows, rideRows] = await Promise.all([
+    unwrapList(
+      await supabase
+        .from('clubs')
+        .select('id, members_count:club_members(count)')
+        .eq('owner_id', user.id),
+      'clubs you own',
+    ) as unknown as { id: string; members_count: { count: number }[] | null }[],
+    unwrapList(
+      await supabase
+        .from('rides')
+        .select('id, riders:ride_members(count)')
+        .eq('organizer_id', user.id)
+        .gte('departure_at', new Date().toISOString()),
+      'your upcoming rides',
+    ) as unknown as { id: string; riders: { count: number }[] | null }[],
+  ])
+
+  // "At least one other member" — a club where this rider is the only row
+  // is the one D2 deletes rather than transfers, so it does not belong in a
+  // count captioned "will change hands".
+  const clubsChangingHands = clubRows.filter(
+    (row) => (row.members_count?.[0]?.count ?? 0) > 1
+  ).length
+
+  const ridersAffected = rideRows.reduce((sum, row) => sum + (row.riders?.[0]?.count ?? 0), 0)
+
+  return {
+    clubsChangingHands,
+    ridesToCancel: rideRows.length,
+    ridersAffected,
+  }
+}
+
 export async function getProfileCountries(userId: string): Promise<string[]> {
   const supabase = await resolveSupabase()
 
