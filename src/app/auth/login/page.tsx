@@ -3,6 +3,7 @@
 import { useActionState } from 'react'
 import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
+import { useAuthNotice } from '@/components/auth/useAuthNotice'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { signIn } from '@/lib/actions/auth'
@@ -28,6 +29,11 @@ const initialState = seedRetained(emptyActionState)
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(retainEmail, initialState)
   useActionRedirect(state)
+  // Why this rider is here when they clicked a link somewhere else — a refused
+  // confirmation link, or a profile the guard could not read. The action's own
+  // error wins once they submit: it is about the attempt in front of them,
+  // where the notice is about the redirect that brought them.
+  const notice = useAuthNotice()
 
   return (
     <form action={formAction}>
@@ -57,7 +63,7 @@ export default function LoginPage() {
           />
         </div>
         <div className="flex flex-col gap-2">
-          <FormError message={state.error} />
+          <FormError message={state.error ?? notice} />
           <Button type="submit" size="lg" loading={pending}>
             Login
           </Button>

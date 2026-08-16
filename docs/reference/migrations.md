@@ -87,7 +87,30 @@ catch. The rollback is the SQL below.
       ROLLBACK: grant insert on public.postcard_comments to authenticated;
                 grant insert, update on public.club_members to authenticated;
                 grant insert, update on public.ride_members to authenticated;
+058   clubs.is_default, its index and CHECK, and the auto-join
+      ROLLBACK: -- IN THIS ORDER. Both functions reference is_default, so the
+                -- column cannot go first; restore their 033 / 036 bodies from
+                -- git, then drop. 059 must be rolled back before 058.
+                \i supabase/migrations/033_restore_function_comments.sql  -- complete_onboarding
+                -- and re-issue 036 §7.6's notify_club_joined() body, and
+                -- 036 §7.5's notify_ride_created_in_club(), and 043's
+                -- delete_owned_club(uuid) — all four from those files verbatim.
+                alter table public.clubs drop constraint clubs_default_club_is_public;
+                drop index public.clubs_one_default_club;
+                alter table public.clubs drop column is_default;
+                -- The memberships it wrote are NOT undone by this. They are
+                -- ordinary club_members rows and deleting them is a decision
+                -- about riders' memberships, not a rollback step.
+059   the default club's two fan-outs and its deletion guard
+      ROLLBACK: re-issue private.notify_ride_created_in_club() from 036 §7.5,
+                public.complete_onboarding(text) from 058 §3, and
+                public.delete_owned_club(uuid) from 043 — verbatim.
 ```
+
+**`058` and `059` are the first entries here whose rollback is ORDER-DEPENDENT in a way a
+`drop` cannot express.** Four function bodies reference `clubs.is_default`, so dropping the column
+first fails on the dependency, and rolling `058` back without `059` leaves `059`'s bodies pointing
+at a column that no longer exists. Take them newest-first, functions before column, always.
 
 `041` is absent because it is additive — one column, one index, one FK and an INSERT-policy
 replacement — and has no one-statement undo.

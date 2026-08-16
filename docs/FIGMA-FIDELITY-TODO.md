@@ -1155,6 +1155,45 @@ absent from the mock or a product decision this pass had to make without one:
       number could never reach 0 while any such comment existed. It over-counted by one the day
       the profile page landed, which is how it was noticed.
 
+### Sign up — one line of body copy the design does not have, added 2026-08-16
+
+`npm run figma -- text "Sign up"` returns six strings and **none of them is body copy**;
+`text "Login"` returns six and the same is true. Both frames go straight from the `32/48 w600`
+title to the first field, and `--all` changes neither output, so no toggled-off variant slot is
+being missed. `/auth/signup` carries a `body` line anyway:
+
+> Motorcycle rides are better with company. Find a club, join a ride, share the photos.
+
+**This is a deviation, not a measurement gap** — the design settles the question and the answer
+is being overridden, which is the one case the rule below does not cover. Recorded here because a
+later pass reading the frame will find code the design does not justify and needs to know it was
+a decision rather than an oversight.
+
+**No composition was invented, and the weight is the part worth getting right.** `AuthScreen`
+renders `body` as `<p className="text-sm text-muted">` for `/auth/forgot-password` and
+`/onboarding/terms`. That is **`Poppins/14/Regular`, w400** — `text-sm` is the 14/20 size and
+carries no weight class, and `globals.css` says so explicitly: *"weight is applied separately via
+font-normal/font-medium/font-semibold"*. It matches the one frame that has this slot:
+`npm run figma -- text "1857:17166"` gives the Forgot password body as `14/20 w400 ·
+Poppins/14/Regular`.
+
+**Do not "correct" it to `font-medium`.** `Label · 14/20 w500` is the *field-label* token —
+"Email", "Password" — a different slot at the same size, and adopting it here would push all
+three screens off the design's actual weight. (`/onboarding/terms` has no v2 frame at all:
+`npm run figma -- ls terms` returns `0 of 438`.)
+
+- [ ] If a v2 frame for `Sign up` ever gains a body slot, take its string and its token over this
+      one.
+
+**`/auth/login` is deliberately bare, and that is a decision rather than an open task** — hence
+no box. It is the screen a cold arrival actually lands on: the guard sends an un-authed request
+for any *non-public* path there, and no `next` param survives the redirect, so a tapped postcard
+link loses both the pitch and the postcard. Login is also what every returning rider sees, so the
+cost of a tagline there is paid on every sign-in. If shared links ever become a real acquisition
+channel the fix is more likely routing than copy — send an un-authed deep link to `/auth/signup`,
+and carry the target — which is a change to `src/lib/auth/guard.ts` and its suite, not a fidelity
+item.
+
 ## Rule for anyone building against this
 
 **Read `design/` first — it is offline and cannot be rate limited.** An inferred composition

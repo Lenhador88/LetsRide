@@ -3,6 +3,7 @@
 import { useActionState } from 'react'
 import { AuthScreen } from '@/components/auth/AuthScreen'
 import { FormError } from '@/components/auth/FormError'
+import { useAuthNotice } from '@/components/auth/useAuthNotice'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { requestPasswordReset } from '@/lib/actions/auth'
@@ -19,6 +20,10 @@ const initialState = seedRetained(emptyActionState)
 
 export default function ForgotPasswordPage() {
   const [state, formAction, pending] = useActionState(retainEmail, initialState)
+  // A spent or expired recovery link redirects here, and said so nowhere until
+  // PD-225. It is not shown on the `submitted` branch below: by then the rider
+  // has acted on it and a stale notice would contradict the confirmation.
+  const notice = useAuthNotice()
 
   // requestPasswordReset never reveals whether the address exists (Q16), so
   // its success and its unsubmitted initial state would otherwise both read as
@@ -55,7 +60,7 @@ export default function ForgotPasswordPage() {
           />
         </div>
         <div className="flex flex-col gap-2">
-          <FormError message={state.error} />
+          <FormError message={state.error ?? notice} />
           <Button type="submit" size="lg" loading={pending}>
             Send instructions
           </Button>

@@ -64,11 +64,11 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1572/1572 across 50 files
+npm run test:unit                     # 1574/1574 across 49 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 33 static routes
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 34 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
-PGPASSWORD=postgres npm test          # 1458 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 1505 assertions, 0 failures
 ```
 
 **And the second build shape, which nothing above covers** — PD-142 left the repo with two, and
@@ -228,10 +228,10 @@ reclassifies the route to `●` without removing the segment. What the native ep
 version under-counts by one the day the first route is ever dynamic — it is right today only
 because `/` sorts first and is static.
 
-`next build` reports **33 static** and **0 dynamic**, and no `ƒ Proxy (Middleware)` line appears
+`next build` reports **34 static** and **0 dynamic**, and no `ƒ Proxy (Middleware)` line appears
 at all.
-Do not read the `Generating static pages (34/34)` line as the static route count — it is a
-different quantity, and 34 against 33 is exactly the kind of near-miss that gets copied.
+Do not read the `Generating static pages (35/35)` line as the static route count — it is a
+different quantity, and 35 against 34 is exactly the kind of near-miss that gets copied.
 
 ## The next epic: the native shell, and store submission
 
@@ -265,6 +265,13 @@ stays load-bearing permanently**, and `resolve.browser.ts`'s tripwire keeps earn
   the only race-free one: `resolveSessionStore()` resolves **once per page load**, so anything
   installing later (a layout effect, a plugin `load` event) loses to the first client
   constructed, silently, with the token in `localStorage`.
+- **`resources/` — the app icon master**, added 2026-08-16. `icon-only.png` is 1024×1024 RGB
+  with no alpha (App Store Connect refuses alpha, at upload rather than at review), built from
+  the motorcycle already inside `public/brand/logo-splash.png` on `Accent Brand/100` `#3D996B`.
+  **The filename is load-bearing**: `@capacitor/assets` matches exact basenames and treats
+  `icon.png` as a *Logo*, which generates white and `#111111` splash screens instead of icons —
+  `resources/README.md` carries that and the rest. Platform sets are not committed; a Mac
+  generates them after `cap add`. The splash PNG is untouched and still mint-on-`#3D996B`.
 - Two plugin defaults overridden, both security-relevant: keychain access
   `afterFirstUnlockThisDeviceOnly` (the default `whenUnlocked` blocks background token refresh
   after a reboot **and** migrates the token to a replacement device through an encrypted
@@ -300,10 +307,15 @@ NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native
 ls out/index.html             # exists; .next-capacitor/ does not
 ```
 
-33 documents, 274 `__next.*.txt` RSC segment payloads, and the static assets — around 380 files
-in all. **Do not pin the total**: two builds of the same commit came back 384 and 383, because
-the JS chunk count moves by one or two. The two counts that are stable are the documents and the
-payloads, which is why `check-export.mjs` asserts a floor and those two being non-zero rather than
+35 documents, 291 `__next.*.txt` RSC segment payloads, and the static assets — around 410 files
+in all. **Documents is one MORE than the static-route count**, which reads like the near-miss
+warned about 70 lines above and is not one: `check-export.mjs` walks `out/` and counts every
+emitted `.html`, and `next build`'s route table omits `/_not-found`. So documents tracks the
+`Generating static pages (N/N)` line, not the `34 static` one, and it moved by exactly +1 when
+`/auth/confirm` was added. **Do not pin the total**: two builds of the same commit came back 384
+and 383 at 33 documents, because the JS chunk count moves by one or two. The two counts that are
+stable are the documents and the payloads, which is why `check-export.mjs` asserts a floor and
+those two being non-zero rather than
 an exact number.
 **Every document's rendered text is the empty string** — `RouteGuard` renders the splash instead
 of children during the prerender pass, and every detail screen reads in an effect anyway — which
@@ -448,8 +460,8 @@ the postcard thread still carry inferred composition; the design has frames for 
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1458**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD); `054` by **+64 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `036: an ownerless owner cannot see their own private club's ride TODAY` pinned the defect as current behaviour, and `054` fixes it, so the line is now `036/054:` and expects 1 where it expected 0. **A session diffing label sets against `development` will find the old label simply gone**; reinstating it re-asserts the defect and turns a correct database red. `036` §7.12c's *behaviour* is unchanged and still right — the club-ride fan-out reads `club_members` directly because a caller-relative helper cannot compute a recipient set — but its stated justification is void, and the withheld notification is now a gap (N10) owned by `enforce-creator-membership`; `055` by **+44 new and −1 relabelled**, and that one is a plain rename — `036: … and nobody else on the crew` still reads 1, but only because that fixture's sole other crew member IS the organizer, so it is now `036/055:` with the reason stated; `056` by **+29 new and −1 relabelled**, and that relabel is an **expected-value flip** like `054`'s rather than a rename — `an uppercase username is rejected` asserted the rule `056` removes, so it is now `a username with a non-ASCII letter is rejected — 056 widened the charset to A-Z, not to Unicode`, checked on **both** `C.UTF-8` and `en_US.UTF-8` because a collation-dependent `[A-Za-z]` range would pass locally and fail hosted. One assertion got strictly stronger with no label change: `lower(username) rejects a case-variant of an existing username` used to drop `profiles_username_format` inside a savepoint to reach the index at all, so it was true of a database this repo never ran; capitals now reach the index for real and the scaffolding is gone; `057` by **+1 new and −3 relabelled**, and all three relabels are the same kind — a *boundary that moved* rather than a rule that changed, so each keeps its meaning at a new number and a session diffing label sets will find three lines gone that must not be reinstated (`a username longer than 20 characters is rejected` → `057: … longer than 25 …`; `056: twenty-one characters is still too long, capitals or not` → `056/057: twenty-six …`; and the `pg_get_constraintdef` pin, whose expected string carries the bound verbatim). The one genuinely new line is the POSITIVE at exactly 25, written for real and read back rather than asserted `allowed`, because the rejection at 26 passes on its own against a database where `057` never applied |
-| Unit tests | `npm run test:unit` — **1572 across 50 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1505**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD); `054` by **+64 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `036: an ownerless owner cannot see their own private club's ride TODAY` pinned the defect as current behaviour, and `054` fixes it, so the line is now `036/054:` and expects 1 where it expected 0. **A session diffing label sets against `development` will find the old label simply gone**; reinstating it re-asserts the defect and turns a correct database red. `036` §7.12c's *behaviour* is unchanged and still right — the club-ride fan-out reads `club_members` directly because a caller-relative helper cannot compute a recipient set — but its stated justification is void, and the withheld notification is now a gap (N10) owned by `enforce-creator-membership`; `055` by **+44 new and −1 relabelled**, and that one is a plain rename — `036: … and nobody else on the crew` still reads 1, but only because that fixture's sole other crew member IS the organizer, so it is now `036/055:` with the reason stated; `056` by **+29 new and −1 relabelled**, and that relabel is an **expected-value flip** like `054`'s rather than a rename — `an uppercase username is rejected` asserted the rule `056` removes, so it is now `a username with a non-ASCII letter is rejected — 056 widened the charset to A-Z, not to Unicode`, checked on **both** `C.UTF-8` and `en_US.UTF-8` because a collation-dependent `[A-Za-z]` range would pass locally and fail hosted. One assertion got strictly stronger with no label change: `lower(username) rejects a case-variant of an existing username` used to drop `profiles_username_format` inside a savepoint to reach the index at all, so it was true of a database this repo never ran; capitals now reach the index for real and the scaffolding is gone; `057` by **+1 new and −3 relabelled**, and all three relabels are the same kind — a *boundary that moved* rather than a rule that changed, so each keeps its meaning at a new number and a session diffing label sets will find three lines gone that must not be reinstated (`a username longer than 20 characters is rejected` → `057: … longer than 25 …`; `056: twenty-one characters is still too long, capitals or not` → `056/057: twenty-six …`; and the `pg_get_constraintdef` pin, whose expected string carries the bound verbatim). The one genuinely new line is the POSITIVE at exactly 25, written for real and read back rather than asserted `allowed`, because the rejection at 26 passes on its own against a database where `057` never applied; `058` and `059` together by **+47 new and 0 relabelled** (35 and 12), and that zero is read off the diff rather than off a label-set reconciliation — its change to `rls_test.sql` is `332	0` in `git diff origin/development...HEAD --numstat`, so no existing label can have moved. Two of the 35 are mutation-tested rather than merely green, which is what makes the rest of the section worth its length: making `058`'s exception block re-raise takes the suite down at the raising trigger, and deleting `notify_club_joined`'s early return produces `FAIL 058: joining the welcome club notifies NOBODY — expected 0, got 1`. `059`'s two are mutation-tested the same way — dropping its ride-fan-out early return reads `expected 0, got 2`, and dropping its `is_default` delete guard reads `expected the statement to be rejected, but it succeeded` |
+| Unit tests | `npm run test:unit` — **1574 across 49 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -724,7 +736,44 @@ publication membership is asserted, the *delivery* is not), and whether the comp
 `crypto.randomUUID` path is on a secure origin — it is over HTTPS, and the fallback exists for
 `http://<lan-ip>` device testing.
 
-## Migrations — the repo, DEV and PROD all hold 57
+## The welcome club — which club it is, is DATA, and it differs per project
+
+`058` and `059` (2026-08-16, both on DEV and PROD) make every rider join a welcome club the moment
+they complete onboarding. **Nothing in the repo names that club.** `clubs.is_default` does, and it
+is a different row on each project, so the only honest way to answer "is this on?" is to ask the
+database:
+
+```sql
+select id, name, is_public, is_default from clubs where is_default;   -- exactly one row
+```
+
+Zero rows is the **quiet** failure and the one to look for: onboarding still completes, riders
+just join nothing, for ever. `059` raises a `warning` into the Postgres log on every signup in
+that state — `mcp__Supabase__query_logs` is where it surfaces — because `058`'s exception block
+cannot see it (an insert over zero rows raises nothing).
+
+Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`, DEV
+`7458ae47-f874-4922-a97f-e16b16529da2` `Welcome club (dev)`.
+
+**Two known gaps, both deliberate, neither closed:**
+
+- **The welcome club can still be INHERITED by an ordinary rider.** `029`'s succession hands a
+  departing owner's clubs to the longest-tenured remaining member, and this club always has
+  members, so it can never reach the "nobody left, delete it" arm. `059` stops that rider deleting
+  it and `058`'s column grant stops them re-pointing the flag — but they do inherit rename and
+  imagery rights over the club everyone is in. Reachable only by the welcome club's owner deleting
+  their own account. `clubs.owner_id` is NOT NULL, so "do not transfer" is not an available answer.
+- **It appears in the Create-ride club dropdown for every rider**, because `getMyClubs` feeds it
+  and everyone is a member. `059` silenced the fan-out, so posting a ride there notifies nobody
+  and leaks nothing — but "a ride in the welcome club" is a misleading thing for a rider to be
+  offered. Closing it is a `rides` INSERT policy arm plus a filter in the dropdown, and it was not
+  taken because it is a product decision rather than a defect.
+
+**Not backfilled.** The join fires on the transition into completion only, so the riders who
+onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
+reads 2 members until someone new signs up.
+
+## Migrations — the repo, DEV and PROD all hold 59
 
 **`056` is PD-226's and is on BOTH projects, applied 2026-08-13.** It relaxes
 `profiles_username_format`'s charset to `A-Za-z0-9_` so a username keeps the case the rider
@@ -821,7 +870,8 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 
 ```bash
 # via the Supabase MCP: list_migrations on zwprydcyryvudhurbnye and fpmrimzxadewsaiwpsel
-#   BOTH at 57 rows ending 057_username_max_25 — LEVEL as of 2026-08-14.
+#   BOTH at 59 rows ending 059_default_club_fan_out_and_deletion — LEVEL as of
+#   2026-08-16.
 #   057 applied to both ahead of the code that widens the Zod bound, which is
 #   the free-but-preferable order its own header sets out; 056 was applied to
 #   PROD ahead of the promotion that deploys ITS code, which is the ordering the
@@ -847,7 +897,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   050 IS on PROD: #179 loaded places into production behind it rather than after
 #   it, which is the right order — PROD carries 736,538 places rows, so the
 #   candidate cap is guarding a loaded table there, not an empty one.
-ls supabase/migrations/ | wc -l          # 57
+ls supabase/migrations/ | wc -l          # 59
 ```
 
 **`055` is PD-129's and is now on both projects.** It replaces one function body —
@@ -1256,11 +1306,53 @@ with confirmation on, `signUp` returns no session and takes the `sent` branch in
 Two consequences, and the second is the one that will bite:
 
 - The PROD path still needs an address the owner controls. **Store blocker 7 stands.**
-- **`/auth/callback` has no signup arm.** A rider confirming on a *different device* than they
-  signed up on has no PKCE `code_verifier`, and the callback's failure path sends them to
-  `/auth/forgot-password?error=invalid_link` — reset copy after a signup. Deliberately not
-  built: getting it right needs GoTrue's real confirmation-link shape, which only the owner
-  test above produces. Build it from that link, not from a guess.
+- **The cross-device confirm route is BUILT and INERT, and turning it on is an owner action.**
+  `/auth/confirm` (`src/app/auth/confirm/page.tsx`) verifies an emailed `token_hash` through
+  `verifyOtp`, which needs no PKCE verifier and therefore works on any device. **Nothing links to
+  it yet**: GoTrue builds the link from the *Confirm signup* email template, a dashboard setting.
+  Switching that template is the whole remaining step, and **it must happen after this route is
+  deployed** — a template pointing at a route that does not exist breaks every confirmation in
+  flight, and a spent link cannot be retried. The template, verbatim, on **both** projects:
+
+  ```html
+  <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=/postcards">
+    Confirm your email
+  </a>
+  ```
+
+  `{{ .SiteURL }}` rather than `{{ .RedirectTo }}` because each project's Site URL already points
+  at its own host (PD-106). `/auth/callback` stays regardless: recovery is still PKCE, and any
+  confirmation link already in an inbox still points there.
+
+  **DEV cannot exercise this route as configured, and finding that out costs a session.** Two
+  documented facts stack: DEV runs `mailer_autoconfirm: true` (`docs/ENVIRONMENTS.md` §Auth
+  configuration), so no confirmation mail is sent and there is no `{{ .TokenHash }}` to click;
+  and `app-dev.letsride.social` sits behind Vercel SSO and answers `302` to `vercel.com/sso-api`
+  (§Domains), which is where DEV's `{{ .SiteURL }}` points — so even a hand-built link dies at a
+  Vercel login page on a phone. Testing on DEV means turning autoconfirm off temporarily **and**
+  using a Vercel-authenticated browser. **Template-first is still refused** — see the route's own
+  header for why the failure is recoverable but not free.
+
+  **Deploying template-first is recoverable, which is not the same as safe.** Only `verifyOtp`
+  spends a `token_hash`, and a 404 or a guard bounce never calls it, so the link survives for the
+  rest of GoTrue's OTP lifetime. Deploy-first still wins; the cost of getting it wrong is a window
+  of confusing failures rather than a cohort of dead accounts. **`recovery` is deliberately refused
+  by `confirmableOtpType`** — a `token_hash` would fix cross-device password reset too, but the
+  reset screen gates on `026`'s grant, read off the session's `amr` claim, and whether a
+  `verifyOtp`-minted session carries `{ method: 'recovery' }` is unmeasured. Measure it against a
+  real emailed link before widening.
+
+- **`/auth/callback` has a signup arm since PD-225, and the cross-device case is still broken.**
+  The routing half landed: `callbackFailureDestination()` (`src/lib/auth/recovery.ts`) reads
+  `next` — the only discriminator GoTrue's refusal preserves — and sends a failed confirmation to
+  `/auth/login?error=invalid_confirmation` rather than into password recovery, where both auth
+  screens now render the code. **What that does NOT fix is the confirm itself.** A rider
+  confirming on a *different device* than they signed up on has no PKCE `code_verifier`, so
+  `exchangeCodeForSession` **cannot** succeed — and GoTrue's `/verify` has already spent the
+  token by then, so the account is confirmed and the link is dead. They get a clear message and
+  a working way in (sign in); they do not get the link working. The fix that would is a
+  `token_hash`/`verifyOtp` route, and it is ordered: deploy the route, *then* change the
+  *Confirm signup* email template, which is an owner action.
 
 Reproduce the DEV run rather than trusting this: point the relay at
 `https://fpmrimzxadewsaiwpsel.supabase.co`, run the dev server against it, and sign up with any
@@ -1302,6 +1394,72 @@ Two traps, both live:
 
 `CLAUDE.md` §Development Workflow has the commands and the refresh rules; the two traps above
 are the ones that only matter when choosing *what* to build.
+
+### The snapshot is behind the Figma file — two wave icons, 2026-08-16
+
+The like control is the motorcycle wave (PD-228) needed a glyph the set did not have, so two
+components were authored **into** Figma rather than drawn in the repo — the first time anything
+here has written to the design file. `CLAUDE.md` §Design System's fourth rule and
+`.claude/agents/design-system.md` §Writing to Figma carry the standing rules that came out of it.
+
+They are on the **Components** page, below the icon column, and `design/` does **not** contain
+them — `manifest.json` still records the 2026-08-04 pull:
+
+| Component | Node | State |
+|---|---|---|
+| `Element / Icon / Wave Outline` | `4108:6912` | traced from `Noto Emoji` U+270C, reads correctly at 24px — **licence unsettled** |
+| `Element / Icon / Wave Filled` | `4105:6912` | **not settled** — a bolder copy of the outline, near-indistinguishable from it |
+
+**The licence was read on 2026-08-16 and the trace is clear to ship.** Recorded here because the
+next session would otherwise re-derive it, and because `places` is the standing warning against
+assuming exactly this.
+
+`Noto Emoji` is SIL OFL 1.1, `Copyright 2013 Google LLC`, **no Reserved Font Name declared**
+(`raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/OFL.txt`). What settles it is the
+licence's own DEFINITIONS, quoted from the primary text:
+
+> "Font Software" refers to the set of **files** released by the Copyright Holder(s) under this
+> license and clearly marked as such. This may include source files, build scripts and
+> documentation.
+
+Every obligation hangs off that noun. Clause 1 forbids selling the Font Software or its components
+by itself; clause 2 is what attaches the copyright-notice-and-licence requirement, and it governs
+bundling or **redistributing the Font Software**. We redistribute no file from it — what ships is
+a `<path d="…">` in `generated.tsx`, derived from one glyph's outline — so neither clause has a
+subject in our bundle. The definition is file-scoped, which is also why "components" does not
+reach a single glyph.
+
+SIL's own OFL-FAQ says the same thing directly: artwork created from font outlines is not subject
+to the OFL, and it lists logos, signage, t-shirts and 3D-printed shapes as needing no further
+licensing. **Flagged as second-hand** — `openfontlicense.org`, `scripts.sil.org`, the CTAN mirrors
+and `choosealicense.com` are all egress-blocked from this container, so the FAQ reached me through
+a search summary rather than its primary text. The licence text above is verbatim and is the part
+the conclusion rests on.
+
+So: no attribution is required and none is legally load-bearing. Crediting Google in a `NOTICE`
+is free courtesy and worth doing when the icon lands. **What would change the answer is shipping
+the font file itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
+
+Check rather than trust that, because a `figma:pull` by any session closes the gap silently:
+
+```bash
+node -p "require('./design/manifest.json').pulledAt"
+npm run figma -- icons | grep -i wave      # empty = snapshot still behind
+```
+
+Two things are open, and the second is a decision rather than work:
+
+- **Nothing has reached code.** `generated.tsx` has no wave. It takes `figma:pull` then
+  `figma:icons` — both network, both the endpoint families that have blocked this repo for days
+  — before `LikeButton` can import one.
+- **The filled twin has no good answer yet.** `LikeButton` distinguishes its states by *both*
+  glyph and colour (`HeartFilledIcon` + `text-like` against `HeartOutlineIcon`), and a solid
+  silhouette of a hand loses the folded fingers and thumb that make the glyph read at all.
+  Tracing gives one contour with `NONZERO` winding already, so no fill-rule or stroke trick
+  solidifies it — measured, not assumed. The realistic options are a hand-drawn solid twin, or
+  one glyph for both states differing only by `text-like`. The second makes the two components
+  generate *identical* SVGs, since the generator rewrites every fill to `currentColor` — so if
+  that is the answer, PD-228 wants one icon and a colour change, not a pair.
 
 ---
 

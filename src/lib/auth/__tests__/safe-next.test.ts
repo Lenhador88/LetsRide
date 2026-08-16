@@ -1,53 +1,56 @@
 import { describe, expect, it } from 'vitest'
 import { safeNext } from '@/lib/auth/recovery'
 
-const FALLBACK = '/auth/reset-password'
+// PD-225: safeNext no longer names a destination. `null` means "not usable", and
+// the caller decides what that implies — see callbackFailureDestination and the
+// grant read in /auth/callback.
+const REFUSED = null
 
 describe('safeNext — required cases', () => {
   it('passes through an ordinary in-app path', () => {
     expect(safeNext('/dashboard')).toBe('/dashboard')
   })
 
-  it('falls back on a protocol-relative URL (//host)', () => {
-    expect(safeNext('//evil.example')).toBe(FALLBACK)
+  it('refuses a protocol-relative URL (//host)', () => {
+    expect(safeNext('//evil.example')).toBe(REFUSED)
   })
 
-  it('falls back on a full https:// URL', () => {
-    expect(safeNext('https://evil.example')).toBe(FALLBACK)
+  it('refuses a full https:// URL', () => {
+    expect(safeNext('https://evil.example')).toBe(REFUSED)
   })
 
-  it('falls back on a single-slash scheme (http:/evil)', () => {
-    expect(safeNext('http:/evil')).toBe(FALLBACK)
+  it('refuses a single-slash scheme (http:/evil)', () => {
+    expect(safeNext('http:/evil')).toBe(REFUSED)
   })
 
-  it('falls back on the literal string "null"', () => {
-    expect(safeNext('null')).toBe(FALLBACK)
+  it('refuses the literal string "null"', () => {
+    expect(safeNext('null')).toBe(REFUSED)
   })
 
-  it('falls back on an empty string', () => {
-    expect(safeNext('')).toBe(FALLBACK)
+  it('refuses an empty string', () => {
+    expect(safeNext('')).toBe(REFUSED)
   })
 
-  it('falls back on actual null', () => {
-    expect(safeNext(null)).toBe(FALLBACK)
+  it('refuses actual null', () => {
+    expect(safeNext(null)).toBe(REFUSED)
   })
 })
 
 describe('safeNext — bypass attempts', () => {
-  it('falls back on three slashes', () => {
-    expect(safeNext('///evil.example')).toBe(FALLBACK)
+  it('refuses three slashes', () => {
+    expect(safeNext('///evil.example')).toBe(REFUSED)
   })
 
-  it('falls back on a value with no leading slash at all', () => {
-    expect(safeNext('evil.example')).toBe(FALLBACK)
+  it('refuses a value with no leading slash at all', () => {
+    expect(safeNext('evil.example')).toBe(REFUSED)
   })
 
-  it('falls back on a scheme-relative URL with an @ trick (//user@evil.example)', () => {
-    expect(safeNext('//user@evil.example')).toBe(FALLBACK)
+  it('refuses a scheme-relative URL with an @ trick (//user@evil.example)', () => {
+    expect(safeNext('//user@evil.example')).toBe(REFUSED)
   })
 
-  it('falls back on backslash-backslash, browsers that fold \\ to / would treat it as //', () => {
-    expect(safeNext('\\\\evil.example')).toBe(FALLBACK)
+  it('refuses backslash-backslash, browsers that fold \\ to / would treat it as //', () => {
+    expect(safeNext('\\\\evil.example')).toBe(REFUSED)
   })
 
   // Neither of these starts with "//", so an unhardened guard lets them
@@ -57,21 +60,21 @@ describe('safeNext — bypass attempts', () => {
   // `new URL('/\\evil.example', origin).host` is `evil.example`. The guard
   // rejects them so it holds on its own, rather than depending on how a future
   // caller assembles the redirect.
-  it('rejects a single backslash after the leading slash', () => {
-    expect(safeNext('/\\evil.example')).toBe(FALLBACK)
+  it('refuses a single backslash after the leading slash', () => {
+    expect(safeNext('/\\evil.example')).toBe(REFUSED)
   })
 
-  it('rejects an embedded tab', () => {
-    expect(safeNext('/\t/evil.example')).toBe(FALLBACK)
+  it('refuses an embedded tab', () => {
+    expect(safeNext('/\t/evil.example')).toBe(REFUSED)
   })
 
-  it('rejects an embedded newline and carriage return', () => {
-    expect(safeNext('/dash\nboard')).toBe(FALLBACK)
-    expect(safeNext('/dash\r\nboard')).toBe(FALLBACK)
+  it('refuses an embedded newline and carriage return', () => {
+    expect(safeNext('/dash\nboard')).toBe(REFUSED)
+    expect(safeNext('/dash\r\nboard')).toBe(REFUSED)
   })
 
-  it('rejects a NUL byte', () => {
-    expect(safeNext('/dashboard\x00')).toBe(FALLBACK)
+  it('refuses a NUL byte', () => {
+    expect(safeNext('/dashboard\x00')).toBe(REFUSED)
   })
 
   it('percent-encoded slashes are NOT rejected by the guard (benign: %2F never decodes back to a path separator)', () => {
@@ -93,7 +96,10 @@ describe('safeNext — bypass attempts', () => {
     ]
 
     for (const candidate of candidates) {
-      const next = safeNext(candidate)
+      // `?? '/postcards'` stands in for what the caller now does with a refusal
+      // — the point of the test is that no ACCEPTED value moves the host, and
+      // a refused one never reaches a URL at all.
+      const next = safeNext(candidate) ?? '/postcards'
       const resolved = new URL(`${origin}${next}`)
       expect(resolved.host).toBe(new URL(origin).host)
     }

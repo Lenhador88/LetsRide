@@ -190,13 +190,20 @@ its place. `.claude/agents/native.md` says the same; do not let the two drift ap
 Re-derive the scope rather than trusting a number here — it grows with every epic:
 
 ```bash
-git grep -l "" -- 'src/app/**/page.tsx' | wc -l                     # pages
+git ls-files src/app | grep -c 'page\.tsx$'                         # pages
 git grep -L "^'use client'" -- 'src/app/**/page.tsx' | wc -l        # ... server-rendered: 0
 git grep -L "^'use client'" -- 'src/components/**/*.tsx' | wc -l    # presentational components
 ```
 
 The third line is **not** a defect count: a component with no `'use client'` is fine, it just
 has no client hooks of its own and joins the client graph through its importer.
+
+**The first line does not use `'src/app/**/page.tsx'`, and the difference is one page.** Git's
+default pathspec makes `**` require at least one further segment, so that glob silently skips
+`src/app/page.tsx` — the root resolver — and reads one low. It is the comment trap's shape at a
+pathspec instead of a comment: measured-looking, plausible, wrong. Line two keeps the glob because
+its two `docs:check` claims pin that exact string, and it answers 0 either way today; `:(glob)`
+prefixes both readings if that ever has to change.
 
 **The comment trap — this repo's most-repeated measurement error, four times and counting.**
 A file's description of what it migrated *away from* looks exactly like the thing it migrated
@@ -262,7 +269,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (36 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
+| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (38 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in and checks the email survives it, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. It then refuses a create and an edit and checks every field and choice of each survives. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite. **The walk is not the gap being filled**: it asks one question per route — did this render — and asserts behaviour only in its six named phases, each covering a defect no other gate here can see (PD-196's cleared email, PD-199's cleared create form and its silently-rewritten edit form, PD-111's navigation cost, the guard's redirects, what sign-out leaves behind). Adding a phase means adding a reason, not broadening a remit |
 
@@ -338,7 +345,7 @@ the exported function must be named `proxy`, and do not add a `middleware.ts`.
 Routing decisions live in **three** places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 36 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 38 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half. This is where the reads live now, and the reason it
@@ -430,9 +437,19 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
   `import { resolveSupabase } from '@/lib/supabase/resolve'`.
   `src/lib/data/__tests__/isomorphic.test.ts` walks the module graph from both directories and
   fails loudly if anything in them reaches a Next server module.
-- A component that genuinely needs the client itself — the route guard, the reset screen —
-  imports `createClient` from `@/lib/supabase/client`. That is two files, and a third is
-  probably a read that belongs in `lib/data/`.
+- A component or helper that genuinely needs the client itself imports `createClient` from
+  `@/lib/supabase/client`. **Count them rather than trust a number here** — this line said "two
+  files" for long enough to be wrong by four, and it is a live review heuristic, so a stale
+  ceiling makes every reviewer flag a legitimate file:
+
+  ```bash
+  grep -rln "from '@/lib/supabase/client'" src/ | grep -v "src/lib/supabase/"   # 6
+  ```
+
+  What earns a place on that list is a **session or transport** concern, not a read: the guard
+  cache, the three auth routes that exchange or verify an emailed credential, the Storage upload,
+  and the Realtime subscription. Anything that is a *query* belongs in `lib/data/` no matter how
+  short the list gets.
 - `@/lib/supabase/server` **no longer exists**. Neither does `@supabase/ssr`.
 
 **RLS is ON for all tables.** Every query runs under the authenticated user's session. You do not need to filter by `user_id` manually — RLS policies enforce ownership. But do add RLS policies in migrations for any new table.
@@ -480,7 +497,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 57 files. DEV is at `057`, PROD at `057` — LEVEL as of 2026-08-14.** Do not
+**Applied state: 59 files. DEV is at `059`, PROD at `059` — LEVEL as of 2026-08-16.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 
@@ -527,7 +544,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1458** assertions — re-derive rather than trust it:
+Suite **1505** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -557,7 +574,12 @@ Both are applied; the ordering above is the record of how, not a thing still to 
 **Three own-row RPCs own the two profile stamps**, because `025` takes the client's grant away:
 `my_onboarding_state()` (the route guard's one round trip — both stamps plus `has_username`),
 `accept_terms()` and `complete_onboarding(location)`. **Each restates the invariants its triggers
-carry, and must.** Inside a `security definer` function `current_user` is the *owner*, so `003`'s
+carry, and must.** **`complete_onboarding` outgrew that description in `058`** — it also writes a
+`club_members` row, joining the caller to the club carrying `clubs.is_default`, which is a side
+effect outside "the two profile stamps" and the only place in the schema that writes a membership
+no rider asked for. It cannot fail the rider: the insert sits in a `when others` block, because a
+raise there would roll the completion stamp back in the same transaction and decision #5 gives a
+rider with a NULL stamp no way out of the wizard. Inside a `security definer` function `current_user` is the *owner*, so `003`'s
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
@@ -642,7 +664,7 @@ at runtime).
 any screen, and read `design/TOKENS.md` in preference to either — that one is generated, the
 tables are transcribed.
 
-Three rules that must hold without opening it:
+Four rules that must hold without opening it:
 
 - **Read the design from `design/`, never the Figma API.** `npm run figma -- tree "<screen>"` is
   offline and cannot be rate limited; the API's limit is per-endpoint, inherited across sessions,
@@ -651,6 +673,24 @@ Three rules that must hold without opening it:
   hand-edited. The generator rewrites every literal fill to `currentColor`.
 - **Primary buttons are near-black (`Grey/100` `#1A1A1A`), not green.** Green is an accent used
   sparingly. This is the single most-repeated mistake against these designs.
+- **Writing to Figma is possible, and it takes an explicit ask.** `use_figma` runs against the
+  file through the Plugin API and is on `design-system`'s toolset. The rule above is untouched: a
+  write is not a licence to *read* over the API, and design questions still come from the
+  snapshot. What makes the ask non-negotiable is that **nothing anywhere gates it** — check that
+  rather than trust it, because the day someone adds a `reviewer` pass or a registry claim the
+  justification quietly stops being true:
+
+  ```bash
+  grep -ril figma .github/workflows/ scripts/docs/registry.mjs .claude/agents/reviewer.md   # 0
+  ```
+
+  So a component created in a session lands in the canonical design unreviewed, and the next
+  `figma:pull` bakes it into the snapshot the whole squad trusts — and from there into
+  `generated.tsx`, the client bundle and the store build, with nothing in between asking where the
+  artwork came from. **Traced or borrowed artwork therefore needs its licence settled before it
+  ships, not before it merges**; `places` is the precedent for what an assumed one costs.
+  `.claude/agents/design-system.md` §Writing to Figma carries the conventions, the provenance rule
+  and the two rate-limited calls it takes to reach `generated.tsx`.
 
 ## Development Workflow
 
@@ -750,8 +790,10 @@ outright, so a UUID-prefixed name it finds is very likely refused too (untested 
 rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
 restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
 §Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
-database gets both; `design-system` is out, its connector being Figma and its answers coming from
-the committed `design/` snapshot with the API forbidden.
+database gets both; `design-system` is out, its connector being Figma and its *answers* coming
+from the committed `design/` snapshot with reads over the API forbidden — which is a rule about
+where design questions get answered, not a claim that the connector is read-only. It also holds
+`use_figma`, under §Design System's fourth rule above.
 `src/__tests__/agent-briefs.test.ts` enforces it — `grep -L ToolSearch` cannot, since every such
 block names the tool in prose and reads clean with the entry stripped.
 
@@ -1560,18 +1602,30 @@ chain to a scratch database and asserts what each role can reach.
   changed with the domain**, and what keeps that true is `canonicalOrigin()` in
   `src/lib/origin.ts`: it returns `NEXT_PUBLIC_CANONICAL_ORIGIN` when set and `window.location.origin`
   otherwise, so the **web** app still follows whichever host served it — production, DEV, a
-  per-deployment preview alias — with the variable unset. **In the native bundle the runtime origin
+  per-deployment preview alias — with the variable unset. **One origin in `src/` is written down
+  rather than resolved, and it is not a counter-example.** `src/app/layout.tsx` needs an absolute
+  `og:image` URL at *build* time — there is no `window` in the prerender pass, and a web build
+  refuses `NEXT_PUBLIC_CANONICAL_ORIGIN` — so it prefers `VERCEL_PROJECT_PRODUCTION_URL` and falls
+  back to a literal. A domain move updates Vercel's value on its own; the literal is the floor for a
+  build that has none, and it addresses a crawler fetching a static asset rather than a rider
+  following a link. **In the native bundle the runtime origin
   is `https://localhost`**, which is on no GoTrue redirect allowlist, and an unlisted `redirect_to`
   is *discarded* — path and all — rather than refused, so a confirmation email lands the rider on
   the app root with the error in a fragment nothing reads (measured against the live PROD auth
   server 2026-08-12; the probe is `docs/ENVIRONMENTS.md` §The redirect allowlist). Hence
   `next.config.ts` fails a `CAPACITOR_BUILD=1` build when the variable is unset — and fails a
   **web** build when it is *set*, because on Preview it would have DEV and feature branches email
-  confirmation links pointing at production, where the token is invalid. **Two commands,
-  and the first cannot do the second's job** — a computed origin is invisible to a grep for a
-  written one: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0, and
+  confirmation links pointing at production, where the token is invalid. **Three commands, and no
+  one of them does another's job** — a computed origin is invisible to a grep for a written one, and
+  a grep for dead hosts is blind to the live one:
+  `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0, and
   `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`
-  is 1 — the definition inside `canonicalOrigin()`, nowhere else.
+  is 1 — the definition inside `canonicalOrigin()`, nowhere else. The third holds the *ceiling* on
+  the `og:image` literal above, which the first cannot see because all three of its patterns are
+  dead hosts and that one is live:
+  `grep -rn "letsride\.social" src/ --include=*.ts --include=*.tsx | grep -v "__tests__" | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` is 1.
+  A second copy of that idiom — in `ShareButton` or `signUp`, where the URL is one a rider is *sent*
+  to — is what it exists to catch.
 - **Branch off `development`, and open PRs against `development` — not `main`.** This is the one
   an agent gets wrong by habit. `main` receives exactly one kind of PR: the promotion from
   `development`, which is what ships to riders.
