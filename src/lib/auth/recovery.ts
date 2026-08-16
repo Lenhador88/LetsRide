@@ -160,3 +160,28 @@ export function callbackFailureDestination(next: string | null): string {
     ? '/auth/forgot-password?error=invalid_link'
     : '/auth/login?error=invalid_confirmation'
 }
+
+/**
+ * The `type` values `/auth/confirm` will hand to `verifyOtp`, and `null` for
+ * everything else.
+ *
+ * **An allowlist rather than a cast, because the value arrives in a URL.**
+ * `verifyOtp` dispatches on this string, so passing it through unchecked lets a
+ * rider choose which verification flow their token is spent on.
+ *
+ * **`recovery` is refused on purpose, and it is the omission worth explaining.**
+ * It would work — a `token_hash` needs no PKCE verifier, so it would fix
+ * cross-device password reset the same way this fixes cross-device confirmation
+ * — but the reset screen gates on `026`'s grant, which is read off the session's
+ * `amr` claim. Whether a `verifyOtp`-minted recovery session carries
+ * `{ method: 'recovery' }` the way an `exchangeCodeForSession` one does is
+ * unmeasured, and getting it wrong locks every rider out of their own reset with
+ * "that reset link has expired". Measure it against a real emailed link before
+ * widening this, and keep `/auth/callback` as recovery's route until then.
+ *
+ * `email` is here alongside `signup` because GoTrue's own template examples use
+ * it for the confirmation mail; both mean "this address is real".
+ */
+export function confirmableOtpType(value: string | null): 'signup' | 'email' | null {
+  return value === 'signup' || value === 'email' ? value : null
+}

@@ -2,7 +2,11 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { AUTH_NOTICES, authNotice } from '@/lib/auth/notices'
-import { RECOVERY_PATH, callbackFailureDestination } from '@/lib/auth/recovery'
+import {
+  RECOVERY_PATH,
+  callbackFailureDestination,
+  confirmableOtpType,
+} from '@/lib/auth/recovery'
 
 describe('authNotice', () => {
   it('renders the message for every code it declares', () => {
@@ -107,5 +111,33 @@ describe('callbackFailureDestination', () => {
         .searchParams.get('error')
       expect(authNotice(code)).not.toBeNull()
     }
+  })
+})
+
+describe('confirmableOtpType', () => {
+  it('accepts the two types an emailed confirmation link carries', () => {
+    expect(confirmableOtpType('signup')).toBe('signup')
+    expect(confirmableOtpType('email')).toBe('email')
+  })
+
+  // The value picks which verification flow the token is spent on, and it
+  // arrives in a URL. `recovery` in particular must NOT pass: the reset screen
+  // gates on 026's grant, and whether a verifyOtp-minted session carries the
+  // `amr` claim that grant reads is unmeasured — see the function's header.
+  it('refuses recovery, so the reset flow stays on /auth/callback', () => {
+    expect(confirmableOtpType('recovery')).toBeNull()
+  })
+
+  it('refuses every other verifyOtp type', () => {
+    for (const type of ['magiclink', 'invite', 'email_change', 'phone_change', 'sms']) {
+      expect(confirmableOtpType(type)).toBeNull()
+    }
+  })
+
+  it('refuses an absent or nonsense value', () => {
+    expect(confirmableOtpType(null)).toBeNull()
+    expect(confirmableOtpType('')).toBeNull()
+    expect(confirmableOtpType('SIGNUP')).toBeNull()
+    expect(confirmableOtpType('signup ')).toBeNull()
   })
 })

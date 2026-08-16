@@ -45,6 +45,12 @@ export const PUBLIC_PATHS = [
   '/auth/forgot-password',
   '/auth/reset-password',
   '/auth/callback',
+  // Confirms a signup from an emailed token_hash, so it is reached with no
+  // session by definition — the account is being confirmed, not signed in.
+  // Deliberately NOT in AUTH_ENTRY_PATHS below: a rider who already holds a
+  // session may still be confirming a second device's link, and bouncing them
+  // would spend the token with nothing to show for it.
+  '/auth/confirm',
 ]
 
 /**
