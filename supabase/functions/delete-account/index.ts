@@ -211,6 +211,23 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 
 /**
+ * HTTP statuses from GoTrue's `/user` endpoint that actually ASSERT the
+ * token was rejected, rather than merely being outside the 5xx/network band
+ * `AuthRetryableFetchError` already covers. See the call site (reviewer
+ * finding #1, 2026-08-16) for the allowlist-vs-range reasoning.
+ *
+ * `401` is measured against DEV, 2026-08-14 (this file's own header): every
+ * case this function's callers can produce — no `Authorization` header, a
+ * malformed JWT, a signature that does not verify, a `sub` with no
+ * `auth.users` row — comes back 401. `403` is INFERRED rather than measured
+ * against this project: no case here has produced one, but it is the same
+ * class (GoTrue refusing on authorization grounds, e.g. a banned account)
+ * and belongs beside 401 rather than being silently absorbed into
+ * `verification_unavailable`'s "we could not tell" bucket.
+ */
+const REJECTED_STATUSES = new Set([401, 403])
+
+/**
  * The folder prefixes in the `media` bucket, all keyed on the uploader.
  *
  * **`ride-maps` was added by PD-104 §4 and this list is the ONLY thing that
@@ -367,9 +384,22 @@ Deno.serve(async (req: Request) => {
   // `.status` rather than `instanceof`/error-name checks, because every
   // `AuthError` subclass carries it and a status range is stable across a
   // library bump in a way an internal class name is not.
+  //
+  // **`REJECTED_STATUSES` is an allowlist, not a range — reviewer finding #1
+  // (2026-08-16), the same defect class as finding #2 surviving its own
+  // repair.** A `>= 400 && < 500` band reads `429` (GoTrue's rate limiter),
+  // `408` and `425` as "the token was actively rejected" just as readily as
+  // a genuine `401` — auth-js's `handleError` (fetch.js) only special-cases
+  // its `NETWORK_ERROR_CODES` list (5xx) and a failed fetch (`.status` 0);
+  // *every other status, including 429, becomes a plain `AuthApiError`* with
+  // that status attached. An Edge Function calls GoTrue from shared Supabase
+  // infrastructure, which makes a per-IP rate limit MORE reachable there
+  // than from a browser, not less — and the consequence is identical to
+  // finding #2's: a live account reported as deleted, the rider signed out,
+  // nothing actually removed.
   if (userError) {
     const status = (userError as { status?: number }).status
-    const activelyRejected = typeof status === 'number' && status >= 400 && status < 500
+    const activelyRejected = typeof status === 'number' && REJECTED_STATUSES.has(status)
     if (!activelyRejected) return json({ error: 'verification_unavailable' }, 503)
     return json({ error: 'unauthorized' }, 401)
   }
