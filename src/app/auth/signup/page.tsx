@@ -60,21 +60,20 @@ export default function SignupPage() {
 
   return (
     <form action={formAction}>
-      {/* **A deliberate deviation: the v2 frame has no body copy on this screen,
-          nor on `/auth/login`.** It is here because the two surfaces that reach a
-          rider before they have an account — the share unfurl and this form —
-          were the only pitch the app makes, and until PD #216 one of them
-          contradicted itself and the other was silent. `AuthScreen` already
-          renders `body` for `/auth/forgot-password` and `/onboarding/terms`, so
-          this adds copy rather than composition.
+      {/* **A deliberate deviation: the v2 frame has no body slot.**
+          `npm run figma -- text "Sign up"` returns six strings and none is body
+          copy — `--all` included, so no toggled-off variant is being missed.
+          The decision, the weight it renders at, and the one thing that would
+          reverse it are in `docs/FIGMA-FIDELITY-TODO.md` §Sign up.
 
-          **Not on `/auth/login`, which is the screen a cold arrival actually
-          lands on** — the guard sends every un-authed request there, so a tapped
-          postcard link opens a form headed "Login" and nothing else. That is a
-          real gap and this does not close it: login is also what every returning
-          rider sees, and a tagline above the fold on every sign-in is friction
-          for the many to explain the app to the few. Signup is one tap further
-          and is where the decision is actually made. */}
+          **Not on `/auth/login`, which is where a cold arrival actually lands.**
+          The guard sends an un-authed request for any *non-public* path there
+          (`PUBLIC_PATHS` keeps this screen reachable), so a tapped postcard link
+          opens a form headed "Login" and nothing else — and no `next` param
+          survives, so the postcard is lost as well. Login is what every
+          returning rider sees, though, and a tagline above the fold on each
+          sign-in is friction for the many to explain the app to the few. Signup
+          is one tap on and is where the decision is made. */}
       <AuthScreen
         title="Sign up"
         body="Motorcycle rides are better with company. Find a club, join a ride, share the photos."
