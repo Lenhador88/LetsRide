@@ -29,14 +29,20 @@
  * `add-ride-map-tiles` task 8.3 blocks its own deploy on this redeploy for
  * exactly that reason. Deploying the renderer first is what opens the gap.
  *
- * **What is still owed here: the re-authentication proof (task 3.4).** Q7 was
- * answered on 2026-08-14 — require the password — and this file has no arm for
- * it: `req.json()` appears nowhere below, so there is nothing for a proof to
- * arrive in. Until that lands AND is redeployed, a client half that collects a
- * password is a gate that does not exist, because this build deletes on a valid
- * bearer token alone. **Ship the function change first**, then the client: the
- * stricter build refuses a caller sending no proof, and nothing calls it today,
- * so deploying it early breaks nothing.
+ * **The re-authentication proof (task 3.4) is now IN THIS FILE, as of PD-102
+ * (2026-08-16) — and it is NOT in the deployed build.** `req.json()` below
+ * reads a `{ password }` body and verifies it with `signInWithPassword`
+ * before anything destructive runs (D6). The deployed build still predates
+ * this: until the owner redeploys (dashboard only, `PD-86`), production and
+ * DEV both still delete on a valid bearer token alone, and a client sending a
+ * password to either gets it silently ignored. The client commits that add
+ * the password field are ordered *after* this one specifically so that once
+ * the redeploy happens, the change is fail-closed rather than fail-open —
+ * this file refuses a caller that sends no proof, and nothing sends one yet.
+ * **Verify the redeploy by CONTENT, not by sha alone** — 2.3a and 3.4 both
+ * name the same reason: three tasks now want the same redeploy, so a changed
+ * `ezbr_sha256` no longer proves any one of them shipped. A request with no
+ * `password` field must come back `reauth_required`.
  *
  * **And "nothing calls it" is not the same as "nobody can", which makes the
  * ordering stronger than it first reads.** The endpoint is live with
@@ -115,8 +121,11 @@
  * ---------------------------------------------------------------------------
  * Order of operations, and what a failure between them actually leaves
  * ---------------------------------------------------------------------------
- * Clubs, then objects, then rows.
+ * Re-auth, then clubs, then objects, then rows.
  *
+ *   0. The re-authentication proof (PD-102, above). Refuses before anything
+ *      else runs — `reauth_required`, not `unauthorized` — so a wrong password
+ *      never reaches the transfer, the sweep or the delete.
  *   1. `transfer_owned_clubs_for_deletion(sub)` — hands over every club this
  *      rider owns so the `clubs -> postcards` cascade does not destroy other
  *      riders' postcards. Returns the club image paths it surrendered.
@@ -161,6 +170,12 @@
  * indistinguishable from success and must be treated as such.** The
  * already-gone branch in step 3 still earns its place — it covers the account
  * disappearing between `getUser` and `deleteUser`.
+ *
+ * **`reauth_required` is a different 401 and the client must not fold it into
+ * the paragraph above.** It comes from step 0, on a token that verified fine —
+ * the account is not gone, the password proof is. Treating it as "session
+ * dead, deletion succeeded" would sign a rider out and report success on a
+ * simple typo, on the one action with no undo.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -310,9 +325,58 @@ Deno.serve(async (req: Request) => {
   if (userError || !subject) return json({ error: 'unauthorized' }, 401)
   if (subject.is_anonymous) return json({ error: 'unauthorized' }, 401)
 
-  // Rule 1: the subject came from the token. The body is never read — not even
-  // to validate it — so there is no id parameter to get wrong.
+  // Rule 1: the subject came from the token, never from the body. The only
+  // thing read out of the body is the re-auth proof below — never an id.
   const uid = subject.id
+
+  // ---------------------------------------------------------------------
+  // Re-authentication (design D6, Q7 — decided 2026-08-14: require the
+  // password). A live access token proves the SESSION is live; it does not
+  // prove the person holding the phone knows the password, which is the
+  // separate claim D6 asks for — an unlocked, unattended or stolen phone is
+  // otherwise two taps from an unrecoverable loss. Checked here, in the
+  // function, because a check the client performs is one a modified client
+  // skips (account-deletion §"A live session is not sufficient on its own").
+  //
+  // A distinct error code from the token check above (`reauth_required`, not
+  // `unauthorized`) on purpose: `unauthorized` above means the JWT itself did
+  // not verify, which — for a token this same client just used to reach this
+  // line — can only mean the account is already gone (D7's already-deleted
+  // case, see the file header). `reauth_required` means the token is fine but
+  // the password proof is missing or wrong, which must NOT be read the same
+  // way: an account that still exists must not be treated as deleted because
+  // of a mistyped password.
+  //
+  // No JSON body reaches this endpoint from any caller today, so
+  // `req.json()` throwing on an empty body is the ordinary case rather than
+  // an error to log.
+  let body: { password?: unknown } = {}
+  try {
+    body = (await req.json()) as { password?: unknown }
+  } catch {
+    // No body, or not JSON — treated as no password below, not as a parse
+    // failure. The response must not distinguish "sent nothing" from "sent
+    // the wrong thing" — see the scenario "repeated wrong attempts do not
+    // become an oracle".
+  }
+  const password = typeof body.password === 'string' ? body.password : ''
+
+  // `subject.email` is missing only for a shape this app never creates
+  // (there is no OAuth/phone signup path), but the check costs nothing and
+  // means this can never call `signInWithPassword` with an empty email.
+  if (!password || !subject.email) {
+    return json({ error: 'reauth_required' }, 401)
+  }
+
+  // Verified by asking GoTrue to sign the password in, on the SAME anon
+  // client already constructed above for `getUser`. `persistSession: false`
+  // means this never writes anywhere — the returned session, if any, is
+  // discarded; only `error` is read.
+  const { error: reauthError } = await anon.auth.signInWithPassword({
+    email: subject.email,
+    password,
+  })
+  if (reauthError) return json({ error: 'reauth_required' }, 401)
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
