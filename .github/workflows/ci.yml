@@ -135,6 +135,25 @@ jobs:
             echo "-> .claude/settings.json touched: running the app job for the hard_deny claim"
           fi
 
+          # The fifth, added with the generated-artifact alarms: those tests
+          # rebuild src/components/icons/generated.tsx from design/icons/*.svg
+          # and design/TOKENS.md from design/tokens.json, and byte-compare both
+          # — so their inputs live entirely inside two denylisted trees, and the
+          # diff class that breaks them is precisely a diff confined to those
+          # trees. Re-export the icons and forget `npm run figma:components`,
+          # or regenerate .claude/skills/ alone, and the PR ran zero jobs.
+          # Same shape as the three carve-outs above: a tripwire only helps if
+          # the diff that trips it runs the job. Without this the drift is still
+          # caught, but on the push to development or main, where it is a red
+          # DEPLOY GATE after the merge rather than a red PR before it.
+          # The cost is deliberate and is the reason this needed a decision
+          # rather than a commit: a design/-only PR now runs the app job, and
+          # the snapshot is ~35 MB of generated JSON refreshed monthly.
+          if echo "$files" | grep -qE '^design/|^\.claude/skills/'; then
+            app=true
+            echo "-> design/ or .claude/skills touched: running the app job for the generated-artifact alarms"
+          fi
+
           # The database job's inputs are the migration chain, the assertions,
           # and the seed check that runs beside them — so an allowlist is correct
           # here rather than merely cheap. `scripts/db/` is in it because the

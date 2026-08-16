@@ -330,6 +330,33 @@ export const claims = [
     about: 'docs/reference/product-scope.md: the trap — unscoped grep -c "href:" on Navbar.tsx',
   },
 
+  // ---- Icon count (prose vs the generator's committed source) --------------
+  //
+  // The one piece of the 2026-08-16 generated-artifact alarms that IS a doc
+  // claim, and it belongs here rather than in the tests that landed with it.
+  // Those two —
+  // `scripts/figma/__tests__/generated-artifacts.test.mjs` and
+  // `src/__tests__/openspec-artifacts.test.ts` — compare an ARTIFACT against
+  // its GENERATOR, which is not this registry's shape (no prose anchor, no
+  // single integer). This sentence is prose stating a number with one
+  // unambiguous ground truth, which is exactly this registry's shape.
+  //
+  // Measured against `design/icons/`, not against
+  // `src/components/icons/generated.tsx`: the SVG export is the SOURCE, the
+  // module is downstream of it, and the byte-identical rebuild in
+  // generated-artifacts.test.mjs already ties the two together. Pointing this
+  // claim at the module instead would check the doc against something the doc
+  // does not describe — it says "exported", and what is exported is the SVGs.
+  {
+    id: 'icons-exported-design-system',
+    file: 'docs/reference/design-system.md',
+    pattern: /\*\*Icons: (\d+) exported\*\*, under `Element \/ Icon \/ \*`/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `ls design/icons/*.svg | wc -l`,
+    about: 'docs/reference/design-system.md §Icons: "Icons: 53 exported" vs design/icons/',
+  },
+
   // ---- RLS assertion count (needs Postgres — see check.mjs's gate) -------
   {
     id: 'rls-count-claude',
