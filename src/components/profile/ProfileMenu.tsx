@@ -66,10 +66,15 @@ export function ProfileMenu() {
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const { signOut, pending } = useSignOut()
-  // Reviewer finding #1: read once per render rather than hoisted to module
-  // scope, so a test can still exercise both branches by setting the env var
-  // before importing — module-scope evaluation would freeze it at whatever
-  // was set the first time this file loaded.
+  // Called per render rather than cached at module scope. `flags.ts` reads
+  // `process.env` directly rather than caching its own result, and Next
+  // inlines `NEXT_PUBLIC_*` at build time either way — so there is no
+  // runtime cost or behaviour this saves; it just keeps this component free
+  // of a second copy of the flag's state to fall out of sync with the one
+  // `accountDeletionEnabled` already owns. (`flags.test.ts` covers the
+  // predicate itself; this repo has no component-render test harness, so
+  // there is no test exercising this call site — noted rather than claimed,
+  // per reviewer finding #2.)
   const deletionEnabled = accountDeletionEnabled()
 
   return (
