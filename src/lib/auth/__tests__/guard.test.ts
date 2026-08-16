@@ -213,4 +213,12 @@ describe('needsOnboardingState', () => {
       expect(needsOnboardingState(path)).toBe(false)
     }
   })
+
+  // /auth/confirm spends a one-use token the moment it loads. Reading the
+  // onboarding stamps first would put a round trip — and a failure mode — in
+  // front of a link the rider cannot click twice, and the answer would change
+  // nothing: this route always navigates onward itself.
+  it('is false for the emailed-confirmation route', () => {
+    expect(needsOnboardingState('/auth/confirm')).toBe(false)
+  })
 })

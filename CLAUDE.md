@@ -269,7 +269,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (36 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
+| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (38 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in and checks the email survives it, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. It then refuses a create and an edit and checks every field and choice of each survives. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite. **The walk is not the gap being filled**: it asks one question per route — did this render — and asserts behaviour only in its six named phases, each covering a defect no other gate here can see (PD-196's cleared email, PD-199's cleared create form and its silently-rewritten edit form, PD-111's navigation cost, the guard's redirects, what sign-out leaves behind). Adding a phase means adding a reason, not broadening a remit |
 
@@ -345,7 +345,7 @@ the exported function must be named `proxy`, and do not add a `middleware.ts`.
 Routing decisions live in **three** places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 36 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 38 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half. This is where the reads live now, and the reason it
@@ -437,9 +437,19 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
   `import { resolveSupabase } from '@/lib/supabase/resolve'`.
   `src/lib/data/__tests__/isomorphic.test.ts` walks the module graph from both directories and
   fails loudly if anything in them reaches a Next server module.
-- A component that genuinely needs the client itself — the route guard, the reset screen —
-  imports `createClient` from `@/lib/supabase/client`. That is two files, and a third is
-  probably a read that belongs in `lib/data/`.
+- A component or helper that genuinely needs the client itself imports `createClient` from
+  `@/lib/supabase/client`. **Count them rather than trust a number here** — this line said "two
+  files" for long enough to be wrong by four, and it is a live review heuristic, so a stale
+  ceiling makes every reviewer flag a legitimate file:
+
+  ```bash
+  grep -rln "from '@/lib/supabase/client'" src/ | grep -v "src/lib/supabase/"   # 6
+  ```
+
+  What earns a place on that list is a **session or transport** concern, not a read: the guard
+  cache, the three auth routes that exchange or verify an emailed credential, the Storage upload,
+  and the Realtime subscription. Anything that is a *query* belongs in `lib/data/` no matter how
+  short the list gets.
 - `@/lib/supabase/server` **no longer exists**. Neither does `@supabase/ssr`.
 
 **RLS is ON for all tables.** Every query runs under the authenticated user's session. You do not need to filter by `user_id` manually — RLS policies enforce ownership. But do add RLS policies in migrations for any new table.
