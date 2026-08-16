@@ -1395,6 +1395,72 @@ Two traps, both live:
 `CLAUDE.md` §Development Workflow has the commands and the refresh rules; the two traps above
 are the ones that only matter when choosing *what* to build.
 
+### The snapshot is behind the Figma file — two wave icons, 2026-08-16
+
+The like control is the motorcycle wave (PD-228) needed a glyph the set did not have, so two
+components were authored **into** Figma rather than drawn in the repo — the first time anything
+here has written to the design file. `CLAUDE.md` §Design System's fourth rule and
+`.claude/agents/design-system.md` §Writing to Figma carry the standing rules that came out of it.
+
+They are on the **Components** page, below the icon column, and `design/` does **not** contain
+them — `manifest.json` still records the 2026-08-04 pull:
+
+| Component | Node | State |
+|---|---|---|
+| `Element / Icon / Wave Outline` | `4108:6912` | traced from `Noto Emoji` U+270C, reads correctly at 24px — **licence unsettled** |
+| `Element / Icon / Wave Filled` | `4105:6912` | **not settled** — a bolder copy of the outline, near-indistinguishable from it |
+
+**The licence was read on 2026-08-16 and the trace is clear to ship.** Recorded here because the
+next session would otherwise re-derive it, and because `places` is the standing warning against
+assuming exactly this.
+
+`Noto Emoji` is SIL OFL 1.1, `Copyright 2013 Google LLC`, **no Reserved Font Name declared**
+(`raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/OFL.txt`). What settles it is the
+licence's own DEFINITIONS, quoted from the primary text:
+
+> "Font Software" refers to the set of **files** released by the Copyright Holder(s) under this
+> license and clearly marked as such. This may include source files, build scripts and
+> documentation.
+
+Every obligation hangs off that noun. Clause 1 forbids selling the Font Software or its components
+by itself; clause 2 is what attaches the copyright-notice-and-licence requirement, and it governs
+bundling or **redistributing the Font Software**. We redistribute no file from it — what ships is
+a `<path d="…">` in `generated.tsx`, derived from one glyph's outline — so neither clause has a
+subject in our bundle. The definition is file-scoped, which is also why "components" does not
+reach a single glyph.
+
+SIL's own OFL-FAQ says the same thing directly: artwork created from font outlines is not subject
+to the OFL, and it lists logos, signage, t-shirts and 3D-printed shapes as needing no further
+licensing. **Flagged as second-hand** — `openfontlicense.org`, `scripts.sil.org`, the CTAN mirrors
+and `choosealicense.com` are all egress-blocked from this container, so the FAQ reached me through
+a search summary rather than its primary text. The licence text above is verbatim and is the part
+the conclusion rests on.
+
+So: no attribution is required and none is legally load-bearing. Crediting Google in a `NOTICE`
+is free courtesy and worth doing when the icon lands. **What would change the answer is shipping
+the font file itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
+
+Check rather than trust that, because a `figma:pull` by any session closes the gap silently:
+
+```bash
+node -p "require('./design/manifest.json').pulledAt"
+npm run figma -- icons | grep -i wave      # empty = snapshot still behind
+```
+
+Two things are open, and the second is a decision rather than work:
+
+- **Nothing has reached code.** `generated.tsx` has no wave. It takes `figma:pull` then
+  `figma:icons` — both network, both the endpoint families that have blocked this repo for days
+  — before `LikeButton` can import one.
+- **The filled twin has no good answer yet.** `LikeButton` distinguishes its states by *both*
+  glyph and colour (`HeartFilledIcon` + `text-like` against `HeartOutlineIcon`), and a solid
+  silhouette of a hand loses the folded fingers and thumb that make the glyph read at all.
+  Tracing gives one contour with `NONZERO` winding already, so no fill-rule or stroke trick
+  solidifies it — measured, not assumed. The realistic options are a hand-drawn solid twin, or
+  one glyph for both states differing only by `text-like`. The second makes the two components
+  generate *identical* SVGs, since the generator rewrites every fill to `currentColor` — so if
+  that is the answer, PD-228 wants one icon and a colour change, not a pair.
+
 ---
 
 ## Constraints that will waste your time otherwise
