@@ -823,7 +823,9 @@ guard, the two `.claude/` cases below, and contrast on any new colour pairing.
 those two are carved out of `ci.yml`'s denylist so `src/__tests__/agent-briefs.test.ts` runs on
 them. **`.claude/settings.json` runs the job too** — its own carve-out, because `docs:check`'s
 `hard_deny` claim measures that file — but the job checks one *number* in it, never the
-permission semantics. **`.claude/hooks/*.sh` and the rest of `.claude/` still run zero jobs.**
+permission semantics. **`.claude/skills/` runs it too** — the generated-artifact alarm byte-compares
+those files against the openspec CLI's own templates. **`.claude/hooks/*.sh` and the rest of
+`.claude/` still run zero jobs.**
 So a diff touching the permission or execution surface is a **security** review with, at best, a
 cardinality check behind it.
 
@@ -1650,17 +1652,19 @@ chain to a scratch database and asserts what each role can reach.
     *every* changed file is under `docs/`, `design/`, `openspec/`, `.claude/` or a root `*.md`.
     That is a **denylist**, like the route guard's public paths — a new top-level directory runs
     CI by default, so forgetting to list something costs one green run rather than a missed
-    break. **Four carve-outs run the job anyway**, each for its own tripwire — count them in the
+    break. **Five carve-outs run the job anyway**, each for its own tripwire — count them in the
     `changes` job rather than trusting this list, which has already been a carve-out behind:
     `.claude/agents/` + `.claude/commands/` (`src/__tests__/agent-briefs.test.ts`, because a
     brief is executable process that no other job reads), `docs/` + root `*.md`
     (`scripts/docs/__tests__/registry.test.mjs`, because `docs:check`'s anchors depend on exact
     wording), `openspec/` (`crossrefs.test.mjs`, because a third of the repo's section pointers
-    live there), and `.claude/settings.json` (the `hard_deny` claim measures that file, and a
-    permissions diff touches nothing else). **So a PR touching only `design/`, `.claude/hooks/`
-    or the rest of `.claude/` runs zero jobs.**
+    live there), `.claude/settings.json` (the `hard_deny` claim measures that file, and a
+    permissions diff touches nothing else), and `design/` + `.claude/skills/` (the
+    generated-artifact alarms rebuild `generated.tsx` and `TOKENS.md` from inputs living entirely
+    inside those two trees, so the diff that breaks them is exactly a diff confined to them).
+    **So a PR touching only `.claude/hooks/` or the rest of `.claude/` runs zero jobs.**
   - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
-    is a grep, a `jq` or a contrast ratio — 23 of 35. The ones needing Postgres, a second full
+    is a grep, a `jq` or a contrast ratio — 24 of 36. The ones needing Postgres, a second full
     build or a **test runner** stay out, so `npm run docs:check` locally is still the complete
     answer. That last exclusion was learned rather than designed: the two claims that spawn
     `vitest` on one file passed locally — including under `CI=true GITHUB_ACTIONS=true` — and

@@ -64,7 +64,7 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1574/1574 across 49 files
+npm run test:unit                     # 1599/1599 across 51 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 34 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
@@ -461,7 +461,7 @@ the postcard thread still carry inferred composition; the design has frames for 
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
 | Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1505**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD); `054` by **+64 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `036: an ownerless owner cannot see their own private club's ride TODAY` pinned the defect as current behaviour, and `054` fixes it, so the line is now `036/054:` and expects 1 where it expected 0. **A session diffing label sets against `development` will find the old label simply gone**; reinstating it re-asserts the defect and turns a correct database red. `036` §7.12c's *behaviour* is unchanged and still right — the club-ride fan-out reads `club_members` directly because a caller-relative helper cannot compute a recipient set — but its stated justification is void, and the withheld notification is now a gap (N10) owned by `enforce-creator-membership`; `055` by **+44 new and −1 relabelled**, and that one is a plain rename — `036: … and nobody else on the crew` still reads 1, but only because that fixture's sole other crew member IS the organizer, so it is now `036/055:` with the reason stated; `056` by **+29 new and −1 relabelled**, and that relabel is an **expected-value flip** like `054`'s rather than a rename — `an uppercase username is rejected` asserted the rule `056` removes, so it is now `a username with a non-ASCII letter is rejected — 056 widened the charset to A-Z, not to Unicode`, checked on **both** `C.UTF-8` and `en_US.UTF-8` because a collation-dependent `[A-Za-z]` range would pass locally and fail hosted. One assertion got strictly stronger with no label change: `lower(username) rejects a case-variant of an existing username` used to drop `profiles_username_format` inside a savepoint to reach the index at all, so it was true of a database this repo never ran; capitals now reach the index for real and the scaffolding is gone; `057` by **+1 new and −3 relabelled**, and all three relabels are the same kind — a *boundary that moved* rather than a rule that changed, so each keeps its meaning at a new number and a session diffing label sets will find three lines gone that must not be reinstated (`a username longer than 20 characters is rejected` → `057: … longer than 25 …`; `056: twenty-one characters is still too long, capitals or not` → `056/057: twenty-six …`; and the `pg_get_constraintdef` pin, whose expected string carries the bound verbatim). The one genuinely new line is the POSITIVE at exactly 25, written for real and read back rather than asserted `allowed`, because the rejection at 26 passes on its own against a database where `057` never applied; `058` and `059` together by **+47 new and 0 relabelled** (35 and 12), and that zero is read off the diff rather than off a label-set reconciliation — its change to `rls_test.sql` is `332	0` in `git diff origin/development...HEAD --numstat`, so no existing label can have moved. Two of the 35 are mutation-tested rather than merely green, which is what makes the rest of the section worth its length: making `058`'s exception block re-raise takes the suite down at the raising trigger, and deleting `notify_club_joined`'s early return produces `FAIL 058: joining the welcome club notifies NOBODY — expected 0, got 1`. `059`'s two are mutation-tested the same way — dropping its ride-fan-out early return reads `expected 0, got 2`, and dropping its `is_default` delete guard reads `expected the statement to be rejected, but it succeeded` |
-| Unit tests | `npm run test:unit` — **1574 across 49 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Unit tests | `npm run test:unit` — **1599 across 51 files on a clean tree**. **Do not read a rise as "tests were added"**: `no-service-role-key.test.ts` runs `it.each` over every scanned *source* file, so the count moves whenever a source file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -1395,24 +1395,44 @@ Two traps, both live:
 `CLAUDE.md` §Development Workflow has the commands and the refresh rules; the two traps above
 are the ones that only matter when choosing *what* to build.
 
-### The snapshot is behind the Figma file — two wave icons, 2026-08-16
+### The wave icon — authored into Figma, landed in code, 2026-08-16
 
-The like control is the motorcycle wave (PD-228) needed a glyph the set did not have, so two
-components were authored **into** Figma rather than drawn in the repo — the first time anything
-here has written to the design file. `CLAUDE.md` §Design System's fourth rule and
+The like control is the motorcycle wave (PD-228) needed a glyph the set did not have, so it was
+authored **into** Figma rather than drawn in the repo — the first time anything here has written
+to the design file. `CLAUDE.md` §Design System's fourth rule and
 `.claude/agents/design-system.md` §Writing to Figma carry the standing rules that came out of it.
 
-They are on the **Components** page, below the icon column, and `design/` does **not** contain
-them — `manifest.json` still records the 2026-08-04 pull:
+**It is `Element / Icon / Wave` (`4108:6912`), one component, and one is the whole point.** The
+heart it replaced was a filled/outline pair; a hand cannot be one. A solid silhouette loses the
+folded fingers and thumb that make the glyph legible at 24px, and a merely bolder copy is
+indistinguishable from the outline on a phone — so the liked state is carried by `text-like`
+alone, which is what the product owner chose. A second component was authored and then deleted;
+do not reintroduce one.
 
-| Component | Node | State |
-|---|---|---|
-| `Element / Icon / Wave Outline` | `4108:6912` | traced from `Noto Emoji` U+270C, reads correctly at 24px — **licence unsettled** |
-| `Element / Icon / Wave Filled` | `4105:6912` | **not settled** — a bolder copy of the outline, near-indistinguishable from it |
+**That is a legibility argument, not a tooling one, and the difference matters if you generalise
+it.** `Heart Filled`/`Heart Outline` and `Location Filled`/`Location Outline` both ship happily —
+`currentColor` rewriting collapses a pair only when the two are the *same* outline duplicated,
+which is what the wave's twin was.
 
-**The licence was read on 2026-08-16 and the trace is clear to ship.** Recorded here because the
-next session would otherwise re-derive it, and because `places` is the standing warning against
-assuming exactly this.
+The consequence in code is that `aria-pressed` on `PostcardActionButton` is now the whole of the
+non-visual signal. So the accessible name was made **constant** in the same commit: it used to
+flip to "Unlike, N likes", and a toggle that reports `pressed` *and* renames itself to the undo
+action announces "Unlike, 5 likes, pressed" — named for undoing, reported as done. If a future
+screen draws a like without `aria-pressed`, its state is invisible to a screen reader; the colour
+is measured at 4.51:1 between states, which clears the 3:1 for a colour-only distinction but is
+not a substitute for the attribute.
+
+The full chain ran, so `design/` and `generated.tsx` are current — 54 icons, not 53:
+
+```bash
+node -p "require('./design/manifest.json').pulledAt"   # 2026-08-16
+npm run figma -- icons | grep -i wave                  # wave  Wave  4108:6912
+grep -c WaveIcon src/components/icons/generated.tsx    # 1
+```
+
+**The glyph is traced from `Noto Emoji` U+270C, and its licence is settled — clear to ship.**
+Recorded because the next session would otherwise re-derive it, and because `places` is the
+standing warning against assuming exactly this.
 
 `Noto Emoji` is SIL OFL 1.1, `Copyright 2013 Google LLC`, **no Reserved Font Name declared**
 (`raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/OFL.txt`). What settles it is the
@@ -1436,30 +1456,29 @@ and `choosealicense.com` are all egress-blocked from this container, so the FAQ 
 a search summary rather than its primary text. The licence text above is verbatim and is the part
 the conclusion rests on.
 
-So: no attribution is required and none is legally load-bearing. Crediting Google in a `NOTICE`
-is free courtesy and worth doing when the icon lands. **What would change the answer is shipping
-the font file itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
+So no attribution is required and none is legally load-bearing. Crediting Google in a `NOTICE` is
+free courtesy and still worth doing. **What would change the answer is shipping the font file
+itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
 
-Check rather than trust that, because a `figma:pull` by any session closes the gap silently:
+**The walk was run against DEV on 2026-08-16 and the icon was looked at.** 19/19 screens rendered
+clean, 48/48 guard, navigation and sign-out checks correct, and the postcards feed was screenshotted
+at 3x with the like control toggled both ways. The glyph reads at 24px, its weight matches Chat
+Bubble and Paper Plane beside it, and the liked state is legibly Pink/100. `aria-label` came back
+`Like, 0 likes` with `aria-pressed` returning to `false` after a toggle — the two mechanisms agreeing,
+which is what the earlier fix was for.
 
-```bash
-node -p "require('./design/manifest.json').pulledAt"
-npm run figma -- icons | grep -i wave      # empty = snapshot still behind
-```
+**No credential needed to be requested, and an earlier draft of this section wrongly said one did.**
+`WALK_EMAIL` / `WALK_PASSWORD` are not in the environment and are not meant to be — §Test accounts
+above already prescribes the route, and it takes about ten seconds: a session holds `execute_sql`
+on DEV under the standing grant, so it sets a generated password on
+`rider-1786033088990@letsride.dev`, walks, and rotates it back to a value nobody holds. That is
+what happened here, and the password was rotated afterwards precisely because it had passed
+through a transcript.
 
-Two things are open, and the second is a decision rather than work:
-
-- **Nothing has reached code.** `generated.tsx` has no wave. It takes `figma:pull` then
-  `figma:icons` — both network, both the endpoint families that have blocked this repo for days
-  — before `LikeButton` can import one.
-- **The filled twin has no good answer yet.** `LikeButton` distinguishes its states by *both*
-  glyph and colour (`HeartFilledIcon` + `text-like` against `HeartOutlineIcon`), and a solid
-  silhouette of a hand loses the folded fingers and thumb that make the glyph read at all.
-  Tracing gives one contour with `NONZERO` winding already, so no fill-rule or stroke trick
-  solidifies it — measured, not assumed. The realistic options are a hand-drawn solid twin, or
-  one glyph for both states differing only by `text-like`. The second makes the two components
-  generate *identical* SVGs, since the generator rewrites every fill to `currentColor` — so if
-  that is the answer, PD-228 wants one icon and a colour change, not a pair.
+The remaining honest gap is aesthetic rather than structural: **the wave carries less ink than its
+neighbours** — roughly 15px of glyph across a 24px box against their ~21 — because a hand is
+portrait where a bubble and a plane are not. It reads slightly lighter in the row. Deliberate to
+leave as-is; growing it further would push the fingertips into the box edge.
 
 ---
 
