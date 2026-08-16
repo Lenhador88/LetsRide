@@ -190,11 +190,15 @@ removal landing without its code repair is an outage.
   re-authentication proof from 3.4; run the club transfer, then the Storage sweep, then
   `deleteUser(sub)` with **hard delete**, never Supabase's soft-delete mode.
 
-  **Un-ticked 2026-08-14: every clause here is built except the re-authentication proof, and
-  this line read as done while that arm did not exist.** The file reads no request body at all —
-  `req.json()` appears nowhere in it — so there is nothing for a proof to arrive in. Q7 was open
-  when this was ticked and the clause was written against its recommended default; it is now
-  decided, and the arm is the outstanding work.
+  **The re-authentication clause is now in the repo (PD-102, 2026-08-16), and this stays
+  unticked because "in the repo" is not "true in production".** `signInWithPassword` verifies the
+  proof before the club transfer runs, returning `reauth_required` rather than `unauthorized` so
+  the client never confuses a wrong password with an already-deleted account. **The deployed
+  build on both projects still predates this commit** — no session can redeploy it (no `supabase`
+  CLI, no MCP deploy tool) — so this box stays open until the owner redeploys and someone verifies
+  the deployed `PREFIXES`/body-read by content, not by a changed `ezbr_sha256` alone (see 2.3a and
+  3.4's own notes on why the sha check stopped being sufficient the moment three tasks shared one
+  redeploy).
 - [x] 2.3 Storage sweep across every prefix in the `media` bucket keyed on the rider's uid —
   `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`, `club-avatars/<uid>/`,
   `club-covers/<uid>/` and, since PD-104, `ride-maps/<uid>/` — through the
@@ -262,70 +266,69 @@ removal landing without its code repair is an outage.
 
 ## 3. The flow
 
-- [ ] 3.1 Add the `Delete account` row to `ProfileMenu`'s sheet: last position, own list group,
-  `Warning/100`, `TrashIcon` from `@/components/icons/generated` (`Element / Icon / Trash` — the
-  generated set has it). No dead row: it ships working or it does not ship.
-- [ ] 3.2 **Also add the `Preferences` row, or explicitly decide not to.** The frame has
-  **three** rows and the built menu has one. `ProfileMenu.tsx`'s doc comment and
-  `docs/FIGMA-FIDELITY-TODO.md` §Profile both say "exactly two rows in the design, and that is
-  read from the frame rather than assumed" — verified wrong with
-  `npm run figma -- tree "Profile / Delete account / Account options" --all`, where none of the
-  three list items is hidden. Fix both claims in the same change; a wrong claim that names its own
-  method is worse than a stale one.
-- [ ] 3.3 The confirmation screen from `2303:9370`: "Delete account?" (`Poppins/24/Semibold`),
-  "This action cannot be undone." (`Poppins/14/Regular`), `Button variant="danger"` labelled
-  `Delete account`, `secondary` labelled `Cancel`. The title's fill in the frame is the legacy
-  `Grey (OLD)/10` — resolve to the nearest v2 token per decision #4 rather than porting it.
-
-  **This enumeration is no longer complete, and it is closed-form, which is the trap.** Q7's
-  answer adds a password field the frame does not draw, so a builder following this list ships
-  the sheet, ticks it, and reaches 3.4 with nowhere to put the input. The field is 3.4's, and
-  **its placement, label, error copy and type token are unspecified by anyone** — the Q7 row
-  offered "draw the field OR bless the deviation" and the owner blessed the deviation, which
-  settles whether to re-authenticate and not what the control looks like. Ask the designer, or
-  build it from the nearest existing `<Input>` usage and say which you did.
-- [ ] 3.4 Re-authentication before the destructive call (design D6, Q7 — **decided 2026-08-14,
-  require the password**). Server-verified, not a client-side gate: the client collects the
-  password and the **Edge Function** verifies it, because a check the client performs is one a
-  modified client skips.
-
-  **Land the function change and the client half as separate diffs, function first.** The
-  deployed build reads no request body, so a client sending a proof to it deletes the account
-  with no gate at all — fail-open, behind a password field implying otherwise. The other order
-  is fail-closed: a function requiring the proof refuses a client that sends none, and nothing
-  calls it today. **The redeploy is an owner action** (`PD-86`) and it is needed on DEV too.
-
-  **It is the SAME owner action as 2.3a and as `add-ride-map-tiles` 8.3 — one redeploy, three
-  reasons — and that breaks the check all three of them verify with.** Each says "`list_edge_functions`
-  shows a new `ezbr_sha256`", which was a sound test while there was one reason; now whichever
-  redeploy happens first satisfies every one of those checks while saying nothing about whether
-  the other two reasons shipped. So verify the *content*: `ride-maps` present in the deployed
-  `PREFIXES`, and a request with no proof refused. A changed sha is necessary and no longer
-  sufficient.
-- [ ] 3.5 The impact summary: clubs that will change hands, upcoming rides that will be cancelled,
-  riders currently RSVP'd to them. Read through `src/lib/data/`, under the rider's own session,
-  never through the privileged function. Render nothing rather than zeroes when there is nothing.
-- [ ] 3.6 The action in `src/lib/actions/` that calls the function, with pending, error and
-  offline states. **Offline refuses** and never queues — an irreversible destructive action is the
-  one mutation that must never be optimistic.
-- [ ] 3.7 On success: clear the session, the query cache, cached images and device secure storage,
-  then land on `/auth/login`. The local clear happens even when the sign-out call fails.
-- [ ] 3.8 Every state from the flow spec has a treatment: in flight, offline, failed, already
-  deleted, cancelled at every point. Reuse the shared loading/error/offline treatments the render
-  migration builds rather than inventing screen-local ones.
+- [x] 3.1 `ProfileMenu`'s "Delete account" row — `Warning/100`, `TrashIcon`, its own list group
+  below Sign out. *(Done, PD-102. It opens `DeleteAccountSheet`, not a route — see 3.3.)*
+- [x] 3.2 **Decided: `Preferences` stays unbuilt.** There is no `/profile/preferences` screen and
+  nothing in scope draws one, so it would be the dead row this file's own rule refuses. Both wrong
+  claims fixed in `ProfileMenu.tsx`'s own doc comment; `docs/FIGMA-FIDELITY-TODO.md` §Profile is
+  6.5's, not this task's, and is unchanged.
+- [x] 3.3 **Built as a sheet, not a route, and that is a correction to this task rather than a
+  deviation from it.** `npm run figma -- tree "Confirm account deletion" --all` shows
+  `Context Menu / Confirm account deletion` layered as a second `ContextMenu`-style sheet over
+  the SAME `/profile` canvas — `Delete account?` / `This action cannot be undone.` / danger
+  `Delete account` / secondary `Cancel`, at `2303:9370` — the same shape
+  `Content / Context Menu / Postcard` uses, not a full page. `src/app/(app)/profile/delete/`
+  does not exist and should not. The password field (D6) sits between the body copy and the
+  buttons, built from `LoginPage`'s `<Input type="password">` — the designer still owns the
+  final control per the note below.
+- [x] 3.4 **The re-authentication arm is in the repo, in its own commit ahead of the client half —
+  the deployed build still predates it.** `supabase/functions/delete-account/index.ts` now reads
+  `{ password }` and verifies it with `signInWithPassword` before anything destructive runs,
+  returning `reauth_required` (never `unauthorized`) on a missing or wrong one. **Redeploying is
+  still an owner action** (`PD-86`) — nothing in this session's tools can do it — so until it
+  happens, a password submitted through 3.3's sheet is checked by nothing on either project. Verify
+  by content, not by sha, per this task's own note.
+- [x] 3.5 `getAccountDeletionImpact()` (`src/lib/data/profile.ts`) — clubs changing hands, upcoming
+  rides to cancel, riders on those rides' crews, read under the rider's own session. Renders
+  nothing when there is nothing, per the spec's own scenario; **not gated on this read succeeding**
+  — a documented deviation from `DeleteClubControl`'s stricter refuse-on-error gate, because
+  Apple's 5.1.1(v) is the reason this feature exists and the summary is informational only.
+- [x] 3.6 `deleteAccount` in `src/lib/actions/auth.ts` — pending/error states via `useActionState`,
+  offline refused before the network call (`isOnline()`), and it distinguishes the function's two
+  401s (`reauth_required` vs the already-deleted `unauthorized`) via `edgeFunctionErrorCode`
+  (`src/lib/supabase/functions.ts`, the one new doorway import for `@supabase/supabase-js`'s error
+  classes).
+- [x] 3.7 On success `deleteAccount` returns `signOut()` — same clears, same destination, not a
+  second hand-written list (client-session-storage's own rule). `client-session-storage`'s
+  "revocation the server refuses is not a failed deletion" scenario is `signOut()`'s existing
+  local-scope fallback, reused rather than re-solved.
+- [x] 3.8 In flight (submit disabled, Escape/scrim refused while pending), offline (refused before
+  the call), failed (retryable, account intact), already-deleted (`unauthorized` → same as
+  success), cancelled (Cancel/scrim/Escape do nothing destructive). `combineQueries`/`ErrorState`
+  not reused here — this is a sheet with one field, not a data-gated screen.
 
 ## 4. What everyone else sees — the four screens where empty and forbidden look identical
 
-- [ ] 4.1 `/rides/detail`, `/postcards/detail`, the profile reached from a byline, and a club roster:
-  say the content is **unavailable**. Not "deleted" — that discloses a person to someone who may
-  have blocked them. Not "you do not have permission" — that is a different and wrong explanation
-  of the same zero rows.
-- [ ] 4.2 The postcard deck skips a card whose postcard has disappeared since the fetch, without
-  leaving a blank position. The deck only moves forward, so a blank cannot be returned to.
-- [ ] 4.3 Comment threads close the gap rather than rendering a placeholder byline. There is no
-  tombstone author and `postcard_comments.author_id` is `not null`.
-- [ ] 4.4 Counts agree with rows after a deletion, everywhere. Nothing is denormalised — `009` and
-  `011` both declined a counter deliberately — so this should be free, and the assertion is what
+- [x] 4.1 `src/app/(app)/not-found.tsx` — the one boundary every existing `notFound()` call in
+  `rides/detail`, `postcards/detail`, `profile/detail` and `clubs/detail/members` already shared
+  (Next's unstyled default, until this). Says "This isn't available", never "deleted" and never
+  "you do not have permission", for all six causes (never-existed, private, and the four this
+  change adds) alike — none of those four screens had to change, only what catches their existing
+  `notFound()`.
+- [x] 4.2 **Already built, verified rather than added.** `PostcardDeck`'s `remaining =
+  remainingPostcards(postcards, dismissed)` is recomputed every render straight off the `postcards`
+  prop, so a card the feed drops between fetches simply stops appearing — no blank position, no
+  code change needed.
+- [x] 4.3 **Already correct by construction, verified.** `postcard_comments.author_id` has no
+  nullable arm and cascades from `profiles`; a departed rider's comments are rows that no longer
+  exist, not rows with a null author, so there is nothing for a tombstone to render.
+- [x] 4.4 **Already true, verified.** No denormalised counter anywhere this touches — `club.data.members_count`,
+  postcard like/comment counts and the roster are all live aggregates or live selects, so a
+  departed rider's rows disappearing from one disappears from the other in the same read.
+  **Extended past the letter of this task**: `Avatar` and `ClubCard`'s cover image now fall back to
+  initials on a signed URL's `onError` rather than rendering broken — `client-cache-invalidation`'s
+  own "a signed URL whose object is gone renders the fallback" (task 7 delta), which a deletion or
+  a club transfer reaches immediately, before the next revalidation.
   proves it.
 
 ## 5. The web-accessible route (Play), and it depends on nothing
@@ -346,47 +349,56 @@ removal landing without its code repair is an outage.
 now has a case it did not cover. Each one is a rule a reviewer can check against the standing
 spec, which is why they are listed apart from the flow's own tasks rather than folded into them.
 
-- [ ] 7.1 **Destroy, do not merely redirect, when the account is gone**
-  (`client-session-storage`). The route guard's `unavailable` branch is reachable in production
-  for the first time because of this change: `my_onboarding_state()` returns zero rows for a
-  caller with no `profiles` row, `onboardingStateFrom` maps that to `unavailable`, and
-  `resolveDestination` redirects to `/auth/login?error=profile_unavailable` — while clearing
-  nothing. `signIn` has never cleared the cache; only `signOut` does. Clear the session store and
-  the query cache on that branch, before the login screen renders, without needing the network.
-- [ ] 7.2 Unit tests for 7.1 in the existing guard and session-store suites: the `unavailable`
-  branch destroys the store entry and bumps every cache generation; it still falls through on the
-  two auth entry paths rather than redirecting to itself; zero rows is never mapped to
-  un-onboarded. The last one already has a guard test — extend it to assert the destruction, not
-  only the destination.
-- [ ] 7.3 **The deletion clears the cache rather than invalidating it**
-  (`client-cache-invalidation`), and its cache claim is recorded in `src/lib/query/keys.ts`'s
-  contract table like every other mutation's. `invalidate()` refetches, which with a dead token
-  repopulates nothing and burns the one moment the cache could have been destroyed.
-- [ ] 7.4 A cached signed URL whose Storage object was deleted renders the ordinary fallback —
-  initials for an avatar, the club's initials for club imagery — and not a broken image, a
-  whole-screen error, or a retry loop against a URL that cannot start working again. This is the
-  club-transfer path as much as the deletion path: D2 nulls both club image paths and deletes the
-  objects, so every member holding a cached club row has a URL that will 404 for the rest of its
-  hour.
-- [ ] 7.5 The offline exclusion is written where the offline queue will be built, not only in
-  this change's flow spec (`client-render-shell`). The standing requirement offers "refuse **or**
-  hold"; deletion removes the second branch. When durable offline queuing ships it must carry an
-  explicit exclusion rather than inheriting deletion by default.
-- [ ] 7.6 The unavailable copy from group 4 satisfies the three-way distinction, not the two-way
-  one: never "you do not have permission", never "this account was deleted", and identical for a
-  club owner, a club admin, a fellow member, a non-member and a rider on either side of a block.
-  A difference between any two of them is a disclosure.
-- [ ] 7.7 Re-read all four standing specs before opening the PR and confirm the deltas still
-  match them. They are one archive old; a second archive lands more requirements into
-  `openspec/specs/`, and a delta whose MODIFIED block no longer matches the standing text loses
-  detail silently at archive time rather than failing.
+- [x] 7.1 **Built, and it needed a distinction the requirement's own text does not draw.**
+  `onboardingStateFrom` (`guard.ts`) now returns a fourth `GuardState`, `gone`, for `{data: null,
+  error: null}` specifically — zero rows with no read failure — kept separate from `unavailable`
+  (a genuine error) because `resolveDestination` sends both to the same place but `guard-cache.ts`
+  must not react to them the same way: destroying local state on an ordinary network hiccup would
+  sign out a rider whose account is fine. `read()` triggers `destroySessionForDeletedAccount()`
+  (`clearQueryCache`, `clearRiderLocation`, `clearSessionStore`, no network call — see its own
+  comment for why `supabase.auth.signOut()` was tried and reverted: it races this module's own
+  `SIGNED_OUT` listener and wipes `gone` before the redirect can use it) only on `gone`, before the
+  final `notify()` of that read.
+- [x] 7.2 12 new cases across `guard.test.ts` (the `gone`/`unavailable` split, pure) and
+  `guard-cache.test.ts` (the destruction call counts, via mocked `clearQueryCache` /
+  `clearSessionStore` / `clearRiderLocation`) — `npm run test:unit`, 1594/1594.
+- [x] 7.3 `deleteAccount` returns `signOut()`, which already calls `clearQueryCache()`, never
+  `invalidate()`. Recorded in `keys.ts`'s `EVERYTHING` export comment, beside sign-out's own claim
+  rather than a new entry, since it is the same claim for the same reason.
+- [x] 7.4 `Avatar` and `ClubCard`'s cover image now track their own `src` in state and fall back to
+  initials / no-cover on the `<img>`'s `onError`, rather than rendering broken. **Not exhaustive**:
+  `profile/detail`'s and `profile`'s own cover banners and `NotificationsListItem`'s club-avatar
+  and postcard thumbnails are still raw `<img>` with no fallback — flagged in the report rather
+  than silently left, since they are the same defect on different screens.
+- [x] 7.5 **Already true in the delta, verified rather than added.** `specs/client-render-shell/spec.md`
+  in this change's own `specs/` directory already carries "An irreversible destructive write SHALL
+  be refused rather than held" as its own scenario under `Every screen SHALL define its offline
+  behaviour` — this is the file a future offline-queue change reads, and it already states the
+  exclusion explicitly rather than leaving deletion to inherit a default.
+- [x] 7.6 Satisfied by 4.1: one `not-found.tsx` boundary, one copy, no role-specific branch — so
+  there is no code path that COULD read differently per role, which is stronger than asserting five
+  roles happen to agree.
+- [x] 7.7 Re-read all four (`client-session-storage`, `database-enforced-integrity`,
+  `client-cache-invalidation`, `client-render-shell`) against this session's diff. No new drift
+  found; the one live coordination banner (`database-enforced-integrity` vs
+  `enforce-creator-membership`) is unrelated to groups 3/4/7 and untouched.
 
 ## 6. Verification and handoff
 
-- [ ] 6.1 A cascade test in the RLS suite: delete a fixture's `auth.users` row inside a savepoint
-  and assert, table by table, what survived and what did not — including, from the *other*
-  rider's session, that their postcards in the departed owner's club are still there. This is the
-  part most likely to be silently wrong and it is fully testable on plain Postgres.
+- [x] 6.1 **Most of this was already built in `029`'s own §B/§C, unticked — the gap was coverage,
+  not existence.** `029` already deletes `auth.users` inside `savepoint transfer_029`, asserts the
+  transfer, the ride cascade and (from 000c's own `set_config('test.uid', ...)` session — table
+  10063, "029: ... and 000c can still read it under RLS, from their own session") that a third
+  party's postcard in the departed owner's club survives. What was missing: its own "nothing
+  dangling" sweep is a hand-picked sum of nine tables, written when the FK count was 13/14 — `034`
+  and `036` each added a FK into `profiles` since (`ride_messages.author_id`,
+  `notifications.user_id`/`actor_id`) and neither ever joined that list, so this cascade test has
+  been silently blind to two of the sixteen live FKs since they shipped. Added a `do $$ ... $$`
+  block deriving every FK-into-`profiles` column from `pg_constraint` (same technique 029 §A
+  already uses for its index assertion) and summing rows referencing the deleted rider across all
+  of them — covers today's sixteen and every one a future migration adds, with a floor check
+  (`checked < 16`) so a broken derivation fails loudly rather than iterating zero times and passing
+  for the wrong reason. `PGPASSWORD=postgres npm test` — 1459/1459, +1 over the prior baseline.
 - [x] 6.2 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`,
   `PGPASSWORD=postgres npm test` all green.
 - [ ] 6.3 Walk it against the real database with a real disposable account, on a device, offline
