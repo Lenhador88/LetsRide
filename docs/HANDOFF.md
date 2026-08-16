@@ -265,6 +265,13 @@ stays load-bearing permanently**, and `resolve.browser.ts`'s tripwire keeps earn
   the only race-free one: `resolveSessionStore()` resolves **once per page load**, so anything
   installing later (a layout effect, a plugin `load` event) loses to the first client
   constructed, silently, with the token in `localStorage`.
+- **`resources/` — the app icon master**, added 2026-08-16. `icon-only.png` is 1024×1024 RGB
+  with no alpha (App Store Connect refuses alpha, at upload rather than at review), built from
+  the motorcycle already inside `public/brand/logo-splash.png` on `Accent Brand/100` `#3D996B`.
+  **The filename is load-bearing**: `@capacitor/assets` matches exact basenames and treats
+  `icon.png` as a *Logo*, which generates white and `#111111` splash screens instead of icons —
+  `resources/README.md` carries that and the rest. Platform sets are not committed; a Mac
+  generates them after `cap add`. The splash PNG is untouched and still mint-on-`#3D996B`.
 - Two plugin defaults overridden, both security-relevant: keychain access
   `afterFirstUnlockThisDeviceOnly` (the default `whenUnlocked` blocks background token refresh
   after a reboot **and** migrates the token to a replacement device through an encrypted
