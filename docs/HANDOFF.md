@@ -1541,6 +1541,16 @@ and the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the 
 `.claude/commands/queue-dispatch.md` (pick and hand out) and `.claude/commands/queue-pickup.md`
 (build one story).** None of it belongs here: settled contract, not current position.
 
+**The procedure change does not take effect until the trigger's prompt is repointed**, because the
+prompt is outside the repo and names the file the firing reads. Until then a firing reads the
+*child* procedure, which opens by telling it the issue id is in its prompt when there is no id —
+undefined behaviour in an unattended session. Check rather than assume:
+
+```
+# via the CCR MCP: list_triggers -> trig_01WJkMVXGzUVGDcC1njNmaan
+#   its prompt must name queue-dispatch.md, not queue-pickup.md
+```
+
 **Two facts measured 2026-08-16 that the trigger list will not tell you, and both need re-reading
 rather than trusting:**
 

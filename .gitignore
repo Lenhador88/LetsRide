@@ -81,10 +81,14 @@ __pycache__/
 *.py[cod]
 
 # Isolated git worktrees the Agent tool creates for a subagent. Untracked
-# rather than harmless: `git status --porcelain` is queue-pickup STEP 0.5's
-# gate 2, so an unignored worktree reads as a dirty tree and every hourly
-# firing exits silently — the queue freezes while looking healthy, which is
-# the failure shape this repo keeps paying for.
+# rather than harmless: an unignored worktree reads as a dirty tree, which
+# turns every `git status --porcelain` check in the repo — and every review of
+# what a branch actually changed — into a false positive.
+#
+# It used to be load-bearing for the queue: a dirty tree was one of the idle
+# gates the reused Development session checked before picking up a story, so
+# an unignored worktree froze the queue while looking healthy. That gate went
+# with the session-per-story split and no procedure checks the tree now.
 #
 # **That is ALL this line does, and the limit is worth stating** because the
 # other half of the problem looks like it should be covered here and is not.

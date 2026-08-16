@@ -148,7 +148,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
     }
   })
 
-  it('every STEP cross-reference resolves to a real step in queue-pickup.md', () => {
+  it('every STEP cross-reference resolves to a real step in one of the queue procedures', () => {
     /*
      * This is why `.claude/commands/` is in ci.yml's carve-out alongside
      * `.claude/agents/`. Without a check of its own the carve-out spends a CI
@@ -163,16 +163,18 @@ describe('agent briefs do not describe a world that has moved on', () => {
      *
      * **The CROSS-FILE references are the dangerous half, which is why the read
      * is a glob rather than the one file.** An editor renaming a step sees the
-     * intra-file references in the same buffer; they do not see CLAUDE.md's
-     * seven, docs/HANDOFF.md's seven, or reviewer.md's two. Only queue-pickup.md
-     * defines headings — every other file here is a pure consumer.
+     * intra-file references in the same buffer; they do not see the ones in
+     * CLAUDE.md, docs/HANDOFF.md, reviewer.md or linear.md. Two files define
+     * headings — queue-pickup.md and queue-dispatch.md — and each is also a
+     * consumer of the other's; the rest are pure consumers.
      *
      * **Known gap, accepted rather than overlooked:** ci.yml's carve-out is
      * `^\.claude/(agents|commands)/`, so a PR confined to `CLAUDE.md` or
      * `docs/HANDOFF.md` sets `app=false` and never runs this test. The case that
-     * matters is covered — *renaming a heading* touches `queue-pickup.md`, which
-     * does trigger it, and it then validates all 16 cross-file references at
-     * once. What escapes is a bad reference newly written in a docs-only PR.
+     * matters is covered — *renaming a heading* touches one of the two
+     * procedures, which does trigger it, and it then validates every cross-file
+     * reference at once. What escapes is a bad reference newly written in a
+     * docs-only PR.
      * Widening the denylist to catch that would run the whole app job on every
      * documentation change, which is the cost the scoping change exists to
      * remove, so this is a deliberate trade rather than an oversight.
@@ -188,12 +190,17 @@ describe('agent briefs do not describe a world that has moved on', () => {
      * pickup builds — and they cite each other's steps freely, so the heading set
      * is their UNION.
      *
-     * That is deliberately weaker than checking each file against its own
-     * headings: a `STEP 4c` written in queue-dispatch.md resolves against
-     * queue-pickup.md's heading, which is correct here and would be a false pass
-     * if the two ever stopped being one procedure split in half. It still catches
-     * the defect this test exists for — a reference to a step that exists
-     * NOWHERE, which is what a rename or a deletion produces.
+     * That is weaker than checking each file against its own headings, and
+     * measurably so rather than only in principle: the two heading sets OVERLAP
+     * on STEP 0, 3, 4 and 5, and in three of those the files mean different
+     * things (dispatch STEP 4 selects a batch, pickup STEP 4 builds). So a
+     * rename or deletion of a SHADOWED step passes silently — which is exactly
+     * what happened to STEP 1 and STEP 2 when they moved from pickup to
+     * dispatch, and those had to be re-pointed by hand.
+     *
+     * Kept anyway, because the alternative bans the cross-citation the split
+     * depends on, and the defect this test exists for — a reference to a step
+     * that exists NOWHERE — is still caught in full.
      */
     const procs = ['.claude/commands/queue-pickup.md', '.claude/commands/queue-dispatch.md']
     const headings = new Set(

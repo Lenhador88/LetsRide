@@ -50,7 +50,7 @@ The live set as last read back off the board:
 | `Todo AI` | unstarted | Triaged, and a session could do it. **Not a start signal** | Either |
 | `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner**, and the dispatcher's scout on a stale premise |
 | `Queued (AI)` | started | **Approved to build. The only start signal** | **Owner** |
-| `Development (AI)` | started | An agent has it *now*. **The concurrency lock** | Agent |
+| `Development (AI)` | started | An agent has it *now*. **Claims one issue; not a lock on the queue** | Agent |
 | `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
 | **`Deployed to DEV`** | started | **Merged to `development`, green, live on DEV. Where a firing ends** | Agent |
 | `Done (in production)` | completed | Promoted to `main` and live for riders. **Was `Done`** | **Whoever promoted** — never a firing |
@@ -112,9 +112,9 @@ ToolSearch  query="select:mcp__Linear__list_issues"   # exact — fails the mome
 **This applies to every connector, not just Linear** — the rotation re-registered all of them at
 once. So `mcp__github__create_pull_request` — STEP 4c, and the only route to a PR since `gh` is
 absent — carries the same hazard. **It fails in the honest direction**: no PR opens and the run
-stops visibly. The dangerous version of this now lives in the dispatcher, whose session gate
-fails *open* if `list_sessions` cannot be reached, which is why that file makes an unreachable
-connector a hold rather than a pass.
+stops visibly. The dangerous version of this lives in the dispatcher, whose session gate *would*
+fail open if an unreachable `list_sessions` were read as "no sessions running" — which is why
+that file makes an unreachable connector a hold.
 
 Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as "the tool called
 `<tool>` on that connector", whatever prefix it currently carries**, and reach it by keyword
@@ -156,9 +156,14 @@ comment**, since there is no PR body here to hold them.
 first and spawns second, so the status is what stops a second dispatch handing the same story to
 a second session. Read it back and confirm; do not re-write it.
 
-**If it is in any other status, stop and do nothing.** Something has changed since you were
-dispatched — the owner moved it, or a duplicate session is already on it — and building anyway is
-how the same story ships twice. Say so in a `PushNotification` and end.
+**If it is in any other status, stop and do nothing.** Something changed since you were dispatched
+— most likely the owner moved it — and building anyway is how work lands that nobody asked for.
+Say so in a `PushNotification` and end.
+
+**This cannot detect a double dispatch, and do not write it as though it can.** Under a genuine
+double dispatch both children read `Development (AI)`, the status they expect, and both build.
+What prevents that is the dispatcher claiming before it spawns and reading the write back; this
+check catches only a change made by someone else afterwards.
 
 **That claim is per issue, not a lock on the queue.** Other stories are legitimately in
 `Development (AI)` at the same time; they are other sessions' and none of your business.
@@ -496,12 +501,12 @@ live RLS hole letting any signed-in rider post a ride into any club.
    ```bash
    date -u +%FT%TZ     # at spawn — and again at each check; the elapsed time is the bound's clock
    ```
-2. **Push the branch — again, if STEP 4b built anything.** Then open a PR against
-   **`development`**, with the `## Folded in` section from STEP 4b in the body, or nothing there
-   if nothing travelled.
+2. **Push the branch.** Then open a PR against **`development`**, with the `## Folded in` section
+   from STEP 4b in the body, or nothing there if nothing travelled.
 
-   **The push at the end of STEP 4 does not cover the fold-ins**, because STEP 4b commits after
-   it. `create_pull_request` succeeds against whatever was last pushed, so skipping this leaves a
+   **Push unconditionally, and never on the assumption that STEP 4 already did it.** STEP 4b
+   commits after the build, so anything it folded in is unpushed here.
+   `create_pull_request` succeeds against whatever was last pushed, so skipping this leaves a
    PR that merges the story without the fold-in while the `## Folded in` section and the STEP 5
    comment both say it shipped — and STEP 5's `git checkout development` then strands those
    commits. Nothing in CI, the PR or the board would show it. Push unconditionally; it is a no-op
@@ -521,6 +526,24 @@ live RLS hole letting any signed-in rider post a ride into any club.
 3. Drive CI to green and merge. Do not merge red, and **do not merge holding no review result** —
    run §Confirm the pass returned here, immediately before the merge. **Never push to `main`
    and never open a PR against `main`** — production promotion belongs to the owner.
+
+   **A conflict with `development` is yours to resolve, and it is NOT `§If you get stuck`.**
+   Other stories merge while you build, so this is the expected case rather than an exception —
+   and the dispatcher's path caps deliberately exempt `docs/HANDOFF.md` and `CLAUDE.md`, whose
+   conflicts it calls "the cheap kind" precisely because this bullet resolves them. **Parking a
+   built, green story into `Needs help` over a docs conflict stops the entire queue**, which is
+   the worst available outcome and the one this paragraph exists to prevent.
+
+   ```bash
+   git fetch origin development --quiet
+   git merge origin/development          # then resolve, re-run the gates, push
+   ```
+
+   Resolve it, re-run every gate afterwards — the merge brings in other people's code, so a green
+   run from before it proves nothing — and push. **Regenerate lockfiles and generated files rather
+   than hand-merging them.** Park only if the conflict is genuinely ambiguous: both sides changed
+   the same logic and picking either loses behaviour. A counter, a list entry or a doc line where
+   `development`'s version is simply newer is not ambiguous — take theirs and move on.
 
    **First confirm CI actually started, and never read its absence as "still queued".** Opening
    the PR through `mcp__github__create_pull_request` is a **GitHub App** action, and a workflow
@@ -793,8 +816,11 @@ job that could reach Linear at all.
 
 **A session spawned by another *session* inherits them.** Probed 2026-08-16 from a
 `create_session` child with the repo attached: `permission_mode: auto` inherited without
-complaint, and Linear, Supabase and the GitHub tools all reachable. That is what made the
-dispatcher possible, and it retires four costs at once:
+complaint, and Linear, Supabase and the GitHub tools all reachable. **The Claude Code Remote tools
+this file's STEP 5 poke needs were reported reachable in the same probe but not read back item by
+item, so treat that one as unverified** — if it turns out not to inherit, the poke's error branch
+fires and the queue falls back to its hourly heartbeat. That probe is what made the dispatcher
+possible, and it retires four costs at once:
 
 | Cost of the reused session | How it is gone |
 |---|---|

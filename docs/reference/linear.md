@@ -152,9 +152,16 @@ it does, permanently.
 **`trig_01WJkMVXGzUVGDcC1njNmaan`** fires into the dispatcher session, which **hands each queued
 story to its own fresh session** rather than building anything itself. **The procedure is
 [`.claude/commands/queue-dispatch.md`](.claude/commands/queue-dispatch.md), and the child's is
-[`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read them there.** Each
-trigger prompt says little more than *read that file and follow it*, because a prompt is
+[`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read them there.** The
+trigger's prompt says little more than *read that file and follow it*, and the child's prompt —
+written by `create_session`, not by a trigger — says the same plus the issue id. A prompt is
 re-injected on every firing where a file is read once, and a file can be reviewed in a PR.
+
+**Repointing that prompt is what activates a change to the procedure.** The dispatcher reads
+whichever file the trigger names, so editing `queue-dispatch.md` does nothing until
+`update_trigger` names it — and a trigger still pointing at `queue-pickup.md` makes the firing
+read the *child* procedure, which opens by telling it the issue id is in its prompt when no id is
+there.
 
 **The hourly cron is the heartbeat, not the driver.** Each child's last act is `fire_trigger` on
 that same trigger, so the next batch starts seconds after a slot frees instead of at the top of
@@ -182,7 +189,10 @@ What has to be known outside those files:
   **A session spawned by another session is the exception, and it is what the dispatcher runs
   on.** Probed 2026-08-16 from a `create_session` child with `source_url` set: `permission_mode`
   inherited, and Linear, Supabase and the GitHub tools all reachable. That is a different path
-  from a *trigger*-spawned session and carries none of its losses.
+  from a *trigger*-spawned session and carries none of its losses. **The Claude Code Remote tools
+  a child needs for its completion poke were reported reachable in the same probe but not read
+  back item by item — unverified until a child actually pokes**, and the hourly heartbeat is what
+  covers it if they do not.
 - **Hourly is a server minimum** — `create_trigger` rejects anything more frequent. The stored
   expression is `0 0-23 * * *` rather than `0 * * * *`, because an hourly cron at minute 0 is
   **rewritten server-side to the minute you submitted it**. **Any UI edit re-anchors it** (adding
