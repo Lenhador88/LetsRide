@@ -497,7 +497,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 57 files. DEV is at `057`, PROD at `057` — LEVEL as of 2026-08-14.** Do not
+**Applied state: 59 files. DEV is at `059`, PROD at `059` — LEVEL as of 2026-08-16.** Do not
 read that number here — it has been wrong in both directions. Run `list_migrations` against
 `ls supabase/migrations/` instead.
 
@@ -544,7 +544,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1458** assertions — re-derive rather than trust it:
+Suite **1505** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -574,7 +574,12 @@ Both are applied; the ordering above is the record of how, not a thing still to 
 **Three own-row RPCs own the two profile stamps**, because `025` takes the client's grant away:
 `my_onboarding_state()` (the route guard's one round trip — both stamps plus `has_username`),
 `accept_terms()` and `complete_onboarding(location)`. **Each restates the invariants its triggers
-carry, and must.** Inside a `security definer` function `current_user` is the *owner*, so `003`'s
+carry, and must.** **`complete_onboarding` outgrew that description in `058`** — it also writes a
+`club_members` row, joining the caller to the club carrying `clubs.is_default`, which is a side
+effect outside "the two profile stamps" and the only place in the schema that writes a membership
+no rider asked for. It cannot fail the rider: the insert sits in a `when others` block, because a
+raise there would roll the completion stamp back in the same transaction and decision #5 gives a
+rider with a NULL stamp no way out of the wizard. Inside a `security definer` function `current_user` is the *owner*, so `003`'s
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 

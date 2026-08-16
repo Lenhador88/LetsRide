@@ -12,7 +12,7 @@
 -- database the RLS suite builds. A migration naming either id is correct on
 -- exactly one project and a silent no-op on the other, and `npm run db:drift`
 -- compares migration *names* — it would never see it. So the id lives in a
--- column, §4 sets it per project, and §5's verification query is how a session
+-- column, §5 sets it per project, and §6's verification query is how a session
 -- checks it landed rather than trusting this comment.
 --
 -- ** IT FAILS SAFE IN BOTH DIRECTIONS, AND THAT IS THE WHOLE RISK MODEL. **
@@ -20,14 +20,14 @@
 -- would roll back the completion stamp and strand the rider in a wizard they
 -- cannot leave — decision #5 means the route guard sends them straight back
 -- into it, for ever, with no affordance to skip. A welcome club is not worth
--- that trade at any probability, so §2 wraps the insert in an exception block:
+-- that trade at any probability, so §3 wraps the insert in an exception block:
 -- no default club, a deleted default club, a participation gate that refuses,
 -- anything at all — onboarding completes and the rider is simply not in a club.
 -- The `raise warning` is what keeps that from being silent; it lands in the
 -- Postgres logs where `query_logs` can find it.
 --
 -- What this migration does NOT do: it does not backfill the riders who
--- onboarded before it. §2 fires on the transition into completion and nowhere
+-- onboarded before it. §3 fires on the transition into completion and nowhere
 -- else, so the five existing PROD profiles keep whatever membership they
 -- already chose. Backfilling is a decision about other people's memberships and
 -- was deliberately not taken (option C, declined).
@@ -35,7 +35,7 @@
 -- --- §1  The flag ----------------------------------------------------------
 -- `not null default false` rather than a nullable boolean: "is this the default
 -- club" is answerable for every club, and a three-valued version would make
--- `where is_default` in §2 silently drop the NULL rows rather than the false
+-- `where is_default` in §3 silently drop the NULL rows rather than the false
 -- ones, which reads identically and is not the same statement.
 alter table public.clubs
   add column is_default boolean not null default false;
@@ -43,7 +43,7 @@ alter table public.clubs
 comment on column public.clubs.is_default is
   'The welcome club every rider joins on completing onboarding (058). At most one row may carry it (clubs_one_default_club), it must be public (clubs_default_club_is_public), and `authenticated` holds SELECT on it and NEITHER write verb — a rider who could set this on their own club would have every future signup join it. Read by complete_onboarding() and by private.notify_club_joined(), which skips its fan-out entirely for this club.';
 
--- At most one, enforced rather than assumed. §2 reads the flag with a bare
+-- At most one, enforced rather than assumed. §3 reads the flag with a bare
 -- `where is_default` and would otherwise join a rider to every club carrying
 -- it — a partial unique index over the true rows is the cheapest way to make
 -- "the default club" a singular noun in the schema and not just in the prose.
@@ -51,7 +51,7 @@ create unique index clubs_one_default_club
   on public.clubs (is_default)
   where is_default;
 
--- A private default club would work — §2's insert runs as the function owner
+-- A private default club would work — §3's insert runs as the function owner
 -- and RLS does not apply to it — and would be wrong: every rider would hold a
 -- membership of a club that does not appear on Explore, cannot be found, and
 -- whose roster is the entire user base. The CHECK also refuses the other
@@ -75,7 +75,7 @@ revoke insert (is_default), update (is_default) on public.clubs from anon, authe
 -- The column says which club is the welcome club; every rider is in it, so it
 -- discloses nothing they cannot already see from their own membership. Reading
 -- it is also what lets a screen later treat that club differently. Withholding
--- SELECT on one column while granting it on all seven siblings is how the next
+-- SELECT on one column while granting it on all eight siblings is how the next
 -- `select('*')` earns a 42501 — `src/lib/data/columns.ts` carries that lesson
 -- from `021` already.
 grant select (is_default) on public.clubs to authenticated;
