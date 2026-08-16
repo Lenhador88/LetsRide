@@ -12502,6 +12502,480 @@ select assert_eq(
 set role authenticated;
 rollback to savepoint username_case_056;
 
+-- ===========================================================================
+-- 058. Every rider joins the club carrying `clubs.is_default` the moment they
+--      complete onboarding, its fan-out is silenced, and no rider can point
+--      that flag at a club of their own.
+--
+-- ** THE LABELS BELOW ARE PREFIXED `058:` AND SIT UNDER THIS HEADER. ** PD-169
+-- again: a label is the only thing a failing run prints, so it is the only
+-- place the reader learns which migration is on the hook.
+--
+-- ** THE ASSERTION THAT MATTERS MOST IS 058.6, AND IT IS NOT THE HAPPY PATH. **
+-- The join runs inside `complete_onboarding()`'s transaction, so an error there
+-- would roll the completion stamp back and strand the rider in a wizard
+-- decision #5 gives no way out of. Every other assertion here proves a welcome
+-- club works; that one proves a broken welcome club cannot cost a rider their
+-- account. It is exercised by making the insert genuinely raise, because an
+-- exception block that is never entered tests nothing.
+--
+-- The fixture is this section's own — its own riders, its own two clubs — so no
+-- count asserted above this line moves. Same rule 009's, 054's and 055's
+-- fixtures follow.
+-- ===========================================================================
+savepoint default_club_058;
+
+reset role;
+select set_config('test.uid', '', false);
+
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000058001', 'pd058owner@example.com'),
+  ('00000000-0000-0000-0000-000000058002', 'pd058joiner@example.com'),
+  ('00000000-0000-0000-0000-000000058003', 'pd058leaver@example.com'),
+  ('00000000-0000-0000-0000-000000058004', 'pd058failsafe@example.com'),
+  ('00000000-0000-0000-0000-000000058005', 'pd058ordinary@example.com');
+
+-- The welcome club's owner is finished. The other four are mid-wizard with a
+-- username and consent and NO completion stamp — the only state from which
+-- `complete_onboarding()` does anything at all, and therefore the only one that
+-- exercises 058 rather than its `v_was_complete` short-circuit.
+update profiles set username = 'pd058owner', location = 'Lisbon',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000058001';
+update profiles set username = 'pd058joiner',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000058002';
+update profiles set username = 'pd058leaver',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000058003';
+update profiles set username = 'pd058failsafe',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000058004';
+update profiles set username = 'pd058ordinary',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000058005';
+
+-- c1 is the welcome club. c2 is an ordinary public club and exists only as the
+-- regression floor for §4: an early return written one line too high would
+-- silence `club_joined` for every club in the app, and every assertion about
+-- the welcome club would still pass.
+insert into clubs (id, name, is_public, owner_id, is_default) values
+  ('00000000-0000-0000-0000-0000058c0001', 'PD058 Welcome', true,
+   '00000000-0000-0000-0000-000000058001', true);
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000058c0002', 'PD058 Ordinary', true,
+   '00000000-0000-0000-0000-000000058001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000058c0001', '00000000-0000-0000-0000-000000058001', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000058c0002', '00000000-0000-0000-0000-000000058001', 'owner');
+
+-- ---------------------------------------------------------------------------
+-- 058.0  The flag is singular, and it is public. Both are enforced, not
+--        assumed — §2 reads it with a bare `where is_default`.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from clubs where is_default), 1,
+  '058: exactly one club carries the flag, which is the premise every assertion below rests on');
+select assert_eq(
+  (select is_default from clubs where id = '00000000-0000-0000-0000-0000058c0002'), false,
+  '058: ... and an ordinary club defaults to false rather than NULL — a three-valued column would make `where is_default` drop the NULLs and read identically');
+
+select assert_rejected($$insert into clubs (id, name, is_public, owner_id, is_default) values
+  ('00000000-0000-0000-0000-0000058c0004', 'PD058 Second Default', true,
+   '00000000-0000-0000-0000-000000058001', true)$$,
+  '23505', '058: a SECOND default club is refused by clubs_one_default_club — without the partial unique index, complete_onboarding would join every new rider to all of them');
+
+-- Unflagged first, so the CHECK is what refuses this and not the unique index
+-- — both apply to a private second default, and a test that accepted either
+-- would pass with the CHECK deleted.
+savepoint private_default_058;
+update clubs set is_default = false where id = '00000000-0000-0000-0000-0000058c0001';
+select assert_rejected($$insert into clubs (id, name, is_public, owner_id, is_default) values
+  ('00000000-0000-0000-0000-0000058c0005', 'PD058 Private Default', false,
+   '00000000-0000-0000-0000-000000058001', true)$$,
+  '23514', '058: the default club must be PUBLIC — every rider would otherwise hold a membership of a club that appears on no Explore list and whose roster is the entire user base');
+rollback to savepoint private_default_058;
+
+-- ---------------------------------------------------------------------------
+-- 058.1  The grant posture. This is the security half of 058: a rider who
+--        could write this column would have every future signup join their
+--        club.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  has_column_privilege('authenticated', 'public.clubs', 'is_default', 'select'), true,
+  '058: `authenticated` can READ the flag — granted deliberately, so a screen can tell the welcome club apart and so the next select(''*'') does not earn a 42501');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.clubs', 'is_default', 'insert'), false,
+  '058: ... and cannot INSERT it, so a rider cannot create a club that is born the default');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.clubs', 'is_default', 'update'), false,
+  '058: ... and cannot UPDATE it, which is the one that matters — clubs UPDATE''s policy permits an owner to write their own row, so the COLUMN grant is the only thing standing between a rider and every future signup');
+select assert_eq(
+  has_column_privilege('anon', 'public.clubs', 'is_default', 'select'), false,
+  '058: ... and `anon` holds nothing on it, per decision #1');
+
+-- The same three, exercised rather than read off the catalog — 031's lesson is
+-- that a role assertion and a real call can disagree, so this section does both.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058001', false);
+
+select assert_eq(
+  (select is_default from clubs where id = '00000000-0000-0000-0000-0000058c0001'), true,
+  '058: the SELECT grant is not vacuous — an ordinary rider really can read the flag');
+select assert_rejected($$update clubs set is_default = true
+  where id = '00000000-0000-0000-0000-0000058c0002'$$,
+  '42501', '058: a club''s OWNER cannot point the flag at their own club — refused by the column grant, before clubs UPDATE''s policy (which would permit this row) is ever consulted');
+select assert_rejected($$insert into clubs (id, name, is_public, owner_id, is_default) values
+  ('00000000-0000-0000-0000-0000058c0006', 'PD058 Sneaky', true,
+   '00000000-0000-0000-0000-000000058001', true)$$,
+  '42501', '058: ... nor create one already carrying it, which is the same hole through the INSERT door');
+
+-- Proof the two refusals above are the grant and not a broken policy: the same
+-- owner, the same row, a column they DO hold.
+savepoint owner_can_still_write_058;
+update clubs set name = 'PD058 Ordinary renamed'
+  where id = '00000000-0000-0000-0000-0000058c0002';
+select assert_eq(
+  (select name from clubs where id = '00000000-0000-0000-0000-0000058c0002'),
+  'PD058 Ordinary renamed',
+  '058: ... while that owner can still update a column they hold, so the two assertions above are the grant refusing and not the policy');
+rollback to savepoint owner_can_still_write_058;
+
+-- ---------------------------------------------------------------------------
+-- 058.2  THE POSITIVE. Finishing the wizard puts the rider in the welcome
+--        club, as a `member` and nothing more.
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058002', false);
+select assert_eq(public.complete_onboarding('Porto') is not null, true,
+  '058: complete_onboarding still returns the stamp it set');
+
+reset role;
+select assert_eq(
+  (select role from club_members
+    where club_id = '00000000-0000-0000-0000-0000058c0001'
+      and user_id = '00000000-0000-0000-0000-000000058002'),
+  'member',
+  '058: ... and the rider is now in the welcome club as a MEMBER — never owner or admin, which would hand every signup moderation over a club they have not seen');
+select assert_eq(
+  (select count(*)::int from club_members
+    where user_id = '00000000-0000-0000-0000-000000058002'),
+  1,
+  '058: ... and in that club ONLY, so the join reads the flag rather than every public club');
+
+-- ---------------------------------------------------------------------------
+-- 058.3  The fan-out is silent for the welcome club, and ONLY for it.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined'
+      and club_id = '00000000-0000-0000-0000-0000058c0001'),
+  0,
+  '058: joining the welcome club notifies NOBODY — 036 §7.6 would otherwise address its owner with one row per signup, for ever, which is the whole notification list of one account');
+
+-- The regression floor. 058.4's rider joins an ordinary club by hand, through
+-- the client role and the real policy, and the owner must still hear about it.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058005', false);
+select assert_eq(public.complete_onboarding('Faro') is not null, true,
+  '058: a second rider finishes the wizard (they must be a participant before 023''s gate lets them join anything by hand)');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000058c0002', '00000000-0000-0000-0000-000000058005', 'member');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined'
+      and club_id = '00000000-0000-0000-0000-0000058c0002'
+      and actor_id = '00000000-0000-0000-0000-000000058005'),
+  1,
+  '058: ... while an ORDINARY club still notifies its owner — an early return one line too high would silence club_joined app-wide and every assertion above would still pass');
+
+-- ---------------------------------------------------------------------------
+-- 058.4  Leaving is permanent. The join fires on the TRANSITION into
+--        completion, so a later call cannot put a rider back.
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058003', false);
+select assert_eq(public.complete_onboarding('Braga') is not null, true,
+  '058: the leaver finishes the wizard');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000058c0001'
+      and user_id = '00000000-0000-0000-0000-000000058003'),
+  1, '058: ... and lands in the welcome club like everyone else');
+
+set role authenticated;
+delete from club_members
+  where club_id = '00000000-0000-0000-0000-0000058c0001'
+    and user_id = '00000000-0000-0000-0000-000000058003';
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000058c0001'
+      and user_id = auth.uid()),
+  0, '058: ... then leaves it, through the ordinary DELETE policy — the welcome club is not a club a rider is trapped in');
+
+-- The re-run. It must still do its own job (the location moves) while doing
+-- nothing about the club, or `leaveClub` is a button whose effect is undone by
+-- the next profile write that reaches this RPC.
+select assert_eq(public.complete_onboarding('Setubal') is not null, true,
+  '058: ... and a SECOND call to complete_onboarding still succeeds');
+
+reset role;
+select assert_eq(
+  (select location from profiles where id = '00000000-0000-0000-0000-000000058003'),
+  'Setubal',
+  '058: ... and really ran, so the assertion below is not passing because the call was a no-op');
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000058c0001'
+      and user_id = '00000000-0000-0000-0000-000000058003'),
+  0,
+  '058: ... and the rider who LEFT the welcome club is still out of it — v_was_complete is captured before the update, because the coalesce makes a re-run indistinguishable from a first completion afterwards');
+
+-- ---------------------------------------------------------------------------
+-- 058.5  No default club at all: the join is a no-op and onboarding is
+--        untouched. This is the state every project is in before §5 runs, and
+--        the state a fresh scratch database is in permanently.
+-- ---------------------------------------------------------------------------
+savepoint no_default_058;
+reset role;
+update clubs set is_default = false where id = '00000000-0000-0000-0000-0000058c0001';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058004', false);
+select assert_eq(public.complete_onboarding('Evora') is not null, true,
+  '058: with NO club flagged, onboarding completes exactly as it did before 058');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where user_id = '00000000-0000-0000-0000-000000058004'),
+  0, '058: ... and the rider simply joins nothing');
+rollback to savepoint no_default_058;
+
+-- ---------------------------------------------------------------------------
+-- 058.6  ** THE ONE THAT PAYS FOR THE EXCEPTION BLOCK. ** The insert is made
+--        to RAISE, and the completion stamp must survive it.
+-- ---------------------------------------------------------------------------
+-- Without the block, the raise propagates, the whole RPC's transaction unwinds,
+-- and the rider is left with `onboarding_completed_at` NULL — which decision #5
+-- turns into a route guard that returns them to the wizard on every navigation,
+-- for ever, with no skip affordance anywhere in the flow. The rider cannot get
+-- out and cannot tell anyone, because every screen that could is behind the
+-- guard.
+--
+-- A real trigger rather than a mocked one: 058's block catches `when others`,
+-- and the only honest way to test that is to give it something to catch.
+savepoint insert_raises_058;
+reset role;
+
+create function public.pd058_boom() returns trigger
+language plpgsql as $$
+begin
+  raise exception 'pd058 boom' using errcode = 'check_violation';
+end;
+$$;
+create trigger pd058_boom before insert on public.club_members
+  for each row execute function public.pd058_boom();
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058004', false);
+select assert_eq(public.complete_onboarding('Aveiro') is not null, true,
+  '058: a club_members trigger that RAISES does not take the completion stamp down with it — this is the assertion the exception block exists for, and a welcome club is worth nothing beside it');
+
+reset role;
+select assert_eq(
+  (select onboarding_completed_at is not null from profiles
+    where id = '00000000-0000-0000-0000-000000058004'),
+  true,
+  '058: ... the rider is really onboarded, not merely told they are');
+select assert_eq(
+  (select location from profiles where id = '00000000-0000-0000-0000-000000058004'),
+  'Aveiro',
+  '058: ... their location landed too, so the whole statement committed rather than half of it');
+select assert_eq(
+  (select count(*)::int from club_members
+    where user_id = '00000000-0000-0000-0000-000000058004'),
+  0, '058: ... and they are simply not in a club, which is the correct degradation');
+
+drop trigger pd058_boom on public.club_members;
+drop function public.pd058_boom();
+rollback to savepoint insert_raises_058;
+
+-- ---------------------------------------------------------------------------
+-- 058.7  The function's own contract, per 031: assert the ROLE, never the
+--        call, because this suite runs as the table owner.
+-- ---------------------------------------------------------------------------
+reset role;
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true,
+  '058: complete_onboarding is still SECURITY DEFINER — the join depends on it, since the club_members INSERT policy would refuse a row the rider did not ask for');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  array['search_path=""'],
+  '058: ... with its search_path still pinned, which every unqualified name in the added block would otherwise be exposed to');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.complete_onboarding(text)', 'execute'),
+  true, '058: ... and `authenticated` can still call it');
+select assert_eq(
+  has_function_privilege('anon', 'public.complete_onboarding(text)', 'execute'),
+  false, '058: ... and `anon` still cannot');
+select assert_eq(
+  has_function_privilege('authenticated', 'private.notify_club_joined()', 'execute'),
+  false,
+  '058: private.notify_club_joined is still unreachable from the client role — 036 §7.7''s revoke survived the redefinition, which a bare `create or replace` preserves and a `drop`/`create` would silently have dropped');
+
+-- ---------------------------------------------------------------------------
+-- 059.0  ** THE APP-WIDE BROADCAST. ** A ride created in the default club
+--        notifies nobody, because its membership is every rider in the app.
+-- ---------------------------------------------------------------------------
+-- 058 silenced `notify_club_joined` and left `036` §7.5's OTHER club fan-out
+-- alone. That one reads `club_members` directly, so after 058 one tap on Create
+-- ride — the welcome club is an ordinary option in the dropdown `getMyClubs`
+-- feeds — writes a notification row for every rider in the app, inside the
+-- organizer's own INSERT, repeatable at will. `rides` INSERT permits it
+-- (`club_id is null or private.is_club_member(club_id)`), which is exactly what
+-- auto-joining every rider turned on.
+--
+-- Written as the CLIENT role, through the real policy, because "may this rider
+-- create the ride at all" is half the finding.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058002', false);
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000059d0001', 'PD059 Welcome Ride', 'The Gate',
+   now() + interval '9 days', true, '00000000-0000-0000-0000-0000058c0001',
+   '00000000-0000-0000-0000-000000058002');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club'
+      and club_id = '00000000-0000-0000-0000-0000058c0001'),
+  0,
+  '059: a ride in the DEFAULT club notifies nobody — 058 auto-joins every rider into it, so 036 §7.5''s member fan-out would be an app-wide broadcast any rider could fire at will, and 058 §4 silenced the wrong one of the two');
+
+-- The regression floor, and it is the whole reason the assertion above is not
+-- just "notifications are broken". Same statement shape, ordinary club: the
+-- fan-out must still reach its members.
+--
+-- A different organizer, and not by preference — 058002 was auto-joined to the
+-- welcome club and to nothing else, so `rides` INSERT refuses them 058c0002
+-- outright. 058005 joined that club by hand in 058.3, which is what makes them
+-- the only rider here who can write this row at all. That refusal is itself the
+-- proof that the assertion above ran against a real membership rather than a
+-- permissive policy.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058005', false);
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000059d0002', 'PD059 Ordinary Ride', 'The Bend',
+   now() + interval '10 days', true, '00000000-0000-0000-0000-0000058c0002',
+   '00000000-0000-0000-0000-000000058005');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club'
+      and ride_id = '00000000-0000-0000-0000-0000059d0002'),
+  1,
+  '059: ... while an ORDINARY club still fans out to its members — 058c0002 holds the owner and 058005, so the one member who is not the organizer hears about it');
+
+-- ---------------------------------------------------------------------------
+-- 059.1  The welcome club cannot be deleted by whoever ends up owning it.
+-- ---------------------------------------------------------------------------
+-- 029's succession hands a departing owner's clubs to the longest-tenured
+-- remaining member, and after 058 the welcome club ALWAYS has members, so it
+-- can never reach the "nobody left, delete it" arm — it transfers to an
+-- ordinary rider. `delete_owned_club`'s entire access check is
+-- `c.owner_id = v_uid`, so without this guard that rider turns 058 off for
+-- every future signup with one tap in the club menu.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058001', false);
+select assert_rejected(
+  $$select * from public.delete_owned_club('00000000-0000-0000-0000-0000058c0001')$$,
+  '42501',
+  '059: the club carrying is_default cannot be deleted, even by its own owner — that ownership is INHERITABLE through 029''s succession, so without this any rider who outlives the welcome club''s owner can switch auto-join off for everyone');
+
+-- Not vacuous: the same caller, the same function, their other club.
+savepoint delete_ordinary_059;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058001', false);
+select * from public.delete_owned_club('00000000-0000-0000-0000-0000058c0002');
+reset role;
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000058c0002'),
+  0,
+  '059: ... while the SAME owner can still delete an ordinary club through the same function, so the refusal above is the is_default guard and not a broken access check');
+rollback to savepoint delete_ordinary_059;
+
+-- And the guard is the FLAG rather than the club: unflag it and it deletes.
+savepoint delete_unflagged_059;
+reset role;
+update clubs set is_default = false where id = '00000000-0000-0000-0000-0000058c0001';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058001', false);
+select * from public.delete_owned_club('00000000-0000-0000-0000-0000058c0001');
+reset role;
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000058c0001'),
+  0,
+  '059: ... and unflagging it makes it deletable again — the guard reads is_default rather than pinning one club, so retiring a welcome club stays possible without a migration');
+rollback to savepoint delete_unflagged_059;
+
+-- ---------------------------------------------------------------------------
+-- 059.2  The silence 058's exception block could not see.
+-- ---------------------------------------------------------------------------
+-- The insert selects zero rows when nothing carries the flag, and zero rows is
+-- a SUCCESS — no exception, so 058's `when others` never runs and the feature
+-- is off for every rider with no diagnostic anywhere. plpgsql `raise warning`
+-- is not observable from SQL, so what is asserted here is the shape the warning
+-- hangs off: `found` is false in the no-club case and the completion still
+-- lands. 058.5 asserts the same path's behaviour; this pins the CONDITION.
+savepoint warns_on_no_default_059;
+reset role;
+update clubs set is_default = false where id = '00000000-0000-0000-0000-0000058c0001';
+select assert_eq(
+  (select count(*)::int from clubs where is_default), 0,
+  '059: with the flag cleared there is no default club, which is the state 058 §5''s guard leaves behind when it finds zero or two name matches');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000058004', false);
+select assert_eq(public.complete_onboarding('Guimaraes') is not null, true,
+  '059: ... onboarding still completes, silently, which is the correct degradation and also the failure nobody would ever notice');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members where user_id = '00000000-0000-0000-0000-000000058004'),
+  0,
+  '059: ... having joined nothing — the case 059 §2 adds the warning for, because an insert over zero rows raises nothing for 058''s handler to catch');
+rollback to savepoint warns_on_no_default_059;
+
+-- ---------------------------------------------------------------------------
+-- 059.3  Nothing else about the two redefined functions moved.
+-- ---------------------------------------------------------------------------
+reset role;
+select assert_eq(
+  has_function_privilege('authenticated', 'private.notify_ride_created_in_club()', 'execute'),
+  false,
+  '059: private.notify_ride_created_in_club is still unreachable from the client role — 036 §7.7''s revoke survives a bare `create or replace`, which a drop/create would have discarded');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.delete_owned_club(uuid)'::regprocedure),
+  true,
+  '059: delete_owned_club is still SECURITY DEFINER — its own owner_id check is the entire access control and means nothing without it');
+select assert_eq(
+  has_function_privilege('anon', 'public.delete_owned_club(uuid)', 'execute'),
+  false, '059: ... and `anon` still cannot call it (043''s revoke)');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'public.delete_owned_club(uuid)'::regprocedure),
+  array['search_path=""'],
+  '059: ... with its search_path still pinned');
+
+set role authenticated;
+rollback to savepoint default_club_058;
+
 rollback;
 
 \echo ''
