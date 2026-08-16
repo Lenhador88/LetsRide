@@ -183,21 +183,34 @@ describe('agent briefs do not describe a world that has moved on', () => {
     const read = (rel: string) => readFileSync(path.resolve(__dirname, '../..', rel), 'utf8')
     const STEP = /\b(STEP [0-9]+(?:\.[0-9]+|[a-z])?)/g
 
-    const proc = read('.claude/commands/queue-pickup.md')
+    /*
+     * Two procedures define steps now — the dispatcher picks and hands out, the
+     * pickup builds — and they cite each other's steps freely, so the heading set
+     * is their UNION.
+     *
+     * That is deliberately weaker than checking each file against its own
+     * headings: a `STEP 4c` written in queue-dispatch.md resolves against
+     * queue-pickup.md's heading, which is correct here and would be a false pass
+     * if the two ever stopped being one procedure split in half. It still catches
+     * the defect this test exists for — a reference to a step that exists
+     * NOWHERE, which is what a rename or a deletion produces.
+     */
+    const procs = ['.claude/commands/queue-pickup.md', '.claude/commands/queue-dispatch.md']
     const headings = new Set(
-      [...proc.matchAll(/^## (STEP [0-9]+(?:\.[0-9]+|[a-z])?)/gm)].map((m) => m[1]),
+      procs.flatMap((rel) =>
+        [...read(rel).matchAll(/^## (STEP [0-9]+(?:\.[0-9]+|[a-z])?)/gm)].map((m) => m[1]),
+      ),
     )
     expect(headings.size, 'no STEP headings found — did the format change?').toBeGreaterThan(5)
 
     const consumers = [
-      '.claude/commands/queue-pickup.md',
+      ...procs,
       'CLAUDE.md',
       'docs/HANDOFF.md',
       '.claude/agents/reviewer.md',
       // Cites steps in the §-less form, which the crossrefs gate cannot see at
       // all — a `§STEP 2d` would bind to `STEP` and resolve ambiguously against
-      // all ten STEP headings, so this list is the only check those references
-      // get.
+      // every STEP heading, so this list is the only check those references get.
       'docs/reference/linear.md',
     ]
     const dangling: string[] = []
@@ -206,7 +219,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
         if (!headings.has(ref)) dangling.push(`${rel} -> ${ref}`)
       }
     }
-    expect(dangling, 'referenced but no such step heading in queue-pickup.md').toEqual([])
+    expect(dangling, 'referenced but no such step heading in either procedure').toEqual([])
   })
 
   it('every brief naming an mcp__ tool also lists ToolSearch in its frontmatter', () => {

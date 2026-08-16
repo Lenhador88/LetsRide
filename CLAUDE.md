@@ -910,10 +910,15 @@ a build.
 
 **Default: one build in flight, in the background, and the thread stays free.** Spawn the agent,
 reply at once, and keep answering questions about other stories while it runs. What this buys is
-**availability, not throughput** — and the Routine is not the fallback a session assumes it is,
-because gate (7) of `.claude/commands/queue-pickup.md` stops a firing when any of the owner's
-sessions was touched in the last 15 minutes. **So while the owner is at the keyboard the queue is
-suppressed, not merely slow**, and this mode is the only thing picking work up at all.
+**availability, not throughput** — and the queue is not the fallback a session assumes it is,
+because `.claude/commands/queue-dispatch.md` STEP 1 holds every dispatch while any of the owner's
+own sessions is `RUNNING`. **So while the owner is actively working the queue is suppressed, not
+merely slow**, and this mode is the only thing picking work up at all.
+
+**That gate is narrower than the one it replaced, and the difference matters here.** It used to
+hold the whole hour whenever *any* of the owner's sessions had been touched in the last 15
+minutes — so an idle session they might come back to suppressed the queue as effectively as a
+live one. Now only an actively running session does.
 
 **Backgrounding it and then waiting on it is the same as not backgrounding it.** Product owner,
 2026-08-11: *"shouldn't all of that be running on the background?"* — said to a session that had
@@ -1192,8 +1197,8 @@ Three things are still owed and none of them is a status update:
   owner is at the keyboard is explicit — *"spawn the agent, reply at once, and keep answering
   questions about other stories while it runs"* — and that mode buys **availability**, which
   is the whole return on backgrounding. It is also the only thing picking work up while they
-  are at the keyboard, since queue-pickup's gate (7) suppresses the Routine. Silence here
-  cancels the mode rather than serving it.
+  are at the keyboard, since the dispatcher's owner-activity gate holds while this session is
+  running. Silence here cancels the mode rather than serving it.
 - **A question only they can answer, and a blocked capability.** Both are decisions, not
   status.
 - **A one-line answer to a hook that returned `decision: block`.** That is a prompt, unlike a
@@ -1506,7 +1511,7 @@ rather than checking it against this list, which is not exhaustive:
   obituaries, so the obvious command returns a wrong number that looks measured.
 - **`^`-anchored `git grep -L`** (same paragraph) — unanchored, a doc comment mentioning
   `'use client'` counts as the directive, so real server-rendered pages drop out of the list.
-- **The team-scoped lock** (`.claude/commands/queue-pickup.md` STEP 1) — a team-scoped
+- **The team-scoped lock** (`.claude/commands/queue-dispatch.md` STEP 2) — a team-scoped
   `list_issues` is the natural query and is held permanently by years-old issues outside this
   project.
 
@@ -1543,11 +1548,11 @@ from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
 
 ## The roadmap lives in Linear
 
-**Full detail — the anti-duplication contract, the status traps, sequencing, the queue Routine and
-its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before the
-first Linear call of a session, and before ANY call that touches the queue Routine, its triggers
-or the Development session** — those are CCR calls rather than Linear ones, so "before a Linear
-call" would never have fired for them. What must be true without reading it:
+**Full detail — the anti-duplication contract, the status traps, sequencing, the queue dispatcher
+and its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before
+the first Linear call of a session, and before ANY call that touches the dispatcher Routine, its
+triggers or the dispatcher session** — those are CCR calls rather than Linear ones, so "before a
+Linear call" would never have fired for them. What must be true without reading it:
 
 - Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**. **Pass the project id —
   `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it holds a curly apostrophe, the
@@ -1556,9 +1561,10 @@ call" would never have fired for them. What must be true without reading it:
   response.**
 - **Do not ask permission to touch Linear.** Standing grant, 2026-08-07 — read, create, update,
   label, move between statuses, and close. Deleting anything a human authored is the exception.
-- **`Queued (AI)` is the only start signal**, and `Development (AI)` + `Needs help` is a
-  *two-name* concurrency lock. Both traps are spelled out in the reference; the wider reading of
-  either freezes the queue while looking healthy.
+- **`Queued (AI)` is the only start signal.** `Development (AI)` claims **one issue** — stories
+  build in parallel sessions, so it says nothing about the others — while `Needs help` still stops
+  every dispatch. Both traps are spelled out in the reference; reading either as "any `started`
+  issue" freezes the queue while looking healthy.
 - **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`. A
   `save_issue` naming a status that no longer exists comes back looking successful with the field
   silently dropped.
@@ -1654,7 +1660,7 @@ chain to a scratch database and asserts what each role can reach.
     permissions diff touches nothing else). **So a PR touching only `design/`, `.claude/hooks/`
     or the rest of `.claude/` runs zero jobs.**
   - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
-    is a grep, a `jq` or a contrast ratio — 22 of 34. The ones needing Postgres, a second full
+    is a grep, a `jq` or a contrast ratio — 23 of 35. The ones needing Postgres, a second full
     build or a **test runner** stay out, so `npm run docs:check` locally is still the complete
     answer. That last exclusion was learned rather than designed: the two claims that spawn
     `vitest` on one file passed locally — including under `CI=true GITHUB_ACTIONS=true` — and
@@ -1724,6 +1730,9 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   this organization, so no session can recreate it; `update_trigger enabled: true` restores it
   whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one — keep them straight
   in both directions. Detail in [`docs/reference/linear.md`](docs/reference/linear.md).
-- **Don't archive or abandon the Development session** (`session_01B2mxc642tG8vZ15wysQpqM`).
-  Archiving it stops the queue silently with no error anywhere, and `update_trigger` has no
-  `persistent_session_id` parameter, so recovery needs a third trigger bound to a new session.
+- **Don't archive or abandon the dispatcher session** — the one
+  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, currently
+  `session_01B2mxc642tG8vZ15wysQpqM`. Archiving it stops the queue silently with no error
+  anywhere, and `update_trigger` has no `persistent_session_id` parameter, so recovery needs a
+  third trigger bound to a new session. **Its children are disposable and archiving one is
+  fine** — they carry the `queue-dispatch` tag, which is how they are told apart.
