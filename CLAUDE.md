@@ -659,7 +659,7 @@ at runtime).
 any screen, and read `design/TOKENS.md` in preference to either — that one is generated, the
 tables are transcribed.
 
-Three rules that must hold without opening it:
+Four rules that must hold without opening it:
 
 - **Read the design from `design/`, never the Figma API.** `npm run figma -- tree "<screen>"` is
   offline and cannot be rate limited; the API's limit is per-endpoint, inherited across sessions,
@@ -668,6 +668,15 @@ Three rules that must hold without opening it:
   hand-edited. The generator rewrites every literal fill to `currentColor`.
 - **Primary buttons are near-black (`Grey/100` `#1A1A1A`), not green.** Green is an accent used
   sparingly. This is the single most-repeated mistake against these designs.
+- **Writing to Figma is possible, and it takes an explicit ask.** `use_figma` runs against the
+  file through the Plugin API and is on `design-system`'s toolset as of 2026-08-16 — that is how
+  PD-228's wave icon got authored without hand-editing the generated file. The rule above is
+  untouched: a write is not a licence to *read* over the API, and design questions still come from
+  the snapshot. What makes the ask non-negotiable is that **nothing anywhere gates it** — no CI
+  job, no `docs:check` claim and no `reviewer` pass reads the Figma file, so a component created
+  in a session lands in the canonical design unreviewed and the next `figma:pull` bakes it into
+  the snapshot the whole squad trusts. `.claude/agents/design-system.md` §Writing to Figma carries
+  the conventions and the two rate-limited calls it takes to reach `generated.tsx`.
 
 ## Development Workflow
 
@@ -767,8 +776,10 @@ outright, so a UUID-prefixed name it finds is very likely refused too (untested 
 rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
 restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
 §Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
-database gets both; `design-system` is out, its connector being Figma and its answers coming from
-the committed `design/` snapshot with the API forbidden.
+database gets both; `design-system` is out, its connector being Figma and its *answers* coming
+from the committed `design/` snapshot with reads over the API forbidden — which is a rule about
+where design questions get answered, not a claim that the connector is read-only. It also holds
+`use_figma`, under §Design System's fourth rule above.
 `src/__tests__/agent-briefs.test.ts` enforces it — `grep -L ToolSearch` cannot, since every such
 block names the tool in prose and reads clean with the entry stripped.
 

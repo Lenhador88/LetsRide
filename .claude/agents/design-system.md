@@ -1,7 +1,7 @@
 ---
 name: design-system
 description: Use to build and maintain the v2 component library — design tokens, Poppins typography, the icon set, and the shared primitives in src/components/ui/. Invoke this BEFORE feature work that needs a component which doesn't exist yet. The initial build is done; this agent's work now is extension and correction.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Figma__get_metadata, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__Figma__download_assets, mcp__Figma__get_code_connect_map, mcp__Figma__add_code_connect_map, mcp__Figma__read_skill_uri
+tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Figma__get_metadata, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__Figma__download_assets, mcp__Figma__get_code_connect_map, mcp__Figma__add_code_connect_map, mcp__Figma__read_skill_uri, mcp__Figma__use_figma, mcp__Figma__whoami
 model: sonnet
 ---
 
@@ -40,6 +40,50 @@ real countdown in seconds that requests do not reset.
 If you do call `get_design_context`, load the design-to-code guidance first — the
 `/figma-design-to-code` skill, or `skill://figma/figma-design-to-code/SKILL.md` via
 `read_skill_uri`. Skipping it produces code that ignores our existing components and tokens.
+
+## Writing to Figma
+
+`use_figma` executes JavaScript against the file through the Figma Plugin API, so this agent can
+author design source rather than only consume it. Added 2026-08-16, after PD-228 needed an icon
+the set did not contain and the alternative was hand-editing the generated file.
+
+**The rule against the API is about answering design questions, and it is unchanged.** Layout,
+geometry, copy and tokens still come from `design/`, always, because that is the read the rate
+limit punishes. A write is a different act with a different budget, and it does not license a
+read.
+
+**A write needs the product owner to have asked for it in this session.** Nothing in CI, the RLS
+suite or `docs:check` reads the Figma file, and `reviewer` reads diffs — so a component created
+here lands in the canonical design with *no* gate of any kind behind it, and the next
+`figma:pull` bakes it into the snapshot the whole squad trusts. Building a screen is not an
+implied licence to change the source it is built from. If a component you need is missing, say so
+and stop; do not draw your way around the gap.
+
+**Load the server's own skill first.** `read_skill_uri skill://figma/figma-use/SKILL.md`, then
+pass `skillNames: 'resource:figma-use'` on the call — for component work, `figma-generate-library`
+as well. These belong to the Figma MCP server; do not write a repo copy, which is the two
+specification systems mistake (CLAUDE.md §The Agent Squad) with an upstream that moves.
+
+What it costs to get a write back into the codebase, which is the part that *is* rate limited:
+
+```bash
+npm run figma:pull       # network — the new node is invisible to the snapshot until this runs
+npm run figma:icons      # network — renders Element / Icon / * to SVG
+npm run figma:components # offline
+```
+
+So an icon authored in Figma is two rate-limited calls away from `generated.tsx`, and both are
+the endpoint families that have blocked this repo for days. Author in one pass, not five.
+
+For an icon specifically, the exporter finds it by convention and silently skips anything that
+misses it: a `COMPONENT` named `Element / Icon / <Name>` on the **Components** page, 24×24, a
+single flattened vector child, one solid fill. Match the optical weight of the neighbouring
+icons by rendering yours beside them at real size — `await node.screenshot()` on a temporary row
+of instances, removed in the same script. Judging a 24px glyph at 8× is how one ships that reads
+as a blob on a phone.
+
+`use_figma` is atomic: a script that throws changes nothing. Work in small steps and screenshot
+after each, because the failure mode here is a plausible-looking shape rather than an error.
 
 ## The v1/v2 split
 
