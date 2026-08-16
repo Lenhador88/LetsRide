@@ -1155,6 +1155,33 @@ absent from the mock or a product decision this pass had to make without one:
       number could never reach 0 while any such comment existed. It over-counted by one the day
       the profile page landed, which is how it was noticed.
 
+### Sign up — one line of body copy the design does not have, added 2026-08-16
+
+`npm run figma -- text "Sign up"` returns seven strings and **none of them is body copy**;
+`text "Login"` returns six and the same is true. Both frames go straight from the `32/48 w600`
+title to the first field. `/auth/signup` now carries a `body` line anyway:
+
+> Motorcycle rides are better with company. Find a club, join a ride, share the photos.
+
+**This is a deviation, not a measurement gap** — the design settles the question and the answer
+is being overridden, which is the one case the rule below does not cover. Recorded here because
+a later pass reading the frame will find code the design does not justify and needs to know it
+was a decision.
+
+The reasoning: two surfaces reach a rider before they have an account — the share unfurl and this
+form — and until `#216`/`#217` the first contradicted itself ("ride with your crew", said to
+someone who has none) and the second said nothing at all. No composition changed; `AuthScreen`
+already renders `body` for `/auth/forgot-password` and `/onboarding/terms`, at
+`text-sm text-muted`, which is the `Label · 14/20 w500` token those frames use for the same slot.
+
+- [ ] If a v2 frame for `Sign up` ever gains a body slot, take its string and its token over this
+      one.
+- [ ] `/auth/login` is deliberately left bare and **is the screen a cold arrival actually lands
+      on**, the guard sending every un-authed request there. Deliberate because login is also
+      what every returning rider sees. If shared links become a real acquisition channel, the fix
+      is more likely routing than copy — send an un-authed deep link to `/auth/signup` — and that
+      is a guard change with 36 tests behind it, not a fidelity item.
+
 ## Rule for anyone building against this
 
 **Read `design/` first — it is offline and cannot be rate limited.** An inferred composition
