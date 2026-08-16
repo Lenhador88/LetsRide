@@ -15,16 +15,16 @@
   "strokeAlign": "INSIDE",
   "children": [
     {
-      "id": "4114:6912",
+      "id": "4121:6915",
       "name": "Icon",
       "type": "VECTOR",
       "box": {
-        "x": 12620.89,
-        "y": 11417.5,
-        "w": 14.22,
-        "h": 21
+        "x": 12620.47,
+        "y": 11417,
+        "w": 15.06,
+        "h": 22
       },
-      "strokeWeight": 0.1,
+      "strokeWeight": 0.25,
       "strokeAlign": "OUTSIDE",
       "fills": [
         {
