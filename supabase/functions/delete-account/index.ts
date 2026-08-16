@@ -35,10 +35,20 @@
  * before anything destructive runs (D6). The deployed build still predates
  * this: until the owner redeploys (dashboard only, `PD-86`), production and
  * DEV both still delete on a valid bearer token alone, and a client sending a
- * password to either gets it silently ignored. The client commits that add
- * the password field are ordered *after* this one specifically so that once
- * the redeploy happens, the change is fail-closed rather than fail-open —
- * this file refuses a caller that sends no proof, and nothing sends one yet.
+ * password to either gets it silently ignored.
+ *
+ * **Committing the function ahead of the client, inside one branch, does NOT
+ * make a redeploy fail-closed, and an earlier revision of this comment
+ * claimed it did — reviewer finding #1, 2026-08-16.** Both commits merge
+ * together; the client half auto-deploys on merge, the function half deploys
+ * by hand, later, if at all — commit order inside a branch says nothing about
+ * *deploy* order, which is the thing that would actually matter and which no
+ * session can control. **What makes this fail-closed is
+ * `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`src/lib/flags.ts`): the "Delete
+ * account" row does not render, on either project, until that project's own
+ * env var is set to `'true'` — which the owner does only after confirming
+ * THAT project's redeploy enforces the proof. Unset, unrelated or misspelled
+ * all read as off.
  * **Verify the redeploy by CONTENT, not by sha alone** — 2.3a and 3.4 both
  * name the same reason: three tasks now want the same redeploy, so a changed
  * `ezbr_sha256` no longer proves any one of them shipped. A request with no
@@ -161,21 +171,34 @@
  *     the right half to lose: images without rows are orphans a sweeper can
  *     find, rows without images render broken.
  *
- * **Already deleted returns 401, not success**, and that is worth stating
- * plainly because both this file and D7 previously claimed the opposite. The
- * `getUser` call below runs first, and GoTrue rejects a token whose `sub` has no
- * user row — so a retry against an account that is already gone never reaches
- * the `deleteUser` already-gone branch. The client contract is therefore: **401
- * on this endpoint means the session is dead, which for the deletion screen is
- * indistinguishable from success and must be treated as such.** The
- * already-gone branch in step 3 still earns its place — it covers the account
- * disappearing between `getUser` and `deleteUser`.
+ * **Already deleted returns `unauthorized` (401), not success**, and that is
+ * worth stating plainly because both this file and D7 previously claimed the
+ * opposite. The `getUser` call below runs first, and GoTrue actively rejects a
+ * token whose `sub` has no user row — so a retry against an account that is
+ * already gone never reaches the `deleteUser` already-gone branch. The client
+ * contract is therefore: **the `unauthorized` code on this endpoint means the
+ * session is dead, which for the deletion screen is indistinguishable from
+ * success and must be treated as such.** The already-gone branch in step 3
+ * still earns its place — it covers the account disappearing between
+ * `getUser` and `deleteUser`.
  *
- * **`reauth_required` is a different 401 and the client must not fold it into
- * the paragraph above.** It comes from step 0, on a token that verified fine —
- * the account is not gone, the password proof is. Treating it as "session
- * dead, deletion succeeded" would sign a rider out and report success on a
- * simple typo, on the one action with no undo.
+ * **The response carries THREE distinct codes now, not two, and the client
+ * must not fold any of them into another (reviewer finding #2, 2026-08-16).**
+ *
+ *   - `unauthorized` (401) — the token itself was actively rejected. Read as
+ *     "already gone" above.
+ *   - `reauth_required` (401 — same status, different body) — the token is
+ *     fine, the password proof is missing or wrong. The account is NOT gone;
+ *     treating this as "session dead, deletion succeeded" would sign a rider
+ *     out and report success on a simple typo, on the one action with no
+ *     undo. Comes from step 0, below.
+ *   - `verification_unavailable` (503) — `getUser` could not get a real
+ *     answer from GoTrue at all (a network failure reaching it from the Edge
+ *     runtime, or GoTrue itself 5xx'ing). This says NOTHING about the token
+ *     or the account — it is the same brief outage this endpoint could hit on
+ *     any call — and folding it into `unauthorized` reported an untouched
+ *     account as deleted, which is the false-positive erasure reviewer
+ *     finding #2 named. The client must retry, never sign out, on this one.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -322,7 +345,35 @@ Deno.serve(async (req: Request) => {
   const { data: userData, error: userError } = await anon.auth.getUser(token)
   const subject = userData?.user
 
-  if (userError || !subject) return json({ error: 'unauthorized' }, 401)
+  // Reviewer finding #2 (2026-08-16): `userError` is not one shape. auth-js's
+  // own `handleError` (fetch.js) throws two different classes depending on
+  // WHY the request to GoTrue failed, and this function used to fold both
+  // into `unauthorized` — read by the client as "already deleted" (D7),
+  // reported to the rider as success. Only one of the two actually means
+  // that:
+  //
+  //   - GoTrue answered with a genuine 4xx (the token's signature or claims
+  //     are wrong, or — for an already-deleted account — no such user) —
+  //     `AuthApiError`, `.status` in 400..499. The token was actively
+  //     rejected: `unauthorized` is correct.
+  //   - The request to GoTrue never got a real answer at all — a network
+  //     failure reaching it from the Edge runtime (`.status` 0/undefined) or
+  //     GoTrue itself 5xx'd — `AuthRetryableFetchError`. This says nothing
+  //     about whether the token or the account is valid; it is exactly the
+  //     brief, retryable outage this endpoint could hit on any call. Folding
+  //     it into `unauthorized` reports an untouched account as deleted and
+  //     signs the rider out with nothing actually removed.
+  //
+  // `.status` rather than `instanceof`/error-name checks, because every
+  // `AuthError` subclass carries it and a status range is stable across a
+  // library bump in a way an internal class name is not.
+  if (userError) {
+    const status = (userError as { status?: number }).status
+    const activelyRejected = typeof status === 'number' && status >= 400 && status < 500
+    if (!activelyRejected) return json({ error: 'verification_unavailable' }, 503)
+    return json({ error: 'unauthorized' }, 401)
+  }
+  if (!subject) return json({ error: 'unauthorized' }, 401)
   if (subject.is_anonymous) return json({ error: 'unauthorized' }, 401)
 
   // Rule 1: the subject came from the token, never from the body. The only

@@ -292,17 +292,31 @@ export async function signOut(): Promise<ActionState> {
  * already falls back to a local-only sign-out on any error, which is exactly
  * the "revocation the server refuses is not a failed deletion" scenario.
  *
- * **The Edge Function's two 401s are deliberately not the same outcome.**
- * `unauthorized` means the JWT itself failed verification — which, for a
- * token this action just used successfully to reach the function, can only
- * mean the account is already gone (D7's already-deleted case: a second
- * device, a retry after an unseen success). That is reported as success.
- * `reauth_required` means the session is fine and the password was missing
- * or wrong — reported as a retryable failure, with the account and the
- * rider's session both untouched, per "A wrong password does not delete".
- * `edgeFunctionErrorCode` is what tells the two apart; a network failure
- * that never reached the function returns neither and falls into the
- * generic retry message.
+ * **The Edge Function's error codes are three, not two, and the client must
+ * not fold any of them into another — reviewer finding #2, 2026-08-16.**
+ *
+ *   - `unauthorized` — the JWT itself was actively rejected by GoTrue, which
+ *     for a token this action just used successfully to reach the function
+ *     can only mean the account is already gone (D7's already-deleted case:
+ *     a second device, a retry after an unseen success). Reported as
+ *     success.
+ *   - `reauth_required` — the session is fine and the password was missing
+ *     or wrong. Reported as a retryable failure, with the account and the
+ *     rider's session both untouched, per "A wrong password does not
+ *     delete".
+ *   - `verification_unavailable` — the function's own `getUser` call could
+ *     not get a real answer from GoTrue at all (a brief outage reaching it
+ *     from the Edge runtime, or GoTrue itself erroring) — this says NOTHING
+ *     about whether the token or the account is valid. **It used to be
+ *     indistinguishable from `unauthorized` on this endpoint, which reported
+ *     a transient GoTrue hiccup as "account deleted" and signed the rider
+ *     out with nothing actually removed** — the false-positive erasure
+ *     reviewer finding #2 named. Reported as a retryable failure, same as
+ *     `reauth_required`, and never as success.
+ *
+ * `edgeFunctionErrorCode` is what tells the three apart; a network failure
+ * that never reached the function returns none of them and falls into the
+ * generic retry message below.
  */
 export async function deleteAccount(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = deleteAccountSchema.safeParse({ password: formData.get('password') })
@@ -321,6 +335,13 @@ export async function deleteAccount(_prev: ActionState, formData: FormData): Pro
     const code = await edgeFunctionErrorCode(error)
 
     if (code === 'reauth_required') return { error: 'That password is incorrect.' }
+
+    // A GoTrue call that could not complete says nothing about the account
+    // or the token — reported the same as a wrong password, never as
+    // success. See the header: this used to be folded into `unauthorized`.
+    if (code === 'verification_unavailable') {
+      return { error: 'Could not verify your account right now. Try again in a moment.' }
+    }
 
     // `code === 'unauthorized'` falls through to the success path below — see
     // the header. Anything else (a network failure, a 500, a relay error) is
