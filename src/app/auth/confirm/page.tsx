@@ -3,8 +3,10 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthScreen } from '@/components/auth/AuthScreen'
+import { Button } from '@/components/ui/Button'
 import { createClient } from '@/lib/supabase/client'
-import { callbackFailureDestination, confirmableOtpType, safeNext } from '@/lib/auth/recovery'
+import { signOut } from '@/lib/actions/auth'
+import { CONFIRM_FAILURE_PATH, confirmableOtpType, safeNext } from '@/lib/auth/recovery'
 
 /**
  * Confirms a signup from an emailed `token_hash`, on **any** device.
@@ -29,10 +31,15 @@ import { callbackFailureDestination, confirmableOtpType, safeNext } from '@/lib/
  *
  * Nothing links here yet. GoTrue builds the confirmation link from the *Confirm
  * signup* template, which is a dashboard setting, so switching it is an owner
- * action and it must happen **after** this deploys — a template pointing at a
- * route that does not exist yet breaks every confirmation in flight, and the
- * rider cannot retry a spent link. The reverse order costs nothing: this route
- * simply sits unvisited.
+ * action and it must happen **after** this deploys. Template-first sends every
+ * rider to a 404 (or, before this route is public, to a guard bounce) — **not
+ * an unrecoverable one, and the distinction decides the rollback plan**: only
+ * `verifyOtp` spends a `token_hash`, and neither of those calls it, so the link
+ * keeps working for the rest of GoTrue's OTP lifetime and succeeds the moment
+ * the route lands. Deploy-first is still right; it just costs a window of
+ * confusing failures rather than a cohort of dead accounts.
+ *
+ * The reverse order costs nothing at all: this route simply sits unvisited.
  *
  * The template it wants, verbatim:
  *
@@ -57,6 +64,43 @@ export default function AuthConfirmPage() {
   )
 }
 
+type Outcome = 'confirmed' | 'held-session' | 'failed'
+
+/**
+ * One verification per token hash, for the lifetime of the page.
+ *
+ * **StrictMode is ON** — `next.config.ts` leaves `reactStrictMode` unset and
+ * Next resolves that to enabled for the App Router — so in `npm run dev` the
+ * effect below mounts, tears down and mounts again. `cancelled` suppresses the
+ * first run's *navigation*, never its *request*, so without this latch two
+ * `verifyOtp` calls race for a single-use token and the one that navigates is
+ * usually the loser: the rider sees "that confirmation link has expired" on a
+ * link that just worked. That is exactly the manual test somebody will run
+ * before flipping the email template (PD-233).
+ *
+ * Caching the promise rather than a "done" flag is what makes the second mount
+ * *reuse* the first's answer instead of skipping and hanging. A rejection stays
+ * cached on purpose — clearing the slot would re-open the double-spend — and a
+ * full reload gets a fresh module scope, which is the only retry that makes
+ * sense for a token this may already have burned.
+ */
+const verifications = new Map<string, Promise<Outcome>>()
+
+function verifyOnce(tokenHash: string, type: 'signup' | 'email'): Promise<Outcome> {
+  let pending = verifications.get(tokenHash)
+  if (!pending) {
+    pending = (async () => {
+      const supabase = createClient()
+      const { data } = await supabase.auth.getSession()
+      if (data.session) return 'held-session'
+      const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
+      return error ? 'failed' : 'confirmed'
+    })()
+    verifications.set(tokenHash, pending)
+  }
+  return pending
+}
+
 function AuthConfirm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -66,6 +110,7 @@ function AuthConfirm() {
   const [tokenHash] = useState(() => searchParams.get('token_hash'))
   const [type] = useState(() => confirmableOtpType(searchParams.get('type')))
   const [next] = useState(() => safeNext(searchParams.get('next')))
+  const [heldSession, setHeldSession] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -74,31 +119,49 @@ function AuthConfirm() {
     // `token_hash` — the same shape the callback meets, measured in PD-225.
     // An unrecognised `type` lands here too, which is what `confirmableOtpType`
     // returning null means.
+    //
+    // **The destination is unconditional, unlike the callback's.** That route
+    // carries recovery as well as confirmation and has to tell them apart;
+    // this one refuses `recovery` at `confirmableOtpType`, so discriminating
+    // on `next` here could only ever fire wrongly — a hand-edited
+    // `?next=/auth/reset-password` would route a failed CONFIRMATION into
+    // password recovery, which is the exact defect PD-225 removed.
     if (!tokenHash || !type) {
-      router.replace(callbackFailureDestination(next))
+      router.replace(CONFIRM_FAILURE_PATH)
       return
     }
 
-    createClient()
-      .auth.verifyOtp({ token_hash: tokenHash, type })
-      .then(({ error }) => {
+    // **Refuse to spend a token into a browser that already holds a session.**
+    // `verifyOtp` takes a bearer credential — the hash in the URL is the whole
+    // thing, which is what makes cross-device work — so without this check an
+    // attacker can send a signed-in rider a link carrying the attacker's OWN
+    // confirmation token and silently swap the session: `onAuthStateChange`
+    // fires, `guard-cache` takes the new user id, and every postcard, photo
+    // and ride the victim then writes lands in the attacker's account. It is
+    // login CSRF, and `/auth/callback` was structurally immune to it because
+    // PKCE requires a verifier out of the victim's own storage.
+    //
+    // Refusing costs nothing real: with confirmation ON a rider being
+    // confirmed has no session by construction, and the token is NOT spent
+    // here — they can sign out and click the same link again.
+    verifyOnce(tokenHash, type)
+      .then((outcome) => {
         if (cancelled) return
-        if (error) {
-          router.replace(callbackFailureDestination(next))
+        if (outcome === 'held-session') {
+          setHeldSession(true)
           return
         }
         // No grant read here, unlike the callback. This route confirms an
-        // email and nothing else — `confirmableOtpType` refuses `recovery`
-        // outright — so there is no flow whose destination has to be asked
-        // about. A confirmed rider goes to the app, and the route guard
-        // resumes onboarding from there if the account is new.
-        router.replace(next ?? '/postcards')
+        // email and nothing else, so there is no flow whose destination has to
+        // be asked about. A confirmed rider goes to the app, and the route
+        // guard resumes onboarding from there if the account is new.
+        router.replace(outcome === 'confirmed' ? (next ?? '/postcards') : CONFIRM_FAILURE_PATH)
       })
       // Without this a rejection leaves the rider on "Confirming your email"
       // for ever: nothing re-renders, so there is no navigation to be had and
       // only a reload escapes.
       .catch(() => {
-        if (!cancelled) router.replace(callbackFailureDestination(next))
+        if (!cancelled) router.replace(CONFIRM_FAILURE_PATH)
       })
 
     return () => {
@@ -106,7 +169,36 @@ function AuthConfirm() {
     }
   }, [next, router, tokenHash, type])
 
+  if (heldSession) return <AlreadySignedIn />
+
   return <Confirming />
+}
+
+/**
+ * The refusal above, on screen. The token is still unspent, so signing out and
+ * returning to this same URL confirms the account for real — hence the reload
+ * rather than a redirect, which would drop the `token_hash`.
+ */
+function AlreadySignedIn() {
+  const [signingOut, setSigningOut] = useState(false)
+
+  return (
+    <AuthScreen
+      title="You're already signed in"
+      body="This confirmation link is for a different account. Sign out and we'll open it again."
+    >
+      <Button
+        size="lg"
+        loading={signingOut}
+        onClick={() => {
+          setSigningOut(true)
+          signOut().then(() => window.location.reload())
+        }}
+      >
+        Sign out and confirm
+      </Button>
+    </AuthScreen>
+  )
 }
 
 function Confirming() {

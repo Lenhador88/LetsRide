@@ -437,9 +437,19 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
   `import { resolveSupabase } from '@/lib/supabase/resolve'`.
   `src/lib/data/__tests__/isomorphic.test.ts` walks the module graph from both directories and
   fails loudly if anything in them reaches a Next server module.
-- A component that genuinely needs the client itself — the route guard, the reset screen —
-  imports `createClient` from `@/lib/supabase/client`. That is two files, and a third is
-  probably a read that belongs in `lib/data/`.
+- A component or helper that genuinely needs the client itself imports `createClient` from
+  `@/lib/supabase/client`. **Count them rather than trust a number here** — this line said "two
+  files" for long enough to be wrong by four, and it is a live review heuristic, so a stale
+  ceiling makes every reviewer flag a legitimate file:
+
+  ```bash
+  grep -rln "from '@/lib/supabase/client'" src/ | grep -v "src/lib/supabase/"   # 6
+  ```
+
+  What earns a place on that list is a **session or transport** concern, not a read: the guard
+  cache, the three auth routes that exchange or verify an emailed credential, the Storage upload,
+  and the Realtime subscription. Anything that is a *query* belongs in `lib/data/` no matter how
+  short the list gets.
 - `@/lib/supabase/server` **no longer exists**. Neither does `@supabase/ssr`.
 
 **RLS is ON for all tables.** Every query runs under the authenticated user's session. You do not need to filter by `user_id` manually — RLS policies enforce ownership. But do add RLS policies in migrations for any new table.

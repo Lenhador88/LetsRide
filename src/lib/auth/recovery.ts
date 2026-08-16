@@ -169,19 +169,39 @@ export function callbackFailureDestination(next: string | null): string {
  * `verifyOtp` dispatches on this string, so passing it through unchecked lets a
  * rider choose which verification flow their token is spent on.
  *
- * **`recovery` is refused on purpose, and it is the omission worth explaining.**
- * It would work — a `token_hash` needs no PKCE verifier, so it would fix
- * cross-device password reset the same way this fixes cross-device confirmation
- * — but the reset screen gates on `026`'s grant, which is read off the session's
- * `amr` claim. Whether a `verifyOtp`-minted recovery session carries
- * `{ method: 'recovery' }` the way an `exchangeCodeForSession` one does is
- * unmeasured, and getting it wrong locks every rider out of their own reset with
- * "that reset link has expired". Measure it against a real emailed link before
- * widening this, and keep `/auth/callback` as recovery's route until then.
+ * **`recovery` is refused because it would fail 100% of the time, and `026` §3
+ * already measured why.** It would *reach* Postgres — a `token_hash` needs no
+ * PKCE verifier — but `private.password_reset_session()` predicates on
+ * `amr.method = 'recovery'`, and GoTrue issues `models.OTP` for the token-hash
+ * path, so the session records `method = 'otp'` and the predicate never
+ * matches. Every rider would be told "that reset link has expired" on a link
+ * that just worked.
+ *
+ * **So do not come here to widen this allowlist.** `026` §3 names the fix and it
+ * is in a different file: one word in its §5 predicate plus an RLS assertion,
+ * i.e. a migration. This function would be the last line changed, not the first.
  *
  * `email` is here alongside `signup` because GoTrue's own template examples use
  * it for the confirmation mail; both mean "this address is real".
+ *
+ * **`email_change` matters as much as `recovery` and is easier to overlook**: it
+ * would let a crafted URL complete an address change from the confirmation
+ * screen. Note the compiler is no help at all here — `EmailOtpType` ends in
+ * `(string & {})`, so a bare `as EmailOtpType` cast type-checks against any
+ * string whatsoever. This allowlist is doing all of the work.
  */
 export function confirmableOtpType(value: string | null): 'signup' | 'email' | null {
   return value === 'signup' || value === 'email' ? value : null
 }
+
+/**
+ * Where `/auth/confirm` sends a link it could not use.
+ *
+ * Unconditional, and deliberately **not** `callbackFailureDestination`. That
+ * helper discriminates on `next` because `/auth/callback` genuinely carries
+ * both flows; this route carries only confirmations, so the discrimination
+ * there is dead logic that can only fire wrongly — a hand-edited
+ * `?next=/auth/reset-password` would route a failed *confirmation* into
+ * password recovery, which is precisely the defect PD-225 removed.
+ */
+export const CONFIRM_FAILURE_PATH = '/auth/login?error=invalid_confirmation'

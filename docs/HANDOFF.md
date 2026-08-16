@@ -301,9 +301,14 @@ ls out/index.html             # exists; .next-capacitor/ does not
 ```
 
 35 documents, 291 `__next.*.txt` RSC segment payloads, and the static assets — around 410 files
-in all. **Do not pin the total**: two builds of the same commit have come back one apart, because
-the JS chunk count moves by one or two. The two counts that are stable are the documents and the
-payloads, which is why `check-export.mjs` asserts a floor and those two being non-zero rather than
+in all. **Documents is one MORE than the static-route count**, which reads like the near-miss
+warned about 70 lines above and is not one: `check-export.mjs` walks `out/` and counts every
+emitted `.html`, and `next build`'s route table omits `/_not-found`. So documents tracks the
+`Generating static pages (N/N)` line, not the `34 static` one, and it moved by exactly +1 when
+`/auth/confirm` was added. **Do not pin the total**: two builds of the same commit came back 384
+and 383 at 33 documents, because the JS chunk count moves by one or two. The two counts that are
+stable are the documents and the payloads, which is why `check-export.mjs` asserts a floor and
+those two being non-zero rather than
 an exact number.
 **Every document's rendered text is the empty string** — `RouteGuard` renders the splash instead
 of children during the prerender pass, and every detail screen reads in an effect anyway — which
@@ -1272,7 +1277,21 @@ Two consequences, and the second is the one that will bite:
 
   `{{ .SiteURL }}` rather than `{{ .RedirectTo }}` because each project's Site URL already points
   at its own host (PD-106). `/auth/callback` stays regardless: recovery is still PKCE, and any
-  confirmation link already in an inbox still points there. **`recovery` is deliberately refused
+  confirmation link already in an inbox still points there.
+
+  **DEV cannot exercise this route as configured, and finding that out costs a session.** Two
+  documented facts stack: DEV runs `mailer_autoconfirm: true` (`docs/ENVIRONMENTS.md` §Auth
+  configuration), so no confirmation mail is sent and there is no `{{ .TokenHash }}` to click;
+  and `app-dev.letsride.social` sits behind Vercel SSO and answers `302` to `vercel.com/sso-api`
+  (§Domains), which is where DEV's `{{ .SiteURL }}` points — so even a hand-built link dies at a
+  Vercel login page on a phone. Testing on DEV means turning autoconfirm off temporarily **and**
+  using a Vercel-authenticated browser. **Template-first is still refused** — see the route's own
+  header for why the failure is recoverable but not free.
+
+  **Deploying template-first is recoverable, which is not the same as safe.** Only `verifyOtp`
+  spends a `token_hash`, and a 404 or a guard bounce never calls it, so the link survives for the
+  rest of GoTrue's OTP lifetime. Deploy-first still wins; the cost of getting it wrong is a window
+  of confusing failures rather than a cohort of dead accounts. **`recovery` is deliberately refused
   by `confirmableOtpType`** — a `token_hash` would fix cross-device password reset too, but the
   reset screen gates on `026`'s grant, read off the session's `amr` claim, and whether a
   `verifyOtp`-minted session carries `{ method: 'recovery' }` is unmeasured. Measure it against a
