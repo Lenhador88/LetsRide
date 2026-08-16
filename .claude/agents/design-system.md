@@ -97,9 +97,16 @@ authoring anything hand-shaped, or the dedupe above decides which of two compone
 npm run figma -- icons | grep -i wave   # wave  Wave  4108:6912
 ```
 
-**It is deliberately a single component with no filled twin**, because the generator rewrites
-every fill to `currentColor` and a pair would emit identical SVGs; `LikeButton` toggles it with
-`text-like`. A filled variant was authored and deleted — do not helpfully add one back.
+**It is deliberately a single component with no filled twin**, and `LikeButton` toggles it with
+`text-like` instead. The reason is legibility, not tooling: a solid hand silhouette loses the
+folded fingers and thumb the glyph depends on at 24px, and the bolder copy that was tried instead
+was indistinguishable from the outline. The product owner chose colour-only on that basis. A
+filled variant was authored and deleted — do not helpfully add one back.
+
+**Filled/outline pairs are fine in general** — `Heart Filled`/`Heart Outline` and
+`Location Filled`/`Location Outline` both ship, and `currentColor` rewriting does not collapse
+them, because they are genuinely different paths. Only a pair that duplicates one outline emits
+identical SVGs, which is what the wave's twin did.
 
 What it costs to get a write back into the codebase, which is the part that *is* rate limited:
 

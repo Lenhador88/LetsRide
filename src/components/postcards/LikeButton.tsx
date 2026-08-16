@@ -26,9 +26,16 @@ type LikeButtonProps = {
  * cannot do that: a solid silhouette loses the folded fingers and thumb that
  * make the glyph legible at 24px, and a merely bolder copy is
  * indistinguishable from the outline on a phone. So the toggle is carried by
- * `text-like` (Pink/100, the design's only use of that colour) alone. That
- * leans harder on `aria-pressed` in `PostcardActionButton`, which is why the
- * label still says Like/Unlike in words.
+ * `text-like` (Pink/100, the design's only use of that colour) alone —
+ * measured at 4.51:1 between the two states, clearing the 3:1 that a
+ * colour-only distinction needs.
+ *
+ * That makes `aria-pressed` the whole of the non-visual signal, which is why
+ * the accessible name is now **constant**. It used to flip to "Unlike…" when
+ * liked, and a toggle button that both reports `pressed` and renames itself to
+ * the undo action announces "Unlike, 5 likes, pressed" — a control named for
+ * undoing, reported as done. Pick one mechanism: this is the `aria-pressed`
+ * one, so the name states what the control is, never what the next tap does.
  */
 export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps) {
   const [liked, setLiked] = useState(isLiked)
@@ -58,7 +65,7 @@ export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps)
         onClick={toggle}
         pressed={liked}
         count={count}
-        label={liked ? `Unlike, ${count} likes` : `Like, ${count} likes`}
+        label={`Like, ${count} likes`}
         className={pending ? 'opacity-70' : undefined}
         icon={<WaveIcon className={cn('h-6 w-6', liked && 'text-like')} />}
       />

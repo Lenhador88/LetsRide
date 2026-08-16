@@ -1407,12 +1407,20 @@ heart it replaced was a filled/outline pair; a hand cannot be one. A solid silho
 folded fingers and thumb that make the glyph legible at 24px, and a merely bolder copy is
 indistinguishable from the outline on a phone — so the liked state is carried by `text-like`
 alone, which is what the product owner chose. A second component was authored and then deleted;
-do not reintroduce one, because the generator rewrites every fill to `currentColor` and the pair
-would emit **identical** SVGs.
+do not reintroduce one.
 
-That also means the toggle now leans on `aria-pressed` in `PostcardActionButton` rather than on
-a shape change. If a future screen draws a like without that attribute, the state is invisible to
-a screen reader.
+**That is a legibility argument, not a tooling one, and the difference matters if you generalise
+it.** `Heart Filled`/`Heart Outline` and `Location Filled`/`Location Outline` both ship happily —
+`currentColor` rewriting collapses a pair only when the two are the *same* outline duplicated,
+which is what the wave's twin was.
+
+The consequence in code is that `aria-pressed` on `PostcardActionButton` is now the whole of the
+non-visual signal. So the accessible name was made **constant** in the same commit: it used to
+flip to "Unlike, N likes", and a toggle that reports `pressed` *and* renames itself to the undo
+action announces "Unlike, 5 likes, pressed" — named for undoing, reported as done. If a future
+screen draws a like without `aria-pressed`, its state is invisible to a screen reader; the colour
+is measured at 4.51:1 between states, which clears the 3:1 for a colour-only distinction but is
+not a substitute for the attribute.
 
 The full chain ran, so `design/` and `generated.tsx` are current — 54 icons, not 53:
 
@@ -1452,10 +1460,19 @@ So no attribution is required and none is legally load-bearing. Crediting Google
 free courtesy and still worth doing. **What would change the answer is shipping the font file
 itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
 
-**One thing genuinely untested: nobody has seen this render in a browser.** Chromium in this
-container cannot reach Supabase, so the walk cannot sign in and no gate in this repo renders a
-postcard. `tsc`, ESLint, Vitest, `next build` and `docs:check` all pass through a glyph that is
-subtly wrong at 24px.
+**Nobody has seen this render in a browser, and the reason is a missing credential rather than a
+missing capability.** The walk *does* render postcards — `scripts/walk.mjs` covers `/postcards`
+and discovers a thread — and `scripts/supabase-relay.mjs` is the documented fix for Chromium not
+reaching Supabase from this container. What is absent is `WALK_EMAIL` / `WALK_PASSWORD`, which
+only the product owner can supply. So this is an owner ask, not a dead end:
+
+```bash
+node -p "[!!process.env.WALK_EMAIL, !!process.env.WALK_PASSWORD]"   # [false, false] here
+```
+
+`tsc`, ESLint, Vitest, `next build` and `docs:check` all pass through a glyph that is subtly wrong
+at 24px, which is precisely the defect the walk exists to catch. Run it the moment those two
+variables are available.
 
 ---
 
