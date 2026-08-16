@@ -72,11 +72,10 @@ standing rule there — settle it before any screen renders one — is the rule 
 goes in the component's Figma `description` **and** in the handoff. A traced glyph with no
 recorded licence position is not finished, however good it looks.
 
-The wave glyph's own position is settled and is the worked example — `docs/HANDOFF.md` §The
-snapshot is behind the Figma file carries it. The short version, because it generalises to any
-OFL font: the licence defines "Font Software" as a set of **files**, and every obligation in it
-hangs off that noun, so shipping an extracted outline redistributes nothing the licence governs.
-Shipping the `.ttf` would.
+The wave glyph's own position is settled and is the worked example — `docs/HANDOFF.md` §The wave
+icon carries it. The short version, because it generalises to any OFL font: the licence defines
+"Font Software" as a set of **files**, and every obligation in it hangs off that noun, so shipping
+an extracted outline redistributes nothing the licence governs. Shipping the `.ttf` would.
 
 **Load the server's own skill first.** `read_skill_uri skill://figma/figma-use/SKILL.md`, then
 pass `skillNames: 'resource:figma-use'` on the call — for component work, `figma-generate-library`
@@ -90,15 +89,24 @@ failures look nothing alike: `InputValidationError` means the schema arrived def
 which is what a connector rotation does. Diagnose with a keyword search (`+use_figma figma`) and
 **report** which of the two it was — restoring an absent tool is the owner's, not yours.
 
-**Two wave components already exist on the Components page** — `Element / Icon / Wave Outline`
-(`4108:6912`) and `Element / Icon / Wave Filled` (`4105:6912`), authored 2026-08-16 for the like
-control (PD-228) and traced from `Noto Emoji` U+270C with the licence position still open. They
-are **not** in `design/` yet. Check before authoring anything hand-shaped, or the dedupe above
-decides which of two components wins:
+**`Element / Icon / Wave` (`4108:6912`) already exists on the Components page**, authored
+2026-08-16 for the like control (PD-228) and pulled through into `generated.tsx`. Check before
+authoring anything hand-shaped, or the dedupe above decides which of two components wins:
 
 ```bash
-npm run figma -- icons | grep -i wave   # empty = the snapshot is still behind the Figma file
+npm run figma -- icons | grep -i wave   # wave  Wave  4108:6912
 ```
+
+**It is deliberately a single component with no filled twin**, and `LikeButton` toggles it with
+`text-like` instead. The reason is legibility, not tooling: a solid hand silhouette loses the
+folded fingers and thumb the glyph depends on at 24px, and the bolder copy that was tried instead
+was indistinguishable from the outline. The product owner chose colour-only on that basis. A
+filled variant was authored and deleted — do not helpfully add one back.
+
+**Filled/outline pairs are fine in general** — `Heart Filled`/`Heart Outline` and
+`Location Filled`/`Location Outline` both ship, and `currentColor` rewriting does not collapse
+them, because they are genuinely different paths. Only a pair that duplicates one outline emits
+identical SVGs, which is what the wave's twin did.
 
 What it costs to get a write back into the codebase, which is the part that *is* rate limited:
 

@@ -45,7 +45,7 @@ Components page — a good proxy for how central it is.
 | `White/5%` | `#FFFFFF0D` | 3 | Subtle overlay on imagery |
 | `Accent Brand/50%` | `#3D996B80` | 2 | Muted brand |
 | `Warning/90` | `#FF3355` | 2 | Error, lighter |
-| `Pink/100` | `#F23071` | 2 | **The liked heart, and only that** — `Button / Postcard Action` Type=Like Toggled=True. `--color-like` |
+| `Pink/100` | `#F23071` | 2 | **The liked state of the like control, and only that** — `Button / Postcard Action` Type=Like Toggled=True. Since PD-228 it tints `Element / Icon / Wave`, which has no filled twin, so this colour is the whole visual difference between liked and not. `--color-like` |
 | `Grey/60` | `#808080` | 1 | Near-unused; may be a stray |
 | `Grey/70%` | `#000000B3` | 1 | Scrim / overlay |
 | `Warning/110` | `#99001A` | 1 | Error, darker |
@@ -97,7 +97,7 @@ bottom tab bar. Use `.pb-safe` for notch devices.
 corner radius `4` (147), `100` (110, i.e. pill), `8` (85), `5` (52), `12` (15);
 padding-left `16` (99), `8` (43), `24` (21); item spacing `8` (86), `4` (66), `16` (40).
 
-**Icons: 53 exported**, under `Element / Icon / *`. They are in `design/icons/` as SVG and,
+**Icons: 54 exported**, under `Element / Icon / *`. They are in `design/icons/` as SVG and,
 more usefully, as typed React components:
 
 ```bash
@@ -115,13 +115,14 @@ Wrench, Coordinates, Store — plus Arrow Left/Right/Up, Avatar, Block Account, 
 Bubble, Check, Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart
 Filled/Outline, Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu,
 Mute, Options, Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search,
-Share.
+Share, and Wave — the two-finger motorcycle wave the like control uses (PD-228), which has no
+filled twin by design.
 
 **`lucide-react` is gone** — uninstalled 2026-08-05 with the last v1 page. Don't re-add it and
-don't substitute lookalikes. The four matches
+don't substitute lookalikes. The three matches
 `grep -rn lucide-react src/` still returns are prose inside comments (see *the comment trap*);
 the importer count is
 `grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l` and it is **0**.
 
-**The library scale**, for planning: 52 component sets covering 213 variants, plus 88
-standalone components, 2,447 nodes on the Components page.
+**The library scale**, for planning: 52 component sets covering 213 variants, plus 89
+standalone components, 2,449 nodes on the Components page.
