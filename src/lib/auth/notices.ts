@@ -13,9 +13,17 @@
  * choose to be here and the screen they land on is not the one they clicked.
  */
 export const AUTH_NOTICES = {
-  /** A signup confirmation link that GoTrue refused, or whose exchange failed. */
+  /**
+   * A signup confirmation link that GoTrue refused, or whose exchange failed.
+   *
+   * **Signing in leads, and telling them to sign up again cannot.** The likeliest
+   * way to get here is the cross-device confirm: GoTrue's `/verify` succeeds and
+   * *spends* the token, then the PKCE exchange fails on the second device for
+   * want of a `code_verifier` that only the first one holds. The account is
+   * confirmed at that point, so "sign up again" is advice that fails.
+   */
   invalid_confirmation:
-    'That confirmation link is invalid or has already been used. Sign in below, or sign up again to get a new one.',
+    'That confirmation link has already been used or has expired. Sign in below — if that says your email is not confirmed, sign up again for a new link.',
   /** The same, for a password-recovery link. */
   invalid_link: 'That reset link is invalid or has already been used. Request a new one below.',
   /** `my_onboarding_state()` could not be read — the route guard's fail-closed case. */

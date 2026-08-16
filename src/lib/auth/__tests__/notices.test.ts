@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { AUTH_NOTICES, authNotice } from '@/lib/auth/notices'
 import { RECOVERY_PATH, callbackFailureDestination } from '@/lib/auth/recovery'
@@ -29,11 +31,52 @@ describe('authNotice', () => {
     expect(authNotice('__proto__')).toBeNull()
   })
 
-  // A code with no message is a redirect that lands on a silent screen — the
-  // whole defect PD-225 found, reintroduced one emitter at a time.
   it('every message is non-empty', () => {
     for (const message of Object.values(AUTH_NOTICES)) {
       expect(message.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  // **This is the assertion that gates the defect; the one above does not.**
+  // Checking that the declared messages are non-empty says nothing about an
+  // EMITTER whose code was never declared — which is exactly how PD-225
+  // happened, four `?error=` redirects landing on screens that rendered
+  // nothing. So read the emitters out of the tree rather than listing them
+  // here: a list would be one more thing to keep in step with the code.
+  it('every ?error= code emitted anywhere in src/ renders a message', () => {
+    const emitted = new Map<string, string>()
+
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          if (entry.name !== '__tests__') walk(full)
+          continue
+        }
+        if (!/\.tsx?$/.test(entry.name)) continue
+        for (const line of readFileSync(full, 'utf8').split('\n')) {
+          // **The comment trap, CLAUDE.md §Technology Decisions.** This sweep
+          // counted its own documentation on the first run: `notices.ts`
+          // explains that `?error=toString` must render nothing, and the
+          // matcher read that sentence as a fifth emitter. A description of a
+          // pattern looks exactly like the pattern.
+          if (/^\s*(\*|\/\/|\/\*)/.test(line)) continue
+          for (const [, code] of line.matchAll(/\?error=([A-Za-z0-9_]+)/g)) {
+            emitted.set(code, full)
+          }
+        }
+      }
+    }
+    walk(join(process.cwd(), 'src'))
+
+    // **Verifies the filter in the other direction too.** A sweep that finds
+    // nothing passes for ever and looks exactly like a clean tree — and the
+    // comment filter above is the thing most likely to cause that, by eating
+    // the real emitters along with the prose about them.
+    expect(emitted.size).toBeGreaterThan(0)
+
+    for (const [code, file] of emitted) {
+      expect(authNotice(code), `${file} redirects with ?error=${code} and nothing renders it`).not.toBeNull()
     }
   })
 })

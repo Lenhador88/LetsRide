@@ -145,6 +145,15 @@ export function safeNext(value: string | null): string | null {
  * recovery, a flow they had not asked for and whose screen cannot explain
  * itself. A confirmation failure belongs on login, where signing in and signing
  * up again are both one tap away.
+ *
+ * **One rider never reads the notice, and it is the login arm that loses it.**
+ * A caller who already holds a completed session is bounced straight off
+ * `/auth/login` to `/postcards` by `resolveDestination`, query and all — so a
+ * signed-in rider tapping a stale confirmation link lands on the feed with no
+ * explanation. That is the guard doing its job (an onboarded session has no
+ * business on a login form) and it is not worth a public-path exception; the
+ * rider is signed in, which is what the link was for. `/auth/forgot-password`
+ * is not bounced, so the recovery arm is unaffected.
  */
 export function callbackFailureDestination(next: string | null): string {
   return next === RECOVERY_PATH

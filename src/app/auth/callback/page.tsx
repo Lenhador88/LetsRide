@@ -57,18 +57,23 @@ function AuthCallback() {
   // exchange against a code already spent.
   const [code] = useState(() => searchParams.get('code'))
   const [next] = useState(() => safeNext(searchParams.get('next')))
-  // GoTrue redirects here with `error`/`error_code` and no `code` when it
-  // refuses the link itself — expired, already spent, or never valid. That is
-  // a distinct case from an exchange that fails below, and it used to be read
-  // as "no code" and sent to a login screen that rendered nothing (PD-225).
-  const [refused] = useState(() => searchParams.get('error') !== null)
 
   useEffect(() => {
     let cancelled = false
 
     // Links are single-use and time-limited in both flows, so a spent or
     // expired one is the ordinary case here, not an exceptional one.
-    if (refused || !code) {
+    //
+    // **`!code` is the whole test, and reading `?error=` would add nothing.**
+    // When GoTrue refuses the link it redirects with the original query intact
+    // and puts `error`, `error_code` and `error_description` in the URL
+    // **fragment** — measured against both projects for `type=signup` and
+    // `type=recovery`. A fragment is never sent to a server and
+    // `useSearchParams()` cannot see it, so a flag built on the query is
+    // permanently false. A refusal carries no `code` either way, which is what
+    // this catches. Read `window.location.hash` if `error_code` is ever wanted
+    // to tell `otp_expired` from `access_denied`.
+    if (!code) {
       router.replace(callbackFailureDestination(next))
       return
     }
@@ -98,11 +103,21 @@ function AuthCallback() {
         if (cancelled) return
         router.replace(recovering ? RECOVERY_PATH : '/postcards')
       })
+      // A rejection anywhere in that chain leaves the rider on "Signing you in"
+      // for ever: nothing re-renders, so there is no navigation to be had and
+      // only a reload escapes — the same failure `secure-store.ts` resolves
+      // `getItem` to `null` to avoid. `postgrest-js` resolves rather than
+      // rejects on a fetch failure, which is why this went unnoticed; the grant
+      // read above adds a second round trip inside the chain, so it stops being
+      // theoretical.
+      .catch(() => {
+        if (!cancelled) router.replace(callbackFailureDestination(next))
+      })
 
     return () => {
       cancelled = true
     }
-  }, [code, next, refused, router])
+  }, [code, next, router])
 
   // Never on screen for long, and deliberately says nothing about which flow
   // brought the rider here — the same reasoning as the reset screen's single
