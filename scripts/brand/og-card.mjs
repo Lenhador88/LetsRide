@@ -15,9 +15,13 @@
  * Poppins to whatever SVG backend `sharp` resolves at run time, which is a font
  * dependency this repo does not otherwise have.
  *
- * `sharp` arrives as a transitive dependency of Next rather than a declared one.
- * That is fine for a generator run by hand and would not be fine for anything on
- * a build path, which is why the PNG is committed and this is not wired into one.
+ * `sharp` arrives as an **optional** transitive dependency of Next — it is in
+ * `next`'s `optionalDependencies`, not its `dependencies` — so `npm ci
+ * --omit=optional`, or a platform with no prebuilt binary, leaves it absent
+ * altogether. *Optional* is the word that makes "fine here, not fine on a build
+ * path" true rather than merely cautious. Here it fails loudly with
+ * `ERR_MODULE_NOT_FOUND` and nothing downstream depends on the run, which is why
+ * the PNG is committed and this is wired into no build path.
  *
  *   node scripts/brand/og-card.mjs
  */
@@ -39,8 +43,10 @@ const BACKGROUND = { r: 0xf2, g: 0xec, b: 0xe6, alpha: 1 }
 const CARD_HEIGHT = 530
 
 // **The source ships an opaque white margin around its rounded card**, measured
-// rather than assumed: pixel (0,0) is `255,255,255,255` and the green starts by
-// x=60. Composited straight onto cream that margin reads as a white picture
+// rather than assumed: pixel (0,0) is `255,255,255,255`, the first non-white
+// pixel on the centre row is x=15, and the trim below takes 1479x984 down to
+// 1443x953 — so the margin is ~18px a side.
+// Composited straight onto cream that margin reads as a white picture
 // frame, which looks like a rendering fault rather than a design. `trim()` takes
 // the straight edges off — it removes uniform border rows and columns, so it
 // stops at the first row the rounded corners intrude into and leaves four white

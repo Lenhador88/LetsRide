@@ -529,6 +529,28 @@ stopped matching passes for ever and looks exactly like a correct one.
 This is the real maintenance cost of two projects. Everything above is version-controlled;
 none of the below is.
 
+### Vercel's system environment variables
+
+`src/app/layout.tsx` resolves the `og:image` origin from **`VERCEL_PROJECT_PRODUCTION_URL`**,
+falling back to a written-down `https://app.letsride.social`. Vercel exposes that variable only
+while the project's **Automatically expose System Environment Variables** toggle is on — Settings
+→ Environment Variables, default on, dashboard-only, no file behind it.
+
+**Nothing observes which branch ran, and that is the trap.** Vercel sets the variable to the
+production domain on Preview deployments too, so it resolves to exactly the fallback string: a
+build where the read returned `undefined` is byte-identical to one where it worked. The difference
+first appears *after* a domain move, as an `og:image` that 404s on every shared link while the page
+itself is fine.
+
+So the fallback is a floor rather than a belt-and-braces flourish — with the toggle off, the
+literal is the only thing keeping share cards rendering, and it is the thing a domain move has to
+remember to edit. Check the toggle before assuming a move needs no code change:
+
+```bash
+# On any deployment's build log, the resolved value is visible in the built output:
+grep -o 'https://[^"]*/brand/og-card.png' .next/server/app/index.html
+```
+
 ### Auth configuration
 
 There is no `supabase/config.toml` — this repo has never used the Supabase CLI — so every

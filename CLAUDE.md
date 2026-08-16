@@ -190,13 +190,20 @@ its place. `.claude/agents/native.md` says the same; do not let the two drift ap
 Re-derive the scope rather than trusting a number here — it grows with every epic:
 
 ```bash
-git grep -l "" -- 'src/app/**/page.tsx' | wc -l                     # pages
+git ls-files src/app | grep -c 'page\.tsx$'                         # pages
 git grep -L "^'use client'" -- 'src/app/**/page.tsx' | wc -l        # ... server-rendered: 0
 git grep -L "^'use client'" -- 'src/components/**/*.tsx' | wc -l    # presentational components
 ```
 
 The third line is **not** a defect count: a component with no `'use client'` is fine, it just
 has no client hooks of its own and joins the client graph through its importer.
+
+**The first line does not use `'src/app/**/page.tsx'`, and the difference is one page.** Git's
+default pathspec makes `**` require at least one further segment, so that glob silently skips
+`src/app/page.tsx` — the root resolver — and reads one low. It is the comment trap's shape at a
+pathspec instead of a comment: measured-looking, plausible, wrong. Line two keeps the glob because
+its two `docs:check` claims pin that exact string, and it answers 0 either way today; `:(glob)`
+prefixes both readings if that ever has to change.
 
 **The comment trap — this repo's most-repeated measurement error, four times and counting.**
 A file's description of what it migrated *away from* looks exactly like the thing it migrated
@@ -1558,12 +1565,12 @@ chain to a scratch database and asserts what each role can reach.
   changed with the domain**, and what keeps that true is `canonicalOrigin()` in
   `src/lib/origin.ts`: it returns `NEXT_PUBLIC_CANONICAL_ORIGIN` when set and `window.location.origin`
   otherwise, so the **web** app still follows whichever host served it — production, DEV, a
-  per-deployment preview alias — with the variable unset. **Exactly one origin in `src/` is written
-  down rather than resolved, and it is not a counter-example.** `src/app/layout.tsx` needs an
-  absolute `og:image` URL at *build* time — there is no `window` in the prerender pass, and a web
-  build refuses `NEXT_PUBLIC_CANONICAL_ORIGIN` — so it prefers `VERCEL_PROJECT_PRODUCTION_URL` and
-  falls back to a literal. A domain move updates Vercel's value on its own; the literal is the floor
-  for a build that has none, and it addresses a crawler fetching a static asset rather than a rider
+  per-deployment preview alias — with the variable unset. **One origin in `src/` is written down
+  rather than resolved, and it is not a counter-example.** `src/app/layout.tsx` needs an absolute
+  `og:image` URL at *build* time — there is no `window` in the prerender pass, and a web build
+  refuses `NEXT_PUBLIC_CANONICAL_ORIGIN` — so it prefers `VERCEL_PROJECT_PRODUCTION_URL` and falls
+  back to a literal. A domain move updates Vercel's value on its own; the literal is the floor for a
+  build that has none, and it addresses a crawler fetching a static asset rather than a rider
   following a link. **In the native bundle the runtime origin
   is `https://localhost`**, which is on no GoTrue redirect allowlist, and an unlisted `redirect_to`
   is *discarded* — path and all — rather than refused, so a confirmation email lands the rider on
@@ -1571,11 +1578,17 @@ chain to a scratch database and asserts what each role can reach.
   server 2026-08-12; the probe is `docs/ENVIRONMENTS.md` §The redirect allowlist). Hence
   `next.config.ts` fails a `CAPACITOR_BUILD=1` build when the variable is unset — and fails a
   **web** build when it is *set*, because on Preview it would have DEV and feature branches email
-  confirmation links pointing at production, where the token is invalid. **Two commands,
-  and the first cannot do the second's job** — a computed origin is invisible to a grep for a
-  written one: `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0, and
+  confirmation links pointing at production, where the token is invalid. **Three commands, and no
+  one of them does another's job** — a computed origin is invisible to a grep for a written one, and
+  a grep for dead hosts is blind to the live one:
+  `grep -rn "letsrideapp\|vercel\.app\|localhost:3000" src/` is 0, and
   `grep -rn "window.location.origin" src/ --include=*.ts --include=*.tsx | grep -vE ':[0-9]+:\s*(\*|//|/\*)'`
-  is 1 — the definition inside `canonicalOrigin()`, nowhere else.
+  is 1 — the definition inside `canonicalOrigin()`, nowhere else. The third holds the *ceiling* on
+  the `og:image` literal above, which the first cannot see because all three of its patterns are
+  dead hosts and that one is live:
+  `grep -rn "letsride\.social" src/ --include=*.ts --include=*.tsx | grep -v "__tests__" | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` is 1.
+  A second copy of that idiom — in `ShareButton` or `signUp`, where the URL is one a rider is *sent*
+  to — is what it exists to catch.
 - **Branch off `development`, and open PRs against `development` — not `main`.** This is the one
   an agent gets wrong by habit. `main` receives exactly one kind of PR: the promotion from
   `development`, which is what ships to riders.

@@ -591,7 +591,47 @@ export const claims = [
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `grep -rn "letsrideapp\\|vercel\\.app\\|localhost:3000" src/ | wc -l`,
-    about: '§Branching & CI: no hardcoded origin anywhere in src/ (must be 0)',
+    // **Says what the pattern measures, not what the section is about.** It read
+    // "no hardcoded origin anywhere in src/" until a hardcoded origin landed in
+    // `src/app/layout.tsx` that this pattern does not name, and the claim went on
+    // reporting green — PD-188's lesson exactly, one entry below. The companion
+    // claim covers the host this one cannot see.
+    about: '§Branching & CI: no dead host (letsrideapp, *.vercel.app, localhost:3000) in src/ (must be 0)',
+  },
+
+  // ---- The written-down production origin (must stay 1) ---------------------
+  //
+  // `src/app/layout.tsx` needs an absolute `og:image` URL at build time, where
+  // there is no `window` and a web build refuses NEXT_PUBLIC_CANONICAL_ORIGIN —
+  // so it prefers VERCEL_PROJECT_PRODUCTION_URL and falls back to a literal.
+  // That is the one such literal outside a test, and the claim above cannot see
+  // it: its pattern names three dead hosts, and this one is the LIVE host.
+  //
+  // The point is the ceiling rather than the presence. The docblock argues the
+  // floor is tolerable there and would not be in `ShareButton` or `signUp` —
+  // which was, until this entry, a rule with nothing behind it. Copying the
+  // idiom into either file is what this catches, and it is the copy that hurts:
+  // those build URLs a rider is SENT to, so a stale one is a dead link in an
+  // email that nobody sees fail.
+  //
+  // Tests are excluded because `origin.test.ts` and `back-navigation.test.ts`
+  // legitimately spell the host as fixture data — 11 lines of it, deliberately
+  // real per that file's header. Comment lines go too, for the reason the
+  // comment trap gives: this very block names the host it forbids.
+  {
+    id: 'letsride-social-literal',
+    file: 'CLAUDE.md',
+    // Wildcarded through the middle for the same reason as the entry above: the
+    // sentence quotes a grep containing `\.`, `\s` and a bracket class, and
+    // pinning those character-for-character is the shape most likely to be
+    // "corrected" into matching nothing. Both ends are pinned and it is unique.
+    pattern: /`grep -rn "letsride[^`]+__tests__[^`]+` is (\d+)/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd:
+      `grep -rn "letsride\\.social" src/ --include=*.ts --include=*.tsx ` +
+      `| grep -v "__tests__" | grep -vE ':[0-9]+:\\s*(\\*|//|/\\*)' | wc -l`,
+    about: '§Branching & CI: the build-time production origin is written down exactly once in src/',
   },
 
   // ---- The runtime origin has exactly one reader (must stay 1) -------------
