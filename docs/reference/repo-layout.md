@@ -51,6 +51,10 @@ src/
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
 capacitor.config.ts         # The native shell's config. No ios/ or android/ yet — see docs/HANDOFF.md §The shell
+resources/                  # Native SOURCE artwork the platform icon sets are generated from — not the sets
+├── icon-only.png           # The 1024 app icon master. RGB, no alpha. The name matters — README.md says why
+├── logo-mark.png           # The bike mark alone, white on transparency; what icon-only.png was composed from
+└── README.md               # The naming trap, the three store constraints, and the generate command
 supabase/
 ├── migrations/             # SQL migrations — append-only, see Supabase Rules
 ├── functions/              # Edge Functions. ONE, and read the rule below before adding another
