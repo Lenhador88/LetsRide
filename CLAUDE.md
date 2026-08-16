@@ -1658,7 +1658,7 @@ chain to a scratch database and asserts what each role can reach.
     inside those two trees, so the diff that breaks them is exactly a diff confined to them).
     **So a PR touching only `.claude/hooks/` or the rest of `.claude/` runs zero jobs.**
   - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
-    is a grep, a `jq` or a contrast ratio — 23 of 35. The ones needing Postgres, a second full
+    is a grep, a `jq` or a contrast ratio — 24 of 36. The ones needing Postgres, a second full
     build or a **test runner** stay out, so `npm run docs:check` locally is still the complete
     answer. That last exclusion was learned rather than designed: the two claims that spawn
     `vitest` on one file passed locally — including under `CI=true GITHUB_ACTIONS=true` — and

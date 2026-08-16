@@ -304,26 +304,44 @@ describe('the two generated surfaces have not drifted apart', () => {
     /*
      * The tolerance the open keep-which-surface decision needs, and its limit.
      * Deleting `.claude/skills/` or `.claude/commands/opsx/` outright is a
-     * choice and passes. Deleting three of six is drift — a half-removed surface
-     * leaves an `/opsx:archive` that exists beside an `/opsx:apply` that
+     * choice and passes. Dropping below four of six is drift — a half-removed
+     * surface leaves an `/opsx:archive` that exists beside an `/opsx:apply` that
      * silently does not.
      *
-     * `>= 4` rather than an exact 6 on purpose: the CLI's workflow set is its to
-     * change (1.7.0 ships 13 skills and 12 commands, of which this repo keeps
-     * six of each), so pinning a count here would turn an upstream addition into
-     * a red build in a repo that has not upgraded. What is NOT negotiable is
-     * that the two surfaces enumerate the same workflows — asserted next.
+     * State the threshold as four rather than as "partial absence fails": losing
+     * one or two files DOES pass, so the stronger phrasing would be a claim this
+     * code does not make. `>= 4` rather than an exact 6 on purpose — the CLI's
+     * workflow set is its to change (1.7.0 ships 13 skills and 12 commands, of
+     * which this repo keeps six of each), so pinning a count would turn an
+     * upstream addition into a red build in a repo that has not upgraded. What is
+     * NOT negotiable is that the two surfaces enumerate the same workflows —
+     * asserted next.
      */
     const s = skills()
     const c = commands()
     if (s.length > 0) expect(s.length, 'the skills surface looks half-deleted').toBeGreaterThanOrEqual(4)
     if (c.length > 0) expect(c.length, 'the opsx commands surface looks half-deleted').toBeGreaterThanOrEqual(4)
 
-    // A live dependency generating nothing at all is drift in the other
-    // direction: either the surfaces were deleted and the dependency was not, or
-    // an install produced nothing and nobody noticed.
+    /*
+     * The dependency and the committed output must appear and disappear together,
+     * and BOTH directions need saying — the pair is what stops "tolerate removal"
+     * decaying into "pass when there is nothing left to check".
+     *
+     * The second assertion is the one that was missing, and its absence was
+     * reachable rather than theoretical: with `.claude/skills/` deleted, the
+     * commands surface intact and ${PACKAGE} dropped from package.json, every
+     * byte-compare early-returns on a null template, the stamp test early-returns
+     * on an empty skills list, and the whole file went green over six committed
+     * command files compared against nothing at all. Gating it on `&&` meant the
+     * one surviving surface bought silence for the other.
+     */
     if (s.length === 0 && c.length === 0) {
       expect(declaredRange(), `both openspec surfaces are gone but ${PACKAGE} is still a dependency`).toBeUndefined()
+    } else {
+      expect(
+        declaredRange(),
+        `committed openspec output exists but ${PACKAGE} is not a dependency, so nothing can verify it`,
+      ).toBeDefined()
     }
   })
 

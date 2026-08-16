@@ -178,18 +178,27 @@ describe('the design/ snapshot agrees with itself', () => {
   // leaves the manifest confidently wrong and permanently unchallenged.
   const manifest = () => JSON.parse(read('design/manifest.json'))
 
-  it('manifest counts match the artifacts they describe', () => {
-    const m = manifest()
+  // Every count in manifest.json, paired with the artifact that is its ground
+  // truth. One list, read by both the check and the both-ways test below, so the
+  // two cannot describe different comparisons.
+  const reconcile = (m) => {
     const t = JSON.parse(read('design/tokens.json'))
     const icons = JSON.parse(read('design/icons/index.json'))
     const svgs = readdirSync(join(ROOT, 'design', 'icons')).filter((f) => f.endsWith('.svg'))
+    return [
+      ['colorTokens', m.counts.colorTokens, t.colors.length],
+      ['typeTokens', m.counts.typeTokens, t.type.length],
+      ['legacyStyles', m.counts.legacyStyles, t.legacy.length],
+      ['iconsFound', m.counts.iconsFound, icons.count],
+      ['iconsExported', m.counts.iconsExported, svgs.length],
+      ['icons/index.json count vs its own list', icons.icons.length, icons.count],
+    ]
+  }
 
-    expect(m.counts.colorTokens, 'colorTokens').toBe(t.colors.length)
-    expect(m.counts.typeTokens, 'typeTokens').toBe(t.type.length)
-    expect(m.counts.legacyStyles, 'legacyStyles').toBe(t.legacy.length)
-    expect(m.counts.iconsFound, 'iconsFound').toBe(icons.count)
-    expect(m.counts.iconsExported, 'iconsExported').toBe(svgs.length)
-    expect(icons.icons.length, 'icons/index.json count vs its own list').toBe(icons.count)
+  it('manifest counts match the artifacts they describe', () => {
+    for (const [label, recorded, actual] of reconcile(manifest())) {
+      expect(recorded, label).toBe(actual)
+    }
   })
 
   it('every file of the snapshot names the same Figma file and revision', () => {
@@ -204,10 +213,26 @@ describe('the design/ snapshot agrees with itself', () => {
     expect(read('design/TOKENS.md')).toContain(`last modified ${m.lastModified}.`)
   })
 
-  it('goes red when a manifest count drifts from the artifact', () => {
+  // The both-ways half. It must perturb the INPUT and re-run the comparison the
+  // check above makes — the shape the icons and TOKENS blocks use. Asserting
+  // `recorded + 1 !== actual` instead is a tautology: it holds for every integer,
+  // for undefined, and for a string, so it passes against a manifest hand-edited
+  // to 99 and against a repo with no icons at all. It read as the drift proof for
+  // a whole review cycle. Perturb every count, not just one, or a count nobody
+  // thought to break keeps its untested comparison.
+  it('goes red when any manifest count drifts from its artifact', () => {
     const m = manifest()
-    expect(m.counts.iconsExported + 1).not.toBe(
-      readdirSync(join(ROOT, 'design', 'icons')).filter((f) => f.endsWith('.svg')).length,
-    )
+    for (const [label] of reconcile(m)) {
+      const bent = structuredClone(m)
+      const key = label.split(' ')[0]
+      // The last row reconciles icons/index.json against itself, so bending the
+      // manifest cannot move it — it is covered by the five that can.
+      if (!(key in bent.counts)) continue
+      bent.counts[key] += 1
+      expect(
+        reconcile(bent).some(([, recorded, actual]) => recorded !== actual),
+        `bending ${key} left every comparison passing`,
+      ).toBe(true)
+    }
   })
 })
