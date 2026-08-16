@@ -72,7 +72,9 @@ export type AccountDeletionImpact = {
   clubsChangingHands: number
   /** Upcoming rides this rider organises — each is cancelled outright. */
   ridesToCancel: number
-  /** `ride_members` rows across those rides — who finds a ride gone. */
+  /** Distinct riders on those rides' crews, the organizer excluded — who
+   * finds a ride gone. A person crewing two of the affected rides counts
+   * once, not twice (reviewer finding #3, 2026-08-16). */
   ridersAffected: number
 }
 
