@@ -669,14 +669,23 @@ Four rules that must hold without opening it:
 - **Primary buttons are near-black (`Grey/100` `#1A1A1A`), not green.** Green is an accent used
   sparingly. This is the single most-repeated mistake against these designs.
 - **Writing to Figma is possible, and it takes an explicit ask.** `use_figma` runs against the
-  file through the Plugin API and is on `design-system`'s toolset as of 2026-08-16 — that is how
-  PD-228's wave icon got authored without hand-editing the generated file. The rule above is
-  untouched: a write is not a licence to *read* over the API, and design questions still come from
-  the snapshot. What makes the ask non-negotiable is that **nothing anywhere gates it** — no CI
-  job, no `docs:check` claim and no `reviewer` pass reads the Figma file, so a component created
-  in a session lands in the canonical design unreviewed and the next `figma:pull` bakes it into
-  the snapshot the whole squad trusts. `.claude/agents/design-system.md` §Writing to Figma carries
-  the conventions and the two rate-limited calls it takes to reach `generated.tsx`.
+  file through the Plugin API and is on `design-system`'s toolset. The rule above is untouched: a
+  write is not a licence to *read* over the API, and design questions still come from the
+  snapshot. What makes the ask non-negotiable is that **nothing anywhere gates it** — check that
+  rather than trust it, because the day someone adds a `reviewer` pass or a registry claim the
+  justification quietly stops being true:
+
+  ```bash
+  grep -ril figma .github/workflows/ scripts/docs/registry.mjs .claude/agents/reviewer.md   # 0
+  ```
+
+  So a component created in a session lands in the canonical design unreviewed, and the next
+  `figma:pull` bakes it into the snapshot the whole squad trusts — and from there into
+  `generated.tsx`, the client bundle and the store build, with nothing in between asking where the
+  artwork came from. **Traced or borrowed artwork therefore needs its licence settled before it
+  ships, not before it merges**; `places` is the precedent for what an assumed one costs.
+  `.claude/agents/design-system.md` §Writing to Figma carries the conventions, the provenance rule
+  and the two rate-limited calls it takes to reach `generated.tsx`.
 
 ## Development Workflow
 

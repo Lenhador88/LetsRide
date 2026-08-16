@@ -1369,8 +1369,17 @@ them — `manifest.json` still records the 2026-08-04 pull:
 
 | Component | Node | State |
 |---|---|---|
-| `Element / Icon / Wave Outline` | `4108:6912` | traced from `Noto Emoji` U+270C, reads correctly at 24px |
+| `Element / Icon / Wave Outline` | `4108:6912` | traced from `Noto Emoji` U+270C, reads correctly at 24px — **licence unsettled** |
 | `Element / Icon / Wave Filled` | `4105:6912` | **not settled** — a bolder copy of the outline, near-indistinguishable from it |
+
+**The licence is the blocker, and it blocks shipping rather than merging.** `Noto Emoji` is
+OFL 1.1, which treats a derivative of the *font software* differently from a document that merely
+sets a glyph — an outline extracted and shipped as an app asset sits on that boundary, and nobody
+has read the terms. Nothing between the Figma node and a rider's phone asks: `figma:pull` writes
+`design/icons/wave-outline.svg`, `figma:components` bakes it into `generated.tsx`, and that ships
+in the client bundle and the store build. **Settle it before the pull, not after** — this is the
+`places` mistake exactly, where an assumed ODbL credit turned out wrong after 527,725 rows had
+landed.
 
 Check rather than trust that, because a `figma:pull` by any session closes the gap silently:
 

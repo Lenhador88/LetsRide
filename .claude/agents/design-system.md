@@ -1,7 +1,7 @@
 ---
 name: design-system
 description: Use to build and maintain the v2 component library — design tokens, Poppins typography, the icon set, and the shared primitives in src/components/ui/. Invoke this BEFORE feature work that needs a component which doesn't exist yet. The initial build is done; this agent's work now is extension and correction.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Figma__get_metadata, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__Figma__download_assets, mcp__Figma__get_code_connect_map, mcp__Figma__add_code_connect_map, mcp__Figma__read_skill_uri, mcp__Figma__use_figma, mcp__Figma__whoami
+tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Figma__get_metadata, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__Figma__download_assets, mcp__Figma__get_code_connect_map, mcp__Figma__add_code_connect_map, mcp__Figma__read_skill_uri, mcp__Figma__use_figma, mcp__Figma__whoami, ToolSearch
 model: sonnet
 ---
 
@@ -44,25 +44,55 @@ If you do call `get_design_context`, load the design-to-code guidance first — 
 ## Writing to Figma
 
 `use_figma` executes JavaScript against the file through the Figma Plugin API, so this agent can
-author design source rather than only consume it. Added 2026-08-16, after PD-228 needed an icon
-the set did not contain and the alternative was hand-editing the generated file.
+author design source rather than only consume it.
 
 **The rule against the API is about answering design questions, and it is unchanged.** Layout,
 geometry, copy and tokens still come from `design/`, always, because that is the read the rate
 limit punishes. A write is a different act with a different budget, and it does not license a
 read.
 
-**A write needs the product owner to have asked for it in this session.** Nothing in CI, the RLS
-suite or `docs:check` reads the Figma file, and `reviewer` reads diffs — so a component created
-here lands in the canonical design with *no* gate of any kind behind it, and the next
-`figma:pull` bakes it into the snapshot the whole squad trusts. Building a screen is not an
-implied licence to change the source it is built from. If a component you need is missing, say so
-and stop; do not draw your way around the gap.
+**A write needs the invoking prompt to quote the owner's request for it.** Not "the owner asked
+in this session" — you cannot evaluate that. You receive one prompt and no history, and `CLAUDE.md`
+is explicit that a squad agent has nobody to ask, so a caller's own instruction is not consent
+and its say-so about what the owner wanted is not evidence. **Absent that quotation, refuse the
+write**: say which
+component is missing and stop. Do not draw your way around the gap.
+
+The reason it is that strict: nothing in CI, the RLS suite or `docs:check` reads the Figma file,
+and `reviewer` reads diffs — so a component created here lands in the canonical design with *no*
+gate of any kind behind it, and the next `figma:pull` bakes it into the snapshot the whole squad
+trusts.
+
+**Record where the artwork came from, and settle its licence before it can ship.** An outline
+traced from a font or lifted from another icon set carries that source's terms into the client
+bundle and the store build, and the pipeline from a Figma node to `generated.tsx` asks nothing.
+This repo already paid for the assumption once: `places` was credited to ODbL on a guess and the
+census proved it wrong (`CLAUDE.md` §Supabase Rules, `docs/reference/schema.md`), and the
+standing rule there — settle it before any screen renders one — is the rule here too. Provenance
+goes in the component's Figma `description` **and** in the handoff. A traced glyph with no
+recorded licence position is not finished, however good it looks.
 
 **Load the server's own skill first.** `read_skill_uri skill://figma/figma-use/SKILL.md`, then
 pass `skillNames: 'resource:figma-use'` on the call — for component work, `figma-generate-library`
 as well. These belong to the Figma MCP server; do not write a repo copy, which is the two
 specification systems mistake (CLAUDE.md §The Agent Squad) with an upstream that moves.
+
+**`ToolSearch` is on your toolset for the same reason every Supabase-reaching brief carries it.**
+An entry on a `tools:` line is neither guaranteed loaded nor guaranteed present, and the two
+failures look nothing alike: `InputValidationError` means the schema arrived deferred, so
+`ToolSearch select:use_figma` and then call it; `No such tool available` means the name is absent,
+which is what a connector rotation does. Diagnose with a keyword search (`+use_figma figma`) and
+**report** which of the two it was — restoring an absent tool is the owner's, not yours.
+
+**Two wave components already exist on the Components page** — `Element / Icon / Wave Outline`
+(`4108:6912`) and `Element / Icon / Wave Filled` (`4105:6912`), authored 2026-08-16 for the like
+control (PD-228) and traced from `Noto Emoji` U+270C with the licence position still open. They
+are **not** in `design/` yet. Check before authoring anything hand-shaped, or the dedupe above
+decides which of two components wins:
+
+```bash
+npm run figma -- icons | grep -i wave   # empty = the snapshot is still behind the Figma file
+```
 
 What it costs to get a write back into the codebase, which is the part that *is* rate limited:
 
@@ -75,15 +105,29 @@ npm run figma:components # offline
 So an icon authored in Figma is two rate-limited calls away from `generated.tsx`, and both are
 the endpoint families that have blocked this repo for days. Author in one pass, not five.
 
-For an icon specifically, the exporter finds it by convention and silently skips anything that
-misses it: a `COMPONENT` named `Element / Icon / <Name>` on the **Components** page, 24×24, a
-single flattened vector child, one solid fill. Match the optical weight of the neighbouring
-icons by rendering yours beside them at real size — `await node.screenshot()` on a temporary row
-of instances, removed in the same script. Judging a 24px glyph at 8× is how one ships that reads
-as a blob on a phone.
+**For an icon, the only thing that selects it is the name, and that is far weaker than it
+sounds.** `scripts/figma/extract.mjs` walks the whole raw file and takes every node whose name
+starts with `Element / Icon / ` — there is no check on node type, page, size, child count or
+fill. So the 24×24 single-vector convention is a convention you have to hold yourself; a 32×32
+node with three children exports and generates just as happily, and a clean export is **not**
+evidence the node was authored correctly. Two consequences that bite:
 
-`use_figma` is atomic: a script that throws changes nothing. Work in small steps and screenshot
-after each, because the failure mode here is a plausible-looking shape rather than an error.
+- **Duplicates resolve silently, and the last one walked wins** — `new Map(icons.map(…))` keyed
+  on the name. A scratch node left behind under a real icon's name displaces the real component
+  depending on walk order, with nothing printed.
+- **A genuinely missing icon is loud, not silent.** `figma:icons` prints `Missing: <names>` and
+  the decision-#4 line. Do not read silence as a skip; read it as an export that happened.
+
+So: name it exactly, keep it 24×24 with one flattened vector child, and delete every scratch node
+in the same script that made it. Match the optical weight of the neighbouring icons by rendering
+yours beside them **at real size** — a temporary row of instances, screenshotted and removed in
+one script. Judging a 24px glyph at 8× is how one ships that reads as a blob on a phone.
+
+Two `use_figma` behaviours worth knowing, both stated by the `figma-use` skill rather than
+measured here: `await node.screenshot()` returns an inline render (a skill helper, not
+`exportAsync`), and a script that throws is atomic — it changes nothing, so a fix-and-retry is
+safe. Work in small steps and screenshot after each, because the failure mode is a
+plausible-looking shape rather than an error.
 
 ## The v1/v2 split
 
