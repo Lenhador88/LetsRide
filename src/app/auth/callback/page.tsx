@@ -4,7 +4,12 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthScreen } from '@/components/auth/AuthScreen'
 import { createClient } from '@/lib/supabase/client'
-import { safeNext } from '@/lib/auth/recovery'
+import {
+  RECOVERY_PATH,
+  callbackFailureDestination,
+  hasPasswordResetGrant,
+  safeNext,
+} from '@/lib/auth/recovery'
 
 /**
  * Exchanges a Supabase auth code for a session. Password recovery is what needs
@@ -52,28 +57,52 @@ function AuthCallback() {
   // exchange against a code already spent.
   const [code] = useState(() => searchParams.get('code'))
   const [next] = useState(() => safeNext(searchParams.get('next')))
+  // GoTrue redirects here with `error`/`error_code` and no `code` when it
+  // refuses the link itself — expired, already spent, or never valid. That is
+  // a distinct case from an exchange that fails below, and it used to be read
+  // as "no code" and sent to a login screen that rendered nothing (PD-225).
+  const [refused] = useState(() => searchParams.get('error') !== null)
 
   useEffect(() => {
     let cancelled = false
 
-    if (!code) {
-      router.replace('/auth/login?error=missing_code')
+    // Links are single-use and time-limited in both flows, so a spent or
+    // expired one is the ordinary case here, not an exceptional one.
+    if (refused || !code) {
+      router.replace(callbackFailureDestination(next))
       return
     }
 
     createClient()
       .auth.exchangeCodeForSession(code)
-      .then(({ error }) => {
+      .then(async ({ error }) => {
         if (cancelled) return
-        // Recovery links are single-use and time-limited, so an expired or
-        // reused link is the ordinary case here, not an exceptional one.
-        router.replace(error ? '/auth/forgot-password?error=invalid_link' : next)
+        if (error) {
+          router.replace(callbackFailureDestination(next))
+          return
+        }
+        // `next` survives GoTrue's redirect on both flows, so this is the
+        // ordinary path. The grant read below is the fallback for a link whose
+        // query was stripped or refused by the open-redirect guard.
+        if (next) {
+          router.replace(next)
+          return
+        }
+
+        // Ask what this session actually is rather than guessing from a
+        // constant. A session minted from a recovery link carries `026`'s
+        // grant and the client cannot forge it; anything else is a confirmed
+        // sign-in, and the route guard resumes onboarding from /postcards if
+        // the account is new.
+        const recovering = await hasPasswordResetGrant(createClient())
+        if (cancelled) return
+        router.replace(recovering ? RECOVERY_PATH : '/postcards')
       })
 
     return () => {
       cancelled = true
     }
-  }, [code, next, router])
+  }, [code, next, refused, router])
 
   // Never on screen for long, and deliberately says nothing about which flow
   // brought the rider here — the same reasoning as the reset screen's single

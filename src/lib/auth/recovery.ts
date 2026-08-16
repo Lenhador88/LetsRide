@@ -108,8 +108,17 @@ export async function consumePasswordResetGrant(supabase: RpcClient): Promise<bo
  * exactly that treatment. The guard was written to hold on its own rather than
  * depend on how a caller assembles the redirect, and this is the change that
  * cashed that in.
+ *
+ * **`null` means "no usable destination", and it used to mean
+ * `/auth/reset-password` — PD-225.** That fallback was written when only
+ * recovery links reached the callback, and it survived the day signup
+ * confirmation started landing there too: a confirmation whose `next` went
+ * missing was routed to *set a new password*, where the rider was then told
+ * their reset link had expired, because a freshly confirmed account holds no
+ * `026` grant. This function knows whether a value is safe to navigate to; it
+ * has never known what the link was for. The caller decides now.
  */
-export function safeNext(value: string | null): string {
+export function safeNext(value: string | null): string | null {
   const isPath =
     !!value &&
     value.startsWith('/') &&
@@ -117,5 +126,28 @@ export function safeNext(value: string | null): string {
     !value.includes('\\') &&
     !/[\x00-\x1F\x7F]/.test(value)
 
-  return isPath ? value : RECOVERY_PATH
+  return isPath ? value : null
+}
+
+/**
+ * Where a rider goes when an auth link does not work — refused by GoTrue,
+ * carrying no code, or failing the exchange.
+ *
+ * **`next` is the discriminator, and it is the only one there is.** GoTrue's
+ * refusal redirect carries `error`, `error_code` and `error_description` and
+ * **no `type`**, while preserving the query the link was minted with — measured
+ * against the PROD auth server 2026-08-13, in PD-225. So `signUp`'s
+ * `next=/postcards` and `requestPasswordReset`'s `next=/auth/reset-password`
+ * are what survive to say which flow this was.
+ *
+ * Sending both to `/auth/forgot-password` is the defect PD-225 reported: a
+ * rider whose brand-new account failed to confirm was put into password
+ * recovery, a flow they had not asked for and whose screen cannot explain
+ * itself. A confirmation failure belongs on login, where signing in and signing
+ * up again are both one tap away.
+ */
+export function callbackFailureDestination(next: string | null): string {
+  return next === RECOVERY_PATH
+    ? '/auth/forgot-password?error=invalid_link'
+    : '/auth/login?error=invalid_confirmation'
 }
