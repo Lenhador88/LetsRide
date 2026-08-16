@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import { cn, getInitials } from '@/lib/utils'
 
 interface AvatarProps {
@@ -34,11 +37,28 @@ const sizes = {
 const ring = 'border-2 border-border-strong'
 
 export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
-  if (src) {
+  // task 7.4 (`client-cache-invalidation`'s "a signed URL whose object is
+  // gone renders the fallback"). A cached row can hold a signed URL for an
+  // object account deletion or a club transfer already removed — D2 nulls
+  // both club image paths and deletes the objects the instant ownership
+  // changes, and a departed rider's own avatar goes the same way. The URL
+  // itself does not expire early, so the browser's `error` event is the only
+  // signal this ever happened; without it the `<img>` renders broken until
+  // the surrounding screen next revalidates.
+  //
+  // Keyed on `src` rather than a plain boolean: a `broken` flag that never
+  // resets would keep drawing initials for a LATER, valid `src` this
+  // component gets re-rendered with — a fresh signed URL after `setQueryData`
+  // replaces one, say — since React reuses this component instance rather
+  // than remounting it when only a prop changes.
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null)
+
+  if (src && src !== brokenSrc) {
     return (
       <img
         src={src}
         alt={name}
+        onError={() => setBrokenSrc(src)}
         className={cn('rounded-full object-cover', ring, sizes[size], className)}
       />
     )
