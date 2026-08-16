@@ -108,8 +108,17 @@ export async function consumePasswordResetGrant(supabase: RpcClient): Promise<bo
  * exactly that treatment. The guard was written to hold on its own rather than
  * depend on how a caller assembles the redirect, and this is the change that
  * cashed that in.
+ *
+ * **`null` means "no usable destination", and it used to mean
+ * `/auth/reset-password` — PD-225.** That fallback was written when only
+ * recovery links reached the callback, and it survived the day signup
+ * confirmation started landing there too: a confirmation whose `next` went
+ * missing was routed to *set a new password*, where the rider was then told
+ * their reset link had expired, because a freshly confirmed account holds no
+ * `026` grant. This function knows whether a value is safe to navigate to; it
+ * has never known what the link was for. The caller decides now.
  */
-export function safeNext(value: string | null): string {
+export function safeNext(value: string | null): string | null {
   const isPath =
     !!value &&
     value.startsWith('/') &&
@@ -117,5 +126,82 @@ export function safeNext(value: string | null): string {
     !value.includes('\\') &&
     !/[\x00-\x1F\x7F]/.test(value)
 
-  return isPath ? value : RECOVERY_PATH
+  return isPath ? value : null
 }
+
+/**
+ * Where a rider goes when an auth link does not work — refused by GoTrue,
+ * carrying no code, or failing the exchange.
+ *
+ * **`next` is the discriminator, and it is the only one there is.** GoTrue's
+ * refusal redirect carries `error`, `error_code` and `error_description` and
+ * **no `type`**, while preserving the query the link was minted with — measured
+ * against the PROD auth server 2026-08-13, in PD-225. So `signUp`'s
+ * `next=/postcards` and `requestPasswordReset`'s `next=/auth/reset-password`
+ * are what survive to say which flow this was.
+ *
+ * Sending both to `/auth/forgot-password` is the defect PD-225 reported: a
+ * rider whose brand-new account failed to confirm was put into password
+ * recovery, a flow they had not asked for and whose screen cannot explain
+ * itself. A confirmation failure belongs on login, where signing in and signing
+ * up again are both one tap away.
+ *
+ * **One rider never reads the notice, and it is the login arm that loses it.**
+ * A caller who already holds a completed session is bounced straight off
+ * `/auth/login` to `/postcards` by `resolveDestination`, query and all — so a
+ * signed-in rider tapping a stale confirmation link lands on the feed with no
+ * explanation. That is the guard doing its job (an onboarded session has no
+ * business on a login form) and it is not worth a public-path exception; the
+ * rider is signed in, which is what the link was for. `/auth/forgot-password`
+ * is not bounced, so the recovery arm is unaffected.
+ */
+export function callbackFailureDestination(next: string | null): string {
+  return next === RECOVERY_PATH
+    ? '/auth/forgot-password?error=invalid_link'
+    : '/auth/login?error=invalid_confirmation'
+}
+
+/**
+ * The `type` values `/auth/confirm` will hand to `verifyOtp`, and `null` for
+ * everything else.
+ *
+ * **An allowlist rather than a cast, because the value arrives in a URL.**
+ * `verifyOtp` dispatches on this string, so passing it through unchecked lets a
+ * rider choose which verification flow their token is spent on.
+ *
+ * **`recovery` is refused because it would fail 100% of the time, and `026` §3
+ * already measured why.** It would *reach* Postgres — a `token_hash` needs no
+ * PKCE verifier — but `private.password_reset_session()` predicates on
+ * `amr.method = 'recovery'`, and GoTrue issues `models.OTP` for the token-hash
+ * path, so the session records `method = 'otp'` and the predicate never
+ * matches. Every rider would be told "that reset link has expired" on a link
+ * that just worked.
+ *
+ * **So do not come here to widen this allowlist.** `026` §3 names the fix and it
+ * is in a different file: one word in its §5 predicate plus an RLS assertion,
+ * i.e. a migration. This function would be the last line changed, not the first.
+ *
+ * `email` is here alongside `signup` because GoTrue's own template examples use
+ * it for the confirmation mail; both mean "this address is real".
+ *
+ * **`email_change` matters as much as `recovery` and is easier to overlook**: it
+ * would let a crafted URL complete an address change from the confirmation
+ * screen. Note the compiler is no help at all here — `EmailOtpType` ends in
+ * `(string & {})`, so a bare `as EmailOtpType` cast type-checks against any
+ * string whatsoever. This allowlist is doing all of the work.
+ */
+export function confirmableOtpType(value: string | null): 'signup' | 'email' | null {
+  return value === 'signup' || value === 'email' ? value : null
+}
+
+/**
+ * Where `/auth/confirm` sends a link it could not use.
+ *
+ * Unconditional, and deliberately **not** `callbackFailureDestination`. That
+ * helper discriminates on `next` because `/auth/callback` genuinely carries
+ * both flows; this route carries only confirmations, so the discrimination
+ * there is dead logic that can only fire wrongly — a hand-edited
+ * `?next=/auth/reset-password` would route a failed *confirmation* into
+ * password recovery, which is precisely the defect PD-225 removed.
+ */
+export const CONFIRM_FAILURE_PATH = '/auth/login?error=invalid_confirmation'

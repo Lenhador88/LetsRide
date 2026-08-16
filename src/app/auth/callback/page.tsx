@@ -4,7 +4,12 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthScreen } from '@/components/auth/AuthScreen'
 import { createClient } from '@/lib/supabase/client'
-import { safeNext } from '@/lib/auth/recovery'
+import {
+  RECOVERY_PATH,
+  callbackFailureDestination,
+  hasPasswordResetGrant,
+  safeNext,
+} from '@/lib/auth/recovery'
 
 /**
  * Exchanges a Supabase auth code for a session. Password recovery is what needs
@@ -56,18 +61,57 @@ function AuthCallback() {
   useEffect(() => {
     let cancelled = false
 
+    // Links are single-use and time-limited in both flows, so a spent or
+    // expired one is the ordinary case here, not an exceptional one.
+    //
+    // **`!code` is the whole test, and reading `?error=` would add nothing.**
+    // When GoTrue refuses the link it redirects with the original query intact
+    // and puts `error`, `error_code` and `error_description` in the URL
+    // **fragment** — measured against both projects for `type=signup` and
+    // `type=recovery`. A fragment is never sent to a server and
+    // `useSearchParams()` cannot see it, so a flag built on the query is
+    // permanently false. A refusal carries no `code` either way, which is what
+    // this catches. Read `window.location.hash` if `error_code` is ever wanted
+    // to tell `otp_expired` from `access_denied`.
     if (!code) {
-      router.replace('/auth/login?error=missing_code')
+      router.replace(callbackFailureDestination(next))
       return
     }
 
     createClient()
       .auth.exchangeCodeForSession(code)
-      .then(({ error }) => {
+      .then(async ({ error }) => {
         if (cancelled) return
-        // Recovery links are single-use and time-limited, so an expired or
-        // reused link is the ordinary case here, not an exceptional one.
-        router.replace(error ? '/auth/forgot-password?error=invalid_link' : next)
+        if (error) {
+          router.replace(callbackFailureDestination(next))
+          return
+        }
+        // `next` survives GoTrue's redirect on both flows, so this is the
+        // ordinary path. The grant read below is the fallback for a link whose
+        // query was stripped or refused by the open-redirect guard.
+        if (next) {
+          router.replace(next)
+          return
+        }
+
+        // Ask what this session actually is rather than guessing from a
+        // constant. A session minted from a recovery link carries `026`'s
+        // grant and the client cannot forge it; anything else is a confirmed
+        // sign-in, and the route guard resumes onboarding from /postcards if
+        // the account is new.
+        const recovering = await hasPasswordResetGrant(createClient())
+        if (cancelled) return
+        router.replace(recovering ? RECOVERY_PATH : '/postcards')
+      })
+      // A rejection anywhere in that chain leaves the rider on "Signing you in"
+      // for ever: nothing re-renders, so there is no navigation to be had and
+      // only a reload escapes — the same failure `secure-store.ts` resolves
+      // `getItem` to `null` to avoid. `postgrest-js` resolves rather than
+      // rejects on a fetch failure, which is why this went unnoticed; the grant
+      // read above adds a second round trip inside the chain, so it stops being
+      // theoretical.
+      .catch(() => {
+        if (!cancelled) router.replace(callbackFailureDestination(next))
       })
 
     return () => {

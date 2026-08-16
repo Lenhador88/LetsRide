@@ -4,7 +4,8 @@
 was asked directly and did not answer, so group 1 was built to each recommended default rather
 than blocking. Every default is recorded in the migration that implements it, so a different
 answer is a new migration and not a rewrite. **Q1 is the only one already cast in applied SQL**;
-Q4 and Q7 are still genuinely open and neither is blocked on the other.
+**Q4 is the only one still open. Q7 was answered on 2026-08-14 — require the password** — and
+0.3 below carries it.
 
 - [x] 0.1 **Q1 — product owner.** A club whose owner deletes their account: transfer, or delete?
   **Built as TRANSFER** (design D2's default) in `029`. It is the difference between one rider's
@@ -15,10 +16,11 @@ Q4 and Q7 are still genuinely open and neither is blocked on the other.
   (design D10). Default: retain. **Still open and deliberately not built** — see 1.10. It is
   listed as blocking *before launch* rather than before build, and deferring it removes work
   rather than adding it.
-- [ ] 0.3 **Q7 — designer.** The `Done` frame draws no re-authentication field. The default adds
-  one (design D6). **Still open**, and it costs nothing yet: group 3 is unbuilt, and the Edge
+- [x] 0.3 **Q7 — ANSWERED by the product owner 2026-08-14: require the password.** The `Done`
+  frame draws no re-authentication field; the deviation is blessed, and design D6's default is
+  now the decision. Do **not** re-open it and do **not** ask before building 3.4. The Edge
   Function's JWT check is not a substitute — re-auth proves the person at the phone knows the
-  password, which is a different claim from "this session is live". Ask before building 3.4.
+  password, which is a different claim from "this session is live".
 - [x] 0.4b **Q14 — the version string is `0-placeholder`, and the owner must replace it.**
   `/legal/terms` is placeholder copy that disclaims being an agreement, so a plausible date
   would assert the opposite of what the page says. It lives in exactly one place,
@@ -168,8 +170,8 @@ removal landing without its code repair is an outage.
   **DEFERRED, and deliberately, not overlooked.** Q4 is marked PO *(legal)* and "blocking before
   launch, not before build"; retaining a hash of a deleted person's identifier is a legal
   posture nobody in a session should adopt on the owner's behalf. Deferring costs nothing —
-  "retain nothing" removes work rather than adding it, and the Edge Function that would write
-  the row is not deployed either. `030`'s `terms_version` is the half that had to land first,
+  "retain nothing" removes work rather than adding it. `030`'s `terms_version` is the half that
+  had to land first,
   because it cannot be reconstructed later.
 - [ ] 1.11 Assertions for 1.10 — deferred with it.
 - [x] 1.12 Apply, then check the Supabase security advisors. Expect the two known findings
@@ -183,10 +185,16 @@ removal landing without its code repair is an outage.
   Edge Function and brings a deploy path CI does not have. Record how it is deployed, and that a
   function deployed by hand and never redeployed is the same class of drift as an unapplied
   migration.
-- [x] 2.2 The function itself: verify the JWT in the function rather than trusting the gateway;
+- [ ] 2.2 The function itself: verify the JWT in the function rather than trusting the gateway;
   resolve the subject from the token; **take no id parameter of any kind**; require the
   re-authentication proof from 3.4; run the club transfer, then the Storage sweep, then
   `deleteUser(sub)` with **hard delete**, never Supabase's soft-delete mode.
+
+  **Un-ticked 2026-08-14: every clause here is built except the re-authentication proof, and
+  this line read as done while that arm did not exist.** The file reads no request body at all —
+  `req.json()` appears nowhere in it — so there is nothing for a proof to arrive in. Q7 was open
+  when this was ticked and the clause was written against its recommended default; it is now
+  decided, and the arm is the outstanding work.
 - [x] 2.3 Storage sweep across every prefix in the `media` bucket keyed on the rider's uid —
   `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`, `club-avatars/<uid>/`,
   `club-covers/<uid>/` and, since PD-104, `ride-maps/<uid>/` — through the
@@ -224,6 +232,12 @@ removal landing without its code repair is an outage.
   already blocks its own deploy on this redeploy, so the two are one window. Deploying the renderer
   first is what opens the gap. **Verify with `list_edge_functions` on both projects: a new
   `ezbr_sha256` for `delete-account`, equal across PROD and DEV.**
+
+  **That sha check is necessary and NOT sufficient any more — see 3.4.** Three tasks now demand
+  this one redeploy for three different reasons (this one, 3.4's re-auth arm, and
+  `add-ride-map-tiles` 8.3), so whichever redeploy happens first changes the sha and satisfies
+  all three checks while proving nothing about the other two reasons. Verify the *content*:
+  `ride-maps` present in the deployed `PREFIXES`.
 - [ ] 2.4 Idempotency and failure handling per design D7: already-deleted returns success; a
   failure before the auth delete leaves everything intact; the transfer and the cascade are one
   transaction; concurrent invocations do not double-transfer a club and never select a candidate
@@ -238,6 +252,13 @@ removal landing without its code repair is an outage.
   deletes only the caller; a request bearing the publishable key is refused; a request with no
   token is refused. **A live run, not a claim** — `docs/HANDOFF.md` records three PRs that merged
   unverified.
+
+  **All five passed on DEV against the build deployed 2026-08-11** — recorded on `PD-86`, which
+  is the evidence rather than this line. It stays unticked on purpose, and the reason is the
+  durable half: **the build that will ship is not the build that was exercised.** Q7's answer
+  adds the re-auth arm, so the five cases plus a sixth — a request with no proof, or a wrong
+  one, is refused and deletes nothing — are owed again against the redeployed function. An
+  exercise pass does not transfer across a redeploy.
 
 ## 3. The flow
 
@@ -255,8 +276,32 @@ removal landing without its code repair is an outage.
   "This action cannot be undone." (`Poppins/14/Regular`), `Button variant="danger"` labelled
   `Delete account`, `secondary` labelled `Cancel`. The title's fill in the frame is the legacy
   `Grey (OLD)/10` — resolve to the nearest v2 token per decision #4 rather than porting it.
-- [ ] 3.4 Re-authentication before the destructive call (design D6, Q7). Server-verified, not a
-  client-side gate.
+
+  **This enumeration is no longer complete, and it is closed-form, which is the trap.** Q7's
+  answer adds a password field the frame does not draw, so a builder following this list ships
+  the sheet, ticks it, and reaches 3.4 with nowhere to put the input. The field is 3.4's, and
+  **its placement, label, error copy and type token are unspecified by anyone** — the Q7 row
+  offered "draw the field OR bless the deviation" and the owner blessed the deviation, which
+  settles whether to re-authenticate and not what the control looks like. Ask the designer, or
+  build it from the nearest existing `<Input>` usage and say which you did.
+- [ ] 3.4 Re-authentication before the destructive call (design D6, Q7 — **decided 2026-08-14,
+  require the password**). Server-verified, not a client-side gate: the client collects the
+  password and the **Edge Function** verifies it, because a check the client performs is one a
+  modified client skips.
+
+  **Land the function change and the client half as separate diffs, function first.** The
+  deployed build reads no request body, so a client sending a proof to it deletes the account
+  with no gate at all — fail-open, behind a password field implying otherwise. The other order
+  is fail-closed: a function requiring the proof refuses a client that sends none, and nothing
+  calls it today. **The redeploy is an owner action** (`PD-86`) and it is needed on DEV too.
+
+  **It is the SAME owner action as 2.3a and as `add-ride-map-tiles` 8.3 — one redeploy, three
+  reasons — and that breaks the check all three of them verify with.** Each says "`list_edge_functions`
+  shows a new `ezbr_sha256`", which was a sound test while there was one reason; now whichever
+  redeploy happens first satisfies every one of those checks while saying nothing about whether
+  the other two reasons shipped. So verify the *content*: `ride-maps` present in the deployed
+  `PREFIXES`, and a request with no proof refused. A changed sha is necessary and no longer
+  sufficient.
 - [ ] 3.5 The impact summary: clubs that will change hands, upcoming rides that will be cancelled,
   riders currently RSVP'd to them. Read through `src/lib/data/`, under the rider's own session,
   never through the privileged function. Render nothing rather than zeroes when there is nothing.

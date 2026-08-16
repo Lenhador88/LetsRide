@@ -809,6 +809,13 @@ property of the tile's data, so it takes one legible home rather than riding on 
   is the deploy-order half of it, because nothing else in §8 blocked on it. **Verify after both:
   `list_edge_functions` shows a new `ezbr_sha256` for `delete-account` on both projects.**
 
+  **A changed sha stopped being sufficient on 2026-08-14**, and this is the file least likely to
+  notice: `add-account-deletion` 3.4 now demands the *same* redeploy for a third reason (the
+  re-authentication arm Q7 decided), on top of 2.3a's. One redeploy changes the sha once and
+  satisfies all three checks, so a session here can tick this having shipped somebody else's
+  change and not the `ride-maps` sweep. Verify the **content** — `ride-maps` present in the
+  deployed `PREFIXES` — not just that the digest moved.
+
   There is no `supabase` CLI in this container
   and the Supabase MCP has no deploy tool, so no session can do it. Same blocker as PD-86. Label
   `Owner only` in Linear and set the Geoapify key in the function's secret store — never in `src/`,
