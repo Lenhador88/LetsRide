@@ -522,6 +522,25 @@ live RLS hole letting any signed-in rider post a ride into any club.
    run §Confirm the pass returned here, immediately before the merge. **Never push to `main`
    and never open a PR against `main`** — production promotion belongs to the owner.
 
+   **First confirm CI actually started, and never read its absence as "still queued".** Opening
+   the PR through `mcp__github__create_pull_request` is a **GitHub App** action, and a workflow
+   run is *not* created for the `opened` event — measured on PR #230, 2026-08-16: the head sha was
+   pushed at 23:36:03, the PR opened at 23:36:59, and no run existed for that sha at all. The next
+   `git push` fired a `synchronize` event and the run appeared within seconds.
+
+   **The ordering that leaves you with no CI is the natural one** — push, then open the PR — and
+   it fails in the worst way: no red check, just no check, which is indistinguishable from a PR
+   that had nothing to run. Vercel still posts its own status, so the PR looks alive.
+
+   ```
+   mcp__github__pull_request_read  method=get_check_runs  pullNumber=<n>
+   ```
+
+   **`total_count: 0` a minute after the PR opens means push something, not wait** — an empty
+   commit is enough (`git commit --allow-empty`), though there is usually a real commit still to
+   make. **Never merge on `total_count: 0`**: `CLAUDE.md` requires that whatever runs must pass,
+   and a check that never reported has not passed.
+
 ### Confirm the pass returned — the gate bullet 3 runs
 
 **The `reviewer` pass is a gate on the MERGE, and a missing result is a missing review rather
