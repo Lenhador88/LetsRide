@@ -1,5 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
-import { unwrap, unwrapList } from '@/lib/data/unwrap'
+import { unwrap, unwrapCount, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { OWN_PROFILE_COLUMNS, VIEWED_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { profileIdSchema } from '@/lib/validation/profile'
@@ -151,28 +151,18 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
 }
 
 /**
- * The countries a rider has marked, oldest first.
- *
- * No block filtering here and there must not be: 014's SELECT policy inherits
- * the profiles predicate through an `exists`, so a blocked rider's countries are
- * already absent from what this reads. Re-filtering in application code would be
- * a second copy of a rule 009 owns — the same mistake `getRideCrew`'s header
- * warns about, and the one the `is_public` subtraction bug came from.
- *
- * Unbounded on purpose, unlike the crew roster: the primary key caps a rider at
- * one row per country, so the ceiling is `COUNTRY_TOTAL` — around 250 two-letter
- * strings — and is a property of the schema rather than a hope about behaviour.
- */
-/**
  * The account-deletion confirmation's blast-radius counts — see
  * `AccountDeletionImpact`. Read under the caller's own session, never
  * through the privileged Edge Function, per `deletion-privileged-execution`'s
  * "the function does no reading a rider could have done themselves".
  *
- * Two round trips rather than one: `clubs` and `rides` have no relationship
- * PostgREST can embed in a single query without also fetching every row's
- * roster, which is the same reason `getClubDeletionImpact` issues three
- * separate counts rather than one join.
+ * Two round trips when there is nothing to cancel, three when there is:
+ * `clubs` and `rides` have no relationship PostgREST can embed in a single
+ * query without also fetching every row's roster, so they run in parallel;
+ * `ride_members` is read separately, after, because it has to exclude the
+ * departing rider's own row (see `ridersAffected` below) and PostgREST's
+ * embedded-count form has no clean way to filter one `user_id` out of an
+ * aggregate it computes server-side.
  */
 export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact> {
   const supabase = await resolveSupabase()
@@ -190,11 +180,11 @@ export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact>
     unwrapList(
       await supabase
         .from('rides')
-        .select('id, riders:ride_members(count)')
+        .select('id')
         .eq('organizer_id', user.id)
         .gte('departure_at', new Date().toISOString()),
       'your upcoming rides',
-    ) as unknown as { id: string; riders: { count: number }[] | null }[],
+    ) as unknown as { id: string }[],
   ])
 
   // "At least one other member" — a club where this rider is the only row
@@ -204,7 +194,21 @@ export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact>
     (row) => (row.members_count?.[0]?.count ?? 0) > 1
   ).length
 
-  const ridersAffected = rideRows.reduce((sum, row) => sum + (row.riders?.[0]?.count ?? 0), 0)
+  // Excludes the organizer's own `ride_members` row (reviewer finding #4,
+  // 2026-08-16) — an organizer typically holds one, so summing the plain
+  // embedded count included the departing rider in their own "riders
+  // affected" figure. `AccountDeletionImpact.ridersAffected` is documented
+  // as "who finds a ride gone", and the departing rider is not that.
+  const ridersAffected = rideRows.length
+    ? unwrapCount(
+        await supabase
+          .from('ride_members')
+          .select('user_id', { count: 'exact', head: true })
+          .in('ride_id', rideRows.map((row) => row.id))
+          .neq('user_id', user.id),
+        'riders on your upcoming rides',
+      )
+    : 0
 
   return {
     clubsChangingHands,
@@ -213,6 +217,19 @@ export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact>
   }
 }
 
+/**
+ * The countries a rider has marked, oldest first.
+ *
+ * No block filtering here and there must not be: 014's SELECT policy inherits
+ * the profiles predicate through an `exists`, so a blocked rider's countries are
+ * already absent from what this reads. Re-filtering in application code would be
+ * a second copy of a rule 009 owns — the same mistake `getRideCrew`'s header
+ * warns about, and the one the `is_public` subtraction bug came from.
+ *
+ * Unbounded on purpose, unlike the crew roster: the primary key caps a rider at
+ * one row per country, so the ceiling is `COUNTRY_TOTAL` — around 250 two-letter
+ * strings — and is a property of the schema rather than a hope about behaviour.
+ */
 export async function getProfileCountries(userId: string): Promise<string[]> {
   const supabase = await resolveSupabase()
 
