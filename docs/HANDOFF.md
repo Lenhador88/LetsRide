@@ -1372,14 +1372,35 @@ them — `manifest.json` still records the 2026-08-04 pull:
 | `Element / Icon / Wave Outline` | `4108:6912` | traced from `Noto Emoji` U+270C, reads correctly at 24px — **licence unsettled** |
 | `Element / Icon / Wave Filled` | `4105:6912` | **not settled** — a bolder copy of the outline, near-indistinguishable from it |
 
-**The licence is the blocker, and it blocks shipping rather than merging.** `Noto Emoji` is
-OFL 1.1, which treats a derivative of the *font software* differently from a document that merely
-sets a glyph — an outline extracted and shipped as an app asset sits on that boundary, and nobody
-has read the terms. Nothing between the Figma node and a rider's phone asks: `figma:pull` writes
-`design/icons/wave-outline.svg`, `figma:components` bakes it into `generated.tsx`, and that ships
-in the client bundle and the store build. **Settle it before the pull, not after** — this is the
-`places` mistake exactly, where an assumed ODbL credit turned out wrong after 527,725 rows had
-landed.
+**The licence was read on 2026-08-16 and the trace is clear to ship.** Recorded here because the
+next session would otherwise re-derive it, and because `places` is the standing warning against
+assuming exactly this.
+
+`Noto Emoji` is SIL OFL 1.1, `Copyright 2013 Google LLC`, **no Reserved Font Name declared**
+(`raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/OFL.txt`). What settles it is the
+licence's own DEFINITIONS, quoted from the primary text:
+
+> "Font Software" refers to the set of **files** released by the Copyright Holder(s) under this
+> license and clearly marked as such. This may include source files, build scripts and
+> documentation.
+
+Every obligation hangs off that noun. Clause 1 forbids selling the Font Software or its components
+by itself; clause 2 is what attaches the copyright-notice-and-licence requirement, and it governs
+bundling or **redistributing the Font Software**. We redistribute no file from it — what ships is
+a `<path d="…">` in `generated.tsx`, derived from one glyph's outline — so neither clause has a
+subject in our bundle. The definition is file-scoped, which is also why "components" does not
+reach a single glyph.
+
+SIL's own OFL-FAQ says the same thing directly: artwork created from font outlines is not subject
+to the OFL, and it lists logos, signage, t-shirts and 3D-printed shapes as needing no further
+licensing. **Flagged as second-hand** — `openfontlicense.org`, `scripts.sil.org`, the CTAN mirrors
+and `choosealicense.com` are all egress-blocked from this container, so the FAQ reached me through
+a search summary rather than its primary text. The licence text above is verbatim and is the part
+the conclusion rests on.
+
+So: no attribution is required and none is legally load-bearing. Crediting Google in a `NOTICE`
+is free courtesy and worth doing when the icon lands. **What would change the answer is shipping
+the font file itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
 
 Check rather than trust that, because a `figma:pull` by any session closes the gap silently:
 

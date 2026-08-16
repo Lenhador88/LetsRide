@@ -72,6 +72,12 @@ standing rule there — settle it before any screen renders one — is the rule 
 goes in the component's Figma `description` **and** in the handoff. A traced glyph with no
 recorded licence position is not finished, however good it looks.
 
+The wave glyph's own position is settled and is the worked example — `docs/HANDOFF.md` §The
+snapshot is behind the Figma file carries it. The short version, because it generalises to any
+OFL font: the licence defines "Font Software" as a set of **files**, and every obligation in it
+hangs off that noun, so shipping an extracted outline redistributes nothing the licence governs.
+Shipping the `.ttf` would.
+
 **Load the server's own skill first.** `read_skill_uri skill://figma/figma-use/SKILL.md`, then
 pass `skillNames: 'resource:figma-use'` on the call — for component work, `figma-generate-library`
 as well. These belong to the Figma MCP server; do not write a repo copy, which is the two
