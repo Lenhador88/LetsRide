@@ -133,9 +133,26 @@ evidence the node was authored correctly. Two consequences that bite:
   the decision-#4 line. Do not read silence as a skip; read it as an export that happened.
 
 So: name it exactly, keep it 24×24 with one flattened vector child, and delete every scratch node
-in the same script that made it. Match the optical weight of the neighbouring icons by rendering
-yours beside them **at real size** — a temporary row of instances, screenshotted and removed in
-one script. Judging a 24px glyph at 8× is how one ships that reads as a blob on a phone.
+in the same script that made it.
+
+**Match the weight by measuring it, not by looking.** This is the lesson PD-228 paid for three
+times — an icon shipped light twice, the second time *after* the product owner said it looked thin
+and the correction was still guessed. Measured, it was 1.4px against Chat Bubble's 2.2, which is
+obvious in a number and arguable in a screenshot:
+
+```bash
+npm run figma:measure -- wave chat-bubble paper-plane   # stroke width in the 24px box
+```
+
+Compare against the icons your glyph will actually sit **beside**, never a global average, and
+read `strokePx24` only for outline icons — a solid glyph reports its own width. `inkPct` is a
+different question and does not substitute: a narrow detailed glyph can match on stroke and still
+carry half again the ink of a simple round one.
+
+Still render yours beside its neighbours **at real size** as well — a temporary row of instances,
+screenshotted and removed in one script. The number catches weight; only the picture catches a
+notch that has closed up or detail that has gone muddy. Judging a 24px glyph at 8× is how one
+ships that reads as a blob on a phone.
 
 Two `use_figma` behaviours worth knowing, both stated by the `figma-use` skill rather than
 measured here: `await node.screenshot()` returns an inline render (a skill helper, not
