@@ -1,22 +1,22 @@
 {
   "fileKey": "gDoteM1ow1AZpSEGSNhpc7",
   "fileName": "LR - Mobile App",
-  "lastModified": "2026-08-03T22:00:38Z",
-  "version": "2383626448586422661",
-  "latestVersionId": "2383626448586422661",
-  "pulledAt": "2026-08-04T12:25:02.751Z",
+  "lastModified": "2026-08-16T21:09:57Z",
+  "version": "2388401360742764219",
+  "latestVersionId": "2388401360742764219",
+  "pulledAt": "2026-08-16T21:10:03.984Z",
   "pulledVia": "files/gDoteM1ow1AZpSEGSNhpc7",
-  "extractedAt": "2026-08-04T13:15:43.511Z",
+  "extractedAt": "2026-08-16T21:10:31.422Z",
   "counts": {
     "pages": 3,
     "frames": 298,
-    "components": 140,
+    "components": 141,
     "componentSets": 52,
     "namedStyles": 54,
     "colorTokens": 19,
     "typeTokens": 19,
     "legacyStyles": 12,
-    "iconsFound": 53,
-    "iconsExported": 53
+    "iconsFound": 54,
+    "iconsExported": 54
   }
 }

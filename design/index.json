@@ -3558,6 +3558,14 @@
       "id": "2370:8655",
       "type": "COMPONENT",
       "file": "components/element-icon-pin.json"
+    },
+    {
+      "name": "Element / Icon / Wave",
+      "section": null,
+      "page": "Components",
+      "id": "4108:6912",
+      "type": "COMPONENT",
+      "file": "components/element-icon-wave.json"
     }
   ]
 }

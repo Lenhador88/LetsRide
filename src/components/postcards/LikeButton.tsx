@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { HeartFilledIcon, HeartOutlineIcon } from '@/components/icons/generated'
+import { WaveIcon } from '@/components/icons/generated'
 import { PostcardActionButton } from '@/components/postcards/PostcardAction'
 import { likePostcard, unlikePostcard } from '@/lib/actions/postcards'
+import { cn } from '@/lib/utils'
 
 type LikeButtonProps = {
   postcardId: string
@@ -17,11 +18,17 @@ type LikeButtonProps = {
  * server action is still the authority — a refused write (blocked, signed out,
  * RLS) rolls the local state back and surfaces the message.
  *
- * The icons are now the real ones. This file used to carry a text label because
- * `Element / Icon / Heart *` could not be exported through the rate limit and
- * decision #4 forbids a `lucide-react` lookalike; the snapshot has them, so the
- * fallback is retired. Toggled-on is Heart Filled in Pink/100 — the design's
- * only use of that colour.
+ * The glyph is the motorcycle wave rather than a heart (PD-228) — the one
+ * gesture every rider already knows.
+ *
+ * **One icon serves both states, and that is deliberate rather than an
+ * oversight.** The heart it replaced was a filled/outline pair, but a hand
+ * cannot do that: a solid silhouette loses the folded fingers and thumb that
+ * make the glyph legible at 24px, and a merely bolder copy is
+ * indistinguishable from the outline on a phone. So the toggle is carried by
+ * `text-like` (Pink/100, the design's only use of that colour) alone. That
+ * leans harder on `aria-pressed` in `PostcardActionButton`, which is why the
+ * label still says Like/Unlike in words.
  */
 export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps) {
   const [liked, setLiked] = useState(isLiked)
@@ -53,13 +60,7 @@ export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps)
         count={count}
         label={liked ? `Unlike, ${count} likes` : `Like, ${count} likes`}
         className={pending ? 'opacity-70' : undefined}
-        icon={
-          liked ? (
-            <HeartFilledIcon className="h-6 w-6 text-like" />
-          ) : (
-            <HeartOutlineIcon className="h-6 w-6" />
-          )
-        }
+        icon={<WaveIcon className={cn('h-6 w-6', liked && 'text-like')} />}
       />
       {error && (
         // Absolutely placed so a failed like cannot reflow the action row and

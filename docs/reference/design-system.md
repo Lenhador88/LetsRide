@@ -118,7 +118,7 @@ Mute, Options, Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report
 Share.
 
 **`lucide-react` is gone** — uninstalled 2026-08-05 with the last v1 page. Don't re-add it and
-don't substitute lookalikes. The four matches
+don't substitute lookalikes. The three matches
 `grep -rn lucide-react src/` still returns are prose inside comments (see *the comment trap*);
 the importer count is
 `grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l` and it is **0**.

@@ -1395,24 +1395,36 @@ Two traps, both live:
 `CLAUDE.md` §Development Workflow has the commands and the refresh rules; the two traps above
 are the ones that only matter when choosing *what* to build.
 
-### The snapshot is behind the Figma file — two wave icons, 2026-08-16
+### The wave icon — authored into Figma, landed in code, 2026-08-16
 
-The like control is the motorcycle wave (PD-228) needed a glyph the set did not have, so two
-components were authored **into** Figma rather than drawn in the repo — the first time anything
-here has written to the design file. `CLAUDE.md` §Design System's fourth rule and
+The like control is the motorcycle wave (PD-228) needed a glyph the set did not have, so it was
+authored **into** Figma rather than drawn in the repo — the first time anything here has written
+to the design file. `CLAUDE.md` §Design System's fourth rule and
 `.claude/agents/design-system.md` §Writing to Figma carry the standing rules that came out of it.
 
-They are on the **Components** page, below the icon column, and `design/` does **not** contain
-them — `manifest.json` still records the 2026-08-04 pull:
+**It is `Element / Icon / Wave` (`4108:6912`), one component, and one is the whole point.** The
+heart it replaced was a filled/outline pair; a hand cannot be one. A solid silhouette loses the
+folded fingers and thumb that make the glyph legible at 24px, and a merely bolder copy is
+indistinguishable from the outline on a phone — so the liked state is carried by `text-like`
+alone, which is what the product owner chose. A second component was authored and then deleted;
+do not reintroduce one, because the generator rewrites every fill to `currentColor` and the pair
+would emit **identical** SVGs.
 
-| Component | Node | State |
-|---|---|---|
-| `Element / Icon / Wave Outline` | `4108:6912` | traced from `Noto Emoji` U+270C, reads correctly at 24px — **licence unsettled** |
-| `Element / Icon / Wave Filled` | `4105:6912` | **not settled** — a bolder copy of the outline, near-indistinguishable from it |
+That also means the toggle now leans on `aria-pressed` in `PostcardActionButton` rather than on
+a shape change. If a future screen draws a like without that attribute, the state is invisible to
+a screen reader.
 
-**The licence was read on 2026-08-16 and the trace is clear to ship.** Recorded here because the
-next session would otherwise re-derive it, and because `places` is the standing warning against
-assuming exactly this.
+The full chain ran, so `design/` and `generated.tsx` are current — 54 icons, not 53:
+
+```bash
+node -p "require('./design/manifest.json').pulledAt"   # 2026-08-16
+npm run figma -- icons | grep -i wave                  # wave  Wave  4108:6912
+grep -c WaveIcon src/components/icons/generated.tsx    # 1
+```
+
+**The glyph is traced from `Noto Emoji` U+270C, and its licence is settled — clear to ship.**
+Recorded because the next session would otherwise re-derive it, and because `places` is the
+standing warning against assuming exactly this.
 
 `Noto Emoji` is SIL OFL 1.1, `Copyright 2013 Google LLC`, **no Reserved Font Name declared**
 (`raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/OFL.txt`). What settles it is the
@@ -1436,30 +1448,14 @@ and `choosealicense.com` are all egress-blocked from this container, so the FAQ 
 a search summary rather than its primary text. The licence text above is verbatim and is the part
 the conclusion rests on.
 
-So: no attribution is required and none is legally load-bearing. Crediting Google in a `NOTICE`
-is free courtesy and worth doing when the icon lands. **What would change the answer is shipping
-the font file itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
+So no attribution is required and none is legally load-bearing. Crediting Google in a `NOTICE` is
+free courtesy and still worth doing. **What would change the answer is shipping the font file
+itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
 
-Check rather than trust that, because a `figma:pull` by any session closes the gap silently:
-
-```bash
-node -p "require('./design/manifest.json').pulledAt"
-npm run figma -- icons | grep -i wave      # empty = snapshot still behind
-```
-
-Two things are open, and the second is a decision rather than work:
-
-- **Nothing has reached code.** `generated.tsx` has no wave. It takes `figma:pull` then
-  `figma:icons` — both network, both the endpoint families that have blocked this repo for days
-  — before `LikeButton` can import one.
-- **The filled twin has no good answer yet.** `LikeButton` distinguishes its states by *both*
-  glyph and colour (`HeartFilledIcon` + `text-like` against `HeartOutlineIcon`), and a solid
-  silhouette of a hand loses the folded fingers and thumb that make the glyph read at all.
-  Tracing gives one contour with `NONZERO` winding already, so no fill-rule or stroke trick
-  solidifies it — measured, not assumed. The realistic options are a hand-drawn solid twin, or
-  one glyph for both states differing only by `text-like`. The second makes the two components
-  generate *identical* SVGs, since the generator rewrites every fill to `currentColor` — so if
-  that is the answer, PD-228 wants one icon and a colour change, not a pair.
+**One thing genuinely untested: nobody has seen this render in a browser.** Chromium in this
+container cannot reach Supabase, so the walk cannot sign in and no gate in this repo renders a
+postcard. `tsc`, ESLint, Vitest, `next build` and `docs:check` all pass through a glyph that is
+subtly wrong at 24px.
 
 ---
 
