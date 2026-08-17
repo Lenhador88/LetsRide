@@ -14414,6 +14414,22 @@ select assert_eq(
   'App-wide, open ride',
   '062: ... while the rest of the row reads exactly as before — the re-grant is what keeps every feed working');
 
+-- The EMBED, which is the same rule arriving where nobody looks for it. A
+-- PostgREST embed is a join, and its predicate names postcards.ride_id, so it
+-- is refused exactly as a target list naming the column is. tag-postcards-to-
+-- rides task 4.3 specified a `rides(...)` embed on the postcard read and 062
+-- makes it 42501 — the tasks file now says so, and this is the line that keeps
+-- saying it after somebody edits that file. The control below is the point: the
+-- identical shape on club_id succeeds, so this measures the GRANT and not the
+-- join.
+select assert_denied($$
+  select 1 from postcards p join rides r on r.id = p.ride_id limit 1$$,
+  '062: a join whose predicate names ride_id is refused too — so a rides embed on a postcard read is 42501, which is tag-postcards-to-rides task 4.3');
+select assert_eq(
+  (select count(*)::int from postcards p join clubs c on c.id = p.club_id
+    where p.id = '00000000-0000-0000-0000-0000000620e2'),
+  1, '062: ... while the identical join on club_id still works — the refusal above is the column grant, not the join');
+
 -- ---------------------------------------------------------------------------
 -- 062.5  The accessor answers the Journal, ordered, and its restated audience
 --        matches the policy's arm for arm.
