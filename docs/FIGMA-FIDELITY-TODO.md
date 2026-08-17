@@ -757,8 +757,11 @@ styling task:
 - [x] ~~**Countries** (`22/195`, rows of 32×24 flags).~~ **Built 2026-08-05 (`014`).** The
       open question — manual or derived from rides — was **answered by the product owner:
       manual.** Worth recording that the derived reading was not merely unbuilt but
-      currently unbuildable: `rides` has no country, no coordinates, only a free-text
-      `meeting_point`.
+      currently unbuildable: `rides` has no country and, when that was written, no
+      coordinates either — only a free-text `meeting_point`. **`051` added
+      `latitude`/`longitude`** (see the resolved entry above), so the derived reading is
+      no longer blocked on coordinates; it is still blocked on a country, and the
+      owner's answer stands regardless.
 
       Two deviations, both ours:
 
