@@ -305,7 +305,7 @@ export const claims = [
   {
     id: 'nav-items-scoped-claude',
     file: 'docs/reference/product-scope.md',
-    pattern: /The built app covers a fraction of the design\. \*\*(\w+) nav tabs — Home, Rides, Clubs,/,
+    pattern: /The built app covers a fraction of the design\. \*\*(\w+) nav tabs — Postcards, Rides, Clubs,/,
     extractStated: extractWord(),
     kind: 'shell',
     cmd: `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep -c "href:"`,

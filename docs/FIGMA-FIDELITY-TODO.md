@@ -127,6 +127,13 @@ being called done.
       "Home", no back button and no sub-page on this screen (both are toggled off in the
       instance). The "New postcard" button guessed here is real but belongs to the *nav bar*
       as a sticky action, not the header.
+
+      **The title is a deliberate departure as of 2026-08-17: the code renders "Postcards".**
+      The design's string is still "Home" and the geometry above is unchanged — PD-244 renamed
+      the header and the nav tab together, because three of the four tabs name their content
+      and this one named a position. Logged here so the difference reads as a decision rather
+      than as a screen that drifted off its frame. The icon did **not** follow the label: the
+      generated set has no postcard glyph, so the house stays until one exists.
 - [x] ~~**Pagination**~~ — **the design does not page.** The screen is a swipeable stack: you
       advance one card at a time and the deck ends. `getFeed` stays bounded.
 - [ ] **Caption treatment** — still open. The design's caption box is a fixed 140px and the
