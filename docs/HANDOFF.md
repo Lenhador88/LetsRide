@@ -1553,15 +1553,35 @@ nothing, because connectors attach per session independently of the repo.
 no "Allow always" means there is no project settings file to persist a grant into — i.e. no
 repo.** Check `session_context.sources` before theorising about permission layers.
 
-**The queue's own machinery — the two trigger ids, the never-delete rule, the reused session and
-the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the procedure is
-`.claude/commands/queue-pickup.md`.** Neither belongs here: they are settled contract, not
-current position.
+**The queue's own machinery — the two trigger ids, the never-delete rule, the dispatcher session
+and the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the procedures are
+`.claude/commands/queue-dispatch.md` (pick and hand out) and `.claude/commands/queue-pickup.md`
+(build one story).** None of it belongs here: settled contract, not current position.
+
+**The procedure change does not take effect until the trigger's prompt is repointed**, because the
+prompt is outside the repo and names the file the firing reads. Until then a firing reads the
+*child* procedure, which opens by telling it the issue id is in its prompt when there is no id —
+undefined behaviour in an unattended session. Check rather than assume:
+
+```
+# via the CCR MCP: list_triggers -> trig_01WJkMVXGzUVGDcC1njNmaan
+#   its prompt must name queue-dispatch.md, not queue-pickup.md
+```
+
+**Two facts measured 2026-08-16 that the trigger list will not tell you, and both need re-reading
+rather than trusting:**
+
+- **`…WJkMV` was found paused**, `last_fired_at` 2026-08-14T09:36Z with `next_run_at` two days in
+  the past. Nothing on the board or in the repo showed it; the queue simply stopped. **Check
+  `next_run_at` is in the future** — the presence of the row is not the check.
+- **`trig_01Gzy8eCiaXUUa1knvJnNpwy` did not appear in `list_triggers` at all** (7 rows at
+  `limit=100`). If it is genuinely gone, the documented fallback is gone with it and only the
+  owner can rebuild it, by hand, in the Routines UI.
 
 ```bash
-# via the CCR MCP: list_triggers
-#   -> trig_01WJkMVXGzUVGDcC1njNmaan  enabled:true  persistent_session_id: session_01B2mxc…
-#   -> trig_01Gzy8eCiaXUUa1knvJnNpwy  no `enabled` key at all  = disabled (the fallback)
+# via the CCR MCP: list_triggers  limit=100
+#   -> trig_01WJkMVXGzUVGDcC1njNmaan  next_run_at in the FUTURE = live; in the past = paused
+#   -> trig_01Gzy8eCiaXUUa1knvJnNpwy  present at all?  (the irreplaceable fallback)
 ```
 
 **The one thing that design cannot prove in advance:** the connector test ran minutes after the
@@ -1573,5 +1593,6 @@ fact. STEP 0 of the procedure is the detector; the fallback is re-enabling the o
 
 ```bash
 # via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
-#   -> group by status; Queued (AI) is the queue, Development (AI) + Needs help are the lock
+#   -> group by status; Queued (AI) is the queue, Development (AI) claims one issue each,
+#      and any Needs help row stops every dispatch
 ```

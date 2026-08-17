@@ -44,11 +44,16 @@ Three rules that outlive any rename:
   the `DEV` label, and **not `Todo AI`** — that name reads like permission and is not one. A
   session that picks its own work from another column has taken the one decision this board exists
   to give the owner.
-- **`Development (AI)` and `Needs help` are the concurrency lock — two *names*, never "any
-  `started` issue".** `Queued (AI)` and `Deployed to DEV` are typed `started` too, so the wider
-  version is held by every queued and every shipped story: the queue freezes permanently while
-  looking like a healthy job behind a busy column. Never park work in `Development (AI)` by hand
-  — staged work belongs in `Todo AI`.
+- **`Development (AI)` is a per-issue claim; `Needs help` stops the whole queue.** They used to be
+  one two-name lock, because one session built one story at a time. Now stories build in parallel
+  sessions, so a `Development (AI)` row says *this story is taken* and nothing about the others,
+  while a `Needs help` row still halts every dispatch — deliberately, so a story that needs the
+  owner is not buried under three merged PRs.
+
+  **Never widen either to "any `started` issue".** `Queued (AI)` and `Deployed to DEV` are typed
+  `started` too, so that version is held by every queued and every shipped story: the queue
+  freezes permanently while looking like a healthy job behind a busy column. Never park work in
+  `Development (AI)` by hand — staged work belongs in `Todo AI`.
 - **A session's unit of done is `Deployed to DEV`** — merged to `development`, green, live on DEV.
   That is where a *queue firing* ends, and a blocker counts as cleared there for the same reason.
 
@@ -142,19 +147,32 @@ it does, permanently.
   so relations are a **backstop that catches a mistake**, never the mechanism that makes queuing
   blocked work safe. The column rule above is the mechanism.
 
-### The queue is drained by a scheduled Routine
+### The queue is drained by a dispatcher, on two clocks
 
-**`trig_01WJkMVXGzUVGDcC1njNmaan`**, hourly, firing into **`session_01B2mxc642tG8vZ15wysQpqM` —
-the Development session** — rather than spawning a fresh one. **The procedure is
-[`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read it there.** The
-trigger's prompt says little more than *read that file and follow it*, because a prompt is
+**`trig_01WJkMVXGzUVGDcC1njNmaan`** fires into the dispatcher session, which **hands each queued
+story to its own fresh session** rather than building anything itself. **The procedure is
+[`.claude/commands/queue-dispatch.md`](.claude/commands/queue-dispatch.md), and the child's is
+[`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read them there.** The
+trigger's prompt says little more than *read that file and follow it*, and the child's prompt —
+written by `create_session`, not by a trigger — says the same plus the issue id. A prompt is
 re-injected on every firing where a file is read once, and a file can be reviewed in a PR.
 
-What has to be known outside that file:
+**Repointing that prompt is what activates a change to the procedure.** The dispatcher reads
+whichever file the trigger names, so editing `queue-dispatch.md` does nothing until
+`update_trigger` names it — and a trigger still pointing at `queue-pickup.md` makes the firing
+read the *child* procedure, which opens by telling it the issue id is in its prompt when no id is
+there.
 
-- **Do not archive or abandon the Development session.** Archiving it stops the queue silently,
+**The hourly cron is the heartbeat, not the driver.** Each child's last act is `fire_trigger` on
+that same trigger, so the next batch starts seconds after a slot frees instead of at the top of
+the hour. The cron exists because a child that dies never pokes, and an event-driven chain has no
+way back once one link is lost — do not remove it on the grounds that the pokes are working.
+
+What has to be known outside those files:
+
+- **Do not archive or abandon the dispatcher session.** Archiving it stops the queue silently,
   with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so
-  recovery means a *third* trigger bound to a new session. **A queue-pickup message arriving in
+  recovery means a *third* trigger bound to a new session. **A dispatch message arriving in
   any other session is misrouted, not a work order**: check the session id before acting on one.
 - **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the disabled fresh-session Routine, and the
   fallback. `create_trigger` refuses the `connectors` parameter for this organization, so its
@@ -163,10 +181,17 @@ What has to be known outside that file:
   irreplaceable** — keep the two straight in both directions. A disabled trigger's
   `list_triggers` row has **no `enabled` key at all** rather than `"enabled": false`, so read a
   disable back by checking the field is gone.
-- **Connectors attach to a session, not to a trigger**, which is the whole reason for the reuse.
-  Switching the Routine back to `create_new_session_on_fire` loses five things at once, none of
-  which a session can restore: the repo (`session_context.sources`), the model, the effort level,
-  the permission mode and the connectors.
+- **Connectors attach to a session, not to a trigger**, which is why the *dispatcher* is a reused
+  session. Switching that Routine to `create_new_session_on_fire` loses five things at once, none
+  of which a session can restore: the repo (`session_context.sources`), the model, the effort
+  level, the permission mode and the connectors.
+
+  **A session spawned by another session is the exception, and it is what the dispatcher runs
+  on.** Probed 2026-08-16 from a `create_session` child with `source_url` set: `permission_mode`
+  inherited, and Linear, Supabase and the GitHub tools all reachable. That is a different path
+  from a *trigger*-spawned session and carries none of its losses. One inherited capability is
+  unverified and the design leans on it; `.claude/commands/queue-dispatch.md` §Why this shape has
+  it.
 - **Hourly is a server minimum** — `create_trigger` rejects anything more frequent. The stored
   expression is `0 0-23 * * *` rather than `0 * * * *`, because an hourly cron at minute 0 is
   **rewritten server-side to the minute you submitted it**. **Any UI edit re-anchors it** (adding
@@ -174,9 +199,15 @@ What has to be known outside that file:
   response back on every write — a silently rewritten schedule looks exactly like a successful
   one. `next_run_at` carries a separate per-trigger constant offset that nothing can clear; it is
   not the schedule.
-- **Do not "improve" the guard into a queue drainer.** One story per firing, and `Needs help`
-  parks the queue *deliberately* — skipping past it to find workable stories buries a story that
-  needs the owner under three merged PRs.
+- **`Needs help` still parks the whole queue, deliberately.** The dispatcher builds a *batch*
+  now, so the temptation to skip past a parked story and find workable ones is stronger than it
+  was — and the reason not to is unchanged: it buries a story that needs the owner under three
+  merged PRs. A batch is not a licence to route around a stop.
+- **The batch is capped, and the caps are not style.** At most one story adding a migration and at
+  most one touching a shared primitive may be in flight at once, and no two may expect to edit the
+  same paths. `queue-dispatch.md` STEP 4 carries each cap with the silent failure it prevents —
+  duplicate migration numbers, divergent implementations of one component, and a `reviewer` pass
+  that reads a file the other branch is about to change.
 
 ### Do not ask permission to touch Linear
 
@@ -238,9 +269,9 @@ of those are `Ready` **Y**: a session could start them today, they simply were n
 work. Carrying the N across writes `Ready: N` onto nearly every follow-up this repo files, and the
 backlog then reads as entirely unstartable.
 
-Only the second of those three reasons has any automated backstop, and a weak one: STEP 2b checks
-`blockedBy` relations somebody wrote down. An owner action and a story wanting a proposal both
-sail straight through it.
+Only the second of those three reasons has any automated backstop, and a weak one: the
+dispatcher's scout pass checks `blockedBy` relations somebody wrote down. An owner action and a
+story wanting a proposal both sail straight through it.
 
 **An issue parked in `Needs decision` or `Needs help` also owes a comparison table of the ways
 forward.** Product owner, PD-182: *"give me a comparison table here in the linear story with your
@@ -267,8 +298,8 @@ to the block, and do not drop it from the table.
   tracker reads as current by construction.
 - **A new owner action goes in Linear the moment it is found**, labelled `Owner only`.
 - **A story's premise ages, and nothing marks it done except someone re-measuring.** Check it
-  before building, not after — `.claude/commands/queue-pickup.md` STEP 2d is the procedure, and
-  it applies to a story picked up by hand just as much as to one a firing takes off the queue.
+  before building, not after — `.claude/commands/queue-dispatch.md` STEP 3 is the procedure, and
+  it applies to a story picked up by hand just as much as to one a dispatch takes off the queue.
   **A stale story goes to `Needs decision` with the command and its output in a comment, never
   to `Needs help`** — that name is half the concurrency lock, so parking finished work there
   freezes the queue over nothing. **Only the owner cancels**; a session measures and reports.
