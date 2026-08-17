@@ -52,7 +52,11 @@
  * **Verify the redeploy by CONTENT, not by sha alone** — 2.3a and 3.4 both
  * name the same reason: three tasks now want the same redeploy, so a changed
  * `ezbr_sha256` no longer proves any one of them shipped. A request with no
- * `password` field must come back `reauth_required`.
+ * `password` field must come back `reauth_required`. **That check alone does
+ * not prove the wrong-password path works** — an empty password never
+ * reaches `signInWithPassword`, so it only exercises the guard above that
+ * call, not `classifyAuthError`'s classification of a real, non-empty wrong
+ * password. Verifying that needs its own probe (reviewer, 2026-08-17).
  *
  * **And "nothing calls it" is not the same as "nobody can", which makes the
  * ordering stronger than it first reads.** The endpoint is live with
@@ -173,14 +177,19 @@
  *
  * **Already deleted returns `unauthorized` (401), not success**, and that is
  * worth stating plainly because both this file and D7 previously claimed the
- * opposite. The `getUser` call below runs first, and GoTrue actively rejects a
- * token whose `sub` has no user row — so a retry against an account that is
- * already gone never reaches the `deleteUser` already-gone branch. The client
- * contract is therefore: **the `unauthorized` code on this endpoint means the
- * session is dead, which for the deletion screen is indistinguishable from
- * success and must be treated as such.** The already-gone branch in step 3
- * still earns its place — it covers the account disappearing between
- * `getUser` and `deleteUser`.
+ * opposite. The `getUser` call below runs first, and GoTrue is documented to
+ * reject a token whose `sub` has no user row — so a retry against an account
+ * that is already gone never reaches the `deleteUser` already-gone branch.
+ * **This specific shape is inferred, not measured**: the 2026-08-14 probe
+ * above never replayed a real, well-formed token against a deleted account —
+ * only a missing header, a garbage `apikey`, and a garbage bearer — and an
+ * earlier revision of the status-set comment below cited it as one of the
+ * measured cases when it was not (reviewer, 2026-08-17). The client contract
+ * is therefore: **the `unauthorized` code on this endpoint means the session
+ * is dead, which for the deletion screen is indistinguishable from success
+ * and must be treated as such.** The already-gone branch in step 3 still
+ * earns its place — it covers the account disappearing between `getUser` and
+ * `deleteUser`.
  *
  * **The response carries THREE distinct codes now, not two, and the client
  * must not fold any of them into another (reviewer finding #2, 2026-08-16).**
@@ -213,65 +222,80 @@ const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 /**
  * HTTP statuses from GoTrue that actually ASSERT the caller was rejected,
  * rather than merely being outside the 5xx/network band
- * `AuthRetryableFetchError` already covers. See `classifyAuthError` below
- * (reviewer finding #1 of the SECOND delta pass, 2026-08-16) for the
- * allowlist-vs-range reasoning, and for why status alone is not sufficient —
- * that pass's own fix introduced a second defect, closed by
- * `classifyAuthError`'s name check (the THIRD delta pass, same day).
+ * `AuthRetryableFetchError` already covers. `getUser` (`/user`) and
+ * `signInWithPassword` (`/token?grant_type=password`) do not share a status
+ * vocabulary for "rejected" — reusing one allowlist across both endpoints
+ * misclassified every wrong password as `verification_unavailable`, because
+ * a wrong password is reported at 400, which is outside `{401, 403}`
+ * (reviewer, 2026-08-17). Each call site below gets its own set.
  *
- * `401` is measured against DEV, 2026-08-14 (this file's own header) —
- * **for the shapes that measurement actually exercised**: no
+ * `getUser`: `401` is measured against DEV, 2026-08-14 (this file's own
+ * header) — for the shapes that measurement actually exercised: no
  * `Authorization` header, a malformed JWT, a signature that does not
- * verify. **It does NOT cover a token whose session was cascade-deleted**,
- * because that measurement used a hand-made token with no `session_id`
- * claim, which never reaches GoTrue's session lookup at all — every real
- * rider access token carries one, and that path is `AuthSessionMissingError`,
- * handled separately below rather than by status. `403` is INFERRED rather
- * than measured against this project: no case here has produced one, but it
- * is the same class (GoTrue refusing on authorization grounds, e.g. a banned
- * account) and belongs beside 401 rather than being silently absorbed into
- * `verification_unavailable`'s "we could not tell" bucket.
+ * verify. It does NOT cover a token whose session was cascade-deleted,
+ * which is `AuthSessionMissingError`, handled by name in `classifyAuthError`
+ * rather than by status — see there. Nor does it cover a well-formed token
+ * whose `sub` has no `auth.users` row (the already-deleted case): that shape
+ * is inferred from GoTrue's documented behaviour, not measured here either
+ * — see the file header. `403` is INFERRED too: no case here has produced
+ * one, but it is the same class (GoTrue refusing on authorization grounds,
+ * e.g. a banned account) and belongs beside 401 rather than being silently
+ * absorbed into `verification_unavailable`'s "we could not tell" bucket.
  */
-const REJECTED_STATUSES = new Set([401, 403])
+const GETUSER_REJECTED_STATUSES = new Set([401, 403])
 
 /**
- * Classifies a GoTrue-originated error the same way at both call sites that
- * verify something against it — `getUser` and `signInWithPassword` — so the
- * two cannot drift into different rules for the same three outcomes.
+ * `signInWithPassword`: a wrong password comes back 400, not 401/403
+ * (`{"code":400,"error_code":"invalid_credentials"}`, reported against DEV;
+ * not independently reproduced in this session — no HTTP-capable tool or
+ * publishable key was available to re-run it). Kept in its own set rather
+ * than added to `GETUSER_REJECTED_STATUSES`, because widening that set to
+ * include 400 would reopen the `AuthSessionMissingError` regression at
+ * `getUser` (also a synthetic 400 — see `classifyAuthError`) and would also
+ * catch a 400 at `getUser` for an unrelated reason. Other 400s at THIS
+ * endpoint (a validation error, an unconfirmed email) are also read as
+ * `'rejected'` under this set — the residual ambiguity is accepted rather
+ * than resolved by `error_code`, because nothing is deleted either way; the
+ * worst case is a rider told "wrong password" for a different reason, not
+ * data lost.
+ */
+const REAUTH_REJECTED_STATUSES = new Set([400])
+
+/**
+ * Classifies a GoTrue-originated error against a caller-supplied allowlist of
+ * "the caller was actively rejected" statuses. Both call sites share this
+ * shape, with their own allowlist, so neither can forget the one check that
+ * does not vary by endpoint.
  *
- * **Finding numbers collide across same-day passes, so this file says which
- * pass rather than only the date.** Findings #1 and #2 of the THIRD delta
- * pass (2026-08-16) were the identical defect reached from two different
- * calls: `AuthSessionMissingError`'s synthetic 400 (see below) falling
- * outside the allowlist the SECOND pass's own finding #1 introduced.
- *
- * **Checked by NAME first, not status, for exactly one case —
- * `AuthSessionMissingError`.** auth-js's `handleError` (`lib/fetch.js`)
+ * Checked by NAME first, not status, for exactly one case —
+ * `AuthSessionMissingError`. auth-js's `handleError` (`lib/fetch.js`)
  * intercepts GoTrue's `session_not_found` error CODE before it ever looks at
  * the HTTP status, and the class's own constructor hardcodes status `400`
  * regardless of what GoTrue actually answered (`lib/errors.js`) — the 400 is
  * synthetic and reflects no real response. Deleting an `auth.users` row
  * cascades its `auth.sessions` rows, so this is D7's most likely shape for
  * the already-deleted case: a second device holding a still-unexpired
- * access token. Under a status-only check this fell outside
- * `REJECTED_STATUSES` (400 is not 401/403) and was reported
- * `verification_unavailable` — stranding that second device on a "try
- * again" message forever, with no exit and no local sign-out, instead of
- * signing it out the way an actually-invalid token does.
+ * access token. At `getUser` this is squarely the case the check exists
+ * for. At `signInWithPassword` a password grant has no session to look up,
+ * so `session_not_found` cannot occur there today and this branch is dead
+ * code at that call site — kept anyway, because a name check ahead of a
+ * status check is correct regardless of which status set follows it.
  *
- * The status check remains the rule for everything else, and stays
- * fail-safe on the class it was originally trusted not to need — `.status`
- * "because every `AuthError` subclass carries it" was the claim that
- * `AuthSessionMissingError` falsified; `AuthUnknownError` carries no status
- * at all, and `typeof status === 'number'` being false for it already routes
- * to `'unavailable'` rather than being read as a rejection by accident.
+ * The status check is the rule for everything else, and stays fail-safe on
+ * the class it was originally trusted not to need: `AuthUnknownError`
+ * carries no status at all, and `typeof status === 'number'` being false for
+ * it already routes to `'unavailable'` rather than being read as a rejection
+ * by accident.
  */
-function classifyAuthError(error: unknown): 'rejected' | 'unavailable' {
+function classifyAuthError(
+  error: unknown,
+  rejectedStatuses: ReadonlySet<number>,
+): 'rejected' | 'unavailable' {
   const name = (error as { name?: string } | null)?.name
   if (name === 'AuthSessionMissingError') return 'rejected'
 
   const status = (error as { status?: number } | null)?.status
-  return typeof status === 'number' && REJECTED_STATUSES.has(status) ? 'rejected' : 'unavailable'
+  return typeof status === 'number' && rejectedStatuses.has(status) ? 'rejected' : 'unavailable'
 }
 
 /**
@@ -409,17 +433,15 @@ Deno.serve(async (req: Request) => {
   const { data: userData, error: userError } = await anon.auth.getUser(token)
   const subject = userData?.user
 
-  // `userError` is not one shape (reviewer findings #1 and #2, 2026-08-16;
-  // see `classifyAuthError`'s own comment for the full history of what this
-  // block used to get wrong and why). `'rejected'` means the token was
-  // actively refused — including the cascade-deleted-session case, by
-  // name — and is reported as `unauthorized`, which the client reads as
-  // "already gone" (D7). `'unavailable'` means GoTrue never gave a real
-  // answer at all — a network failure, a 5xx, a rate limit — and must
-  // never be read as a rejection: that reports an untouched account as
-  // deleted and signs the rider out with nothing actually removed.
+  // `'rejected'` means the token was actively refused — including the
+  // cascade-deleted-session case, by name — and is reported as
+  // `unauthorized`, which the client reads as "already gone" (D7).
+  // `'unavailable'` means GoTrue never gave a real answer at all — a
+  // network failure, a 5xx, a rate limit — and must never be read as a
+  // rejection: that reports an untouched account as deleted and signs the
+  // rider out with nothing actually removed.
   if (userError) {
-    return classifyAuthError(userError) === 'rejected'
+    return classifyAuthError(userError, GETUSER_REJECTED_STATUSES) === 'rejected'
       ? json({ error: 'unauthorized' }, 401)
       : json({ error: 'verification_unavailable' }, 503)
   }
@@ -474,26 +496,20 @@ Deno.serve(async (req: Request) => {
   // means this never writes anywhere — the returned session, if any, is
   // discarded; only `error` is read.
   //
-  // **This is the more exposed of the two `classifyAuthError` call sites,
-  // not the less — reviewer finding #2 of the THIRD delta pass,
-  // 2026-08-16.** Before `classifyAuthError` existed, every `reauthError`
-  // became `reauth_required` ("wrong password"), which folded a `429` —
-  // GoTrue rate-limits the password grant harder than `/user`, and this call
-  // runs from the same shared Edge infrastructure the SECOND pass's finding
-  // #1 already named as more exposed than a browser — or a brief 5xx into
-  // "That password is incorrect." Nothing is deleted either way, so this was
-  // a wrong-message defect rather than an erasure one, but it was the same
-  // classification defect one call further down the same function.
-  // `classifyAuthError`'s `'unavailable'` branch reuses
-  // `verification_unavailable` here too: the rider is told to retry rather
-  // than told their password is wrong, whether the uncertainty came from
-  // verifying the token or from verifying the password.
+  // This endpoint rate-limits the password grant harder than `/user`, so a
+  // `429` here must stay `'unavailable'` — folding it into `reauth_required`
+  // would tell a rate-limited rider their password is wrong.
+  // `REAUTH_REJECTED_STATUSES` covers only the measured wrong-password
+  // status (see its own comment); everything else GoTrue could return here
+  // is treated the same as an outage. Nothing is deleted either way, so the
+  // worst case of getting this wrong is a rider told to retry rather than
+  // told the truth — never data lost.
   const { error: reauthError } = await anon.auth.signInWithPassword({
     email: subject.email,
     password,
   })
   if (reauthError) {
-    return classifyAuthError(reauthError) === 'rejected'
+    return classifyAuthError(reauthError, REAUTH_REJECTED_STATUSES) === 'rejected'
       ? json({ error: 'reauth_required' }, 401)
       : json({ error: 'verification_unavailable' }, 503)
   }
