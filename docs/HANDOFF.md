@@ -1554,7 +1554,68 @@ Two traps, both live:
 `CLAUDE.md` §Development Workflow has the commands and the refresh rules; the two traps above
 are the ones that only matter when choosing *what* to build.
 
-### The wave icon — authored into Figma 2026-08-16, redrawn from primitives 2026-08-17
+### A `figma:pull` today loses Chevron Down — check the icon export before you commit one
+
+**Measured 2026-08-17, on the pull PD-248 ran.** `npm run figma:icons` came back
+`Exported 53/54` with `Missing: Chevron Down`, and `chevron-right.svg` changed its `fill` from
+`#1A1A1A` to `#666666`. Neither had anything to do with the wave.
+
+The cause is the dedupe `.claude/agents/design-system.md` already warns about, sprung by content
+rather than by an authoring mistake: `extract.mjs` takes **every** node whose name starts with
+`Element / Icon / ` and keys them by name, last one walked wins. Two frame sets authored into the
+file that day — `AI / Clubs one screen / 2026-08-17` and `AI / Ride detail merged / 2026-08-17` —
+contain icon *instances* under those exact names, and they walk after the real components. So
+`Chevron Down` re-resolved to `I4166:7033;2067:10645`, which **did not** export — read that as a
+fact about that node, not about instances, because eleven icons in the set are instances and
+export fine (below) — and `Chevron Right` to a grey instance inside a note frame.
+
+**`ChevronDownIcon` has three importers** — `ClubPageMenu`, `ClubDetailPageMenu`, `RideCrewRail` —
+so regenerating on that pull drops an export those three still import. That fails loudly at `tsc`
+rather than shipping, which is the one piece of luck here. `chevron-right` is the quiet half: only
+its `fill` moved, and `components.mjs` rewrites every literal fill to `currentColor`, so
+`generated.tsx` is **byte-identical** and the wrong node is now canonical in `design/` with nothing
+to notice it.
+
+PD-248 kept its own diff to `design/icons/wave.svg` and `design/components/element-icon-wave.json`
+and reverted the rest of the pull, so the committed snapshot still points both chevrons at their
+real components. **That is a hold, not a fix** — the next full pull re-breaks it. `PD-261` carries
+the fix and both routes to it.
+
+**So `design/manifest.json` deliberately lags what `design/` contains.** It was reverted with the
+rest of the pull, and the wave came from a later Figma version, which nothing in `design/` records.
+`figma:check` decides staleness on `manifest.latestVersionId` alone, so it prints a flat `STALE`
+and cannot tell you that is on purpose — and the obvious response to `STALE` is the `figma:pull`
+that re-breaks the chevrons. Read a `STALE` here as "check `PD-261` first", until it lands.
+
+**Check `git diff` before you spend a network call — it is free and it catches both halves.**
+
+```bash
+git diff --stat design/icons/           # after a pull, BEFORE figma:icons
+git diff design/icons/index.json        # an id that moved under a name you did not touch
+```
+
+That is the whole alarm for the quiet half **before the render call is spent**: `chevron-right`
+produced a **byte-identical** `generated.tsx`, so until `figma:icons` runs and rewrites the SVG —
+where the moved fill does show — its id in `index.json` is the only place it is visible.
+
+```bash
+npm run figma:icons          # must print 54/54; a "Missing:" line is the alarm
+```
+
+**That one is the confirming check, not the first one, and the difference matters when the API is
+shut.** `figma:icons` calls `/v1/images` — the rate-limited bucket that has blocked this repo for
+days at a time — so a session under a 429 cannot run it, and would have no alarm at all if the
+`git diff` above were not written down. It also only fires *after* the pull has been spent.
+
+**The obvious cheap alarm is a third thing, and it does not work.** Filtering
+`icons/index.json` for instance-shaped ids (`I<id>;<id>`) looks like it would catch this and does
+not: **eleven** icons in the set — `arrow-right`, `avatar`, `block-account`, `coordinates`,
+`delete`, `edit`, `hide`, `image`, `lock-2`, `options`, `report` — already resolve to instance ids
+and export perfectly well. Re-derive that rather than trusting the list; the point is that the
+count is far from zero, so "resolved to an instance" is the *normal* state and cannot be the
+alarm. What broke Chevron Down was that particular instance, not instances as a class.
+
+### The wave icon — authored into Figma 2026-08-16, redrawn 2026-08-17, thinned to 2.20 the same day
 
 The like control is the motorcycle wave (PD-228) needed a glyph the set did not have, so it was
 authored **into** Figma rather than drawn in the repo — the first time anything here has written
@@ -1653,27 +1714,55 @@ glyph shipped light twice — once by an agent's judgement and once by a correct
 guessed after the product owner said it looked thin. Measured, it was **1.4px** against Chat
 Bubble's 2.2, and was then tuned to 2.2 to match.
 
-**The redraw did not inherit that match, and it is the open question on this icon.** Measured, it
-now comes in above the neighbour it was tuned against:
+**The redraw did not inherit that match; PD-248 restored it.** The redraw came in at 2.45, above
+the neighbour the traced glyph had been tuned against, and the product owner chose to re-match
+rather than accept it — *"Lets do B straight away"*, 2026-08-17, option B of that issue's table.
 
 ```bash
 npm run figma:measure -- wave chat-bubble paper-plane
-# wave 2.45 · chat-bubble 2.2 · paper-plane 2.5     (was: wave 2.2, traced)
+# wave 2.2 · chat-bubble 2.2 · paper-plane 2.5     (was: wave 2.45, redrawn; 2.2, traced)
 ```
 
-Left as drawn rather than silently thinned — matching Chat Bubble means altering a drawing the
-product owner approved, so which side gives is theirs to say.
+**Weight on this glyph is geometry, not a property, so "thinning" it is a redraw.** The
+`strokes` array is empty — see the trap below — so there was no number to turn down. What PD-248
+did instead, and the recipe to reuse, is a uniform **erosion**: re-strike the filled outline with a
+CENTER stroke of weight `2d`, `outlineStroke()` it, and subtract that band from the glyph. Every
+boundary moves inward by `d`, so the band loses `2d` of width and every *gap* — the notch between
+the fingers — gains it. `d = 0.12` took 2.45 to 2.20.
+
+**Two silent failures sit in that recipe and both were hit before it worked.** Neither errors,
+and both leave a plausible-looking glyph, which is why they are written down rather than left to
+be rediscovered:
+
+- **An `outlineStroke()` node is inert in a boolean.** `figma.subtract([glyph, band])` returns the
+  glyph *unchanged* — measured at erosion radii from 0.12 up to 2, where the result should have
+  been visibly destroyed. `figma.subtract` itself is fine: a plain rectangle cuts the same glyph in
+  half correctly. The fix is to round-trip the band through a fresh node —
+  `figma.createVector()`, assign `band.vectorPaths`, then subtract that.
+- **That fresh vector arrives carrying a default 1px CENTER stroke**, and the boolean bakes it in,
+  eroding a further **0.5px per side** on top of whatever you asked for. It reads as a working
+  erosion with the wrong constant: per-side shrink came out at `0.5 + d` and barely moved as `d`
+  swept. Set `strokes = []` on it. With that cleared, per-side shrink tracks `d` to four decimals.
+
+**Calibrate before writing to Figma, not after.** The two pipeline calls that carry a Figma edge
+back into the repo — `figma:pull` and `figma:icons` — are the rate-limited ones. `d` was picked by
+simulating the erosion locally first: rasterise `design/icons/wave.svg`, take an exact euclidean
+distance transform, keep pixels further than `d` from the background, and run
+`measure-icons.mjs`'s own median-run measurement over the result. That predicted 2.20 at
+`d = 0.12`, and the real pipeline returned 2.20.
 
 **Do NOT reach for `strokeWeight` in the snapshot to settle it — it is vestigial on this icon and
 the trap is that it reads perfectly plausible.** The obvious command is the one to avoid:
 
 ```bash
 node -e "const d=require('./design/components/element-icon-wave.json');
-         console.log(d.children[0].strokeWeight)"   # 2.2 — and it draws nothing
+         console.log(d.children[0].strokeWeight)"   # 1 — and it draws nothing
 ```
 
-That number sat beside a `strokes: []` array: the glyph is a **filled path**, so nothing applies a
-stroke and 2.2 is a leftover property. It is invisible in `design/`, because `extract.mjs` records
+That number sits beside a `strokes: []` array: the glyph is a **filled path**, so nothing applies
+a stroke and the number is a leftover property. It read 2.2 before PD-248 and reads 1 after —
+**it moved without the drawing's weight moving with it**, which is the cleanest possible
+demonstration that it measures nothing. It is invisible in `design/`, because `extract.mjs` records
 `strokeWeight` and not `strokes` — so a count across the set reads 40 of 46 at "2" and looks like
 a row this icon is breaking. Both readings were published in this repo before the raw file was
 checked. The REST node is where the answer is:
@@ -1689,8 +1778,8 @@ a solid glyph reports its own width — and compare against the icons a glyph wi
 beside, never a global average.
 
 **`inkPct` is not interchangeable with stroke weight, and the wave is the case that proves it.** It
-carries **25.1%** ink against Chat Bubble's 21.8%, because it is a hand rather than a simple round
-shape, and its bbox is **18.1x19.7** against their ~21x21 for the same reason. So the row is not
+carries **22.4%** ink against Chat Bubble's 21.8%, because it is a hand rather than a simple round
+shape, and its bbox is **17.8x19.4** against their ~21x21 for the same reason. So the row is not
 identical in mass whatever the stroke does — that is the glyph, not a defect.
 
 **The redraw moved the two numbers in opposite directions, which is the whole point of measuring
@@ -1698,6 +1787,23 @@ both.** Ink fell from the traced glyph's 34.9% to 25.1% while the stroke rose fr
 drop *is* the fix the product owner asked for — the detail crossing the fingers that read as noise
 at 24px — and a single "is it heavier" question cannot express it. A screenshot answers neither
 number, which is why both gates exist.
+
+**PD-248's thinning then moved them together, and that is the expected shape rather than a second
+finding.** Ink went 25.1% -> 22.4% as the stroke went 2.45 -> 2.20: a 10.7% drop against a 10.2%
+thinning, which is what removing a uniform 0.12 from each side of a band *is*. **Read a large ink
+drop as a defect only when the notch closed with it** — that pairing is detail being eaten, and it
+is the one this glyph has actually suffered. Here the notch went the other way: erosion widens
+every gap, so it is 0.24 wider at 24px than before.
+
+**Look at it as well as measuring it, and look at the raster rather than the vector** — render
+the committed SVG at **true 24px** and magnify that with nearest-neighbour, which is what a phone
+draws; a 4x vector render is a different picture and hides exactly the rasterisation faults worth
+catching. All three icons in the `/postcards` action row are `h-6 w-6`, so 24px is the real size
+rather than a proxy. Neither check substitutes for the other: a number cannot see a notch close,
+and a screenshot cannot see a 0.25px drift. Done that way on the committed `wave.svg` on
+2026-08-17, and it passed: notch open, no line across the two raised fingers. Recorded because
+this glyph shipped wrong twice on a guess, so "was the shipping file actually looked at" is a
+question the next session would otherwise have to answer by redoing it.
 
 **Three drafts were reviewed as `H`, `H2` and `H3`, and the shipped one is `H`.** Worth naming
 because the first pass shipped `H2` — one letter apart, and the visible difference is a line
