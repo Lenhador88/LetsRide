@@ -1565,8 +1565,9 @@ rather than by an authoring mistake: `extract.mjs` takes **every** node whose na
 `Element / Icon / ` and keys them by name, last one walked wins. Two frame sets authored into the
 file that day — `AI / Clubs one screen / 2026-08-17` and `AI / Ride detail merged / 2026-08-17` —
 contain icon *instances* under those exact names, and they walk after the real components. So
-`Chevron Down` re-resolved to `I4166:7033;2067:10645`, an instance id the render endpoint will not
-export at all, and `Chevron Right` to a grey instance inside a note frame.
+`Chevron Down` re-resolved to `I4166:7033;2067:10645`, which **did not** export — read that as a
+fact about that node, not about instances, because eleven icons in the set are instances and
+export fine (below) — and `Chevron Right` to a grey instance inside a note frame.
 
 **`ChevronDownIcon` has three importers** — `ClubPageMenu`, `ClubDetailPageMenu`, `RideCrewRail` —
 so regenerating on that pull drops an export those three still import. That fails loudly at `tsc`
@@ -1577,14 +1578,35 @@ to notice it.
 
 PD-248 kept its own diff to `design/icons/wave.svg` and `design/components/element-icon-wave.json`
 and reverted the rest of the pull, so the committed snapshot still points both chevrons at their
-real components. **That is a hold, not a fix** — the next full pull re-breaks it. The fix is a
-Figma rename and is filed.
+real components. **That is a hold, not a fix** — the next full pull re-breaks it. `PD-261` carries
+the fix and both routes to it.
+
+**So `design/manifest.json` deliberately lags what `design/` contains.** It was reverted with the
+rest of the pull, and the wave came from a later Figma version, which nothing in `design/` records.
+`figma:check` decides staleness on `manifest.latestVersionId` alone, so it prints a flat `STALE`
+and cannot tell you that is on purpose — and the obvious response to `STALE` is the `figma:pull`
+that re-breaks the chevrons. Read a `STALE` here as "check `PD-261` first", until it lands.
+
+**Check `git diff` before you spend a network call — it is free and it catches both halves.**
+
+```bash
+git diff --stat design/icons/           # after a pull, BEFORE figma:icons
+git diff design/icons/index.json        # an id that moved under a name you did not touch
+```
+
+That is the whole alarm for the quiet half: `chevron-right` produced a **byte-identical**
+`generated.tsx`, so its moved id in `index.json` was the only place it was visible at all.
 
 ```bash
 npm run figma:icons          # must print 54/54; a "Missing:" line is the alarm
 ```
 
-**That line is the only tripwire, and the obvious cheaper one does not work.** Filtering
+**That one is the confirming check, not the first one, and the difference matters when the API is
+shut.** `figma:icons` calls `/v1/images` — the rate-limited bucket that has blocked this repo for
+days at a time — so a session under a 429 cannot run it, and would have no alarm at all if the
+`git diff` above were not written down. It also only fires *after* the pull has been spent.
+
+**The obvious cheap alarm is a third thing, and it does not work.** Filtering
 `icons/index.json` for instance-shaped ids (`I<id>;<id>`) looks like it would catch this and does
 not: **eleven** icons in the set — `arrow-right`, `avatar`, `block-account`, `coordinates`,
 `delete`, `edit`, `hide`, `image`, `lock-2`, `options`, `report` — already resolve to instance ids
@@ -1772,12 +1794,12 @@ drop as a defect only when the notch closed with it** — that pairing is detail
 is the one this glyph has actually suffered. Here the notch went the other way: erosion widens
 every gap, so it is 0.24 wider at 24px than before.
 
-**It was looked at, not only measured.** The committed `design/icons/wave.svg` was rasterised at
-**true 24px** in Chromium and magnified with nearest-neighbour — the rasterisation a phone
-performs, not a 4x vector render of it — beside Chat Bubble and Paper Plane. No line crosses the
-two raised fingers, the notch is open, and the glyph reads as the same drawing. Both checks are
-needed and neither substitutes: a number cannot see a notch close, and a screenshot cannot see a
-0.25px drift.
+**Look at it as well as measuring it, and look at the raster rather than the vector** — render
+the committed SVG at **true 24px** and magnify that with nearest-neighbour, which is what a phone
+draws; a 4x vector render is a different picture and hides exactly the rasterisation faults worth
+catching. All three icons in the `/postcards` action row are `h-6 w-6`, so 24px is the real size
+rather than a proxy. Neither check substitutes for the other: a number cannot see a notch close,
+and a screenshot cannot see a 0.25px drift.
 
 **Three drafts were reviewed as `H`, `H2` and `H3`, and the shipped one is `H`.** Worth naming
 because the first pass shipped `H2` — one letter apart, and the visible difference is a line
