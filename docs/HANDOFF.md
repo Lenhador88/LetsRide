@@ -1568,6 +1568,12 @@ undefined behaviour in an unattended session. Check rather than assume:
 #   its prompt must name queue-dispatch.md, not queue-pickup.md
 ```
 
+**No ordinary session can make that edit, measured 2026-08-17** — `update_trigger` returns
+*"editing the prompt of a routine whose fires deliver into a session that is not your own is not
+available via this tool"*. So it is the dispatcher session's own call or a Routines-UI edit, and
+**`PD-241` carries it as an owner action** along with the re-enable and the missing fallback.
+Do not spend another session rediscovering the refusal.
+
 **Two facts measured 2026-08-16 that the trigger list will not tell you, and both need re-reading
 rather than trusting:**
 
