@@ -791,8 +791,10 @@ reads 2 members until someone new signs up.
 
 **`062` is PD-166's and is on DEV ONLY, applied 2026-08-17.** It revokes table-level SELECT on
 `public.postcards` from `authenticated` and re-grants seven columns — `ride_id` is not among them —
-and adds `public.ride_journal_postcard_ids(ride uuid)`, the `security definer` accessor the ride
-Journal filters through. The product owner chose that shape (option A on PD-166, 2026-08-17) over
+adds `public.ride_journal_postcard_ids(ride uuid)`, the `security definer` accessor the ride Journal
+filters through, and **restates the `ride_id` column comment**, because `041` had put the grant
+claim it revokes into `pg_description`, which is where this repo states a per-column contract and
+where `docs/reference/schema.md` sends its readers. The product owner chose that shape (option A on PD-166, 2026-08-17) over
 accepting the channel; `041` had granted the column deliberately, because **Postgres checks a column
 privilege to FILTER as well as to return**, so the Journal's `.eq('ride_id', …)` and the correlation
 channel wanted the identical grant. `041`'s assertion of that grant is inverted in place in
@@ -807,7 +809,14 @@ comments were dropped to pass the file as a string, so `md5(prosrc)` for the acc
 `aaa5ed13bfd18879df1a4b5fa9a4c38a` on DEV **and** on the scratch database `run.sh` built from the
 file verbatim. Grants read back scoped to their grantee: table-level SELECT `false`, `ride_id`
 SELECT `false`, `ride_id` INSERT still `true`, `anon` still 0. The `postcards` SELECT policy `qual`
-is `c8fb49b026866743283b3d7ecfbc5122`, unmoved — this file changes a grant, not a policy. Advisors
+is `c8fb49b026866743283b3d7ecfbc5122`, unmoved — this file changes a grant, not a policy. **The
+column comment is covered by the same diff and was added to the file after that first apply**, so it
+was applied separately and checked the same way: `md5(col_description('public.postcards'::regclass,
+…))` is `92ab2c491f6a71552b1e85bda1672b4f` on DEV and on the scratch database. One consequence, named
+rather than discovered: DEV's *recorded* statement for `062` is now a statement short of the file.
+That is benign — `db:drift` compares names, `CLAUDE.md` §Supabase Rules already calls a
+recorded-vs-file mismatch the norm and prescribes comparing the object, and PROD takes the file whole
+at promotion. Advisors
 re-read afterwards: **ten**, the eighth `authenticated_security_definer_function_executable` being
 the new accessor, and `auth_leaked_password_protection` still the only outstanding one.
 
