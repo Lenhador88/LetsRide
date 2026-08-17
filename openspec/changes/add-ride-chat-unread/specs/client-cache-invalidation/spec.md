@@ -10,6 +10,20 @@
 > `['rides','detail',<id>,'messages']` — so no call site can invalidate the thread without reaching
 > the badge, which is exactly what that requirement's first scenario asks for. And the answer is
 > `security invoker`, so it obeys every predicate the thread obeys, which is its second.
+>
+> **Corrected at build time, and this is the correction that matters most in this file: the forward
+> reach is real and INERT, and the earlier text read as though it delivered freshness.** The only
+> call site invalidating the thread's key is `sendRideMessage`, which runs in the *author's* browser
+> about the *author's* message — which the own-message exclusion below guarantees can never light
+> that author's own dot. So no cached answer can change. Another rider's message arrives over
+> Realtime and the chat screen calls `refetch()` **directly** rather than `invalidate`, and the dot
+> is not mounted on that screen anyway.
+>
+> Keep the nesting — its *reverse* asymmetry is the valuable half and is not inert — but do not cite
+> it as evidence that the badge tracks arrivals. The dot's actual refresh boundary is stated as its
+> own requirement in `ride-chat-unread`; without it, the first scenario below reads as satisfied
+> evidence of something nothing delivers. `keys.ts`'s `notifications` block already records one
+> nesting argument that was wrong, and this is deliberately not a second.
 
 ## ADDED Requirements
 

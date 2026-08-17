@@ -260,9 +260,19 @@ the database's on the other: a device running ten minutes fast silently marks as
 that arrives in the next ten minutes, and a slow one re-lights the dot on messages the rider has
 seen. Nothing anywhere goes red.
 
-A DEFAULT cannot do this job — it applies only when the column is **omitted**, and an upsert's
-UPDATE arm must name the column. The column grant therefore stays and the trigger is what makes the
-value true.
+A DEFAULT cannot do this job — it applies only when the column is **omitted**, and PostgREST will
+name it.
+
+**Corrected at build time: withholding the column grant, `034` §4b's mechanism, is not blocked by
+the reason first written here, and that reason must not be repeated.** It said the upsert's UPDATE
+arm "must name `last_read_at`", so revoking the grant would fail `42501`. It would not — PostgREST
+builds `on conflict … do update set` over the columns present in the request *body*, so a client
+that omits the column needs no privilege on it. The real constraint is narrower: with the column
+absent from the body, what ADVANCES the value on the UPDATE arm is the trigger, and what makes the
+statement reach the trigger is PostgREST's SET-list construction — an external tool's behaviour
+rather than a database guarantee, and one the RLS suite cannot observe because it speaks SQL and not
+HTTP. So the writer SHALL send the column, the grant SHALL permit it, and the trigger SHALL make the
+value true regardless: two visible mechanisms, neither inferred.
 
 #### Scenario: A client-supplied timestamp is overwritten, not merely ignored
 - **WHEN** a rider upserts a watermark naming `last_read_at` with any value, past or future
@@ -318,6 +328,15 @@ visible way this feature can be wrong, and it is the normal path rather than an 
   condition inside an effect that runs regardless — matching `MarkClubSeen`
 - **AND** the database SHALL refuse the write regardless, so the conditional mount is an
   optimisation and not the enforcement
+
+#### Scenario: A hidden tab defers the mark rather than taking it
+- **WHEN** messages arrive while the chat is mounted but the document is not visible — a backgrounded
+  tab, or a phone in a pocket
+- **THEN** the watermark SHALL NOT advance, because nobody has seen them
+- **AND** it SHALL advance when the document becomes visible again, so the effect is a deferral and
+  not a loss
+- **AND** visibility SHALL be the test rather than focus, because a thread behind a dialog or beside
+  another window is still being read
 
 #### Scenario: A failed mark is silent
 - **WHEN** the watermark write fails
@@ -392,6 +411,16 @@ visiting the screen is worse than a missing one. The same rule is restated here 
 - **AND** this SHALL be indistinguishable from a thread the rider has read to the end, which is
   correct — both mean "nothing here for you"
 
+#### Scenario: The dot is answered on mount and does not track arrivals
+- **WHEN** a rider is looking at the ride plan or the crew page and another rider posts
+- **THEN** the dot MAY remain absent until the screen is next mounted, and this SHALL be understood
+  as the feature's refresh boundary rather than a defect
+- **AND** the key's nesting under the thread's SHALL NOT be cited as delivering live freshness: the
+  only writer of that key runs in the author's own browser about their own message, which never
+  lights their own dot, so the reach is correct and inert
+- **AND** the dot SHALL be correct whenever it is drawn, which is what the boundary buys — a badge on
+  a control the rider must navigate to in order to see is answered at the moment they can see it
+
 #### Scenario: A partial failure costs only the dot
 - **WHEN** the unread read fails while the ride read succeeds
 - **THEN** the ride plan SHALL render in full
@@ -443,6 +472,9 @@ the schema does not give.
 
 ### Requirement: Every role's reach into a ride's unread state SHALL be stated
 
+Every role below SHALL have the reach the table gives it and no other, and each row SHALL have at
+least one assertion behind it in `supabase/tests/rls_test.sql`.
+
 | Role | Read own watermark | Write own watermark | Read another rider's watermark | Dot lights |
 |---|---|---|---|---|
 | Ride organizer (crew row or not) | Yes | Yes | **No** | On other riders' messages |
@@ -455,6 +487,7 @@ the schema does not give.
 | Signed-in rider who cannot see the ride | n/a — no row | **No** | **No** | **Never** |
 | Club owner / club admin of the ride's club, not crew | n/a — no row | **No** | **No** | **Never** — the club roles confer nothing here |
 | Blocked author's message | n/a | n/a | n/a | **Never lights the blocker's dot** |
+| Rider with `terms_accepted_at` NULL | n/a — no row | **No** | **No** | **Never** — cannot be crew |
 | Signed-out visitor (`anon`) | **No** | **No** | **No** | **Never** |
 
 `club_members.role` has had `admin` since `001`, and neither `admin` nor a club's `owner` appears
@@ -466,6 +499,16 @@ unread state, and that is stated here because it is the assumption most likely t
 - **THEN** every row above SHALL have at least one assertion behind it
 - **AND** the three "no chat" rows SHALL each be asserted against the conjunct that refuses them, so
   that removing either conjunct fails a different case
+
+#### Scenario: An un-consented rider is refused, and the chain that refuses them is asserted
+- **WHEN** a rider whose `terms_accepted_at` is NULL writes a watermark for a ride they can see
+- **THEN** it SHALL be refused — not by a participation-gate trigger on this table, which it
+  deliberately does not carry, but because `023`'s gate on `ride_members` stops them acquiring the
+  crew standing the `WITH CHECK` requires
+- **AND** **both links SHALL be asserted**, because the argument is transitive and the gate is
+  narrower than "every write": an account created by calling GoTrue's `/auth/v1/signup` directly
+  reaches real write paths with the stamp NULL, so an unasserted chain is exactly the assumption
+  that "silently becomes whatever the migration author assumed"
 
 #### Scenario: A club admin gains nothing
 - **WHEN** a club's admin or owner, who is not on a ride's crew, reads or writes unread state for

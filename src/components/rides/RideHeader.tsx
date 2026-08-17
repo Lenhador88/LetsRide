@@ -1,6 +1,7 @@
 import Link from 'next/link'
-import { ChatBubbleIcon, EditIcon } from '@/components/icons/generated'
+import { EditIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
+import { RideChatButton } from '@/components/rides/RideChatButton'
 import { RidePageMenu } from '@/components/rides/RidePageMenu'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { routes } from '@/lib/routes'
@@ -38,9 +39,11 @@ import { routes } from '@/lib/routes'
  * component for the measurement.
  *
  * `Ride - Ride plan - Sub pages` (`2375:9114`) also puts a 16×16 `Warning/100`
- * notification dot on this button. **Not drawn** — there is no unread model yet
- * (Linear PD-120 extends `015`'s watermark) and a badge that is always absent is
- * indistinguishable from one that is broken.
+ * notification dot on this button. **Drawn as of `061`** — PD-120 built the
+ * watermark this paragraph used to say was missing. The dot lives inside
+ * `RideChatButton` along with the button itself rather than arriving here as a
+ * prop; that component's docstring has the reasoning, and it is the same
+ * argument `isCrew` above makes about a control nobody can forget to wire.
  */
 export function RideHeader({
   rideId,
@@ -115,17 +118,10 @@ export function RideHeader({
           </Link>
         ) : undefined
       }
-      action={
-        !onChat && isCrew ? (
-          <Link
-            href={routes.rideChat(rideId)}
-            aria-label="Ride chat"
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
-          >
-            <ChatBubbleIcon className="h-6 w-6" />
-          </Link>
-        ) : undefined
-      }
+      // The button and its unread dot are one component, so this header issues
+      // no query and this condition is the only gate on either. See
+      // `RideChatButton` for why the badge is not a prop.
+      action={!onChat && isCrew ? <RideChatButton rideId={rideId} /> : undefined}
     />
   )
 }

@@ -1,6 +1,21 @@
-import { describe, expect, it } from 'vitest'
-import { groupMessages } from '@/lib/data/ride-messages'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getRideChatUnread, groupMessages } from '@/lib/data/ride-messages'
 import type { RideMessage } from '@/types'
+
+/**
+ * The client is a stub rather than a mock of `@supabase/supabase-js`, the same
+ * call `places.test.ts` makes: what is worth pinning is the contract
+ * `getRideChatUnread` relies on — one `.rpc()` call, `{ data, error }` — and not
+ * the library's internals. Everything that decides the *answer* lives in
+ * `ride_has_unread` and is asserted in `supabase/tests/rls_test.sql`, where it
+ * can be tested against real policies; what is testable here is only how this
+ * function behaves around that answer.
+ */
+const rpc = vi.fn()
+
+vi.mock('@/lib/supabase/resolve', () => ({
+  resolveSupabase: async () => ({ rpc }),
+}))
 
 const message = (
   id: string,
@@ -107,5 +122,55 @@ describe('groupMessages', () => {
     const optimistic = { ...message('b', '', '2026-08-07T09:00:30Z'), mine: true, pending: true }
     const grouped = groupMessages([message('a', 'rider-1', '2026-08-07T09:00:00Z'), optimistic])
     expect(grouped.map((m) => m.startsGroup)).toEqual([true, true])
+  })
+})
+
+describe('getRideChatUnread', () => {
+  beforeEach(() => {
+    rpc.mockReset()
+    rpc.mockResolvedValue({ data: false, error: null })
+  })
+
+  it('asks the database, by ride, through the one RPC', async () => {
+    rpc.mockResolvedValue({ data: true, error: null })
+
+    expect(await getRideChatUnread('11111111-1111-4111-8111-111111111111')).toBe(true)
+    expect(rpc).toHaveBeenCalledWith('ride_has_unread', {
+      ride: '11111111-1111-4111-8111-111111111111',
+    })
+  })
+
+  it('is false when the thread holds nothing new', async () => {
+    expect(await getRideChatUnread('11111111-1111-4111-8111-111111111111')).toBe(false)
+  })
+
+  /**
+   * The rule `NotificationsHeaderControl` already states: a dot the rider cannot
+   * clear by visiting the screen is worse than a missing one. A failed read is
+   * therefore indistinguishable from "nothing unread" *by design*, and this is
+   * the assertion that stops someone making it throw so the screen can "handle"
+   * it — the screen must not handle it at all.
+   */
+  it('draws no dot when the read fails, rather than throwing or reporting unread', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'nope' } })
+    expect(await getRideChatUnread('11111111-1111-4111-8111-111111111111')).toBe(false)
+  })
+
+  it('is false when the database answers with something that is not a boolean', async () => {
+    // PostgREST returning `null` for a function that cannot return NULL should
+    // not be readable as "true-ish". `data === true` rather than `!!data`.
+    rpc.mockResolvedValue({ data: null, error: null })
+    expect(await getRideChatUnread('11111111-1111-4111-8111-111111111111')).toBe(false)
+  })
+
+  /**
+   * A hand-edited URL reaches `.rpc()` as `22P02`, which PostgREST turns into a
+   * 400. `getRideMessages` guards for the same reason and routes it to
+   * `notFound()`; a decoration has nowhere to route, so it answers "no dot" and
+   * — the half worth asserting — never spends the round trip.
+   */
+  it('refuses a malformed ride id without calling the database', async () => {
+    expect(await getRideChatUnread('not-a-uuid')).toBe(false)
+    expect(rpc).not.toHaveBeenCalled()
   })
 })
