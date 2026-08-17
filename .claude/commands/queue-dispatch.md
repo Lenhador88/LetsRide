@@ -156,8 +156,12 @@ a clean pass:
 
 **Both exits send their own `PushNotification`**, because a gate held with no data has no clock
 behind it and STEP 6 therefore cannot age it. A stop nothing can age is a stop nothing reports.
-**These two are the only true stops in this step** — with no session list you cannot safely read
-the board either, since a dispatch decision would follow. Every other hold continues to STEP 2.
+**These two skip STEP 2's liveness check and go straight to STEP 6**, which is a narrower
+consequence than stopping. The liveness check compares each dispatch record's `session` against
+the session list, so without that list it cannot run — but STEP 6's issue-age and `Needs help`
+clocks read only the board, and stopping short of them would reproduce the very gap this step's
+"hold means dispatch nothing, not stop" rule exists to close. Read the board, run the clocks,
+dispatch nothing.
 
 ---
 
@@ -188,13 +192,24 @@ mcp__Linear__list_comments  issueId=<each issue in Development (AI)>
 Take the most recent comment beginning `<!-- dispatch-record -->` and read its `session`, `paths`,
 `migration` and `primitive` fields. STEP 5 is what writes it.
 
-**Check each record's `session` against the `list_sessions` response you already hold.** A record
-naming a session that is `SESSION_STATUS_ARCHIVED`, or that does not appear at all, is a child
-that is gone while its issue is still claimed. **Move that issue back to `Queued (AI)`, comment
-saying the child ended without reaching `Deployed to DEV`, and carry on** — it is then an ordinary
-candidate again. This is the one liveness signal that does not depend on a clock, and without it
-the only detector is STEP 6's age, behind a branch-tip grep this repo's branch names usually
-defeat.
+**Check each record's `session` against the `list_sessions` response you already hold.**
+
+- **`SESSION_STATUS_ARCHIVED` → the child is gone.** Move that issue back to `Queued (AI)`,
+  comment saying the child ended without reaching `Deployed to DEV`, and carry on. It becomes a
+  candidate again on the **next** firing; this firing's candidate list was read before the move.
+- **Absent from the list → freeze and notify**, exactly as for a record-less issue below. **Do
+  not treat absence as death.** Nothing establishes that the list is complete for arbitrarily old
+  sessions, and the plausible cause of absence — retention or pruning — bites hardest on the
+  long-running child this check is meant to distinguish from a dead one. Unclaiming a *live*
+  child's issue re-dispatches a story that is already being built, and STEP 3 of `queue-pickup.md`
+  says plainly that nothing downstream can see it: both children read the status they expect.
+  It would also retire that story's record from the in-flight set, so the migration cap would
+  count zero and could admit two more writers of the same `060_*.sql`.
+- **`SESSION_STATUS_IDLE` is not death either** — it is the ordinary state of a child between
+  turns. Only `ARCHIVED` is positive evidence.
+
+This is the one liveness signal that does not depend on a clock. STEP 6's age still works without
+it, including with no branch to grep, so this is a faster detector rather than the only one.
 
 **An in-flight issue with no dispatch record at all is a dispatch you cannot reason about**: it
 was claimed by something that did not follow this file, or the record write failed between the
@@ -234,6 +249,12 @@ outranks its own children on priority, so this is a real trap rather than a hypo
 ---
 
 ## STEP 3 — Scout the candidates
+
+**If a hold from STEP 1 or a freeze from STEP 2 is in force, skip this step and go straight to
+STEP 6.** Scouting is the expensive half of a firing — `batch size + 2` agents, each re-paying
+`CLAUDE.md` — and it *writes to the board*, moving stale candidates to `Needs decision`. A held
+firing that scouts anyway spends more than the usage gate saves and mutates the board it was told
+not to act on.
 
 **Do not dispatch on titles.** A batch is only safe if the stories in it do not overlap, and
 nothing on the board says what a story will touch.
@@ -439,8 +460,19 @@ Ask how long the oldest of these has been true:
   session is working" is not.
 
 **If the oldest is more than 3 hours old, send ONE push notification naming it and saying the
-queue is stalled — then record that you did**, as a comment on the issue beginning
-`<!-- stall-alarm -->`, and never alarm on an issue that already carries one.
+queue is stalled — then record that you did**, as a comment beginning
+`<!-- stall-alarm session:<id> -->`, naming the same session id as the dispatch record it
+concerns. **Never alarm on a dispatch that already carries one.**
+
+**Scope the marker to the dispatch, never to the issue.** A returned issue is re-dispatched as an
+ordinary candidate, so an issue-scoped marker would silence the alarm for every *later* child of
+that story — the never-clearing shape again, arriving through the mechanism meant to prevent
+double-notifying. Match on the session id, or equivalently ignore any alarm older than the most
+recent `<!-- dispatch-record -->` on that issue.
+
+**Fall through when the oldest subject is already alarmed**, rather than stopping: take the next
+oldest that is not. Reading only the single oldest would let one permanently-alarmed story hide
+every stalled one behind it.
 
 **Once-ness is durable rather than probabilistic, and that is a correction.** The rule used to be
 a `[3h, 4h)` window, on the reasoning that a narrow band fires roughly once. It does — but only if
@@ -463,8 +495,16 @@ self-heals instead.
 
 - **A batch was dispatched** → one `PushNotification` naming the issues, and saying whether a cap
   trimmed the batch.
-- **A gate is held with work waiting** → nothing, unless it is inside the stall window above.
-  This is the ordinary state while the owner works and notifying on it would mean a push per hour.
+- **The owner-activity gate is held with work waiting** → nothing, unless the stall clock above
+  says otherwise. This is the ordinary state while the owner works, and notifying on it would mean
+  a push an hour.
+- **A hold that nothing ages** → notify, but **only once per condition**. Three qualify: the two
+  `list_sessions` failures, the usage hold, and STEP 2's record-less freeze. None has a subject
+  the stall clock can age, so silence would mean no report ever — but a sustained one would
+  otherwise send a push every hour, which is the thing the row above refuses. For the freeze,
+  write `<!-- stall-alarm session:none -->` on the issue and skip it while it carries one; the two
+  session-list failures have no issue to mark, so they repeat, and that is accepted because they
+  mean the connector is down.
 - **Empty queue, every candidate stale or blocked, or a batch of zero** → silence.
 
 ### How you get woken again
