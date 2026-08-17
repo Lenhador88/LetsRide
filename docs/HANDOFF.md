@@ -1684,28 +1684,27 @@ single path, which costs nothing here because these are filled paths already —
 
 ### The first tab says `Postcards` and the design says `Home` — 2026-08-17
 
-PD-244 renamed the nav tab's label and that screen's header together. **The design was not
-changed and is not going to be**: `v2 / Component / Header` still measures a centred "Home", and
-the frames are still `Home - Postcards - *`. So this is the one place in the app where a session
-reading the design and matching it exactly would be *reverting shipped copy* — which is why it is
-recorded in three places, `CLAUDE.md` §Product Scope, `docs/FIGMA-FIDELITY-TODO.md` §Home, and
-here.
+PD-244 renamed the nav tab's label and that screen's header. **The design was not changed and is
+not going to be**: `v2 / Component / Header` still measures a centred "Home". So a session doing
+the right thing — reading `design/` rather than the API, per `CLAUDE.md` §Design System — gets
+"Home" back and would be *reverting shipped copy* by matching it.
 
-```bash
-sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep "label:"
-grep -n 'Header title=' "src/app/(app)/postcards/page.tsx"
-```
+**Nothing automated stops that revert.** `docs:check`'s three nav claims all measure a **count**
+(`grep -c "href:"` over `navItems`), and the one that pins the label list pins it in the *prose*
+only — so restoring `label: 'Home'` in `Navbar.tsx` leaves the whole sweep green. The tripwire is
+the prose in `CLAUDE.md` §Product Scope, which is why that note is there rather than only here.
 
-**The icon did not follow the label and that is deliberate, not an oversight** — the tab is still
-`HomeIcon`, a house. The generated set has no postcard glyph, `MailboxIcon` is the Inbox epic's,
-and drawing one means writing to Figma, which takes an explicit owner ask (`CLAUDE.md` §Design
-System's fourth rule). Filed as its own issue rather than absorbed — PD-244's closing comment
-links it.
+**The tab's accessible name changed with the label, and there is no `aria-label` insulating it** —
+`Navbar.tsx` renders `aria-current`, the icon, then `{label}`, so the visible text *is* the
+accessible name. `npm run walk` is unaffected because it selects `nav a[href="…"]` and asserts
+nothing on tab text (`grep -in home scripts/walk.mjs` is 0), **not** because the tabs carry an
+`aria-label` — they do not. Anything added later that asserts a nav item by accessible name must
+expect "Postcards".
 
-**Two things it deliberately did not touch**, both of which look like misses: the route is still
-`/postcards`, and `npm run walk` was not changed because it never read the label — it clicks
-`nav a[href="…"]` and asserts on `aria-label`, so `grep -in home scripts/walk.mjs` is 0 both
-before and after.
+**The icon deliberately did not follow the label**: still `HomeIcon`, a house. The generated set
+has no postcard glyph, `MailboxIcon` is reserved for the Inbox tab, and drawing one means writing
+to Figma — an explicit owner ask (`CLAUDE.md` §Design System's fourth rule), with the licence
+settled first. Tracked separately in Linear rather than absorbed here.
 
 ---
 
