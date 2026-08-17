@@ -175,8 +175,10 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
   from `Backlog AI`, `Todo Human`, `Todo AI` or `Needs decision`; `Todo AI` is the one to be
   careful with, because the name reads like permission and is not one.
 - **In flight** — everything in `Development (AI)`. Those are claimed by a child that is still
-  working. **Do not dispatch them again, and do not treat them as a lock on the queue** — but you
-  **must** read their dispatch records, because STEP 4's caps are evaluated against them.
+  working. **Do not dispatch them again, and do not treat them as a full stop on the queue the way
+  `Needs help` is** — but you **must** read their dispatch records, because STEP 4's caps are
+  evaluated against them and because **each live one occupies one of the two concurrency slots**.
+  The count is below, after the liveness check that says which of them are real.
 
 ### The dispatch record — how a later firing knows what is in flight
 
@@ -210,6 +212,18 @@ Take the most recent comment beginning `<!-- dispatch-record -->` and read its `
 
 This is the one liveness signal that does not depend on a clock. STEP 6's age still works without
 it, including with no branch to grep, so this is a faster detector rather than the only one.
+
+**Now count the free slots**, because STEP 3's scout count and STEP 4's batch are both derived from
+it rather than from a flat number:
+
+```
+free slots = 2 − (issues still in `Development (AI)` after the check above)
+```
+
+An issue you just returned to `Queued (AI)` because its child was `ARCHIVED` does not occupy a
+slot; one whose session is `IDLE` does, that being the ordinary state of a child between turns.
+**At zero free slots, dispatch nothing and skip STEP 3 as well** — scouting is the expensive half
+of a firing and there is no batch to scout for. Go to STEP 6, which is silent in that case.
 
 **An in-flight issue with no dispatch record at all is a dispatch you cannot reason about**: it
 was claimed by something that did not follow this file, or the record write failed between the
@@ -250,19 +264,19 @@ outranks its own children on priority, so this is a real trap rather than a hypo
 
 ## STEP 3 — Scout the candidates
 
-**If a hold from STEP 1 or a freeze from STEP 2 is in force, skip this step and go straight to
-STEP 6.** Scouting is the expensive half of a firing — `batch size + 2` agents, each re-paying
-`CLAUDE.md` — and it *writes to the board*, moving stale candidates to `Needs decision`. A held
-firing that scouts anyway spends more than the usage gate saves and mutates the board it was told
-not to act on.
+**If a hold from STEP 1 is in force, a freeze from STEP 2 is in force, or STEP 2 counted zero free
+slots, skip this step and go straight to STEP 6.** Scouting is the expensive half of a firing —
+`free slots + 2` agents, each re-paying `CLAUDE.md` — and it *writes to the board*, moving stale
+candidates to `Needs decision`. A held firing that scouts anyway spends more than the usage gate
+saves and mutates the board it was told not to act on.
 
 **Do not dispatch on titles.** A batch is only safe if the stories in it do not overlap, and
 nothing on the board says what a story will touch.
 
-**Scout in priority order, and stop once you have enough.** Scout the first `batch size + 2`
+**Scout in priority order, and stop once you have enough.** Scout the first `free slots + 2`
 candidates, never the whole column: each scout re-pays `CLAUDE.md` in a fresh window, and a
-ten-deep queue would otherwise scout ten every hour *and* on every child poke, to dispatch three.
-The `+ 2` is the margin for candidates the scout drops as stale or blocked.
+ten-deep queue would otherwise scout ten every hour *and* on every child poke, to dispatch at most
+two. The `+ 2` is the margin for candidates the scout drops as stale or blocked.
 
 Spawn them in parallel, in a single message. Each is cheap and read-only:
 
@@ -346,12 +360,19 @@ DEV Supabase project**, whose dangerous half the migration cap covers. `WALK_FIX
 it are deliberately uncapped: they create a ride and a club through the app's own forms, which two
 children can do concurrently without interfering.
 
-**Batch size: at most 2.** Product owner, 2026-08-17: *"I want to scale down our dispatcher to 2
-sessions in parallel max."* It started at 3 — a starting position rather than a measured ceiling,
-chosen because the three sessions running concurrently on 2026-08-16 (PRs #226, #227, #228) had
-zero `src/` overlap and conflicted only on `docs/HANDOFF.md`. **Moving it is the owner's call, not
-a session's**, in either direction: nothing here measures what three concurrent builds cost them.
-**Say in the notification when the caps trimmed a batch**, so they can see whether 2 is binding or
+**Concurrency cap: at most 2 children in flight at once.** Product owner, 2026-08-17: *"I want to
+scale down our dispatcher to 2 sessions in parallel max."* So **this firing's batch is STEP 2's
+`free slots`, never 2 flat**: two in flight means dispatch nothing, one means dispatch one.
+
+**Read it as a total rather than a per-firing batch size, because the two come apart exactly where
+it matters.** Children outlive the firing that spawned them, STEP 1 excludes them from its gate by
+design, and STEP 2 says `Development (AI)` is no lock on the queue — so a per-batch reading lets
+the next hourly firing add two more alongside two still building, and four run in parallel with
+every rule in this file satisfied and nothing anywhere red.
+
+**Not a measured ceiling, and moving it is the owner's call rather than a session's** — nothing
+here measures what concurrent builds cost them. **Say in the notification when the caps trimmed a
+batch, and how many slots were already taken**, so they can see whether the cap is binding or
 decorative.
 
 **Everything not admitted simply waits.** It stays in `Queued (AI)`, it is not commented on, and
@@ -496,7 +517,8 @@ self-heals instead.
 ### What else this step sends, and what it does not
 
 - **A batch was dispatched** → one `PushNotification` naming the issues, and saying whether a cap
-  trimmed the batch.
+  trimmed the batch — including how many of the two slots were already taken when the firing
+  started.
 - **The owner-activity gate is held with work waiting** → nothing, unless the stall clock above
   says otherwise. This is the ordinary state while the owner works, and notifying on it would mean
   a push an hour.
