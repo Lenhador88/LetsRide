@@ -214,7 +214,7 @@ export const claims = [
     // the promotion turned it red on cue, and it is pinned back to LEVEL. The
     // pin is on the RELATIONSHIP in both directions; do not relax it to the
     // count just because the two projects agree today.
-    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — LEVEL/,
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV AHEAD/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

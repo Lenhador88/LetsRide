@@ -5296,26 +5296,31 @@ reset role;
 select set_config('test.uid', '', false);
 
 -- ---------------------------------------------------------------------------
--- 7.12c — ride_created_in_club does NOT, and after 054 that is a GAP rather
---         than a consequence
+-- 7.12c — ride_created_in_club DOES reach an ownerless owner since 060, and
+--         the history of this block is the whole lesson
 -- ---------------------------------------------------------------------------
--- The behaviour asserted here is unchanged by 054 and still correct: the
--- fan-out reads `club_members` by direct query, because `is_club_member` is
--- caller-relative (it resolves auth.uid()) and a caller-relative helper cannot
--- compute a recipient set. An ownerless owner is therefore notified of nothing
--- in their own club.
+-- ** THE EXPECTED VALUE BELOW HAS BEEN INVERTED TWICE AND IS NOW A POSITIVE. **
+-- 036 §7.5 withheld `clubs.owner_id` from this fan-out, and was right to: until
+-- 054, `rides` SELECT's only club arm was private.is_club_member(club_id),
+-- whose body had no owner arm — so a row written to an ownerless owner was one
+-- their own SELECT policy dropped on every read, for ever. 054 gave that
+-- predicate an owner arm, which made the owner able to read the ride (asserted
+-- below) and turned the narrowing from a consequence into a gap. 060 closes it.
 --
--- ** What 054 changed is the REASON, and the reason is the whole point of this
--- block. ** Until 054, `rides` SELECT's only club arm was
--- private.is_club_member(club_id), whose body had no owner arm — so a row
--- written to an ownerless owner was one their own SELECT policy dropped on
--- every read, for ever, and withholding it was strictly better than writing an
--- unreadable row. 054 gives that predicate an owner arm, so the owner CAN now
--- read the ride (asserted below, where this section previously asserted the
--- defect). The narrowing is consequently no longer self-justifying: it is a
--- real gap — N10 in PD-128's proposal — and it is closed by the owner's
--- membership row existing, which is `enforce-creator-membership`'s, not by
--- anything in the visibility layer.
+-- ** 060 DID NOT SIMPLY ADD THE OWNER ARM. ** It unions the owner in and then
+-- filters every candidate through private.can_read_ride(candidate, ride), so
+-- the recipient set is now MEASURED against the read policy rather than derived
+-- from a claim about another function's body. That distinction is the point of
+-- PD-211: the claim 036 §7.5 encoded was true when written and false eighteen
+-- migrations later, with nothing anywhere to notice. Were 054 ever reverted,
+-- this fan-out would narrow again by itself and this assertion would fail
+-- honestly instead of accumulating unreadable rows.
+--
+-- The caller-relative helper is still NOT reachable from a fan-out — 036 trap
+-- (c) is untouched. 060 split its body into
+-- private.is_club_member_for(candidate, club) so the subject-taking reading and
+-- the caller-relative one cannot drift; is_club_member(uuid) is now a wrapper
+-- over it, with the same signature, OID and grants.
 insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
   ('00000000-0000-0000-0000-00000036d001', 'N36 Private Club Run', 'The Bridge',
    now() + interval '3 days', false, '00000000-0000-0000-0000-00000036c001', '00000000-0000-0000-0000-0000000360a1'),
@@ -5330,22 +5335,32 @@ select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d004'
       and user_id = '00000000-0000-0000-0000-000000036091'),
-  0, '036: ride_created_in_club does NOT reach an ownerless owner — is_club_member has no owner arm');
+  1, '060: ride_created_in_club DOES reach an ownerless owner — was 0 under 036 §7.5, whose justification 054 voided. The owner arrives through the union AND through can_read_ride, so this is a measurement of their read policy rather than a claim about it');
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d004'
       and user_id = '00000000-0000-0000-0000-0000000360c1'),
   1, '036: ... while the club''s actual members are notified');
 
--- The read this narrowing used to track. It is asserted here, in 036's own
--- section, rather than only in 054's, because this is the assertion whose
--- EXPECTED VALUE 054 inverts — and an inverted expectation left un-relabelled
--- is indistinguishable from a regression to the next reader.
+-- The read the narrowing used to track, and now the reason it is gone. It is
+-- asserted here, in 036's own section, rather than only in 054's, because this
+-- is the assertion whose EXPECTED VALUE 054 inverted — and an inverted
+-- expectation left un-relabelled is indistinguishable from a regression to the
+-- next reader.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000036091', false);
 select assert_eq(
   (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000036d004'),
-  1, '036/054: an ownerless owner CAN see their own private club''s ride — was 0 until 054 gave is_club_member an owner arm, so the withheld notification above is now a gap rather than a consequence');
+  1, '036/054: an ownerless owner CAN see their own private club''s ride — was 0 until 054 gave is_club_member an owner arm, which is what makes 060''s owner arm safe rather than a source of unreadable rows');
+-- ** AND THEY CAN READ THE ROW, WHICH IS THE ASSERTION 036 §7.5 WOULD HAVE
+-- WANTED. ** Counting rows written cannot see the failure this whole class is
+-- about: an unreadable row exists and is counted. Only a read as the recipient
+-- distinguishes "notified" from "written a row nobody can ever read".
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_created_in_club' and ride_id = '00000000-0000-0000-0000-00000036d004'
+      and user_id = '00000000-0000-0000-0000-000000036091'),
+  1, '060: ... and the ownerless owner READS the row written to them — 036 §3 conjunct 4 resolves the ride for them, which is the only thing that makes the owner arm a repair rather than a second instance of §7.5''s hazard');
 reset role;
 select set_config('test.uid', '', false);
 
@@ -11952,13 +11967,17 @@ select assert_eq(
   0, '055: a rider on a DIFFERENT ride is not notified — the crew arm is scoped by ride_id');
 
 -- The whole set in one number, so a recipient nobody thought to name still fails
--- this. The four are: organizer, going, maybe, and 055.6's blocked-with-organizer
--- crew member.
+-- this. The three are: organizer, going, maybe.
+--
+-- ** THIS READ 4 UNTIL 060, AND THE MISSING FOURTH IS THE POINT. ** 055's crew
+-- arm also wrote a row to the rider blocked with the ORGANIZER — a row 036 §3
+-- conjunct 4 discarded on every read, for ever. 060 filters the union through
+-- private.can_read_ride, so it is no longer written. See 055.6.
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
       and actor_id = '00000000-0000-0000-0000-000000129004'),
-  4, '055: FOUR rows and no fifth — organizer, going, maybe and the blocked-with-organizer crew member; the actor, the leaver, the blocked-with-actor rider and the other ride''s rider are all out');
+  3, '060: THREE rows and no fourth — organizer, going and maybe; the actor, the leaver, the blocked-with-actor rider, the other ride''s rider AND (since 060) the blocked-with-organizer crew member are all out');
 
 -- ---------------------------------------------------------------------------
 -- 055.4  The ORGANIZER ARM IN ISOLATION, which 055.3 cannot prove
@@ -12036,51 +12055,61 @@ reset role;
 select set_config('test.uid', '', false);
 
 -- ---------------------------------------------------------------------------
--- 055.6  THE KNOWN GAP, PINNED. A crew member blocked with the ORGANIZER gets
---        a row they can never read.
+-- 055.6 / 060  THE GAP 055 PINNED, NOW CLOSED. A crew member blocked with the
+--              ORGANIZER is written NO ROW AT ALL.
 -- ---------------------------------------------------------------------------
--- ** THIS ASSERTION DOCUMENTS A DEFECT, NOT A DESIGN. ** It is written so the
--- behaviour is a named, tested property with a story behind it rather than
--- something a future session discovers and mistakes for intent — and so that the
--- day it is closed, the assertion that has to flip is already here.
+-- ** THE ASSERTION THAT MOVED IS THE ONE COUNTING WRITES, AND THE READ-BACK ONE
+-- LOOKS IDENTICAL EITHER WAY. ** Under 055 the row was written and discarded on
+-- every read; under 060 it is never written. Both read back 0 as the recipient,
+-- so a read-only assertion here would have passed unchanged through the entire
+-- repair and proved nothing. The write count is asserted first, as the TABLE
+-- OWNER, for exactly that reason.
 --
--- A `ride_members` row does not imply its holder can still SELECT the ride:
--- blocking removes nobody from a roster. So a rider who blocks the organizer
--- stays on the crew, keeps receiving `ride_joined` rows about that ride, and
--- `036` §3 conjunct 4 discards every one of them on read. That is 036 §7.5's
--- hazard — a row nobody can read — reached through the CREW arm rather than the
--- organizer arm.
+-- The mechanism is unchanged and is still the reason this is reachable rather
+-- than contrived: a `ride_members` row does not imply its holder can SELECT the
+-- ride, because blocking removes nobody from a roster. What changed is that the
+-- fan-out now asks — private.can_read_ride(candidate, ride), the subject-taking
+-- shape 036 trap (c) demands, which 055's header named and PD-211 built.
 --
--- It is accepted here rather than fixed for two reasons, both recorded in 055's
--- header: it fails CLOSED (a notification never shown, never a row shown to
--- someone who should not see it), and it is REVERSIBLE (unblocking makes the row
--- readable, which 036 §4 argues is the correct outcome). §7.5's ownerless owner
--- was permanent by construction, which is what made narrowing mandatory there.
--- The complete fix wants a `private.can_read_ride(candidate, ride)` definer
--- helper taking its subject as an argument; the cheap half-fix — excluding
--- riders blocked with the organizer — leaves the left-the-club half open while
--- reading as complete, so it is deliberately NOT applied.
+-- ** WHAT THIS COSTS, STATED WHERE THE BEHAVIOUR CHANGED. ** 055 called the gap
+-- REVERSIBLE: the unreadable row became readable on unblocking. There is now no
+-- row to become readable, so a rider who unblocks gets no backlog for the
+-- period they were blocked. That is consistent with every other fan-out in 036
+-- — each suppresses at fan-out time when a block stands (§7.1: "a block
+-- suppresses the notification, not the action") — and with §7.6's rule that a
+-- notification records an event at an instant rather than a standing claim. The
+-- suppression is LIVE STATE, not a permanent exclusion of this rider, and the
+-- probe below is what proves the difference.
 select assert_eq(
   (select count(*)::int from ride_members
     where ride_id = '00000000-0000-0000-0000-0000129d0001'
       and user_id = '00000000-0000-0000-0000-000000129008'),
-  1, '055: the blocked-with-organizer rider is STILL on the crew — blocking removes nobody from a roster, which is what makes the gap below reachable rather than contrived');
+  1, '055: the blocked-with-organizer rider is STILL on the crew — blocking removes nobody from a roster, which is what made the gap reachable rather than contrived');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129004'
+      and user_id = '00000000-0000-0000-0000-000000129008'),
+  0, '060: ... and NO ROW IS WRITTEN to them — counted as the table owner, which is the only reader that can tell "never written" from "written and unreadable". This was 1 under 055');
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000129008', false);
 select assert_eq(
   (select count(*)::int from rides where id = '00000000-0000-0000-0000-0000129d0001'),
-  0, '055: ... and cannot SELECT the ride, because rides SELECT''s organizer arm is not theirs and its second disjunct is gated on not being blocked with the organizer');
+  0, '055: ... and they cannot SELECT the ride, because rides SELECT''s organizer arm is not theirs and its second disjunct is gated on not being blocked with the organizer — the exact question can_read_ride now asks on their behalf');
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
       and actor_id = '00000000-0000-0000-0000-000000129004'),
-  0, '055: KNOWN GAP — the row written to them in 055.3 is unreadable on arrival, 036 §3 conjunct 4. Fails CLOSED and reverses on unblock. Flip this to 1 only together with a fan-out that can test a CANDIDATE''s ride visibility');
+  0, '060: ... so they read zero — unchanged in value from 055 and NOT the assertion that proves the repair, which is the write count above');
 reset role;
 select set_config('test.uid', '', false);
 
--- Unblocking returns it, which is the property that distinguishes this from
--- §7.5's permanently-dead row and is the reason the gap is accepted.
+-- ** THE SUPPRESSION IS STATE, NOT A VERDICT ON THIS RIDER. ** Unblocking
+-- returns no backlog — there is nothing to return — but the NEXT join reaches
+-- them, and they can read it. Without this, "no row" would be indistinguishable
+-- from a can_read_ride that returns false for everyone, which is the shape a
+-- narrowing fails in.
 delete from blocks
  where blocker_id = '00000000-0000-0000-0000-000000129008'
    and blocked_id = '00000000-0000-0000-0000-000000129001';
@@ -12090,25 +12119,49 @@ select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
       and actor_id = '00000000-0000-0000-0000-000000129004'),
-  1, '055: ... and UNBLOCKING returns it — eviction, never loss. This is why the gap is bounded: reversible, unlike 036 §7.5''s ownerless owner, which was permanent by construction');
+  0, '060: unblocking returns NO BACKLOG — 055''s row was never written, so there is nothing to reveal. This assertion read 1 under 055 and its inversion is the one behaviour change 060 makes to a rider');
 reset role;
 select set_config('test.uid', '', false);
+
+-- A fresh join, with the block lifted. The joiner is the other ride's rider,
+-- who is not on d01's crew and so can actually cause a fan-out here.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129007', 'going');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000129008', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
+      and actor_id = '00000000-0000-0000-0000-000000129007'),
+  1, '060: ... and once unblocked they ARE notified of the next join, and can READ it — the narrowing tracks live visibility rather than excluding a rider for good');
+reset role;
+select set_config('test.uid', '', false);
+
+-- Restore the fixture: the block goes back, and the fresh joiner comes off the
+-- crew so 055.8's recipient set below is the same three riders 055.3 asserted.
+-- Their rows survive — leaving retracts nothing — and every count in 055.8 is
+-- scoped to actor 129004, so they are invisible to it.
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-0000129d0001'
+   and user_id = '00000000-0000-0000-0000-000000129007';
 insert into blocks (blocker_id, blocked_id) values
   ('00000000-0000-0000-0000-000000129008', '00000000-0000-0000-0000-000000129001');
 
 -- ---------------------------------------------------------------------------
--- 055.6b  THE SAME GAP BY THE OTHER ROUTE: a crew member who LEFT THE CLUB.
+-- 055.6b / 060  THE SAME GAP BY THE OTHER ROUTE, ALSO CLOSED: a crew member who
+--               LEFT THE CLUB.
 -- ---------------------------------------------------------------------------
--- ** TWO MECHANISMS, ONE GAP, AND THIS IS WHY THE CHEAP FIX IS REFUSED. **
+-- ** TWO MECHANISMS, ONE GAP, AND THIS IS WHY THE CHEAP FIX WAS REFUSED. **
 -- 055.6 reaches it through a block. This reaches it through club membership,
 -- with no block anywhere in the fixture — a rider RSVPs to a PRIVATE club's ride
 -- while a member, then leaves the club and keeps their `ride_members` row.
 --
 -- The two are worth separating because a fan-out that excluded candidates
 -- blocked with the organizer would close 055.6 and leave THIS untouched, while
--- reading as a complete repair. Any future fix has to satisfy both, which is
--- what makes `private.can_read_ride(candidate, ride)` — a helper taking its
--- subject as an argument — the shape rather than another `is_blocked` call.
+-- reading as a complete repair. Any fix had to satisfy both, which is what made
+-- `private.can_read_ride(candidate, ride)` — a helper taking its subject as an
+-- argument — the shape rather than another `is_blocked` call. 060 built it, and
+-- this section is the half that proves it is not merely a second block test.
 insert into clubs (id, name, is_public, owner_id) values
   ('00000000-0000-0000-0000-0000129c0001', 'PD129 Private MC', false,
    '00000000-0000-0000-0000-000000129001');
@@ -12143,6 +12196,17 @@ select assert_eq(
       and user_id = '00000000-0000-0000-0000-000000129006'),
   1, '055: leaving the club leaves them ON THE RIDE''S CREW — no trigger reaches ride_members, which is what makes them a live fan-out candidate who can no longer resolve the ride');
 
+-- ** AND THEY CANNOT RESOLVE THE RIDE ANY MORE. ** The precondition that makes
+-- the zero below mean something, and the exact question can_read_ride asks: it
+-- fails on the club arm, with no block anywhere in this fixture.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000129006', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0000129d0004'),
+  0, '055: ... and can no longer SELECT the ride — a private club''s ride resolves through private.is_club_member alone, and they hold neither a membership row nor the club');
+reset role;
+select set_config('test.uid', '', false);
+
 -- A third rider joins that ride, so the ex-member is fanned out to as crew.
 insert into club_members (club_id, user_id, role) values
   ('00000000-0000-0000-0000-0000129c0001', '00000000-0000-0000-0000-000000129002', 'member');
@@ -12153,7 +12217,17 @@ select assert_eq(
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0004'
       and actor_id = '00000000-0000-0000-0000-000000129002'
       and user_id = '00000000-0000-0000-0000-000000129006'),
-  1, '055: the ex-member IS written a row — the crew arm is a live read of ride_members and knows nothing about club membership');
+  0, '060: the ex-member is written NO ROW — was 1 under 055, whose crew arm was a live read of ride_members that knew nothing about club membership. Counted as the table owner: this is the route a block-only fix would have missed entirely');
+
+-- ** THE FAN-OUT STILL FIRED. ** Without this, the zero above is equally
+-- explained by can_read_ride returning false for everybody, which is precisely
+-- how a narrowing fails — silently, in the safe-looking direction.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0004'
+      and actor_id = '00000000-0000-0000-0000-000000129002'
+      and user_id = '00000000-0000-0000-0000-000000129001'),
+  1, '060: ... while the ORGANIZER of that same private club ride IS notified by the same fan-out — so the zero above is the ex-member''s visibility, not a fan-out that stopped writing');
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000129006', false);
@@ -12162,7 +12236,7 @@ select assert_eq(
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0004'
       and actor_id = '00000000-0000-0000-0000-000000129002'
       and user_id = '00000000-0000-0000-0000-000000129006'),
-  0, '055: KNOWN GAP, second route — and they read back ZERO, with no block anywhere in this fixture. A fan-out that only excluded riders blocked with the organizer would close 055.6 and miss this one entirely');
+  0, '060: ... and they read zero, as they did under 055 — value unchanged, cause changed. The write count above is what moved, which is why a read-only assertion could never have gated this repair');
 reset role;
 select set_config('test.uid', '', false);
 
@@ -12181,17 +12255,23 @@ select assert_eq(
   1, '055: rides SELECT still LEADS with an unconditional organizer arm, at the top level of an OR — this is the whole reason unioning rides.organizer_id is safe for ride_joined and not for ride_created_in_club');
 
 -- ** AND THE OTHER HALF: THERE IS NO CREW ARM AT ALL. ** Measured on DEV
--- 2026-08-12 and asserted here because it is the exact reason 055.6's gap
--- exists. `rides` SELECT resolves through organizer, public, or club membership
--- — a `ride_members` row is NOT one of the ways in. So crew membership does not
--- imply ride visibility, and the recipient set is deliberately wider than
--- `rides` SELECT can resolve. The day someone adds a crew arm, this assertion
--- fails and points at 055.6, which would then be closeable.
+-- 2026-08-12 and again 2026-08-17. `rides` SELECT resolves through organizer,
+-- public, or club membership — a `ride_members` row is NOT one of the ways in.
+--
+-- ** THIS ASSERTION CHANGED MEANING IN 060 WITHOUT CHANGING ITS VALUE. ** Under
+-- 055 it recorded WHY 055.6's gap existed, and adding a crew arm would have
+-- closed that gap. 060 closed the gap from the fan-out end instead, and the
+-- absence is now LOAD-BEARING rather than merely explanatory: `034`'s
+-- ride_messages policies and `041`'s postcard ride-tag WITH CHECK are both an
+-- INTERSECTION of "can see the ride" with private.is_ride_crew, and 034's own
+-- comment says the crew half alone "lets an ex-club-member read a private
+-- ride's chat". A crew arm here collapses that intersection. 060's header
+-- carries the full argument for why the cheap end of PD-211 was refused.
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'rides' and cmd = 'SELECT'
       and (qual like '%ride_members%' or qual like '%is_ride_crew%')),
-  0, '055: rides SELECT has NO crew arm — neither ride_members nor is_ride_crew appears in it, so being on a crew is not a way to see the ride. That asymmetry IS 055.6''s known gap, and closing it here would close that too');
+  0, '060: rides SELECT still has NO crew arm — adding one would collapse 034''s ride_messages intersection and 041''s tag gate into their crew halves, which is the leak 034 shipped in draft and fixed. 060 narrowed the fan-out instead');
 
 -- The status domain the crew arm names. `status in ('going','maybe')` is total
 -- against today's CHECK, so it currently excludes nothing; the day a third
@@ -12209,7 +12289,9 @@ select assert_eq(
 -- ---------------------------------------------------------------------------
 -- 036 asserted both against the organizer alone. A recipient set of one cannot
 -- distinguish "the uniqueness index caught the rejoin" from "the second fan-out
--- addressed a different rider", so both are re-asserted against a set of four.
+-- addressed a different rider", so both are re-asserted against a set of three.
+-- It was four until 060 stopped writing to the blocked-with-organizer rider;
+-- the shape these assert is unchanged and only the size of the set moved.
 update ride_members set status = 'maybe'
  where ride_id = '00000000-0000-0000-0000-0000129d0001'
    and user_id = '00000000-0000-0000-0000-000000129004';
@@ -12217,7 +12299,7 @@ select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
       and actor_id = '00000000-0000-0000-0000-000000129004'),
-  4, '055: flipping going<->maybe writes nothing to any of the four — the fan-out is on INSERT and there is no trigger on UPDATE');
+  3, '055: flipping going<->maybe writes nothing to any of the three — the fan-out is on INSERT and there is no trigger on UPDATE');
 
 delete from ride_members
  where ride_id = '00000000-0000-0000-0000-0000129d0001'
@@ -12226,14 +12308,14 @@ select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
       and actor_id = '00000000-0000-0000-0000-000000129004'),
-  4, '055: leaving retracts nothing from the crew either — no AFTER DELETE trigger on ride_members, and the join really happened');
+  3, '055: leaving retracts nothing from the crew either — no AFTER DELETE trigger on ride_members, and the join really happened');
 insert into ride_members (ride_id, user_id, status) values
   ('00000000-0000-0000-0000-0000129d0001', '00000000-0000-0000-0000-000000129004', 'going');
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'ride_joined' and ride_id = '00000000-0000-0000-0000-0000129d0001'
       and actor_id = '00000000-0000-0000-0000-000000129004'),
-  4, '055: leaving and rejoining does not stack a second row in ANY crew member''s list — notifications_event_key, nulls not distinct, still absorbs it');
+  3, '055: leaving and rejoining does not stack a second row in ANY crew member''s list — notifications_event_key, nulls not distinct, still absorbs it');
 
 -- ---------------------------------------------------------------------------
 -- 055.9  The function itself, and the contract 055 must not have relaxed
@@ -13002,6 +13084,415 @@ select assert_eq(
 
 set role authenticated;
 rollback to savepoint default_club_058;
+
+\echo ''
+\echo '# 060 — a fan-out addresses only riders whose own policy resolves the subject (PD-211)'
+
+-- ===========================================================================
+-- 060. The catalog half. The BEHAVIOUR is asserted where the behaviour lives —
+--      036 §7.12c for the owner arm, 055.3, 055.6 and 055.6b for the crew
+--      narrowing — because an assertion filed away from the fixture it explains
+--      is one PD-169 records being misread for weeks.
+--
+--      What is left here is what no behavioural test can see: the grant posture
+--      of two new subject-taking helpers, the split of is_club_member's body,
+--      and the pinned policy text that private.can_read_ride restates.
+-- ===========================================================================
+savepoint recipient_sets_060;
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 060.0  Fixtures of this section's own
+-- ---------------------------------------------------------------------------
+-- Self-contained, like 009's, 054's and 055's, and for the same reason: every
+-- section above rolls its own fixtures back at its savepoint, so nothing from
+-- 036's or 055's exists here. Three riders and two rides, arranged so each arm
+-- of `rides` SELECT is reachable by exactly one of them.
+--
+-- ** THE CLUB'S OWNER HOLDS NO MEMBERSHIP ROW AND IS NOT THE ORGANIZER. ** That
+-- separation is the whole fixture: with the owner organizing, every assertion
+-- below would pass through the unconditional organizer arm and the owner arm
+-- would be untested — which is the shape 055.4 exists to avoid on the other
+-- function.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000211001', 'pd211owner@example.com'),
+  ('00000000-0000-0000-0000-000000211002', 'pd211member@example.com'),
+  ('00000000-0000-0000-0000-000000211003', 'pd211outsider@example.com');
+
+update profiles set username = 'pd211owner', location = 'Lisbon',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000211001';
+update profiles set username = 'pd211member', location = 'Porto',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000211002';
+update profiles set username = 'pd211outsider', location = 'Faro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000211003';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000211c0001', 'PD211 Private MC', false,
+   '00000000-0000-0000-0000-000000211001');
+-- The owner deliberately gets NO club_members row. The member does.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000211c0001', '00000000-0000-0000-0000-000000211002', 'member');
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000211c0001'
+      and user_id = '00000000-0000-0000-0000-000000211001'),
+  0, '060: fixture — the club''s owner holds NO membership row, which is the state 054 repaired and 036 §7.5 reasoned about');
+
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000211d0001', 'PD211 Club Run', 'The Gate',
+   now() + interval '4 days', false, '00000000-0000-0000-0000-0000211c0001',
+   '00000000-0000-0000-0000-000000211002'),
+  ('00000000-0000-0000-0000-0000211d0002', 'PD211 Open Run', 'The Quay',
+   now() + interval '5 days', true, null,
+   '00000000-0000-0000-0000-000000211002');
+
+-- ---------------------------------------------------------------------------
+-- 060.1  THE PINNED POLICY. This is the assertion the whole file rests on.
+-- ---------------------------------------------------------------------------
+-- private.can_read_ride is a SECOND IMPLEMENTATION of rides SELECT, which 036
+-- §3 warns against — "the conjunction is cheap and does not go stale; the
+-- derivation does". There is no way around it: a policy can only be evaluated
+-- for the caller, and a fan-out needs the answer for somebody else. So the
+-- restatement is fenced here instead.
+--
+-- rides SELECT has already been rewritten twice, by 017 and by 022, and 054
+-- changed a function underneath it. A third rewrite that leaves can_read_ride
+-- alone would silently restore PD-211: the fan-out would go on filtering
+-- against a policy that no longer exists, writing or withholding rows against
+-- the wrong rule, with nothing red anywhere.
+--
+-- ** MATCHED WHOLE, NOT BY `like`. ** A pattern match is what let this class of
+-- drift live: 055.7's two `like` assertions were both TRUE throughout the
+-- period the fan-out was wrong. Only equality catches an arm added, removed or
+-- reordered inside the parts a pattern does not name.
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'rides' and cmd = 'SELECT'),
+  '((organizer_id = auth.uid()) OR ((NOT private.is_blocked(auth.uid(), organizer_id)) AND ((is_public AND ((club_id IS NULL) OR private.is_club_public(club_id))) OR ((club_id IS NOT NULL) AND private.is_club_member(club_id)))))',
+  '060: rides SELECT is TEXTUALLY what private.can_read_ride restates. If this fails, the helper is stale — update it in the same change rather than re-pinning this string, or every notification fan-out starts filtering against a policy that no longer exists');
+
+-- ---------------------------------------------------------------------------
+-- 060.1b  THE SECOND PINNED POLICY — clubs SELECT, which can_read_club restates
+-- ---------------------------------------------------------------------------
+-- ** A ride_created_in_club ROW HAS TWO SUBJECTS AND 036 §3 TESTS THEM
+-- INDEPENDENTLY. ** Conjunct 4 requires the `rides` row resolve, conjunct 5 the
+-- `clubs` row, and the row carries both `ride_id` and `club_id`. So filtering
+-- that fan-out on can_read_ride alone would DERIVE club-visibility from
+-- ride-visibility — which 036 §3 forbids in those words: "Do not collapse it on
+-- the grounds that ride-visibility implies club-visibility ... The conjunction
+-- is cheap and does not go stale; the derivation does."
+--
+-- The conjunct excludes nobody today: every candidate is a club_members row or
+-- clubs.owner_id, and clubs SELECT has an arm for each. It is written for the
+-- state 041 names as reachable — clubs SELECT gaining a block predicate, which
+-- decision #2's own logic argues for. Then a member blocked with the CLUB OWNER
+-- but not with the RIDE ORGANIZER passes can_read_ride, fails clubs SELECT, and
+-- gets a row nobody can ever read.
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
+  '(is_public OR (owner_id = auth.uid()) OR private.is_club_member(id))',
+  '060: clubs SELECT is TEXTUALLY what private.can_read_club restates — the twin of the pin above. A block arm added here is exactly the change that makes the club conjunct start excluding people, and it must arrive at the helper in the same change');
+
+-- ---------------------------------------------------------------------------
+-- 060.2  The three subject-taking helpers are reachable by NO client role
+-- ---------------------------------------------------------------------------
+-- Named by ROLE rather than attempted — 031's lesson: the suite runs as the
+-- table owner, for whom neither the schema barrier nor the EXECUTE barrier
+-- exists, so calling them would prove nothing about a rider.
+--
+-- ** THIS IS A SECURITY PROPERTY, NOT TIDINESS, AND IT IS WHY THESE FUNCTIONS
+-- TAKE A SUBJECT. ** can_read_ride(x, r) is a BLOCK ORACLE: on a public ride it
+-- returns false only when x and the organizer are blocked with each other,
+-- which decision #2 requires must never be revealed by any gap, count or
+-- marker. is_club_member_for(x, c) is a MEMBERSHIP ORACLE for private clubs.
+-- can_read_club is the second oracle of that kind. All three are safe only
+-- because no rider can call them.
+--
+-- service_role is included because 031 granted it USAGE on `private`; revoking
+-- from `public` is what actually closes it, EXECUTE being granted to PUBLIC by
+-- default on creation.
+select assert_eq(
+  (select count(*)::int
+     from (values ('authenticated'), ('anon'), ('service_role')) as r(role)
+     cross join (values ('private.can_read_ride(uuid,uuid)'),
+                        ('private.can_read_club(uuid,uuid)'),
+                        ('private.is_club_member_for(uuid,uuid)')) as f(fn)
+    where has_function_privilege(r.role, f.fn, 'execute')),
+  0, '060: no client role and not service_role can execute any of the three subject-taking helpers — can_read_ride is a block oracle, can_read_club a private-club oracle, is_club_member_for a membership oracle');
+
+-- Not vacuous: both functions exist, in `private`, and nowhere PostgREST routes.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('can_read_ride', 'can_read_club', 'is_club_member_for')),
+  3, '060: ... and there are three of them, so that assertion is not vacuous');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('can_read_ride', 'can_read_club', 'is_club_member_for')),
+  0, '060: ... and none is in the PostgREST-exposed public schema');
+
+-- Definer with the path pinned, all three. Asserted from the catalog rather
+-- than trusted from the file: apply_migration takes SQL as an argument, and 022
+-- once shipped with `security definer` missing. proconfig stores the pin as the
+-- literal search_path="" — matching on `search_path=` finds nothing and reads
+-- as a pass.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('can_read_ride', 'can_read_club', 'is_club_member_for')
+      and p.prosecdef and p.proconfig @> array['search_path=""']),
+  3, '060: all three helpers are SECURITY DEFINER with an empty search_path — without the first they read nothing under a rider''s RLS, and without the second an unqualified name resolves wherever the caller points it');
+
+-- ---------------------------------------------------------------------------
+-- 060.3  The split of is_club_member: one body, two entry points
+-- ---------------------------------------------------------------------------
+-- 060 moved the membership rule into is_club_member_for(candidate, club) and
+-- made is_club_member(club) a wrapper passing auth.uid(). The alternative was a
+-- second copy of the rule inside can_read_ride — and PD-211 exists precisely
+-- because 036 §7.5 encoded a claim about this function's body that 054 made
+-- false eighteen migrations later, with nothing to notice.
+--
+-- ** THE GRANT THAT MUST SURVIVE. ** A policy expression is evaluated as the
+-- querying role, so `authenticated` needs EXECUTE on the caller-relative entry
+-- point or all ten calling policies fail closed for every rider. The nested
+-- call needs no grant: the wrapper is definer, so its body runs as the owner.
+select assert_eq(
+  has_function_privilege('authenticated', 'private.is_club_member(uuid)', 'execute'),
+  true, '060: authenticated can STILL execute private.is_club_member — ten policies evaluate it as the querying role, and without this every one of them fails closed');
+select assert_eq(
+  has_function_privilege('anon', 'private.is_club_member(uuid)', 'execute'),
+  false, '060: ... and anon still cannot — decision #1');
+
+-- The wrapper delegates rather than duplicating. If someone re-inlines the body
+-- here, the two readings can drift again and this is what says so.
+-- ** PINNED BY EQUALITY, NOT BY `like`, AND THAT IS THE WHOLE ASSERTION. ** A
+-- `like '%is_club_member_for%'` is satisfied by the mention alone, so
+-- `select private.is_club_member_for(auth.uid(), $1) or exists (...)` — an arm
+-- added to the wrapper and not to the body — would pass it while making
+-- can_read_ride silently NARROWER than the policy it restates. rides SELECT's
+-- own qual text would be unchanged, so 060.1 would not fire either. That is
+-- PD-211's exact shape: a claim about a function's body that something later
+-- makes false, with nothing to notice. The two readings do not merely "share a
+-- body" by intent — this is what asserts it.
+select assert_eq(
+  (select prosrc from pg_proc
+    where oid = 'private.is_club_member(uuid)'::regprocedure),
+  E'\n  select private.is_club_member_for(auth.uid(), target_club_id);\n',
+  '060: is_club_member is EXACTLY a delegation to is_club_member_for and nothing else — an extra arm here would leave can_read_ride narrower than the policy it restates, with neither 060.1 nor a substring match able to see it');
+select assert_eq(
+  (select prosrc like '%auth.uid()%' from pg_proc
+    where oid = 'private.is_club_member_for(uuid,uuid)'::regprocedure),
+  false, '060: ... and the body itself mentions auth.uid() NOWHERE — 036 trap (c): a caller-relative helper computes one answer and applies it to every candidate, making a recipient set everybody or nobody');
+
+-- Behaviour, both entry points, against the same pair. 054's own section already
+-- proves the owner arm end to end through the policies; this proves the two
+-- readings AGREE, which is the property the split has to preserve and the only
+-- one a wrapper could silently lose.
+select assert_eq(
+  private.is_club_member_for('00000000-0000-0000-0000-000000211001',
+                             '00000000-0000-0000-0000-0000211c0001'),
+  true, '060: is_club_member_for sees an OWNERLESS OWNER as a member — 054''s owner arm, now reachable for a named candidate');
+select assert_eq(
+  private.is_club_member_for('00000000-0000-0000-0000-000000211002',
+                             '00000000-0000-0000-0000-0000211c0001'),
+  true, '060: ... and an ordinary member through the membership arm');
+select assert_eq(
+  private.is_club_member_for('00000000-0000-0000-0000-000000211003',
+                             '00000000-0000-0000-0000-0000211c0001'),
+  false, '060: ... and an outsider as neither owner nor member');
+
+-- ** CALLED AS THE TABLE OWNER WITH test.uid SET, NOT UNDER `set role
+-- authenticated`. ** `authenticated` holds no USAGE on the `private` schema, so
+-- a rider cannot call this function by name at all — only a policy can, and
+-- policies are what 054's own section exercises end to end. Switching identity
+-- through the harness's test.uid is what makes the wrapper's argument-free
+-- reading testable here; the role barrier is asserted separately, above.
+select set_config('test.uid', '00000000-0000-0000-0000-000000211001', false);
+select assert_eq(
+  private.is_club_member('00000000-0000-0000-0000-0000211c0001'),
+  true, '060: the caller-relative wrapper agrees with the candidate-relative body for the same rider — which is what makes the split behaviour-preserving rather than a claim that it is');
+select set_config('test.uid', '00000000-0000-0000-0000-000000211003', false);
+select assert_eq(
+  private.is_club_member('00000000-0000-0000-0000-0000211c0001'),
+  false, '060: ... and agrees on the negative too, so the wrapper is not simply returning true');
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 060.4  can_read_ride answers for a NAMED rider, not for the caller
+-- ---------------------------------------------------------------------------
+-- Called with NO JWT, as the table owner, with test.uid empty. That is the whole
+-- point: auth.uid() is NULL here, so a helper that read it internally would
+-- answer NULL for every candidate and every assertion below would fail. This is
+-- 036 trap (c) asserted directly rather than inferred from a fan-out's counts.
+select assert_eq(auth.uid(), null::uuid,
+  '060: can_read_ride is exercised with NO JWT — a helper that resolved auth.uid() internally would answer NULL for every candidate');
+
+select assert_eq(
+  private.can_read_ride('00000000-0000-0000-0000-000000211002',
+                        '00000000-0000-0000-0000-0000211d0001'),
+  true, '060: the ORGANIZER resolves their own private club ride — the unconditional first arm, which is what makes unioning rides.organizer_id safe for ride_joined');
+select assert_eq(
+  private.can_read_ride('00000000-0000-0000-0000-000000211001',
+                        '00000000-0000-0000-0000-0000211d0001'),
+  true, '060: and the OWNERLESS OWNER resolves it, through 054''s owner arm reached for a NAMED candidate — this single call is what replaces 036 §7.5''s reasoning about is_club_member''s body with a measurement of it');
+select assert_eq(
+  private.can_read_ride('00000000-0000-0000-0000-000000211003',
+                        '00000000-0000-0000-0000-0000211d0001'),
+  false, '060: an outsider does NOT — a private club''s ride is not public, and they hold neither the club nor a membership row');
+select assert_eq(
+  private.can_read_ride('00000000-0000-0000-0000-000000211003',
+                        '00000000-0000-0000-0000-0000211d0002'),
+  true, '060: a rider unrelated to a PUBLIC club-less ride resolves it — decision #1''s any-signed-in-rider reading, and the arm an over-eager narrowing would break first');
+select assert_eq(
+  private.can_read_ride('00000000-0000-0000-0000-000000211003',
+                        '00000000-0000-0000-0000-000000000000'),
+  false, '060: a ride that does not exist resolves for nobody — EXISTS over zero rows, not NULL, so the fan-out''s WHERE never goes three-valued and never silently drops every candidate');
+
+-- ** THE BLOCK ARM, WHICH IS 055.6's ROUTE. ** Asserted directly on the helper
+-- rather than only through a fan-out's counts, because this is the disjunct
+-- whose placement decided the whole design: a crew arm added to rides SELECT at
+-- the top level would sit OUTSIDE this test and hand the ride back to a rider
+-- who blocked the organizer. 060's header carries that argument.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000211003', '00000000-0000-0000-0000-000000211002');
+select assert_eq(
+  private.can_read_ride('00000000-0000-0000-0000-000000211003',
+                        '00000000-0000-0000-0000-0000211d0002'),
+  false, '060: ... and a rider blocked with the organizer stops resolving even a PUBLIC ride — symmetric from one directional row, and the reason a crew member can hold a roster row and see nothing');
+select assert_eq(
+  private.can_read_ride('00000000-0000-0000-0000-000000211002',
+                        '00000000-0000-0000-0000-0000211d0002'),
+  true, '060: ... while the organizer of that same ride is untouched by the block — the first arm is unconditional, so a block never hides a rider''s own ride from them');
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-000000211003'
+   and blocked_id = '00000000-0000-0000-0000-000000211002';
+
+-- ---------------------------------------------------------------------------
+-- 060.4b  can_read_club, the second subject
+-- ---------------------------------------------------------------------------
+-- Excludes nobody in the fan-out today — see 060.1b — so its arms are asserted
+-- directly here rather than through a recipient count, which is the only way to
+-- test a conjunct that currently removes no one. A conjunct nothing exercises
+-- is one a later edit deletes without a single assertion moving.
+select assert_eq(
+  private.can_read_club('00000000-0000-0000-0000-000000211001',
+                        '00000000-0000-0000-0000-0000211c0001'),
+  true, '060: the OWNERLESS OWNER resolves their own private club — clubs SELECT''s owner arm, which 036 §7.5 already noted exists here and not on rides');
+select assert_eq(
+  private.can_read_club('00000000-0000-0000-0000-000000211002',
+                        '00000000-0000-0000-0000-0000211c0001'),
+  true, '060: ... and a member resolves it through is_club_member_for');
+select assert_eq(
+  private.can_read_club('00000000-0000-0000-0000-000000211003',
+                        '00000000-0000-0000-0000-0000211c0001'),
+  false, '060: ... and an outsider does NOT, this club being private — the arm that would start excluding fan-out candidates the day clubs SELECT gains a block predicate');
+select assert_eq(
+  private.can_read_club('00000000-0000-0000-0000-000000211003',
+                        '00000000-0000-0000-0000-000000000000'),
+  false, '060: ... and a club that does not exist resolves for nobody');
+
+select assert_eq(
+  (select prosrc like '%can_read_club%' from pg_proc
+    where oid = 'private.notify_ride_created_in_club()'::regprocedure),
+  true, '060: and the club fan-out actually CALLS it — the type carries club_id as well as ride_id, and 036 §3 tests the two subjects independently rather than deriving one from the other');
+select assert_eq(
+  (select prosrc like '%can_read_club%' from pg_proc
+    where oid = 'private.notify_ride_joined()'::regprocedure),
+  false, '060: ... while ride_joined does NOT, and must not — that type leaves club_id NULL, so 036 §3 conjunct 5 is vacuous for it and a club filter would gate on a column the row does not carry');
+
+-- ---------------------------------------------------------------------------
+-- 060.5  What the two fan-outs must not have lost to `create or replace`
+-- ---------------------------------------------------------------------------
+-- `create or replace` is the one shape that can quietly drop a property: the
+-- replacement carries whatever the new text says and nothing warns that the old
+-- text said more. 055.9 covers notify_ride_joined's own clauses; these are the
+-- ones 060 could have dropped from either function.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and proname in ('notify_ride_joined', 'notify_ride_created_in_club')
+      and prosrc like '%can_read_ride%'),
+  2, '060: BOTH fan-outs filter their recipients through can_read_ride — the crew narrowing and the owner arm are the same repair, and a half-applied 060 is the state this catches');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and proname in ('notify_ride_joined', 'notify_ride_created_in_club')
+      and (prosrc ilike '%auth.uid()%' or prosrc ilike '%current_user%')),
+  0, '060: neither rewritten body mentions auth.uid() or current_user — 036 trap (b), and the filter 060 adds is exactly the kind of predicate that invites one');
+
+-- ** THE CLAUSE WHOSE LOSS IS SILENT AND WORST. ** 059 §1 added an early return
+-- for the club carrying clubs.is_default: every rider belongs to that one, so
+-- without it a single ride created there writes one notification per rider in
+-- the app, synchronously, and any rider can fire it at will. 060 rewrites that
+-- function, and nothing about a missing early return raises.
+select assert_eq(
+  (select prosrc like '%is_default%' from pg_proc
+    where oid = 'private.notify_ride_created_in_club()'::regprocedure),
+  true, '060: 059''s default-club early return SURVIVED the rewrite — without it a ride in the welcome club is an app-wide broadcast any rider can fire, which 059 §1 calls worse than the defect 058 §4 refused to ship');
+
+-- The comments both functions carry. 055 established the rule: a database
+-- comment is the one piece of documentation no edit to CLAUDE.md can reach, so
+-- it moves in the same statement that makes it wrong. 036 §7.5's sentence
+-- survived into 059's re-issue unchecked, which is the drift PD-211 names.
+select assert_eq(
+  (select obj_description('private.notify_ride_created_in_club()'::regprocedure, 'pg_proc')
+     like '%deliberately NOT unioned%'),
+  false, '060: the fan-out comment no longer claims the owner is deliberately excluded — that sentence outlived its premise by 054, and 059 copied it forward without re-checking it');
+select assert_eq(
+  (select obj_description('private.notify_ride_created_in_club()'::regprocedure, 'pg_proc')
+     like '%is_default%'),
+  true, '060: ... and still records 059''s default-club early return, which the rewrite had to carry as well as correct');
+
+-- The trigger bindings. `create or replace` keeps the OID, so no trigger DDL was
+-- issued and no WHEN clause could have arrived with one — 036 trap (a). The
+-- tgname filter is REQUIRED rather than tidy: rides and ride_members both carry
+-- enforce_participation_gate, so the unfiltered query returns four rows.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where not tgisinternal and tgqual is null
+      and tgname in ('notify_ride_joined', 'notify_ride_created_in_club')),
+  2, '060: both triggers are still bound and still carry NO when clause — create or replace keeps the OID, so 060 issues no trigger DDL');
+
+-- ---------------------------------------------------------------------------
+-- 060.6  Nothing a rider can READ moved. 060 is five functions and no policy.
+-- ---------------------------------------------------------------------------
+-- The whole repair is on the WRITE side of notifications. A file that narrowed
+-- a fan-out and widened a read at the same time would pass every assertion
+-- above, so the read surface is pinned separately.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'),
+  2, '060: still exactly two policies on notifications, SELECT and UPDATE — 060 created none and dropped none');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public'
+      and (qual like '%is_club_member(%' or with_check like '%is_club_member(%')),
+  10, '060: the ten policies calling is_club_member are unchanged in number — the split replaced the function body, never a policy, so 054''s widened set neither grew nor shrank');
+select assert_eq(
+  (select count(*)::int from (values ('authenticated'), ('anon')) as r(role)
+    where has_table_privilege(r.role, 'public.notifications', 'insert')),
+  0, '060: and neither client role gained an INSERT grant — fan-out stays trigger-only, which is what the absent grant enforces');
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conrelid = 'public.notifications'::regclass
+      and conname = 'notifications_type_check'),
+  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text])))',
+  '060: the type CHECK is UNTOUCHED at five types — 060 changes who receives which existing type, never what a notification is');
+
+set role authenticated;
+rollback to savepoint recipient_sets_060;
+
+reset role;
 
 rollback;
 
