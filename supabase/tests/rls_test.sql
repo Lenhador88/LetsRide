@@ -4383,6 +4383,77 @@ select assert_eq(
   + (select count(*)::int from feed_reads where user_id = '00000000-0000-0000-0000-00000000000a'),
   0, '029: no row anywhere still references the deleted rider');
 
+-- **Derived rather than listed — task 6.1.** The sum immediately above names
+-- nine tables by hand, fixed when 029 was written against "the thirteen" FKs
+-- that existed then. `034` and `036` have each added a FK into `profiles`
+-- since — `ride_messages.author_id` and `notifications.user_id` /
+-- `actor_id` — and neither joined the list above, so this cascade test has
+-- been silently blind to two of the sixteen live FKs for as long as they
+-- have existed. That is exactly the risk task 6.1 names: "the part most
+-- likely to be silently wrong". This walks `pg_constraint` itself — the same
+-- derivation 029 §A already uses for the index assertion — so it covers
+-- every FK into `profiles` today and every one a future migration adds,
+-- with no second place to remember to update.
+--
+-- `clubs.owner_id`, `rides.organizer_id` and `postcards.author_id` are
+-- re-covered here too, redundantly with the named assertions above — no
+-- exclusion list, because the point of a derivation is that it does not
+-- know which tables it "should" skip.
+--
+-- **The row-count sweep below is NOT what catches a future non-cascading FK,
+-- and an earlier revision of this comment implied it was — reviewer finding
+-- #3, 2026-08-16.** All sixteen live FKs happen to be `ON DELETE CASCADE`
+-- today, so the sweep passes vacuously with respect to that risk: under
+-- CASCADE the row is gone and the count is 0 by construction; under
+-- `SET NULL` the row survives with a NULL the sweep's `WHERE col = uid`
+-- cannot see, so it would ALSO read 0 with data left behind; under
+-- `RESTRICT`/`NO ACTION` the `delete from auth.users` above raises before
+-- this block ever runs, so it never gets the chance to read anything. There
+-- is no live state in which the sweep alone goes red for the wrong-FK-type
+-- risk — only the assertion immediately below is falsifiable against it,
+-- checked directly against `confdeltype` rather than inferred from row
+-- counts. Mutation-tested 2026-08-16: flipping one constraint to `SET NULL`
+-- in a rolled-back transaction turns this assertion red and leaves the sweep
+-- green, which is exactly the gap it exists to close.
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where contype = 'f' and confrelid = 'public.profiles'::regclass
+      and confdeltype <> 'c'),
+  0, '6.1: every FK into profiles is ON DELETE CASCADE — a SET NULL or RESTRICT/NO ACTION here strands a departed rider''s row rather than removing it, and the row-count sweep below cannot see that case (see the comment above)');
+
+-- The sweep itself: real proof, for the CASCADE case the assertion above
+-- guarantees is the only live case, that the cascade actually ran end to end
+-- rather than merely being declared. Its own value is bounded by that
+-- guarantee — see the comment above for exactly what it does and does not
+-- catch on its own.
+do $$
+declare
+  fk record;
+  leftover int;
+  checked int := 0;
+begin
+  for fk in
+    select c.conrelid::regclass::text as tbl, a.attname as col
+      from pg_constraint c
+      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+     where c.contype = 'f' and c.confrelid = 'public.profiles'::regclass
+  loop
+    execute format('select count(*) from %s where %I = $1', fk.tbl, fk.col)
+      into leftover using '00000000-0000-0000-0000-00000000000a'::uuid;
+    if leftover <> 0 then
+      raise exception 'FAIL  6.1: % row(s) still reference the deleted rider through %.%',
+        leftover, fk.tbl, fk.col;
+    end if;
+    checked := checked + 1;
+  end loop;
+  -- A derivation that silently iterates zero times passes for the same
+  -- reason a dropped assertion does — this is what tells the two apart.
+  if checked < 16 then
+    raise exception 'FAIL  6.1: only % FK column(s) into profiles were found — expected at least 16, so this derivation itself is broken rather than the cascade', checked;
+  end if;
+  raise notice 'ok    6.1: every FK into profiles (% columns, derived from pg_constraint) is clear of the deleted rider', checked;
+end $$;
+
 rollback to savepoint transfer_029;
 
 -- ===========================================================================

@@ -36,6 +36,18 @@ vi.mock('@/lib/supabase/client', () => ({
   }),
 }))
 
+// Task 7.1's destruction primitives — mocked so the "gone" tests below can
+// assert the CALLS rather than their real effects, which is what
+// `session-store.test.ts` and `queryClient.test.ts` already cover on their
+// own. None of these three is otherwise imported by anything under test here.
+const clearQueryCache = vi.fn()
+const clearSessionStore = vi.fn()
+const clearRiderLocation = vi.fn()
+
+vi.mock('@/lib/query', () => ({ clearQueryCache }))
+vi.mock('@/lib/supabase/session-store', () => ({ clearSessionStore }))
+vi.mock('@/lib/location/rider-location', () => ({ clearRiderLocation }))
+
 const {
   attachGuardAuthListener,
   clearGuardCache,
@@ -93,6 +105,9 @@ beforeEach(() => {
   getSession.mockReset()
   rpc.mockReset()
   onAuthStateChange.mockReset()
+  clearQueryCache.mockReset()
+  clearSessionStore.mockReset()
+  clearRiderLocation.mockReset()
   getSession.mockResolvedValue(session('rider-1'))
   rpc.mockReturnValue(stamps(ONBOARDED))
   resetGuardCacheForTests()
@@ -220,6 +235,65 @@ describe('a read that did not answer', () => {
     await settle()
 
     expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('never triggers the deletion destruction — a network hiccup is not a deleted account', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(clearQueryCache).not.toHaveBeenCalled()
+    expect(clearSessionStore).not.toHaveBeenCalled()
+    expect(clearRiderLocation).not.toHaveBeenCalled()
+  })
+})
+
+describe('an account that no longer exists — task 7.1 (PD-102)', () => {
+  beforeEach(() => {
+    // .maybeSingle()'s own shape for zero rows: data null, error null — the
+    // one case `onboardingStateFrom` maps to `gone` rather than `unavailable`.
+    rpc.mockReturnValue(stamps(null, null))
+  })
+
+  it('is a distinct decided state, not folded into unavailable', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(peek('/postcards')).toEqual({ kind: 'gone' })
+  })
+
+  it('destroys the query cache, the session store and the cached location', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(clearQueryCache).toHaveBeenCalledTimes(1)
+    expect(clearSessionStore).toHaveBeenCalledTimes(1)
+    expect(clearRiderLocation).toHaveBeenCalledTimes(1)
+  })
+
+  it('does this without a successful round trip — the destruction is local', async () => {
+    // getSession and the RPC both already answered by the time this branch
+    // runs; nothing else in this path is a network call, so there is nothing
+    // here that an offline device could fail to complete.
+    getSession.mockResolvedValue(session('rider-1'))
+
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(clearSessionStore).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry — a decided `gone` answer is not re-attempted on the next navigation', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+    rpc.mockClear()
+    clearQueryCache.mockClear()
+
+    ensureGuardState('/rides')
+    await settle()
+
+    expect(rpc).not.toHaveBeenCalled()
+    expect(clearQueryCache).not.toHaveBeenCalled()
+    expect(peek('/rides')).toEqual({ kind: 'gone' })
   })
 })
 

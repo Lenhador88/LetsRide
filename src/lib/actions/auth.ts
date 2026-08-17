@@ -4,9 +4,12 @@ import { clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { clearRiderLocation } from '@/lib/location/rider-location'
 import { clearSessionStore } from '@/lib/supabase/session-store'
+import { edgeFunctionErrorCode } from '@/lib/supabase/functions'
 import { RECOVERY_EXPIRED_MESSAGE, consumePasswordResetGrant } from '@/lib/auth/recovery'
+import { isOnline } from '@/lib/query/connectivity'
 import type { ActionState } from '@/lib/actions/state'
 import {
+  deleteAccountSchema,
   loginSchema,
   newPasswordFormSchema,
   resetRequestSchema,
@@ -268,4 +271,85 @@ export async function signOut(): Promise<ActionState> {
   clearRiderLocation()
   await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
+}
+
+/**
+ * Account deletion — PD-102, `account-deletion`'s re-authentication and
+ * "every state is defined" requirements.
+ *
+ * **Offline refuses outright, before the network call, and never queues.**
+ * The one write in this app that must never be optimistic (design D7, Q11) —
+ * `isOnline()` rather than trusting a disabled button, because the button is
+ * a UX convenience and this is the boundary a modified or stale client
+ * cannot skip.
+ *
+ * **On success this returns exactly what `signOut()` returns, by calling
+ * it** — `client-session-storage`'s own rule: "A successful deletion
+ * destroys the same set as a sign-out … SHALL NOT be reimplemented alongside
+ * sign-out's, because two lists of what to clear drift and only one of them
+ * is exercised daily." `signOut()`'s own revocation call is expected to be
+ * refused by the server here — there is no account left to revoke — and it
+ * already falls back to a local-only sign-out on any error, which is exactly
+ * the "revocation the server refuses is not a failed deletion" scenario.
+ *
+ * **The Edge Function's error codes are three, not two, and the client must
+ * not fold any of them into another — reviewer finding #2, 2026-08-16.**
+ *
+ *   - `unauthorized` — the JWT itself was actively rejected by GoTrue, which
+ *     for a token this action just used successfully to reach the function
+ *     can only mean the account is already gone (D7's already-deleted case:
+ *     a second device, a retry after an unseen success). Reported as
+ *     success.
+ *   - `reauth_required` — the session is fine and the password was missing
+ *     or wrong. Reported as a retryable failure, with the account and the
+ *     rider's session both untouched, per "A wrong password does not
+ *     delete".
+ *   - `verification_unavailable` — the function's own `getUser` call could
+ *     not get a real answer from GoTrue at all (a brief outage reaching it
+ *     from the Edge runtime, or GoTrue itself erroring) — this says NOTHING
+ *     about whether the token or the account is valid. **It used to be
+ *     indistinguishable from `unauthorized` on this endpoint, which reported
+ *     a transient GoTrue hiccup as "account deleted" and signed the rider
+ *     out with nothing actually removed** — the false-positive erasure
+ *     reviewer finding #2 named. Reported as a retryable failure, same as
+ *     `reauth_required`, and never as success.
+ *
+ * `edgeFunctionErrorCode` is what tells the three apart; a network failure
+ * that never reached the function returns none of them and falls into the
+ * generic retry message below.
+ */
+export async function deleteAccount(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = deleteAccountSchema.safeParse({ password: formData.get('password') })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+
+  if (!isOnline()) {
+    return { error: "You're offline — reconnect to delete your account." }
+  }
+
+  const supabase = await resolveSupabase()
+  const { error } = await supabase.functions.invoke('delete-account', {
+    body: { password: parsed.data.password },
+  })
+
+  if (error) {
+    const code = await edgeFunctionErrorCode(error)
+
+    if (code === 'reauth_required') return { error: 'That password is incorrect.' }
+
+    // A GoTrue call that could not complete says nothing about the account
+    // or the token — reported the same as a wrong password, never as
+    // success. See the header: this used to be folded into `unauthorized`.
+    if (code === 'verification_unavailable') {
+      return { error: 'Could not verify your account right now. Try again in a moment.' }
+    }
+
+    // `code === 'unauthorized'` falls through to the success path below — see
+    // the header. Anything else (a network failure, a 500, a relay error) is
+    // reported as a retryable failure with nothing deleted.
+    if (code !== 'unauthorized') {
+      return { error: 'Could not delete your account. Try again.' }
+    }
+  }
+
+  return signOut()
 }

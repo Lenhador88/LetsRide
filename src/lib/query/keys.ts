@@ -111,6 +111,13 @@ export const queryKeys = {
      * blocks its subject (spec's *Stale after a block*).
      */
     detail: (userId: string): QueryKey => ['profile', 'detail', userId],
+    /**
+     * PD-102. The delete-account confirmation's live counts, same pattern as
+     * `clubs.deletionImpact` — read only while that screen is mounted, never
+     * invalidated by a write, because the account it describes is about to
+     * stop existing rather than needing to stay fresh.
+     */
+    deletionImpact: (): QueryKey => ['profile', 'deletionImpact'],
   },
 
   /**
@@ -336,5 +343,15 @@ export const queryKeys = {
  * that because the blocked rider appears under `postcards`, `rides`, `clubs`
  * *and* `profile`. Sign-out additionally has to destroy rather than refresh —
  * see `clearQueryCache` in queryClient.ts.
+ *
+ * **`deleteAccount` (PD-102) claims the same thing sign-out does, and for
+ * the same reason — `client-cache-invalidation`'s "a deletion clears the
+ * cache rather than invalidating it".** It calls `signOut()` on every path
+ * that is not a wrong password, so it is `clearQueryCache()`, never
+ * `invalidate(EVERYTHING)`: the account may be gone by the time any
+ * refetch would land, and invalidating would burn the one moment the cache
+ * could have been destroyed on a repopulating a screen with a dead token.
+ * No key in this file is invalidated for it — the destination is
+ * `/auth/login`, which reads nothing this cache holds.
  */
 export const EVERYTHING: QueryKey = []

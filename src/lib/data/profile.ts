@@ -3,7 +3,7 @@ import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { OWN_PROFILE_COLUMNS, VIEWED_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { profileIdSchema } from '@/lib/validation/profile'
-import type { Profile, ViewedProfile } from '@/types'
+import type { AccountDeletionImpact, Profile, ViewedProfile } from '@/types'
 
 export async function getCurrentProfile(): Promise<Profile | null> {
   const supabase = await resolveSupabase()
@@ -148,6 +148,130 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
     'that username',
   )
   return exists === true
+}
+
+/**
+ * How many of the departing rider's own upcoming, organised rides feed the
+ * confirmation's counts. Bounded for the same reason `CLUB_MEMBERSHIP_LIMIT`
+ * bounds `getMyClubs` (`lib/data/clubs.ts`) — organising rides is something a
+ * rider does by hand, so hundreds of upcoming ones is implausible — and for
+ * a second reason that one does not have: every id here is serialised into
+ * the `ride_members` query's `.in()` list below, so an unbounded read is
+ * also an unbounded request URL (reviewer finding #4, 2026-08-16). Past the
+ * cap, `ridesToCancel` and `ridersAffected` become a floor rather than a
+ * total — the same honest degradation `ClubDeletionImpact`'s own counts
+ * already accept.
+ */
+export const ACCOUNT_DELETION_RIDES_LIMIT = 200
+
+/**
+ * How many `ride_members` rows across those rides feed `ridersAffected`
+ * (reviewer finding #3 of the third delta pass, 2026-08-16). The
+ * `count: 'exact', head: true` form this replaced put no rows on the wire at
+ * any volume; reading actual rows to dedupe by person needs a bound the old
+ * form did not, because — per `RIDE_CREW_LIMIT`'s own comment in
+ * `lib/data/rides.ts` — `ride_members` is "unbounded by construction":
+ * `max_riders` has never been enforced. Both other `ride_members` reads in
+ * that file are bounded (`RIDE_FILTER_SCAN_LIMIT` and `RIDE_CREW_LIMIT`);
+ * this is the one in `lib/data/` that was not, until now. Set well
+ * above `ACCOUNT_DELETION_RIDES_LIMIT` × a realistic crew size rather than
+ * derived from it, because the two bound different things (rides vs. total
+ * crew rows) and a product of the two would be a cap nobody chose on
+ * purpose. Past it, `ridersAffected` is a floor, same as `ridesToCancel`.
+ *
+ * **What this does NOT cover, measured rather than assumed not to matter:**
+ * PostgREST's own `db-max-rows` config, if set on either project, would
+ * truncate a read silently below even this limit. `pg_settings` and
+ * `current_setting('pgrst.db_max_rows', true)` were checked against DEV
+ * (`fpmrimzxadewsaiwpsel`) 2026-08-16 and neither exposes it — Supabase does
+ * not appear to surface this PostgREST-level config as a queryable Postgres
+ * setting on a managed project, and this session had no way to make an
+ * authenticated REST call to test it empirically (no key-retrieval tool, no
+ * `.env.local`). Left as an inference, same as the reviewer's own read of it —
+ * not because it was not checked, but because the check came back
+ * inconclusive rather than negative.
+ */
+export const ACCOUNT_DELETION_RIDERS_LIMIT = 1000
+
+/**
+ * The account-deletion confirmation's blast-radius counts — see
+ * `AccountDeletionImpact`. Read under the caller's own session, never
+ * through the privileged Edge Function, per `deletion-privileged-execution`'s
+ * "the function does no reading a rider could have done themselves".
+ *
+ * Two round trips when there is nothing to cancel, three when there is:
+ * `clubs` and `rides` have no relationship PostgREST can embed in a single
+ * query without also fetching every row's roster, so they run in parallel;
+ * `ride_members` is read separately, after, because it has to exclude the
+ * departing rider's own row (see `ridersAffected` below) and PostgREST's
+ * embedded-count form has no clean way to filter one `user_id` out of an
+ * aggregate it computes server-side.
+ */
+export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { clubsChangingHands: 0, ridesToCancel: 0, ridersAffected: 0 }
+
+  const [clubRows, rideRows] = await Promise.all([
+    unwrapList(
+      await supabase
+        .from('clubs')
+        .select('id, members_count:club_members(count)')
+        .eq('owner_id', user.id),
+      'clubs you own',
+    ) as unknown as { id: string; members_count: { count: number }[] | null }[],
+    unwrapList(
+      await supabase
+        .from('rides')
+        .select('id')
+        .eq('organizer_id', user.id)
+        .gte('departure_at', new Date().toISOString())
+        .limit(ACCOUNT_DELETION_RIDES_LIMIT),
+      'your upcoming rides',
+    ) as unknown as { id: string }[],
+  ])
+
+  // "At least one other member" — a club where this rider is the only row
+  // is the one D2 deletes rather than transfers, so it does not belong in a
+  // count captioned "will change hands".
+  const clubsChangingHands = clubRows.filter(
+    (row) => (row.members_count?.[0]?.count ?? 0) > 1
+  ).length
+
+  // Excludes the organizer's own `ride_members` row (reviewer finding #4 of
+  // the first pass, 2026-08-16) — an organizer typically holds one, so
+  // summing the plain embedded count included the departing rider in their
+  // own "riders affected" figure. `AccountDeletionImpact.ridersAffected` is
+  // documented as "who finds a ride gone", and the departing rider is not
+  // that.
+  //
+  // **Distinct riders, not rows — reviewer finding #3 of the second pass,
+  // 2026-08-16.** A rider crewing two of the departing organizer's upcoming
+  // rides used to count twice: `count: 'exact', head: true` counts MATCHING
+  // ROWS, and PostgREST has no `count(distinct …)` this query builder can
+  // ask for. Reading the actual `user_id` values and sizing a `Set` is the
+  // only way to ask "how many people", rather than "how many crew slots".
+  const ridersAffected = rideRows.length
+    ? new Set(
+        (
+          unwrapList(
+            await supabase
+              .from('ride_members')
+              .select('user_id')
+              .in('ride_id', rideRows.map((row) => row.id))
+              .neq('user_id', user.id)
+              .limit(ACCOUNT_DELETION_RIDERS_LIMIT),
+            'riders on your upcoming rides',
+          ) as unknown as { user_id: string }[]
+        ).map((row) => row.user_id)
+      ).size
+    : 0
+
+  return {
+    clubsChangingHands,
+    ridesToCancel: rideRows.length,
+    ridersAffected,
+  }
 }
 
 /**

@@ -1,5 +1,8 @@
 import { needsOnboardingState, onboardingStateFrom, type GuardState } from '@/lib/auth/guard'
 import { createClient } from '@/lib/supabase/client'
+import { clearQueryCache } from '@/lib/query'
+import { clearRiderLocation } from '@/lib/location/rider-location'
+import { clearSessionStore } from '@/lib/supabase/session-store'
 import type { OnboardingState } from '@/types'
 
 /**
@@ -91,6 +94,15 @@ let onboarding: OnboardingState | undefined
  * read must never harden into a verdict.
  */
 let unavailable = false
+/**
+ * A read that answered `gone` — the account this session names no longer
+ * exists (PD-102). Unlike `unavailable`, this DOES harden into a verdict:
+ * `ensureGuardState`'s retry guard only special-cases `kind !== 'unavailable'`,
+ * so a `gone` answer is never re-attempted, which is correct — a deleted
+ * account does not un-delete itself on the next navigation. Set at the same
+ * moment `read()` triggers `destroySessionForDeletedAccount`, below.
+ */
+let gone = false
 
 /**
  * The pathname of the most recent read attempt.
@@ -124,6 +136,8 @@ export type GuardSnapshot = {
   signedIn: boolean | undefined
   onboarding: OnboardingState | undefined
   unavailable: boolean
+  /** PD-102 — see the module-level `gone` variable. */
+  gone: boolean
 }
 
 /** What the SSR pass and the hydration render both see — see the module note on
@@ -132,6 +146,7 @@ const EMPTY_SNAPSHOT: GuardSnapshot = Object.freeze({
   signedIn: undefined,
   onboarding: undefined,
   unavailable: false,
+  gone: false,
 })
 
 let snapshot: GuardSnapshot = EMPTY_SNAPSHOT
@@ -139,9 +154,14 @@ const listeners = new Set<() => void>()
 
 function notify(): void {
   snapshot =
-    userId === undefined && onboarding === undefined && !unavailable
+    userId === undefined && onboarding === undefined && !unavailable && !gone
       ? EMPTY_SNAPSHOT
-      : { signedIn: userId === undefined ? undefined : userId !== null, onboarding, unavailable }
+      : {
+          signedIn: userId === undefined ? undefined : userId !== null,
+          onboarding,
+          unavailable,
+          gone,
+        }
   for (const listener of listeners) listener()
 }
 
@@ -185,6 +205,9 @@ export function guardStateFrom(state: GuardSnapshot, pathname: string): GuardSta
   // `readGuardState` skipped the round trip for them and so does this.
   if (!needsOnboardingState(pathname)) return { kind: 'session' }
   if (state.onboarding) return { kind: 'rider', ...state.onboarding }
+  // Checked before `unavailable` — see the module note on why the two answer
+  // the same destination but must never be confused about when to destroy.
+  if (state.gone) return { kind: 'gone' }
   if (state.unavailable) return { kind: 'unavailable' }
   return undefined
 }
@@ -265,12 +288,66 @@ async function read(pathname: string): Promise<void> {
       has_username: state.has_username,
     }
     unavailable = false
+    gone = false
+  } else if (state.kind === 'gone') {
+    // Task 7.1 (`client-session-storage`'s ADDED requirement) — the account
+    // this session names no longer exists, and destroying it is this
+    // branch's job, not something left for the rider to trigger by pressing
+    // Sign out on an account that is not there to sign out of.
+    onboarding = undefined
+    unavailable = false
+    gone = true
+    await destroySessionForDeletedAccount()
   } else {
     onboarding = undefined
     unavailable = true
+    gone = false
   }
 
   notify()
+}
+
+/**
+ * The local half of task 7.1, run once per device the moment it discovers
+ * its own account is gone — never gated on the rider choosing to sign out,
+ * because the account they would be signing out of does not exist to ask.
+ *
+ * **Deliberately not a call into `lib/actions/auth.ts`'s `signOut()`, and
+ * deliberately not `supabase.auth.signOut()` either — measured, not assumed.**
+ * Both were tried first. `signOut()` (the action) is out for the reason its
+ * own doc comment states elsewhere: it imports `clearGuardCache` from *this*
+ * file, so importing it back here would be a cycle, and it calls
+ * `clearGuardCache()`, which erases the `gone` state this function's caller
+ * is about to set. The SDK's own `supabase.auth.signOut()` looked like the
+ * fix for that — until traced through the installed `@supabase/auth-js`
+ * rather than assumed: `_signOut` treats a 401/403/404 from the revoke
+ * endpoint (exactly what an already-deleted account returns) as "nothing to
+ * revoke" and still calls `_removeSession()`, which `await`s
+ * `_notifyAllSubscribers('SIGNED_OUT', null)` — and that call lands
+ * *synchronously inside this function's own await*, on the very listener
+ * `attachGuardAuthListener` installed in this module. That listener resets
+ * `gone` to `false` and writes `userId = null` before this function's own
+ * `await` returns, so by the time `read()`'s caller reaches its `notify()`,
+ * `gone` has already been wiped back to `anonymous` — the rider still ends
+ * up correctly signed out, but on plain `/auth/login` instead of
+ * `/auth/login?error=profile_unavailable`, and only by accident of which
+ * write happened to run last.
+ *
+ * So this clears only what does not depend on a network round trip to the
+ * revoke endpoint, and it is enough: `clearQueryCache` and
+ * `clearRiderLocation` are synchronous, `clearSessionStore` sweeps the
+ * *persisted* storage directly (no SDK call needed — task 7.1's "does not
+ * need the network"), and the SDK's own in-memory session is left to expire
+ * on its own. That residual is bounded and already accepted —
+ * `deletion-privileged-execution`'s "a residual access token can read for at
+ * most its remaining lifetime" describes exactly this window, and it closes
+ * for real the moment the rider signs in again, which unconditionally
+ * overwrites `currentSession` regardless of what was there before.
+ */
+async function destroySessionForDeletedAccount(): Promise<void> {
+  clearQueryCache()
+  clearRiderLocation()
+  await clearSessionStore()
 }
 
 /** Does not notify — every caller either notifies once afterwards or is itself
@@ -281,6 +358,7 @@ function writeSession(next: string | null): void {
     // A different rider — or none — so the stamps belong to somebody else.
     onboarding = undefined
     unavailable = false
+    gone = false
   }
   userId = next
 }
@@ -312,6 +390,7 @@ export function attachGuardAuthListener(): void {
     // the retry. The credential is exactly what may have been wrong, so a fresh
     // one is precisely when re-attempting is worth it.
     unavailable = false
+    gone = false
     attemptedPath = null
 
     if (event === 'SIGNED_OUT' || !session) {
@@ -342,6 +421,7 @@ export function invalidateOnboardingState(): void {
   if (typeof document === 'undefined') return
   onboarding = undefined
   unavailable = false
+  gone = false
   notify()
 }
 
@@ -365,6 +445,7 @@ export function clearGuardCache(): void {
   userId = undefined
   onboarding = undefined
   unavailable = false
+  gone = false
   attemptedPath = null
   inFlight = null
   notify()
@@ -381,6 +462,7 @@ export function resetGuardCacheForTests(): void {
   userId = undefined
   onboarding = undefined
   unavailable = false
+  gone = false
   attemptedPath = null
   inFlight = null
   subscribed = false

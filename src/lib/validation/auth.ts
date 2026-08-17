@@ -49,3 +49,14 @@ export const consentSchema = z.object({ acceptedTerms: acceptedTermsSchema })
 export const resetRequestSchema = z.object({ email: emailSchema })
 
 export const newPasswordFormSchema = z.object({ password: newPasswordSchema })
+
+/**
+ * The re-authentication proof on the delete-account confirmation (design D6,
+ * Q7). Deliberately not `newPasswordSchema` — this is the account's
+ * *existing* password, so `min(1)` is the only rule that belongs on the
+ * client: the Edge Function is what actually verifies it, and a rider whose
+ * password predates the current length rules must still be able to type it.
+ */
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, 'Enter your password.'),
+})
