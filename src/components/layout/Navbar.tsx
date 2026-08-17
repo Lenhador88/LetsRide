@@ -39,8 +39,9 @@ const navItems = [
   // PD-244 renamed this label from `Home` so it names its content like the
   // other three. The icon deliberately did not follow: `HomeIcon` is a house,
   // the generated set has no postcard glyph, and `MailboxIcon` is reserved for
-  // the Inbox tab above. The design still says `Home` — see `CLAUDE.md`
-  // §Product Scope before "correcting" it back.
+  // the Inbox tab this file's header comment describes. PD-250 carries the
+  // glyph question. The design still says `Home` — see `CLAUDE.md` §Product
+  // Scope before "correcting" it back.
   { href: '/postcards', label: 'Postcards', Icon: HomeIcon },
   { href: '/rides', label: 'Rides', Icon: BikeIcon },
   { href: '/clubs', label: 'Clubs', Icon: ClubsIcon },

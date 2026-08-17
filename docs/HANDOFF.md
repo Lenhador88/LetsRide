@@ -1685,14 +1685,31 @@ single path, which costs nothing here because these are filled paths already —
 ### The first tab says `Postcards` and the design says `Home` — 2026-08-17
 
 PD-244 renamed the nav tab's label and that screen's header. **The design was not changed and is
-not going to be**: `v2 / Component / Header` still measures a centred "Home". So a session doing
-the right thing — reading `design/` rather than the API, per `CLAUDE.md` §Design System — gets
-"Home" back and would be *reverting shipped copy* by matching it.
+not going to be**, so a session doing the right thing — reading `design/` rather than the API, per
+`CLAUDE.md` §Design System — gets "Home" back for *both* strings and would be reverting shipped
+copy by matching it. One command shows both:
 
-**Nothing automated stops that revert.** `docs:check`'s three nav claims all measure a **count**
-(`grep -c "href:"` over `navItems`), and the one that pins the label list pins it in the *prose*
-only — so restoring `label: 'Home'` in `Navbar.tsx` leaves the whole sweep green. The tripwire is
-the prose in `CLAUDE.md` §Product Scope, which is why that note is there rather than only here.
+```bash
+npm run figma -- text "View all new postcards / Home - Postcards - All new" | grep -A1 '"Home"'
+# "Home"  Label · 10/16 w600        <- the nav tab
+# "Home"  Page Name · 16/24 w600    <- the header
+```
+
+**Do not reach for `v2 / Component / Header` to check the header half** — the obvious command
+returns a plausible wrong answer. That node is a `COMPONENT_SET` whose title layer is the
+placeholder `Page Name`; "Home" is an *instance override* living in the Home frames, so
+`npm run figma -- text "v2 / Component / Header"` prints `Page Name` and reads as though the claim
+were stale. Query the frame, as above.
+
+**Nothing automated stops that revert.** `docs:check`'s three nav claims all measure a **count** of
+`href:` — two scoped to the `navItems` array, one deliberately unscoped and reading 9 — and the
+single claim that embeds the label list matches it in `docs/reference/product-scope.md`, never
+against the code. So
+restoring `label: 'Home'` in `Navbar.tsx` leaves the whole sweep green at 33 passed, 0 failed;
+measured, not assumed. **No `docs:check` claim reads `CLAUDE.md`'s nav prose at all** — despite
+`nav-items-scoped-claude`'s id, its `file` is `product-scope.md` — so the only thing standing
+against a silent revert is a human reading that note. That is why it is prose in the auto-loaded
+file rather than a claim.
 
 **The tab's accessible name changed with the label, and there is no `aria-label` insulating it** —
 `Navbar.tsx` renders `aria-current`, the icon, then `{label}`, so the visible text *is* the
@@ -1704,7 +1721,8 @@ expect "Postcards".
 **The icon deliberately did not follow the label**: still `HomeIcon`, a house. The generated set
 has no postcard glyph, `MailboxIcon` is reserved for the Inbox tab, and drawing one means writing
 to Figma — an explicit owner ask (`CLAUDE.md` §Design System's fourth rule), with the licence
-settled first. Tracked separately in Linear rather than absorbed here.
+settled first. **PD-250 carries it, `Todo Human` + `Owner only`**, because the open question is
+whether to add a glyph at all rather than how to draw one.
 
 ---
 
