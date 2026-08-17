@@ -469,10 +469,24 @@ names a component, a query or a cache key, so none can fire on a diff that touch
 story it picked, and **the argument that this is safe is you.** Nothing else looks at whether
 the diff matches the issue: CI checks that it compiles, not that it was asked for.
 
+**A diff carrying SEVERAL issues may be a dispatched group, and that is not scope creep.** The
+dispatcher hands colliding stories — shared paths, two migrations, one shared primitive — to a
+single session on purpose, because building them apart is what produces duplicate migration
+numbers and divergent implementations of one component
+(`.claude/commands/queue-dispatch.md` STEP 4). So a multi-story branch is legitimate **when the
+caller names the issues and the collision that grouped them**, and STEP 4c requires it to. Judge
+each story against its own issue and its own commit range, exactly as you would a solo pickup.
+
+**What is still a finding:** a story in the diff that the caller did not name, a group whose
+stated collision is not visible in the code (three stories that touch nothing in common were not
+grouped, they were chosen), and a group so large that you cannot honestly cover it in one read —
+say that plainly rather than reviewing part of it and reporting a clean pass. **A group is capped
+at three issues**, so a fourth is a finding on its own.
+
 **You usually run before the PR exists, so you cannot read a PR body — the caller has to hand
-you the material.** STEP 4c requires the prompt that invokes you to carry the issue being
+you the material.** STEP 4c requires the prompt that invokes you to carry every issue being
 built, each fold-in with its one-line relatedness justification and its five ratings, and the
-commit range that is the story itself as opposed to the fold-ins. **If a prompt mentions
+commit range that is each story itself as opposed to the fold-ins. **If a prompt mentions
 fold-ins but does not supply those, say so as a finding and review what you can** — an
 unverifiable scope claim is exactly the thing this pass exists to surface, and guessing the
 boundary from the diff alone would launder it.
