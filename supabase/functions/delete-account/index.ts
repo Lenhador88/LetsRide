@@ -24,19 +24,21 @@
  * is not a reason to redeploy: open the diff.
  *
  * **`ezbr_sha256` equality across the two projects is NOT a currency check** —
- * it says PROD and DEV agree, never that either matches this file, and it read
- * equal for two days while both were behind. The digest that answers currency
- * is the pair above: a deploy `updated_at` NEWER than this directory's last
- * commit, with nothing in the `git log` range.
+ * it says PROD and DEV agree, never that either matches this file. The check
+ * that answers currency is the pair above: a deploy `updated_at` NEWER than
+ * this directory's last behavioural commit, with nothing in the `git log`
+ * range.
  *
  * Measured 2026-08-17T14:32Z, after the owner redeployed by hand: **PROD v9 and
  * DEV v5, `ezbr_sha256` 9793933d…, both current** — the re-authentication proof
- * below is live on both projects. `PD-86` is the record. Two things it does not
- * settle: whether PROD's `SERVICE_ROLE_KEY` is PROD's key (unproven — the 401
- * at the `getUser` check fires before the admin client is built, so no probe so
- * far has reached the code a wrong key breaks), and whether the proof actually
- * RUNS — see the CONTENT note below. `ride-maps` has been in the deployed
- * `PREFIXES` since the 2026-08-16 deploy, so that gap is closed.
+ * below is live on both projects, and `PREFIXES` at the bottom of this file is
+ * what the live build sweeps, `ride-maps` included.
+ *
+ * **PROD's `SERVICE_ROLE_KEY` is PROVEN**, `PD-86`, closed 2026-08-16: a real
+ * PROD deletion, verified in the database rather than off the 200 — `auth.users`,
+ * `profiles` and `auth.identities` gone, re-sign-in refused. Do not re-run that
+ * probe to reassure yourself; it costs a real account. What is NOT settled is
+ * whether the proof below actually RUNS — see the CONTENT note.
  *
  * **The re-authentication proof (task 3.4) landed with PD-102 (2026-08-16).**
  * `req.json()` below reads a `{ password }` body and verifies it with

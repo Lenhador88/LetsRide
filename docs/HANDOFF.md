@@ -382,7 +382,7 @@ build work, the rest are the owner's.
 | | Blocker | Why it blocks |
 |---|---|---|
 | 1 | **The shell itself** | **Started 2026-08-07; the `webDir` gate cleared 2026-08-10 (PD-142).** `capacitor.config.ts`, the secure store and a building `out/` are in; `ios/` and `android/` are not, and cannot be generated here. What is left needs a Mac |
-| 2 | **Account deletion — the flow is built, and the function carrying the re-auth proof is deployed as of 2026-08-17. Not yet exercised against that build** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, groups 3/4/7 and 6.1 landed 2026-08-16 (`PD-102`): `ProfileMenu`'s Delete account row, the `DeleteAccountSheet` confirmation (a second bottom sheet over `/profile`, not a route — the Figma tree says so, `tasks.md` 3.3 used to assume otherwise), `deleteAccount` in `lib/actions/auth.ts`, one shared `not-found.tsx` for the four "content is unavailable" screens, and the route guard's `gone` state destroying local session data the moment a device discovers its own account is gone (`client-session-storage`'s ADDED requirement). **The re-authentication proof (D6/Q7) is deployed as of 2026-08-17T14:32Z** — the owner redeployed by hand to PROD v9 / DEV v5, `ezbr_sha256` `9793933d…` on both, newer than the file's last commit with nothing since (`list_edge_functions`, against `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/delete-account/`). That closes the redeploy window three tasks shared (2.2, 2.3a, `add-ride-map-tiles` 8.3). **What is verified is the digest, not the behaviour**: nobody has yet sent a request with no `password` and seen it refused `reauth_required`, which is the only check that proves the gate runs — task 2.6 is owed again against this build, and until it is run, "a password is now checked" is an inference from a matching digest. No session can redeploy — there is no `supabase` CLI here, and the MCP server's `deploy_edge_function` is one of the four entries on `.claude/settings.json`'s `deny` list. Count what is still open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because **`1.6b` is still a live, undecided defect** (a club's last member leaving can destroy third-party postcards — PO decision, not built) and **Q4 is still open** (legal, blocking before launch not before build); `2.4` (idempotency under concurrency), `2.6` (the live exercise, owed again against the redeployed build) and `6.3` (the live walk) are also open |
+| 2 | **Account deletion — the flow is built, and the function carrying the re-auth proof is deployed as of 2026-08-17. Not yet exercised against that build** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, groups 3/4/7 and 6.1 landed 2026-08-16 (`PD-102`): `ProfileMenu`'s Delete account row, the `DeleteAccountSheet` confirmation (a second bottom sheet over `/profile`, not a route — the Figma tree says so, `tasks.md` 3.3 used to assume otherwise), `deleteAccount` in `lib/actions/auth.ts`, one shared `not-found.tsx` for the four "content is unavailable" screens, and the route guard's `gone` state destroying local session data the moment a device discovers its own account is gone (`client-session-storage`'s ADDED requirement). **The re-authentication proof (D6/Q7) is deployed as of 2026-08-17T14:32Z** — the owner redeployed by hand to PROD v9 / DEV v5, `ezbr_sha256` `9793933d…` on both, newer than the directory's last **behavioural** commit (`list_edge_functions`, against `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/delete-account/` — and read what that range *contains*, because a comment-only commit lands in it too and reads as stale). That closes the redeploy window three tasks shared (2.2, 2.3a, `add-ride-map-tiles` 8.3), **none of whose boxes reflect it yet** — see PD-249, which also covers `resolve-ride-location` being deployed while four places including the public privacy page say it is not. **What is verified is the digest, not the behaviour**: nobody has yet sent a request with no `password` and seen it refused `reauth_required`, which is the only check that proves the gate runs — task 2.6 is owed again against this build, and until it is run, "a password is now checked" is an inference from a matching digest. No session can redeploy — there is no `supabase` CLI here, and the MCP server's `deploy_edge_function` is one of the four Supabase operations on `.claude/settings.json`'s `deny` list. Count what is still open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because **`1.6b` is still a live, undecided defect** (a club's last member leaving can destroy third-party postcards — PO decision, not built) and **Q4 is still open** (legal, blocking before launch not before build); `2.4` (idempotency under concurrency), `2.6` (the live exercise, owed again against the redeployed build) and `6.3` (the live walk) are also open |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
@@ -413,24 +413,25 @@ working around them.** Four carry detail worth having at hand:
    optional: it is what actually closes the recovery hole `026` can only gate at the app's front
    door — GoTrue's `PUT /auth/v1/user` accepts a password change from any live session, measured.
 
-2. **`PD-86` — prove PROD's `SERVICE_ROLE_KEY` is PROD's key.** The deploy half closed on
-   2026-08-11, and the redeploy that carries PD-102's re-authentication proof closed
-   2026-08-17T14:32Z — the owner deployed `delete-account` to **PROD v9 and DEV v5**, both
-   `ezbr_sha256` `9793933d…`, both newer than the file's last commit with nothing since. Both
-   functions are `ACTIVE` on both projects with `verify_jwt` true; `resolve-ride-location` sits
-   at `d5932de9…` and is current too. **Cross-project equality never means current** — that pair
-   read equal at `7d521b17…` for two days while the deployed build predated its own `index.ts`,
-   which is row 2 of §Store readiness above, not §Known issues, a bulleted list with no rows in
-   it. PD-231 put `list_edge_functions` on `reviewer`'s
-   `tools:` line so it can make that comparison rather than probing the endpoint — **an entry on
-   a `tools:` line is not availability**, and the pass reviewing PD-231 itself reached no
-   connector at all. This half of PD-86 did not close, and it is narrow. Both PROD probes returned 401 at the `getUser` check, which runs *before* the admin
-   client is constructed, so neither reached the code a wrong key breaks. A wrong value fails at
-   `auth.admin.deleteUser` — **the first real deletion 500s**, in production, on the one flow that
-   cannot be retried. **Only one probe settles it**: a throwaway PROD account, created through the
-   app (PROD has email confirmation on, so it needs a real inbox) and deleted through the function.
+2. **`PD-86` is CLOSED — 2026-08-16, and PROD's `SERVICE_ROLE_KEY` is PROVEN**, by a real
+   deletion against `zwprydcyryvudhurbnye` verified in the database rather than off the 200:
+   `auth.users`, `public.profiles` and `auth.identities` all gone, re-sign-in `400
+   invalid_credentials` (so a hard delete, not Supabase's soft mode, which would have made the
+   address unreusable). Read that issue, not this line, before re-running anything — **two
+   `Owner only` items in a row were found already-fixed, and this was the third**, so the probe
+   here is the one thing not to repeat: it creates and irreversibly deletes a real PROD account.
 
-   **Every redeploy is an owner action too**, via the dashboard rather than the CLI — Edge
+   The redeploy carrying PD-102's re-authentication proof closed **2026-08-17T14:32Z** — `delete-account`
+   at **PROD v9 / DEV v5**, both `ezbr_sha256` `9793933d…`, both newer than the directory's last
+   *behavioural* commit. Both functions are `ACTIVE` on both projects with `verify_jwt` true;
+   `resolve-ride-location` sits at `d5932de9…`. **Cross-project equality never means current** —
+   it says the two projects agree, never that either matches the repo, which is row 2 of §Store
+   readiness above, not §Known issues, a bulleted list with no rows in it. PD-231 put
+   `list_edge_functions` on `reviewer`'s `tools:` line so it can make that comparison rather than
+   probing the endpoint — **an entry on a `tools:` line is not availability**, and all four passes
+   reviewing PD-231 reached no connector at all (PD-246).
+
+   **Every redeploy is an owner action**, via the dashboard rather than the CLI — Edge
    Functions → *Deploy a new function* → Via editor, secret under Project Settings → Edge
    Functions. So an edit to `index.ts` is silent drift until someone repeats this. The CLI path
    failed twice on things the dashboard cannot get wrong: it resolves

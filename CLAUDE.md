@@ -424,9 +424,9 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
 **Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, each one's `ezbr_sha256`
 equal across the two projects, and both current against their files** — measured 2026-08-17,
 after the owner redeployed `delete-account` (`9793933d…`, PROD v9 / DEV v5). **Cross-project
-equality was never the check** that established the second half: it says the two projects agree,
-never that either matches the repo, and this same line asserted equality while the deployed
-build was two days behind its own `index.ts`. Deploying is an **owner action** — there is no
+equality is not what establishes that second half**: it says the two projects agree, never that
+either matches the repo, so currency is the `updated_at`-against-commit-date check below.
+Deploying is an **owner action** — there is no
 `supabase` CLI in the build container, and the
 MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
 §Working Principles says to treat as blocked under any connector name — so an edit under
