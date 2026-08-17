@@ -717,6 +717,11 @@ That is why they are numbered and cross-referenced by number.
    `Done ; ) <issue ids> <short title>`. One session, one notification — three pushes for one
    merge is exactly the volume `CLAUDE.md` refuses, and they would all say the same thing. This is
    the only thing you send that reaches the owner directly.
+
+   **Name only the issues that actually merged, and say if one is parked** — `Done ; ) PD-201
+   merged · PD-207 parked, needs you`. This line is read on a phone hours later with nothing else
+   open, so it is the worst of the three places to claim a story shipped when it did not: bullet 4
+   has its carve-out for exactly that reason and this bullet needs the same one.
 6. **Poke the dispatcher, last.** Your slot is now free, and this is what starts the next batch
    in seconds instead of at the top of the next hour:
 

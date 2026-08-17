@@ -486,8 +486,11 @@ half is a finding on its own, and the `L` bound is the one a count-only reading 
 
 **You usually run before the PR exists, so you cannot read a PR body — the caller has to hand
 you the material.** STEP 4c requires the prompt that invokes you to carry every issue being
-built, each fold-in with its one-line relatedness justification and its five ratings, and the
-commit range that is each story itself as opposed to the fold-ins. **If a prompt mentions
+built **with the `size` its scout gave it**, each fold-in with its one-line relatedness
+justification and its five ratings, and the commit range that is each story itself as opposed to
+the fold-ins. **`size` is on that list so the `L` bound above has an input** — it is not on the
+dispatch record, so a prompt that omits it leaves you no way to recover it, and a missing `size`
+on a multi-story group is itself the finding. **If a prompt mentions
 fold-ins but does not supply those, say so as a finding and review what you can** — an
 unverifiable scope claim is exactly the thing this pass exists to surface, and guessing the
 boundary from the diff alone would launder it.

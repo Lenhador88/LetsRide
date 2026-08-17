@@ -353,8 +353,8 @@ shipped story: the queue freezes permanently while looking like a healthy job be
 column.
 
 **`Needs help` is a full stop for the whole queue, and that is deliberate.** An issue parked there
-is waiting on the owner, and dispatching past it buries a story that needs them under three merged
-PRs. If any issue is in `Needs help`, **dispatch nothing** — but still run STEP 6.
+is waiting on the owner, and dispatching past it buries a story that needs them under the next
+batch of merged PRs. If any issue is in `Needs help`, **dispatch nothing** — but still run STEP 6.
 
 **Never type a status name from memory** — run `list_issue_statuses team=Pedro & Dave` before the
 first status write. Names have moved twice with nothing in the repo noticing, and a `save_issue`
@@ -556,7 +556,9 @@ children can do concurrently without interfering.
 
 **Concurrency cap: at most 2 children in flight at once.** Product owner, 2026-08-17: *"I want to
 scale down our dispatcher to 2 sessions in parallel max."* So **this firing's batch is STEP 2's
-`free slots`, never 2 flat**: two in flight means dispatch nothing, one means dispatch one.
+`free slots`, never 2 flat**: one in flight means dispatch one, and two *or more* means dispatch
+nothing — the count can exceed two after a cap change, which is why that half is not written as
+"two".
 
 **A slot is a CHILD, not a story** — so a group of three occupies one slot, exactly like a group of
 one. That is the cap being read literally rather than stretched: the owner scaled down *sessions in
@@ -750,12 +752,15 @@ self-heals instead.
 - **The owner-activity gate is held with work waiting** → nothing, unless the stall clock above
   says otherwise. This is the ordinary state while the owner works, and notifying on it would mean
   a push an hour.
-- **A hold that nothing ages** → notify, but **only once per condition**. Three qualify: the two
-  `list_sessions` failures, the usage hold, and STEP 2's record-less freeze. None has a subject
+- **A hold that nothing ages** → notify, but **only once per condition**. Five qualify: the two
+  `list_sessions` failures, the unreadable `list_triggers` switch (STEP 1), the usage hold, and
+  STEP 2's record-less freeze. None has a subject
   the stall clock can age, so silence would mean no report ever — but a sustained one would
   otherwise send a push every hour, which is the thing the row above refuses. For the freeze,
-  write `<!-- stall-alarm session:none -->` on the issue and skip it while it carries one; the two
-  session-list failures have no issue to mark, so they repeat, and that is accepted because they
+  write `<!-- stall-alarm session:none -->` on the issue and skip it while it carries one — **but
+  not when the freeze was reached by a failed `list_comments`**, since reading that marker back is
+  the very call that failed, so it repeats for the same reason the connector failures do. The two
+  session-list failures and the switch have no issue to mark, so they repeat, and that is accepted because they
   mean the connector is down.
 - **Empty queue, every candidate stale or blocked, or a batch of zero** → silence.
 
