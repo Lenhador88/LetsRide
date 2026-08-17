@@ -47,7 +47,8 @@ Treat that as the check, and re-run it whenever either project's auth config is 
 
 **The file half of this does have a gate**, and it is the half that goes wrong silently:
 `src/__tests__/auth-email-templates.test.ts` holds every link in a template identical to every
-other, the URL repeated as visible text, and the no-`<style>`/no-image constraints below. It says
+other *and* to a constant in the test itself (see below), the URL repeated as visible text, and
+the no-`<style>`/no-image constraints. It says
 nothing about what is deployed — nothing can — but a button and a fallback that have drifted apart
 now fail CI instead of reaching an inbox.
 

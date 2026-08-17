@@ -610,7 +610,8 @@ The asymmetry with everything else in this repo is worth stating plainly, becaus
 - **The CI job that does open the directory can only see the files.**
   `src/__tests__/auth-email-templates.test.ts` reads all three templates under Vitest, so it
   catches a link that no longer matches its own copy-this-link fallback — or the hardcoded
-  constant it is pinned to, which is why a deliberate link change has to be made in the test too. It cannot see a hosted
+  constant it is pinned to, which is why a deliberate link change has to be made in the test
+  as well. It cannot see a hosted
   project, and neither can anything else: the RLS suite applies migrations to a scratch Postgres
   with no GoTrue in it, and `docs:check` measures files in this repo.
 
