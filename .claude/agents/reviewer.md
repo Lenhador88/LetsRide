@@ -338,15 +338,28 @@ Ask, specifically:
   which on this project deliberately differs from the file order.
 - **`supabase/functions/` touched, or a claim about a deployed function?** `tsconfig.json`
   excludes that directory, so what `tsc` reads there is only what an included file imports —
-  `npx tsc --noEmit --listFiles | grep supabase/functions` is the list, one file today
-  (`resolve-ride-location/gates.ts`, pulled in by its unit test). Every Deno entrypoint is read
-  by nothing, which is what `CLAUDE.md` means by the least-guarded code in the repo. And no
-  amount of file-reading answers the question that matters — is the **deployed** build this
-  file. `list_edge_functions` against **both** refs does: `status`, `verify_jwt`, and
-  `ezbr_sha256` equal across the two. Probing the endpoint (a `401` from
-  `POST /functions/v1/<name>`) shows only that *something* is deployed behind a JWT check.
-  **No session can deploy one**, so a diff here leaves both projects on the old build until the
-  owner redeploys — a PR body implying the change is live is a finding.
+  `npx tsc --noEmit --listFiles | grep "/supabase/functions/"` is the list, one file today
+  (`resolve-ride-location/gates.ts`, pulled in by its unit test). **Anchor that pattern with the
+  slashes**: unanchored it also matches `@supabase/functions-js` and
+  `src/lib/supabase/functions.ts` and reads 5. Every Deno entrypoint is read by nothing, which is
+  what `CLAUDE.md` means by the least-guarded code in the repo.
+
+  No file read answers the question that matters — **is the deployed build this file** — and
+  neither does the digest. `list_edge_functions` returns `updated_at`; compare it against
+  `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/`, and a
+  file newer than the deploy means the deployed build is **stale**. That is the live case as of
+  2026-08-17: `delete-account` deployed 18:34Z on 2026-08-16 against a file committed 08:09Z on
+  the 17th, which is the re-authentication proof `docs/HANDOFF.md`'s §Known issues row 2 says is
+  not yet in production.
+
+  `status`, `verify_jwt` and `ezbr_sha256` are the second question — do the **two projects** run
+  the same thing. Equal-and-both-stale is exactly today's state, so equality is never currency.
+  **A moved sha is necessary and not sufficient either**; that row requires verifying a redeploy
+  by *content*. This is the one check that needs **both** refs rather than §First's
+  one-ref-by-PR-type rule, because the comparison is the point. Probing the endpoint (a `401`
+  from `POST /functions/v1/<name>`) shows only that *something* is deployed behind a JWT check.
+  **No session can deploy one**, so a diff here leaves both projects behind until the owner
+  redeploys — a PR body implying the change is live is a finding.
 - **CI touched?** Check the description in `CLAUDE.md` against `.github/workflows/ci.yml`.
 - **Files or directories added, moved or removed?** Check the repo-layout tree in
   `CLAUDE.md`. It is a hand-maintained copy of `ls` and drifts within days.

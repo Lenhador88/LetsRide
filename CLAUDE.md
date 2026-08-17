@@ -422,18 +422,27 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   Type Check job with it. It is the least-guarded code in the repo.
 
 **Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's
-`ezbr_sha256` is equal across the two projects — measured 2026-08-16** — and deploying stays an
-**owner action**, which is why it is still drift waiting to happen. There is no `supabase` CLI in
-the build container, and the MCP server's `deploy_edge_function` is on `.claude/settings.json`'s
-`deny` list — §Working Principles says to treat those four as blocked under any connector name —
-so nothing in a session can redeploy after an edit under `supabase/functions/`, and CI has no
-path that would notice. Check the deploy rather than trusting this line, and check that both
-projects run the *same* build:
+`ezbr_sha256` is equal across the two projects — and `delete-account`'s deployed build is
+nonetheless STALE, older than its own `index.ts`.** Measured 2026-08-17, and the pairing is the
+point: cross-project equality says the two projects agree, never that either matches the repo.
+Deploying is an **owner action** — there is no `supabase` CLI in the build container, and the
+MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
+§Working Principles says to treat as blocked under any connector name — so an edit under
+`supabase/functions/` is drift from the moment it merges, and CI has no path that would notice.
+Compare the deploy against the file rather than trusting this line, then check that both
+projects run the same build:
+
+```bash
+# the currency check — a file newer than the deploy means the deployed build is stale
+TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/
+```
 
 ```
 mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
 mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
-# status ACTIVE, verify_jwt true, and ezbr_sha256 equal across the two
+# updated_at vs the commit date above; then status ACTIVE, verify_jwt true,
+# and ezbr_sha256 equal across the two. A moved sha is necessary, not sufficient —
+# verify a redeploy by content, per docs/HANDOFF.md's Known issues row 2.
 ```
 
 **There is one doorway now, and almost nothing should reach past it:**
