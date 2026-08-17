@@ -118,9 +118,33 @@ being called done.
       all — the date lives on the photo instead.
 - [x] ~~**Like affordance**~~ — **measured**, and the text-label fallback is retired. Icon
       control on the shared `Button / Postcard Action` shape (gap 4, padding 8/12/8/8, radius
-      8), Heart Outline → **Heart Filled in Pink/100 `#F23071`** when liked. That settles the
+      8 — **the 12px is conditional as shipped; see the entry below**), Heart Outline →
+      **Heart Filled in Pink/100 `#F23071`** when liked. That settles the
       "Pink/100 — purpose not established" note in `CLAUDE.md`: it is the liked heart, and
       nothing else uses it.
+- [ ] **The action row's trailing padding is conditional, and an uncounted control is 4px
+      under the glove floor — deviation, adopted 2026-08-17.** Same status as the photo-box
+      entry under §Create postcard: a design question on record, not drift. All eight
+      `Button / Postcard Action` variants — `Type=Share` included — draw a count, so the
+      frame's `padding 8/12/8/8` measures the gap between the **number** and the box edge and
+      has no ground truth for the zero-count state. The app has that state constantly: `Count`
+      renders nothing at zero, and `ShareButton` passes no count at all because nothing is
+      recorded to count. Applied unconditionally the 12px is dead space beside a bare glyph,
+      and with the frame's own `itemSpacing 0` two adjacent icons sat 20px apart. Shipped as
+      `pr-3` with a count and `pr-2` without — a symmetric 40px box around the 24px icon.
+      Measured in Chromium at 390px: uncounted controls 44 → **40px** wide, icon gaps 20 →
+      **16px**; counted controls unchanged at 61/56px.
+      - **The cost is horizontal tap target, and it cannot be bought back.** An uncounted
+        control is 40×44 rather than 44×44. The `::before` that lifts the height to 44 cannot
+        widen it: the row is `gap-0` and the boxes abut, so `-inset-x` would overlap the
+        neighbour and hand the later sibling taps meant for the earlier one — firing the wrong
+        action, which is worse than a narrow one. Three abutting 44px targets need 132px of
+        row; three 40px boxes give 120px. So icon spacing and target width are one lever:
+        16px gaps with 40px targets, or 20px gaps with 44px. The owner saw the 20px version
+        and asked for it tighter. Revisit if a rider reports mis-taps here.
+      - **Nothing gates this geometry.** No test imports `PostcardAction` and `docs:check`
+        carries no claim about it, so the numbers above were measured in a scratch route that
+        no longer exists. A regression here would be silent.
 - [x] ~~**Empty state**~~ — **measured copy:** "There are no new postcards, yet!",
       Poppins/14/Medium in Grey/80, centred, no panel, no illustration, no CTA.
 - [x] ~~**Header**~~ — **measured.** `v2 / Component / Header` Type=Regular: 96 tall, centred
