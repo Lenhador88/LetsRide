@@ -1,5 +1,5 @@
 ---
-description: Hand each queued story to its own session — the dispatcher's procedure
+description: Hand each queued story, or each group of colliding stories, to its own session
 ---
 
 # Queue dispatch
@@ -64,8 +64,15 @@ Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as
 no match means "search again by keyword", never "the connector is gone" — only a keyword search
 coming back empty establishes that.
 
-You need two connectors: **Linear** (the board) and **Claude Code Remote** (`list_sessions`,
-`create_session`). **Git is read-only and only for STEP 6's clock** — `git ls-remote`,
+You need two connectors: **Linear** (the board) and **Claude Code Remote** (`list_triggers`,
+`list_sessions`, `create_session`). **Load all three CCR tools by keyword the same way**
+(`+list_triggers claude code remote`) — `list_triggers` is STEP 1's switch check and it is the
+*first* call of a firing, so a deferred schema there stops the whole procedure before it reads
+anything. **A deferred tool is not a missing one**: `InputValidationError` means `ToolSearch` then
+call it, `No such tool available` means absent. STEP 1's failure branch depends on this
+distinction and gets it wrong at your cost, not the tool's.
+
+**Git is read-only and only for STEP 6's clock** — `git ls-remote`,
 `git log -1` on a remote ref, nothing else. You never check out, never write a file, never touch
 Supabase, Vercel or the GitHub API. **Reaching for any of those means you have started building**,
 which is this file's one prohibition.
@@ -115,14 +122,34 @@ Find `trig_01WJkMVXGzUVGDcC1njNmaan` and read it:
 - **Absent from the response** → **not the same thing as off.** Page first with
   `cursor=<next_cursor>` before concluding it. Genuinely absent means the Routine this session
   runs on no longer exists, which is one `PushNotification` and no dispatch.
-- **The call fails** → **HELD, never open**, for the reason the `list_sessions` failures below
-  are: a gate with no data has not passed. Fall through to the stall check and dispatch nothing.
+- **`InputValidationError`** → the schema arrived deferred. `ToolSearch` by keyword and **call it
+  again**; this is not a failure and must not be read as one.
+- **The call fails for any other reason** — the tool is absent, the connector is unreachable →
+  **HELD, never open**, for the reason the `list_sessions` failures below are: a gate with no data
+  has not passed. Fall through to the stall check, dispatch nothing, **and send a
+  `PushNotification` saying the switch could not be read**, once per condition.
+
+**That notification is the whole difference between a held gate and a dead queue, and this is the
+branch most likely to fire.** `list_triggers` is the first call of a firing, so if it will not
+resolve then *every* firing takes this branch — and with `Development (AI)` and `Needs help` both
+empty, STEP 6 is silent by construction. Holding without notifying would leave the queue stopped
+with no signal anywhere, which is STEP 0's own stated failure: a job that silently does nothing
+looks exactly like an empty queue. The rule below for the two `list_sessions` failures is the same
+rule and exists for the same reason.
 
 **The silent exit is the one place this file leaves without running STEP 6, and that is
 deliberate.** An owner-activity hold is involuntary and temporary — the queue is meant to be
 running, so its clocks still matter and a dead child must still age into view. A disable is
-neither: the owner took the queue out of service on purpose, and a stall alarm about a story they
-deliberately stopped is a push an hour about a decision they already made.
+neither: the owner took the queue out of service on purpose, and alarming hourly about a queue
+they stopped is a push an hour about a decision they already made.
+
+**It does cost one real thing, and the cost is not the story they stopped — it is the child that
+was already running.** A child dispatched minutes before the switch went off keeps building
+(see below), and if it dies its issue sits in `Development (AI)` where nothing reaches it: every
+later firing exits here, so neither STEP 6's age clock nor STEP 2's `ARCHIVED` → back-to-
+`Queued (AI)` recovery ever runs. It self-heals the moment the queue is re-enabled, and the owner
+has a manual path, so this is an accepted cost rather than an oversight — **do not reason from the
+paragraph above that no story can be stranded here, because one can.**
 
 **What the switch does not do: it cannot stop a child already building.** Children are spawned,
 not scheduled, so nothing routes a running one back through this Routine — it finishes, merges its
@@ -434,14 +461,28 @@ at a time.
 
 ### The group ceiling — at most 3 issues, and at most one `L`
 
-A group holding a `size: L` holds at most **2**. **The bound is the `reviewer` pass**: one group is
-one branch, one PR and **one** review, and `queue-pickup.md` STEP 4b already refuses a fold-in that
-*"would grow the diff past what one `reviewer` pass can honestly cover"*. A group is that same diff
-arriving off the board instead of out of a triage, and it earns the same ceiling.
+**Both halves bind, and the second is not implied by the first.** A group holds at most **3**
+issues; it holds at most **one** `size: L`; and a group containing an `L` holds at most **2**.
+So two `L` stories never travel together even though two issues clears the count — which is the
+case the count alone would admit, and the one most likely to arise, since two `L` migration
+stories collide on `migration: Y` whatever their paths.
 
-**Over the ceiling, take the highest-priority members that fit and leave the rest.** They are not
-lost and they can go nowhere else: they collide with the group being dispatched, so the in-flight
-check holds them until it merges and they regroup on a later firing.
+**The bound is the `reviewer` pass**: one group is one branch, one PR and **one** review, and
+`queue-pickup.md` STEP 4b already refuses a fold-in that *"would grow the diff past what one
+`reviewer` pass can honestly cover"*. A group is that same diff arriving off the board instead of
+out of a triage, and it earns the same ceiling.
+
+**Over either ceiling, take the highest-priority members that fit and leave the rest.** They are
+not lost. **Re-form the leftovers into their own group and walk it with the others** — they still
+collide with each other, so they are a group rather than loose candidates, and the batch step below
+is what holds them: it admits a group only if it clears the caps against every group already
+admitted this firing, and it cannot, because they collide with the group that was just admitted.
+So they wait, and regroup on a later firing.
+
+**The in-flight check is *not* what holds them, and reasoning from it would be wrong** — that one
+reads STEP 2's dispatch records, and the group being dispatched right now has none: STEP 5 writes
+records after selection, not before. The batch check is the only thing standing between a trimmed
+member and a second session over the same paths.
 
 ### The batch — at most 3 sessions, counted in groups
 

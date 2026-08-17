@@ -480,8 +480,9 @@ each story against its own issue and its own commit range, exactly as you would 
 **What is still a finding:** a story in the diff that the caller did not name, a group whose
 stated collision is not visible in the code (three stories that touch nothing in common were not
 grouped, they were chosen), and a group so large that you cannot honestly cover it in one read —
-say that plainly rather than reviewing part of it and reporting a clean pass. **A group is capped
-at three issues**, so a fourth is a finding on its own.
+say that plainly rather than reviewing part of it and reporting a clean pass. **The ceiling is
+three issues, at most one of them `size: L`, and at most two issues when there is an `L`** — each
+half is a finding on its own, and the `L` bound is the one a count-only reading misses.
 
 **You usually run before the PR exists, so you cannot read a PR body — the caller has to hand
 you the material.** STEP 4c requires the prompt that invokes you to carry every issue being

@@ -1,5 +1,5 @@
 ---
-description: Build one dispatched Linear story end to end — the child session's procedure
+description: Build one dispatched Linear group end to end — the child session's procedure
 ---
 
 # Queue pickup — build one group
@@ -9,15 +9,13 @@ picking was done by [`queue-dispatch.md`](queue-dispatch.md) in another session:
 read, the premise checked, the blockers checked, and these were chosen against a set of caps that
 assumed what they would touch. **Do not pick different work, and do not pick more work.**
 
-**When your prompt names more than one, they are a *group*, and the reason is that they collide** —
-shared paths, or both adding a migration, or both changing a shared primitive. Two sessions
-building them in parallel is what produces two files called `060_*.sql`, two divergent
-implementations of one component, and a `reviewer` verdict on a file the other branch is about to
-change. **One session dissolves all three**: you write `060` then `061`, you write the component
-once, and you edit the shared file with both changes in front of you. Your prompt says which
-collision it was.
+**When your prompt names more than one, they are a *group*: stories that collide, which is why one
+session builds them rather than two** — `queue-dispatch.md` STEP 4 has the reasoning, and your
+prompt names the specific collision. What follows from it here is one thing, at STEP 4: **build
+them in the order given**, so the migration numbers and the shared component are written once, in
+a decided sequence.
 
-So a group is **one branch, one PR and one `reviewer` pass** — never a branch per story. What stays
+A group is **one branch, one PR and one `reviewer` pass** — never a branch per story. What stays
 per story is the Linear bookkeeping: each one is claimed, commented and moved on its own.
 
 This procedure lives here rather than inside a prompt for two reasons: a prompt is re-injected
@@ -809,8 +807,15 @@ call:
 
 - **The stalled story has nothing committed yet** → drop it. Finish, review and merge the rest of
   the group as an ordinary run, with the PR body and STEP 5's comments saying which story was left
-  out and why. Then move *that* issue to `Needs help` and stop. The queue still parks — `Needs
-  help` is the lock — but it parks with two stories merged instead of two stories stranded.
+  out and why. The queue still parks — `Needs help` is the lock — but it parks with two stories
+  merged instead of two stories stranded.
+
+  **Move the stalled issue to `Needs help` BEFORE STEP 5's poke, not after the run.** The poke is
+  STEP 5's last bullet, and a dispatcher woken by it reads the board as it stands: park afterwards
+  and it sees nothing in `Needs help`, the queue-wide lock does not hold, and it dispatches up to
+  three more groups — burying the story that needs the owner under three merged PRs, which is the
+  exact harm the lock exists to prevent. STEP 5 bullet 6 already assumes this order when it says to
+  poke *"even when you parked into `Needs help`, and say so in the text"*.
 - **Its commits are already on the branch and separable** → drop them (`git revert`, or reset and
   recommit the others) and take the branch above. **Re-run `reviewer` on what you actually intend
   to merge**, since the reviewed diff has changed.
@@ -902,7 +907,7 @@ carries it. That probe is what made the dispatcher possible, and it retires four
 | Cost of the reused session | How it is gone |
 |---|---|
 | The session was not idle by construction — a firing could land mid-conversation with the owner | Nothing else runs in here. The seven idle gates are deleted, not moved |
-| Context accumulated across firings, and no session can `/clear` itself | This window starts empty and is discarded after one story |
+| Context accumulated across firings, and no session can `/clear` itself | This window starts empty and is discarded after one group |
 | The build had to run in a subagent purely to stand in for that clear | STEP 4 — build in your own thread; only specialists and `reviewer` are delegated now |
 | One story at a time, because one session could only build one thing | The claim is per issue; other stories build in parallel sessions, and colliding ones build together in this one |
 
