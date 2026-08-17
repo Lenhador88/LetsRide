@@ -377,8 +377,10 @@ installed so the Mac step is just `npx cap add ios` / `npx cap add android`.
 ### Store readiness — assessed 2026-08-06
 
 Ordered by what actually blocks a submission. **Read each row's own state rather than the shape
-of the table** — three of the seven are resolved, most of the rest are started, and only row 6 is
-still the owner's (`grep -c '\*\*Owner\*\*'` over the table).
+of the table** — four of the seven are struck through, most of the rest are started, and row 6 is
+the only one still labelled the owner's. Do not count that label with a bare grep: row 7 contains
+the words *"stopped being **Owner**"*, so the obvious command counts its own obituary, which is
+`CLAUDE.md`'s comment trap arriving in a table.
 
 | | Blocker | Why it blocks |
 |---|---|---|
@@ -1335,17 +1337,25 @@ works against a live database rather than a stubbed response.
 **off**, so it never sent an email and never exercised `/auth/callback`, and the two are
 genuinely different paths: with confirmation on, `signUp` returns no session and takes the
 `sent` branch instead. **`PD-91` closed that on 2026-08-16** against PROD, emailed link and all;
-row 7 of §Store readiness has the calls.
+that issue has the calls, and §Store readiness row 7 has what is left.
 
 Two consequences, and the second is the one that will bite:
 
 - **`PD-91` proved the auth SERVER, not this branch.** It made six raw HTTP calls to GoTrue, so
   `signUp` never ran — meaning the `!data.session` arm at `src/lib/actions/auth.ts:112` and the
   "Check your email" screen at `src/app/auth/signup/page.tsx:50` have still never executed
-  against any live server. **DEV cannot run them at all**: `mailer_autoconfirm: true` returns a
-  session every time, so the walk always takes the other arm (`scripts/walk.mjs:58`). This is the
-  arm whose absence was the production bug described above, so it is the *unproven* half now —
-  PD-252.
+  against any live server. This is the arm whose absence was the production bug described above,
+  so it is the *unproven* half now — PD-252.
+
+  **The walk does drive the app's `signUp`, and still cannot reach that arm on DEV** — three arms,
+  not two. `checkRefusedSignup` (`scripts/walk.mjs`) posts a duplicate address, and with
+  `mailer_autoconfirm: true` GoTrue *errors*, so `signUp` takes `alreadyRegistered`. With
+  confirmation **on** GoTrue's duplicate-signup mitigation returns **success with an empty
+  `identities` array** instead, so the same phase would fall through to `!data.session` and render
+  the "Check your email" screen. That phase's own header says so. **So the phase that would cover
+  PD-252 already exists** — what stops it is `refWritable`'s project allowlist, and pointing it at
+  a confirmation-on project **emails whoever owns that address**. The decision is which address,
+  not whether to write a phase.
 - **The cross-device confirm route is BUILT and INERT, and turning it on is an owner action.**
   `/auth/confirm` (`src/app/auth/confirm/page.tsx`) verifies an emailed `token_hash` through
   `verifyOtp`, which needs no PKCE verifier and therefore works on any device. **Nothing links to
