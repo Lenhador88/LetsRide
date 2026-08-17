@@ -1549,16 +1549,9 @@ trust this line — `mcp__Supabase__list_migrations` against the hosted project,
 exists, so check the code first and Figma second.
 
 Two things that belong here rather than there, because they are decisions rather than status:
-**the nav is four tabs** (Postcards, Rides, Clubs, Profile — Inbox was removed by PD-100, not
-shipped as a stub), and **there is no "Friends" tab**, because `013` dropped `friendships` on
-2026-08-04. Both look like omissions to anyone reading the five-tab design instead of the code.
-
-**The first tab is labelled `Postcards`, and the design still calls it `Home`** — PD-244 renamed
-the tab and that screen's header on 2026-08-17, so the departure from the frame is deliberate
-rather than drift. The route is still `/postcards`, the frames are still `Home - Postcards - *`,
-and the glyph is still `HomeIcon`, a house: the generated set has no postcard icon and
-`MailboxIcon` belongs to the Inbox epic. A session reading the design and "correcting" the label
-back to `Home` is the failure this line exists to stop.
+**the nav is four tabs** (Home, Rides, Clubs, Profile — Inbox was removed by PD-100, not shipped
+as a stub), and **there is no "Friends" tab**, because `013` dropped `friendships` on 2026-08-04.
+Both look like omissions to anyone reading the five-tab design instead of the code.
 
 ## Feature Workflow (OpenSpec)
 
