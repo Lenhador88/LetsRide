@@ -1419,9 +1419,7 @@ to the design file. `CLAUDE.md` §Design System's fourth rule and
 
 **What ships now is the second glyph.** The first was traced from an emoji font and read as noise
 at 24px, so the product owner reviewed eleven redraws and picked one drawn from primitives
-(PD-242). Everything below about *one* component, `aria-pressed` and how to measure a stroke
-survived the swap unchanged; the provenance and the numbers did not, and both are restated rather
-than annotated.
+(PD-242).
 
 **It is `Element / Icon / Wave` (`4127:6925`), one component, and one is the whole point.** The
 heart it replaced was a filled/outline pair; a hand cannot be one. A solid silhouette loses the
