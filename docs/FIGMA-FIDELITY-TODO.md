@@ -142,9 +142,14 @@ being called done.
         row; three 40px boxes give 120px. So icon spacing and target width are one lever:
         16px gaps with 40px targets, or 20px gaps with 44px. The owner saw the 20px version
         and asked for it tighter. Revisit if a rider reports mis-taps here.
-      - **Nothing gates this geometry.** No test imports `PostcardAction` and `docs:check`
-        carries no claim about it, so the numbers above were measured in a scratch route that
-        no longer exists. A regression here would be silent.
+      - **The rule is gated; the pixels are not.**
+        `src/components/postcards/__tests__/PostcardAction.test.tsx` renders all three
+        variants plus the composed card and asserts the class list — the conditional padding,
+        that a zero count reads as no count, that a caller can still override it, and that the
+        row keeps `gap-0`. Each was proved to fail against a reintroduced regression before it
+        was committed. What it does **not** assert is any width above: the suite is
+        `environment: 'node'`, so 8+24+8 = 40px is the browser's arithmetic, measured once in
+        a scratch route that no longer exists.
 - [x] ~~**Empty state**~~ — **measured copy:** "There are no new postcards, yet!",
       Poppins/14/Medium in Grey/80, centred, no panel, no illustration, no CTA.
 - [x] ~~**Header**~~ — **measured.** `v2 / Component / Header` Type=Regular: 96 tall, centred
