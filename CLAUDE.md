@@ -1172,6 +1172,23 @@ say what actually landed; a notification they did not need is annoying in a way 
 `.claude/hooks/session-wrapup-check.sh` is a backstop rather than the trigger — it can only fire
 once the branch is committed, pushed and ahead of `development`.
 
+**Open with what they must do, and keep the whole reply to a few lines.** Product owner,
+2026-08-17: *"I see a lot of text, but its too much text for me know quickly what happened / what
+do you need from me."* Said after a session that was already following every rule below — so this
+one governs them, and it is the one to check a draft against.
+
+The **first line** is the ask, or "nothing needed". Everything after it is optional context the
+owner is free to not read, which means it must be safe to skip. Ten lines is a normal reply;
+longer needs a reason that is not "there was a lot to say".
+
+**Points / Proposals / Question is a ceiling, not a template.** It earns its length only at a real
+decision point. A status, an answer, a wrap-up with nothing to decide gets a few lines and no
+headings — and the five-rating block belongs only where an option is genuinely being offered.
+
+**Do not re-ask an open question in full.** Name it in a clause — *"PD-166 still open"* — and stop.
+Repeating the framing every turn is how one unanswered decision doubles the length of every reply
+after it.
+
 **Say less. Every reply, not just the ones during a build.** Progress feedback is a line or
 two — what landed, what is next, what broke. Not a recap of the reasoning, not a restatement of
 the plan, not a summary of a file that was just read. The owner is watching the work happen;
