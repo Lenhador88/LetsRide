@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resolveDestination } from '@/lib/auth/guard'
+import type { GuardSnapshot } from '@/lib/auth/guard-cache'
 import type { OnboardingState } from '@/types'
 
 /**
@@ -57,6 +59,8 @@ const {
   hasGuardBooted,
   invalidateOnboardingState,
   resetGuardCacheForTests,
+  resolveGuardView,
+  retryGuardRead,
   subscribeGuardCache,
 } = await import('@/lib/auth/guard-cache')
 
@@ -64,6 +68,27 @@ const {
  * `RouteGuard` does every render. */
 const peek = (pathname: string) => guardStateFrom(getGuardSnapshot(), pathname)
 const booted = () => hasGuardBooted(getGuardSnapshot())
+
+/** What `RouteGuard` would draw for a path, off the current snapshot — the same
+ * two lines the component runs, so a case here is a case about the screen. */
+function draws(pathname: string) {
+  const snapshot = getGuardSnapshot()
+  const state = guardStateFrom(snapshot, pathname)
+  return resolveGuardView(
+    snapshot,
+    state === undefined ? undefined : resolveDestination(pathname, state)
+  )
+}
+
+/** A snapshot built by hand, for the mapping's own cases. */
+const snapshotOf = (over: Partial<GuardSnapshot> = {}): GuardSnapshot => ({
+  signedIn: undefined,
+  onboarding: undefined,
+  unavailable: false,
+  gone: false,
+  failed: false,
+  ...over,
+})
 
 const globals = globalThis as { document?: unknown }
 
@@ -244,6 +269,216 @@ describe('a read that did not answer', () => {
     expect(clearQueryCache).not.toHaveBeenCalled()
     expect(clearSessionStore).not.toHaveBeenCalled()
     expect(clearRiderLocation).not.toHaveBeenCalled()
+  })
+})
+
+describe('a read that threw — PD-122', () => {
+  /** The catch logs, deliberately: it is the only trace of *why*. Silenced so a
+   * green run does not read as a broken one, and asserted once below. */
+  let logged: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    getSession.mockRejectedValue(new Error('secure storage unavailable'))
+  })
+
+  afterEach(() => {
+    logged.mockRestore()
+  })
+
+  it('draws a retry instead of hanging the splash with nothing to tap', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+
+    // Still undecided — a rejection before `getSession()` answers leaves no
+    // session to route on, so this must NOT become a destination.
+    expect(peek('/postcards')).toBeUndefined()
+    expect(booted()).toBe(false)
+    expect(draws('/postcards')).toEqual({ kind: 'retry', overlay: false })
+    expect(logged).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry itself once per render — the failure notifies, and the notify re-runs the effect', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+    getSession.mockClear()
+
+    // What `RouteGuard`'s effect does after the failure notified. Without the
+    // latch this is an unbounded retry loop behind the rider's own retry button.
+    ensureGuardState('/postcards')
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(getSession).not.toHaveBeenCalled()
+  })
+
+  it('re-attempts when the rider asks, and a read that answers clears the screen', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+    getSession.mockReset()
+    getSession.mockResolvedValue(session('rider-1'))
+
+    retryGuardRead('/postcards')
+    // Back to the splash while it runs — the retry screen is no longer the truth
+    // the moment a read is in flight.
+    expect(draws('/postcards')).toEqual({ kind: 'splash', overlay: false })
+
+    await settle()
+
+    expect(peek('/postcards')).toEqual({ kind: 'rider', ...ONBOARDED })
+    expect(draws('/postcards')).toEqual({ kind: 'children', overlay: false })
+  })
+
+  it('offers the retry again when the re-attempt throws too', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+
+    retryGuardRead('/postcards')
+    await settle()
+
+    expect(getSession).toHaveBeenCalledTimes(2)
+    expect(draws('/postcards')).toEqual({ kind: 'retry', overlay: false })
+  })
+
+  it('replaces the shell even when the throw lands after the session was read', async () => {
+    getSession.mockReset()
+    getSession.mockResolvedValue(session('rider-1'))
+    rpc.mockReturnValue({
+      maybeSingle: async () => {
+        throw new Error('network')
+      },
+    })
+
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(booted()).toBe(true)
+    expect(peek('/postcards')).toBeUndefined()
+    // Warm, so the splash would have overlaid here. The retry must not: it
+    // holds the one control the rider is meant to press, and a shell left
+    // mounted under it keeps its own controls in the tab order.
+    expect(draws('/postcards')).toEqual({ kind: 'retry', overlay: false })
+  })
+
+  it('is released by reaching a path the cache can already answer', async () => {
+    getSession.mockReset()
+    getSession.mockResolvedValue(session('rider-1'))
+    rpc.mockReturnValue({
+      maybeSingle: async () => {
+        throw new Error('network')
+      },
+    })
+
+    ensureGuardState('/postcards')
+    await settle()
+
+    // A legal page needs no stamps, so the cache answers it without a read —
+    // and `attemptedPath` does not move on that return. Without the release,
+    // coming back re-draws the retry off a stale flag and the latch then
+    // refuses to attempt anything.
+    ensureGuardState('/legal/terms')
+    rpc.mockReset()
+    rpc.mockReturnValue(stamps(ONBOARDED))
+
+    expect(draws('/postcards')).toEqual({ kind: 'splash', overlay: true })
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(peek('/postcards')).toEqual({ kind: 'rider', ...ONBOARDED })
+  })
+
+  it('still decides a path that never needed the stamps — a failure is not a blanket stop', async () => {
+    getSession.mockReset()
+    getSession.mockResolvedValue(session('rider-1'))
+    rpc.mockReturnValue({
+      maybeSingle: async () => {
+        throw new Error('network')
+      },
+    })
+
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(peek('/legal/terms')).toEqual({ kind: 'session' })
+    expect(draws('/legal/terms')).toEqual({ kind: 'children', overlay: false })
+  })
+
+  it('is released by a new session, like the other failed-read latch', async () => {
+    attachGuardAuthListener()
+    ensureGuardState('/postcards')
+    await settle()
+    getSession.mockReset()
+    getSession.mockResolvedValue(session('rider-1'))
+
+    emitAuth('SIGNED_IN', { id: 'rider-1' })
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(peek('/postcards')).toEqual({ kind: 'rider', ...ONBOARDED })
+  })
+
+  it('refuses to re-attempt during a server render, like every other writer', async () => {
+    ensureGuardState('/postcards')
+    await settle()
+    const before = getGuardSnapshot()
+    getSession.mockClear()
+
+    delete globals.document
+    retryGuardRead('/postcards')
+
+    expect(getGuardSnapshot()).toBe(before)
+    expect(getSession).not.toHaveBeenCalled()
+  })
+})
+
+describe('what the guard draws', () => {
+  it('shows the splash alone while leaving, however much it knows', () => {
+    // Never the children — that is the flash the guard exists to prevent — and
+    // never the overlay either: the screen underneath is the one being left.
+    expect(resolveGuardView(snapshotOf({ signedIn: true }), '/auth/login')).toEqual({
+      kind: 'splash',
+      overlay: false,
+    })
+  })
+
+  it('shows the children once the decision is to stay', () => {
+    expect(resolveGuardView(snapshotOf({ signedIn: true }), null)).toEqual({
+      kind: 'children',
+      overlay: false,
+    })
+  })
+
+  it('replaces the page before boot and overlays it after — the PD-111 split', () => {
+    expect(resolveGuardView(snapshotOf(), undefined)).toEqual({ kind: 'splash', overlay: false })
+    expect(resolveGuardView(snapshotOf({ signedIn: true }), undefined)).toEqual({
+      kind: 'splash',
+      overlay: true,
+    })
+  })
+
+  it('never overlays the retry, warm or cold — it holds a control and the shell would stay focusable', () => {
+    expect(resolveGuardView(snapshotOf({ failed: true }), undefined)).toEqual({
+      kind: 'retry',
+      overlay: false,
+    })
+    expect(resolveGuardView(snapshotOf({ signedIn: true, failed: true }), undefined)).toEqual({
+      kind: 'retry',
+      overlay: false,
+    })
+  })
+
+  it('never draws the retry over a decision — a failure that left enough to route on routes', () => {
+    // The stamps threw on a path that did not need them, so the guard can still
+    // answer. Stopping the rider here would be the failure spreading past what
+    // it actually broke.
+    expect(resolveGuardView(snapshotOf({ signedIn: true, failed: true }), null)).toEqual({
+      kind: 'children',
+      overlay: false,
+    })
+    expect(resolveGuardView(snapshotOf({ signedIn: true, failed: true }), '/postcards')).toEqual({
+      kind: 'splash',
+      overlay: false,
+    })
   })
 })
 
