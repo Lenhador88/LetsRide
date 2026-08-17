@@ -75,10 +75,10 @@ function RideCrewScreen() {
   return (
     <>
       {/* The title is the only part of the chrome that needs the read — the
-          ride id, the back target and the sub-page switcher all come out of the
-          URL — so the header renders straight away, with `undefined` for the
-          title and a placeholder bar in its place, rather than the whole screen
-          waiting on it. */}
+          ride id and the back target both come out of the URL — so the header
+          renders straight away, with `undefined` for the title and a
+          placeholder bar in its place, rather than the whole screen waiting on
+          it. */}
       <RideHeader
         rideId={id}
         title={ride.data?.title}

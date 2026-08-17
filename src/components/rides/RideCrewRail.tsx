@@ -96,13 +96,25 @@ export function RideCrewRail({
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        aria-controls={panelId}
+        // Only while the panel exists. The panel is unmounted when closed (see
+        // below), and an `aria-controls` pointing at no element is a dangling
+        // IDREF — some screen readers announce nothing for it, which is worse
+        // than the attribute being absent on a control whose `aria-expanded`
+        // already says what it does.
+        aria-controls={open ? panelId : undefined}
         className={cn(
           'flex min-h-[46px] w-full items-center gap-3 rounded-lg px-3 text-left transition-colors active:bg-border',
           open && 'rounded-b-none border-b border-border'
         )}
       >
-        <span className="flex shrink-0 -space-x-2">
+        {/* Hidden from the accessibility tree, and that is the difference
+            between a button called "12 going" and one called "pl mk tv jr rr
+            +7 12 going". `Avatar` renders `alt={name}`, and these five sit
+            INSIDE the control, so every one of them joins its computed name —
+            on the one element whose announcement is the whole point of the
+            rail. The names are not lost: the panel this opens lists them as
+            rows, which is where a screen reader should meet them. */}
+        <span aria-hidden="true" className="flex shrink-0 -space-x-2">
           {shown.map((member, i) => (
             <Avatar
               key={member.user_id}

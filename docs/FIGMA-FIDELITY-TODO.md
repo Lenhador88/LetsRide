@@ -497,6 +497,17 @@ measurement as current.
   - [ ] `Directions` on the meeting-point line is **not drawn on a past ride**, which the approved
         mock expresses by omission rather than by a rule.
   - [ ] The `Route` heading is gone; description and route render as one paragraph under the map.
+  - [ ] **Three `text-accent` strings now sit on this one screen, and green-on-cream fails AA.**
+        `#3D996B` on `--color-background` `#F2ECE6` measures **3.00:1** against a 4.5:1 bar, and
+        **1.84:1** against the background gradient's far end `#CCB8A3`. Not a regression — the
+        `See who's riding` link this screen replaced was the same pairing at the same ratio, and
+        12px vs 14px does not change the threshold since neither is WCAG large text — but it went
+        from one instance to three (`Directions`, `See all`, and the rail's error fallback). It is
+        **not** among the four failures already logged elsewhere in this file, so it is recorded
+        here and raised on PD-176 as a designer question rather than fixed silently: darkening to
+        `accent-strong` `#338059` still only reaches **4.10:1** — the same ratio already logged as
+        a failure for the ride-host label, which is that token — so this needs a palette answer
+        rather than a nudge.
 - [ ] **Journal is drawn, and as of 2026-08-17 only its EMPTY STATE is built.**
       `Ride - Journal (Postcards/Timeline)` (`2226:4865`) is postcards attached to a ride.
       `041` added `postcards.ride_id` and settled the audience question this entry used to say was

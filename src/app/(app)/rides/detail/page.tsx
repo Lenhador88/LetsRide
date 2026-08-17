@@ -255,6 +255,15 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
         />
       </section>
 
+      {/* Last on the page, which reads wrong against the issue and is right
+          against the artifact it approved. PD-254's body lists these Crew →
+          Chat → Journal; the rev-7 mock the product owner settled draws
+          Journal → Riding → Ride chat → RSVP, on both its frames, and the mock
+          is what was approved. Checked against the artifact rather than
+          remembered. It is worth knowing this is the one element the whole
+          issue is about — a rider could not find the chat — so if it turns out
+          to sit below the fold on a short device, moving it above the Journal
+          is a change to this line and nothing else. */}
       {isCrew && <RideChatRow rideId={ride.id} />}
     </div>
   )

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { crewRailSummary } from '@/components/rides/RideCrewRail'
 import { RIDE_AVATAR_LIMIT, withOrganizer } from '@/lib/data/rides'
@@ -80,5 +81,64 @@ describe('crewRailSummary', () => {
 
     expect(crewRailSummary(composed, true).label).toBe('1 going')
     expect(crewRailSummary(composed, true).shown).toHaveLength(1)
+  })
+})
+
+/**
+ * The cases above pin the **arithmetic**. This one pins the **source**, and the
+ * distinction is the whole defect.
+ *
+ * `crewRailSummary` takes a `RideCrew`, so every assertion above stays green if
+ * someone later feeds the rail `RideListItem.riders_count` — "the number is
+ * already on the card, why issue a second read". That value is
+ * `others.length + 1` over **going AND maybe** (`src/lib/data/rides.ts`), which
+ * is character-for-character the arithmetic that got the count removed from this
+ * screen the first time: a ride with 4 going and 3 maybe would read `7 going`
+ * beside a roster one tap away that says 4.
+ *
+ * Scanning the source is not elegant, and it is the only thing that can fail on
+ * that edit — the same reasoning `no-service-role-key.test.ts` uses, one
+ * directory over. If the rail is ever legitimately rewritten to read elsewhere,
+ * this test failing is the conversation, not an obstacle.
+ */
+describe('the rail reads the crew page’s own source', () => {
+  const source = readFileSync(new URL('../RideCrewRail.tsx', import.meta.url), 'utf8')
+
+  /**
+   * **This first version failed, and it failed the way this repo's most-repeated
+   * measurement error always fails.** `RideCrewRail`'s own docstring says *"do
+   * not accept `riders_count` as a prop"* — so a bare scan for the retired
+   * pattern matched the sentence forbidding it. That is CLAUDE.md §Technology
+   * Decisions' comment trap exactly: a file's description of what it must not do
+   * looks identical to it doing that thing.
+   *
+   * So the scan strips comments first, and the mutation case below is what keeps
+   * the strip honest — a filter that has quietly stopped matching passes for ever
+   * and looks exactly like a clean file.
+   */
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+
+  it('fetches through queryKeys.rides.crew and getRideCrew', () => {
+    expect(code).toContain('queryKeys.rides.crew(rideId)')
+    expect(code).toContain('getRideCrew(rideId)')
+  })
+
+  it('never reads riders_count, the maybe-inclusive count', () => {
+    expect(code).not.toContain('riders_count')
+  })
+
+  it('strips comments without stripping the code it must scan', () => {
+    // The strip is only trustworthy if it left the executable half behind.
+    expect(code).toContain('crew.going.length')
+    expect(source).toContain('riders_count') // the docstring forbidding it
+  })
+
+  it('would still catch a riders_count rewrite', () => {
+    const rewritten = code.replace('crew.going.length', 'ride.riders_count')
+    expect(rewritten).toContain('riders_count')
+    expect(rewritten).not.toBe(code)
   })
 })
