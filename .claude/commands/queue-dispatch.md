@@ -129,13 +129,9 @@ Find `trig_01WJkMVXGzUVGDcC1njNmaan` and read it:
   has not passed. Fall through to the stall check, dispatch nothing, **and send a
   `PushNotification` saying the switch could not be read**, once per condition.
 
-**That notification is the whole difference between a held gate and a dead queue, and this is the
-branch most likely to fire.** `list_triggers` is the first call of a firing, so if it will not
-resolve then *every* firing takes this branch — and with `Development (AI)` and `Needs help` both
-empty, STEP 6 is silent by construction. Holding without notifying would leave the queue stopped
-with no signal anywhere, which is STEP 0's own stated failure: a job that silently does nothing
-looks exactly like an empty queue. The rule below for the two `list_sessions` failures is the same
-rule and exists for the same reason.
+**The notification is not optional here**, for the reason the two `list_sessions` failures below
+carry one: this is the first call of a firing, so if it will not resolve then *every* firing takes
+this branch, and STEP 6 is silent with nothing in flight to age.
 
 **The silent exit is the one place this file leaves without running STEP 6, and that is
 deliberate.** An owner-activity hold is involuntary and temporary — the queue is meant to be
@@ -226,7 +222,8 @@ history instead of state.
 **There is no number to compare against 80%**, and inventing a threshold would be a gate that can
 never fire. What was checked, so nobody re-derives it: `claude --help` has no `usage` subcommand,
 `~/.claude` holds no usage file, and no environment variable carries one. **This matters more now
-than it did**, not less: a firing used to start one build and can now start two, plus one scout
+than it did**, not less: a firing used to start one build and can now start two children holding
+several stories each, plus one scout
 agent per candidate. The lever that works is the owner's:
 
 ```
@@ -314,8 +311,17 @@ it rather than from a flat number:
 
 ```
 free slots = 2 − (DISTINCT `session` ids among the dispatch records of issues
-                  still in `Development (AI)` after the check above)
+                  still in `Development (AI)` — after BOTH the liveness check
+                  above and the record-less freeze below)
 ```
+
+**Both, and the freeze is the one this formula cannot survive without.** An issue with no dispatch
+record contributes no session id, so a live child whose record write failed is invisible here and
+the count reads one too high — which is how three children end up in flight against a cap of two.
+The freeze below is unconditional and stops the firing before any of that matters, so this is safe
+today; it is written into the formula because a reader computing a number at this line and acting
+on it has already gone wrong. **A `list_comments` call that fails for an in-flight issue is
+indistinguishable from a record-less one, so treat it as the freeze too** rather than as a zero.
 
 **Count children, not issues, and the distinction is load-bearing rather than pedantic.** The cap
 the owner set is *"2 sessions in parallel max"*, and a group is one session holding two or three
@@ -326,7 +332,8 @@ one session is one slot.
 
 An issue you just returned to `Queued (AI)` because its child was `ARCHIVED` does not occupy a
 slot; one whose session is `IDLE` does, that being the ordinary state of a child between turns.
-**At zero free slots, dispatch nothing and skip STEP 3 as well** — scouting is the expensive half
+**At zero free slots *or fewer*, dispatch nothing and skip STEP 3 as well** — scouting is the
+expensive half
 of a firing and there is no batch to scout for. Go to STEP 6, which is silent in that case.
 
 **An in-flight issue with no dispatch record at all is a dispatch you cannot reason about**: it
@@ -369,7 +376,10 @@ outranks its own children on priority, so this is a real trap rather than a hypo
 ## STEP 3 — Scout the candidates
 
 **If a hold from STEP 1 is in force, a freeze from STEP 2 is in force, or STEP 2 counted zero free
-slots, skip this step and go straight to STEP 6.** Scouting is the expensive half of a firing —
+slots or fewer, skip this step and go straight to STEP 6.** *Or fewer* is not pedantry: children
+dispatched under an older, larger cap can still be building, so a negative count is a state this
+file reaches rather than a hypothetical — and read as "not zero" it scouts, writes to the board,
+and dispatches nothing. Scouting is the expensive half of a firing —
 `free slots + 2` agents, each re-paying `CLAUDE.md` — and it *writes to the board*, moving stale
 candidates to `Needs decision`. A held firing that scouts anyway spends more than the usage gate
 saves and mutates the board it was told not to act on.
@@ -518,7 +528,7 @@ this firing.
 
 **Say in the notification when a group carries more than one story, and when the ceiling trimmed
 one.** The batch's shape is the thing worth watching while grouping is new, and it is invisible on
-the board — three issues moving to `Development (AI)` looks identical whether it is three sessions
+the board — three issues moving to `Development (AI)` looks identical whether it is two sessions
 or one.
 
 **`docs/HANDOFF.md` and `CLAUDE.md` are exempt from the path check, and must be.** Roughly
@@ -560,12 +570,10 @@ gate by design, and STEP 2 says `Development (AI)` is no lock on the queue — s
 lets the next hourly firing add two more alongside two still building, and four run in parallel
 with every rule in this file satisfied and nothing anywhere red.
 
-**Neither the slot cap nor the group ceiling is measured, and moving either is the owner's call
-rather than a session's** — nothing here measures what concurrent builds cost them. They bound
-different things and should be watched separately: two slots of three issues is six stories in
-flight. **Say in the notification when the caps trimmed a batch, how many slots were already taken,
-and when a group carries more than one story**, so they can see whether either is binding or
-decorative.
+**Moving either the slot cap or the group ceiling is the owner's call rather than a session's**,
+and they bound different things: two slots of three issues is six stories in flight. **Say in the
+notification when the caps trimmed a batch, how many slots were already taken, and when a group
+carries more than one story**, so they can see whether either is binding or decorative.
 
 **Everything not admitted simply waits.** It stays in `Queued (AI)`, it is not commented on, and
 the next dispatch reconsiders it. A story deferred by a cap or a ceiling is not a problem to

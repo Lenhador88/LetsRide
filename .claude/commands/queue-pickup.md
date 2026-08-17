@@ -510,10 +510,17 @@ live RLS hole letting any signed-in rider post a ride into any club.
    moving `development` is the same defect arriving later. A sha cannot move.
 
    Pass it with the rest of the scope material: **every issue being built** — all of them, for a
-   group — each fold-in with its one-line relatedness justification and its five ratings, and the
-   commit ranges: each story's own commits versus its fold-ins'. Without those, `reviewer.md`'s
-   scope pass cannot check the breadth cap at all, and is briefed to report that rather than guess
-   the boundary from the diff.
+   group — **each with the `size` the scout gave it, which your prompt carries** — each fold-in
+   with its one-line relatedness justification and its five ratings, and the commit ranges: each
+   story's own commits versus its fold-ins'. Without those, `reviewer.md`'s scope pass cannot check
+   the breadth cap at all, and is briefed to report that rather than guess the boundary from the
+   diff.
+
+   **`size` is on this list because the reviewer's ceiling check is otherwise unenforceable.**
+   `reviewer.md` is briefed that a group holds at most one `size: L` — a bound a count alone cannot
+   see, since two `L` stories are two issues and clear the count. `size` is deliberately *not* on
+   the dispatch record, so Linear cannot supply it either: your prompt is the only place it
+   survives, and dropping it here turns that check into a rule with no input.
 
    **For a group, say so and say why, or the scope pass reads the branch as scope creep.** A
    diff carrying three unrelated-looking stories is exactly the shape that pass exists to catch,
@@ -701,7 +708,8 @@ That is why they are numbered and cross-referenced by number.
 
 3. **Check the DEV deploy** — see below. `ERROR` on *your* commit stops the run here and goes to
    `Needs help`; anything else continues.
-4. **Move every issue in the group to `Deployed to DEV`**, each with its own comment: the PR link,
+4. **Move every issue in the group to `Deployed to DEV` — except any story parked into `Needs
+   help`, which stays parked** — each with its own comment: the PR link,
    one line on what landed **for that story**, what was folded into it, a link to each story filed
    **or updated**, and the deploy state from bullet 3. One shared comment pasted three times is
    worse than none — the owner reads an issue to find out what happened to *it*.
@@ -810,12 +818,16 @@ call:
   out and why. The queue still parks — `Needs help` is the lock — but it parks with two stories
   merged instead of two stories stranded.
 
-  **Move the stalled issue to `Needs help` BEFORE STEP 5's poke, not after the run.** The poke is
-  STEP 5's last bullet, and a dispatcher woken by it reads the board as it stands: park afterwards
-  and it sees nothing in `Needs help`, the queue-wide lock does not hold, and it dispatches up to
-  three more groups — burying the story that needs the owner under three merged PRs, which is the
-  exact harm the lock exists to prevent. STEP 5 bullet 6 already assumes this order when it says to
-  poke *"even when you parked into `Needs help`, and say so in the text"*.
+  **Move the stalled issue to `Needs help` BEFORE STEP 5 bullet 4, not after the run.** A
+  dispatcher woken by bullet 6's poke reads the board as it stands: park afterwards and it sees
+  nothing in `Needs help`, so the queue-wide lock does not hold and it dispatches into every free
+  slot — burying the story that needs the owner under the merged PRs, which is the exact harm the
+  lock exists to prevent. STEP 5 bullet 6 already assumes this order when it says to poke *"even
+  when you parked into `Needs help`, and say so in the text"*.
+
+  **Bullet 4 rather than bullet 6, because bullet 4 is the earlier hazard.** It moves *every* issue
+  in the group to `Deployed to DEV` with a comment claiming a merge — so a park deferred past it
+  marks the story you never built as shipped, and then contradicts itself two bullets later.
 - **Its commits are already on the branch and separable** → drop them (`git revert`, or reset and
   recommit the others) and take the branch above. **Re-run `reviewer` on what you actually intend
   to merge**, since the reviewed diff has changed.
@@ -852,7 +864,7 @@ re-run (STEP 4c bullet 1), or a decision that is the owner's to make.
 **Stopping into `Needs help` is always better than merging something you are not confident
 in.** It also parks the whole queue until the owner clears it, which is the intended behaviour —
 `Needs help` is the one status the dispatcher refuses to dispatch past, precisely so a story
-needing the owner does not get buried under three merged PRs.
+needing the owner does not get buried under the next batch of merged PRs.
 
 **Leave the branch and any PR open, and say so in the comment.** Nothing else will pick this up:
 your session ends here, and the next dispatch will not touch a story it can see is parked. **Still
