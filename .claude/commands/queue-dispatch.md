@@ -137,7 +137,7 @@ history instead of state.
 **There is no number to compare against 80%**, and inventing a threshold would be a gate that can
 never fire. What was checked, so nobody re-derives it: `claude --help` has no `usage` subcommand,
 `~/.claude` holds no usage file, and no environment variable carries one. **This matters more now
-than it did**, not less: a firing used to start one build and can now start three, plus one scout
+than it did**, not less: a firing used to start one build and can now start two, plus one scout
 agent per candidate. The lever that works is the owner's:
 
 ```
@@ -346,10 +346,12 @@ DEV Supabase project**, whose dangerous half the migration cap covers. `WALK_FIX
 it are deliberately uncapped: they create a ride and a club through the app's own forms, which two
 children can do concurrently without interfering.
 
-**Batch size: at most 3.** Not a measured ceiling — a starting position, chosen because the three
-sessions running concurrently on 2026-08-16 (PRs #226, #227, #228) had zero `src/` overlap and
-conflicted only on `docs/HANDOFF.md`. Raise it once several rounds have been watched; **say in the
-notification when the caps trimmed a batch**, so the owner can see whether 3 is binding or
+**Batch size: at most 2.** Product owner, 2026-08-17: *"I want to scale down our dispatcher to 2
+sessions in parallel max."* It started at 3 — a starting position rather than a measured ceiling,
+chosen because the three sessions running concurrently on 2026-08-16 (PRs #226, #227, #228) had
+zero `src/` overlap and conflicted only on `docs/HANDOFF.md`. **Moving it is the owner's call, not
+a session's**, in either direction: nothing here measures what three concurrent builds cost them.
+**Say in the notification when the caps trimmed a batch**, so they can see whether 2 is binding or
 decorative.
 
 **Everything not admitted simply waits.** It stays in `Queued (AI)`, it is not commented on, and
