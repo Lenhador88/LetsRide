@@ -81,10 +81,9 @@ __pycache__/
 *.py[cod]
 
 # Isolated git worktrees the Agent tool creates for a subagent. Untracked
-# rather than harmless: `git status --porcelain` is queue-pickup STEP 0.5's
-# gate 2, so an unignored worktree reads as a dirty tree and every hourly
-# firing exits silently — the queue freezes while looking healthy, which is
-# the failure shape this repo keeps paying for.
+# rather than harmless: an unignored worktree reads as a dirty tree, which
+# turns every `git status --porcelain` check in the repo — and every review of
+# what a branch actually changed — into a false positive.
 #
 # **That is ALL this line does, and the limit is worth stating** because the
 # other half of the problem looks like it should be covered here and is not.
@@ -92,8 +91,7 @@ __pycache__/
 # `includeIgnoreFile`, so ESLint reads none of this file and a bare `eslint`
 # descends into a dot-directory happily — a live worktree is a second copy of
 # `src/` and doubles `npm run lint`'s output whatever is written here. Remove
-# the worktree when the agent is done; ignoring it only keeps the queue
-# running.
+# the worktree when the agent is done; ignoring it only keeps the tree clean.
 #
 # `tsc` is the one that needs no help, for a reason that is easy to get
 # backwards: it is not git-awareness but glob expansion — `include`'s

@@ -1,0 +1,37 @@
+{
+  "page": "Components",
+  "section": null,
+  "id": "4108:6912",
+  "name": "Element / Icon / Wave",
+  "type": "COMPONENT",
+  "box": {
+    "x": 12616,
+    "y": 11416,
+    "w": 24,
+    "h": 24
+  },
+  "clipsContent": false,
+  "strokeWeight": 1,
+  "strokeAlign": "INSIDE",
+  "children": [
+    {
+      "id": "4122:6915",
+      "name": "Icon",
+      "type": "VECTOR",
+      "box": {
+        "x": 12620.34,
+        "y": 11417,
+        "w": 15.33,
+        "h": 22
+      },
+      "strokeWeight": 0.42,
+      "strokeAlign": "OUTSIDE",
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": "#1A1A1A"
+        }
+      ]
+    }
+  ]
+}

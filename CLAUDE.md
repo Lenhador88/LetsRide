@@ -664,7 +664,7 @@ at runtime).
 any screen, and read `design/TOKENS.md` in preference to either — that one is generated, the
 tables are transcribed.
 
-Three rules that must hold without opening it:
+Four rules that must hold without opening it:
 
 - **Read the design from `design/`, never the Figma API.** `npm run figma -- tree "<screen>"` is
   offline and cannot be rate limited; the API's limit is per-endpoint, inherited across sessions,
@@ -673,6 +673,24 @@ Three rules that must hold without opening it:
   hand-edited. The generator rewrites every literal fill to `currentColor`.
 - **Primary buttons are near-black (`Grey/100` `#1A1A1A`), not green.** Green is an accent used
   sparingly. This is the single most-repeated mistake against these designs.
+- **Writing to Figma is possible, and it takes an explicit ask.** `use_figma` runs against the
+  file through the Plugin API and is on `design-system`'s toolset. The rule above is untouched: a
+  write is not a licence to *read* over the API, and design questions still come from the
+  snapshot. What makes the ask non-negotiable is that **nothing anywhere gates it** — check that
+  rather than trust it, because the day someone adds a `reviewer` pass or a registry claim the
+  justification quietly stops being true:
+
+  ```bash
+  grep -ril figma .github/workflows/ scripts/docs/registry.mjs .claude/agents/reviewer.md   # 0
+  ```
+
+  So a component created in a session lands in the canonical design unreviewed, and the next
+  `figma:pull` bakes it into the snapshot the whole squad trusts — and from there into
+  `generated.tsx`, the client bundle and the store build, with nothing in between asking where the
+  artwork came from. **Traced or borrowed artwork therefore needs its licence settled before it
+  ships, not before it merges**; `places` is the precedent for what an assumed one costs.
+  `.claude/agents/design-system.md` §Writing to Figma carries the conventions, the provenance rule
+  and the two rate-limited calls it takes to reach `generated.tsx`.
 
 ## Development Workflow
 
@@ -772,8 +790,10 @@ outright, so a UUID-prefixed name it finds is very likely refused too (untested 
 rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
 restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
 §Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
-database gets both; `design-system` is out, its connector being Figma and its answers coming from
-the committed `design/` snapshot with the API forbidden.
+database gets both; `design-system` is out, its connector being Figma and its *answers* coming
+from the committed `design/` snapshot with reads over the API forbidden — which is a rule about
+where design questions get answered, not a claim that the connector is read-only. It also holds
+`use_figma`, under §Design System's fourth rule above.
 `src/__tests__/agent-briefs.test.ts` enforces it — `grep -L ToolSearch` cannot, since every such
 block names the tool in prose and reads clean with the entry stripped.
 
@@ -803,7 +823,9 @@ guard, the two `.claude/` cases below, and contrast on any new colour pairing.
 those two are carved out of `ci.yml`'s denylist so `src/__tests__/agent-briefs.test.ts` runs on
 them. **`.claude/settings.json` runs the job too** — its own carve-out, because `docs:check`'s
 `hard_deny` claim measures that file — but the job checks one *number* in it, never the
-permission semantics. **`.claude/hooks/*.sh` and the rest of `.claude/` still run zero jobs.**
+permission semantics. **`.claude/skills/` runs it too** — the generated-artifact alarm byte-compares
+those files against the openspec CLI's own templates. **`.claude/hooks/*.sh` and the rest of
+`.claude/` still run zero jobs.**
 So a diff touching the permission or execution surface is a **security** review with, at best, a
 cardinality check behind it.
 
@@ -890,10 +912,15 @@ a build.
 
 **Default: one build in flight, in the background, and the thread stays free.** Spawn the agent,
 reply at once, and keep answering questions about other stories while it runs. What this buys is
-**availability, not throughput** — and the Routine is not the fallback a session assumes it is,
-because gate (7) of `.claude/commands/queue-pickup.md` stops a firing when any of the owner's
-sessions was touched in the last 15 minutes. **So while the owner is at the keyboard the queue is
-suppressed, not merely slow**, and this mode is the only thing picking work up at all.
+**availability, not throughput** — and the queue is not the fallback a session assumes it is,
+because `.claude/commands/queue-dispatch.md` STEP 1 holds every dispatch while any of the owner's
+own sessions is `RUNNING`. **So while the owner is actively working the queue is suppressed, not
+merely slow**, and this mode is the only thing picking work up at all.
+
+**That gate is narrower than the one it replaced, and the difference matters here.** It used to
+hold the whole hour whenever *any* of the owner's sessions had been touched in the last 15
+minutes — so an idle session they might come back to suppressed the queue as effectively as a
+live one. Now only an actively running session does.
 
 **Backgrounding it and then waiting on it is the same as not backgrounding it.** Product owner,
 2026-08-11: *"shouldn't all of that be running on the background?"* — said to a session that had
@@ -1172,8 +1199,8 @@ Three things are still owed and none of them is a status update:
   owner is at the keyboard is explicit — *"spawn the agent, reply at once, and keep answering
   questions about other stories while it runs"* — and that mode buys **availability**, which
   is the whole return on backgrounding. It is also the only thing picking work up while they
-  are at the keyboard, since queue-pickup's gate (7) suppresses the Routine. Silence here
-  cancels the mode rather than serving it.
+  are at the keyboard, since the dispatcher's owner-activity gate holds while this session is
+  running. Silence here cancels the mode rather than serving it.
 - **A question only they can answer, and a blocked capability.** Both are decisions, not
   status.
 - **A one-line answer to a hook that returned `decision: block`.** That is a prompt, unlike a
@@ -1486,7 +1513,7 @@ rather than checking it against this list, which is not exhaustive:
   obituaries, so the obvious command returns a wrong number that looks measured.
 - **`^`-anchored `git grep -L`** (same paragraph) — unanchored, a doc comment mentioning
   `'use client'` counts as the directive, so real server-rendered pages drop out of the list.
-- **The team-scoped lock** (`.claude/commands/queue-pickup.md` STEP 1) — a team-scoped
+- **The team-scoped lock** (`.claude/commands/queue-dispatch.md` STEP 2) — a team-scoped
   `list_issues` is the natural query and is held permanently by years-old issues outside this
   project.
 
@@ -1523,11 +1550,11 @@ from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
 
 ## The roadmap lives in Linear
 
-**Full detail — the anti-duplication contract, the status traps, sequencing, the queue Routine and
-its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before the
-first Linear call of a session, and before ANY call that touches the queue Routine, its triggers
-or the Development session** — those are CCR calls rather than Linear ones, so "before a Linear
-call" would never have fired for them. What must be true without reading it:
+**Full detail — the anti-duplication contract, the status traps, sequencing, the queue dispatcher
+and its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before
+the first Linear call of a session, and before ANY call that touches the dispatcher Routine, its
+triggers or the dispatcher session** — those are CCR calls rather than Linear ones, so "before a
+Linear call" would never have fired for them. What must be true without reading it:
 
 - Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**. **Pass the project id —
   `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it holds a curly apostrophe, the
@@ -1536,9 +1563,10 @@ call" would never have fired for them. What must be true without reading it:
   response.**
 - **Do not ask permission to touch Linear.** Standing grant, 2026-08-07 — read, create, update,
   label, move between statuses, and close. Deleting anything a human authored is the exception.
-- **`Queued (AI)` is the only start signal**, and `Development (AI)` + `Needs help` is a
-  *two-name* concurrency lock. Both traps are spelled out in the reference; the wider reading of
-  either freezes the queue while looking healthy.
+- **`Queued (AI)` is the only start signal.** `Development (AI)` claims **one issue** — stories
+  build in parallel sessions, so it says nothing about the others — while `Needs help` still stops
+  every dispatch. Both traps are spelled out in the reference; reading either as "any `started`
+  issue" freezes the queue while looking healthy.
 - **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`. A
   `save_issue` naming a status that no longer exists comes back looking successful with the field
   silently dropped.
@@ -1624,17 +1652,19 @@ chain to a scratch database and asserts what each role can reach.
     *every* changed file is under `docs/`, `design/`, `openspec/`, `.claude/` or a root `*.md`.
     That is a **denylist**, like the route guard's public paths — a new top-level directory runs
     CI by default, so forgetting to list something costs one green run rather than a missed
-    break. **Four carve-outs run the job anyway**, each for its own tripwire — count them in the
+    break. **Five carve-outs run the job anyway**, each for its own tripwire — count them in the
     `changes` job rather than trusting this list, which has already been a carve-out behind:
     `.claude/agents/` + `.claude/commands/` (`src/__tests__/agent-briefs.test.ts`, because a
     brief is executable process that no other job reads), `docs/` + root `*.md`
     (`scripts/docs/__tests__/registry.test.mjs`, because `docs:check`'s anchors depend on exact
     wording), `openspec/` (`crossrefs.test.mjs`, because a third of the repo's section pointers
-    live there), and `.claude/settings.json` (the `hard_deny` claim measures that file, and a
-    permissions diff touches nothing else). **So a PR touching only `design/`, `.claude/hooks/`
-    or the rest of `.claude/` runs zero jobs.**
+    live there), `.claude/settings.json` (the `hard_deny` claim measures that file, and a
+    permissions diff touches nothing else), and `design/` + `.claude/skills/` (the
+    generated-artifact alarms rebuild `generated.tsx` and `TOKENS.md` from inputs living entirely
+    inside those two trees, so the diff that breaks them is exactly a diff confined to them).
+    **So a PR touching only `.claude/hooks/` or the rest of `.claude/` runs zero jobs.**
   - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
-    is a grep, a `jq` or a contrast ratio — 22 of 34. The ones needing Postgres, a second full
+    is a grep, a `jq` or a contrast ratio — 24 of 36. The ones needing Postgres, a second full
     build or a **test runner** stay out, so `npm run docs:check` locally is still the complete
     answer. That last exclusion was learned rather than designed: the two claims that spawn
     `vitest` on one file passed locally — including under `CI=true GITHUB_ACTIONS=true` — and
@@ -1704,6 +1734,9 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   this organization, so no session can recreate it; `update_trigger enabled: true` restores it
   whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one — keep them straight
   in both directions. Detail in [`docs/reference/linear.md`](docs/reference/linear.md).
-- **Don't archive or abandon the Development session** (`session_01B2mxc642tG8vZ15wysQpqM`).
-  Archiving it stops the queue silently with no error anywhere, and `update_trigger` has no
-  `persistent_session_id` parameter, so recovery needs a third trigger bound to a new session.
+- **Don't archive or abandon the dispatcher session** — the one
+  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, currently
+  `session_01B2mxc642tG8vZ15wysQpqM`. Archiving it stops the queue silently with no error
+  anywhere, and `update_trigger` has no `persistent_session_id` parameter, so recovery needs a
+  third trigger bound to a new session. **Its children are disposable and archiving one is
+  fine** — they carry the `queue-dispatch` tag, which is how they are told apart.

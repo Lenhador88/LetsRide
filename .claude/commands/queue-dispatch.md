@@ -1,0 +1,561 @@
+---
+description: Hand each queued story to its own session — the dispatcher's procedure
+---
+
+# Queue dispatch
+
+**This procedure picks work and hands it out. It never builds anything.** The build is
+[`queue-pickup.md`](queue-pickup.md), which runs in a *different session* — one per story, spawned
+here, each with its own container, its own branch and its own empty context window.
+
+That split is the whole design. Read §Why this shape before changing any of it.
+
+**The moment this session builds something it becomes the old Development session again** — context
+accumulating across firings, one story at a time, and a `/clear` nobody can perform from inside.
+Read the board, scout, spawn, exit. Nothing else.
+
+Read `CLAUDE.md` fully before acting. Workspace `lets-ride`, team **Pedro & Dave** (`PD`), project
+**Let's ride (AI)** (`88f3f224-ecf0-46f0-a032-c86b7a12f81c`). Note the curly apostrophe in that
+name; pass the id, never the name.
+
+---
+
+## The two roles, and how to tell which you are
+
+| | Dispatcher | Child |
+|---|---|---|
+| Started by | the hourly Routine, or a `fire_trigger` poke | `create_session` from the dispatcher |
+| Reads | this file | [`queue-pickup.md`](queue-pickup.md) |
+| Holds | the board, the caps, the batch | one issue id, given in its prompt |
+| Ends at | children spawned | the issue at `Deployed to DEV` |
+| Carries the tag | no | **`queue-dispatch`** |
+
+**A child never dispatches.** One level, no chaining — a child that spawns a child has no view of
+the caps below and cannot enforce them, so the batch guarantees quietly stop holding while
+everything still looks healthy.
+
+**You are `session_01B2mxc642tG8vZ15wysQpqM`.** If you are not, this message is misrouted: stop,
+and say so. The fallback if the Routine is ever rebound is this session's own
+`Claude-Session: https://claude.ai/code/<id>` line, the one used for commit trailers. STEP 1
+cannot exclude you from its own gate without this, and a gate that counts the firing itself never
+passes.
+
+---
+
+## STEP 0 — Can you see the board?
+
+Load `list_issues` via `ToolSearch` and call it. **If the Linear tools are not available, STOP and
+send a push notification saying the dispatcher cannot reach Linear.** Do not proceed on
+assumptions and do not pick work from the repo instead. A job that silently does nothing looks
+exactly like an empty queue.
+
+**Search by keyword, never by the `mcp__Linear__*` name — that prefix is not stable.** Connector
+ids rotated on 2026-08-08 and every literal name stopped resolving, silently, an absent tool being
+no error:
+
+```
+ToolSearch  query="+list_issues linear"      # keyword, survives a rename
+```
+
+Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as "the tool called
+`<tool>` on that connector", whatever prefix it currently carries.** A `select:` lookup returning
+no match means "search again by keyword", never "the connector is gone" — only a keyword search
+coming back empty establishes that.
+
+You need two connectors: **Linear** (the board) and **Claude Code Remote** (`list_sessions`,
+`create_session`). **Git is read-only and only for STEP 6's clock** — `git ls-remote`,
+`git log -1` on a remote ref, nothing else. You never check out, never write a file, never touch
+Supabase, Vercel or the GitHub API. **Reaching for any of those means you have started building**,
+which is this file's one prohibition.
+
+**Send notifications yourself, with the `PushNotification` tool.** A Routine bound to a persistent
+session cannot carry them: the server rejects the `notifications` parameter for any such trigger,
+so the only notification that will ever reach the owner is one this session sends.
+
+---
+
+## STEP 1 — The owner-activity gate
+
+**One gate, and it is the owner's own instruction: do not dispatch while the owner has a session
+actively working.** Product owner, 2026-08-16, approving this design: *"Just keep the gate of an
+active session from myself."*
+
+```
+list_sessions  mine=true  limit=50
+```
+
+**A hold here means "dispatch nothing", never "stop" — go to STEP 2, read the board, and run
+STEP 6.** Every stall clock in this file reads `Development (AI)` and `Needs help`, and STEP 2 is
+the only place that reads them, so a firing that stops at this line has no way to notice a dead
+child. That matters most exactly when this gate is held: the owner works a six-hour stretch, every
+firing in it holds, and a child that died at the start ages straight through the alarm window
+unseen. Read the board even when you will not act on it.
+
+**Hold if any session in that list is `SESSION_STATUS_RUNNING` and is neither this session
+(`session_01B2mxc642tG8vZ15wysQpqM`) nor tagged `queue-dispatch`.** Read the tag and the id in the
+same pass — the tag is the primary signal, and a row lacking it is a child only if
+`parent_session_id` is this session *and* `origin` is `claude_code_mcp_seed`. **Apply that
+cross-check inside the rule, not as a footnote**, or an untagged child holds the gate for its
+whole build.
+
+Both exclusions are load-bearing in different ways, and each is the cheapest failure in this repo
+to write:
+
+- **This session.** The dispatcher runs in a RUNNING session by definition, so a check counting
+  every RUNNING session is held by the firing itself and can never pass.
+- **Children.** They are RUNNING for the whole length of a build, so counting them gates the
+  dispatcher off permanently the moment it spawns its first child — the same never-clearing shape
+  from the other side.
+
+`SESSION_STATUS_IDLE` and `SESSION_STATUS_ARCHIVED` both mean nothing is executing; an idle
+session the owner may come back to is not activity. **Key off `session_status`, not
+`status_bucket`** — the bucket is a UI grouping that can be re-cut without the status changing.
+
+**If a child is RUNNING but its tag is missing**, you cannot exclude it safely and you cannot
+fix it from here. Hold, and send a `PushNotification` naming the session — an untagged child
+suppresses every future dispatch, and unlike the other holds nothing ages it out.
+
+**There is deliberately no 15-minute AFK proxy any more.** The old gate held the whole hour if the
+owner had touched *any* session recently, which is why the queue effectively never ran while they
+were working. It existed because one shared session meant a firing could land in the middle of
+their conversation; with one isolated session per story that conflict is gone, and what remains —
+"do not run a build alongside my live work" — is what the RUNNING check says directly.
+
+**Claude usage headroom is the second half of that gate, and it survived the rewrite.** Product
+owner, 2026-08-07: *"if any Claude usage limit is above 80%, skip the run."* **Hold if a usage
+signal arrives in THIS firing** — a system warning that a limit is approaching or reached, an
+overage notice, a rate-limit message — and send a `PushNotification` saying so.
+
+**"This firing", never "anywhere in this conversation", and the distinction is the whole gate.**
+The dispatcher is a persistent session whose context accumulates and which no session can clear,
+so a signal that ever appeared is visible for ever: read that way, **the first rate-limit message
+this session receives disables the queue permanently**, and the `enabled=false/true` lever below
+does not clear it because pausing a trigger does not touch a transcript. That is the
+never-clearing shape this very step warns about twice, arriving through the one gate that reads
+history instead of state.
+
+**There is no number to compare against 80%**, and inventing a threshold would be a gate that can
+never fire. What was checked, so nobody re-derives it: `claude --help` has no `usage` subcommand,
+`~/.claude` holds no usage file, and no environment variable carries one. **This matters more now
+than it did**, not less: a firing used to start one build and can now start three, plus one scout
+agent per candidate. The lever that works is the owner's:
+
+```
+update_trigger  trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan  enabled=false   # pause
+update_trigger  trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan  enabled=true    # resume
+```
+
+**Two ways `list_sessions` can fail, and both mean HELD, never open.** Dispatching alongside live
+owner work is the single outcome this gate exists to prevent, and failing open looks exactly like
+a clean pass:
+
+- **The call fails or the connector is unreachable.** Per STEP 0, a `select:` miss is a rename.
+- **The response carries `has_more: true`.** The ordering is documented nowhere this session can
+  read, so a truncated page is not a sample you can reason about — a RUNNING session on the next
+  page is invisible. `limit=50` makes truncation unlikely, not impossible.
+
+**Both exits send their own `PushNotification`**, because a gate held with no data has no clock
+behind it and STEP 6 therefore cannot age it. A stop nothing can age is a stop nothing reports.
+**These two skip STEP 2's liveness check and go straight to STEP 6**, which is a narrower
+consequence than stopping. The liveness check compares each dispatch record's `session` against
+the session list, so without that list it cannot run — but STEP 6's issue-age and `Needs help`
+clocks read only the board, and stopping short of them would reproduce the very gap this step's
+"hold means dispatch nothing, not stop" rule exists to close. Read the board, run the clocks,
+dispatch nothing.
+
+---
+
+## STEP 2 — Read the queue, and read what is already out
+
+```
+mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
+```
+
+- **Candidates** — everything in `Queued (AI)`. That is the only start signal. Never take work
+  from `Backlog AI`, `Todo Human`, `Todo AI` or `Needs decision`; `Todo AI` is the one to be
+  careful with, because the name reads like permission and is not one.
+- **In flight** — everything in `Development (AI)`. Those are claimed by a child that is still
+  working. **Do not dispatch them again, and do not treat them as a lock on the queue** — but you
+  **must** read their dispatch records, because STEP 4's caps are evaluated against them.
+
+### The dispatch record — how a later firing knows what is in flight
+
+**A firing that cannot see what an earlier firing dispatched cannot enforce any cap across
+them**, and the caps are then worthless the moment a child's poke wakes a second firing while the
+first batch is still building. So the record is written to the board, where it survives this
+session ending:
+
+```
+mcp__Linear__list_comments  issueId=<each issue in Development (AI)>
+```
+
+Take the most recent comment beginning `<!-- dispatch-record -->` and read its `session`, `paths`,
+`migration` and `primitive` fields. STEP 5 is what writes it.
+
+**Check each record's `session` against the `list_sessions` response you already hold.**
+
+- **`SESSION_STATUS_ARCHIVED` → the child is gone.** Move that issue back to `Queued (AI)`,
+  comment saying the child ended without reaching `Deployed to DEV`, and carry on. It becomes a
+  candidate again on the **next** firing; this firing's candidate list was read before the move.
+- **Absent from the list → freeze and notify**, exactly as for a record-less issue below. **Do
+  not treat absence as death.** Nothing establishes that the list is complete for arbitrarily old
+  sessions, and the plausible cause of absence — retention or pruning — bites hardest on the
+  long-running child this check is meant to distinguish from a dead one. Unclaiming a *live*
+  child's issue re-dispatches a story that is already being built, and STEP 3 of `queue-pickup.md`
+  says plainly that nothing downstream can see it: both children read the status they expect.
+  It would also retire that story's record from the in-flight set, so the migration cap would
+  count zero and could admit two more writers of the same `060_*.sql`.
+- **`SESSION_STATUS_IDLE` is not death either** — it is the ordinary state of a child between
+  turns. Only `ARCHIVED` is positive evidence.
+
+This is the one liveness signal that does not depend on a clock. STEP 6's age still works without
+it, including with no branch to grep, so this is a faster detector rather than the only one.
+
+**An in-flight issue with no dispatch record at all is a dispatch you cannot reason about**: it
+was claimed by something that did not follow this file, or the record write failed between the
+claim and the spawn. **Dispatch nothing this firing, and send a `PushNotification` naming the
+issue.**
+
+**That is a freeze, and it is deliberately stated as one rather than dressed up as a deferral.**
+The alternative was to treat it as `migration: Y, primitive: Y` with "unknown paths" — which is
+undefined at the path cap, and resolves either into this same freeze or into the path cap silently
+not applying. A freeze that notifies immediately is better than either: it is visible in minutes,
+and the owner clears it by moving one issue.
+
+**Never widen the lock to "any issue whose statusType is `started`".** `Queued (AI)` and
+`Deployed to DEV` are typed `started` too, so that version is held by every queued and every
+shipped story: the queue freezes permanently while looking like a healthy job behind a busy
+column.
+
+**`Needs help` is a full stop for the whole queue, and that is deliberate.** An issue parked there
+is waiting on the owner, and dispatching past it buries a story that needs them under three merged
+PRs. If any issue is in `Needs help`, **dispatch nothing** — but still run STEP 6.
+
+**Never type a status name from memory** — run `list_issue_statuses team=Pedro & Dave` before the
+first status write. Names have moved twice with nothing in the repo noticing, and a `save_issue`
+naming a status that no longer exists comes back looking successful with the field silently
+dropped. `.claude/commands/queue-pickup.md` §The status names carries the live table and the two
+traps in its `Type` column.
+
+**Order the candidates**: Urgent (1) beats High (2) beats Medium (3) beats Low (4) beats No
+priority (0). Ties break by oldest `createdAt`.
+
+**An epic is not work.** If a candidate has sub-issues it is a container — the buildable thing is
+one of its children. Leave the parent, comment saying so, and drop it from the batch. A container
+outranks its own children on priority, so this is a real trap rather than a hypothetical one.
+
+**Empty queue → no dispatch.** Go to STEP 6, which is silent in that case.
+
+---
+
+## STEP 3 — Scout the candidates
+
+**If a hold from STEP 1 or a freeze from STEP 2 is in force, skip this step and go straight to
+STEP 6.** Scouting is the expensive half of a firing — `batch size + 2` agents, each re-paying
+`CLAUDE.md` — and it *writes to the board*, moving stale candidates to `Needs decision`. A held
+firing that scouts anyway spends more than the usage gate saves and mutates the board it was told
+not to act on.
+
+**Do not dispatch on titles.** A batch is only safe if the stories in it do not overlap, and
+nothing on the board says what a story will touch.
+
+**Scout in priority order, and stop once you have enough.** Scout the first `batch size + 2`
+candidates, never the whole column: each scout re-pays `CLAUDE.md` in a fresh window, and a
+ten-deep queue would otherwise scout ten every hour *and* on every child poke, to dispatch three.
+The `+ 2` is the margin for candidates the scout drops as stale or blocked.
+
+Spawn them in parallel, in a single message. Each is cheap and read-only:
+
+> **First run `ToolSearch` for the Linear tools by keyword** (`+get_issue linear`), and call them
+> only after their schemas load. A direct `mcp__Linear__*` call can fail with
+> `InputValidationError`, which **looks exactly like a missing permission and is not one** — if
+> you read it as "Linear is gone" the blocker check below silently returns nothing.
+>
+> Read Linear issue `<id>` and the code it concerns. **Do not write code, do not edit any file,
+> and make no Linear call other than the two reads named here.** Return exactly:
+> 1. `paths` — the files and directories under `src/`, `supabase/`, `scripts/` or `design/` you
+>    expect this story to modify. Predict generously; a missed path is a collision.
+> 2. `migration` — Y/N, does it add a file under `supabase/migrations/`?
+> 3. `primitive` — Y/N, does it add or change a shared component under `src/components/ui/` or
+>    `src/components/icons/`?
+> 4. `premise` — `stale` / `intact` / `no checkable claim`, **with the command you ran and its
+>    output**. See the bar below; without a command there is no verdict.
+> 5. `blockers` — `get_issue includeRelations=true`, then list any `blockedBy` not in
+>    `Deployed to DEV`, `Done (in production)`, `Canceled` or `Duplicate`.
+
+### The bar for `premise: stale`, which is narrower than it sounds
+
+Brief the scout with this, because a fresh agent working from five lines will otherwise call a
+story stale for the wrong reasons — and the cost of that lands on the owner, in a column nothing
+drains on a schedule.
+
+**Stale means one of exactly three things, each with a command behind it:** the code now does what
+the issue asks (**already done**); a later decision or migration makes it moot (**superseded**); or
+the thing it describes does not exist, typically a count that moved or a file that was deleted
+(**void premise**).
+
+**None of these is staleness:** disagreeing with the approach, thinking the priority is wrong,
+finding the story hard, finding it bigger than it looked, or noticing it is old. **Age is not
+evidence** — `PD-129` sat five days with its premise entirely intact.
+
+**The asymmetry sets the bar.** Building something already done costs one build and ends in a PR
+that changes nothing: loud, cheap, self-correcting. Parking a live story costs the owner a round
+trip and sits in `Needs decision` until they happen to look. **So the bar is evidence, or build
+it.** An ambiguous check is a build.
+
+### Acting on the verdicts
+
+- **`premise: stale`** → do not build it and do not close it. Comment with the command and its
+  output plus the row it falls under, move it to **`Needs decision`**, drop it from the batch.
+  **Never `Needs help`** — that stops the whole queue over work nobody is doing.
+- **`blockers` non-empty** → drop it from the batch, one comment naming the unfinished blocker.
+  Do not move it; being blocked is an ordinary state.
+
+**If every candidate is stale or blocked, dispatch nothing** and go to STEP 6.
+
+---
+
+## STEP 4 — Select the batch
+
+Walk the scouted candidates in priority order and admit each only if it clears **all** of these
+against the batch so far **and** against every dispatch record from STEP 2:
+
+| Cap | Why it is not just a merge conflict |
+|---|---|
+| **Disjoint `paths`** | Two stories editing one file conflict on the second merge — loud and cheap. Worse, each is reviewed against a `development` containing neither, so `reviewer` gives an honest verdict on a file that will not exist once the other lands |
+| **At most one `migration: Y` in flight** | Two children both write `060_*.sql`. Both land, both apply, and this repo already has a chain (`041 → 044 → 046`) where the wrong order succeeds with **nothing red**. They also apply to the same DEV database, which unlike the test database and the dev-server ports **is** shared across containers |
+| **At most one `primitive: Y` in flight** | Two divergent implementations of the same shared component. Nothing conflicts, nothing fails, and the result is `CLAUDE.md`'s *individually correct and collectively inconsistent* |
+
+**"In flight" spans firings, not just this batch.** That is the whole reason STEP 2 reads the
+dispatch records; a cap evaluated against the current batch alone is satisfied by construction on
+the first story and useless from the second firing onward.
+
+**`docs/HANDOFF.md` and `CLAUDE.md` are exempt from the path check, and must be.** Roughly
+two-thirds of this repo's commits touch one of them, and STEP 4 of the child procedure *requires*
+every child to update the handoff — so applying the path check there caps every batch at one and
+deletes the feature. They conflict loudly on the second merge, and `queue-pickup.md` STEP 4c
+carries the resolution the child performs. **That remedy is what makes the exemption safe; do not
+widen the exemption without checking it is still there.**
+
+**Two caps do NOT belong here, and adding them would be reasoning from the wrong scope.** The
+shared `letsride_test` database and the fixed ports (`:3000`, `:3001`) are container-local, and
+each child runs in its own container. `CLAUDE.md` §Delegating while the owner is at the keyboard
+describes both, and it is scoped to **subagents inside one session** — a real hazard for a child
+running two agents, and no hazard between children. **The resource that genuinely is shared is the
+DEV Supabase project**, whose dangerous half the migration cap covers. `WALK_FIXTURES=1` writes to
+it are deliberately uncapped: they create a ride and a club through the app's own forms, which two
+children can do concurrently without interfering.
+
+**Batch size: at most 3.** Not a measured ceiling — a starting position, chosen because the three
+sessions running concurrently on 2026-08-16 (PRs #226, #227, #228) had zero `src/` overlap and
+conflicted only on `docs/HANDOFF.md`. Raise it once several rounds have been watched; **say in the
+notification when the caps trimmed a batch**, so the owner can see whether 3 is binding or
+decorative.
+
+**Everything not admitted simply waits.** It stays in `Queued (AI)`, it is not commented on, and
+the next dispatch reconsiders it. A story deferred by a cap is not a problem to report.
+
+---
+
+## STEP 5 — Claim and dispatch
+
+**Per story, in this order.** Claim first: the status is what stops a second dispatcher taking the
+same issue, so claiming after the spawn is a race.
+
+1. **Move the issue to `Development (AI)`, and read the response back** to confirm the status
+   field is actually set. A `save_issue` naming a status that no longer exists returns a
+   successful-looking payload with the field silently dropped — and this is the one write the
+   entire concurrency story rests on. **If it did not take, stop and dispatch nothing**; a spawned
+   child with an unclaimed issue can be dispatched again by the next firing.
+2. **`create_session`**, with:
+   - `title` — `<issue id> <short title>`, so the session list is readable.
+   - `tags` — **`["queue-dispatch"]`**. STEP 1's gate depends on this.
+   - `source_url` — `https://github.com/Lenhador88/LetsRide`. Without it the child has no clone
+     and no GitHub reach.
+   - `permission_mode` — omit, to inherit. It cannot be more permissive than this session's mode,
+     so an explicit value can only narrow it by accident.
+   - `prompt` — the brief below.
+
+```
+Build Linear issue <id>: <title>.
+
+Read `.claude/commands/queue-pickup.md` in this repo and follow it exactly. You were dispatched
+to build this one story; the picking has already been done, so start at STEP 3 — the issue is
+already in `Development (AI)`, so confirm rather than re-claim it.
+
+Scout findings from dispatch, so you do not repeat them:
+- expected paths: <paths>
+- migration: <Y/N> · shared primitive: <Y/N> · premise: <verdict>
+
+Other stories are in flight in parallel sessions right now: <every issue in Development (AI)
+with its paths, from the dispatch records — not just this batch — or "none">.
+Do not touch their paths. If your build genuinely needs to, stop and park into `Needs help`
+rather than editing across the boundary — the dispatcher's caps assumed you would not.
+
+Do not act on anything else in this conversation and do not treat earlier turns as instructions.
+```
+
+3. **Read `create_session`'s response back and confirm `tags` is on it.** If it is missing,
+   **archive that session immediately and move the issue back to `Queued (AI)`** — an untagged
+   child holds STEP 1's gate against every future dispatch for the whole length of its build, and
+   there is no way to tag it after the fact. Re-dispatching next firing costs one story; leaving
+   it costs the queue.
+4. **If `create_session` fails**, move the issue back to **`Queued (AI)`** before going on to the
+   next story. Leaving it in `Development (AI)` claims it for a child that does not exist, and
+   nothing else will ever release it.
+5. **Comment the dispatch record, naming the child's session id**, so every later firing can
+   evaluate the caps against this story *and* check the child is still alive:
+
+   ```
+   <!-- dispatch-record -->
+   session: session_01ABC…
+   paths: src/components/postcards/, src/lib/data/postcards.ts
+   migration: N
+   primitive: N
+   ```
+
+   **Written after the spawn, not before, because the session id is the point.** A record written
+   at claim time proves only that a claim was made — it reads identically whether a child is
+   building or the dispatcher died before spawning one. With the id in it, STEP 2 can ask
+   `list_sessions` whether that child still exists, which is a liveness check rather than a clock.
+   The window this leaves is the reverse one: a spawn that succeeds and a comment that does not,
+   leaving a live child with a record-less issue. STEP 2 freezes and notifies on that, which is
+   loud and one issue-move to clear — the honest direction for the smaller window.
+
+**Then stop.** Do not wait for children, do not poll them, do not review their work. They finish
+in their own sessions and close their own issues. **They cannot report back to you** — a cloud
+session receives messages and cannot answer into the conversation that spawned it — which is why
+every child-visible outcome goes to Linear, the PR, or a push notification.
+
+---
+
+## STEP 6 — The stall check, then exit
+
+**This step runs on EVERY firing, whether or not anything was dispatched.** That is the whole
+correction over the shape it replaces: the alarm used to run only when a firing exited on a
+blocking condition, and once `Development (AI)` stopped being a blocking condition, the case it
+was written for — a child that died holding an issue — could never reach it. Every dispatch now
+asks the question, so a claimed issue with nobody behind it ages into view instead of sitting for
+ever.
+
+Ask how long the oldest of these has been true:
+
+- **An issue in `Development (AI)`** — its child should have finished. Age the branch tip if there
+  is one, because a live build keeps resetting it and a dead one does not:
+
+  ```bash
+  git ls-remote --heads origin | grep -i "pd-<n>"          # gitBranchName is a guess; this is not
+  git fetch origin "<ref>" --quiet && git log -1 --format=%ct "origin/<ref>"
+  ```
+
+  **This repo's branches are `claude/<slug>` and usually carry no issue id**, so that grep
+  legitimately finds nothing on a healthy build. Fall back to the issue's `stateHistory[].startedAt`
+  — and read a no-branch result as *unknown*, not as *dead*. Both states this reaches are real: an
+  issue parked in the column by hand with no build behind it, and a child that has not pushed in
+  hours.
+- **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. It is a stop by design and
+  it still ages: an issue nobody has come back to for hours is worth telling the owner about.
+- **An owner session RUNNING (STEP 1)** — age it by its `updated_at`, and **name the session's
+  title**. *"'Postcard flip with comments' has been RUNNING since 09:12"* is actionable; "another
+  session is working" is not.
+
+**If the oldest is more than 3 hours old, send ONE push notification naming it and saying the
+queue is stalled — then record that you did**, as a comment beginning
+`<!-- stall-alarm session:<id> -->`, naming the same session id as the dispatch record it
+concerns. **Never alarm on a dispatch that already carries one.**
+
+**Scope the marker to the dispatch, never to the issue.** A returned issue is re-dispatched as an
+ordinary candidate, so an issue-scoped marker would silence the alarm for every *later* child of
+that story — the never-clearing shape again, arriving through the mechanism meant to prevent
+double-notifying. Match on the session id, or equivalently ignore any alarm older than the most
+recent `<!-- dispatch-record -->` on that issue.
+
+**Fall through when the oldest subject is already alarmed**, rather than stopping: take the next
+oldest that is not. Reading only the single oldest would let one permanently-alarmed story hide
+every stalled one behind it.
+
+**Once-ness is durable rather than probabilistic, and that is a correction.** The rule used to be
+a `[3h, 4h)` window, on the reasoning that a narrow band fires roughly once. It does — but only if
+a firing actually lands inside it, and the owner-activity gate can suppress dispatching for a
+whole working day. A window missed while every firing was held is a window gone for ever, on
+exactly the dead child the alarm exists for. An open-ended threshold plus a written record fires
+once *and* cannot be missed. The comment is checkable by any later firing, which a transcript is
+not.
+
+For an owner session RUNNING there is no issue to comment on, so that one keeps a `[3h, 4h)`
+window and may repeat if the firings fall badly. Accepted: it is the one clock whose subject the
+owner can already see.
+
+**Re-anchor on the branch tip, do not suppress.** The obvious version — "tip moved recently, exit
+silently" — is wrong invisibly: a build that dies at hour 3½ has a fresh tip at the only firing
+inside the window, exits silently, and by the next one the window has passed. Ageing the tip
+self-heals instead.
+
+### What else this step sends, and what it does not
+
+- **A batch was dispatched** → one `PushNotification` naming the issues, and saying whether a cap
+  trimmed the batch.
+- **The owner-activity gate is held with work waiting** → nothing, unless the stall clock above
+  says otherwise. This is the ordinary state while the owner works, and notifying on it would mean
+  a push an hour.
+- **A hold that nothing ages** → notify, but **only once per condition**. Three qualify: the two
+  `list_sessions` failures, the usage hold, and STEP 2's record-less freeze. None has a subject
+  the stall clock can age, so silence would mean no report ever — but a sustained one would
+  otherwise send a push every hour, which is the thing the row above refuses. For the freeze,
+  write `<!-- stall-alarm session:none -->` on the issue and skip it while it carries one; the two
+  session-list failures have no issue to mark, so they repeat, and that is accepted because they
+  mean the connector is down.
+- **Empty queue, every candidate stale or blocked, or a batch of zero** → silence.
+
+### How you get woken again
+
+- **A child pokes you.** Each child's last act is `fire_trigger` on the dispatcher Routine. That
+  is what makes the next batch start seconds after a slot frees, and it is the point of the
+  design.
+- **The hourly Routine fires.** The **heartbeat, not the driver** — it exists because a child that
+  dies never pokes, and an event-driven chain has no way back once a link is lost. Do not remove
+  it because the pokes are working.
+- **`send_later`** — **only for a condition that resolves on a clock you can name**, and never for
+  a held gate. A gate clears when the owner stops working, which no event reports and no delay
+  predicts, so re-arming on it is a poll: three hours of owner activity would wake this session
+  ~180 times, accumulating context in the one session that must not accumulate it. The hourly
+  heartbeat already covers it.
+
+---
+
+## Why this shape
+
+**The old procedure was one long-lived session building one story at a time, suppressed whenever
+the owner was working.** All of that came from one constraint: a session spawned *by a Routine*
+gets its connectors from the trigger, and `create_trigger` refuses the `connectors` parameter for
+this organization — so binding to a session that already held them was the only way to have a job
+that could reach Linear at all.
+
+**A session spawned by another session inherits them.** Probed 2026-08-16 from a `create_session`
+child with the repo attached: `permission_mode: auto` inherited, and Linear, Supabase and the
+GitHub tools all answered. That removed the reason the single session had to be reused, and with
+it the three costs the reuse was paying — context accumulating across firings, a `/clear` no
+session can perform, and a firing landing mid-conversation with the owner.
+
+**One inherited capability was NOT established by that probe, and the design leans on it:** the
+child's `fire_trigger` poke needs the Claude Code Remote tools. The probe's summary reported every
+item reachable, but the itemised result was not read back, so **treat CCR inheritance as
+plausible-but-unverified until a child actually pokes.** If it turns out not to inherit, the poke
+fails, its error branch in `queue-pickup.md` STEP 5 fires, and the design degrades to the hourly
+heartbeat — slower, not broken. The Vercel connector the child's deploy check uses is unverified
+the same way and degrades the same way.
+
+**What it does not remove is the reason for a dispatcher.** The caps in STEP 4 need one place that
+can see every story in flight at once. A chain — each child spawning the next — is simpler and
+cannot enforce any of them.
+
+**Two irreversible things, carried here because the calls that trip them are CCR calls made by a
+session that is not reading this file:**
+
+- **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`**, the disabled fresh-session Routine. Its three
+  connectors were hand-attached and `create_trigger` refuses the parameter, so no session can
+  recreate it; `update_trigger enabled: true` restores it whole. **It was not in `list_triggers`
+  on 2026-08-16** — see `docs/HANDOFF.md`; if it is gone the documented fallback is gone with it.
+- **Never archive the dispatcher session.** `update_trigger` has no `persistent_session_id`
+  parameter, so recovery means a new trigger bound to a new session. **Children are disposable**
+  and archiving one is fine; the `queue-dispatch` tag is how they are told apart.
