@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { resolveDestination } from '@/lib/auth/guard'
@@ -10,9 +10,11 @@ import {
   getGuardSnapshot,
   getServerGuardSnapshot,
   guardStateFrom,
-  hasGuardBooted,
+  resolveGuardView,
+  retryGuardRead,
   subscribeGuardCache,
 } from '@/lib/auth/guard-cache'
+import { GuardError } from '@/components/auth/GuardError'
 
 /**
  * The client route guard — `proxy.ts`'s decisions, applied in the browser
@@ -27,7 +29,16 @@ import {
  *
  * A guard that renders its children while it decides is not a guard — it is a
  * flash of the screen the rider was not supposed to see, followed by a
- * redirect. So there are exactly two states here: deciding, and allowed.
+ * redirect. So there are three states here: deciding, allowed, and — since
+ * PD-122 — a read that threw and cannot be decided from at all.
+ *
+ * **The third one is a screen rather than a destination**, and that is the
+ * whole of PD-122: a rejected read leaves no session to route on, so the guard
+ * draws `GuardError` and lets the rider re-attempt it. The splash it replaces
+ * has no tap target, so before this the rider's only way out was a reload. It
+ * reveals nothing the splash did not: `children` mount under it in exactly the
+ * warm case they already mounted under the splash overlay, and RLS answers
+ * nothing to a rider who turns out not to belong there.
  *
  * **This is also the first time this app has had a boot window at all.** `/`'s
  * own doc comment records the reasoning for having no splash — "the Figma splash
@@ -94,12 +105,19 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   )
 
   const state = guardStateFrom(snapshot, pathname)
-  const booted = hasGuardBooted(snapshot)
 
   // `undefined` while undecided, so it is distinguishable from `null`, which is
   // the decision "stay here". Conflating them would render the splash forever on
   // every allowed route.
   const destination = state === undefined ? undefined : resolveDestination(pathname, state)
+
+  // Which of the three covers to draw, and whether `children` stay mounted under
+  // it. A pure function in `guard-cache.ts`, so the mapping has a test — this
+  // repo has no component test framework, and PD-122's branch is one that
+  // reaches a rider as a dead screen if it is wrong.
+  const view = resolveGuardView(snapshot, destination)
+
+  const retry = useCallback(() => retryGuardRead(pathname), [pathname])
 
   useEffect(() => {
     attachGuardAuthListener()
@@ -115,23 +133,23 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     router.replace(destination)
   }, [destination, router])
 
-  // Leaving. Never the children — that is the flash this component exists to
-  // prevent — and never the overlay either, because the screen underneath is the
-  // one the rider is being sent away from.
-  if (destination) return <GuardSplash />
+  if (view.kind === 'children') return <>{children}</>
 
-  if (destination === undefined) {
-    return booted ? (
-      <>
-        {children}
-        <GuardSplash overlay />
-      </>
+  const cover =
+    view.kind === 'retry' ? (
+      <GuardError overlay={view.overlay} onRetry={retry} />
     ) : (
-      <GuardSplash />
+      <GuardSplash overlay={view.overlay} />
     )
-  }
 
-  return <>{children}</>
+  return view.overlay ? (
+    <>
+      {children}
+      {cover}
+    </>
+  ) : (
+    cover
+  )
 }
 
 /**

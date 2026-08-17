@@ -30,10 +30,10 @@ import type { OnboardingState } from '@/types'
  * the server is per-process rather than per-request — so a module-level cache of
  * *who is signed in* is the shape of a cross-user leak. It is safe here because
  * **nothing writes it during render**, and that is enforced rather than
- * observed: all four writers — `ensureGuardState`, `attachGuardAuthListener`,
- * `invalidateOnboardingState` and `clearGuardCache` — refuse without a
- * `document`. The server's copy therefore stays permanently at "nothing known",
- * which renders the splash: the same thing it rendered before.
+ * observed: all five writers — `ensureGuardState`, `attachGuardAuthListener`,
+ * `retryGuardRead`, `invalidateOnboardingState` and `clearGuardCache` — refuse
+ * without a `document`. The server's copy therefore stays permanently at
+ * "nothing known", which renders the splash: the same thing it rendered before.
  *
  * The last two are reachable only from a `useActionState` submit handler today,
  * so the guard is belt-and-braces *today*. It is here because the property is
@@ -103,15 +103,39 @@ let unavailable = false
  * moment `read()` triggers `destroySessionForDeletedAccount`, below.
  */
 let gone = false
+/**
+ * A read that **threw** rather than answering (PD-122).
+ *
+ * Distinct from `unavailable` in what is known rather than in where it sends
+ * the rider: `unavailable` is a *resolved* accessor carrying an error, so the
+ * session was read and only the stamps are missing — the decision can be made,
+ * fail-closed, and `resolveDestination` has a destination for it. A rejection
+ * can land before `getSession()` ever answers, so there is no session, no
+ * stamps, and nothing to decide from. The guard therefore cannot route at all,
+ * and routing anyway would be inventing an answer it does not have.
+ *
+ * So this state is not a destination, it is a *screen*: `resolveGuardView`
+ * turns it into the retry the splash never offered. Before it existed a
+ * rejected read notified nothing, which left the full-screen splash up with no
+ * tap target on it and only a reload to escape — total, for a rider with no way
+ * to report what they saw.
+ *
+ * Latched until something re-attempts, and that latch is load-bearing: the
+ * failure notifies, the notify re-runs `RouteGuard`'s effect, and the effect
+ * calls `ensureGuardState` — so without it a failing read retries itself once
+ * per render forever.
+ */
+let failed = false
 
 /**
  * The pathname of the most recent read attempt.
  *
- * **Consulted in exactly one branch** — the `unavailable` retry in
- * `ensureGuardState`, to stop that retry firing once per render instead of once
- * per navigation. Every other branch has already decided from the session and
- * the stamps by the time it could matter, so a value left over from an earlier
- * path is inert rather than wrong, and only a full clear resets it.
+ * **Consulted in two branches** — the `unavailable` retry in
+ * `ensureGuardState` and the `failed` latch beside it, both to stop a retry
+ * firing once per render instead of once per navigation. Every other branch has
+ * already decided from the session and the stamps by the time it could matter,
+ * so a value left over from an earlier path is inert rather than wrong, and
+ * only a full clear resets it.
  *
  * It was reset by `writeSession` in the first draft, which broke the one thing
  * it is for: the very first read writes the session mid-flight, so the guard
@@ -138,6 +162,9 @@ export type GuardSnapshot = {
   unavailable: boolean
   /** PD-102 — see the module-level `gone` variable. */
   gone: boolean
+  /** PD-122 — see the module-level `failed` variable. Never a `GuardState`:
+   * this is the one answer that has no destination. */
+  failed: boolean
 }
 
 /** What the SSR pass and the hydration render both see — see the module note on
@@ -147,6 +174,7 @@ const EMPTY_SNAPSHOT: GuardSnapshot = Object.freeze({
   onboarding: undefined,
   unavailable: false,
   gone: false,
+  failed: false,
 })
 
 let snapshot: GuardSnapshot = EMPTY_SNAPSHOT
@@ -154,13 +182,14 @@ const listeners = new Set<() => void>()
 
 function notify(): void {
   snapshot =
-    userId === undefined && onboarding === undefined && !unavailable && !gone
+    userId === undefined && onboarding === undefined && !unavailable && !gone && !failed
       ? EMPTY_SNAPSHOT
       : {
           signedIn: userId === undefined ? undefined : userId !== null,
           onboarding,
           unavailable,
           gone,
+          failed,
         }
   for (const listener of listeners) listener()
 }
@@ -192,11 +221,55 @@ export function hasGuardBooted(state: GuardSnapshot): boolean {
 }
 
 /**
+ * What `RouteGuard` draws, given the snapshot and the destination the decision
+ * produced — `undefined` for "cannot answer yet", `null` for "stay", a string
+ * for "leaving".
+ *
+ * A pure function rather than three conditionals inside the component, because
+ * this repo has no component test framework and the branch PD-122 adds is
+ * exactly the kind that reaches a rider as a dead screen if it is wrong. Here it
+ * is a case in `__tests__/guard-cache.test.ts`.
+ *
+ * `overlay` is the boot/warm split `hasGuardBooted` names: before the first
+ * answer there is nothing on screen worth preserving and nothing vetted to
+ * reveal, so the cover stands alone; after it, the shell is already mounted and
+ * correct and the cover goes over the top rather than tearing it down. The
+ * `leaving` case is `{ kind: 'splash', overlay: false }` on purpose — the screen
+ * underneath is the one the rider is being sent away from.
+ */
+export type GuardView = {
+  /** `children` — allowed. `splash` — deciding. `retry` — the read threw. */
+  kind: 'children' | 'splash' | 'retry'
+  /** Whether `children` stay mounted underneath the cover. */
+  overlay: boolean
+}
+
+export function resolveGuardView(
+  state: GuardSnapshot,
+  destination: string | null | undefined
+): GuardView {
+  if (destination) return { kind: 'splash', overlay: false }
+  if (destination === null) return { kind: 'children', overlay: false }
+
+  const overlay = hasGuardBooted(state)
+  // Only while genuinely undecided: a rejection that still left enough to
+  // decide from — the session read, the stamps thrown away on a path that does
+  // not need them — routes normally rather than stopping the rider.
+  if (state.failed) return { kind: 'retry', overlay }
+  return { kind: 'splash', overlay }
+}
+
+/**
  * The decision's input, or `undefined` when it cannot be answered without a
  * round trip.
  *
  * Pure, and takes the snapshot rather than reading module state, so a render can
  * call it in its body and a test can call it without one.
+ *
+ * **A rejected read (`failed`) is deliberately not a state here.** It answers
+ * `undefined` like any other unknown, because that is what it is: no session was
+ * read, so there is nothing to decide from. What changes is only what the guard
+ * *draws* while undecided — see `resolveGuardView`.
  */
 export function guardStateFrom(state: GuardSnapshot, pathname: string): GuardState | undefined {
   if (state.signedIn === undefined) return undefined
@@ -233,12 +306,40 @@ export function ensureGuardState(pathname: string): void {
     // loop hammering an accessor that is already answering errors.
     if (attemptedPath === pathname) return
   }
+  // Same guard, for the same reason, on the rejection path (PD-122): the failure
+  // notifies, the notify re-runs the guard's effect, and the effect lands back
+  // here. Without this the retry the rider is being offered fires itself in a
+  // loop instead. A navigation still retries, as it always did.
+  if (failed && attemptedPath === pathname) return
   if (inFlight) return
 
   attemptedPath = pathname
   inFlight = read(pathname).finally(() => {
     inFlight = null
   })
+
+  // A read is in flight again, so the retry screen is no longer the truth —
+  // back to the splash until this one answers. Notified *after* `inFlight` is
+  // taken, or a listener re-entering here synchronously would issue a second
+  // read of its own.
+  if (failed) {
+    failed = false
+    notify()
+  }
+}
+
+/**
+ * Re-attempt a read the rider was shown a retry for (PD-122). The only writer
+ * that clears the latch above without a navigation or a new session, and the
+ * only one a rider can reach — a rejected read leaves the guard covering the
+ * screen, so there is no navigation to be had.
+ */
+export function retryGuardRead(pathname: string): void {
+  if (typeof document === 'undefined') return
+  failed = false
+  attemptedPath = null
+  notify()
+  ensureGuardState(pathname)
 }
 
 /**
@@ -256,6 +357,26 @@ export function ensureGuardState(pathname: string): void {
  * returns the three things this needs in one round trip.
  */
 async function read(pathname: string): Promise<void> {
+  try {
+    await attemptRead(pathname)
+  } catch (error) {
+    // PD-122. Neither `getSession()` nor the accessor is *supposed* to reject —
+    // `session-store.ts`'s `getItem` resolves to `null` on a storage failure,
+    // which is what has kept this unreachable — but the native shell puts a
+    // Capacitor plugin on that path, and a plugin error is a live rejection in a
+    // way `localStorage` never was. Swallowing it here is not the risk it looks
+    // like: the rider gets a screen that says so and a button that re-attempts,
+    // where before they got the splash for ever.
+    failed = true
+    // The one trace of *why*, and it is worth the line: this failure is total
+    // for whoever hits it, and a rider stuck on a screen with no app behind it
+    // cannot report anything a log would not say better.
+    console.error('The route guard could not read the session:', error)
+    notify()
+  }
+}
+
+async function attemptRead(pathname: string): Promise<void> {
   const supabase = createClient()
 
   const {
@@ -391,6 +512,9 @@ export function attachGuardAuthListener(): void {
     // one is precisely when re-attempting is worth it.
     unavailable = false
     gone = false
+    // A rejected read is released here too (PD-122), and for the same reason: a
+    // fresh session is exactly when re-attempting is worth it.
+    failed = false
     attemptedPath = null
 
     if (event === 'SIGNED_OUT' || !session) {
@@ -422,6 +546,7 @@ export function invalidateOnboardingState(): void {
   onboarding = undefined
   unavailable = false
   gone = false
+  failed = false
   notify()
 }
 
@@ -446,6 +571,7 @@ export function clearGuardCache(): void {
   onboarding = undefined
   unavailable = false
   gone = false
+  failed = false
   attemptedPath = null
   inFlight = null
   notify()
@@ -463,6 +589,7 @@ export function resetGuardCacheForTests(): void {
   onboarding = undefined
   unavailable = false
   gone = false
+  failed = false
   attemptedPath = null
   inFlight = null
   subscribed = false
