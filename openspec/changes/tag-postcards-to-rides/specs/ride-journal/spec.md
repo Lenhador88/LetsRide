@@ -497,6 +497,24 @@ The ride's title, meeting point, departure time and club SHALL reach a client on
 RLS-filtered embed on the postcard read. A raw `ride_id` SHALL NOT be resolved by a second lookup, and
 a NULL embed SHALL render nothing rather than a placeholder naming the ride.
 
+**`062` makes the embed itself impossible, and that is an OPEN product question for PD-257 rather
+than a rule this change can settle.** A PostgREST embed is a join whose predicate references
+`postcards.ride_id`, and Postgres privilege-checks a column reference in a predicate exactly as it
+does one in a target list — the premise the whole grant change rests on. So after `062` a postcard
+cannot surface its ride **at all**: no chip, no name, no fallback, on any row including the reader's
+own. Two ways forward, and neither is chosen here:
+
+- **The chip stays absent.** What `062` recorded, on the ground that no frame in the design draws one
+  — which is why the consequence did not block that change. Costs nothing and closes the question.
+- **A second accessor, postcard → ride.** Then its visibility rule SHALL be stated the way the
+  Journal's is, before it is written: it hands back the correlation PD-166 closed, one postcard at a
+  time, so "which ride is this tagged to" needs the same `can_read_ride` answer the Journal's does,
+  and a NULL result SHALL be indistinguishable from a ride the viewer cannot see.
+
+Everything else in this requirement survives, and the first sentence's *intent* survives with it: a
+rider still SHALL NOT learn a ride they cannot see from a postcard they can. `062` enforces that more
+strictly than the embed did, by removing the read rather than filtering it.
+
 `POSTCARD_SELECT` was `*` when this was written, so the raw `ride_id` UUID started arriving on every
 postcard read the moment `041` applied — accepted here on the grounds that a UUID a viewer cannot
 resolve tells them only that *some* ride is attached. **That reasoning was wrong in one respect and

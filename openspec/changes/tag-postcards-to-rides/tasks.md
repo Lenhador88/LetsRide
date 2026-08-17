@@ -181,28 +181,42 @@
 
 ## 4. Code — reads, writes, screens
 
-- [ ] 4.1 `src/types/index.ts`: `Postcard` gains the optional embedded ride. **It does NOT gain
-  `ride_id`** — `062` revoked the client's SELECT on the column, `POSTCARD_SELECT` cannot name it,
-  and a field on the type that no read can populate is a fact nobody rechecks. (This task read
-  *"gains `ride_id: string | null`… `POSTCARD_SELECT` is `*`, so the raw id arrives everywhere"*;
-  PD-165 ended the `*` and PD-166 ended the grant.)
+- [ ] 4.1 `src/types/index.ts`: `Postcard` gains **neither** `ride_id` **nor the embedded ride**, and
+  the second half is the one that will surprise whoever picks this up. `062` revoked the client's
+  SELECT on the column, so `POSTCARD_SELECT` cannot name it — and a PostgREST embed
+  `rides(…)` on a postcard read is a join whose predicate references `postcards.ride_id`, which
+  Postgres privilege-checks exactly as it does a target list. **The embed is `42501` too**, which
+  takes 4.3 with it. See the note under 4.3 before designing around it.
+  (This task read *"gains `ride_id: string | null`… `POSTCARD_SELECT` is `*`, so the raw id arrives
+  everywhere"*; PD-165 ended the `*` and PD-166 ended the grant.)
 - [ ] 4.2 `src/lib/data/postcards.ts`: `getRideJournal(rideId)` — two steps, because `062` moved the
   filter: `supabase.rpc('ride_journal_postcard_ids', { ride: rideId })` for the ids, then
   `POSTCARD_SELECT` with `.in('id', ids)`. **Order it in the second query** —
-  `.order('created_at', { ascending: false }).order('id', { ascending: false })`, **both keys**,
-  because the accessor sorts `created_at desc, id desc` and a single-key order leaves ties
-  unspecified — which also makes keyset paging on the second step repeat and skip rows across page
-  boundaries. The accessor sorts newest-first and `062.5` pins
-  that, but `.in(…)` does **not** preserve the order of the list it is handed, so the accessor's
-  ordering is a convenience for a direct reader and not a guarantee this read inherits.
+  `.order('created_at', { ascending: false }).order('id', { ascending: false })`. **Both keys, and
+  the reason is determinism rather than symmetry**: a single-key order leaves a `created_at` tie
+  unspecified, which also makes keyset paging on this step repeat and skip rows across page
+  boundaries — two riders posting from the same batch upload is enough. Matching the accessor's
+  `created_at desc, id desc` exactly is then the free part. **The accessor's own ordering is not
+  inherited here**: `.in(…)` does not preserve the order of the list it is handed, whatever `062.5`
+  pins about the accessor read directly.
   **The ROWS stay invoker-rights** — no Edge
   Function, no service-role read, and no function returning postcard rows. The accessor is the one
   `security definer` step and it returns ids only; see the amended requirement *"The Journal SHALL be
   read under the caller's own row security"*. The feed's `before` cursor does not carry over as
   written — the accessor takes no page — so either page in the second step or state that a ride's
   Journal is unpaginated.
-- [ ] 4.3 The ride embed on the postcard read is RLS-filtered; a NULL embed renders **nothing** — no
-  chip, no "Private ride", no disabled control. No second lookup on the raw id, ever.
+- [ ] 4.3 **BLOCKED BY `062`, and it is a product question rather than a task.** This read: *"The ride
+  embed on the postcard read is RLS-filtered; a NULL embed renders nothing — no chip, no 'Private
+  ride', no disabled control. No second lookup on the raw id, ever."* The embed needs SELECT on
+  `postcards.ride_id` (see 4.1), so **a postcard cannot show its ride at all** — not the chip, not
+  the name, not a fallback. `062`'s header states the same consequence and notes that no frame in the
+  design draws such a chip today, which is why it did not block that change.
+  **Do not quietly build around it.** Either the chip stays absent — the position `062` recorded, and
+  the cheapest — or a second accessor is written for postcard → ride, at which point its visibility
+  rule has to be stated the way the Journal's was, because it hands back exactly the correlation
+  PD-166 closed. That is the owner's call and it belongs in PD-257's proposal, not in a task list.
+  What survives unchanged either way: **no second lookup on a raw id, ever** — there is no longer a
+  raw id to look up.
 - [ ] 4.4 `src/lib/data/rides.ts`: the crew-rides list backing the composer's select — exactly the set
   the write gate admits, so the picker cannot offer an option the database refuses.
 - [ ] 4.5 `src/lib/validation/`: `postcardRideIdSchema`, `''` → `null`, mirroring

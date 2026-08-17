@@ -812,11 +812,13 @@ SELECT `false`, `ride_id` INSERT still `true`, `anon` still 0. The `postcards` S
 is `c8fb49b026866743283b3d7ecfbc5122`, unmoved — this file changes a grant, not a policy. **The
 column comment is covered by the same diff and was added to the file after that first apply**, so it
 was applied separately and checked the same way: `md5(col_description('public.postcards'::regclass,
-…))` is `92ab2c491f6a71552b1e85bda1672b4f` on DEV and on the scratch database. One consequence, named
+…))` is `a226977205df557336b735bacf661c72` on DEV and on the scratch database. One consequence, named
 rather than discovered: DEV's *recorded* statement for `062` is now a statement short of the file.
 That is benign — `db:drift` compares names, `CLAUDE.md` §Supabase Rules already calls a
 recorded-vs-file mismatch the norm and prescribes comparing the object, and PROD takes the file whole
-at promotion. Advisors
+at promotion. **Its cause is not the usual one and is worth naming**, because a session reconciling
+`062` later will find no reduced apply to explain it: the comment was added to the file *after* the
+first apply, on a review finding, and applied out of band. Advisors
 re-read afterwards: **ten**, the eighth `authenticated_security_definer_function_executable` being
 the new accessor, and `auth_leaked_password_protection` still the only outstanding one.
 
