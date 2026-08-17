@@ -84,8 +84,11 @@ without confirming it still says what the file claims.
    exists at `openspec/changes/add-account-deletion/` — read it rather than starting over.
    **Both things it said this needs are built**: `supabase/functions/delete-account/` is deployed
    and `ACTIVE` on both projects, and `/legal/account-deletion` is live. The flow shipped with
-   PD-102 on 2026-08-16 — `docs/HANDOFF.md` §Store readiness row 2 has what is left, which is a
-   live exercise rather than a build. Check that row before scoping anything here.
+   PD-102 on 2026-08-16. **What is left is not only a live exercise**: `1.6b` is an open, undecided
+   build defect — a club's last member leaving can destroy postcards that are not theirs — and
+   `2.4` (idempotency under concurrency) is open too. Count them rather than trust this line,
+   `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md`, and read
+   `docs/HANDOFF.md` §Store readiness row 2 before scoping anything here.
 2. ~~**Dead navigation.**~~ **Resolved 2026-08-07** — the Inbox tab was removed rather than
    built (PD-100), so the bar draws four tabs and every one has a route. Kept here because the
    *rule* outlives the instance: a reviewer taps every tab, and a tab that goes nowhere is a

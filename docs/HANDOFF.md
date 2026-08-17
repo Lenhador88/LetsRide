@@ -390,7 +390,7 @@ the words *"stopped being **Owner**"*, so the obvious command counts its own obi
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
-| 7 | ~~**Signup never exercised end to end**~~ — **the AUTH SERVER half is proven, 2026-08-16, `PD-91`** | Read that issue for the calls; it ran signup → emailed link → verify → password grant against PROD, 0 residue, and the Gmail connector supplied the inbox that was the whole blocker, so this stopped being **Owner**. **What is still unexercised is the app's own confirmation-on path, on EITHER project**, and it is not thin: PD-91 called GoTrue directly, so `signUp` never ran. The `!data.session` arm (`src/lib/actions/auth.ts:112`) and its "Check your email" screen (`src/app/auth/signup/page.tsx:50`) are the exact code whose absence was the original production bug this file's §Signup documents. **DEV structurally cannot cover them** — `mailer_autoconfirm: true` means a signup always returns a session, so `npm run walk` always takes the other arm (`scripts/walk.mjs:58`). Only PROD can, and nothing has. See PD-252 |
+| 7 | ~~**Signup never exercised end to end**~~ — **the AUTH SERVER half is proven, 2026-08-16, `PD-91`** | Read that issue for the calls; it ran signup → emailed link → verify → password grant against PROD, 0 residue, and the Gmail connector supplied the inbox that was the whole blocker, so this stopped being **Owner**. **What is still unexercised is the app's own confirmation-on path, on EITHER project**, and it is not thin: PD-91 called GoTrue directly, so `signUp` never ran. The `!data.session` arm (`src/lib/actions/auth.ts:112`) and its "Check your email" screen (`src/app/auth/signup/page.tsx:50`) are the exact code whose absence was the original production bug this file's §Signup documents. **DEV structurally cannot cover them**, and the reason is not "a signup always returns a session" — a *duplicate* signup on DEV errors, so `checkRefusedSignup` takes a third arm, `alreadyRegistered`. Only a confirmation-on project reaches `!data.session` at all, and that phase's assertions would fail against the screen it renders. Only PROD can reach the arm, nothing has, and covering it needs a new branch rather than a permitted ref — §Signup below has the mechanism, PD-252 the decision |
 
 Check each guideline against the live text before building to it — they move, and this table
 will not.
@@ -1347,15 +1347,20 @@ Two consequences, and the second is the one that will bite:
   against any live server. This is the arm whose absence was the production bug described above,
   so it is the *unproven* half now — PD-252.
 
-  **The walk does drive the app's `signUp`, and still cannot reach that arm on DEV** — three arms,
-  not two. `checkRefusedSignup` (`scripts/walk.mjs`) posts a duplicate address, and with
+  **The walk does drive the app's `signUp`, and still cannot cover that arm** — three arms, not
+  two. `checkRefusedSignup` (`scripts/walk.mjs`) posts a duplicate address; with
   `mailer_autoconfirm: true` GoTrue *errors*, so `signUp` takes `alreadyRegistered`. With
   confirmation **on** GoTrue's duplicate-signup mitigation returns **success with an empty
-  `identities` array** instead, so the same phase would fall through to `!data.session` and render
-  the "Check your email" screen. That phase's own header says so. **So the phase that would cover
-  PD-252 already exists** — what stops it is `refWritable`'s project allowlist, and pointing it at
-  a confirmation-on project **emails whoever owns that address**. The decision is which address,
-  not whether to write a phase.
+  `identities` array** instead, so the same phase falls through to `!data.session`.
+
+  **Reaching the arm is not covering it, and pointing that phase at PROD produces a red run
+  rather than a green one.** All four of its assertions assert the *refusal* — an alert on screen,
+  and email/password/consent surviving a form reset — so against the "Check your email" screen
+  there is no alert and no `input[name="email"]` at all, and the field reads reject on timeout:
+  `FAIL the phase threw`. `runRefusedSignup`'s ref gate exists to stop exactly that, and the
+  `.catch()` behind it says so in as many words. So PD-252 needs a confirmation-on **branch** with
+  its own assertions, not merely a permitted ref — and whichever ref it runs against, the signup
+  **emails whoever owns that address**.
 - **The cross-device confirm route is BUILT and INERT, and turning it on is an owner action.**
   `/auth/confirm` (`src/app/auth/confirm/page.tsx`) verifies an emailed `token_hash` through
   `verifyOtp`, which needs no PKCE verifier and therefore works on any device. **Nothing links to
