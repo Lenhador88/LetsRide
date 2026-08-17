@@ -158,13 +158,17 @@ describe('PostcardCard — the action row', () => {
   })
 
   /**
-   * The three actions, found by the one class only `shape` carries — the
-   * vertical hit-area stretch. Selecting them by a *padding* class would be
-   * circular, since padding is the thing under test, and would have silently
-   * dropped every uncounted control the moment its padding changed.
+   * The three actions, found by the marker attribute they carry for exactly
+   * this. Selecting them by a *padding* class would be circular — padding is
+   * what is under test, so a changed value would silently drop controls rather
+   * than fail — and `before:-inset-y-0.5`, the obvious alternative, is shared
+   * with `Button`'s `md` size, so it would quietly widen the day a `<Button>`
+   * lands inside a card.
    */
   function actionControls(html: string): string[] {
-    const controls = classLists(html).filter((c) => c.includes('before:-inset-y-0.5'))
+    const controls = [...html.matchAll(/<[^>]*\sdata-postcard-action=""[^>]*>/g)]
+      .map((m) => /class="([^"]*)"/.exec(m[0])?.[1])
+      .filter((c): c is string => c !== undefined)
     expect(controls).toHaveLength(3)
     return controls
   }

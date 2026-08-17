@@ -45,7 +45,14 @@ import { cn } from '@/lib/utils'
  * prompted this. Revisit if riders report mis-taps here; the escape that keeps
  * both is a larger glyph, offered and not taken.
  * `docs/FIGMA-FIDELITY-TODO.md` §Home / Postcards feed carries it as a logged
- * deviation.
+ * deviation, together with the second-tap margin below, and is the copy to edit
+ * when the number is revisited.
+ *
+ * **`data-postcard-action` exists for the test and earns the attribute.** The
+ * padding is what the test asserts, so it cannot also select on padding, and
+ * `before:-inset-y-0.5` — the obvious alternative — is shared with `Button`'s
+ * `md` size, so the day a `<Button>` appears inside a card the selector silently
+ * widens.
  */
 const shape =
   'relative inline-flex min-w-0 items-center gap-1 rounded-lg py-2 text-sm font-semibold transition-colors ' +
@@ -74,6 +81,7 @@ export function PostcardActionLink({ href, icon, count, label, className }: Base
   return (
     <Link
       href={href}
+      data-postcard-action=""
       aria-label={label}
       className={cn(shape, hasCount(count) ? 'pl-2 pr-3' : 'px-1.5', 'text-foreground active:bg-border', className)}
     >
@@ -95,6 +103,7 @@ export function PostcardActionButton({
   return (
     <button
       type="button"
+      data-postcard-action=""
       aria-label={label}
       aria-pressed={pressed}
       className={cn(shape, hasCount(count) ? 'pl-2 pr-3' : 'px-1.5', 'text-foreground active:bg-border', className)}
@@ -110,6 +119,7 @@ export function PostcardActionButton({
 export function PostcardActionStatic({ icon, count, label, className }: BaseProps) {
   return (
     <span
+      data-postcard-action=""
       aria-label={label}
       className={cn(shape, hasCount(count) ? 'pl-2 pr-3' : 'px-1.5', 'text-foreground', className)}
     >

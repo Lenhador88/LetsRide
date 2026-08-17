@@ -149,9 +149,21 @@ being called done.
         than a narrow one. The gap between two glyphs **is** the control width minus the 24px
         icon, so there is one lever and not two: 12px apart means 36px wide, 16px means 40px,
         and the 44px floor would mean 20px apart — the version that prompted all of this. The
-        escape that keeps both is a larger glyph (28px at 6px padding holds 40px while reading
-        as 12px); it was offered with the options above and not taken. Revisit if a rider
-        reports mis-taps here.
+        escape is a larger glyph, and **32px is the one that actually clears the floor**
+        (32+6+6 = 44 with the gaps still 12). The variant offered to the owner and declined was
+        **28px, which reaches only 40** — it buys back the width this entry gave up and does
+        not reach the floor, so a later session reaching for "the logged escape" must not read
+        it as clearing 44.
+      - **The second tap after a like clears its neighbour by under a pixel.** `LikeButton` is
+        optimistic, so a tap on a zero-like card grows that control from 36px to 53.1px in the
+        same frame — and a rider tapping comment where it was a moment earlier is 0.9px inside
+        the new comment box. Measured in Chromium at 390px, both states rendered: the old
+        centre still resolves to the right control, so this is a **thin margin, not a defect**
+        — but 0.9px is inside font-rendering variance, and at 16px spacing the same margin was
+        6.9px. A shift larger than half the neighbour's width lands the tap on the *previous*
+        control, which un-likes instead of opening the thread. So "revisit if a rider reports
+        mis-taps" points here as much as at the static width, and the fix if it is ever needed
+        is to stop the control resizing on the optimistic write rather than to widen it back.
       - **The rule is gated; the pixels are not.**
         `src/components/postcards/__tests__/PostcardAction.test.tsx` renders all three
         variants plus the composed card and asserts the class list — the conditional padding,
