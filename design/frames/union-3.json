@@ -1,0 +1,21 @@
+{
+  "page": "Components",
+  "section": null,
+  "id": "4124:6918",
+  "name": "Union",
+  "type": "VECTOR",
+  "box": {
+    "x": 4.3,
+    "y": 2.09,
+    "w": 14,
+    "h": 18.91
+  },
+  "strokeWeight": 2.2,
+  "strokeAlign": "CENTER",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#1A1A1A"
+    }
+  ]
+}
