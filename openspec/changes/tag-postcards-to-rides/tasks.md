@@ -195,7 +195,9 @@
   `.order('created_at', { ascending: false }).order('id', { ascending: false })`. **Both keys, and
   the reason is determinism rather than symmetry**: a single-key order leaves a `created_at` tie
   unspecified, which also makes keyset paging on this step repeat and skip rows across page
-  boundaries — two riders posting from the same batch upload is enough. Matching the accessor's
+  boundaries. **Two riders is not the example** — `044` made `created_at` server-owned at transaction
+  time, so two riders are two transactions and two `now()` values. One rider inserting several
+  postcards in a **single** transaction ties deterministically. Matching the accessor's
   `created_at desc, id desc` exactly is then the free part. **The accessor's own ordering is not
   inherited here**: `.in(…)` does not preserve the order of the list it is handed, whatever `062.5`
   pins about the accessor read directly.

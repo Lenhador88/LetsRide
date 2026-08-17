@@ -22,7 +22,7 @@ as covered:
 | **The Journal is read under the caller's own RLS, with no privileged path** | **nothing in the suite** — see below |
 | The Journal screen's states | `npm run walk` and `reviewer`; **not the suite** |
 | Ordering, pagination, counts | suite covers the index only; order and cursor are `reviewer`'s |
-| No learning a ride you cannot see | suite covers the error shape; the embed rule is `reviewer`'s |
+| No learning a ride you cannot see | suite covers the error shape **and, since `062`, the embed's refusal**; what is left for `reviewer` is only the choice the amended requirement names |
 | The deferred notification's recipient set | **nothing** — it constrains a change not yet written |
 | Retention | suite, via the cascade assertions — no separate set |
 | Surfaces not built | `reviewer` |

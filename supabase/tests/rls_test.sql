@@ -14419,16 +14419,31 @@ select assert_eq(
 -- is refused exactly as a target list naming the column is. tag-postcards-to-
 -- rides task 4.3 specified a `rides(...)` embed on the postcard read and 062
 -- makes it 42501 — the tasks file now says so, and this is the line that keeps
--- saying it after somebody edits that file. The control below is the point: the
--- identical shape on club_id succeeds, so this measures the GRANT and not the
--- join.
+-- saying it after somebody edits that file.
+--
+-- **TWO controls, because one of them varies two things at once.** The club_id
+-- join swaps the joined TABLE as well as the column, so on its own it excludes
+-- "a join is refused" and leaves "`rides` is the unreadable thing" standing —
+-- which would go on passing, with the label naming the wrong mechanism, the day
+-- somebody column-scopes `rides` SELECT the way 062 just did to `postcards`.
+-- That is not hypothetical: 062 §1 frames the shape as an adopted pattern. The
+-- second control joins the SAME table without naming ride_id, so between them
+-- only the column grant is left.
 select assert_denied($$
   select 1 from postcards p join rides r on r.id = p.ride_id limit 1$$,
   '062: a join whose predicate names ride_id is refused too — so a rides embed on a postcard read is 42501, which is tag-postcards-to-rides task 4.3');
 select assert_eq(
+  (select count(*)::int from postcards p join rides r on r.organizer_id = p.author_id
+    where p.id = '00000000-0000-0000-0000-0000000620e1'
+      and r.id = '00000000-0000-0000-0000-00000062f001'),
+  0, '062: ... while joining the SAME table on a granted column is allowed — so the refusal is postcards.ride_id and not rides');
+select assert_eq(
+  has_table_privilege('authenticated', 'public.rides', 'select'),
+  true, '062: ... and rides SELECT is still table-level for authenticated, which is the other half of that');
+select assert_eq(
   (select count(*)::int from postcards p join clubs c on c.id = p.club_id
     where p.id = '00000000-0000-0000-0000-0000000620e2'),
-  1, '062: ... while the identical join on club_id still works — the refusal above is the column grant, not the join');
+  1, '062: ... and a join on club_id still returns a row — the refusal above is a column grant, not a join');
 
 -- ---------------------------------------------------------------------------
 -- 062.5  The accessor answers the Journal, ordered, and its restated audience
