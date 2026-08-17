@@ -92,15 +92,36 @@ two, and a grep for the *reason* finds nothing at all.
 
 The third is chosen. What it buys, concretely: the day a third arm is added — an invitation state,
 a suspended membership, an admin-only club — it lands in one body and the fan-outs and the ten
-policies move together, in the same statement, with no possibility of one being missed. **The
-drift this whole change repairs is precisely two definitions of one concept aging apart**, so
-building the fix out of two more of them would be self-defeating.
+policies move together, in the same statement. **The drift this whole change repairs is precisely
+two definitions of one concept aging apart**, so building the fix out of two more of them would be
+self-defeating.
+
+**What it does not buy, stated because an earlier revision of this document over-claimed it.**
+That paragraph said the two entry points *"cannot drift apart"*. They can. The arm has to land in
+`is_club_member_for` for the property to hold, and nothing about the shape forces that — a session
+could add it to the **wrapper** instead:
+
+```sql
+-- the drift the shape does NOT prevent
+create or replace function private.is_club_member(target_club_id uuid) ... as $$
+  select private.is_club_member_for(auth.uid(), $1)
+      or exists (select 1 from public.club_invitations ...);
+$$;
+```
+
+Every policy's `qual` text is unchanged. Any `like '%is_club_member_for%'` pin still matches.
+`can_read_ride` is now **narrower** than the policy it claims to restate, and writes no row for a
+rider who can see the ride — half 2's defect, reintroduced one level down, by the fix for it.
+
+So the guarantee is *"asserted to share a body"*, not *"cannot drift"*, and what makes it an
+assertion is that the suite pins `is_club_member`'s `prosrc` by **equality**. A `like` match is
+what a session reaches for first and is precisely what this example defeats.
 
 **Why the wrapper keeps the name and the signature.** `054` §D2 already settled this for the same
 function: a rename means recreating all ten calling policies for a naming gain. `create or
 replace` preserves the OID and the privileges, so no policy is recreated and no grant moves. The
 wrapper is a change to where the body lives; every caller's answer is identical, which is
-assertable directly (N18).
+assertable directly (N19).
 
 **Why the wrapper is still `security definer`.** It reads nothing itself, but its callee does, and
 the callee is revoked from client roles — inside a definer function `current_user` is the owner,
@@ -120,10 +141,13 @@ It applies to the readability filter for the same structural reason and for one 
 unfiltered; filter inside the owner arm only and the reverse. And for `ride_joined` the organizer
 arm must **not** be pre-filtered on anything, because `can_read_ride` returns true for the
 organizer by their own unconditional arm — a filter written per-arm invites someone to "optimise"
-the organizer arm's filter away and then discover it was the only thing keeping N12 true.
+the organizer arm's filter away and then discover it was the only thing keeping N13 true.
 
 So both fan-outs take the shape: build the candidate union, then a single outer `WHERE` carrying
-the actor exclusion, the block test and `can_read_ride`, then `on conflict do nothing`.
+the actor exclusion, the block test and the readability predicates, then `on conflict do nothing`.
+`ride_joined` carries one predicate there and `ride_created_in_club` carries two — see §D7 — and
+**both** of the club fan-out's conjuncts sit in that same outer `WHERE`, for the reason above:
+splitting them across the arms is the same defect twice.
 
 **The `clubs.is_default` early return sits ahead of all of it**, not inside the `WHERE`. `059`
 made it an early return deliberately, and adding the owner to the union without preserving that
@@ -131,20 +155,27 @@ position would restore an app-wide broadcast that any rider can fire at will —
 change than before it, because the owner union adds one more recipient to a set that is already
 every rider in the app.
 
-## D4. Why `can_read_ride` and `is_club_member_for` are revoked from every client role
+## D4. Why the three candidate-relative predicates are revoked from every client role
 
-Both take a **candidate** as an argument, which is exactly what makes them useful to a fan-out and
-exactly what makes them a probe in a rider's hands. `authenticated` holds no `USAGE` on `private`,
-so the revoke is belt and braces — and `029`/`031` are the reason belt and braces is the house
-rule here rather than a preference: a function that nothing could call shipped once already, and
-the barrier that saved it was invisible to the suite.
+`can_read_ride`, `can_read_club` and `is_club_member_for` each take a **candidate** as an argument,
+which is exactly what makes them useful to a fan-out and exactly what makes them a probe in a
+rider's hands. `authenticated` holds no `USAGE` on `private`, so the revoke is belt and braces —
+and `029`/`031` are the reason belt and braces is the house rule here rather than a preference: a
+function that nothing could call shipped once already, and the barrier that saved it was invisible
+to the suite.
 
 The oracle, stated concretely so the risk is not abstract. With `EXECUTE`, a rider could call
-`is_club_member_for(<any rider>, <any club>)` and read, one bit at a time, a membership fact that
-`club_members` SELECT deliberately withholds for a private club; and `can_read_ride(<any rider>,
-<any ride>)` returns a single boolean that is a function of that rider's **block state** with the
-organizer. `blocks` discloses nothing to either party by design, and decision #2 requires blocking
-be invisible — *"no gap, count or marker"*. A boolean is a marker.
+`is_club_member_for(<any rider>, <any club>)` — or `can_read_club(<any rider>, <any club>)`, which
+returns the same bit for a private club — and read, one bit at a time, a membership fact that
+`club_members` SELECT deliberately withholds; and `can_read_ride(<any rider>, <any ride>)` returns
+a single boolean that is a function of that rider's **block state** with the organizer. `blocks`
+discloses nothing to either party by design, and decision #2 requires blocking be invisible —
+*"no gap, count or marker"*. A boolean is a marker.
+
+**`can_read_club` is the one most likely to be argued as harmless, and it is not.** Its first arm
+is `is_public`, so for a public club it discloses nothing anyone could not already read. For a
+**private** club it collapses to exactly `is_club_member_for`, which is the probe above with a
+different name — so granting it "because most clubs are public" grants the whole thing.
 
 **The assertion names the role rather than attempting the call.** `031`'s lesson: the suite runs as
 the table owner, for whom neither the `private` USAGE barrier nor the revoke exists, so a test that
@@ -153,23 +184,30 @@ calls the function succeeds and proves nothing. `has_function_privilege('authent
 
 ## D5. The restatement is stale-able, and the mitigation is an assertion
 
-`can_read_ride` is a second implementation of `rides` SELECT. `036` §3 argues against exactly this
-— *"the conjunction is cheap and does not go stale; the derivation does"* — and that argument is
-not answered here, it is **accepted and bounded**. `rides` SELECT has been rewritten by `017` and
-by `022`, and `054` changed a function underneath it.
+`can_read_ride` is a second implementation of `rides` SELECT, and `can_read_club` a second
+implementation of `clubs` SELECT. `036` §3 argues against exactly this — *"the conjunction is
+cheap and does not go stale; the derivation does"* — and that argument is not answered here, it is
+**accepted and bounded**. `rides` SELECT has been rewritten by `017` and by `022`, and `054`
+changed a function underneath it.
 
 What makes it acceptable rather than reckless:
 
-1. **The failure direction is closed.** A stale `can_read_ride` writes rows that the read policy
+1. **The failure direction is closed.** A stale restatement writes rows that the read policy
    discards, or fails to write rows it would have returned. Neither shows anything to anyone. The
-   read policy is still the only thing that decides what a rider sees, so no staleness in this
-   function can produce a leak — which is not true of the refused option, where staleness in a
+   read policy is still the only thing that decides what a rider sees, so no staleness in these
+   functions can produce a leak — which is not true of the refused option, where staleness in a
    policy arm is a leak by construction.
-2. **The pin is a test, not a comment.** `055.7` pins two structural properties of `rides` SELECT
-   — that it leads with an unconditional organizer arm, and that it has no crew arm. Neither
-   catches a rewrite of the *middle* of the policy. This change adds a **full `qual` text pin**,
-   labelled with `private.can_read_ride`, so a rewrite fails the suite with the name of the
-   function that has to move with it.
+2. **The pin is a test, not a comment**, and it takes three of them rather than one:
+
+| Pin | What it catches | What it does **not** catch |
+|---|---|---|
+| §060.1 — `rides` SELECT `qual`, by equality, labelled `private.can_read_ride` | any rewrite of that policy's own text | anything inside `private.is_club_member`, which the text calls |
+| §060.1b — `clubs` SELECT `qual`, by equality, labelled `private.can_read_club` | the twin, added because the second restatement has the identical failure mode | same |
+| §060.x — `private.is_club_member`'s `prosrc`, **by equality, not `like`** | an arm added to the wrapper, per §D2 | an arm added to `is_club_member_for`, which is the *correct* place and moves both entry points together |
+
+**The middle column of row three is the one a reviewer should read twice.** The two `qual` pins
+cover policy text only; a policy that delegates to a function is pinned to the *call*, not to what
+the call returns. Without row three the delegation is an unpinned hole in both of the first two.
 
 A text pin is brittle by design: it fails on a cosmetic reformat as well as on a semantic change.
 That is the intended trade — a false failure costs one session five minutes and points at the
@@ -179,10 +217,12 @@ suite and already accepted.
 
 ## D6. Rollback
 
-The rollback is the four current bodies, restored in one file. They are reproduced in the
-migration's own header as a **copy taken at build time** from `pg_get_functiondef`, not
-reconstructed from this document — `tasks.md` §1.1 and §1.3 take those copies before anything is
-written, for the same reason `054` §D5 did.
+The rollback is the three pre-existing bodies — `private.is_club_member`,
+`private.notify_ride_joined` and `private.notify_ride_created_in_club` — restored in one file,
+plus dropping the three functions this change adds. They are reproduced in the migration's own
+header as a **copy taken at build time** from `pg_get_functiondef`, not reconstructed from this
+document — `tasks.md` §1.2 takes those copies before anything is written, for the same reason
+`054` §D5 did.
 
 Reverting is safe in both halves and needs no data change: reverting `ride_joined` restores the
 two `KNOWN GAP` rows (unreadable, harmless), and reverting `ride_created_in_club` restores the
@@ -193,7 +233,7 @@ in the same statement, or the wrapper is left pointing at a function that no lon
 **every one of the ten calling policies fails at read time**. The rollback file therefore restores
 `is_club_member` first and drops `is_club_member_for`, `can_read_ride` and `can_read_club` last.
 
-## D8. Why `ride_created_in_club` needs a second predicate and `ride_joined` does not
+## D7. Why `ride_created_in_club` needs a second predicate and `ride_joined` does not
 
 A `ride_created_in_club` row sets **both** `ride_id` and `club_id` and renders both — the club's
 name in the copy, the ride as the destination — and `036` §3's SELECT policy tests the two as
@@ -228,12 +268,12 @@ the same reasoning `event-fanout-integrity` already applies to the `admin` arm n
 *"omitting the assertion as untestable SHALL NOT be acceptable, because the arm ships the day
 invitations do."*
 
-## D9. Options considered
+## D8. Options considered
 
 | Option | Closes (a) block | Closes (b) left club | Closes half 2 | Verdict |
 |---|---|---|---|---|
 | **Chosen — `can_read_ride` on both fan-outs, plus `can_read_club` on the two-subject one** | Yes | Yes | Yes | One instrument, both halves, no policy touched |
-| `can_read_ride` alone on both fan-outs | Yes | Yes | Yes | Rejected in review: derives club-visibility from ride-visibility, which `036` §3 forbids. Latent today, opened by a block predicate on `clubs` SELECT — see §D8 |
+| `can_read_ride` alone on both fan-outs | Yes | Yes | Yes | Rejected in review: derives club-visibility from ride-visibility, which `036` §3 forbids. Latent today, opened by a block predicate on `clubs` SELECT — see §D7 |
 | Crew arm on `rides` SELECT, top-level | Reverses it | Yes | No | **Breaks decision #2**; collapses `034` and `041` to the crew alone |
 | Crew arm on `rides` SELECT, under the block conjunct | No | Yes | No | Half-fix that reads as complete; collapses `034` and `041` to `crew ∧ ¬blocked`, which still returns `034`'s named victim |
 | Exclude candidates blocked with the organizer | Yes | **No** | No | The half-fix 055.6b's label already refuses by name |
