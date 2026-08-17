@@ -607,9 +607,11 @@ The asymmetry with everything else in this repo is worth stating plainly, becaus
   `GET /v1/projects/{ref}/config/auth` needs a personal access token this environment does not
   hold; and `/auth/v1/settings` — the credential-free probe two paragraphs up — returns no bodies.
   So the drift is not merely ungated, it is **unobservable from a session**.
-- **No CI job opens the directory.** A diff touching `supabase/**` runs the RLS suite, which
-  applies migrations to a scratch Postgres with no GoTrue in it. `docs:check` measures files in
-  this repo and cannot reach a hosted project's config.
+- **The CI job that does open the directory can only see the files.**
+  `src/__tests__/auth-email-templates.test.ts` reads all three templates under Vitest, so it
+  catches a link that no longer matches its own copy-this-link fallback. It cannot see a hosted
+  project, and neither can anything else: the RLS suite applies migrations to a scratch Postgres
+  with no GoTrue in it, and `docs:check` measures files in this repo.
 
 The check is therefore a hand-diff, and it is the owner's: paste the dashboard's current body into
 a scratch file and `diff -u` it against the committed one whenever either project's auth config is

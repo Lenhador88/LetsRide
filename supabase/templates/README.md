@@ -23,8 +23,9 @@ no `supabase/config.toml` — this repo has never used the Supabase CLI — so a
 dashboard setting with no file behind it, exactly like the Site URL and the redirect allowlist:
 
 - **CI cannot see a dashboard template.** The `RLS Policy Tests` job applies migrations to a
-  scratch database; there is no GoTrue in it. The `Type Check, Lint & Build` job never opens this
-  directory.
+  scratch database; there is no GoTrue in it. `Type Check, Lint & Build` *does* read this
+  directory — `src/__tests__/auth-email-templates.test.ts` opens all three files — but everything
+  it can check is a property of the file, never of what a project is serving.
 - **`docs:check` cannot either.** Every claim it runs measures a file, a `jq` read or a contrast
   ratio in this repo. A claim about what a hosted project is serving has no ground truth it can
   reach.
@@ -52,11 +53,18 @@ now fail CI instead of reaching an inbox.
 
 ## The GoTrue variables — keep them exactly as written
 
-`{{ .SiteURL }}`, `{{ .TokenHash }}` and `{{ .ConfirmationURL }}` are substituted by GoTrue. They
-appear twice in each file: once in the button's `href` (three times in `confirm-signup.html`,
-which also carries the Outlook `<v:roundrect>` fallback) and once in the copy-this-link fallback,
-where the URL is both the link and its own visible text. **Change all of them or none** — a
-button and a fallback pointing at different URLs is the kind of defect nothing here can catch.
+`{{ .SiteURL }}`, `{{ .TokenHash }}` and `{{ .ConfirmationURL }}` are substituted by GoTrue.
+**Each file carries the same URL four times**, and every one of them has to move together:
+
+1. the Outlook `<v:roundrect href>` — all three files have one, not just `confirm-signup.html`;
+2. the ordinary `<a href>` button, which is what every non-Outlook client follows;
+3. the copy-this-link fallback's `href`;
+4. **that fallback's visible text**, which is the one a `grep` for `href` does not find.
+
+`auth-email-templates.test.ts` holds the three *hrefs* identical and checks the visible text is
+present, so an edit that changes one href and not the others fails CI. **Change all four or
+none** — a button and a fallback pointing at different URLs breaks for whichever half of the
+recipients get the other button, and it looks perfectly correct in a diff.
 
 **`confirm-signup.html`'s link is PD-233's form, verbatim:**
 
@@ -72,9 +80,16 @@ ampersand literal when what follows is not a named entity.
 
 **Pasting `confirm-signup.html` performs PD-233.** They are the same dashboard field, and PD-235
 asks for this template to land *after* PD-233 is proven working. If PD-233 is still open when you
-paste, this paste closes it — so prove the link on the project you paste into (PD-233 carries the
-DEV caveats: autoconfirm is off there, and `app-dev.letsride.social` sits behind Vercel SSO)
-before considering either issue done.
+paste, this paste closes it — so prove the link on the project you paste into before considering
+either issue done.
+
+**Proving it on DEV takes two temporary changes, and the polarity is the trap.** DEV runs
+`mailer_autoconfirm: true` — autoconfirm **on**, so GoTrue sends **no confirmation mail at all**
+and there is no `{{ .TokenHash }}` to click. (`false` reads like "confirmation off" and means the
+opposite; `docs/ENVIRONMENTS.md` §Auth configuration flags exactly this.) DEV's `{{ .SiteURL }}`
+also points at `app-dev.letsride.social`, which sits behind Vercel SSO. So a real DEV test means
+turning autoconfirm off temporarily *and* using a Vercel-authenticated browser — PD-233's own
+conclusion is that a throwaway PROD account on a real inbox is the honest alternative.
 
 `reset-password.html` keeps `{{ .ConfirmationURL }}` and therefore stays on `/auth/callback` and
 stays PKCE. That is deliberate and PD-233 says so explicitly: `confirmableOtpType` refuses
@@ -111,7 +126,10 @@ a constraint rather than a preference:
 - **Outlook's rounded button** is a `<v:roundrect>` inside `<!--[if mso]>`, with the ordinary
   `<a>` inside the downlevel-revealed `<!--[if !mso]><!-- --> … <!--<![endif]-->` pair. Without
   it Word ignores `border-radius` and `padding` on an inline anchor, and the button collapses to
-  underlined text.
+  underlined text. **The `<td>` around both branches carries no fill**, which looks like an
+  omission and is not: Word ignores `border-radius` on a table cell too, so a filled cell paints
+  the corner areas outside the VML arc and squares off the very button the `<v:roundrect>` was
+  added to round. Each branch paints itself.
 - **`color-scheme: light only`** stops iOS Mail and Outlook.com inverting the palette into
   something that is not the brand.
 
@@ -127,16 +145,21 @@ the Figma API.
 | `Grey/5` | `#F2ECE6` | the page behind the card |
 | `Grey/10` | `#E5DACF` | the card's border |
 | `White/100` | `#FFFFFF` | the card, and the button's label |
-| `Accent Brand/100` | `#3D996B` | the rule above the heading, and link text — once each |
+| `Accent Brand/100` | `#3D996B` | the rule above the heading. Once per mail, and nothing else |
 
 **The button is near-black, not green**, which is `CLAUDE.md` §Design System's most-repeated
-correction. Green appears twice per mail on purpose.
+correction. Green appears once per mail, on a 4px rule where it is decoration rather than text.
+
+**The copy-this-link URL is `Grey/100`, not the accent**, and that is a contrast decision rather
+than a stylistic one: `#3D996B` on white is 3.52:1, under the 4.5:1 bar for 12px regular text, and
+this line *is* the text alternative — the thing a rider reads when the button has already failed
+them. It is underlined, which is what carries its linkness. `#1A1A1A` gives 17.40:1.
 
 **The wordmark is set as text**, not as artwork. The design's logo is a raster
 (`Login / Splash screen` → `RECTANGLE · Logo2`) and an image in an email means an external image,
 which the constraint above rules out; a data URI is blocked by Gmail. The string is `LetsRide`,
-matching `TITLE` in `src/app/layout.tsx` — the one place in the shipped product that names the
-brand to a rider.
+matching `openGraph.siteName` in `src/app/layout.tsx` — the bare brand name as the product already
+unfurls it, without the `— Ride Together` that `TITLE` carries for a page title.
 
 ## Previewing a change
 
