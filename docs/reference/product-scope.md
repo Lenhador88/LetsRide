@@ -3,7 +3,7 @@
 
 ## Product Scope (from Figma)
 
-The built app covers a fraction of the design. **Four nav tabs — Postcards, Rides, Clubs,
+The built app covers a fraction of the design. **Four nav tabs — Home, Rides, Clubs,
 Profile** — against the design's five: **Inbox was removed on 2026-08-07** (PD-100) rather than
 shipped as the disabled stub it had been, because a tab that goes nowhere is an App Store
 guideline 4.2 question and a disabled one still reads as broken. It returns with the Inbox epic.

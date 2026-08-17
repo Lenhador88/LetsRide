@@ -50,7 +50,7 @@ import { filterSegment, queryKeys } from '@/lib/query/keys'
 export default function PostcardsPage() {
   return (
     <>
-      <Header title="Postcards" secondaryAction={<NotificationsHeaderControl />} />
+      <Header title="Home" secondaryAction={<NotificationsHeaderControl />} />
       <div className="pb-navbar-action pt-header fixed inset-0 flex flex-col">
         <Suspense fallback={<PostcardsLoading />}>
           <PostcardsScreen />
