@@ -165,6 +165,35 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
 export const ACCOUNT_DELETION_RIDES_LIMIT = 200
 
 /**
+ * How many `ride_members` rows across those rides feed `ridersAffected`
+ * (reviewer finding #3 of the third delta pass, 2026-08-16). The
+ * `count: 'exact', head: true` form this replaced put no rows on the wire at
+ * any volume; reading actual rows to dedupe by person needs a bound the old
+ * form did not, because — per `RIDE_CREW_LIMIT`'s own comment in
+ * `lib/data/rides.ts` — `ride_members` is "unbounded by construction":
+ * `max_riders` has never been enforced. Both other `ride_members` reads in
+ * that file are bounded (`RIDE_FILTER_SCAN_LIMIT` and `RIDE_CREW_LIMIT`);
+ * this is the one in `lib/data/` that was not, until now. Set well
+ * above `ACCOUNT_DELETION_RIDES_LIMIT` × a realistic crew size rather than
+ * derived from it, because the two bound different things (rides vs. total
+ * crew rows) and a product of the two would be a cap nobody chose on
+ * purpose. Past it, `ridersAffected` is a floor, same as `ridesToCancel`.
+ *
+ * **What this does NOT cover, measured rather than assumed not to matter:**
+ * PostgREST's own `db-max-rows` config, if set on either project, would
+ * truncate a read silently below even this limit. `pg_settings` and
+ * `current_setting('pgrst.db_max_rows', true)` were checked against DEV
+ * (`fpmrimzxadewsaiwpsel`) 2026-08-16 and neither exposes it — Supabase does
+ * not appear to surface this PostgREST-level config as a queryable Postgres
+ * setting on a managed project, and this session had no way to make an
+ * authenticated REST call to test it empirically (no key-retrieval tool, no
+ * `.env.local`). Left as an inference, same as the reviewer's own read of it —
+ * not because it was not checked, but because the check came back
+ * inconclusive rather than negative.
+ */
+export const ACCOUNT_DELETION_RIDERS_LIMIT = 1000
+
+/**
  * The account-deletion confirmation's blast-radius counts — see
  * `AccountDeletionImpact`. Read under the caller's own session, never
  * through the privileged Edge Function, per `deletion-privileged-execution`'s
@@ -230,7 +259,8 @@ export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact>
               .from('ride_members')
               .select('user_id')
               .in('ride_id', rideRows.map((row) => row.id))
-              .neq('user_id', user.id),
+              .neq('user_id', user.id)
+              .limit(ACCOUNT_DELETION_RIDERS_LIMIT),
             'riders on your upcoming rides',
           ) as unknown as { user_id: string }[]
         ).map((row) => row.user_id)

@@ -70,11 +70,14 @@ export type AccountDeletionImpact = {
    * being deleted (design D2), which is why a sole-member club is not
    * counted here: it goes with the rider, not "to someone else". */
   clubsChangingHands: number
-  /** Upcoming rides this rider organises — each is cancelled outright. */
+  /** Upcoming rides this rider organises — each is cancelled outright.
+   * Capped at `ACCOUNT_DELETION_RIDES_LIMIT`, so this is also a floor past
+   * that many. */
   ridesToCancel: number
   /** Distinct riders on those rides' crews, the organizer excluded — who
    * finds a ride gone. A person crewing two of the affected rides counts
-   * once, not twice (reviewer finding #3, 2026-08-16). */
+   * once, not twice (reviewer finding #3, 2026-08-16), and the read is
+   * capped at `ACCOUNT_DELETION_RIDERS_LIMIT`. */
   ridersAffected: number
 }
 
