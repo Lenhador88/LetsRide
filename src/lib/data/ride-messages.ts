@@ -145,6 +145,40 @@ export function groupMessages(
   })
 }
 
+/**
+ * Does this ride's chat hold a message this rider has not read (`061`)?
+ *
+ * One RPC, one boolean. Everything that decides the answer lives in
+ * `ride_has_unread`, which is `security invoker` — so `034`'s SELECT policy
+ * applies inside it and blocks, ride visibility and the crew rule are all
+ * honoured by the same policy the thread obeys. **No block filter, no crew check
+ * and no visibility predicate appear here**, for the reason `getRideMessages`
+ * gives at length: a second copy of a policy is free to disagree with it, and
+ * the copy that drifts is always the one nobody reads.
+ *
+ * `false` rather than an exception when the read fails, and that is a product
+ * decision rather than defensive coding. `NotificationsHeaderControl` already
+ * rules the same way: *"a dot the rider cannot clear by visiting the screen is
+ * worse than a missing one"*. The dot decorates a chat button that works without
+ * it, so a failure must cost the decoration and nothing else — it must not reach
+ * the screen's error state, and it must not draw a mark the rider cannot clear.
+ *
+ * **The caller still has to tell `false` from "not answered yet"**, which this
+ * cannot express and `useQuery` can: `undefined` draws nothing, exactly as
+ * `false` does. See `RideChatButton`, which owns that read.
+ */
+export async function getRideChatUnread(rideId: string): Promise<boolean> {
+  // Same guard, same reason as `getRideMessages`: a non-UUID segment reaches
+  // Postgres as `22P02`. There is no `notFound()` to route to from a decoration,
+  // so it resolves to "no dot" like every other failure here.
+  if (!rideIdSchema.safeParse(rideId).success) return false
+
+  const supabase = await resolveSupabase()
+  const { data, error } = await supabase.rpc('ride_has_unread', { ride: rideId })
+
+  return !error && data === true
+}
+
 /** Resolves "is this mine" once per read, then groups. See `groupMessages`. */
 export function decorate(rows: RideMessage[], viewerId: string | undefined): RideChatMessage[] {
   return groupMessages(

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { notFound, useSearchParams } from 'next/navigation'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { MarkRideChatSeen } from '@/components/rides/MarkRideChatSeen'
 import { RideChatComposer } from '@/components/rides/RideChatComposer'
 import { RideChatThread } from '@/components/rides/RideChatThread'
 import { RideHeader } from '@/components/rides/RideHeader'
@@ -257,6 +258,17 @@ function ChatBody({
 
   return (
     <>
+      {/* Mounted below the `isCrew` gate above rather than beside it, so being on
+          the crew is expressed by whether this is on the page at all — see the
+          component. It is keyed on the newest *server* message rather than the
+          newest rendered one, and the difference is one row: an optimistic copy
+          of your own send is the last thing in `shown` and can never be unread
+          for its own author, so keying on it would fire a write that changes
+          nothing. `messages.data` is what the database has confirmed. */}
+      <MarkRideChatSeen
+        rideId={rideId}
+        newestMessageId={messages.data[messages.data.length - 1]?.id}
+      />
       {shown.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center motion-safe:animate-fade-in">
           <p className="text-base font-semibold text-foreground">No messages yet</p>

@@ -98,6 +98,49 @@ export async function sendRideMessage(
 }
 
 /**
+ * Advances this rider's read watermark for one ride's chat to now (`061`).
+ *
+ * `markClubSeen`'s shape, for `markClubSeen`'s reasons, with two differences
+ * that are both about `061` rather than about this function.
+ *
+ * **`last_read_at` is sent and then thrown away**, which looks redundant and is
+ * not. `061` hangs a `BEFORE INSERT OR UPDATE` trigger on the table that
+ * overwrites it with server time, because the value is compared against
+ * `ride_messages.created_at` — server-generated since `034` — and a comparison
+ * spanning a phone's clock and the database's is wrong in a way nothing logs. It
+ * is sent anyway so the upsert's UPDATE arm has the column in its `SET` list
+ * explicitly rather than by inference about how PostgREST builds one. Two
+ * visible mechanisms; the trigger is the one that makes the value true.
+ *
+ * **A failure is deliberately silent**, and the direction it fails in is the
+ * safe one: the dot lights again on the next visit, which over-reports unread
+ * rather than hiding a message. A chat that opens fine and keeps its badge beats
+ * an error banner over a screen that worked.
+ *
+ * The invalidation is `rides.unread` and nothing else. It is a longer prefix
+ * than the thread's, so it deliberately does **not** reach `rides.messages` —
+ * this fires on every message arriving while the screen is open, and refetching
+ * the thread the rider is reading would turn one delivered message into two
+ * round trips and a re-render. See `keys.ts`.
+ */
+export async function markRideChatSeen(rideId: string): Promise<void> {
+  if (!rideId) return
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase
+    .from('ride_reads')
+    .upsert(
+      { user_id: user.id, ride_id: rideId, last_read_at: new Date().toISOString() },
+      { onConflict: 'user_id,ride_id' }
+    )
+
+  invalidate(queryKeys.rides.unread(rideId))
+}
+
+/**
  * Narrow on purpose, and the first invalidation in this app that is.
  *
  * Every other claim in `keys.ts` widened from a `revalidatePath`, because a
@@ -106,9 +149,13 @@ export async function sendRideMessage(
  * attendee collage or the crew roster. `rides.all()` here would refetch four
  * screens on every send, on a screen designed to be sent from repeatedly.
  *
- * The unread badge (Linear PD-120) is what widens this, and it should widen it
- * in `keys.ts` rather than at this call site — a second key spelled here is the
- * bug that file exists to prevent.
+ * **PD-120 widened it without touching this line**, which is what the previous
+ * revision of this comment asked for: `rides.unread` is nested *under*
+ * `rides.messages`, so the badge is reached by prefix and no second key is
+ * spelled here. What that comment also predicted — that the widening would
+ * matter — turned out to be false, and `keys.ts` now records why: this runs in
+ * the author's own browser about their own message, which `061` never counts as
+ * unread for its own author. The reach is correct and inert.
  */
 function invalidateThread(rideId: string) {
   invalidate(queryKeys.rides.messages(rideId))

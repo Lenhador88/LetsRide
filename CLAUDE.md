@@ -470,7 +470,7 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
 **Schema:** **the per-table contract is [`docs/reference/schema.md`](docs/reference/schema.md)** —
 `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `postcards`, `postcard_likes`,
 `postcard_comments`, `postcard_hides`, `postcard_reports`, `blocks`, `profile_countries`,
-`feed_reads`, `places`, `ride_messages`, `clubs` (media), and the dropped `friendships`. Read it before touching
+`feed_reads`, `ride_reads`, `places`, `ride_messages`, `clubs` (media), and the dropped `friendships`. Read it before touching
 any of them: it carries the per-column grants, the cascade behaviour and the audience predicate
 for each, and several are counter-intuitive (a club outlives its owner; `postcards.ride_id` is a
 tag rather than a second audience; `ride_messages`' audience is an intersection and neither half
@@ -510,11 +510,12 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 60 files. DEV is at `060`, PROD at `059` — DEV AHEAD, 2026-08-17.** DEV-ahead is
-the ordinary state of a migration between its merge and its promotion, not drift; `060` reaches
-PROD with PD-211's promotion, which is step 5 of `docs/ENVIRONMENTS.md` §Migrations. Do not
-read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead.
+**Applied state: 61 files. DEV is at `061`, PROD at `059` — DEV AHEAD, 2026-08-17.** DEV-ahead is
+the ordinary state of a migration between its merge and its promotion, not drift. **Do not read
+the count of unpromoted files off this sentence either** — it named exactly one while two were
+waiting, which is the same defect as a stale number in a smaller place, and the promotion is the
+one job that reads it. Run `list_migrations` against `ls supabase/migrations/` and promote
+everything the gap contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -559,7 +560,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1552** assertions — re-derive rather than trust it:
+Suite **1610** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.

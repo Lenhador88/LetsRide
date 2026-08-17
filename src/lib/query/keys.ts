@@ -212,8 +212,44 @@ export const queryKeys = {
      * refetch four screens on every keystroke-ended send. The unread badge
      * (Linear PD-120) will be the first thing that widens it, and it should
      * widen it here rather than at the call site.
+     *
+     * **PD-120 landed and the prediction was half right.** `unread` below is
+     * nested under this key, so the widening did happen here and
+     * `sendRideMessage`'s call site is untouched — but read the next docstring
+     * before relying on what that buys: the reach is real and inert.
      */
     messages: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages'],
+    /**
+     * Whether this ride's chat holds a message the rider has not read (`061`) —
+     * the boolean behind the header dot. **A child of `messages`, deliberately**,
+     * and the asymmetry the nesting buys runs in exactly one direction:
+     *
+     * - `invalidate(rides.messages(id))` reaches `unread`. Correct — a new
+     *   message can move the badge.
+     * - `invalidate(rides.unread(id))` does **not** reach `messages`. Also
+     *   correct, and it is the half worth having: `markRideChatSeen` fires on
+     *   every arriving message while the chat is open, and refetching the thread
+     *   the rider is reading would turn one delivered message into two round
+     *   trips and a re-render. `markClubSeen` achieves the same narrowness by
+     *   commenting carefully at its call site; this gets it from the key.
+     *
+     * **The forward reach is inert today, and saying so is the point** — the
+     * `notifications` block below records a nesting argument that was wrong, and
+     * an unexamined "the badge tracks arrivals" would be the same mistake. The
+     * only caller of `rides.messages(id)`'s invalidation is `sendRideMessage`,
+     * which runs in the *author's* browser about the *author's* message — and
+     * `061` excludes your own messages from your own dot, so no cached answer
+     * can change. Another rider's message arrives over Realtime and the chat
+     * screen calls `refetch()` directly rather than `invalidate`, and the dot is
+     * not mounted there anyway.
+     *
+     * So the dot is answered when it mounts and is stale-bounded thereafter: it
+     * changes on navigation, not on delivery. That is the right behaviour for a
+     * badge on a control the rider has to navigate to in order to see, and it is
+     * a boundary rather than a gap — but it is not what the nesting delivers, so
+     * do not cite the nesting for it.
+     */
+    unread: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages', 'unread'],
   },
 
   /**

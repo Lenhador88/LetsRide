@@ -3526,6 +3526,37 @@ select assert_allowed($$
   values ('00000000-0000-0000-0000-00000000000e', 'PT')$$,
   'un-onboarded: profile_countries still allowed — it is their own profile');
 
+-- `ride_reads` is the sixth omission and it is the one whose safety is
+-- TRANSITIVE rather than direct, which is why it is asserted here rather than
+-- left to 061's own header. The other five accept an un-onboarded rider on
+-- purpose; this one refuses them, and not because of a gate — because 061's
+-- WITH CHECK requires crew standing, and the gates on `rides` and `ride_members`
+-- are what stop an un-consented account acquiring any.
+--
+-- **That chain is the whole argument for leaving the gate off this table**, and
+-- CLAUDE.md is explicit that the gate is narrower than "every write" — an
+-- account created by calling GoTrue's /auth/v1/signup directly reaches real
+-- write paths with `terms_accepted_at` NULL. So the chain is asserted at both
+-- links rather than assumed: the watermark is refused, and the membership row
+-- that would have made it succeed is refused by the gate.
+-- `d4` rather than `d2`, and the difference is not cosmetic: the first assertion
+-- in this section has `000e` block `000a`, who organises `d2` — so `d2` is now
+-- invisible to them and the refusal would come from the VISIBILITY conjunct
+-- while the label claimed the crew one. `d4` is public and organised by `001b`,
+-- whom `000e` has not blocked, so the visibility conjunct passes and the crew
+-- conjunct is provably what refuses. Asserted, not assumed.
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-0000000000d4'),
+  1, '023/061: un-onboarded: the rider CAN see this public ride ...');
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-0000000000d4')$$,
+  '023/061: ... and ride_reads is REFUSED anyway — not by a gate, but because they cannot be crew');
+select assert_rejected($$
+  insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000000000d4', '00000000-0000-0000-0000-00000000000e', 'going')$$,
+  '23514', '023/061: ... and the gate is what stops them acquiring the crew row that would change that');
+
 \echo ''
 \echo '# Nobody is stranded — the one failure mode this pair must not have (023 + 025)'
 
@@ -3599,8 +3630,8 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate'
-      and c.relname in ('blocks','postcard_hides','feed_reads','profile_countries','profiles')),
-  0, 'and none of the five deliberate omissions acquired one');
+      and c.relname in ('blocks','postcard_hides','feed_reads','ride_reads','profile_countries','profiles')),
+  0, 'and none of the six deliberate omissions acquired one');
 
 -- The WHEN guard is load-bearing twice over: without it the gate fires for the
 -- seed and the migration role, and with the guard in the function body instead
@@ -4012,15 +4043,23 @@ select assert_eq(
 -- list. One key without the other leaves half the record standing, and neither
 -- direction is visible in the other's constraint. This is the count changed on
 -- purpose, which is what the paragraph above asks for.
+--
+-- **17 since 061 added ride_reads.user_id.** A watermark is behavioural personal
+-- data about an identified person — when a named rider last looked at a named
+-- conversation — which makes it exactly the kind of row the paragraph above is
+-- about, and it is the most disclosive thing 061 adds. The cascade reaches it
+-- from `profiles`; it also cascades from `rides`, which is a second and
+-- independent path that this assertion cannot see, so the erasure story is
+-- asserted directly in the 061 section rather than inferred from this number.
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  16, '029: sixteen FKs reference public.profiles');
+  17, '029/061: seventeen FKs reference public.profiles');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  16, '029: ... and every one of them is ON DELETE CASCADE');
+  17, '029/061: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -13491,6 +13530,636 @@ select assert_eq(
 
 set role authenticated;
 rollback to savepoint recipient_sets_060;
+
+reset role;
+
+\echo ''
+\echo '# The chat unread watermark — own rows, own audience, and no read receipts (061)'
+
+-- ===========================================================================
+-- 061. A watermark is the first row in this schema that says something about a
+--      rider's BEHAVIOUR rather than their membership or their content.
+-- ===========================================================================
+--
+-- Self-contained fixtures, for 034's reason and one more: this section needs a
+-- message that is strictly NEWER than a watermark, and §The clock below explains
+-- why that cannot be arranged the way 015's section arranges it.
+--
+-- The riders, and what each one is for:
+--   6101  organizer, and deliberately NOT in ride_members  -- the third coalesce
+--         arm, which is what stops the host being the one rider whose dot never
+--         lights
+--   6102  crew, `going`                                    -- the ordinary case
+--   6103  crew, `maybe`                                    -- no read-only tier
+--   6104  onboarded, can SEE the public ride, never RSVP'd -- the crew conjunct
+--   6105  crew, `going`, and blocks the ORGANIZER          -- the visibility
+--         conjunct, reached through the block arm of the rides policy
+--   6106  crew on the private club's ride, then LEAVES the club -- the same
+--         conjunct reached through the club arm, which is a different arm and
+--         so is asserted separately
+--   6107  crew, `going`, and 6102 has blocked them         -- a blocked AUTHOR,
+--         who must not be able to light 6102's dot
+--   6108  ADMIN of the ride's private club, and not on the ride at all -- a club
+--         role confers nothing here, which is the assumption most likely to be
+--         made silently
+savepoint ride_chat_unread_061;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000061001', 'unreadhost@example.com'),
+  ('00000000-0000-0000-0000-000000061002', 'unreadgoing@example.com'),
+  ('00000000-0000-0000-0000-000000061003', 'unreadmaybe@example.com'),
+  ('00000000-0000-0000-0000-000000061004', 'unreadoutside@example.com'),
+  ('00000000-0000-0000-0000-000000061005', 'unreadhostblocker@example.com'),
+  ('00000000-0000-0000-0000-000000061006', 'unreadclubleaver@example.com'),
+  ('00000000-0000-0000-0000-000000061007', 'unreadblocked@example.com'),
+  ('00000000-0000-0000-0000-000000061008', 'unreadclubadmin@example.com');
+reset role;
+
+update profiles set username = 'unreadhost',        location = 'Leiden',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000061001';
+update profiles set username = 'unreadgoing',       location = 'Delft',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000061002';
+update profiles set username = 'unreadmaybe',       location = 'Gouda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000061003';
+update profiles set username = 'unreadoutside',     location = 'Breda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000061004';
+update profiles set username = 'unreadhostblocker', location = 'Arnhem',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000061005';
+update profiles set username = 'unreadclubleaver',  location = 'Zwolle',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000061006';
+update profiles set username = 'unreadblocked',     location = 'Venlo',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000061007';
+update profiles set username = 'unreadclubadmin',   location = 'Assen',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000061008';
+
+-- 6102 blocks 6107. Note which pair: blocking a fellow CREW MEMBER leaves the
+-- ride visible (the rides policy's block arm names the ORGANIZER), so this is
+-- the case where the chat still opens and one author's messages are missing
+-- from it. That is what makes it a test of the dot rather than of the ride.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000061002', '00000000-0000-0000-0000-000000061007');
+
+-- Public, so 6104 provably CAN see it — which is what makes "sees the ride,
+-- cannot write a watermark" a statement about the crew conjunct.
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id) values
+  ('00000000-0000-0000-0000-000000061f01', 'Unread Test Run', 'The Ferry',
+   now() + interval '7 days', true, '00000000-0000-0000-0000-000000061001');
+
+-- `joined_at` is written explicitly here and it is not decoration: it is the
+-- SECOND coalesce arm, and the "messages from before you joined do not badge
+-- you" case cannot be expressed without it. 048 makes the column server-owned by
+-- withholding the grant, which binds `authenticated` and not the owner.
+insert into ride_members (ride_id, user_id, status, joined_at) values
+  ('00000000-0000-0000-0000-000000061f01', '00000000-0000-0000-0000-000000061002',
+   'going', now() - interval '2 days'),
+  ('00000000-0000-0000-0000-000000061f01', '00000000-0000-0000-0000-000000061003',
+   'maybe', now() - interval '2 days'),
+  ('00000000-0000-0000-0000-000000061f01', '00000000-0000-0000-0000-000000061005',
+   'going', now() - interval '2 days'),
+  ('00000000-0000-0000-0000-000000061f01', '00000000-0000-0000-0000-000000061007',
+   'going', now() - interval '2 days');
+
+-- ---------------------------------------------------------------------------
+-- §The clock, and why every message below carries an explicit created_at
+-- ---------------------------------------------------------------------------
+-- 015's section arranges an "unread" case by inserting a postcard and then a
+-- watermark stamped `now() - interval '10 years'`. **That is not available
+-- here**, and the reason is the point rather than an inconvenience: 061 hangs a
+-- BEFORE INSERT OR UPDATE trigger on `ride_reads` that overwrites
+-- `last_read_at` with `now()`, and a trigger fires for the table owner exactly
+-- as it does for `authenticated`. So every watermark this suite can create sits
+-- at the transaction's `now()`, to the microsecond.
+--
+-- The messages move instead. `created_at` is server-owned on `ride_messages` by
+-- 034 §4b's withheld column grant, which — like 048's — binds the client roles
+-- and not the owner.
+--
+-- A session that "fixes" this by writing `last_read_at` directly will find its
+-- value silently replaced and the assertion still passing for the wrong reason,
+-- which is why the trigger is asserted head-on further down rather than only
+-- relied upon here.
+insert into ride_messages (id, ride_id, author_id, body, created_at) values
+  -- Before 6102 and 6103 joined: must NOT badge them, and this is the only
+  -- assertion covering the second coalesce arm.
+  ('00000000-0000-0000-0000-000000061a01', '00000000-0000-0000-0000-000000061f01',
+   '00000000-0000-0000-0000-000000061001', 'Posted before you joined',
+   now() - interval '3 days'),
+  -- After everyone joined, from the organizer: the ordinary unread case.
+  ('00000000-0000-0000-0000-000000061a02', '00000000-0000-0000-0000-000000061f01',
+   '00000000-0000-0000-0000-000000061001', 'Ferry leaves at nine',
+   now() + interval '1 hour'),
+  -- From 6102: their OWN message, which must never light their own dot.
+  ('00000000-0000-0000-0000-000000061a03', '00000000-0000-0000-0000-000000061f01',
+   '00000000-0000-0000-0000-000000061002', 'See you there',
+   now() + interval '2 hours'),
+  -- From 6107, whom 6102 has blocked: must not light 6102's dot, and the
+  -- exclusion must come from 034's SELECT policy rather than from any filter
+  -- written into 061.
+  ('00000000-0000-0000-0000-000000061a04', '00000000-0000-0000-0000-000000061f01',
+   '00000000-0000-0000-0000-000000061007', 'Bringing a spare visor',
+   now() + interval '3 hours');
+
+-- The private club, its ride, and the two riders who reach it differently: 6106
+-- is crew and leaves the club; 6108 is a club ADMIN and never joins the ride.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000610c9', 'Unread Private MC', false,
+   '00000000-0000-0000-0000-000000061001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000000610c9', '00000000-0000-0000-0000-000000061001', 'owner'),
+  ('00000000-0000-0000-0000-0000000610c9', '00000000-0000-0000-0000-000000061006', 'member'),
+  ('00000000-0000-0000-0000-0000000610c9', '00000000-0000-0000-0000-000000061008', 'admin');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-000000061f02', 'Unread Club Run', 'The Depot',
+   now() + interval '8 days', false, '00000000-0000-0000-0000-0000000610c9',
+   '00000000-0000-0000-0000-000000061001');
+insert into ride_members (ride_id, user_id, status, joined_at) values
+  ('00000000-0000-0000-0000-000000061f02', '00000000-0000-0000-0000-000000061006',
+   'going', now() - interval '2 days');
+
+-- A ride with a crew and NO messages at all — an empty thread must read exactly
+-- like a thread read to the end, which is correct and is worth pinning.
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id) values
+  ('00000000-0000-0000-0000-000000061f03', 'Unread Quiet Run', 'The Bridge',
+   now() + interval '9 days', true, '00000000-0000-0000-0000-000000061001');
+insert into ride_members (ride_id, user_id, status, joined_at) values
+  ('00000000-0000-0000-0000-000000061f03', '00000000-0000-0000-0000-000000061002',
+   'going', now() - interval '2 days');
+
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  'the 061 assertions run as authenticated, or they prove nothing');
+
+-- ---------------------------------------------------------------------------
+-- 061.1  Who may write a watermark
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000061002', false);
+
+select assert_allowed($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061002',
+          '00000000-0000-0000-0000-000000061f01')$$,
+  '061: a crew member marks their own ride chat read');
+
+-- **`assert_allowed` unwinds its own subtransaction**, so the row it just proved
+-- permitted is gone. Everything below turns on riders actually HOLDING
+-- watermarks, so each permitted insert is repeated for real. Writing only the
+-- assertion leaves later sections measuring an empty table and passing or
+-- failing for reasons that have nothing to do with the rule under test.
+insert into ride_reads (user_id, ride_id)
+values ('00000000-0000-0000-0000-000000061002', '00000000-0000-0000-0000-000000061f01');
+
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061003',
+          '00000000-0000-0000-0000-000000061f01')$$,
+  '061: a rider cannot write another rider''s watermark');
+
+-- `maybe` is crew, exactly as it is for posting (034.3). There is no read-only
+-- tier, and the alternative reading — that only `going` counts — is a plausible
+-- product rule nothing else in the schema would rule out.
+select set_config('test.uid', '00000000-0000-0000-0000-000000061003', false);
+select assert_allowed($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061003',
+          '00000000-0000-0000-0000-000000061f01')$$,
+  '061: a `maybe` RSVP marks a chat read, exactly like `going`');
+insert into ride_reads (user_id, ride_id)
+values ('00000000-0000-0000-0000-000000061003', '00000000-0000-0000-0000-000000061f01');
+
+-- The crew conjunct, isolated: 6104 can see the ride, asserted rather than
+-- assumed, because a hidden ride would make the refusal pass for the wrong
+-- reason entirely.
+select set_config('test.uid', '00000000-0000-0000-0000-000000061004', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-000000061f01'),
+  1, '061: a non-crew rider CAN see the public ride ...');
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061004',
+          '00000000-0000-0000-0000-000000061f01')$$,
+  '061: ... and still cannot write a watermark for it — seeing a ride is not being on it');
+
+-- The existence oracle 015 §2 names, closed. A ride that does not exist and a
+-- ride that exists but is invisible must be refused identically — row security
+-- runs before the foreign key, so neither reaches 23503.
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061004',
+          '00000000-0000-0000-0000-0000000619f9')$$,
+  '061: a watermark naming a ride that does not exist is refused by RLS, not by the FK');
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061004',
+          '00000000-0000-0000-0000-000000061f02')$$,
+  '061: ... and a private club''s ride is refused identically, so the write is not an existence oracle');
+
+-- ---------------------------------------------------------------------------
+-- 061.2  The two conjuncts, refused one at a time
+-- ---------------------------------------------------------------------------
+-- Both of these hold a `ride_members` row throughout, so `private.is_ride_crew`
+-- answers TRUE for each. What refuses them is the visibility EXISTS — reached
+-- through two DIFFERENT arms of the rides policy, which is why they are asserted
+-- separately even though one conjunct fixes both. A single assertion cannot say
+-- which rule did the hiding.
+-- **The "row standing" half is asserted as the OWNER, and that is not a
+-- convenience.** Read as the blocker it comes back 0 — 009 gates `ride_members`
+-- SELECT behind an EXISTS on `rides` *before* its `user_id = auth.uid()` arm, so
+-- losing the ride loses the sight of your own membership row with it. Asserting
+-- it under RLS would therefore have "passed" by measuring the wrong thing, and
+-- the point here is precisely that the row is still THERE: `private.is_ride_crew`
+-- is `security definer` and sees it, answers true, and would admit this rider on
+-- its own. Only the visibility conjunct refuses them.
+--
+-- It is also the state 061 §4 names for the coalesce: with arm two unreadable,
+-- such a rider falls through to `rides.created_at`, which over-reports rather
+-- than hides.
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000061005', '00000000-0000-0000-0000-000000061001');
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-000000061f01'
+                     and user_id = '00000000-0000-0000-0000-000000061005'),
+  1, '061: blocking the organizer leaves the ride_members row standing ...');
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000061005', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-000000061f01'),
+  0, '061: ... and takes the ride away ...');
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061005',
+          '00000000-0000-0000-0000-000000061f01')$$,
+  '061: ... so the watermark is refused by the visibility conjunct, which the crew helper alone would not do');
+
+-- Owner-side for the same reason as the block case above.
+reset role;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000000610c9'
+   and user_id = '00000000-0000-0000-0000-000000061006';
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-000000061f02'
+                     and user_id = '00000000-0000-0000-0000-000000061006'),
+  1, '061: leaving the club leaves the ride_members row standing ...');
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000061006', false);
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061006',
+          '00000000-0000-0000-0000-000000061f02')$$,
+  '061: ... and the watermark is refused through the club arm — a different arm from the block case');
+
+-- A club role confers nothing. 6108 is an ADMIN of the club the ride belongs to,
+-- so the visibility conjunct passes; `private.is_ride_crew` knows nothing about
+-- club roles, so the crew conjunct is what refuses them. The mirror image of the
+-- two cases above.
+select set_config('test.uid', '00000000-0000-0000-0000-000000061008', false);
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-000000061f02'),
+  1, '061: a club admin CAN see their club''s private ride ...');
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061008',
+          '00000000-0000-0000-0000-000000061f02')$$,
+  '061: ... and still cannot write a watermark — a club role is not a crew seat');
+
+-- ---------------------------------------------------------------------------
+-- 061.3  The organizer, who may hold no ride_members row at all
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000061001', false);
+select assert_eq((select count(*)::int from ride_members
+                   where ride_id = '00000000-0000-0000-0000-000000061f01'
+                     and user_id = '00000000-0000-0000-0000-000000061001'),
+  0, '061: the organizer holds no ride_members row ...');
+select assert_allowed($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061001',
+          '00000000-0000-0000-0000-000000061f01')$$,
+  '061: ... and can still mark their own ride''s chat read, through is_ride_crew''s organizer arm');
+insert into ride_reads (user_id, ride_id)
+values ('00000000-0000-0000-0000-000000061001', '00000000-0000-0000-0000-000000061f01');
+
+-- ---------------------------------------------------------------------------
+-- 061.4  Nobody reads anybody else's watermark — this app has no read receipts
+-- ---------------------------------------------------------------------------
+-- The organizer is named specifically because the organizer is the role a
+-- future "who has seen this" affordance would be built for, and the SELECT
+-- policy is where that is refused rather than merely unbuilt.
+select assert_eq((select count(*)::int from ride_reads
+                   where ride_id = '00000000-0000-0000-0000-000000061f01'),
+  1, '061: the organizer sees their own watermark and no other rider''s — no read receipts');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000061002', false);
+select assert_eq((select count(*)::int from ride_reads), 1,
+  '061: and a crew member sees only their own, across every ride');
+
+select assert_denied($$
+  update ride_reads set user_id = '00000000-0000-0000-0000-000000061003'
+   where ride_id = '00000000-0000-0000-0000-000000061f01'$$,
+  '061: a rider cannot hand their watermark to someone else');
+
+-- ---------------------------------------------------------------------------
+-- 061.5  The trigger owns the clock
+-- ---------------------------------------------------------------------------
+-- Head-on, on BOTH arms. A BEFORE INSERT trigger alone would impose the value on
+-- a rider's first visit to a ride and keep the client's on every visit after —
+-- which works on fresh rows and drifts in use, so an INSERT-only assertion would
+-- pass against the broken version.
+-- Run for real rather than through `assert_allowed`, which would unwind the row
+-- before the value could be read back. The insert succeeding IS the proof that
+-- naming the column is not refused — the column grant is deliberately table-wide
+-- (see 061 §3 and §5), so what makes the value true is the trigger, not a
+-- refusal at the door.
+insert into ride_reads (user_id, ride_id, last_read_at)
+values ('00000000-0000-0000-0000-000000061002',
+        '00000000-0000-0000-0000-000000061f03', timestamptz '3000-01-01 00:00:00+00');
+select assert_eq(
+  (select last_read_at from ride_reads
+    where user_id = '00000000-0000-0000-0000-000000061002'
+      and ride_id = '00000000-0000-0000-0000-000000061f03') = now(),
+  true, '061: ... it is overwritten with server time on INSERT');
+
+update ride_reads set last_read_at = timestamptz '3000-01-01 00:00:00+00'
+ where user_id = '00000000-0000-0000-0000-000000061002'
+   and ride_id = '00000000-0000-0000-0000-000000061f03';
+select assert_eq(
+  (select last_read_at from ride_reads
+    where user_id = '00000000-0000-0000-0000-000000061002'
+      and ride_id = '00000000-0000-0000-0000-000000061f03') = now(),
+  true, '061: ... and on UPDATE too, which is the arm the upsert reaches on every visit after the first');
+
+-- ---------------------------------------------------------------------------
+-- 061.6  The dot's answer
+-- ---------------------------------------------------------------------------
+-- 6102 holds a watermark at `now()` on 61f01. Of the four messages there, one
+-- predates their joining, one is their own, one is from a rider they blocked,
+-- and one is the organizer's at now() + 1 hour. Only the last may light the dot,
+-- and every other exclusion is a different rule.
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f01'), true,
+  '061: a message newer than the watermark lights the dot');
+
+-- Advancing past every message clears it. The upsert's UPDATE arm is what runs
+-- here, and the trigger stamps `now()` — which is why the messages had to be
+-- placed in the future rather than the watermark in the past.
+reset role;
+update ride_messages set created_at = now() - interval '1 minute'
+ where ride_id = '00000000-0000-0000-0000-000000061f01';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000061002', false);
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f01'), false,
+  '061: ... and nothing newer than it clears the dot');
+
+-- Restore the future messages for the exclusion cases below.
+reset role;
+update ride_messages set created_at = now() + interval '1 hour'
+ where id = '00000000-0000-0000-0000-000000061a02';
+update ride_messages set created_at = now() + interval '2 hours'
+ where id = '00000000-0000-0000-0000-000000061a03';
+update ride_messages set created_at = now() + interval '3 hours'
+ where id = '00000000-0000-0000-0000-000000061a04';
+set role authenticated;
+
+-- Your own message never badges you, and this is the assertion that fails if
+-- `author_id <> auth.uid()` is dropped. It is reachable with no race at all:
+-- send from the chat screen, tap back.
+--
+-- Isolated by removing every OTHER unread message, so nothing else can hold the
+-- answer true and make a broken exclusion look correct.
+reset role;
+update ride_messages set created_at = now() - interval '1 minute'
+ where id in ('00000000-0000-0000-0000-000000061a02',
+              '00000000-0000-0000-0000-000000061a04');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000061002', false);
+select assert_eq(
+  (select count(*)::int from ride_messages
+    where id = '00000000-0000-0000-0000-000000061a03'), 1,
+  '061: the rider''s own newer message is there ...');
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f01'), false,
+  '061: ... and does not light their own dot — 015 does NOT make this exclusion, deliberately');
+
+-- A blocked author cannot light the blocker's dot, and no block filter appears
+-- anywhere in 061: 034's SELECT policy already excludes the message and the
+-- function reads through it. 6102 blocked 6107, so 61a04 is the only unread
+-- message and it is invisible to them.
+reset role;
+update ride_messages set created_at = now() - interval '1 minute'
+ where id = '00000000-0000-0000-0000-000000061a03';
+update ride_messages set created_at = now() + interval '3 hours'
+ where id = '00000000-0000-0000-0000-000000061a04';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000061002', false);
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-000000061a04'),
+  0, '061: a blocked rider''s message is not readable ...');
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f01'), false,
+  '061: ... so it cannot light the blocker''s dot — the exclusion is 034''s policy, not a filter in 061');
+
+-- ... and the same message DOES light an unblocked crew member's dot, which is
+-- what stops the assertion above from passing merely because nothing is unread.
+select set_config('test.uid', '00000000-0000-0000-0000-000000061003', false);
+select assert_eq((select count(*)::int from ride_messages
+                   where id = '00000000-0000-0000-0000-000000061a04'),
+  1, '061: the same message IS readable by a rider who has not blocked its author ...');
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f01'), true,
+  '061: ... and does light their dot, so the block assertion above is not vacuous');
+
+-- ---------------------------------------------------------------------------
+-- 061.7  The three coalesce arms
+-- ---------------------------------------------------------------------------
+-- 6103 holds a watermark from 061.1, so this rider is cleared first to reach the
+-- no-watermark state the second arm is about.
+-- Every message is put THREE days back, which is before this rider's
+-- `joined_at` of two days back. `now() - 1 minute` would not do: that is after
+-- they joined, so arm two would correctly badge them and the assertion below
+-- would fail while measuring nothing.
+reset role;
+delete from ride_reads where user_id = '00000000-0000-0000-0000-000000061003';
+update ride_messages set created_at = now() - interval '3 days'
+ where ride_id = '00000000-0000-0000-0000-000000061f01';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000061003', false);
+
+-- Arm 2: no watermark, so the comparison point is `joined_at`. Every message now
+-- predates this rider joining, so none may badge them — joining a ride with a
+-- long thread must not light the dot for all of it.
+select assert_eq((select count(*)::int from ride_reads
+                   where user_id = '00000000-0000-0000-0000-000000061003'),
+  0, '061: a rider with no watermark ...');
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f01'), false,
+  '061: ... is not badged by messages posted before they joined — the joined_at arm');
+
+reset role;
+update ride_messages set created_at = now() + interval '1 hour'
+ where id = '00000000-0000-0000-0000-000000061a02';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000061003', false);
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f01'), true,
+  '061: ... and is badged by one posted after they joined');
+
+-- Arm 3, and it is load-bearing TODAY rather than in theory: the organizer holds
+-- no ride_members row, so a two-arm coalesce would answer NULL for them and the
+-- host would be the one member of the crew whose dot never lights. Dropping the
+-- third arm fails exactly here.
+-- 61a03 is moved forward rather than 61a02, and the difference is the rule under
+-- test in the section above: 61a02's author IS the organizer, so
+-- `author_id <> auth.uid()` excludes it and this assertion would read false
+-- while the fallback worked perfectly. 61a03 is 6102's.
+reset role;
+delete from ride_reads where user_id = '00000000-0000-0000-0000-000000061001';
+update ride_messages set created_at = now() + interval '1 hour'
+ where id = '00000000-0000-0000-0000-000000061a03';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000061001', false);
+select assert_eq((select count(*)::int from ride_reads
+                   where user_id = '00000000-0000-0000-0000-000000061001'),
+  0, '061: the organizer holds no watermark and no ride_members row ...');
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f01'), true,
+  '061: ... and another rider''s message still lights their dot — the rides.created_at arm');
+
+-- ---------------------------------------------------------------------------
+-- 061.8  What the function must NOT disclose, and the empty case
+-- ---------------------------------------------------------------------------
+-- A ride that does not exist, a ride the caller cannot see, and a chat with
+-- nothing in it must be indistinguishable — all false, none raising. Anything
+-- else makes the RPC an existence oracle, and it is published at
+-- /rest/v1/rpc/ride_has_unread for every signed-in rider.
+select set_config('test.uid', '00000000-0000-0000-0000-000000061004', false);
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-0000000619f9'), false,
+  '061: a ride that does not exist answers false rather than raising');
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f02'), false,
+  '061: ... and a ride the caller cannot see answers identically');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000061002', false);
+select assert_eq(ride_has_unread('00000000-0000-0000-0000-000000061f03'), false,
+  '061: a chat with no messages answers false — the same as one read to the end, which is correct');
+
+-- ---------------------------------------------------------------------------
+-- 061.9  Leaving the crew, and the cascades
+-- ---------------------------------------------------------------------------
+-- Nothing cascades on LEAVING: the foreign key is to `rides`, not to
+-- `ride_members`. 015 §2's comment says leaving a club "cascades the row away
+-- via the FK" — it does not, there either, and inheriting that sentence would
+-- have stated a retention guarantee the schema does not give.
+select set_config('test.uid', '00000000-0000-0000-0000-000000061002', false);
+reset role;
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-000000061f01'
+   and user_id = '00000000-0000-0000-0000-000000061002';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000061002', false);
+select assert_eq((select count(*)::int from ride_reads
+                   where ride_id = '00000000-0000-0000-0000-000000061f01'),
+  1, '061: leaving the crew leaves the watermark standing — rejoining reuses it');
+select assert_denied($$
+  insert into ride_reads (user_id, ride_id)
+  values ('00000000-0000-0000-0000-000000061002',
+          '00000000-0000-0000-0000-000000061f01')
+  on conflict (user_id, ride_id) do update set last_read_at = now()$$,
+  '061: ... but further writes are refused, because the crew conjunct now fails');
+
+reset role;
+delete from rides where id = '00000000-0000-0000-0000-000000061f01';
+select assert_eq((select count(*)::int from ride_reads
+                   where ride_id = '00000000-0000-0000-0000-000000061f01'),
+  0, '061: deleting the ride cascades every crew member''s watermark for it away');
+
+-- From the other end. This is the second cascade path into `ride_reads` and the
+-- FK-count assertion in the 029 section cannot see it, which is why it is
+-- asserted directly.
+delete from profiles where id = '00000000-0000-0000-0000-000000061002';
+select assert_eq((select count(*)::int from ride_reads
+                   where user_id = '00000000-0000-0000-0000-000000061002'),
+  0, '061: deleting the rider cascades every watermark they hold away, on every ride');
+
+-- ---------------------------------------------------------------------------
+-- 061.10  The table and the function are locked down by construction
+-- ---------------------------------------------------------------------------
+select assert_eq((select count(*)::int from pg_policies where tablename = 'ride_reads'),
+  3, '061: three policies on ride_reads — select, insert, update, and no delete');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where tablename = 'ride_reads' and roles::text[] <> array['authenticated']),
+  0, '061: every ride_reads policy targets authenticated only — decision #1');
+
+-- Scoped to the grantee, per the story's own instruction and 015's footer. The
+-- unscoped form ("no DELETE grant on the table at all") returns 2 against a
+-- correct database, because `postgres` owns it and `service_role` holds
+-- everything by Supabase default.
+select assert_eq(has_table_privilege('authenticated', 'public.ride_reads', 'delete'),
+  false, '061: authenticated holds no DELETE grant on ride_reads — a watermark cannot be reset');
+select assert_eq(has_table_privilege('authenticated', 'public.ride_reads', 'update'),
+  true, '061: ... and does hold UPDATE, which the upsert''s second visit needs');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_name = 'ride_reads' and grantee = 'anon'),
+  0, '061: anon holds nothing on ride_reads');
+
+-- Named as a ROLE rather than by calling it — 031's lesson. The suite runs as
+-- the table owner, for whom neither the grant nor the schema barrier exists, so
+-- calling the function proves nothing about who else can.
+select assert_eq(
+  has_function_privilege('authenticated', 'public.ride_has_unread(uuid)', 'execute'),
+  true, '061: authenticated can call ride_has_unread ...');
+select assert_eq(
+  has_function_privilege('anon', 'public.ride_has_unread(uuid)', 'execute'),
+  false, '061: ... and anon cannot');
+
+-- INVOKER is what makes it safe to publish at /rest/v1/rpc/. If it ever flips to
+-- DEFINER it stops obeying the blocks and the ride-visibility arms that 034's
+-- policy applies, and starts answering true for threads the caller cannot read.
+select assert_eq((select prosecdef from pg_proc where proname = 'ride_has_unread'),
+  false, '061: ride_has_unread runs as the caller, so RLS decides what counts');
+select assert_eq((select prosecdef from pg_proc where proname = 'stamp_ride_read'),
+  false, '061: and the timestamp trigger needs no elevated rights either');
+
+-- The `nulls not distinct` clause 015 needs and this table must not copy. There
+-- is no nullable key column for it to apply to — no "app-wide ride" the way
+-- `feed_reads.club_id IS NULL` is the app-wide feed — so the clause would state
+-- a rule this table does not have and invite the next reader to infer one.
+select assert_eq(
+  (select count(*)::int from pg_index
+    where indrelid = 'public.ride_reads'::regclass and indnullsnotdistinct),
+  0, '061: no `nulls not distinct` index on ride_reads — the key is NOT NULL, so 015''s clause is not copied');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.ride_reads'::regclass and contype = 'p'),
+  1, '061: ... because a real primary key is available, which is also the upsert''s on-conflict target');
+
+-- Both arms. `tgtype` bit 4 is INSERT and bit 16 is UPDATE; bit 2 is BEFORE.
+select assert_eq(
+  (select (tgtype & 4 > 0)::int + (tgtype & 16 > 0)::int + (tgtype & 2 > 0)::int
+     from pg_trigger where tgname = 'stamp_ride_read' and not tgisinternal),
+  3, '061: the timestamp trigger is BEFORE and fires on both INSERT and UPDATE');
+
+-- The cascade index, which exists for the delete path rather than for a screen:
+-- the primary key leads with `user_id`, so removing one RIDE has nothing to find
+-- its watermarks by without it.
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where tablename = 'ride_reads' and indexname = 'ride_reads_ride_id_idx'),
+  1, '061: ride_reads carries an index on ride_id, for the cascade a ride deletion runs');
+
+set role authenticated;
+rollback to savepoint ride_chat_unread_061;
 
 reset role;
 
