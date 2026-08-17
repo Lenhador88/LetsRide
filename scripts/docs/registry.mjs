@@ -182,6 +182,24 @@ export const claims = [
     about: '§Technology Decisions: "Nine runtime dependencies today"',
   },
 
+  // ---- Component test count ----------------------------------------------
+  {
+    id: 'component-tests-count-claude',
+    file: 'CLAUDE.md',
+    // The sentence is not inert prose — it tells the next session the suite is
+    // still `environment: 'node'`, so the reader most likely to be misled by a
+    // stale count is exactly the one adding a component test that *does* need
+    // jsdom. That is why this is gated rather than left as a hand-copy: three
+    // hand-typed counts in this repo have already been wrong.
+    pattern: /\*\*(\w+)\*\* component test(?:s)? exists? — `PostcardAction`/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    // `git ls-files` rather than a filesystem walk: an untracked scratch test
+    // must not raise this the way it does the unit-test totals next door.
+    cmd: `git ls-files 'src/**/*.test.tsx' | wc -l`,
+    about: '§Technology Decisions, Tests table: "One component test exists"',
+  },
+
   // ---- Migration file count ----------------------------------------------
   {
     id: 'migrations-count-claude',

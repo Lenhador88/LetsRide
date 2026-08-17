@@ -76,9 +76,14 @@ describe('PostcardAction — trailing padding follows the count', () => {
       // The state the app is actually in on a fresh postcard, and the one the
       // frame never drew. `count={0}` must read as "nothing to draw", not as a
       // number whose padding should be reserved.
+      // Asserts on the count *element*, not on the `>0<` adjacency: a `Count`
+      // that regressed to rendering a zero with any surrounding whitespace
+      // would slip straight past the substring form, leaving this case named
+      // for a behaviour that the positive `>7<` case below was really carrying.
       it('treats a zero count as no count', () => {
         expect(controlClasses(render(0))).toBe(controlClasses(render(undefined)))
-        expect(render(0)).not.toContain('>0<')
+        expect(render(0)).not.toContain('tabular-nums')
+        expect(render(undefined)).not.toContain('tabular-nums')
       })
 
       it('restores the measured pr-3 as soon as there is a number beside the icon', () => {
@@ -104,23 +109,28 @@ describe('PostcardAction — trailing padding follows the count', () => {
 })
 
 describe('PostcardCard — the action row', () => {
-  function card(overrides: Partial<Postcard>) {
-    const postcard = {
+  // A complete `Postcard`, checked by `tsc` rather than cast past it. The
+  // earlier version omitted `image_path` and `updated_at` and invented a
+  // `ride_id`, all hidden behind `as unknown as Postcard` — so the day the card
+  // renders from `image_path` instead of the signed `image_url`, the fixture
+  // would have supplied nothing, the card would have quietly taken its
+  // could-not-load branch, and every assertion below would still have passed.
+  function card(overrides: Partial<Postcard>): string {
+    const postcard: Postcard = {
       id: 'p1',
       author_id: 'a1',
-      caption: 'Caption',
-      image_url: null,
-      created_at: '2026-01-01T10:00:00Z',
       club_id: null,
-      ride_id: null,
-      author: null,
-      club: null,
+      image_path: 'a1/p1.jpg',
+      caption: 'Caption',
+      created_at: '2026-01-01T10:00:00Z',
+      updated_at: '2026-01-01T10:00:00Z',
+      image_url: null,
       is_own: false,
       likes_count: 0,
       comments_count: 0,
       is_liked: false,
       ...overrides,
-    } as unknown as Postcard
+    }
 
     return renderToStaticMarkup(
       <BannerProvider>
