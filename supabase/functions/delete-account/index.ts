@@ -26,8 +26,8 @@
  * **`ezbr_sha256` equality across the two projects is NOT a currency check** —
  * it says PROD and DEV agree, never that either matches this file. The check
  * that answers currency is the pair above: a deploy `updated_at` NEWER than
- * this directory's last behavioural commit, with nothing in the `git log`
- * range.
+ * this directory's last behavioural commit — equivalently, nothing in the
+ * `git log` range that touches executable lines.
  *
  * Measured 2026-08-17T14:32Z, after the owner redeployed by hand: **PROD v9 and
  * DEV v5, `ezbr_sha256` 9793933d…, both current** — the re-authentication proof

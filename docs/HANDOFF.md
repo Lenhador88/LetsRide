@@ -387,7 +387,7 @@ build work, the rest are the owner's.
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
-| 7 | **Signup never exercised end to end** | The one unproven path; needs an email domain the owner controls. **Owner** |
+| 7 | ~~**Signup never exercised end to end**~~ — **resolved 2026-08-16, `PD-91`** | Run against PROD as part of the `PD-86` probe: `POST /auth/v1/signup` → 200 with no session (so confirmation is on), the mail's token checked against `auth.users.confirmation_token`, `GET /auth/v1/verify` → `303` to `https://app.letsride.social/auth/callback#…&type=signup`, then a password grant returning a session. 0 residue. The Gmail connector supplied the inbox that was the whole blocker, so this stopped being **Owner**. **Remainder, and it is not a store blocker**: that exercised the auth *server*, not the app's own signup screen in a browser against PROD — `npm run walk` covers the screen against DEV |
 
 Check each guideline against the live text before building to it — they move, and this table
 will not.
@@ -417,9 +417,15 @@ working around them.** Four carry detail worth having at hand:
    deletion against `zwprydcyryvudhurbnye` verified in the database rather than off the 200:
    `auth.users`, `public.profiles` and `auth.identities` all gone, re-sign-in `400
    invalid_credentials` (so a hard delete, not Supabase's soft mode, which would have made the
-   address unreusable). Read that issue, not this line, before re-running anything — **two
-   `Owner only` items in a row were found already-fixed, and this was the third**, so the probe
-   here is the one thing not to repeat: it creates and irreversibly deletes a real PROD account.
+   address unreusable). Read that issue, not this line, before re-running anything — the
+   already-fixed `Owner only` item is a recurring shape here, and `:398`'s query is how you check
+   rather than any count written down.
+
+   **Only the destructive leg is the one not to repeat**, because it creates and irreversibly
+   deletes a real PROD account. The check that is still *owed* — a request with no `password`
+   refused `reauth_required` — creates nothing and deletes nothing: it is refused above
+   `signInWithPassword`. Most of task 2.6 runs on DEV, where an account is free. Do not defer the
+   free leg along with the expensive one.
 
    The redeploy carrying PD-102's re-authentication proof closed **2026-08-17T14:32Z** — `delete-account`
    at **PROD v9 / DEV v5**, both `ezbr_sha256` `9793933d…`, both newer than the directory's last
@@ -428,8 +434,8 @@ working around them.** Four carry detail worth having at hand:
    it says the two projects agree, never that either matches the repo, which is row 2 of §Store
    readiness above, not §Known issues, a bulleted list with no rows in it. PD-231 put
    `list_edge_functions` on `reviewer`'s `tools:` line so it can make that comparison rather than
-   probing the endpoint — **an entry on a `tools:` line is not availability**, and all four passes
-   reviewing PD-231 reached no connector at all (PD-246).
+   probing the endpoint — **an entry on a `tools:` line is not availability**, which PD-246 has
+   the measurement for.
 
    **Every redeploy is an owner action**, via the dashboard rather than the CLI — Edge
    Functions → *Deploy a new function* → Via editor, secret under Project Settings → Edge
@@ -1323,14 +1329,17 @@ Zero page errors, and the database agrees: `terms_accepted_at` stamped by `accep
 write is the exact one that was failing on production**, so this is the first evidence the fix
 works against a live database rather than a stubbed response.
 
-**What is still unproven, and is still the owner's:** the *confirmation-on* path — a real
-signup where a real emailed link is clicked. DEV has confirmation **off**, so this run never
-sent an email and never exercised `/auth/callback`. The two are genuinely different paths:
-with confirmation on, `signUp` returns no session and takes the `sent` branch instead.
+**The *confirmation-on* path was unproven when this run happened** — DEV has confirmation
+**off**, so it never sent an email and never exercised `/auth/callback`, and the two are
+genuinely different paths: with confirmation on, `signUp` returns no session and takes the
+`sent` branch instead. **`PD-91` closed that on 2026-08-16** against PROD, emailed link and all;
+row 7 of §Store readiness has the calls.
 
 Two consequences, and the second is the one that will bite:
 
-- The PROD path still needs an address the owner controls. **Store blocker 7 stands.**
+- What that run did *not* cover is the app's own signup **screen** in a browser against PROD.
+  It exercised the auth server directly, which is where the branch lives, so this is a thin
+  remainder rather than a blocker.
 - **The cross-device confirm route is BUILT and INERT, and turning it on is an owner action.**
   `/auth/confirm` (`src/app/auth/confirm/page.tsx`) verifies an emailed `token_hash` through
   `verifyOtp`, which needs no PKCE verifier and therefore works on any device. **Nothing links to
