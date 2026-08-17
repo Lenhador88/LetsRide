@@ -251,12 +251,21 @@ export function resolveGuardView(
   if (destination) return { kind: 'splash', overlay: false }
   if (destination === null) return { kind: 'children', overlay: false }
 
-  const overlay = hasGuardBooted(state)
   // Only while genuinely undecided: a rejection that still left enough to
   // decide from — the session read, the stamps thrown away on a path that does
   // not need them — routes normally rather than stopping the rider.
-  if (state.failed) return { kind: 'retry', overlay }
-  return { kind: 'splash', overlay }
+  //
+  // **The retry never overlays, warm or cold, and that is not a stylistic
+  // choice.** The splash may overlay because it holds nothing focusable and is
+  // up for a frame or two; the retry holds the one control the rider is meant
+  // to press and is up until they press it. Left mounted underneath, the shell
+  // keeps its place in the tab order and the accessibility tree behind an
+  // opaque cover — Tab twice and focus is on a `Navbar` link the rider cannot
+  // see, Enter navigates an app that has just said it could not start. Not
+  // rendering them is what makes that unreachable, rather than an `inert` the
+  // next screen added under here has to remember to inherit.
+  if (state.failed) return { kind: 'retry', overlay: false }
+  return { kind: 'splash', overlay: hasGuardBooted(state) }
 }
 
 /**
@@ -300,6 +309,16 @@ export function ensureGuardState(pathname: string): void {
 
   const cached = guardStateFrom(snapshot, pathname)
   if (cached !== undefined) {
+    // Reaching a path this cache CAN answer releases the rejection latch. It was
+    // never a verdict — the same reasoning `unavailable` carries — and the next
+    // path that needs a round trip has to be free to attempt one. Without this
+    // the release never happens on such a path, because `attemptedPath` does not
+    // move on this return: bouncing to `/legal/terms` and back re-draws the
+    // retry screen off a stale flag, with no read issued behind it.
+    if (failed) {
+      failed = false
+      notify()
+    }
     if (cached.kind !== 'unavailable') return
     // Retry the failed read once per navigation. Without this guard the retry
     // notifies, the notify re-runs the effect, and the effect retries — a render

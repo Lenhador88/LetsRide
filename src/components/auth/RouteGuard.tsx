@@ -35,10 +35,10 @@ import { GuardError } from '@/components/auth/GuardError'
  * **The third one is a screen rather than a destination**, and that is the
  * whole of PD-122: a rejected read leaves no session to route on, so the guard
  * draws `GuardError` and lets the rider re-attempt it. The splash it replaces
- * has no tap target, so before this the rider's only way out was a reload. It
- * reveals nothing the splash did not: `children` mount under it in exactly the
- * warm case they already mounted under the splash overlay, and RLS answers
- * nothing to a rider who turns out not to belong there.
+ * has no tap target, so before this the rider's only way out was a reload.
+ * Unlike the splash it never overlays — it holds a control and stays up until
+ * that control is pressed, so anything left mounted underneath would be
+ * focusable behind it. `resolveGuardView` carries the reasoning.
  *
  * **This is also the first time this app has had a boot window at all.** `/`'s
  * own doc comment records the reasoning for having no splash — "the Figma splash
@@ -136,11 +136,8 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   if (view.kind === 'children') return <>{children}</>
 
   const cover =
-    view.kind === 'retry' ? (
-      <GuardError overlay={view.overlay} onRetry={retry} />
-    ) : (
-      <GuardSplash overlay={view.overlay} />
-    )
+    view.kind === 'retry' ? <GuardError onRetry={retry} /> : <GuardSplash overlay={view.overlay} />
+
 
   return view.overlay ? (
     <>

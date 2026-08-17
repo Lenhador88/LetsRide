@@ -17,19 +17,19 @@ import { ErrorState } from '@/components/ui/ErrorState'
  * `fixed inset-0` the guard needs to *replace* the splash, which is a guard
  * concern rather than a change to a shared primitive.
  *
- * `overlay` mirrors `GuardSplash`'s prop exactly, for the same reason: after
- * boot the shell underneath is already mounted and correct, so covering it
- * beats tearing it down. Opaque either way — the z-index is the only difference.
+ * **It takes no `overlay`, unlike `GuardSplash`.** `resolveGuardView` never asks
+ * for one: this screen holds the only control the rider is meant to press and
+ * stays up until they press it, so a shell left mounted underneath would keep
+ * its place in the tab order and the accessibility tree behind an opaque cover.
+ * That module's own comment carries the reasoning.
  *
  * Says nothing about *why*, matching `app/(app)/error.tsx` and `ErrorState`
  * itself. The one trace of the cause is the `console.error` in
  * `guard-cache.ts`'s catch.
  */
-export function GuardError({ overlay = false, onRetry }: { overlay?: boolean; onRetry: () => void }) {
+export function GuardError({ onRetry }: { onRetry: () => void }) {
   return (
-    <div
-      className={`bg-background fixed inset-0 flex items-center justify-center px-6 ${overlay ? 'z-[100]' : ''}`}
-    >
+    <div className="bg-background fixed inset-0 flex items-center justify-center px-6">
       <ErrorState
         message="We could not start the app. It is usually temporary — try again in a moment."
         onRetry={onRetry}

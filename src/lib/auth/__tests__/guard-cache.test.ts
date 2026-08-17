@@ -340,7 +340,7 @@ describe('a read that threw — PD-122', () => {
     expect(draws('/postcards')).toEqual({ kind: 'retry', overlay: false })
   })
 
-  it('keeps the shell mounted when the throw lands after the session was read', async () => {
+  it('replaces the shell even when the throw lands after the session was read', async () => {
     getSession.mockReset()
     getSession.mockResolvedValue(session('rider-1'))
     rpc.mockReturnValue({
@@ -354,7 +354,37 @@ describe('a read that threw — PD-122', () => {
 
     expect(booted()).toBe(true)
     expect(peek('/postcards')).toBeUndefined()
-    expect(draws('/postcards')).toEqual({ kind: 'retry', overlay: true })
+    // Warm, so the splash would have overlaid here. The retry must not: it
+    // holds the one control the rider is meant to press, and a shell left
+    // mounted under it keeps its own controls in the tab order.
+    expect(draws('/postcards')).toEqual({ kind: 'retry', overlay: false })
+  })
+
+  it('is released by reaching a path the cache can already answer', async () => {
+    getSession.mockReset()
+    getSession.mockResolvedValue(session('rider-1'))
+    rpc.mockReturnValue({
+      maybeSingle: async () => {
+        throw new Error('network')
+      },
+    })
+
+    ensureGuardState('/postcards')
+    await settle()
+
+    // A legal page needs no stamps, so the cache answers it without a read —
+    // and `attemptedPath` does not move on that return. Without the release,
+    // coming back re-draws the retry off a stale flag and the latch then
+    // refuses to attempt anything.
+    ensureGuardState('/legal/terms')
+    rpc.mockReset()
+    rpc.mockReturnValue(stamps(ONBOARDED))
+
+    expect(draws('/postcards')).toEqual({ kind: 'splash', overlay: true })
+    ensureGuardState('/postcards')
+    await settle()
+
+    expect(peek('/postcards')).toEqual({ kind: 'rider', ...ONBOARDED })
   })
 
   it('still decides a path that never needed the stamps — a failure is not a blanket stop', async () => {
@@ -426,14 +456,14 @@ describe('what the guard draws', () => {
     })
   })
 
-  it('draws the retry on the same split', () => {
+  it('never overlays the retry, warm or cold — it holds a control and the shell would stay focusable', () => {
     expect(resolveGuardView(snapshotOf({ failed: true }), undefined)).toEqual({
       kind: 'retry',
       overlay: false,
     })
     expect(resolveGuardView(snapshotOf({ signedIn: true, failed: true }), undefined)).toEqual({
       kind: 'retry',
-      overlay: true,
+      overlay: false,
     })
   })
 
