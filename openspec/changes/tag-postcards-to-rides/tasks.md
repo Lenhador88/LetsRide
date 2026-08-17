@@ -188,7 +188,11 @@
   PD-165 ended the `*` and PD-166 ended the grant.)
 - [ ] 4.2 `src/lib/data/postcards.ts`: `getRideJournal(rideId)` — two steps, because `062` moved the
   filter: `supabase.rpc('ride_journal_postcard_ids', { ride: rideId })` for the ids, then
-  `POSTCARD_SELECT` with `.in('id', ids)`, newest-first. **The ROWS stay invoker-rights** — no Edge
+  `POSTCARD_SELECT` with `.in('id', ids)`. **Order it in the second query** —
+  `.order('created_at', { ascending: false })`. The accessor sorts newest-first and `062.5` pins
+  that, but `.in(…)` does **not** preserve the order of the list it is handed, so the accessor's
+  ordering is a convenience for a direct reader and not a guarantee this read inherits.
+  **The ROWS stay invoker-rights** — no Edge
   Function, no service-role read, and no function returning postcard rows. The accessor is the one
   `security definer` step and it returns ids only; see the amended requirement *"The Journal SHALL be
   read under the caller's own row security"*. The feed's `before` cursor does not carry over as

@@ -8670,6 +8670,14 @@ select assert_eq((select role from club_members
                    where club_id = '00000000-0000-0000-0000-0000000410ca'
                      and user_id = '00000000-0000-0000-0000-00000004101b'),
   'admin', '041: the ADMIN of the ride''s club holds the role ...');
+-- The ride-visibility line the OWNER case has directly above it, and this case
+-- did not. Without it the zero below is satisfiable two ways — by club_id, which
+-- is what its label claims, or by can_read_ride going false — so a regression in
+-- 060's helper for a club admin would leave the line green while it measured
+-- something else. The `owner` case is already covered; only this one was short.
+select assert_eq((select count(*)::int from rides
+                   where id = '00000000-0000-0000-0000-000000041f02'),
+  1, '041/062: ... and can see the ride, so the zero below is about club_id and not about can_read_ride ...');
 select assert_eq(
   (select count(*)::int
      from public.ride_journal_postcard_ids('00000000-0000-0000-0000-000000041f02')),

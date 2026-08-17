@@ -151,6 +151,16 @@ grant select (id, author_id, club_id, image_path, caption, created_at, updated_a
 -- No grant of any kind is issued to `anon` — decision #1, and `007` revoked the
 -- last of them. The suite asserts `anon` still holds nothing here.
 
+-- `041` put the per-column contract in `pg_description` and it names the grant
+-- this file revokes: *"authenticated holds SELECT and INSERT on this column"*.
+-- A column comment is where this repo states that contract — `009`, `041` and
+-- `058` all do — and `docs/reference/schema.md` tells its readers to re-derive
+-- from the database rather than from the file, so leaving it would put a false
+-- grant claim in the authoritative place, on the one column this change is
+-- about. Restated whole rather than patched, because `comment on` replaces.
+comment on column public.postcards.ride_id is
+  'A TAG, never the audience — club_id still decides who sees the row (NULL = app-wide feed, set = that club''s members). Set once at INSERT and never editable: authenticated holds INSERT on this column and deliberately no UPDATE (041). It holds no SELECT either as of 062: the raw uuid is comparable, so a viewer who can resolve neither the ride nor its crew could still group postcards by it. Read it through public.ride_journal_postcard_ids(ride uuid), which holds the column so no client has to — Postgres checks a column privilege to FILTER as well as to return, which is why the Journal and the exposure wanted the same grant (PD-166). Tagging requires BOTH that the tagger can see the ride under their own RLS AND private.is_ride_crew — neither alone, because a FK is validated with RLS bypassed and the crew helper is security definer. ON DELETE SET NULL, because rides.organizer_id cascades: a cascade here would mean one rider deleting their account destroys other riders'' postcards.';
+
 -- ---------------------------------------------------------------------------
 -- §2. The accessor
 -- ---------------------------------------------------------------------------
