@@ -211,21 +211,68 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
 
 /**
- * HTTP statuses from GoTrue's `/user` endpoint that actually ASSERT the
- * token was rejected, rather than merely being outside the 5xx/network band
- * `AuthRetryableFetchError` already covers. See the call site (reviewer
- * finding #1, 2026-08-16) for the allowlist-vs-range reasoning.
+ * HTTP statuses from GoTrue that actually ASSERT the caller was rejected,
+ * rather than merely being outside the 5xx/network band
+ * `AuthRetryableFetchError` already covers. See `classifyAuthError` below
+ * (reviewer finding #1 of the SECOND delta pass, 2026-08-16) for the
+ * allowlist-vs-range reasoning, and for why status alone is not sufficient —
+ * that pass's own fix introduced a second defect, closed by
+ * `classifyAuthError`'s name check (the THIRD delta pass, same day).
  *
- * `401` is measured against DEV, 2026-08-14 (this file's own header): every
- * case this function's callers can produce — no `Authorization` header, a
- * malformed JWT, a signature that does not verify, a `sub` with no
- * `auth.users` row — comes back 401. `403` is INFERRED rather than measured
- * against this project: no case here has produced one, but it is the same
- * class (GoTrue refusing on authorization grounds, e.g. a banned account)
- * and belongs beside 401 rather than being silently absorbed into
+ * `401` is measured against DEV, 2026-08-14 (this file's own header) —
+ * **for the shapes that measurement actually exercised**: no
+ * `Authorization` header, a malformed JWT, a signature that does not
+ * verify. **It does NOT cover a token whose session was cascade-deleted**,
+ * because that measurement used a hand-made token with no `session_id`
+ * claim, which never reaches GoTrue's session lookup at all — every real
+ * rider access token carries one, and that path is `AuthSessionMissingError`,
+ * handled separately below rather than by status. `403` is INFERRED rather
+ * than measured against this project: no case here has produced one, but it
+ * is the same class (GoTrue refusing on authorization grounds, e.g. a banned
+ * account) and belongs beside 401 rather than being silently absorbed into
  * `verification_unavailable`'s "we could not tell" bucket.
  */
 const REJECTED_STATUSES = new Set([401, 403])
+
+/**
+ * Classifies a GoTrue-originated error the same way at both call sites that
+ * verify something against it — `getUser` and `signInWithPassword` — so the
+ * two cannot drift into different rules for the same three outcomes.
+ *
+ * **Finding numbers collide across same-day passes, so this file says which
+ * pass rather than only the date.** Findings #1 and #2 of the THIRD delta
+ * pass (2026-08-16) were the identical defect reached from two different
+ * calls: `AuthSessionMissingError`'s synthetic 400 (see below) falling
+ * outside the allowlist the SECOND pass's own finding #1 introduced.
+ *
+ * **Checked by NAME first, not status, for exactly one case —
+ * `AuthSessionMissingError`.** auth-js's `handleError` (`lib/fetch.js`)
+ * intercepts GoTrue's `session_not_found` error CODE before it ever looks at
+ * the HTTP status, and the class's own constructor hardcodes status `400`
+ * regardless of what GoTrue actually answered (`lib/errors.js`) — the 400 is
+ * synthetic and reflects no real response. Deleting an `auth.users` row
+ * cascades its `auth.sessions` rows, so this is D7's most likely shape for
+ * the already-deleted case: a second device holding a still-unexpired
+ * access token. Under a status-only check this fell outside
+ * `REJECTED_STATUSES` (400 is not 401/403) and was reported
+ * `verification_unavailable` — stranding that second device on a "try
+ * again" message forever, with no exit and no local sign-out, instead of
+ * signing it out the way an actually-invalid token does.
+ *
+ * The status check remains the rule for everything else, and stays
+ * fail-safe on the class it was originally trusted not to need — `.status`
+ * "because every `AuthError` subclass carries it" was the claim that
+ * `AuthSessionMissingError` falsified; `AuthUnknownError` carries no status
+ * at all, and `typeof status === 'number'` being false for it already routes
+ * to `'unavailable'` rather than being read as a rejection by accident.
+ */
+function classifyAuthError(error: unknown): 'rejected' | 'unavailable' {
+  const name = (error as { name?: string } | null)?.name
+  if (name === 'AuthSessionMissingError') return 'rejected'
+
+  const status = (error as { status?: number } | null)?.status
+  return typeof status === 'number' && REJECTED_STATUSES.has(status) ? 'rejected' : 'unavailable'
+}
 
 /**
  * The folder prefixes in the `media` bucket, all keyed on the uploader.
@@ -362,46 +409,19 @@ Deno.serve(async (req: Request) => {
   const { data: userData, error: userError } = await anon.auth.getUser(token)
   const subject = userData?.user
 
-  // Reviewer finding #2 (2026-08-16): `userError` is not one shape. auth-js's
-  // own `handleError` (fetch.js) throws two different classes depending on
-  // WHY the request to GoTrue failed, and this function used to fold both
-  // into `unauthorized` — read by the client as "already deleted" (D7),
-  // reported to the rider as success. Only one of the two actually means
-  // that:
-  //
-  //   - GoTrue answered with a genuine 4xx (the token's signature or claims
-  //     are wrong, or — for an already-deleted account — no such user) —
-  //     `AuthApiError`, `.status` in 400..499. The token was actively
-  //     rejected: `unauthorized` is correct.
-  //   - The request to GoTrue never got a real answer at all — a network
-  //     failure reaching it from the Edge runtime (`.status` 0/undefined) or
-  //     GoTrue itself 5xx'd — `AuthRetryableFetchError`. This says nothing
-  //     about whether the token or the account is valid; it is exactly the
-  //     brief, retryable outage this endpoint could hit on any call. Folding
-  //     it into `unauthorized` reports an untouched account as deleted and
-  //     signs the rider out with nothing actually removed.
-  //
-  // `.status` rather than `instanceof`/error-name checks, because every
-  // `AuthError` subclass carries it and a status range is stable across a
-  // library bump in a way an internal class name is not.
-  //
-  // **`REJECTED_STATUSES` is an allowlist, not a range — reviewer finding #1
-  // (2026-08-16), the same defect class as finding #2 surviving its own
-  // repair.** A `>= 400 && < 500` band reads `429` (GoTrue's rate limiter),
-  // `408` and `425` as "the token was actively rejected" just as readily as
-  // a genuine `401` — auth-js's `handleError` (fetch.js) only special-cases
-  // its `NETWORK_ERROR_CODES` list (5xx) and a failed fetch (`.status` 0);
-  // *every other status, including 429, becomes a plain `AuthApiError`* with
-  // that status attached. An Edge Function calls GoTrue from shared Supabase
-  // infrastructure, which makes a per-IP rate limit MORE reachable there
-  // than from a browser, not less — and the consequence is identical to
-  // finding #2's: a live account reported as deleted, the rider signed out,
-  // nothing actually removed.
+  // `userError` is not one shape (reviewer findings #1 and #2, 2026-08-16;
+  // see `classifyAuthError`'s own comment for the full history of what this
+  // block used to get wrong and why). `'rejected'` means the token was
+  // actively refused — including the cascade-deleted-session case, by
+  // name — and is reported as `unauthorized`, which the client reads as
+  // "already gone" (D7). `'unavailable'` means GoTrue never gave a real
+  // answer at all — a network failure, a 5xx, a rate limit — and must
+  // never be read as a rejection: that reports an untouched account as
+  // deleted and signs the rider out with nothing actually removed.
   if (userError) {
-    const status = (userError as { status?: number }).status
-    const activelyRejected = typeof status === 'number' && REJECTED_STATUSES.has(status)
-    if (!activelyRejected) return json({ error: 'verification_unavailable' }, 503)
-    return json({ error: 'unauthorized' }, 401)
+    return classifyAuthError(userError) === 'rejected'
+      ? json({ error: 'unauthorized' }, 401)
+      : json({ error: 'verification_unavailable' }, 503)
   }
   if (!subject) return json({ error: 'unauthorized' }, 401)
   if (subject.is_anonymous) return json({ error: 'unauthorized' }, 401)
@@ -453,11 +473,30 @@ Deno.serve(async (req: Request) => {
   // client already constructed above for `getUser`. `persistSession: false`
   // means this never writes anywhere — the returned session, if any, is
   // discarded; only `error` is read.
+  //
+  // **This is the more exposed of the two `classifyAuthError` call sites,
+  // not the less — reviewer finding #2 of the THIRD delta pass,
+  // 2026-08-16.** Before `classifyAuthError` existed, every `reauthError`
+  // became `reauth_required` ("wrong password"), which folded a `429` —
+  // GoTrue rate-limits the password grant harder than `/user`, and this call
+  // runs from the same shared Edge infrastructure the SECOND pass's finding
+  // #1 already named as more exposed than a browser — or a brief 5xx into
+  // "That password is incorrect." Nothing is deleted either way, so this was
+  // a wrong-message defect rather than an erasure one, but it was the same
+  // classification defect one call further down the same function.
+  // `classifyAuthError`'s `'unavailable'` branch reuses
+  // `verification_unavailable` here too: the rider is told to retry rather
+  // than told their password is wrong, whether the uncertainty came from
+  // verifying the token or from verifying the password.
   const { error: reauthError } = await anon.auth.signInWithPassword({
     email: subject.email,
     password,
   })
-  if (reauthError) return json({ error: 'reauth_required' }, 401)
+  if (reauthError) {
+    return classifyAuthError(reauthError) === 'rejected'
+      ? json({ error: 'reauth_required' }, 401)
+      : json({ error: 'verification_unavailable' }, 503)
+  }
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
