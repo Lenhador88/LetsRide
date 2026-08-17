@@ -1171,6 +1171,17 @@ in the next branch that already has the file open, say so in the PR body, and do
 for it. The census that justifies that, and the bucketing trap inside it, are in `CLAUDE.md`
 `docs/reference/linear.md` §Sequencing — run it there rather than trusting a second copy here.
 
+- **`feed_reads.last_seen_at` is written from the DEVICE clock and compared against server
+  timestamps.** `PD-253`. `markClubSeen` and `markFeedSeen` both send `new Date().toISOString()`;
+  `club_unread_counts()` compares it against `postcards.created_at` and `rides.created_at`, which
+  are server-generated. So a handset ten minutes fast silently marks read every postcard and ride
+  arriving in the next ten, and a slow one re-lights a badge the rider cleared. Nothing errors,
+  nothing logs, and **the wrong answer follows the device rather than the account** — which is what
+  makes it invisible to every gate here. `061` refused to inherit it (a `BEFORE INSERT OR UPDATE`
+  trigger on `ride_reads` imposes the value) and that refusal is how it was found. The same issue
+  carries a second, milder one: `club_unread_counts()` does not exclude the reader's own postcards,
+  so posting into a club badges it for your own post.
+
 - **`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
   is not on its own crew.** `PD-103`. Two inserts, no transaction, and a hand-rolled rollback that
   stopped being one when the writes moved to the browser — closing the tab between them is now
