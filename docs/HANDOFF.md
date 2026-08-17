@@ -1682,6 +1682,31 @@ node -e "…figmaFetch('images/\$KEY?ids=<node>&format=svg&version=<id>')…"   
 single path, which costs nothing here because these are filled paths already — see the vestigial
 `strokeWeight` above.
 
+### The first tab says `Postcards` and the design says `Home` — 2026-08-17
+
+PD-244 renamed the nav tab's label and that screen's header together. **The design was not
+changed and is not going to be**: `v2 / Component / Header` still measures a centred "Home", and
+the frames are still `Home - Postcards - *`. So this is the one place in the app where a session
+reading the design and matching it exactly would be *reverting shipped copy* — which is why it is
+recorded in three places, `CLAUDE.md` §Product Scope, `docs/FIGMA-FIDELITY-TODO.md` §Home, and
+here.
+
+```bash
+sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx | grep "label:"
+grep -n 'Header title=' "src/app/(app)/postcards/page.tsx"
+```
+
+**The icon did not follow the label and that is deliberate, not an oversight** — the tab is still
+`HomeIcon`, a house. The generated set has no postcard glyph, `MailboxIcon` is the Inbox epic's,
+and drawing one means writing to Figma, which takes an explicit owner ask (`CLAUDE.md` §Design
+System's fourth rule). Filed as its own issue rather than absorbed — PD-244's closing comment
+links it.
+
+**Two things it deliberately did not touch**, both of which look like misses: the route is still
+`/postcards`, and `npm run walk` was not changed because it never read the label — it clicks
+`nav a[href="…"]` and asserts on `aria-label`, so `grep -in home scripts/walk.mjs` is 0 both
+before and after.
+
 ---
 
 ## Constraints that will waste your time otherwise

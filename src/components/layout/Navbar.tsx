@@ -36,7 +36,10 @@ import { cn } from '@/lib/utils'
  * `MailboxIcon` import together, and do not re-add it from the design alone.
  */
 const navItems = [
-  { href: '/postcards', label: 'Home', Icon: HomeIcon },
+  // The label names the content, like the other three — the icon deliberately
+  // does not follow it. `HomeIcon` is a house and the generated set has no
+  // postcard glyph; `MailboxIcon` belongs to the Inbox epic (PD-244).
+  { href: '/postcards', label: 'Postcards', Icon: HomeIcon },
   { href: '/rides', label: 'Rides', Icon: BikeIcon },
   { href: '/clubs', label: 'Clubs', Icon: ClubsIcon },
   { href: '/profile', label: 'Profile', Icon: ProfileIcon },
