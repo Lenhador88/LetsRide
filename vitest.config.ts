@@ -4,9 +4,13 @@ import { defineConfig } from 'vitest/config'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
-// node environment only — no React components exist against the v2 design
-// yet, so there is nothing here that needs jsdom. Add it when the first v2
-// component lands.
+// node environment only, and the first component test did not change that.
+// `src/components/postcards/__tests__/PostcardAction.test.tsx` renders through
+// `renderToStaticMarkup`, which needs no DOM: it asserts the class list React
+// hands the browser, which is where this repo's component defects have actually
+// lived. jsdom becomes the answer when something needs a *layout* or an event —
+// a measured width, a click, a focus ring — and not before. Adding it earlier
+// buys a dependency to assert strings that arrive without one.
 export default defineConfig({
   resolve: {
     alias: {
@@ -17,7 +21,10 @@ export default defineConfig({
     environment: 'node',
     // scripts/ is plain .mjs — the Figma snapshot pipeline runs under node, not
     // Next, so its tests sit beside it rather than under src/.
-    include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
+    // `.tsx` is here for component tests — without it a test file rendering JSX
+    // is collected by nothing and passes by not running, which looks identical
+    // to a green suite.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.mjs'],
     // Explicit imports from 'vitest' everywhere instead — keeps tsconfig.json
     // untouched rather than adding the "vitest/globals" ambient types.
     globals: false,
