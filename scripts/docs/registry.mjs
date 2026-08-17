@@ -206,6 +206,9 @@ export const claims = [
     //
     // The flip-by-flip history of this pin lives in `git log -p` and is not
     // recopied here; it grew a paragraph every time PROD caught up.
+    // 2026-08-17: 060 (PD-211) landed on DEV alone and this is pinned to DEV
+    // AHEAD again — the same two-edits-in-one-commit the paragraph above
+    // budgets for, not a new case.
     // 2026-08-12: 051 and 052 landed on DEV alone, which is the exact case the
     // paragraph above predicted. Prose and pattern edited together, as it says.
     // Later the same day PD-201 applied 051-054 to PROD and this went red on cue
@@ -214,7 +217,7 @@ export const claims = [
     // the promotion turned it red on cue, and it is pinned back to LEVEL. The
     // pin is on the RELATIONSHIP in both directions; do not relax it to the
     // count just because the two projects agree today.
-    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — LEVEL/,
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV AHEAD/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
