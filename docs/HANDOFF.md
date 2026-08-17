@@ -1594,8 +1594,9 @@ git diff --stat design/icons/           # after a pull, BEFORE figma:icons
 git diff design/icons/index.json        # an id that moved under a name you did not touch
 ```
 
-That is the whole alarm for the quiet half: `chevron-right` produced a **byte-identical**
-`generated.tsx`, so its moved id in `index.json` was the only place it was visible at all.
+That is the whole alarm for the quiet half **before the render call is spent**: `chevron-right`
+produced a **byte-identical** `generated.tsx`, so until `figma:icons` runs and rewrites the SVG —
+where the moved fill does show — its id in `index.json` is the only place it is visible.
 
 ```bash
 npm run figma:icons          # must print 54/54; a "Missing:" line is the alarm
@@ -1799,7 +1800,10 @@ the committed SVG at **true 24px** and magnify that with nearest-neighbour, whic
 draws; a 4x vector render is a different picture and hides exactly the rasterisation faults worth
 catching. All three icons in the `/postcards` action row are `h-6 w-6`, so 24px is the real size
 rather than a proxy. Neither check substitutes for the other: a number cannot see a notch close,
-and a screenshot cannot see a 0.25px drift.
+and a screenshot cannot see a 0.25px drift. Done that way on the committed `wave.svg` on
+2026-08-17, and it passed: notch open, no line across the two raised fingers. Recorded because
+this glyph shipped wrong twice on a guess, so "was the shipping file actually looked at" is a
+question the next session would otherwise have to answer by redoing it.
 
 **Three drafts were reviewed as `H`, `H2` and `H3`, and the shipped one is `H`.** Worth naming
 because the first pass shipped `H2` — one letter apart, and the visible difference is a line
