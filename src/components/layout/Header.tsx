@@ -13,7 +13,7 @@ type HeaderProps = {
    * alternatives were both worse: an empty header reserves its space behind
    * nothing and reads as a broken screen, and a guessed string ("Ride") is
    * replaced in front of the rider a moment later. Everything else the header
-   * carries — back, the sub-page switcher, the overflow control — comes from the
+   * carries — back, the sub-row, the overflow control — comes from the
    * URL, so it is live immediately and only the title waits.
    */
   title: string | undefined
@@ -33,8 +33,12 @@ type HeaderProps = {
    */
   onBack?: () => void
   /**
-   * The 20px sub-page row beneath the title, centred. The ride detail puts its
-   * `Ride plan ⌄` switcher here.
+   * The 20px sub-page row beneath the title, centred. **The ride chat is the
+   * only caller left** — it puts its crew count here. The ride detail used to
+   * put a `Ride plan ⌄` sub-page switcher in this slot; PD-254 deleted it, so
+   * the plan and crew screens now pass nothing and get the plain 96px header.
+   * Named for what it does rather than for that switcher, because the next
+   * thing to want a sub-row will not be a page switcher either.
    *
    * A page rendering this must add `.pt-header-sub-extra` **on top of** the
    * shell's `.pt-header` — it is a 24px top-up, not a replacement, following

@@ -137,9 +137,12 @@ export function ContextMenu({
 
 type ItemProps = {
   /**
-   * The 24×24 leading icon. Optional because the ride page switcher hides its
+   * The 24×24 leading icon. Optional because a menu is allowed to hide its
    * icons — `Ride - Ride plan - Sub pages` toggles the slot off on all three
    * rows, which is why the label there is 310 wide against this menu's 270.
+   * That frame's own consumer (`RidePageMenu`) was deleted by PD-254; the
+   * measurement is kept because it is what sized the iconless variant, and
+   * `ClubDetailPageMenu` still draws it.
    */
   icon?: React.ReactNode
   children: React.ReactNode

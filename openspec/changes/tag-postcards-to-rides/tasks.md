@@ -212,8 +212,14 @@
 - [ ] 4.9 All seven states from `ride-journal`: empty (crew and non-crew variants), loading, error with
   retry, offline (cached-with-marker / `OfflineState`), permission-denied collapsed into empty with the
   decision written down, partial, stale.
-- [ ] 4.10 `RidePageMenu` gains the Journal row **and loses the doc comment explaining its absence** —
-  a comment describing a state that has ended is the next session's wrong fact.
+- [ ] 4.10 ~~`RidePageMenu` gains the Journal row~~ — **void as written, 2026-08-17: `RidePageMenu`
+  is deleted (PD-254).** The sub-page switcher it was is gone, and with it the sheet a Journal row
+  would have been added to. What replaces this task: the ride plan already renders a `Journal`
+  section (`RideJournalEmpty`, crew only), so there is no row to add and no absence to explain —
+  the section becomes populated rather than appearing. The rule this task carried survives the
+  component: **the doc comment recording why the Journal has no content must go in the same change
+  that gives it content**, because a comment describing a state that has ended is the next
+  session's wrong fact. It currently lives in `src/components/rides/RideJournal.tsx`.
 - [ ] 4.11 `CreatePostcardForm` gains the Ride select (Q2's default until answered), and the Journal's
   sticky action deep-links to `/postcards/new?ride=<id>` — pre-filled, never hidden.
 - [ ] 4.12 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.

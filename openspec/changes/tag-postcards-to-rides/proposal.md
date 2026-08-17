@@ -8,10 +8,12 @@
 
 **`postcards` has no `ride_id`, and one missing column blocks two designed things.**
 
-- **The ride detail's Journal sub-page.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`) is
-  drawn and the epic is **In progress**. Ride plan, Crew and Chat ship; `RidePageMenu`'s own doc
-  comment records Journal as *omitted rather than offered as a dead row* because the column does
-  not exist.
+- **The ride detail's Journal.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`) is drawn and
+  the epic is **In progress**. This bullet said the Journal was *omitted rather than offered as a
+  dead row*, citing `RidePageMenu`'s doc comment — **both are superseded as of 2026-08-17 (PD-254)**:
+  that switcher is deleted, and the ride plan now renders a `Journal` **section** with an explicit
+  empty state, crew only. So the surface exists and is empty rather than absent, and what this change
+  supplies is its content. `RideJournal.tsx` carries the current comment.
 - **"New postcard on a ride you're going to."** `add-notifications` (PD-118) listed it as out of
   scope with one reason and one pointer: *"`postcards` has no `ride_id` — verified 2026-08-07, the
   column does not exist. Linear PD-123."*
@@ -283,11 +285,13 @@ found this decision, not a bug, and `041`'s header says so in as many words.
 EXECUTE. A new WARN means a function landed in `public` or a revoke did not.
 
 **Code.** New: `src/app/(app)/rides/detail/journal/page.tsx`, `getRideJournal` in
-`src/lib/data/postcards.ts`, a `journal` key in `keys.ts`. Changed: `RidePageMenu` gains the
-Journal row it has been omitting (and its doc comment loses the reason it was absent);
-`CreatePostcardForm` gains a ride select mirroring its club select; `createPostcard` and
-`postcardRideIdSchema` carry the id. `Postcard` in `src/types/index.ts` gains the embedded ride and
-**not** a `ride_id` field — after `062` no client read can populate one.
+`src/lib/data/postcards.ts`, a `journal` key in `keys.ts`. Changed: `RideJournal.tsx`'s empty state
+gains the populated one beside it, and its doc comment loses the reason it had no content (this said
+`RidePageMenu` gains a Journal row — that component was deleted by PD-254, and the section on the ride
+plan is what replaced the sheet it lived in); `CreatePostcardForm` gains a ride select mirroring its
+club select; `createPostcard` and `postcardRideIdSchema` carry the id. `Postcard` in
+`src/types/index.ts` gains the embedded ride and **not** a `ride_id` field — after `062` no client
+read can populate one.
 
 **`POSTCARD_SELECT` was `*`, so `ride_id` started arriving on every postcard read the moment the
 migration applied** — before any type declared it and on screens that will never render it. This

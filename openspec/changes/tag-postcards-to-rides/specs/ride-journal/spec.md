@@ -617,14 +617,31 @@ Retagging, a journal count on `rides`, the postcard's photo location and flag, r
 the `postcard_on_ride` notification SHALL NOT be rendered as disabled or non-functional controls.
 
 A control that renders and does nothing is a worse artifact than an absent one — the reasoning that
-removed the Inbox tab rather than shipping it disabled, and that `RidePageMenu` already applied to the
-Journal row itself while the column did not exist.
+removed the Inbox tab rather than shipping it disabled.
 
-#### Scenario: The Journal row appears only when it works
-- **WHEN** `RidePageMenu` is updated
-- **THEN** the Journal row SHALL be added in the same change that makes the sub-page render
-- **AND** the doc comment recording *why it was omitted* SHALL be removed rather than left describing
-  a state that has ended
+**The Journal row is no longer the worked example, and the reversal is deliberate rather than drift.**
+This requirement was written when `RidePageMenu` omitted a Journal row because the column did not
+exist. PD-254 deleted that switcher and, with the product owner's approval, put a `Journal` **section**
+on the ride plan carrying an explicit empty state — *Nothing yet · Prep shots count* — on the opposite
+reasoning: a section nobody has seen is a feature nobody knows exists, and empty is the state every
+ride starts in. The two are not in conflict. An **empty state that says it is empty** is not a control
+that renders and does nothing; the rule still forbids the disabled row, and still forbids an affordance
+whose write the database would refuse.
+
+#### Scenario: The Journal section says what it is waiting for
+- **WHEN** the ride plan renders for a crew member and the ride has no tagged postcards
+- **THEN** the section SHALL draw its empty state rather than being hidden
+- **AND** it SHALL NOT promise content it cannot show
+- **AND** the doc comment recording *why it has no content* SHALL be removed in the same change that
+  gives it content, rather than left describing a state that has ended
+
+#### Scenario: The Add affordance and the write half ship together
+- **WHEN** the `Add` tile on that section is offered
+- **THEN** the composer it opens SHALL carry the ride, so a photo added from a ride's Journal appears
+  in it
+- **AND** until it does, the gap SHALL be recorded where a reader finds it rather than left to be
+  discovered — PD-254 shipped the tile ahead of the write half on the owner's own sequencing, and
+  logged it in `docs/FIGMA-FIDELITY-TODO.md` §Ride detail and in `RideJournal.tsx`
 
 #### Scenario: No edit-tag affordance
 - **WHEN** a postcard already carrying a ride is rendered, to its author or anyone else
