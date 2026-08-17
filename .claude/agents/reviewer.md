@@ -347,13 +347,12 @@ Ask, specifically:
   No file read answers the question that matters — **is the deployed build this file** — and
   neither does the digest. `list_edge_functions` returns `updated_at`; compare it against
   `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/`, and a
-  file newer than the deploy means the deployed build is **stale** — as `delete-account`'s is
-  today, which is why the re-authentication proof `docs/HANDOFF.md`'s §Store readiness row 2
-  names is not in production. Run the two commands rather than reading that sentence; a redeploy
-  retires it without anyone editing this file.
+  file newer than the deploy means the deployed build is **stale**. Run the two commands rather
+  than reading a sentence about it; where each function currently stands is
+  `docs/HANDOFF.md` §Store readiness row 2.
 
   `status`, `verify_jwt` and `ezbr_sha256` are the second question — do the **two projects** run
-  the same thing. Equal-and-both-stale is exactly today's state, so equality is never currency.
+  the same thing. Two projects can be equal and both stale, so equality is never currency.
   **A moved sha is necessary and not sufficient either**; that row requires verifying a redeploy
   by *content*. This is the one check that needs **both** refs rather than §First's
   one-ref-by-PR-type rule, because the comparison is the point. Probing the endpoint (a `401`
