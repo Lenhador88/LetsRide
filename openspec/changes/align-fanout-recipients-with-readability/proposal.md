@@ -9,7 +9,8 @@ assertion fails."* Both halves are that failure, one from being too wide and one
 narrow, and neither has a symptom.
 
 **Provenance of the facts below, stated exactly, because an unlabelled inference must never read
-as a measurement** (`CLAUDE.md` §Working Principles). They were **transcribed** from `055`'s
+as a measurement** — `CLAUDE.md`'s rule against letting a guess pass as a known value. They were
+**transcribed** from `055`'s
 migration header, the committed migration files and `supabase/tests/rls_test.sql` while this
 proposal was written — the session writing it held no database tool — and then **confirmed against
 DEV (`fpmrimzxadewsaiwpsel`) at build time on 2026-08-17**, where every one held: `rides` SELECT's

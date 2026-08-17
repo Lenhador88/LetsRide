@@ -776,7 +776,7 @@ reads 2 members until someone new signs up.
 ## Migrations — the repo and DEV hold 60, PROD holds 59
 
 **`060` is PD-211's and is on DEV ONLY, applied 2026-08-17.** PROD takes it at the next
-promotion, which is `docs/ENVIRONMENTS.md` §Order of operations step 5 rather than an oversight —
+promotion, which is step 5 of `docs/ENVIRONMENTS.md` §Migrations rather than an oversight —
 it is **additive** (three new functions, three replaced bodies, no DDL on any table, no policy, no
 trigger and no grant to a client role), so apply-then-deploy is its order and either sequence is
 safe here because no application code calls any of it.
