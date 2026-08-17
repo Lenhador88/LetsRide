@@ -688,8 +688,11 @@ finding.** The one account created through the real signup flow has `email_confi
 seconds after `created_at` and `last_sign_in_at` NULL. It was read as proof of the consent bug
 (§Auth configuration above) and is equally proof of this one. Both halves are now fixed — the
 consent write in `signUp`, the URLs in the dashboard — so the row proves what *was* broken, and
-nothing about the present state. **Signup end to end has still never been exercised on this
-database** (`PD-91`), so "the dashboard is right" and "signup works" remain two different claims.
+nothing about the present state. **`PD-91` exercised signup end to end against this
+database on 2026-08-16** — signup, the emailed link, `verify`, then a password grant — so "the
+dashboard is right" and "the auth server works" are both now established. What is still not: the
+app's own `signUp` on the confirmation-on path, which PD-91 bypassed by calling GoTrue directly
+(PD-252).
 
 `requestPasswordReset` builds its link from `window.location.origin`
 (`src/lib/actions/auth.ts`, the `origin` const — line number deliberately omitted, it has moved
