@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Use to review a branch, PR, or set of changes before merge. Always run this after `data` or `feature` completes work — the value comes from reviewing code it did not write. Reports findings; does not fix them. Which passes run is decided by what the diff touches — a code or SQL diff gets the RLS and data-exposure audit, a docs diff gets the documentation-claims audit, and the scope pass runs on anything from a queue pickup.
-tools: Read, Glob, Grep, Bash, ReportFindings, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__list_migrations, mcp__Supabase__get_advisors, mcp__Linear__get_issue, mcp__Linear__list_issues, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
+tools: Read, Glob, Grep, Bash, ReportFindings, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__list_migrations, mcp__Supabase__list_edge_functions, mcp__Supabase__get_advisors, mcp__Linear__get_issue, mcp__Linear__list_issues, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
 model: opus
 ---
 
@@ -336,6 +336,17 @@ Ask, specifically:
   `execute_sql` with `select version, name from supabase_migrations.schema_migrations
   order by version` gives the same answer, and that table also reveals the *apply order*,
   which on this project deliberately differs from the file order.
+- **`supabase/functions/` touched, or a claim about a deployed function?** `tsconfig.json`
+  excludes that directory, so what `tsc` reads there is only what an included file imports —
+  `npx tsc --noEmit --listFiles | grep supabase/functions` is the list, one file today
+  (`resolve-ride-location/gates.ts`, pulled in by its unit test). Every Deno entrypoint is read
+  by nothing, which is what `CLAUDE.md` means by the least-guarded code in the repo. And no
+  amount of file-reading answers the question that matters — is the **deployed** build this
+  file. `list_edge_functions` against **both** refs does: `status`, `verify_jwt`, and
+  `ezbr_sha256` equal across the two. Probing the endpoint (a `401` from
+  `POST /functions/v1/<name>`) shows only that *something* is deployed behind a JWT check.
+  **No session can deploy one**, so a diff here leaves both projects on the old build until the
+  owner redeploys — a PR body implying the change is live is a finding.
 - **CI touched?** Check the description in `CLAUDE.md` against `.github/workflows/ci.yml`.
 - **Files or directories added, moved or removed?** Check the repo-layout tree in
   `CLAUDE.md`. It is a hand-maintained copy of `ls` and drifts within days.

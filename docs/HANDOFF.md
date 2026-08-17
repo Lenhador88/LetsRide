@@ -414,7 +414,11 @@ working around them.** Four carry detail worth having at hand:
    door — GoTrue's `PUT /auth/v1/user` accepts a password change from any live session, measured.
 
 2. **`PD-86` — prove PROD's `SERVICE_ROLE_KEY` is PROD's key.** The deploy half closed on
-   2026-08-11 (both projects `ACTIVE`, identical `ezbr_sha256`); this half did not, and it is
+   2026-08-11 and re-measured clean 2026-08-16 — `delete-account` and `resolve-ride-location` are
+   both `ACTIVE` on both projects, `verify_jwt` true, each one's `ezbr_sha256` equal across the
+   two. **`reviewer` can run that check itself now** (PD-231 put `list_edge_functions` on its
+   `tools:` line); before that it could only probe the endpoint, which answers *deployed behind a
+   JWT check* and never *the same build*. This half did not close, and it is
    narrow. Both PROD probes returned 401 at the `getUser` check, which runs *before* the admin
    client is constructed, so neither reached the code a wrong key breaks. A wrong value fails at
    `auth.admin.deleteUser` — **the first real deletion 500s**, in production, on the one flow that
