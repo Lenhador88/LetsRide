@@ -1509,25 +1509,34 @@ glyph shipped light twice — once by an agent's judgement and once by a correct
 guessed after the product owner said it looked thin. Measured, it was **1.4px** against Chat
 Bubble's 2.2, and was then tuned to 2.2 to match.
 
-**The redraw did not inherit that match, and it is the one thing PD-242 left open.** H2 is drawn
-at stroke **2.2** where 40 of the 46 `element-icon-*` components declare **2** — Chat Bubble
-included, and the only other outliers are `avatar`/`calendar`/`lock` at 1, `heart-filled` at 8 and
-`options` at 0. So the wave is now the single icon in the set off the row's weight, and PD-242's
-own body asserts the opposite ("carries the same stroke weight"). Flattened and measured, the same
-0.2 gap holds:
+**The redraw did not inherit that match, and it is the open question on this icon.** Measured, it
+now comes in above the neighbour it was tuned against:
 
 ```bash
 npm run figma:measure -- wave chat-bubble paper-plane
-# wave 2.4 · chat-bubble 2.2 · paper-plane 2.5     (was: wave 2.2, traced)
+# wave 2.45 · chat-bubble 2.2 · paper-plane 2.5     (was: wave 2.2, traced)
 ```
 
-Left as drawn rather than silently thinned — matching the row means altering a drawing the product
-owner approved, so which side gives is theirs to say. Read the declared weight, not just the
-measured one, when settling it:
+Left as drawn rather than silently thinned — matching Chat Bubble means altering a drawing the
+product owner approved, so which side gives is theirs to say.
+
+**Do NOT reach for `strokeWeight` in the snapshot to settle it — it is vestigial on this icon and
+the trap is that it reads perfectly plausible.** The obvious command is the one to avoid:
 
 ```bash
 node -e "const d=require('./design/components/element-icon-wave.json');
-         console.log(d.children[0].strokeWeight)"   # 2.2
+         console.log(d.children[0].strokeWeight)"   # 2.2 — and it draws nothing
+```
+
+That number sat beside a `strokes: []` array: the glyph is a **filled path**, so nothing applies a
+stroke and 2.2 is a leftover property. It is invisible in `design/`, because `extract.mjs` records
+`strokeWeight` and not `strokes` — so a count across the set reads 40 of 46 at "2" and looks like
+a row this icon is breaking. Both readings were published in this repo before the raw file was
+checked. The REST node is where the answer is:
+
+```bash
+# strokes: []  ->  strokeWeight is decoration, use figma:measure instead
+node -e "…figmaFetch('files/\$KEY?ids=<node>')…"   # scripts/figma/lib.mjs
 ```
 
 `scripts/figma/measure-icons.mjs` rasterises an exported SVG in Chromium and takes the median run
@@ -1536,14 +1545,35 @@ a solid glyph reports its own width — and compare against the icons a glyph wi
 beside, never a global average.
 
 **`inkPct` is not interchangeable with stroke weight, and the wave is the case that proves it.** It
-carries **30.5%** ink against Chat Bubble's 21.8%, because it is a detailed hand rather than a
-simple round shape, and its bbox is **18.2x21.4** against their ~21x21 for the same reason. So the
-row is not identical in mass whatever the stroke does — that is the glyph, not a defect.
+carries **25.1%** ink against Chat Bubble's 21.8%, because it is a hand rather than a simple round
+shape, and its bbox is **18.1x19.7** against their ~21x21 for the same reason. So the row is not
+identical in mass whatever the stroke does — that is the glyph, not a defect.
 
 **The redraw moved the two numbers in opposite directions, which is the whole point of measuring
-both.** Ink fell from the traced glyph's 34.9% to 30.5% — that drop *is* the fix the product owner
-asked for, the knuckle detail that read as noise at 24px — while the stroke rose from 2.2 to 2.4.
-A single "is it heavier" question cannot express that, and a screenshot answers neither.
+both.** Ink fell from the traced glyph's 34.9% to 25.1% while the stroke rose from 2.2 to 2.45. The
+drop *is* the fix the product owner asked for — the detail crossing the fingers that read as noise
+at 24px — and a single "is it heavier" question cannot express it. A screenshot answers neither
+number, which is why both gates exist.
+
+**Three drafts were reviewed as `H`, `H2` and `H3`, and the shipped one is `H`.** Worth naming
+because the first pass shipped `H2` — one letter apart, and the visible difference is a line
+crossing the two raised fingers, which `H` does not have. `inkPct` is the number that separates
+them: 25.1 for `H` against 30.5 for `H2`.
+
+**All three drafts are deleted from the file and all three are still recoverable**, which is worth
+knowing before anyone redraws one. Figma keeps version history and the REST API takes a `version`
+parameter, so the pre-deletion file is readable — the drafts lived only between
+`2388594355669001856` (2026-08-17T07:29Z) and the delete, so no committed snapshot ever held them
+and `git` cannot help:
+
+```bash
+node -e "…figmaFetch('files/\$KEY/versions')…"                       # list versions
+node -e "…figmaFetch('images/\$KEY?ids=<node>&format=svg&version=<id>')…"   # export one
+```
+
+`createNodeFromSvg` then reimports it faithfully. Figma flattens a fill-only glyph's export to a
+single path, which costs nothing here because these are filled paths already — see the vestigial
+`strokeWeight` above.
 
 ---
 
