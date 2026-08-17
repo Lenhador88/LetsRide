@@ -165,7 +165,7 @@ export function groupMessages(
  *
  * **The caller still has to tell `false` from "not answered yet"**, which this
  * cannot express and `useQuery` can: `undefined` draws nothing, exactly as
- * `false` does. See `RideChatUnreadDot`.
+ * `false` does. See `RideChatButton`, which owns that read.
  */
 export async function getRideChatUnread(rideId: string): Promise<boolean> {
   // Same guard, same reason as `getRideMessages`: a non-UUID segment reaches

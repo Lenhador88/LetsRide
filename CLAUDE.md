@@ -511,10 +511,11 @@ A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was n
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
 **Applied state: 61 files. DEV is at `061`, PROD at `059` — DEV AHEAD, 2026-08-17.** DEV-ahead is
-the ordinary state of a migration between its merge and its promotion, not drift; `060` reaches
-PROD with PD-211's promotion, which is step 5 of `docs/ENVIRONMENTS.md` §Migrations. Do not
-read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead.
+the ordinary state of a migration between its merge and its promotion, not drift. **Do not read
+the count of unpromoted files off this sentence either** — it named exactly one while two were
+waiting, which is the same defect as a stale number in a smaller place, and the promotion is the
+one job that reads it. Run `list_migrations` against `ls supabase/migrations/` and promote
+everything the gap contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
