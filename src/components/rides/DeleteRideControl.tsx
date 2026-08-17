@@ -11,9 +11,10 @@ import { queryKeys } from '@/lib/query/keys'
 
 /**
  * The destructive control at the foot of `/rides/detail/edit` — PD-101,
- * `design.md` §D4. Deliberately not in `RidePageMenu`: that is the header's
- * sub-page switcher, and an irreversible action does not belong one tap from
- * `Crew` on a glove-sized target. `PostcardMenu`'s two-tap shape is the
+ * `design.md` §D4. Deliberately not in the header's sub-page switcher, where an
+ * irreversible action would have sat one tap from `Crew` on a glove-sized
+ * target — that switcher is now deleted outright (PD-254), which retires the
+ * argument rather than reversing it. `PostcardMenu`'s two-tap shape is the
  * precedent for the confirmation; this one needs room for the crew count and
  * the chat warning `ride-lifecycle` requires, so it is a panel rather than a
  * context-menu row.

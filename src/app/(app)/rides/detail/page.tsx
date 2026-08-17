@@ -6,33 +6,57 @@ import Link from 'next/link'
 import { CalendarIcon, LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
+import { RideChatRow } from '@/components/rides/RideChatRow'
+import { RideCrewRail } from '@/components/rides/RideCrewRail'
 import { RideHeader } from '@/components/rides/RideHeader'
+import { RideJournalEmpty } from '@/components/rides/RideJournal'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
+import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { RideMap } from '@/components/rides/RideMap'
 import { getRide } from '@/lib/data/rides'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
-import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
-import { cn, formatRideDateLong, formatRideTime } from '@/lib/utils'
+import { DETAIL_ID_PARAM } from '@/lib/routes'
+import {
+  cn,
+  formatRelativeTime,
+  formatRideDateLong,
+  formatRideTime,
+  googleMapsDirectionsUrl,
+} from '@/lib/utils'
 import type { RideDetail } from '@/types'
 
 /**
- * `Ride - Ride plan (Details)` (`2375:8771`) — the ride's plan.
+ * The ride's plan — **one screen now, not the head of a set of four** (PD-254).
  *
- * Composition is measured, not inferred: banner 390×200 at the top, then the
- * club chip, the 24/36 title, the clamped blurb with `Show more`, the date and
- * location rows at 64 tall each with their `Grey/10` hairlines, and the 358×160
- * map. The RSVP bar is fixed above the nav bar rather than in it.
+ * `Ride - Ride plan (Details)` (`2375:8771`) is still the frame this is built
+ * from, and it is no longer the whole specification: the drawn sub-page sheet is
+ * deleted here, and Crew, Chat and Journal are sections on this page instead of
+ * destinations behind a dropdown. That is a deviation from the Figma and it is
+ * logged in docs/FIGMA-FIDELITY-TODO.md §Ride detail; the approved frames are
+ * the seven-revision mock the product owner settled on 2026-08-17, carried in
+ * Figma as `AI / Ride detail merged / 2026-08-17`.
  *
- * The 200px banner is the one thing the design draws that the schema still
- * cannot fill, and it is omitted entirely rather than drawn as a 200px grey
- * slab: unlike the map it carries no affordance at all, so an empty fifth of
- * the screen above the fold is worse than a shorter page. Logged in
- * docs/FIGMA-FIDELITY-TODO.md §Ride detail. The map panel now has a column
- * behind it (`051`) and draws a tile whenever the ride has one, which today is
- * never — see `RideMap`, which owns both states.
+ * **What the merge deleted, and why each was a cost rather than a tidy-up:**
+ *
+ * - **`RidePageMenu`** hid its own options. A rider who cannot find a sheet
+ *   cannot find anything in it, which is the whole of PD-125's measurement.
+ *   Everything it listed is now a row you can see without opening anything, so
+ *   the header drops to 96px and this screen stops paying `.pt-header-sub-extra`.
+ * - **The body `<h2>{ride.title}</h2>`** was the title drawn twice — `RideHeader`
+ *   already renders it 40px above, and the frame's 24/36 title predates the
+ *   header carrying one.
+ * - **The two 64px `DetailRow`s** became two 20px lines. 128px of hairlines and
+ *   gutters for two facts, above the fold, on a screen whose job is to get a
+ *   rider to the map and the crew.
+ *
+ * The 200px banner the frame draws is still omitted — the schema still cannot
+ * fill it, and an empty fifth of the screen above the fold is worse than a
+ * shorter page. Logged in the same place. The map panel has a column behind it
+ * (`051`) and draws a tile whenever the ride has one, which today is never — see
+ * `RideMap`, which owns both states.
  *
  * ## The three-way answer this screen needs, and why `null` is not `undefined`
  *
@@ -83,24 +107,24 @@ function RideScreen() {
   const canRsvp = !!ride.data && ride.data.is_upcoming && !ride.data.is_organizer
 
   /**
-   * What gates the header's chat button and the switcher's Chat row.
+   * What gates the header's chat button, the labelled chat row and the Journal.
    *
-   * `undefined` until the ride lands, so both appear a moment late rather than
-   * being drawn and then withdrawn. **Read, not re-derived** — this screen, the
-   * crew page and the chat page each spelled out `private.is_ride_crew`'s two
-   * arms by hand until 2026-08-07, and three copies of one database rule is
+   * `undefined` until the ride lands, so all three appear a moment late rather
+   * than being drawn and then withdrawn. **Read, not re-derived** — this screen,
+   * the crew page and the chat page each spelled out `private.is_ride_crew`'s
+   * two arms by hand until 2026-08-07, and three copies of one database rule is
    * three places to miss when it narrows. `getRide` owns it now.
    */
   const isCrew = ride.data?.is_crew
 
   return (
     <>
-      {/* Everything the chrome needs but the title comes out of the URL, so it
-          renders immediately: back and the sub-page switcher both work while
-          the plan is still arriving. The title is the one part that cannot, so
-          it goes in as `undefined` and `Header` draws a placeholder bar for it —
-          an empty title reserves the header's space behind nothing, and a
-          guessed one would be replaced in front of the rider. */}
+      {/* Everything the chrome needs but the title comes out of the URL, so
+          back works while the plan is still arriving. The title is the one part
+          that cannot, so it goes in as `undefined` and `Header` draws a
+          placeholder bar for it — an empty title reserves the header's space
+          behind nothing, and a guessed one would be replaced in front of the
+          rider. */}
       <RideHeader
         rideId={id}
         title={ride.data?.title}
@@ -109,20 +133,15 @@ function RideScreen() {
         isOrganizer={ride.data?.is_organizer}
       />
 
-      {/* The shell reserves the 96px header; this screen's is the 120px variant,
-          so it owes the 24px difference. Both paddings top up the shell's
-          rather than replacing them — the numbers live in globals.css. The
-          bottom one is owed only when the bar it clears is actually there. */}
-      <div
-        className={cn(
-          'pt-header-sub-extra flex flex-col gap-4 pb-4',
-          canRsvp && 'pb-rsvp-bar-extra'
-        )}
-      >
+      {/* No `.pt-header-sub-extra` any more: the shell reserves the 96px header
+          and, with the sub-page switcher gone, 96px is what this screen's header
+          is. The bottom padding is owed only when the bar it clears is actually
+          there. */}
+      <div className={cn('flex flex-col gap-4 pt-4 pb-4', canRsvp && 'pb-rsvp-bar-extra')}>
         {ride.error ? (
           <ErrorState onRetry={ride.refetch} />
         ) : ride.data ? (
-          <RidePlan ride={ride.data} />
+          <RidePlan ride={ride.data} isCrew={isCrew === true} />
         ) : (
           <SkeletonDetail />
         )}
@@ -135,7 +154,16 @@ function RideScreen() {
   )
 }
 
-function RidePlan({ ride }: { ride: RideDetail }) {
+function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
+  // Description and route are one paragraph now rather than a blurb and a
+  // `Route` heading 200px apart. They are two columns because they are two
+  // things an organizer types, not two things a rider reads separately — and a
+  // heading over one sentence was more furniture than content. Joined with a
+  // space rather than a blank line because `ExpandableText` renders a single
+  // `<p>` with no `whitespace-pre-line`, so a newline would collapse to exactly
+  // this anyway and only the source would suggest otherwise.
+  const blurb = [ride.description, ride.route_description].filter(Boolean).join(' ')
+
   return (
     // A `div` rather than the Fragment this used to be: the parent's own
     // `gap-4` used to apply directly between these elements once React
@@ -146,80 +174,88 @@ function RidePlan({ ride }: { ride: RideDetail }) {
     // fires exactly once, on arrival.
     <div className="flex flex-col gap-4 motion-safe:animate-fade-in">
       {ride.club && (
-        <Link
-          href={`/rides?club=${ride.club.id}`}
-          className="flex items-center gap-1 px-6 pt-4"
-        >
+        <Link href={`/rides?club=${ride.club.id}`} className="flex items-center gap-1 px-6">
           <Avatar src={ride.club.avatar_url} name={ride.club.name} size="xs" className="h-5 w-5" />
           <span className="text-xs font-semibold text-foreground">{ride.club.name}</span>
         </Link>
       )}
 
-      <h2 className="px-6 text-2xl font-semibold text-foreground">{ride.title}</h2>
+      {/* Two lines where two 64px rows were. The icons are the same ones the
+          rows carried, at 20px in a 20px gutter rather than 24 in 48. */}
+      <div className="flex flex-col gap-1.5 px-6">
+        <p className="flex items-center gap-2.5">
+          <CalendarIcon className="h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+            {formatRideDateLong(ride.departure_at)}, {formatRideTime(ride.departure_at)}{' '}
+            {/* The marker a calendar date does not carry: "Sunday, 24 Aug" is
+                only useful to a rider who already knows what today is.
+                `formatRelativeTime` rather than a formatter of this screen's
+                own — the naming rule exists because each design draws a
+                different *shape*, and this draws exactly the shape it already
+                produces. It needs no timezone: it measures the distance between
+                two instants, which is the same everywhere, so it is unaffected
+                by the wall-clock question `APP_TIME_ZONE` is standing in for. */}
+            <span className="font-medium text-muted">· {formatRelativeTime(ride.departure_at)}</span>
+          </span>
+        </p>
 
-      {ride.description && <ExpandableText className="px-6">{ride.description}</ExpandableText>}
-
-      <div className="flex flex-col">
-        <DetailRow
-          icon={<CalendarIcon className="h-6 w-6 text-muted" />}
-          primary={formatRideDateLong(ride.departure_at)}
-          secondary={formatRideTime(ride.departure_at)}
-        />
-        <DetailRow
-          icon={<LocationOutlineIcon className="h-6 w-6 text-muted" />}
-          primary={ride.meeting_point}
-          // The design splits this into a place name and a street address.
-          // `meeting_point` is one free-text column, so it renders as the
-          // primary line and the second stays empty. Logged.
-          secondary={null}
-        />
+        <p className="flex items-center gap-2.5">
+          <LocationOutlineIcon className="h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
+          {/* The design splits this into a place name and a street address.
+              `meeting_point` is one free-text column, so it renders as one line.
+              Logged. */}
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+            {ride.meeting_point}
+          </span>
+          {/* Past rides get no `Directions`, which the mock draws by omission
+              and is worth stating: routing a rider to a meeting point that was
+              used last Tuesday is an offer with nothing behind it. The map panel
+              below stays a deeplink either way — it is the *map*, and looking at
+              where a ride went is not the same act as being sent there. */}
+          {ride.is_upcoming && (
+            <a
+              href={googleMapsDirectionsUrl(ride.meeting_point)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 text-xs font-semibold text-accent"
+            >
+              Directions
+            </a>
+          )}
+        </p>
       </div>
 
       <RideMap meetingPoint={ride.meeting_point} tileUrl={ride.map_detail_url} />
 
-      {ride.route_description && (
-        <div className="flex flex-col gap-1 px-6">
-          <h3 className="text-sm font-semibold text-foreground">Route</h3>
-          <p className="text-sm text-muted">{ride.route_description}</p>
-        </div>
+      {blurb && <ExpandableText className="px-6">{blurb}</ExpandableText>}
+
+      {/* Crew only, for the same reason the chat row is: a rider who is not on
+          this ride has no `Add` to be offered and no photos to be shown, so the
+          section would be an empty promise rather than an empty state. */}
+      {isCrew && (
+        <section className="flex flex-col gap-2">
+          <SectionHeader title="Journal" className="py-0" />
+          <RideJournalEmpty />
+        </section>
       )}
 
-      {/* Carries no count. The number that used to sit here counted `maybe`
-          RSVPs under a "going" label and disagreed with the crew page one tap
-          away; the roster and its two counts belong to that page. The design
-          draws no crew summary on this screen at all — the header's page
-          switcher is the specified route to Crew, and this is a second, more
-          obvious one. */}
-      <Link
-        href={routes.rideCrew(ride.id)}
-        className="px-6 text-sm font-semibold text-accent"
-      >
-        See who’s riding
-      </Link>
-    </div>
-  )
-}
+      {/* The count this rail draws is the one that was removed from this screen
+          once already, for counting `maybe` RSVPs under a "going" label and
+          disagreeing with the roster one tap away. It is allowed back only
+          because `RideCrewRail` reads `queryKeys.rides.crew(id)` — the crew
+          page's own key, through the crew page's own function — and counts the
+          array that page renders under `Going`. See that component. */}
+      <section className="flex flex-col gap-2">
+        <SectionHeader title={ride.is_upcoming ? 'Riding' : 'Rode'} className="py-0" />
+        <RideCrewRail
+          rideId={ride.id}
+          organizerId={ride.organizer_id}
+          organizer={ride.organizer}
+          isUpcoming={ride.is_upcoming}
+        />
+      </section>
 
-/**
- * One 64px row — icon at 24px in a 48px gutter, two stacked lines, and a
- * hairline under it inset to the text's left edge rather than run full width.
- */
-function DetailRow({
-  icon,
-  primary,
-  secondary,
-}: {
-  icon: React.ReactNode
-  primary: string
-  secondary: string | null
-}) {
-  return (
-    <div className="flex h-16 items-center gap-6 px-6">
-      <span className="shrink-0">{icon}</span>
-      <span className="flex min-w-0 flex-1 flex-col self-stretch justify-center border-b border-track">
-        <span className="truncate text-sm font-semibold text-foreground">{primary}</span>
-        {secondary && <span className="truncate text-sm font-medium text-muted">{secondary}</span>}
-      </span>
+      {isCrew && <RideChatRow rideId={ride.id} />}
     </div>
   )
 }

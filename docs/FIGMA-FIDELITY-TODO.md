@@ -475,14 +475,38 @@ radius 8 with its button inset 4px bottom-right, and the RSVP bar 390×96 with p
 16/16/8 and a 358×40 button group. What follows is the design asking for **data the schema
 has not got**, plus deliberate deviations.
 
-**Three sub-pages of four are built** as of 2026-08-07. The switcher lists Ride plan, Crew and —
-for the crew only — Chat. The remaining deviation is first:
+**The sub-page switcher is gone — 2026-08-17, PD-254.** The frames' four-way split is one screen
+now, and the deviation below is the largest in this file: read it before treating any `2375:9114`
+measurement as current.
 
-- [ ] **Journal is drawn and not built.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`)
-      is postcards attached to a ride, and `postcards` has **no `ride_id`**. It needs a
-      migration *and* an audience decision, because `club_id` currently **is** the audience
-      and a ride-scoped postcard would be a second axis. Omitted from the menu rather than
-      offered as a dead row.
+- [ ] **The whole sub-page model is REPLACED, and the frames still draw it.**
+      `Ride - Ride plan - Sub pages` (`2375:9114`) is a bottom sheet listing Ride plan, Journal and
+      Crew, entered from a `Ride plan ⌄` control under the title. It is **deleted**. Crew is a rail
+      on the ride plan that opens in place, Chat is a labelled row, Journal is a section, and the
+      header is the plain 96px variant on the plan and crew screens. Why: a sheet hides its own
+      options, which is exactly what the Chat row four bullets down was patched onto this sheet to
+      work around, and the patch left the underlying screen unchanged. Approved by the product
+      owner over seven revisions on 2026-08-17 and carried in Figma as
+      `AI / Ride detail merged / 2026-08-17`; **that section, not `2375:9114`, is the current
+      specification for this screen.** Consequences worth stating separately, because each is a
+      drawn value this repo no longer builds:
+  - [ ] The body's 24/36 title at y364 is **not drawn** — `RideHeader` already renders the title,
+        and the frame predates the header having one.
+  - [ ] The two 64px rows with their `Grey/10` hairlines are **two 20px lines**, and the date line
+        carries a relative marker (`· in 6 days`) the frame has no equivalent for.
+  - [ ] `Directions` on the meeting-point line is **not drawn on a past ride**, which the approved
+        mock expresses by omission rather than by a rule.
+  - [ ] The `Route` heading is gone; description and route render as one paragraph under the map.
+- [ ] **Journal is drawn, and as of 2026-08-17 only its EMPTY STATE is built.**
+      `Ride - Journal (Postcards/Timeline)` (`2226:4865`) is postcards attached to a ride.
+      `041` added `postcards.ride_id` and settled the audience question this entry used to say was
+      open — the tag is not a second audience — but **nothing writes the column**, so every
+      journal is empty and the section renders the approved mock's `Nothing yet · Prep shots
+      count` tile beside `Add`, crew only. That is a deliberate reversal of the old entry's
+      "omitted rather than offered as a dead row": a section nobody has seen is a feature nobody
+      knows exists, and empty is the state every ride starts in. **`Add` posts a postcard and does
+      not yet tag it to the ride** (PD-256), so a photo added from here does not appear in the
+      journal it was added from. The tiles, the sequence line and the journal route are PD-257's.
 - [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
       `Ride - Chat - Text focus` (`2242:11086`) at `/rides/detail/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
@@ -503,7 +527,10 @@ for the crew only — Chat. The remaining deviation is first:
         stays (it is drawn, and it is one tap) and a labelled row is added beside it, gated on
         the same crew predicate so the two entry points cannot disagree. **A question for the
         designer**: an unlabelled icon is the design's only route to a whole screen, and it did
-        not survive first contact.
+        not survive first contact. **The sheet this row was added to no longer exists (PD-254) and
+        the row does** — it is on the ride plan itself now, on the same predicate. The deviation is
+        therefore unchanged in substance and larger in kind: the design's own route to the chat is
+        still one unlabelled icon, and this app still draws a labelled row beside it.
   - [ ] **A day separator was ADDED that the design does not draw.** Every bubble carries
         `HH:mm` and nothing else, which is unambiguous for the single-day conversation the
         frame mocks and silently wrong for a ride planned three weeks out — "08:18" on a

@@ -87,7 +87,10 @@ function RideCrewScreen() {
         isOrganizer={ride.data?.is_organizer}
       />
 
-      <div className="pt-header-sub-extra flex flex-col gap-4 pb-4">
+      {/* No `.pt-header-sub-extra`: the sub-page switcher that made this header
+          the 120px variant is deleted (PD-254), so the shell's own 96px is the
+          whole of it. */}
+      <div className="flex flex-col gap-4 pt-4 pb-4">
         {gate.error ? (
           <ErrorState onRetry={gate.refetch} />
         ) : !crew ? (
