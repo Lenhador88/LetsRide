@@ -85,19 +85,13 @@ __pycache__/
 # turns every `git status --porcelain` check in the repo — and every review of
 # what a branch actually changed — into a false positive.
 #
-# It used to be load-bearing for the queue: a dirty tree was one of the idle
-# gates the reused Development session checked before picking up a story, so
-# an unignored worktree froze the queue while looking healthy. That gate went
-# with the session-per-story split and no procedure checks the tree now.
-#
 # **That is ALL this line does, and the limit is worth stating** because the
 # other half of the problem looks like it should be covered here and is not.
 # `eslint.config.mjs` carries a fixed four-entry `globalIgnores` and no
 # `includeIgnoreFile`, so ESLint reads none of this file and a bare `eslint`
 # descends into a dot-directory happily — a live worktree is a second copy of
 # `src/` and doubles `npm run lint`'s output whatever is written here. Remove
-# the worktree when the agent is done; ignoring it only keeps the queue
-# running.
+# the worktree when the agent is done; ignoring it only keeps the tree clean.
 #
 # `tsc` is the one that needs no help, for a reason that is easy to get
 # backwards: it is not git-awareness but glob expansion — `include`'s

@@ -84,6 +84,13 @@ active session from myself."*
 list_sessions  mine=true  limit=50
 ```
 
+**A hold here means "dispatch nothing", never "stop" — go to STEP 2, read the board, and run
+STEP 6.** Every stall clock in this file reads `Development (AI)` and `Needs help`, and STEP 2 is
+the only place that reads them, so a firing that stops at this line has no way to notice a dead
+child. That matters most exactly when this gate is held: the owner works a six-hour stretch, every
+firing in it holds, and a child that died at the start ages straight through the alarm window
+unseen. Read the board even when you will not act on it.
+
 **Hold if any session in that list is `SESSION_STATUS_RUNNING` and is neither this session
 (`session_01B2mxc642tG8vZ15wysQpqM`) nor tagged `queue-dispatch`.** Read the tag and the id in the
 same pass — the tag is the primary signal, and a row lacking it is a child only if
@@ -115,9 +122,17 @@ their conversation; with one isolated session per story that conflict is gone, a
 "do not run a build alongside my live work" — is what the RUNNING check says directly.
 
 **Claude usage headroom is the second half of that gate, and it survived the rewrite.** Product
-owner, 2026-08-07: *"if any Claude usage limit is above 80%, skip the run."* **Exit if a usage
-signal is visible in this session** — a system warning that a limit is approaching or reached, an
-overage notice, a rate-limit message — whether it arrived this firing or earlier.
+owner, 2026-08-07: *"if any Claude usage limit is above 80%, skip the run."* **Hold if a usage
+signal arrives in THIS firing** — a system warning that a limit is approaching or reached, an
+overage notice, a rate-limit message — and send a `PushNotification` saying so.
+
+**"This firing", never "anywhere in this conversation", and the distinction is the whole gate.**
+The dispatcher is a persistent session whose context accumulates and which no session can clear,
+so a signal that ever appeared is visible for ever: read that way, **the first rate-limit message
+this session receives disables the queue permanently**, and the `enabled=false/true` lever below
+does not clear it because pausing a trigger does not touch a transcript. That is the
+never-clearing shape this very step warns about twice, arriving through the one gate that reads
+history instead of state.
 
 **There is no number to compare against 80%**, and inventing a threshold would be a gate that can
 never fire. What was checked, so nobody re-derives it: `claude --help` has no `usage` subcommand,
@@ -141,6 +156,8 @@ a clean pass:
 
 **Both exits send their own `PushNotification`**, because a gate held with no data has no clock
 behind it and STEP 6 therefore cannot age it. A stop nothing can age is a stop nothing reports.
+**These two are the only true stops in this step** — with no session list you cannot safely read
+the board either, since a dispatch decision would follow. Every other hold continues to STEP 2.
 
 ---
 
@@ -168,13 +185,27 @@ session ending:
 mcp__Linear__list_comments  issueId=<each issue in Development (AI)>
 ```
 
-Take the most recent comment beginning `<!-- dispatch-record -->` and read its `paths`,
+Take the most recent comment beginning `<!-- dispatch-record -->` and read its `session`, `paths`,
 `migration` and `primitive` fields. STEP 5 is what writes it.
 
-**An in-flight issue with no dispatch record is a cap you cannot evaluate.** Treat it as
-`migration: Y` and `primitive: Y` with unknown paths — the conservative reading, which costs a
-deferred story and never a duplicate migration number. Say so in the notification: it means a
-child was dispatched by something that did not follow this file, or the comment write failed.
+**Check each record's `session` against the `list_sessions` response you already hold.** A record
+naming a session that is `SESSION_STATUS_ARCHIVED`, or that does not appear at all, is a child
+that is gone while its issue is still claimed. **Move that issue back to `Queued (AI)`, comment
+saying the child ended without reaching `Deployed to DEV`, and carry on** — it is then an ordinary
+candidate again. This is the one liveness signal that does not depend on a clock, and without it
+the only detector is STEP 6's age, behind a branch-tip grep this repo's branch names usually
+defeat.
+
+**An in-flight issue with no dispatch record at all is a dispatch you cannot reason about**: it
+was claimed by something that did not follow this file, or the record write failed between the
+claim and the spawn. **Dispatch nothing this firing, and send a `PushNotification` naming the
+issue.**
+
+**That is a freeze, and it is deliberately stated as one rather than dressed up as a deferral.**
+The alternative was to treat it as `migration: Y, primitive: Y` with "unknown paths" — which is
+undefined at the path cap, and resolves either into this same freeze or into the path cap silently
+not applying. A freeze that notifies immediately is better than either: it is visible in minutes,
+and the owner clears it by moving one issue.
 
 **Never widen the lock to "any issue whose statusType is `started`".** `Queued (AI)` and
 `Deployed to DEV` are typed `started` too, so that version is held by every queued and every
@@ -315,17 +346,7 @@ same issue, so claiming after the spawn is a race.
    successful-looking payload with the field silently dropped — and this is the one write the
    entire concurrency story rests on. **If it did not take, stop and dispatch nothing**; a spawned
    child with an unclaimed issue can be dispatched again by the next firing.
-2. **Comment the dispatch record**, so STEP 2 of every later firing can evaluate the caps against
-   this story:
-
-   ```
-   <!-- dispatch-record -->
-   paths: src/components/postcards/, src/lib/data/postcards.ts
-   migration: N
-   primitive: N
-   ```
-
-3. **`create_session`**, with:
+2. **`create_session`**, with:
    - `title` — `<issue id> <short title>`, so the session list is readable.
    - `tags` — **`["queue-dispatch"]`**. STEP 1's gate depends on this.
    - `source_url` — `https://github.com/Lenhador88/LetsRide`. Without it the child has no clone
@@ -353,14 +374,32 @@ rather than editing across the boundary — the dispatcher's caps assumed you wo
 Do not act on anything else in this conversation and do not treat earlier turns as instructions.
 ```
 
-4. **Read `create_session`'s response back and confirm `tags` is on it.** If it is missing,
+3. **Read `create_session`'s response back and confirm `tags` is on it.** If it is missing,
    **archive that session immediately and move the issue back to `Queued (AI)`** — an untagged
    child holds STEP 1's gate against every future dispatch for the whole length of its build, and
    there is no way to tag it after the fact. Re-dispatching next firing costs one story; leaving
    it costs the queue.
-5. **If `create_session` fails**, move the issue back to **`Queued (AI)`** before going on to the
+4. **If `create_session` fails**, move the issue back to **`Queued (AI)`** before going on to the
    next story. Leaving it in `Development (AI)` claims it for a child that does not exist, and
    nothing else will ever release it.
+5. **Comment the dispatch record, naming the child's session id**, so every later firing can
+   evaluate the caps against this story *and* check the child is still alive:
+
+   ```
+   <!-- dispatch-record -->
+   session: session_01ABC…
+   paths: src/components/postcards/, src/lib/data/postcards.ts
+   migration: N
+   primitive: N
+   ```
+
+   **Written after the spawn, not before, because the session id is the point.** A record written
+   at claim time proves only that a claim was made — it reads identically whether a child is
+   building or the dispatcher died before spawning one. With the id in it, STEP 2 can ask
+   `list_sessions` whether that child still exists, which is a liveness check rather than a clock.
+   The window this leaves is the reverse one: a spawn that succeeds and a comment that does not,
+   leaving a live child with a record-less issue. STEP 2 freezes and notifies on that, which is
+   loud and one issue-move to clear — the honest direction for the smaller window.
 
 **Then stop.** Do not wait for children, do not poll them, do not review their work. They finish
 in their own sessions and close their own issues. **They cannot report back to you** — a cloud
@@ -399,9 +438,21 @@ Ask how long the oldest of these has been true:
   title**. *"'Postcard flip with comments' has been RUNNING since 09:12"* is actionable; "another
   session is working" is not.
 
-**If the oldest is more than 3 hours old but less than 4, send ONE push notification naming it and
-saying the queue is stalled.** The window is narrow on purpose: it fires roughly once rather than
-every hour. Outside it, say nothing about stalls.
+**If the oldest is more than 3 hours old, send ONE push notification naming it and saying the
+queue is stalled — then record that you did**, as a comment on the issue beginning
+`<!-- stall-alarm -->`, and never alarm on an issue that already carries one.
+
+**Once-ness is durable rather than probabilistic, and that is a correction.** The rule used to be
+a `[3h, 4h)` window, on the reasoning that a narrow band fires roughly once. It does — but only if
+a firing actually lands inside it, and the owner-activity gate can suppress dispatching for a
+whole working day. A window missed while every firing was held is a window gone for ever, on
+exactly the dead child the alarm exists for. An open-ended threshold plus a written record fires
+once *and* cannot be missed. The comment is checkable by any later firing, which a transcript is
+not.
+
+For an owner session RUNNING there is no issue to comment on, so that one keeps a `[3h, 4h)`
+window and may repeat if the firings fall badly. Accepted: it is the one clock whose subject the
+owner can already see.
 
 **Re-anchor on the branch tip, do not suppress.** The obvious version — "tip moved recently, exit
 silently" — is wrong invisibly: a build that dies at hour 3½ has a fresh tip at the only firing

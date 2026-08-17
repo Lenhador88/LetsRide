@@ -189,10 +189,9 @@ What has to be known outside those files:
   **A session spawned by another session is the exception, and it is what the dispatcher runs
   on.** Probed 2026-08-16 from a `create_session` child with `source_url` set: `permission_mode`
   inherited, and Linear, Supabase and the GitHub tools all reachable. That is a different path
-  from a *trigger*-spawned session and carries none of its losses. **The Claude Code Remote tools
-  a child needs for its completion poke were reported reachable in the same probe but not read
-  back item by item — unverified until a child actually pokes**, and the hourly heartbeat is what
-  covers it if they do not.
+  from a *trigger*-spawned session and carries none of its losses. One inherited capability is
+  unverified and the design leans on it; `.claude/commands/queue-dispatch.md` §Why this shape has
+  it.
 - **Hourly is a server minimum** — `create_trigger` rejects anything more frequent. The stored
   expression is `0 0-23 * * *` rather than `0 * * * *`, because an hourly cron at minute 0 is
   **rewritten server-side to the minute you submitted it**. **Any UI edit re-anchors it** (adding

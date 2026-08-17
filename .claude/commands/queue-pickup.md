@@ -816,11 +816,9 @@ job that could reach Linear at all.
 
 **A session spawned by another *session* inherits them.** Probed 2026-08-16 from a
 `create_session` child with the repo attached: `permission_mode: auto` inherited without
-complaint, and Linear, Supabase and the GitHub tools all reachable. **The Claude Code Remote tools
-this file's STEP 5 poke needs were reported reachable in the same probe but not read back item by
-item, so treat that one as unverified** — if it turns out not to inherit, the poke's error branch
-fires and the queue falls back to its hourly heartbeat. That probe is what made the dispatcher
-possible, and it retires four costs at once:
+complaint, and Linear, Supabase and the GitHub tools all reachable. One capability this file's
+STEP 5 poke depends on is unverified — [`queue-dispatch.md`](queue-dispatch.md) §Why this shape
+carries it. That probe is what made the dispatcher possible, and it retires four costs at once:
 
 | Cost of the reused session | How it is gone |
 |---|---|
