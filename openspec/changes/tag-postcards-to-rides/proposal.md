@@ -132,12 +132,18 @@ the viewer cannot see stays visible if `club_id` says so.
 
 ### The Journal read
 
-`getRideJournal(rideId)` — a plain `.eq('ride_id', rideId)` under the caller's own RLS, ordered
-`created_at desc`. **Not** a `security definer` RPC, an Edge Function or a service-role read: inside
-a definer function the postcards SELECT policy does not run at all, and `CLAUDE.md` records that
-`current_user` there is the owner, so `023`'s participation gate would not fire either.
-`015`'s `club_unread_counts()` is `security invoker` for precisely this reason and is the shape to
-copy.
+`getRideJournal(rideId)` — the ids from `public.ride_journal_postcard_ids(ride)`, then those rows
+read with `POSTCARD_SELECT` under the caller's own RLS, ordered `created_at desc`.
+
+**Amended by PD-166 (`062`).** This read was specified as a plain `.eq('ride_id', rideId)` and
+explicitly **not** a `security definer` RPC — because inside a definer function the postcards SELECT
+policy does not run at all, so one returning rows hands every tagged postcard to every caller.
+That objection stands and the rows still come from an ordinary RLS-governed select. What changed is
+that `062` revoked the client's SELECT on `ride_id` to close the correlation channel, and Postgres
+checks that privilege to *filter* as well as to return — so the filter had to move into a function
+that holds the column. It returns **ids only**, which is what keeps the original objection satisfied:
+a wrong answer there can name an id, never render a row. `015`'s `club_unread_counts()` remains
+`security invoker` and remains the shape for anything returning content.
 
 Consequence, stated rather than discovered: **two riders open the same ride's Journal and correctly
 see different lists.** A club-scoped postcard is in the Journal only for that club's members; a
@@ -280,13 +286,17 @@ EXECUTE. A new WARN means a function landed in `public` or a revoke did not.
 `src/lib/data/postcards.ts`, a `journal` key in `keys.ts`. Changed: `RidePageMenu` gains the
 Journal row it has been omitting (and its doc comment loses the reason it was absent);
 `CreatePostcardForm` gains a ride select mirroring its club select; `createPostcard` and
-`postcardRideIdSchema` carry the id; `Postcard` in `src/types/index.ts` gains the field.
+`postcardRideIdSchema` carry the id. `Postcard` in `src/types/index.ts` gains the embedded ride and
+**not** a `ride_id` field — after `062` no client read can populate one.
 
-**`POSTCARD_SELECT` is `*`, so `ride_id` starts arriving on every postcard read the moment the
-migration applies** — before any type declares it and on screens that will never render it. That is
-harmless (a UUID) and it is stated so it is a decision: the ride's *name* comes only from an
-RLS-filtered embed, and a viewer who cannot see the ride gets a NULL embed and renders nothing.
-No second lookup on the raw id, ever.
+**`POSTCARD_SELECT` was `*`, so `ride_id` started arriving on every postcard read the moment the
+migration applied** — before any type declared it and on screens that will never render it. This
+called that harmless, "a UUID". **It was not**: the value is comparable, so it grouped postcards for
+a viewer who could resolve neither the ride nor its crew. PD-165 removed it from the select list and
+`062` revoked the grant, which is the half that binds a client talking to PostgREST directly.
+What was always right here is unchanged: the ride's *name* comes only from an RLS-filtered embed, a
+viewer who cannot see the ride gets a NULL embed and renders nothing, and there is no second lookup
+on a raw id — there is now no raw id to look up.
 
 **No new runtime dependency.** Nine before, nine after — re-derive with
 `node -p "Object.keys(require('./package.json').dependencies).length"`.

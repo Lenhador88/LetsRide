@@ -127,7 +127,9 @@
   invariant**: it records the status quo so that fixing `PD-163` is a deliberate edit to a labelled
   line rather than a surprise failure.
 - [x] 2.12 `has_column_privilege('authenticated','public.postcards','ride_id','INSERT')` and `'SELECT'`
-  are both true.
+  are both true. **The SELECT half was inverted by `062` (PD-166)** — the assertion is still in
+  `rls_test.sql`, relabelled and expecting `false`, because it is the record of why the grant existed.
+  INSERT is unchanged.
 - [x] 2.13 A rider cannot set `ride_id` on another rider's postcard — pre-existing rule, new reason
   to try.
 - [x] 2.14 **The club/ride orthogonality**, which no assertion covered: a rider who is a member of
@@ -179,12 +181,19 @@
 
 ## 4. Code — reads, writes, screens
 
-- [ ] 4.1 `src/types/index.ts`: `Postcard` gains `ride_id: string | null` and the optional embedded
-  ride. **`POSTCARD_SELECT` is `*`**, so the raw id arrives everywhere the moment 3.1 lands — the type
-  follows reality rather than creating it.
-- [ ] 4.2 `src/lib/data/postcards.ts`: `getRideJournal(rideId)` — `.eq('ride_id', rideId)`,
-  `POSTCARD_SELECT`, newest-first, the same `before` cursor the feed uses. **Invoker rights only**: no
-  RPC, no Edge Function, no service-role read.
+- [ ] 4.1 `src/types/index.ts`: `Postcard` gains the optional embedded ride. **It does NOT gain
+  `ride_id`** — `062` revoked the client's SELECT on the column, `POSTCARD_SELECT` cannot name it,
+  and a field on the type that no read can populate is a fact nobody rechecks. (This task read
+  *"gains `ride_id: string | null`… `POSTCARD_SELECT` is `*`, so the raw id arrives everywhere"*;
+  PD-165 ended the `*` and PD-166 ended the grant.)
+- [ ] 4.2 `src/lib/data/postcards.ts`: `getRideJournal(rideId)` — two steps, because `062` moved the
+  filter: `supabase.rpc('ride_journal_postcard_ids', { ride: rideId })` for the ids, then
+  `POSTCARD_SELECT` with `.in('id', ids)`, newest-first. **The ROWS stay invoker-rights** — no Edge
+  Function, no service-role read, and no function returning postcard rows. The accessor is the one
+  `security definer` step and it returns ids only; see the amended requirement *"The Journal SHALL be
+  read under the caller's own row security"*. The feed's `before` cursor does not carry over as
+  written — the accessor takes no page — so either page in the second step or state that a ride's
+  Journal is unpaginated.
 - [ ] 4.3 The ride embed on the postcard read is RLS-filtered; a NULL embed renders **nothing** — no
   chip, no "Private ride", no disabled control. No second lookup on the raw id, ever.
 - [ ] 4.4 `src/lib/data/rides.ts`: the crew-rides list backing the composer's select — exactly the set

@@ -8364,11 +8364,17 @@ insert into postcards (id, author_id, club_id, image_path, caption, ride_id) val
    '00000000-0000-0000-0000-0000000410c9',
    'postcards/00000000-0000-0000-0000-0000000410a1/41e05000-0000-4000-8000-000000041e05.jpg',
    'Private club, public club''s ride', '00000000-0000-0000-0000-000000041f02');
+-- Counted as the OWNER: 062 revokes SELECT on ride_id from authenticated, so a
+-- client can no longer filter on the column at all. What is under test is the
+-- three INSERTs above, whose grant and policy are both untouched — so the write
+-- stays the rider's and only the read-back moves.
+reset role;
 select assert_eq((select count(*)::int from postcards
                    where ride_id in ('00000000-0000-0000-0000-000000041f01',
                                      '00000000-0000-0000-0000-000000041f02',
                                      '00000000-0000-0000-0000-000000041f03')),
   3, '041: the organizer tags all three of their own rides with no ride_members row of their own');
+set role authenticated;
 
 -- --------------------------------------------------------------------------
 -- 041.2  The audience is unchanged, WIDENING direction. This is the leak the
@@ -8412,18 +8418,26 @@ insert into postcards (id, author_id, club_id, image_path, caption, ride_id) val
   ('00000000-0000-0000-0000-000000041e03', '00000000-0000-0000-0000-0000000410b1',
    null, 'postcards/00000000-0000-0000-0000-0000000410b1/41e03000-0000-4000-8000-000000041e03.jpg',
    'Great run', '00000000-0000-0000-0000-000000041f01');
+-- The tag is read back as the OWNER from here on. 062 revokes SELECT on
+-- postcards.ride_id from authenticated, so a client cannot read what it just
+-- wrote — the INSERT grant is untouched and it is the INSERT these fixtures
+-- test, so the write is still made as the rider and only the read-back moves.
+reset role;
 select assert_eq((select ride_id from postcards where id = '00000000-0000-0000-0000-000000041e03'),
   '00000000-0000-0000-0000-000000041f01'::uuid,
   '041: a crew member with status `going` tags their postcard to the ride');
+set role authenticated;
 
 select set_config('test.uid', '00000000-0000-0000-0000-0000000410c1', false);
 insert into postcards (id, author_id, club_id, image_path, caption, ride_id) values
   ('00000000-0000-0000-0000-000000041e04', '00000000-0000-0000-0000-0000000410c1',
    null, 'postcards/00000000-0000-0000-0000-0000000410c1/41e04000-0000-4000-8000-000000041e04.jpg',
    'Made it after all', '00000000-0000-0000-0000-000000041f01');
+reset role;
 select assert_eq((select ride_id from postcards where id = '00000000-0000-0000-0000-000000041e04'),
   '00000000-0000-0000-0000-000000041f01'::uuid,
   '041: a crew member with status `maybe` tags identically — is_ride_crew carries no status filter');
+set role authenticated;
 
 -- --------------------------------------------------------------------------
 -- 041.5  The CREW conjunct, in isolation. 410d1 can see the ride — asserted,
@@ -8639,8 +8653,16 @@ select set_config('test.uid', '00000000-0000-0000-0000-00000004101a', false);
 select assert_eq((select count(*)::int from rides
                    where id = '00000000-0000-0000-0000-000000041f02'),
   1, '041: the OWNER of the ride''s club can see the ride ...');
-select assert_eq((select count(*)::int from postcards
-                   where ride_id = '00000000-0000-0000-0000-000000041f02'),
+-- The Journal query is public.ride_journal_postcard_ids from 062 onward: the
+-- client cannot filter postcards on ride_id any more, so a `where ride_id = …`
+-- here would be asserting against a read no rider can issue. Every rider in
+-- this section can SEE the ride they are asked about — asserted immediately
+-- above in each case — so the accessor's own ride conjunct changes none of
+-- these expected values, and each one still measures exactly what it did: what
+-- club_id lets this rider read.
+select assert_eq(
+  (select count(*)::int
+     from public.ride_journal_postcard_ids('00000000-0000-0000-0000-000000041f02')),
   0, '041: ... and reads NOTHING in its Journal, because that postcard is scoped to a club they are not in');
 
 select set_config('test.uid', '00000000-0000-0000-0000-00000004101b', false);
@@ -8648,12 +8670,14 @@ select assert_eq((select role from club_members
                    where club_id = '00000000-0000-0000-0000-0000000410ca'
                      and user_id = '00000000-0000-0000-0000-00000004101b'),
   'admin', '041: the ADMIN of the ride''s club holds the role ...');
-select assert_eq((select count(*)::int from postcards
-                   where ride_id = '00000000-0000-0000-0000-000000041f02'),
+select assert_eq(
+  (select count(*)::int
+     from public.ride_journal_postcard_ids('00000000-0000-0000-0000-000000041f02')),
   0, '041: ... and reads nothing either — `admin` buys no moderation reach, there is no admin role in this system');
 select set_config('test.uid', '00000000-0000-0000-0000-0000000410f1', false);
-select assert_eq((select count(*)::int from postcards
-                   where ride_id = '00000000-0000-0000-0000-000000041f02'),
+select assert_eq(
+  (select count(*)::int
+     from public.ride_journal_postcard_ids('00000000-0000-0000-0000-000000041f02')),
   1, '041: while an ordinary member of the postcard''s OWN club reads it — the zeroes above are about club_id, not about the ride');
 
 -- --------------------------------------------------------------------------
@@ -8670,8 +8694,12 @@ insert into blocks (blocker_id, blocked_id) values
 set role authenticated;
 
 select set_config('test.uid', '00000000-0000-0000-0000-0000000410b1', false);
+-- `id in (accessor)` rather than `where ride_id = …`, for 041.13's reason. The
+-- author filter stays a filter on postcards, which is still readable per column
+-- — and it re-reads under the caller's own RLS, so a postcard the accessor
+-- should not have named would still count zero here.
 select assert_eq((select count(*)::int from postcards
-                   where ride_id = '00000000-0000-0000-0000-000000041f01'
+                   where id in (select public.ride_journal_postcard_ids('00000000-0000-0000-0000-000000041f01'))
                      and author_id = '00000000-0000-0000-0000-0000000410c1'),
   0, '041: the blocked rider sees none of the blocker''s postcards in the Journal query');
 select assert_eq((select count(*)::int from postcards
@@ -8679,7 +8707,7 @@ select assert_eq((select count(*)::int from postcards
   1, '041: ... and still sees their own');
 select set_config('test.uid', '00000000-0000-0000-0000-0000000410c1', false);
 select assert_eq((select count(*)::int from postcards
-                   where ride_id = '00000000-0000-0000-0000-000000041f01'
+                   where id in (select public.ride_journal_postcard_ids('00000000-0000-0000-0000-000000041f01'))
                      and author_id = '00000000-0000-0000-0000-0000000410b1'),
   0, '041: and the blocker sees none of the blocked rider''s — symmetric from one directional row');
 rollback to savepoint tag_block_041;
@@ -8740,9 +8768,11 @@ $tagged_caption$;
 select assert_eq((select caption from postcards where id = '00000000-0000-0000-0000-000000041e03'),
   'Great run, edited',
   '041: ... and can STILL edit its caption — the mirror of rls_test.sql:719-727, which refuses the club case and is accepted only because club_id is updatable');
+reset role;
 select assert_eq((select ride_id from postcards where id = '00000000-0000-0000-0000-000000041e03'),
   '00000000-0000-0000-0000-000000041f01'::uuid,
   '041: ... with the tag untouched by the edit');
+set role authenticated;
 
 -- --------------------------------------------------------------------------
 -- 041.17  Nulling the tag changes NOBODY's visibility. The strongest available
@@ -8800,8 +8830,10 @@ select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000
 select set_config('test.uid', '00000000-0000-0000-0000-00000004101a', false);
 select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-000000041e06'),
   1, '041: ANOTHER rider''s postcard survives the ride''s deletion — set null, never cascade');
+reset role;
 select assert_eq((select ride_id from postcards where id = '00000000-0000-0000-0000-000000041e06'),
   null::uuid, '041: ... with its tag nulled by the referential action, which runs privileged and is not gated by the withheld UPDATE grant');
+set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-0000000410c1', false);
 select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-000000041e04'),
   1, '041: ... and so does a third rider''s, read from their own session');
@@ -8864,8 +8896,18 @@ select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride
   false, '041: authenticated holds NO UPDATE grant on postcards.ride_id — the tag is set once');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'INSERT'),
   true, '041: ... but may INSERT it, or nothing could ever be tagged');
+-- INVERTED BY 062, and kept in place rather than deleted because it is the
+-- record of why the grant existed. It read `true, '041: ... and may SELECT it,
+-- or the Journal query could not filter on it'` — a deliberate assertion, and
+-- the exact collision PD-166 was filed to hold open: Postgres checks SELECT on
+-- a column to FILTER on it, so the Journal wanted the same privilege the
+-- correlation channel did. 062 resolves it in the Journal's favour by moving
+-- the filter into public.ride_journal_postcard_ids, which holds the column so
+-- authenticated does not have to. The full 062 section is at the end of this
+-- file; this line stays here so 041's enumeration of its own grants still reads
+-- as a complete account.
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'SELECT'),
-  true, '041: ... and may SELECT it, or the Journal query could not filter on it');
+  false, '062: authenticated may NOT select postcards.ride_id — 041 granted it so the Journal could filter on it, and PD-166 chose the accessor over the grant');
 
 -- 041 kept both of these and 044 left them alone; 046 takes them, applying 045's
 -- own objection back to this table — "the policy, not the grant, is what refuses
@@ -14162,6 +14204,275 @@ set role authenticated;
 rollback to savepoint ride_chat_unread_061;
 
 reset role;
+
+\echo ''
+\echo '# The ride tag is read through an accessor, never off the column (062)'
+
+-- ===========================================================================
+-- 062. postcards.ride_id stops being client-readable, and the Journal reads it
+--      through public.ride_journal_postcard_ids instead.
+-- ===========================================================================
+--
+-- PD-166, option A. 041 granted `select (ride_id)` deliberately — "or the
+-- Journal query could not filter on it", because Postgres checks the column
+-- privilege to FILTER as well as to RETURN — and that grant is also the
+-- correlation channel: a raw uuid comparable across postcards by a viewer who
+-- can resolve neither the ride nor its crew. 062 gives the privilege to the
+-- accessor instead. 041's own assertion is inverted in place rather than
+-- deleted, up in the 041 section, where it is the record of why the grant
+-- existed.
+--
+-- The riders, and what each one is for:
+--   6201  organizer of the PUBLIC ride, in no club
+--   6202  author of the app-wide postcards, member of the private club and
+--         crew of its ride -- so every fixture here is reachable through 041's
+--         own INSERT gate rather than only through the table owner
+--   6203  owner of the PRIVATE club and organizer of its ride
+--   6204  onboarded outsider: sees the public ride and the app-wide postcards,
+--         and neither the private club nor its ride -- the RIDE conjunct
+--   6205  blocks 6202                      -- the block arm, through the accessor
+--   6206  hides 6202's postcard            -- the hide arm, through the accessor
+savepoint ride_journal_accessor_062;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000062001', 'journalaccessorhost@example.com'),
+  ('00000000-0000-0000-0000-000000062002', 'journalaccessorauthor@example.com'),
+  ('00000000-0000-0000-0000-000000062003', 'journalaccessorclub@example.com'),
+  ('00000000-0000-0000-0000-000000062004', 'journalaccessoroutside@example.com'),
+  ('00000000-0000-0000-0000-000000062005', 'journalaccessorblocker@example.com'),
+  ('00000000-0000-0000-0000-000000062006', 'journalaccessorhider@example.com');
+reset role;
+
+update profiles set username = 'accessorhost',    location = 'Haarlem',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000062001';
+update profiles set username = 'accessorauthor',  location = 'Utrecht',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000062002';
+update profiles set username = 'accessorclub',    location = 'Zutphen',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000062003';
+update profiles set username = 'accessoroutside', location = 'Sneek',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000062004';
+update profiles set username = 'accessorblocker', location = 'Roermond',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000062005';
+update profiles set username = 'accessorhider',   location = 'Dokkum',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000062006';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000620c1', 'Accessor Private MC', false,
+   '00000000-0000-0000-0000-000000062003');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000000620c1', '00000000-0000-0000-0000-000000062002', 'member');
+
+-- 62f01 public, no club -- every signed-in rider can see it.
+-- 62f02 the private club's ride, so 6204 can see its POSTCARD and not the ride.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000062f001', 'Accessor Open Run', 'The Locks',
+   now() + interval '7 days', true, null, '00000000-0000-0000-0000-000000062001'),
+  ('00000000-0000-0000-0000-00000062f002', 'Accessor Secret Run', 'The Yard',
+   now() + interval '8 days', false, '00000000-0000-0000-0000-0000000620c1',
+   '00000000-0000-0000-0000-000000062003');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-00000062f001', '00000000-0000-0000-0000-000000062002', 'going'),
+  ('00000000-0000-0000-0000-00000062f002', '00000000-0000-0000-0000-000000062002', 'going');
+
+-- created_at is explicit because the accessor promises an ORDER and one of the
+-- assertions below is that order. 041 left the column client-writable (PD-163),
+-- so this is the seed writing a value it is allowed to write, not a bypass.
+insert into postcards (id, author_id, club_id, image_path, caption, created_at, ride_id) values
+  ('00000000-0000-0000-0000-0000000620e1', '00000000-0000-0000-0000-000000062002',
+   null, 'postcards/00000000-0000-0000-0000-000000062002/620e1.jpg',
+   'App-wide, open ride', timestamptz '2026-02-01 10:00:00+00',
+   '00000000-0000-0000-0000-00000062f001'),
+  ('00000000-0000-0000-0000-0000000620e2', '00000000-0000-0000-0000-000000062003',
+   '00000000-0000-0000-0000-0000000620c1', 'postcards/00000000-0000-0000-0000-000000062003/620e2.jpg',
+   'Private club, open ride', timestamptz '2026-02-01 11:00:00+00',
+   '00000000-0000-0000-0000-00000062f001'),
+  ('00000000-0000-0000-0000-0000000620e3', '00000000-0000-0000-0000-000000062002',
+   null, 'postcards/00000000-0000-0000-0000-000000062002/620e3.jpg',
+   'App-wide, secret ride', timestamptz '2026-02-01 12:00:00+00',
+   '00000000-0000-0000-0000-00000062f002');
+
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000062005', '00000000-0000-0000-0000-000000062002');
+insert into postcard_hides (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-0000000620e1', '00000000-0000-0000-0000-000000062006'),
+  -- 6202 hides their OWN postcard. 011 accepts that and makes it inert, because
+  -- the author branch of the SELECT policy is unconditional — the accessor
+  -- restates it unconditionally too, and this row is what proves it did.
+  ('00000000-0000-0000-0000-0000000620e1', '00000000-0000-0000-0000-000000062002');
+
+-- ---------------------------------------------------------------------------
+-- 062.1  THE GRANT. Named by ROLE, never by calling anything — 031's lesson:
+--        the suite runs as the table owner, for whom no grant exists to fail.
+-- ---------------------------------------------------------------------------
+select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'select'),
+  false, '062: authenticated holds no TABLE-level SELECT on postcards — a column-level revoke against a table-level grant is a documented no-op, so the table grant had to go first');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'id', 'SELECT'),
+  true, '062: ... and the re-grant names id ...');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'author_id', 'SELECT'),
+  true, '062: ... author_id ...');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'club_id', 'SELECT'),
+  true, '062: ... club_id, which IS the audience and must stay readable ...');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'image_path', 'SELECT'),
+  true, '062: ... image_path ...');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'caption', 'SELECT'),
+  true, '062: ... caption ...');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'created_at', 'SELECT'),
+  true, '062: ... created_at, the feed''s sort key and pagination cursor ...');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'updated_at', 'SELECT'),
+  true, '062: ... and updated_at — seven columns, one assertion each, so an omission fails here rather than as a screen on the error boundary');
+
+-- The two verbs 062 does NOT touch, asserted so a later grant rewrite cannot
+-- take them in passing: a tag is set once at INSERT and never edited (041 §3).
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'INSERT'),
+  true, '062: ride_id is still INSERTable — PD-256 tags a postcard once, and closing the read must not close the write');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'UPDATE'),
+  false, '062: ... and still not UPDATEable, unchanged from 041');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards' and grantee = 'anon'),
+  0, '062: anon holds nothing on postcards, in any verb — decision #1, unchanged');
+
+-- ---------------------------------------------------------------------------
+-- 062.2  THE ACCESSOR, as an object. `public` and not `private` is 031's
+--        lesson in the other direction: PostgREST routes only to `public`, so
+--        a worker in `private` is one nothing can call — and the suite, which
+--        holds USAGE on both, could not tell the difference.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select n.nspname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where p.proname = 'ride_journal_postcard_ids'),
+  'public', '062: the accessor lives in public, where PostgREST can route to it — 029 put a worker in private and 031 exists to move it');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.ride_journal_postcard_ids(uuid)', 'execute'),
+  true, '062: authenticated can call it, or the Journal has no read at all ...');
+select assert_eq(
+  has_function_privilege('anon', 'public.ride_journal_postcard_ids(uuid)', 'execute'),
+  false, '062: ... and anon cannot — decision #1');
+select assert_eq(
+  (select prosecdef from pg_proc where proname = 'ride_journal_postcard_ids'),
+  true, '062: it is security definer, which is the whole mechanism — as invoker it would hit the same revoked column its caller does');
+select assert_eq(
+  (select proconfig from pg_proc where proname = 'ride_journal_postcard_ids'),
+  array['search_path=""'], '062: ... with search_path pinned empty, 005''s hardening');
+
+-- ---------------------------------------------------------------------------
+-- 062.3  THE PINNED POLICY, 060.1's fence applied to the other restatement.
+--
+--        A security definer function bypasses RLS, so the accessor carries a
+--        COPY of 011's postcards SELECT qual. Pinned as WHOLE TEXT rather than
+--        by `like`, for 060.1's reason: a pattern match cannot see an arm
+--        added, removed or reordered inside the parts it does not name. 041
+--        already pins the same qual by md5 — that line is 041's account of "the
+--        SELECT policy is not touched by this file"; this one names what copies
+--        it, so the failure arrives at the accessor rather than at 041.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'postcards' and cmd = 'SELECT'),
+  '((author_id = auth.uid()) OR ((NOT private.is_blocked(auth.uid(), author_id)) AND ((club_id IS NULL) OR private.is_club_member(club_id)) AND (NOT (EXISTS ( SELECT 1
+   FROM postcard_hides h
+  WHERE ((h.postcard_id = postcards.id) AND (h.user_id = auth.uid())))))))',
+  '062: postcards SELECT is TEXTUALLY what ride_journal_postcard_ids restates. If this fails, the accessor is stale — update it in the same change rather than re-pinning this string, or the Journal starts naming rows against a rule that no longer exists');
+
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  'the 062 behavioural assertions run as authenticated, or they prove nothing');
+
+-- ---------------------------------------------------------------------------
+-- 062.4  The column is gone from the client, and the rest of the row is not.
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000062002', false);
+select assert_denied($$
+  select ride_id from postcards where id = '00000000-0000-0000-0000-0000000620e1'$$,
+  '062: a rider cannot READ the tag off their own postcard');
+select assert_denied($$
+  select count(*) from postcards where ride_id = '00000000-0000-0000-0000-00000062f001'$$,
+  '062: ... and cannot FILTER on it either, which is the half a select list could never close — Postgres checks the column privilege for a WHERE just as for a target list');
+select assert_eq(
+  (select caption from postcards where id = '00000000-0000-0000-0000-0000000620e1'),
+  'App-wide, open ride',
+  '062: ... while the rest of the row reads exactly as before — the re-grant is what keeps every feed working');
+
+-- ---------------------------------------------------------------------------
+-- 062.5  The accessor answers the Journal, ordered, and its restated audience
+--        matches the policy's arm for arm.
+-- ---------------------------------------------------------------------------
+-- 6202 authored 620e1 and is a member of the private club, so both rows resolve
+-- — and 620e1 resolves through the AUTHOR branch despite the self-hide above.
+select assert_eq(
+  (select array(select * from public.ride_journal_postcard_ids('00000000-0000-0000-0000-00000062f001'))),
+  array['00000000-0000-0000-0000-0000000620e2',
+        '00000000-0000-0000-0000-0000000620e1']::uuid[],
+  '062: the author reads both postcards on the open ride, NEWEST FIRST — and their own is there despite hiding it from themselves, because 011''s author branch is unconditional and the accessor restates it unconditionally');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000062004', false);
+select assert_eq(
+  (select array(select * from public.ride_journal_postcard_ids('00000000-0000-0000-0000-00000062f001'))),
+  array['00000000-0000-0000-0000-0000000620e1']::uuid[],
+  '062: an outsider on the same ride reads the app-wide postcard and NOT the private club''s — club_id is still the whole audience, and the accessor did not widen it');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000062005', false);
+select assert_eq(
+  (select count(*)::int from public.ride_journal_postcard_ids('00000000-0000-0000-0000-00000062f001')),
+  0, '062: a rider who blocked the author reads nothing — decision #2 reaches the accessor, not only the feed');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000062006', false);
+select assert_eq(
+  (select count(*)::int from public.ride_journal_postcard_ids('00000000-0000-0000-0000-00000062f001')),
+  0, '062: and a rider who hid the postcard reads nothing — the hide arm too');
+
+-- ---------------------------------------------------------------------------
+-- 062.6  THE RIDE CONJUNCT, which is the only thing in the accessor that the
+--        SELECT policy does not already do. Without it, a rider holding the id
+--        of a ride they cannot see learns which of their visible postcards
+--        belong to it — the correlation channel PD-166 is about, arriving
+--        through the accessor that was supposed to close it.
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000062004', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000620e3'),
+  1, '062: the outsider CAN see the postcard tagged to the secret ride — it is app-wide, so the zero below is about the ride and nothing else');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000062f002'),
+  0, '062: ... and cannot see that ride ...');
+select assert_eq(
+  (select count(*)::int from public.ride_journal_postcard_ids('00000000-0000-0000-0000-00000062f002')),
+  0, '062: ... so its Journal answers nothing for them — private.can_read_ride, 060''s pinned helper, and 041''s INSERT gate in the read direction');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000062002', false);
+select assert_eq(
+  (select array(select * from public.ride_journal_postcard_ids('00000000-0000-0000-0000-00000062f002'))),
+  array['00000000-0000-0000-0000-0000000620e3']::uuid[],
+  '062: while the club member on its crew reads it — the ride conjunct excludes the outsider and nobody else');
+
+-- ---------------------------------------------------------------------------
+-- 062.7  A ride id that resolves to nothing is answered the same way as one the
+--        caller may not see: zero rows, no error. 041.9's rule in the read
+--        direction — a distinguishable refusal is an oracle telling a rider
+--        that a ride they cannot see exists.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from public.ride_journal_postcard_ids('00000000-0000-0000-0000-0000009f9f9f')),
+  0, '062: a nonexistent ride returns zero rows rather than raising');
+select assert_eq(
+  (select count(*)::int from public.ride_journal_postcard_ids(null)),
+  0, '062: and so does a null ride — nothing is tagged to nothing');
+
+reset role;
+rollback to savepoint ride_journal_accessor_062;
 
 rollback;
 
