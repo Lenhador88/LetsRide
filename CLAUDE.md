@@ -397,14 +397,16 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**There is exactly one Edge Function, and it is the only place a service-role key exists.**
-`supabase/functions/delete-account/` — added 2026-08-06, the first in the repo. Removing an
-`auth.users` row needs the Auth admin API, which needs the service-role key; that is decision
-#8's **first** reading ("more server compute, same database") and not its third. The function
-owns one operation, not the database.
+**There are two Edge Functions, and `delete-account` is the only place a service-role key
+exists.** Count rather than trust that — `list_edge_functions` against either ref, against
+`ls supabase/functions/`. Removing an `auth.users` row needs the Auth admin API, which needs the
+service-role key; that is decision #8's **first** reading ("more server compute, same database")
+and not its third. `resolve-ride-location` geocodes a ride's meeting point and renders its tiles
+— an outside call and a third-party key, and no service-role key. Each owns one operation, not
+the database.
 
-Four rules, and they are the whole reason this does not contradict §What Not To Do's "don't
-introduce a service-role key into the app" — **the function is not the app**:
+Four rules on `delete-account`, and they are the whole reason this does not contradict §What Not
+To Do's "don't introduce a service-role key into the app" — **the function is not the app**:
 
 - **The key lives only in the function's secret store.** Not in `src/`, `.env.local.example`,
   Vercel, a fixture or any `NEXT_PUBLIC_*`. `src/__tests__/no-service-role-key.test.ts` is the
@@ -419,17 +421,28 @@ introduce a service-role key into the app" — **the function is not the app**:
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**It is deployed to both projects and `ACTIVE`, as of 2026-08-11** — and it stays an **owner
-action**, which is why it is still drift waiting to happen. There is no `supabase` CLI in the
-build container and the Supabase MCP server has no deploy tool, so nothing in a session can
-redeploy it after an edit to `supabase/functions/delete-account/index.ts`, and CI has no path that
-would notice. Check the deploy rather than trusting this line, and check that both projects run
-the *same* build:
+**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's
+`ezbr_sha256` is equal across the two projects — and `delete-account`'s deployed build is
+nonetheless STALE, older than its own `index.ts`.** Measured 2026-08-17, and the pairing is the
+point: cross-project equality says the two projects agree, never that either matches the repo.
+Deploying is an **owner action** — there is no `supabase` CLI in the build container, and the
+MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
+§Working Principles says to treat as blocked under any connector name — so an edit under
+`supabase/functions/` is drift from the moment it merges, and CI has no path that would notice.
+Compare the deploy against the file rather than trusting this line, then check that both
+projects run the same build:
+
+```bash
+# the currency check — a file newer than the deploy means the deployed build is stale
+TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/
+```
 
 ```
 mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
 mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
-# status ACTIVE, verify_jwt true, and ezbr_sha256 equal across the two
+# updated_at vs the commit date above; then status ACTIVE, verify_jwt true,
+# and ezbr_sha256 equal across the two. A moved sha is necessary, not sufficient —
+# verify a redeploy by content, per docs/HANDOFF.md's Store readiness row 2.
 ```
 
 **There is one doorway now, and almost nothing should reach past it:**
