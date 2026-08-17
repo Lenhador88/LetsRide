@@ -61,10 +61,15 @@ now fail CI instead of reaching an inbox.
 3. the copy-this-link fallback's `href`;
 4. **that fallback's visible text**, which is the one a `grep` for `href` does not find.
 
-`auth-email-templates.test.ts` holds the three *hrefs* identical and checks the visible text is
-present, so an edit that changes one href and not the others fails CI. **Change all four or
-none** — a button and a fallback pointing at different URLs breaks for whichever half of the
-recipients get the other button, and it looks perfectly correct in a diff.
+**Change all four, or none** — a button and a fallback pointing at different URLs breaks for
+whichever half of the recipients get the other button, and it looks perfectly correct in a diff.
+
+**Changing all four is not enough on its own: the fifth copy is in the test.**
+`auth-email-templates.test.ts` holds the three *hrefs* identical to each other *and* to a
+hardcoded `LINKS` constant, and checks the visible text repeats it. That is deliberate — it makes
+a link change something a reviewer has to see twice — but it means a correct edit to a template
+turns CI red until the constant moves with it. Editing the file and not the test is a failure the
+suite reports plainly; the reverse, a consistent-but-wrong edit, is what the constant catches.
 
 **`confirm-signup.html`'s link is PD-233's form, verbatim:**
 
@@ -83,13 +88,15 @@ asks for this template to land *after* PD-233 is proven working. If PD-233 is st
 paste, this paste closes it — so prove the link on the project you paste into before considering
 either issue done.
 
-**Proving it on DEV takes two temporary changes, and the polarity is the trap.** DEV runs
-`mailer_autoconfirm: true` — autoconfirm **on**, so GoTrue sends **no confirmation mail at all**
-and there is no `{{ .TokenHash }}` to click. (`false` reads like "confirmation off" and means the
-opposite; `docs/ENVIRONMENTS.md` §Auth configuration flags exactly this.) DEV's `{{ .SiteURL }}`
-also points at `app-dev.letsride.social`, which sits behind Vercel SSO. So a real DEV test means
-turning autoconfirm off temporarily *and* using a Vercel-authenticated browser — PD-233's own
-conclusion is that a throwaway PROD account on a real inbox is the honest alternative.
+**Proving it on DEV takes one temporary setting change and one access condition, and the polarity
+is the trap.** DEV runs autoconfirm **on**, which means GoTrue sends **no confirmation mail at
+all** and there is no `{{ .TokenHash }}` to click. Read the setting rather than trusting this
+sentence — it is a dashboard value, this paragraph tells you to flip it, and `false` reads like
+"confirmation off" and means the opposite; `docs/ENVIRONMENTS.md` §Auth configuration carries the
+credential-free `curl` and the polarity warning. The access condition does not revert: DEV's
+`{{ .SiteURL }}` points at `app-dev.letsride.social`, which sits behind Vercel SSO, so the link
+needs a Vercel-authenticated browser however the setting is left. PD-233's own conclusion is that
+a throwaway PROD account on a real inbox is the honest alternative.
 
 `reset-password.html` keeps `{{ .ConfirmationURL }}` and therefore stays on `/auth/callback` and
 stays PKCE. That is deliberate and PD-233 says so explicitly: `confirmableOtpType` refuses
