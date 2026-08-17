@@ -75,10 +75,10 @@ function RideCrewScreen() {
   return (
     <>
       {/* The title is the only part of the chrome that needs the read — the
-          ride id, the back target and the sub-page switcher all come out of the
-          URL — so the header renders straight away, with `undefined` for the
-          title and a placeholder bar in its place, rather than the whole screen
-          waiting on it. */}
+          ride id and the back target both come out of the URL — so the header
+          renders straight away, with `undefined` for the title and a
+          placeholder bar in its place, rather than the whole screen waiting on
+          it. */}
       <RideHeader
         rideId={id}
         title={ride.data?.title}
@@ -87,7 +87,10 @@ function RideCrewScreen() {
         isOrganizer={ride.data?.is_organizer}
       />
 
-      <div className="pt-header-sub-extra flex flex-col gap-4 pb-4">
+      {/* No `.pt-header-sub-extra`: the sub-page switcher that made this header
+          the 120px variant is deleted (PD-254), so the shell's own 96px is the
+          whole of it. */}
+      <div className="flex flex-col gap-4 pt-4 pb-4">
         {gate.error ? (
           <ErrorState onRetry={gate.refetch} />
         ) : !crew ? (

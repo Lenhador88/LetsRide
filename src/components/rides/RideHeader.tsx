@@ -2,13 +2,25 @@ import Link from 'next/link'
 import { EditIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { RideChatButton } from '@/components/rides/RideChatButton'
-import { RidePageMenu } from '@/components/rides/RidePageMenu'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { routes } from '@/lib/routes'
 
 /**
- * The chrome the three ride sub-pages share — title, back, and whatever the
- * design puts in the 20px row under the title.
+ * The chrome the three ride screens share — title, back, and the one sub-row
+ * the design still puts under a title.
+ *
+ * **`RidePageMenu` is deleted (PD-254) and the `current` prop outlived it.** The
+ * switcher was a bottom sheet that hid its own options, and everything it listed
+ * is a visible row on the ride plan now — so two of the three screens have no
+ * sub-row at all and the header is 96px on both. `current` still decides two
+ * things a merged screen does not remove: where **back** goes, and whether the
+ * chat entry points are drawn at all (the chat screen draws no way into itself).
+ *
+ * **Crew's back target moved with the menu, and that is not cosmetic.** The crew
+ * route used to be reachable only through the switcher, from anywhere, so `/rides`
+ * was the honest answer. It is now reached from the rail on the ride plan, and
+ * nowhere else, so back returns to the ride. A back button that leaves the
+ * screen a rider came from is the kind of thing nothing fails on.
  *
  * **The chat button is built as of `034`.** This docstring used to explain why it
  * was omitted — "it has no tables at all… a control that renders but does
@@ -33,10 +45,10 @@ import { routes } from '@/lib/routes'
  * would tap through to a screen that can only tell them to join. Better to not
  * offer it: the design's own principle, applied to a state it does not draw.
  *
- * **It is no longer the only way in, and it never should have been.** `isCrew`
- * is passed on to `RidePageMenu` as well, which lists Chat as a labelled row on
- * the same predicate — because in practice nobody found the icon. See that
- * component for the measurement.
+ * **It is no longer the only way in, and it never should have been.** The ride
+ * plan draws a labelled `Ride chat` row on exactly this predicate — because in
+ * practice nobody found the icon. `RideChatRow` carries the measurement; that
+ * row is what PD-254 had to keep when it deleted the sheet that used to hold it.
  *
  * `Ride - Ride plan - Sub pages` (`2375:9114`) also puts a 16×16 `Warning/100`
  * notification dot on this button. **Drawn as of `061`** — PD-120 built the
@@ -85,11 +97,11 @@ export function RideHeader({
   return (
     <Header
       title={title}
-      // Chat is entered from the ride, so back returns there rather than to the
-      // list — the plan and crew pages are the list's children, and chat is the
-      // ride's. `Ride - Chat` draws the same arrow for both, which is exactly
-      // the kind of thing a static frame cannot distinguish.
-      backHref={onChat ? routes.ride(rideId) : '/rides'}
+      // Chat and Crew are both entered from the ride, so back returns there
+      // rather than to the list — the plan is the list's child, and the other
+      // two are the ride's. `Ride - Chat` draws the same arrow for all three,
+      // which is exactly the kind of thing a static frame cannot distinguish.
+      backHref={current === 'plan' ? '/rides' : routes.ride(rideId)}
       subRow={
         onChat ? (
           // `Ride - Chat` replaces the page switcher with a crew count
@@ -103,9 +115,10 @@ export function RideHeader({
               {ridersCount} {ridersCount === 1 ? 'rider' : 'riders'}
             </span>
           )
-        ) : (
-          <RidePageMenu rideId={rideId} current={current} isCrew={isCrew} />
-        )
+        ) : // Nothing under the title on the plan and the crew screens: the
+        // switcher that used to live here is deleted, and `Header` draws the
+        // 96px variant when no sub-row is passed.
+        undefined
       }
       secondaryAction={
         !onChat && isOrganizer ? (

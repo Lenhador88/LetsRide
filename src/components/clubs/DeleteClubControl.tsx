@@ -12,9 +12,9 @@ import { queryKeys } from '@/lib/query/keys'
 /**
  * The destructive control at the foot of `/clubs/detail/edit` — PD-101,
  * `design.md` §D4, `club-lifecycle`'s delete requirement. Not in
- * `ClubDetailPageMenu`, for the same reason `DeleteRideControl` is not in
- * `RidePageMenu`: that sheet is navigation, and an irreversible action does
- * not belong in it.
+ * `ClubDetailPageMenu`: that sheet is navigation, and an irreversible action
+ * does not belong in it. The ride side made the same call and has since deleted
+ * its switcher outright (PD-254) — see `DeleteRideControl`.
  *
  * **This is the one confirmation in the app whose numbers are a specified
  * deliverable, not copy.** Deleting a club destroys other members' postcards
