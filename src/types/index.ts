@@ -797,8 +797,10 @@ export type NotificationCursor = { createdAt: string; id: string }
  * Most screens want `PlaceSearchResult` instead. **Nothing reads this RAW
  * shape** — `src/lib/data/places.ts` exists, but it reads through
  * `search_places()`/`locality_centroid()`, which return `PlaceSearchResult`/
- * `LocalityCentroid`, never a row of this type directly. The table itself is
- * empty until the operator load in `037` §6.
+ * `LocalityCentroid`, never a row of this type directly. The table is loaded on
+ * both projects (`PD-195`) — `docs/reference/schema.md`'s `places` row carries
+ * the count, and `docs/HANDOFF.md` §`places` carries the command that
+ * re-derives it.
  */
 export type Place = {
   /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */
@@ -938,8 +940,10 @@ export type PlaceSearchResult = {
  * all**, which is the case the caller has to handle first.
  *
  * It exists for one job: when the rider declines GPS, `profiles.location` — the
- * free-text city from onboarding — is the *only* position signal the app holds
- * (`rides` has no coordinates and nothing stores a rider position). This turns
+ * free-text city from onboarding — is the position signal to fall back on. It
+ * is no longer the *only* one: `051` gave `rides` `latitude`/`longitude`, so a
+ * ride the rider is looking at can supply a coordinate too (`PD-114` step 3).
+ * Nothing stores a rider's own position. This turns
  * that string into a `near_lat`/`near_lon` pair for `search_places()`, which is
  * the difference between a 2,957 ms nationwide search and a 152 ms local one.
  *
@@ -952,13 +956,26 @@ export type PlaceSearchResult = {
  *
  * Four things the caller has to know:
  *
- *  - **Zero rows is the "no location" answer, and it is the common one.** It is
- *    returned for an unknown city, for a null or empty `q`, and — today — for
- *    *every* input, because `places` is empty on DEV and does not exist on PROD
- *    until the operator load runs. All of these mean the same thing at the call
- *    site: call `search_places()` without coordinates. Do **not** try to tell
- *    them apart; an unloaded index is indistinguishable from an unknown city by
+ *  - **Zero rows is the "no location" answer.** It is returned for an unknown
+ *    city, for a null or empty `q`, and for every input against an index that
+ *    has not been loaded. All of these mean the same thing at the call site:
+ *    call `search_places()` without coordinates. Do **not** try to tell them
+ *    apart; an unloaded index is indistinguishable from an unknown city by
  *    design, not by oversight.
+ *
+ *    **It is not the common answer, and `040` — the migration this block sends
+ *    you to — states in its own header that it is.** That file says `places`
+ *    "holds 0 rows on DEV and does not exist on PROD at all", and that `rides`
+ *    "has no coordinate columns … That is the whole inventory". Both were true
+ *    when it was written and neither is now; migrations are append-only, so
+ *    those lines stay wrong for ever and reading the source is what re-derives
+ *    the mistake. Count instead:
+ *
+ *    ```sql
+ *    select (select count(*) from public.places) as rows,
+ *           (select count(*) from public.locality_centroid('Utrecht')) as resolves;
+ *    -- 736,538 / 1 on both projects, 2026-08-17
+ *    ```
  *  - **Matching is EXACT** — `lower(btrim(locality))` on both sides, so case and
  *    surrounding whitespace are forgiven and nothing else is. `Utrech`,
  *    `trecht` and `Utrechtt` all return zero rows. This is deliberate and the
