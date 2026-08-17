@@ -226,7 +226,7 @@ history instead of state.
 **There is no number to compare against 80%**, and inventing a threshold would be a gate that can
 never fire. What was checked, so nobody re-derives it: `claude --help` has no `usage` subcommand,
 `~/.claude` holds no usage file, and no environment variable carries one. **This matters more now
-than it did**, not less: a firing used to start one build and can now start three, plus one scout
+than it did**, not less: a firing used to start one build and can now start two, plus one scout
 agent per candidate. The lever that works is the owner's:
 
 ```
@@ -264,8 +264,11 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
   from `Backlog AI`, `Todo Human`, `Todo AI` or `Needs decision`; `Todo AI` is the one to be
   careful with, because the name reads like permission and is not one.
 - **In flight** — everything in `Development (AI)`. Those are claimed by a child that is still
-  working. **Do not dispatch them again, and do not treat them as a lock on the queue** — but you
-  **must** read their dispatch records, because STEP 4's caps are evaluated against them.
+  working. **Do not dispatch them again, and do not treat them as a full stop on the queue the way
+  `Needs help` is** — but you **must** read their dispatch records, because STEP 4's caps are
+  evaluated against them and because **each live child occupies one of the two concurrency slots**
+  — a child, not an issue, so several issues sharing one `session` are one slot. The count is
+  below, after the liveness check that says which of them are real.
 
 ### The dispatch record — how a later firing knows what is in flight
 
@@ -306,6 +309,26 @@ issues without anything having to reason about the group at all.
 This is the one liveness signal that does not depend on a clock. STEP 6's age still works without
 it, including with no branch to grep, so this is a faster detector rather than the only one.
 
+**Now count the free slots**, because STEP 3's scout count and STEP 4's batch are both derived from
+it rather than from a flat number:
+
+```
+free slots = 2 − (DISTINCT `session` ids among the dispatch records of issues
+                  still in `Development (AI)` after the check above)
+```
+
+**Count children, not issues, and the distinction is load-bearing rather than pedantic.** The cap
+the owner set is *"2 sessions in parallel max"*, and a group is one session holding two or three
+issues — so counting issues would score a single child as two or three slots and starve the queue
+by exactly the amount grouping was meant to win back. The `session` field on each dispatch record
+is what makes the count possible, and its `group:` line is the cross-check: several issues naming
+one session is one slot.
+
+An issue you just returned to `Queued (AI)` because its child was `ARCHIVED` does not occupy a
+slot; one whose session is `IDLE` does, that being the ordinary state of a child between turns.
+**At zero free slots, dispatch nothing and skip STEP 3 as well** — scouting is the expensive half
+of a firing and there is no batch to scout for. Go to STEP 6, which is silent in that case.
+
 **An in-flight issue with no dispatch record at all is a dispatch you cannot reason about**: it
 was claimed by something that did not follow this file, or the record write failed between the
 claim and the spawn. **Dispatch nothing this firing, and send a `PushNotification` naming the
@@ -345,19 +368,19 @@ outranks its own children on priority, so this is a real trap rather than a hypo
 
 ## STEP 3 — Scout the candidates
 
-**If a hold from STEP 1 or a freeze from STEP 2 is in force, skip this step and go straight to
-STEP 6.** Scouting is the expensive half of a firing — `batch size + 2` agents, each re-paying
-`CLAUDE.md` — and it *writes to the board*, moving stale candidates to `Needs decision`. A held
-firing that scouts anyway spends more than the usage gate saves and mutates the board it was told
-not to act on.
+**If a hold from STEP 1 is in force, a freeze from STEP 2 is in force, or STEP 2 counted zero free
+slots, skip this step and go straight to STEP 6.** Scouting is the expensive half of a firing —
+`free slots + 2` agents, each re-paying `CLAUDE.md` — and it *writes to the board*, moving stale
+candidates to `Needs decision`. A held firing that scouts anyway spends more than the usage gate
+saves and mutates the board it was told not to act on.
 
 **Do not dispatch on titles.** A batch is only safe if the stories in it do not overlap, and
 nothing on the board says what a story will touch.
 
-**Scout in priority order, and stop once you have enough.** Scout the first `batch size + 2`
+**Scout in priority order, and stop once you have enough.** Scout the first `free slots + 2`
 candidates, never the whole column: each scout re-pays `CLAUDE.md` in a fresh window, and a
-ten-deep queue would otherwise scout ten every hour *and* on every child poke, to dispatch three.
-The `+ 2` is the margin for candidates the scout drops as stale or blocked.
+ten-deep queue would otherwise scout ten every hour *and* on every child poke, to dispatch at most
+two. The `+ 2` is the margin for candidates the scout drops as stale or blocked.
 
 **Grouping does not raise this budget, and must not.** STEP 4 re-partitions the candidates you
 already scouted; it does not reach deeper into the queue to fill a group. So a group forms exactly
@@ -484,11 +507,12 @@ reads STEP 2's dispatch records, and the group being dispatched right now has no
 records after selection, not before. The batch check is the only thing standing between a trimmed
 member and a second session over the same paths.
 
-### The batch — at most 3 sessions, counted in groups
+### The batch — one group per free slot
 
-A batch is up to three *groups*, so a firing dispatching three groups of two is building six
-stories in three sessions. Walk the groups in priority order — a group's priority is its
-highest-priority member, ties by that member's `createdAt` — and admit each only if it still
+**A group is one child, so it costs one slot** however many stories are in it. The batch is
+therefore `free slots` *groups*, and with the cap at 2 a firing dispatching two groups of two is
+building four stories in two sessions. Walk the groups in priority order — a group's priority is
+its highest-priority member, ties by that member's `createdAt` — and admit each only if it still
 clears the in-flight caps against every STEP 2 record **and** against every group already admitted
 this firing.
 
@@ -520,11 +544,28 @@ DEV Supabase project**, whose dangerous half the migration cap covers. `WALK_FIX
 it are deliberately uncapped: they create a ride and a club through the app's own forms, which two
 children can do concurrently without interfering.
 
-**Neither 3 is a measured ceiling** — both the batch and the group are starting positions. The
-batch's came from the three sessions running concurrently on 2026-08-16 (PRs #226, #227, #228),
-which had zero `src/` overlap and conflicted only on `docs/HANDOFF.md`; the group's is the
-`reviewer` bound above. Raise either once several rounds have been watched, and watch them
-separately: they bound different things, and a batch of 3 groups of 3 is nine stories in flight.
+**Concurrency cap: at most 2 children in flight at once.** Product owner, 2026-08-17: *"I want to
+scale down our dispatcher to 2 sessions in parallel max."* So **this firing's batch is STEP 2's
+`free slots`, never 2 flat**: two in flight means dispatch nothing, one means dispatch one.
+
+**A slot is a CHILD, not a story** — so a group of three occupies one slot, exactly like a group of
+one. That is the cap being read literally rather than stretched: the owner scaled down *sessions in
+parallel*, and grouping does not add a session. It does mean a firing can now start more stories
+inside the same two slots, which is the point — with only two slots, colliding stories that each
+needed one are precisely the work that was starving.
+
+**Read the cap as a total rather than a per-firing batch size, because the two come apart exactly
+where it matters.** Children outlive the firing that spawned them, STEP 1 excludes them from its
+gate by design, and STEP 2 says `Development (AI)` is no lock on the queue — so a per-batch reading
+lets the next hourly firing add two more alongside two still building, and four run in parallel
+with every rule in this file satisfied and nothing anywhere red.
+
+**Neither the slot cap nor the group ceiling is measured, and moving either is the owner's call
+rather than a session's** — nothing here measures what concurrent builds cost them. They bound
+different things and should be watched separately: two slots of three issues is six stories in
+flight. **Say in the notification when the caps trimmed a batch, how many slots were already taken,
+and when a group carries more than one story**, so they can see whether either is binding or
+decorative.
 
 **Everything not admitted simply waits.** It stays in `Queued (AI)`, it is not commented on, and
 the next dispatch reconsiders it. A story deferred by a cap or a ceiling is not a problem to
@@ -695,8 +736,9 @@ self-heals instead.
 ### What else this step sends, and what it does not
 
 - **A batch was dispatched** → one `PushNotification` naming the issues **grouped as dispatched**,
-  and saying whether a cap or a ceiling trimmed anything. `PD-201 + PD-207 in one session, PD-210
-  in another` is the line; a flat list of three ids hides the shape entirely.
+  saying whether a cap or a ceiling trimmed anything, and including how many of the two slots were
+  already taken when the firing started. `PD-201 + PD-207 in one session, PD-210 in another` is the
+  line; a flat list of three ids hides the shape entirely.
 - **The owner-activity gate is held with work waiting** → nothing, unless the stall clock above
   says otherwise. This is the ordinary state while the owner works, and notifying on it would mean
   a push an hour.
