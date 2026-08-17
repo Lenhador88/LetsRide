@@ -85,9 +85,12 @@ without confirming it still says what the file claims.
    **Both things it said this needs are built**: `supabase/functions/delete-account/` is deployed
    and `ACTIVE` on both projects, and `/legal/account-deletion` is live. The flow shipped with
    PD-102 on 2026-08-16. **What is left is not only a live exercise**: `1.6b` is an open, undecided
-   build defect — a club's last member leaving can destroy postcards that are not theirs — and
-   `2.4` (idempotency under concurrency) is open too. Count them rather than trust this line,
-   `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md`, and read
+   build defect — a club's last remaining member *deleting their account* can destroy postcards
+   that are not theirs, and the default is a product decision nobody has made — and `2.4` is open
+   too (idempotency, already-deleted returning success, no partial state before the auth delete).
+   List them rather than trust this line, because the unticked set mixes build work with owner
+   actions and live exercises:
+   `grep -n '^- \[ \]' openspec/changes/add-account-deletion/tasks.md`. Then read
    `docs/HANDOFF.md` §Store readiness row 2 before scoping anything here.
 2. ~~**Dead navigation.**~~ **Resolved 2026-08-07** — the Inbox tab was removed rather than
    built (PD-100), so the bar draws four tabs and every one has a route. Kept here because the
