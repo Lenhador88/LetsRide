@@ -828,6 +828,14 @@ recoverable: `055` wrote the unreadable row and unblocking revealed it, and ther
 reveal. That matches every other `036` fan-out, each of which suppresses at fan-out when a block
 stands (§7.1), and §7.6's rule that a notification records an event at an instant.
 
+**`docs/reference/migrations.md` carries `060`'s rollback, and the order-dependence chain now runs
+to three files.** `058`, `059` and `060` each replace `notify_ride_created_in_club`, so they have to
+be undone newest-first: following `059`'s rollback line verbatim against a database carrying `060`
+re-issues `036` §7.5's body and **silently reverts `060`'s entire repair on that fan-out** while
+appearing to undo `059` alone. `create or replace` raises nothing. `060`'s own entry re-issues
+`059`'s body rather than `036`'s, for the same reason in the other direction — `036`'s predates the
+default-club early return.
+
 **The residual hazard is stated rather than hidden.** `can_read_ride` and `can_read_club` RESTATE
 `rides` and `clubs` SELECT, and the first has been rewritten twice (`017`, `022`). The fence is two
 assertions — §060.1 and §060.1b pin each `pg_policies.qual` **textually**, matched whole rather than
@@ -1015,7 +1023,7 @@ this ride* are different sets — the crew fan-out wrote some rows `036` §3's r
 then hid. Two measured routes: a rider on a public ride who blocks the organizer, and a rider who
 RSVPs to a private club's ride and then leaves the club. `055` deliberately did not narrow the
 recipient set, because excluding riders blocked with the organizer closes the first route, misses
-the second, and reads as complete. `060` narrowed it properly — see below.
+the second, and reads as complete. `060` narrowed it properly — see §Migrations, above.
 
 **DEV's recorded statement for `049` is the reduced form** — the file's §1–§4 prose replaced by a
 pointer to it, because `apply_migration` takes SQL as a string and the full file is 20 KB of

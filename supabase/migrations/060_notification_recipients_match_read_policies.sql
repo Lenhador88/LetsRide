@@ -213,7 +213,7 @@ $$;
 revoke all on function private.is_club_member_for(uuid, uuid) from public, anon, authenticated;
 
 comment on function private.is_club_member_for(uuid, uuid) is
-  'Club membership for a NAMED rider: a club_members row, or clubs.owner_id (054''s owner arm). This holds the body; private.is_club_member(uuid) is a wrapper passing auth.uid(). Split by 060 so a fan-out can test a CANDIDATE — 036 trap (c) — without a second copy of the rule that could drift from the first. Reachable by no client role: it would answer "does rider X belong to private club Y" for any X.';
+  'Club membership for a NAMED rider: a club_members row, or clubs.owner_id (054''s owner arm). This holds the body; private.is_club_member(uuid) is a wrapper passing auth.uid(). Split by 060 so a fan-out can test a CANDIDATE — 036 trap (c) — without a second copy of the rule that could drift from the first. Reachable by no client role: it would answer "does rider X belong to private club Y" for any X. Reads public.clubs, so see 054''s header before forcing RLS on that table.';
 
 create or replace function private.is_club_member(target_club_id uuid)
 returns boolean
@@ -226,7 +226,7 @@ as $$
 $$;
 
 comment on function private.is_club_member(uuid) is
-  'Is the CALLER a member of this club — a club_members row, or the club''s owner_id (054). The body lives in private.is_club_member_for(candidate, club) since 060; this is the caller-relative entry point the ten calling policies use, and its signature, OID and grants are unchanged by that split. Do NOT call this from a fan-out: it resolves auth.uid(), so it answers for the caller and never for a candidate — 036 trap (c).';
+  'Is the CALLER a member of this club — a club_members row, or the club''s owner_id (054). The body lives in private.is_club_member_for(candidate, club) since 060; this is the caller-relative entry point the ten calling policies use, and its signature, OID and grants are unchanged by that split. Do NOT call this from a fan-out: it resolves auth.uid(), so it answers for the caller and never for a candidate — 036 trap (c). Reads public.clubs through that body, so see 054''s header before forcing RLS on that table.';
 
 -- `create or replace` preserves privileges, so this is a no-op against any
 -- database carrying `005`. Re-issued so the file is correct standing alone,
@@ -290,7 +290,7 @@ $$;
 revoke all on function private.can_read_ride(uuid, uuid) from public, anon, authenticated;
 
 comment on function private.can_read_ride(uuid, uuid) is
-  'Would this NAMED rider''s own SELECT policy return this ride? A restatement of rides SELECT with the candidate in place of auth.uid(), for fan-outs that must not write a row the recipient can never read (036 §7.5). Reachable by no client role — it is a block oracle. IT RESTATES A POLICY AND CAN GO STALE: rides SELECT''s qual is pinned textually in supabase/tests/rls_test.sql §060.7, naming this function, so a rewrite fails there rather than silently here.';
+  'Would this NAMED rider''s own SELECT policy return this ride? A restatement of rides SELECT with the candidate in place of auth.uid(), for fan-outs that must not write a row the recipient can never read (036 §7.5). Reachable by no client role — it is a block oracle. IT RESTATES A POLICY AND CAN GO STALE: rides SELECT''s qual is pinned textually in supabase/tests/rls_test.sql §060.1, naming this function, so a rewrite fails there rather than silently here. Reads public.rides and, through is_club_member_for, public.clubs — see 054''s header before forcing RLS on either table.';
 
 -- ---------------------------------------------------------------------------
 -- §3b  private.can_read_club(candidate, target_club)
@@ -345,7 +345,7 @@ $$;
 revoke all on function private.can_read_club(uuid, uuid) from public, anon, authenticated;
 
 comment on function private.can_read_club(uuid, uuid) is
-  'Would this NAMED rider''s own SELECT policy return this club? A restatement of clubs SELECT with the candidate in place of auth.uid(), the twin of private.can_read_ride. It exists because a ride_created_in_club notification carries BOTH ride_id and club_id and 036 §3 requires both subjects resolve — checking only the ride derives the club, which 036 §3 forbids by name. Excludes nobody today; it is the conjunct that keeps that true if clubs SELECT ever gains a block arm. Reachable by no client role. IT RESTATES A POLICY AND CAN GO STALE: clubs SELECT''s qual is pinned textually in supabase/tests/rls_test.sql §060.1b.';
+  'Would this NAMED rider''s own SELECT policy return this club? A restatement of clubs SELECT with the candidate in place of auth.uid(), the twin of private.can_read_ride. It exists because a ride_created_in_club notification carries BOTH ride_id and club_id and 036 §3 requires both subjects resolve — checking only the ride derives the club, which 036 §3 forbids by name. Excludes nobody today; it is the conjunct that keeps that true if clubs SELECT ever gains a block arm. Reachable by no client role. Reads public.clubs, so see 054''s header before forcing RLS on that table. IT RESTATES A POLICY AND CAN GO STALE: clubs SELECT''s qual is pinned textually in supabase/tests/rls_test.sql §060.1b.';
 
 -- ---------------------------------------------------------------------------
 -- §4  ride_joined — the crew arm stops writing rows the crew cannot read
@@ -524,15 +524,21 @@ revoke all on function private.notify_ride_created_in_club() from public, anon, 
 -- ---------------------------------------------------------------------------
 -- Verification — run against the live project after applying
 -- ---------------------------------------------------------------------------
---   -- t,t / t,t — both new helpers are definers with the path pinned. Note the
---   -- stored form: `set search_path = ''` records as `search_path=""`.
+--   -- 3 rows, all t / all search_path="" — every new helper is a definer with
+--   -- the path pinned. Note the stored form: `set search_path = ''` records as
+--   -- `search_path=""`, NOT as `search_path=`.
 --   select proname, prosecdef, proconfig from pg_proc
 --    where oid in ('private.can_read_ride(uuid,uuid)'::regprocedure,
+--                  'private.can_read_club(uuid,uuid)'::regprocedure,
 --                  'private.is_club_member_for(uuid,uuid)'::regprocedure);
 --
---   -- 0 — no client role, and not service_role either, on either helper
+--   -- 0 — no client role, and not service_role either, on ANY of the three.
+--   -- can_read_club is on this list because it is a private-club membership
+--   -- oracle by §3b's own argument, so it is exactly the one to measure rather
+--   -- than assume.
 --   select count(*) from (values ('authenticated'),('anon'),('service_role')) r(role)
 --    cross join (values ('private.can_read_ride(uuid,uuid)'),
+--                       ('private.can_read_club(uuid,uuid)'),
 --                       ('private.is_club_member_for(uuid,uuid)')) f(fn)
 --    where has_function_privilege(r.role, f.fn, 'execute');
 --
@@ -576,7 +582,7 @@ revoke all on function private.notify_ride_created_in_club() from public, anon, 
 --    where schemaname = 'public'
 --      and (qual like '%is_club_member%' or with_check like '%is_club_member%');
 --
---   -- The pinned policy text §060.7 asserts. If this has changed, can_read_ride
+--   -- The pinned policy text §060.1 asserts. If this has changed, can_read_ride
 --   -- is stale and must be updated in the same change.
 --   select qual from pg_policies
 --    where schemaname = 'public' and tablename = 'rides' and cmd = 'SELECT';
