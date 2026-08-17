@@ -298,10 +298,6 @@ stays load-bearing permanently**, and `resolve.browser.ts`'s tripwire keeps earn
   ```bash
   grep -c "} catch (" src/lib/auth/guard-cache.ts   # 1 — read()'s own
   ```
-
-  **Not `grep -c "catch"`** — that counts every line with the word in it, and this file's prose
-  says "catch" repeatedly. It is the comment trap at a one-line check: it reads high, looks
-  measured, and rises when somebody edits a doc comment.
 - **The `applyPluginDefaults()` promise slot is cleared on failure.** `configured ??= …` caches
   a *rejected* promise, so one transient plugin error breaks every read and write for the rest of
   the app session with no retry.

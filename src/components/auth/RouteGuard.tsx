@@ -138,7 +138,8 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   const cover =
     view.kind === 'retry' ? <GuardError onRetry={retry} /> : <GuardSplash overlay={view.overlay} />
 
-
+  // The line that makes `overlay: false` mean "nothing focusable underneath".
+  // `resolveGuardView`'s tests assert the value; only this honours it.
   return view.overlay ? (
     <>
       {children}

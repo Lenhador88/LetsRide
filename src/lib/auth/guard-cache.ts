@@ -230,17 +230,26 @@ export function hasGuardBooted(state: GuardSnapshot): boolean {
  * exactly the kind that reaches a rider as a dead screen if it is wrong. Here it
  * is a case in `__tests__/guard-cache.test.ts`.
  *
- * `overlay` is the boot/warm split `hasGuardBooted` names: before the first
- * answer there is nothing on screen worth preserving and nothing vetted to
- * reveal, so the cover stands alone; after it, the shell is already mounted and
- * correct and the cover goes over the top rather than tearing it down. The
- * `leaving` case is `{ kind: 'splash', overlay: false }` on purpose — the screen
- * underneath is the one the rider is being sent away from.
+ * `overlay` is the boot/warm split `hasGuardBooted` names, **and it applies to
+ * the splash only** — the retry is exempt, for the reason the body gives.
+ * Before the first answer there is nothing on screen worth preserving and
+ * nothing vetted to reveal, so the cover stands alone; after it, the shell is
+ * already mounted and correct and the cover goes over the top rather than
+ * tearing it down. The `leaving` case is `{ kind: 'splash', overlay: false }` on
+ * purpose — the screen underneath is the one the rider is being sent away from.
  */
 export type GuardView = {
   /** `children` — allowed. `splash` — deciding. `retry` — the read threw. */
   kind: 'children' | 'splash' | 'retry'
-  /** Whether `children` stay mounted underneath the cover. */
+  /**
+   * Whether `children` stay mounted underneath the cover.
+   *
+   * **What the tests assert is this value, not the tree.** Nothing here can see
+   * whether `RouteGuard` honoured it — the repo has no component test framework
+   * — so an edit that keeps `overlay: false` while leaving `children` in the
+   * tree behind a CSS-only cover reinstates the tab-order defect with every
+   * test green. The one line that carries it is `RouteGuard`'s ternary.
+   */
   overlay: boolean
 }
 
