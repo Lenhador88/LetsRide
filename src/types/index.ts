@@ -797,8 +797,9 @@ export type NotificationCursor = { createdAt: string; id: string }
  * Most screens want `PlaceSearchResult` instead. **Nothing reads this RAW
  * shape** — `src/lib/data/places.ts` exists, but it reads through
  * `search_places()`/`locality_centroid()`, which return `PlaceSearchResult`/
- * `LocalityCentroid`, never a row of this type directly. The table itself is
- * empty until the operator load in `037` §6.
+ * `LocalityCentroid`, never a row of this type directly. The table is loaded on
+ * both projects (`PD-195`); `docs/reference/schema.md` §`places` carries the
+ * count and the command that re-derives it.
  */
 export type Place = {
   /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */
@@ -952,13 +953,25 @@ export type PlaceSearchResult = {
  *
  * Four things the caller has to know:
  *
- *  - **Zero rows is the "no location" answer, and it is the common one.** It is
- *    returned for an unknown city, for a null or empty `q`, and — today — for
- *    *every* input, because `places` is empty on DEV and does not exist on PROD
- *    until the operator load runs. All of these mean the same thing at the call
- *    site: call `search_places()` without coordinates. Do **not** try to tell
- *    them apart; an unloaded index is indistinguishable from an unknown city by
+ *  - **Zero rows is the "no location" answer.** It is returned for an unknown
+ *    city, for a null or empty `q`, and for every input against an index that
+ *    has not been loaded. All of these mean the same thing at the call site:
+ *    call `search_places()` without coordinates. Do **not** try to tell them
+ *    apart; an unloaded index is indistinguishable from an unknown city by
  *    design, not by oversight.
+ *
+ *    **It is no longer the common answer, and this paragraph said it was for
+ *    six days after it stopped being true.** `PD-195` ran the load, so both
+ *    projects hold the same index and a stored city resolves — which means a
+ *    caller reading this for "will it ever answer" gets the wrong picture, and
+ *    the fallback chains built on it were written for a dead branch. Count it,
+ *    the way `docs/reference/schema.md` §`places` says to:
+ *
+ *    ```sql
+ *    select (select count(*) from public.places) as rows,
+ *           (select count(*) from public.locality_centroid('Utrecht')) as resolves;
+ *    -- 736,538 / 1 on both projects, 2026-08-17
+ *    ```
  *  - **Matching is EXACT** — `lower(btrim(locality))` on both sides, so case and
  *    surrounding whitespace are forgiven and nothing else is. `Utrech`,
  *    `trecht` and `Utrechtt` all return zero rows. This is deliberate and the

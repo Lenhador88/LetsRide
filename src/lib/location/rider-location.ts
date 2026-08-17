@@ -18,10 +18,13 @@ import { getMyLocationText } from '@/lib/data/profile'
  *
  * Two sources today, in priority order. **Two more are coming with PD-114
  * step 3** — the ride being edited's own meeting point, and the rider's
- * last-used one — and both are blocked on schema (`rides` has no lat/lng
- * column yet, verified). Adding either is meant to be a new entry appended to
- * `SOURCES` below, not a rewrite of `resolveRiderLocation` or the functions
- * around it — say so here rather than leaving the next reader to infer it.
+ * last-used one. **Neither is blocked on schema any more**: this said `rides`
+ * had no lat/lng column "verified", and `051` added `latitude`, `longitude`
+ * and `geocode_confidence`, filled by the `resolve-ride-location` function.
+ * What is left is the work itself. Adding either is meant to be a new entry
+ * appended to `SOURCES` below, not a rewrite of `resolveRiderLocation` or the
+ * functions around it — say so here rather than leaving the next reader to
+ * infer it.
  *
  * ## Never prompts
  *
