@@ -66,10 +66,12 @@ describe('PostcardAction — trailing padding follows the count', () => {
 
   for (const [name, render] of Object.entries(variants)) {
     describe(name, () => {
-      it('is symmetric px-2 with no count — the 12px is the count-to-edge gap, not a control gap', () => {
+      // 6px either side — the product owner's number, chosen from rendered
+      // options, not derived from the frame, which draws no zero-count state.
+      it('is symmetric px-1.5 with no count — the 12px is the count-to-edge gap, not a control gap', () => {
         const classes = controlClasses(render(undefined))
-        expect(classes).toContain('pl-2')
-        expect(classes).toContain('pr-2')
+        expect(classes).toContain('px-1.5')
+        expect(classes).not.toContain('pl-2')
         expect(classes).not.toContain('pr-3')
       })
 
@@ -86,11 +88,13 @@ describe('PostcardAction — trailing padding follows the count', () => {
         expect(render(undefined)).not.toContain('tabular-nums')
       })
 
-      it('restores the measured pr-3 as soon as there is a number beside the icon', () => {
+      // A counted control is the frame's own 8/12 box, untouched — the whole
+      // point of keying on the count is that the measured state stays measured.
+      it('restores the measured 8/12 as soon as there is a number beside the icon', () => {
         const html = render(7)
         expect(controlClasses(html)).toContain('pl-2')
         expect(controlClasses(html)).toContain('pr-3')
-        expect(controlClasses(html)).not.toContain('pr-2')
+        expect(controlClasses(html)).not.toContain('px-1.5')
         expect(html).toContain('>7<')
       })
     })
@@ -153,19 +157,28 @@ describe('PostcardCard — the action row', () => {
     expect(actionRowClasses(card({}))).toContain('gap-0')
   })
 
+  /**
+   * The three actions, found by the one class only `shape` carries — the
+   * vertical hit-area stretch. Selecting them by a *padding* class would be
+   * circular, since padding is the thing under test, and would have silently
+   * dropped every uncounted control the moment its padding changed.
+   */
+  function actionControls(html: string): string[] {
+    const controls = classLists(html).filter((c) => c.includes('before:-inset-y-0.5'))
+    expect(controls).toHaveLength(3)
+    return controls
+  }
+
   // Share never has a count — there is nothing recorded to count — so it is the
   // one control that is uncounted on every postcard, including a popular one.
   it('leaves share symmetric even on a card whose other counts are set', () => {
-    const html = card({ likes_count: 12, comments_count: 3 })
-    const controls = classLists(html).filter((c) => c.includes('rounded-lg') && c.includes('pl-2'))
-    expect(controls.filter((c) => c.includes('pr-3'))).toHaveLength(2)
-    expect(controls.filter((c) => c.includes('pr-2'))).toHaveLength(1)
+    const controls = actionControls(card({ likes_count: 12, comments_count: 3 }))
+    expect(controls.filter((c) => c.includes('pl-2') && c.includes('pr-3'))).toHaveLength(2)
+    expect(controls.filter((c) => c.includes('px-1.5'))).toHaveLength(1)
   })
 
   it('leaves all three symmetric on a card with no likes and no comments', () => {
-    const html = card({})
-    const controls = classLists(html).filter((c) => c.includes('rounded-lg') && c.includes('pl-2'))
-    expect(controls).toHaveLength(3)
-    expect(controls.every((c) => c.includes('pr-2') && !c.includes('pr-3'))).toBe(true)
+    const controls = actionControls(card({}))
+    expect(controls.every((c) => c.includes('px-1.5') && !c.includes('pr-3'))).toBe(true)
   })
 })

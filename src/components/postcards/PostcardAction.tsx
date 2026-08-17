@@ -16,31 +16,39 @@ import { cn } from '@/lib/utils'
  * than grow past what Figma drew, an invisible `::before` stretches the hit
  * area vertically, the same trick `Button`'s `sm`/`md` use.
  *
- * **The 12px trailing padding follows the count, and that is the one measured
- * value here that is deliberately conditional.** Every Figma instance draws a
- * count — all eight variants, `Type=Share` included — so its 8/12 asymmetry is
- * the gap between the number and the box edge. In the app the count is hidden
- * at zero and `ShareButton` has nothing to count at all, so applied
- * unconditionally that 12px is dead space to the right of a bare icon — and
- * with `gap-0` between the controls it reads as 20px of drift between icons
- * that the design does not have. Without a count the box is symmetric `px-2`:
- * a 40px square around a 24px glyph, which is what the frame would have hugged
- * to had it drawn this state.
+ * **The whole padding pair is conditional on the count, and a counted control
+ * still measures exactly what Figma drew.** Every instance in the frame draws a
+ * count — all eight variants, `Type=Share` included — so the 8/12 asymmetry is
+ * the gap between the *number* and the box edge, not between controls. In the
+ * app the count is hidden at zero and `ShareButton` has nothing to count at all,
+ * so applied unconditionally that 12px is dead space beside a bare glyph, and
+ * against the frame's own `itemSpacing 0` two icons sat 20px apart. So:
  *
- * **That costs 4px of horizontal tap target and the trade is unavoidable, not
- * an oversight.** An uncounted control is now 40×44 rather than 44×44, and the
- * `::before` cannot buy the width back: the row is `gap-0` and the boxes abut,
- * so `-inset-x` would overlap the neighbour's hit area and hand the later
- * sibling taps meant for the earlier one — worse than a narrow target, because
- * it fires the wrong action rather than none. Three abutting 44px targets need
- * 132px of row and three 40px boxes give 120px, so icon spacing and target
- * width are the same lever: 16px gaps with 40px targets, or 20px gaps with
- * 44px. The product owner has seen the 20px version and asked for it tighter,
- * which is the decision this encodes. Logged as a deviation in
- * `docs/FIGMA-FIDELITY-TODO.md` rather than only here.
+ *   with a count     `pl-2 pr-3`   — 8/12, the measured box, unchanged at 54px
+ *   without one      `px-1.5`      — 6/6, a 36px square around the 24px glyph
+ *
+ * **The uncounted padding is the product owner's number, not a derived one.**
+ * The frame has no zero-count state to measure, so symmetric 8 was this file's
+ * own inference; shown 16px and 12px side by side on 2026-08-17 the owner chose
+ * 12px, which is 6 either side. Only the state the design never drew moved —
+ * which is why a counted control's geometry is untouched rather than scaled to
+ * match.
+ *
+ * **It costs tap-target width, and the trade is arithmetic rather than an
+ * oversight.** An uncounted control is 36×44. The `::before` cannot buy the
+ * width back: the row is `gap-0` and the boxes abut, so `-inset-x` would overlap
+ * the neighbour and hand the later sibling taps meant for the earlier one —
+ * worse than a narrow target, since it fires the wrong action rather than none.
+ * The gap between two glyphs *is* the control width minus the 24px icon, so
+ * there is one lever and not two: 12px apart means 36px wide, 16px means 40px,
+ * and 44px — the glove floor — would mean 20px apart, which is the version that
+ * prompted this. Revisit if riders report mis-taps here; the escape that keeps
+ * both is a larger glyph, offered and not taken.
+ * `docs/FIGMA-FIDELITY-TODO.md` §Home / Postcards feed carries it as a logged
+ * deviation.
  */
 const shape =
-  'relative inline-flex min-w-0 items-center gap-1 rounded-lg py-2 pl-2 text-sm font-semibold transition-colors ' +
+  'relative inline-flex min-w-0 items-center gap-1 rounded-lg py-2 text-sm font-semibold transition-colors ' +
   'before:absolute before:inset-x-0 before:-inset-y-0.5 before:content-[""] ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface'
 
@@ -67,7 +75,7 @@ export function PostcardActionLink({ href, icon, count, label, className }: Base
     <Link
       href={href}
       aria-label={label}
-      className={cn(shape, hasCount(count) ? 'pr-3' : 'pr-2', 'text-foreground active:bg-border', className)}
+      className={cn(shape, hasCount(count) ? 'pl-2 pr-3' : 'px-1.5', 'text-foreground active:bg-border', className)}
     >
       {icon}
       <Count value={count} />
@@ -89,7 +97,7 @@ export function PostcardActionButton({
       type="button"
       aria-label={label}
       aria-pressed={pressed}
-      className={cn(shape, hasCount(count) ? 'pr-3' : 'pr-2', 'text-foreground active:bg-border', className)}
+      className={cn(shape, hasCount(count) ? 'pl-2 pr-3' : 'px-1.5', 'text-foreground active:bg-border', className)}
       {...props}
     >
       {icon}
@@ -103,7 +111,7 @@ export function PostcardActionStatic({ icon, count, label, className }: BaseProp
   return (
     <span
       aria-label={label}
-      className={cn(shape, hasCount(count) ? 'pr-3' : 'pr-2', 'text-foreground', className)}
+      className={cn(shape, hasCount(count) ? 'pl-2 pr-3' : 'px-1.5', 'text-foreground', className)}
     >
       {icon}
       <Count value={count} />
