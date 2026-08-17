@@ -1,13 +1,22 @@
 ---
-description: Build one dispatched Linear story end to end — the child session's procedure
+description: Build one dispatched Linear group end to end — the child session's procedure
 ---
 
-# Queue pickup — build one story
+# Queue pickup — build one group
 
-**You were dispatched to build one named story, and its id is in your prompt.** The picking was
-done by [`queue-dispatch.md`](queue-dispatch.md) in another session: the queue was read, the
-premise checked, the blockers checked, and this story was chosen against a set of caps that
-assumed what it would touch. **Do not pick different work, and do not pick more work.**
+**You were dispatched to build the named stories in your prompt, and usually there is one.** The
+picking was done by [`queue-dispatch.md`](queue-dispatch.md) in another session: the queue was
+read, the premise checked, the blockers checked, and these were chosen against a set of caps that
+assumed what they would touch. **Do not pick different work, and do not pick more work.**
+
+**When your prompt names more than one, they are a *group*: stories that collide, which is why one
+session builds them rather than two** — `queue-dispatch.md` STEP 4 has the reasoning, and your
+prompt names the specific collision. What follows from it here is one thing, at STEP 4: **build
+them in the order given**, so the migration numbers and the shared component are written once, in
+a decided sequence.
+
+A group is **one branch, one PR and one `reviewer` pass** — never a branch per story. What stays
+per story is the Linear bookkeeping: each one is claimed, commented and moved on its own.
 
 This procedure lives here rather than inside a prompt for two reasons: a prompt is re-injected
 into the conversation on every firing and this file is not, and a prompt cannot be reviewed in a
@@ -152,13 +161,20 @@ comment**, since there is no PR body here to hold them.
 
 ## STEP 3 — Confirm the claim
 
-**The dispatcher already moved the issue to `Development (AI)` before spawning you** — it claims
-first and spawns second, so the status is what stops a second dispatch handing the same story to
-a second session. Read it back and confirm; do not re-write it.
+**The dispatcher already moved every issue in your group to `Development (AI)` before spawning
+you** — it claims first and spawns second, so the status is what stops a second dispatch handing
+the same story to a second session. Read them back and confirm; do not re-write them.
 
-**If it is in any other status, stop and do nothing.** Something changed since you were dispatched
-— most likely the owner moved it — and building anyway is how work lands that nobody asked for.
-Say so in a `PushNotification` and end.
+**If one is in any other status, drop that story and build the rest.** Something changed since you
+were dispatched — most likely the owner moved it — and building it anyway is how work lands that
+nobody asked for. Say which you dropped in a `PushNotification`, in the PR body, and in STEP 5's
+comment on the stories that remain. **If none of them survives, stop and do nothing.**
+
+**Dropping rather than stopping is deliberate, and it is the right way round even though the group
+collides.** The stories were grouped because building them *apart* is unsafe; building *fewer* of
+them never is — the collision only ever argued against a second session touching those paths, and
+dropping one means nobody does. Stopping the whole group instead would park two healthy stories
+over one issue the owner moved on purpose.
 
 **This cannot detect a double dispatch, and do not write it as though it can.** Under a genuine
 double dispatch both children read `Development (AI)`, the status they expect, and both build.
@@ -174,7 +190,12 @@ check catches only a change made by someone else afterwards.
 
 Follow `CLAUDE.md` exactly. In particular:
 
-- Branch off `development`, never `main`. Use the issue's `gitBranchName` if it has one.
+- Branch off `development`, never `main`. Use the issue's `gitBranchName` if it has one — for a
+  group, the first story's, since there is one branch for all of them.
+- **Build the stories in the order your prompt lists them** (the dispatcher orders a group by
+  priority), finishing and committing each before starting the next. The order matters most for
+  the collision that grouped them: the migration numbers and the shared component get written once,
+  in a decided sequence, which is the whole reason these are in one session.
 - Follow the squad order in §The Agent Squad. `openspec` first if the story has real domain
   rules — visibility, membership, permissions, or a schema change. Skip it for copy, styling
   or a dependency bump.
@@ -216,8 +237,10 @@ Two delegations survive on their own merits, and neither is about context hygien
 - **`reviewer`, always, at STEP 4c.** Its value is that it did not write the code, which is the
   one thing this session cannot do for itself at any price.
 
-**Keep the commit range that is the story itself.** STEP 4c's scope pass needs it to tell the
-story's own commits from the fold-ins', and it cannot be recovered from a combined diff.
+**Keep the commit range that is each story itself.** STEP 4c's scope pass needs them to tell each
+story's own commits from the fold-ins' — and, in a group, from each other's. None of it can be
+recovered from a combined diff, and a group is precisely where the combined diff stops being
+readable, so note each range as you finish the story rather than reconstructing them at the end.
 
 ---
 
@@ -319,6 +342,13 @@ items each rated 8/Y pass every gate above individually while collectively tripl
   turning the PR into something else.
 - **Anything the folded-in work itself turns up is a story, always**, whatever it rates. One
   level deep, no chaining.
+- **In a group, run this triage once per story, and then check the branch as a whole.** Every bound
+  above is per story and stays that way — but they were sized against a branch carrying one story,
+  and two stories each spending their full quota is a PR the single `reviewer` pass at STEP 4c has
+  to cover in one read. **The group's own diff is the budget the fold-ins spend against**: if the
+  extras across all stories together approach the size of the stories themselves, stop folding in
+  and file the rest. The dispatcher already spent this budget once when it capped the group at
+  three issues, and it had no way to see what a triage would add.
 
 **Two bounds have a partial remedy, and both are safe for the same one reason: their excess
 cannot contain a necessary fold-in.** The discretionary third is scoped to the optional half by
@@ -479,11 +509,24 @@ live RLS hole letting any signed-in rider post a ride into any club.
    `reviewer.md` §Start here already refuses `main` as a base for exactly that reason, and a
    moving `development` is the same defect arriving later. A sha cannot move.
 
-   Pass it with the rest of the scope material: the issue being built, each fold-in with its
-   one-line relatedness justification and its five ratings, and the two commit ranges — the
-   story's own commits versus the fold-ins'. Without those, `reviewer.md`'s scope pass cannot
-   check the breadth cap at all, and is briefed to report that rather than guess the boundary
-   from the diff.
+   Pass it with the rest of the scope material: **every issue being built** — all of them, for a
+   group — **each with the `size` the scout gave it, which your prompt carries** — each fold-in
+   with its one-line relatedness justification and its five ratings, and the commit ranges: each
+   story's own commits versus its fold-ins'. Without those, `reviewer.md`'s scope pass cannot check
+   the breadth cap at all, and is briefed to report that rather than guess the boundary from the
+   diff.
+
+   **`size` is on this list because the reviewer's ceiling check is otherwise unenforceable.**
+   `reviewer.md` is briefed that a group holds at most one `size: L` — a bound a count alone cannot
+   see, since two `L` stories are two issues and clear the count. `size` is deliberately *not* on
+   the dispatch record, so Linear cannot supply it either: your prompt is the only place it
+   survives, and dropping it here turns that check into a rule with no input.
+
+   **For a group, say so and say why, or the scope pass reads the branch as scope creep.** A
+   diff carrying three unrelated-looking stories is exactly the shape that pass exists to catch,
+   and it has no way to tell a dispatched group from a session that picked up extra work. Name the
+   collision that grouped them — the shared paths, the two migrations, the shared component — and
+   give the per-story ranges so it can check each against its own issue.
 
    **Rebuild the packet whenever anything commits after you built it** — bullet 3's CI fix is the
    usual case, and a delta re-review above needs its own packet based on the reviewed sha rather
@@ -501,8 +544,14 @@ live RLS hole letting any signed-in rider post a ride into any club.
    ```bash
    date -u +%FT%TZ     # at spawn — and again at each check; the elapsed time is the bound's clock
    ```
-2. **Push the branch.** Then open a PR against **`development`**, with the `## Folded in` section
-   from STEP 4b in the body, or nothing there if nothing travelled.
+2. **Push the branch.** Then open **one** PR against **`development`**, with the `## Folded in`
+   section from STEP 4b in the body, or nothing there if nothing travelled.
+
+   **A group gets one PR naming every issue in it**, with a heading per story and a line saying
+   which collision put them together — that sentence is the only place a reader of the merged
+   history learns why these shipped as one change. Link every issue so each closes against a real
+   PR; `Deployed to DEV` at STEP 5 asserts a merge, and three issues pointing at one PR is exactly
+   what happened.
 
    **Push unconditionally, and never on the assumption that STEP 4 already did it.** STEP 4b
    commits after the build, so anything it folded in is unpushed here.
@@ -659,11 +708,20 @@ That is why they are numbered and cross-referenced by number.
 
 3. **Check the DEV deploy** — see below. `ERROR` on *your* commit stops the run here and goes to
    `Needs help`; anything else continues.
-4. **Move the issue to `Deployed to DEV`** and comment with the PR link, one line on what
-   landed, what was folded in, a link to each story filed **or updated**, and the deploy state
-   from bullet 3.
-5. **Send one push notification** with the `PushNotification` tool: `Done ; ) <issue id> <short
-   title>`. This is the only thing you send that reaches the owner directly.
+4. **Move every issue in the group to `Deployed to DEV` — except any story parked into `Needs
+   help`, which stays parked** — each with its own comment: the PR link,
+   one line on what landed **for that story**, what was folded into it, a link to each story filed
+   **or updated**, and the deploy state from bullet 3. One shared comment pasted three times is
+   worse than none — the owner reads an issue to find out what happened to *it*.
+5. **Send one push notification** for the whole group with the `PushNotification` tool:
+   `Done ; ) <issue ids> <short title>`. One session, one notification — three pushes for one
+   merge is exactly the volume `CLAUDE.md` refuses, and they would all say the same thing. This is
+   the only thing you send that reaches the owner directly.
+
+   **Name only the issues that actually merged, and say if one is parked** — `Done ; ) PD-201
+   merged · PD-207 parked, needs you`. This line is read on a phone hours later with nothing else
+   open, so it is the worst of the three places to claim a story shipped when it did not: bullet 4
+   has its carve-out for exactly that reason and this bullet needs the same one.
 6. **Poke the dispatcher, last.** Your slot is now free, and this is what starts the next batch
    in seconds instead of at the top of the next hour:
 
@@ -682,6 +740,13 @@ That is why they are numbered and cross-referenced by number.
    this exactly because a child can die before reaching it. If `fire_trigger` errors, note it in
    the Linear comment and stop — do not retry in a loop, and do not fall back to editing the
    trigger.
+
+   **Poke unconditionally; do not check first whether the queue is switched on.** A poke against a
+   disabled Routine is accepted rather than refused (measured — `queue-dispatch.md` STEP 1 has the
+   probe), so the check is real work and it belongs there, not here: the dispatcher reads its own
+   switch on every firing and exits without dispatching. Adding a second check here would be the
+   two-mechanisms-for-one-grant mistake `CLAUDE.md` names, and it would guard only this path while
+   leaving the heartbeat and any hand-typed `fire_trigger` open.
 
 **Bullet 3 failing means the PR is already merged**, so §If you get stuck's usual claim — that
 parking into `Needs help` leaves a branch and an open PR for the next firing to trip over — does
@@ -747,6 +812,39 @@ bullet 2.** Then:
 Move the issue to **`Needs help`**, comment with *exactly* what you need from the owner, and
 stop. Leave the branch and any PR open and say so in the comment.
 
+### In a group, park the story — not the group
+
+**One story stalling must not hold its siblings' finished work hostage.** This is the cost
+grouping adds and the only one that bites, so it gets an explicit remedy rather than a judgement
+call:
+
+- **The stalled story has nothing committed yet** → drop it. Finish, review and merge the rest of
+  the group as an ordinary run, with the PR body and STEP 5's comments saying which story was left
+  out and why. The queue still parks — `Needs help` is the lock — but it parks with two stories
+  merged instead of two stories stranded.
+
+  **Move the stalled issue to `Needs help` BEFORE STEP 5 bullet 4, not after the run.** A
+  dispatcher woken by bullet 6's poke reads the board as it stands: park afterwards and it sees
+  nothing in `Needs help`, so the queue-wide lock does not hold and it dispatches into every free
+  slot — burying the story that needs the owner under the merged PRs, which is the exact harm the
+  lock exists to prevent. STEP 5 bullet 6 already assumes this order when it says to poke *"even
+  when you parked into `Needs help`, and say so in the text"*.
+
+  **Bullet 4 rather than bullet 6, because bullet 4 is the earlier hazard.** It moves *every* issue
+  in the group to `Deployed to DEV` with a comment claiming a merge — so a park deferred past it
+  marks the story you never built as shipped, and then contradicts itself two bullets later.
+- **Its commits are already on the branch and separable** → drop them (`git revert`, or reset and
+  recommit the others) and take the branch above. **Re-run `reviewer` on what you actually intend
+  to merge**, since the reviewed diff has changed.
+- **Its commits are entangled with a sibling's** — the shared component, the migration the next
+  story builds on — → **park the whole group**, naming every issue in the `Needs help` comment and
+  saying plainly that they are one branch. This is the case grouping was for, and unpicking it is
+  worth less than the owner's answer.
+
+**Park exactly one issue where you can**, and say in its comment which siblings merged. Moving all
+three to `Needs help` for one story's question buries two answered stories in a column the owner
+reads as blocked.
+
 **Parking owes a comparison table of the ways forward** — one row per option, columns scored 0–10,
 a total, sorted by it descending. `docs/reference/linear.md` §What an issue body opens with carries
 the format and why a total is right there and wrong in the five-rating block. It applies to every
@@ -771,7 +869,7 @@ re-run (STEP 4c bullet 1), or a decision that is the owner's to make.
 **Stopping into `Needs help` is always better than merging something you are not confident
 in.** It also parks the whole queue until the owner clears it, which is the intended behaviour —
 `Needs help` is the one status the dispatcher refuses to dispatch past, precisely so a story
-needing the owner does not get buried under three merged PRs.
+needing the owner does not get buried under the next batch of merged PRs.
 
 **Leave the branch and any PR open, and say so in the comment.** Nothing else will pick this up:
 your session ends here, and the next dispatch will not touch a story it can see is parked. **Still
@@ -782,8 +880,11 @@ on a firing that never happens.
 
 ## Scope discipline
 
-**The story in front of you is the scope**, and *a scheduled session is the worst possible place
-for scope creep*. The rule has two halves, and **STEP 4b is where they are applied**:
+**The stories in front of you are the scope** — the ones your prompt names, and nothing else — and
+*a scheduled session is the worst possible place for scope creep*. **A group does not widen this
+rule; it is the dispatcher having already decided the scope is two or three stories.** Picking up a
+fourth because it touches the same files is the same overreach as picking one up when you were
+given one. The rule has two halves, and **STEP 4b is where they are applied**:
 
 - **Work inside the context of the build travels with it** — when it passes the relatedness test
   *and* rates ≥ 4/10 with `This session` **Y**. Same branch, same PR, same `reviewer` pass.
@@ -823,9 +924,9 @@ carries it. That probe is what made the dispatcher possible, and it retires four
 | Cost of the reused session | How it is gone |
 |---|---|
 | The session was not idle by construction — a firing could land mid-conversation with the owner | Nothing else runs in here. The seven idle gates are deleted, not moved |
-| Context accumulated across firings, and no session can `/clear` itself | This window starts empty and is discarded after one story |
+| Context accumulated across firings, and no session can `/clear` itself | This window starts empty and is discarded after one group |
 | The build had to run in a subagent purely to stand in for that clear | STEP 4 — build in your own thread; only specialists and `reviewer` are delegated now |
-| One story at a time, because one session could only build one thing | The claim is per issue; other stories build in parallel sessions |
+| One story at a time, because one session could only build one thing | The claim is per issue; other stories build in parallel sessions, and colliding ones build together in this one |
 
 **What did not change: the owner's gate, and `Needs help`.** The dispatcher still refuses to
 dispatch while the owner has a session actively working, and still stops the whole queue when any

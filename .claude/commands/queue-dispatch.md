@@ -1,12 +1,14 @@
 ---
-description: Hand each queued story to its own session — the dispatcher's procedure
+description: Hand each queued story, or each group of colliding stories, to its own session
 ---
 
 # Queue dispatch
 
 **This procedure picks work and hands it out. It never builds anything.** The build is
-[`queue-pickup.md`](queue-pickup.md), which runs in a *different session* — one per story, spawned
-here, each with its own container, its own branch and its own empty context window.
+[`queue-pickup.md`](queue-pickup.md), which runs in a *different session* — one per **group**,
+spawned here, each with its own container, its own branch and its own empty context window. A
+group is usually one story; it is more than one exactly when the stories collide, which STEP 4
+explains.
 
 That split is the whole design. Read §Why this shape before changing any of it.
 
@@ -26,8 +28,8 @@ name; pass the id, never the name.
 |---|---|---|
 | Started by | the hourly Routine, or a `fire_trigger` poke | `create_session` from the dispatcher |
 | Reads | this file | [`queue-pickup.md`](queue-pickup.md) |
-| Holds | the board, the caps, the batch | one issue id, given in its prompt |
-| Ends at | children spawned | the issue at `Deployed to DEV` |
+| Holds | the board, the caps, the batch | its group's issue ids, given in its prompt |
+| Ends at | children spawned | every issue in its group at `Deployed to DEV` |
 | Carries the tag | no | **`queue-dispatch`** |
 
 **A child never dispatches.** One level, no chaining — a child that spawns a child has no view of
@@ -62,8 +64,15 @@ Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as
 no match means "search again by keyword", never "the connector is gone" — only a keyword search
 coming back empty establishes that.
 
-You need two connectors: **Linear** (the board) and **Claude Code Remote** (`list_sessions`,
-`create_session`). **Git is read-only and only for STEP 6's clock** — `git ls-remote`,
+You need two connectors: **Linear** (the board) and **Claude Code Remote** (`list_triggers`,
+`list_sessions`, `create_session`). **Load all three CCR tools by keyword the same way**
+(`+list_triggers claude code remote`) — `list_triggers` is STEP 1's switch check and it is the
+*first* call of a firing, so a deferred schema there stops the whole procedure before it reads
+anything. **A deferred tool is not a missing one**: `InputValidationError` means `ToolSearch` then
+call it, `No such tool available` means absent. STEP 1's failure branch depends on this
+distinction and gets it wrong at your cost, not the tool's.
+
+**Git is read-only and only for STEP 6's clock** — `git ls-remote`,
 `git log -1` on a remote ref, nothing else. You never check out, never write a file, never touch
 Supabase, Vercel or the GitHub API. **Reaching for any of those means you have started building**,
 which is this file's one prohibition.
@@ -74,11 +83,87 @@ so the only notification that will ever reach the owner is one this session send
 
 ---
 
-## STEP 1 — The owner-activity gate
+## STEP 1 — Is the queue switched on, and is the owner working?
 
-**One gate, and it is the owner's own instruction: do not dispatch while the owner has a session
-actively working.** Product owner, 2026-08-16, approving this design: *"Just keep the gate of an
-active session from myself."*
+**Two gates, in this order, and they exit differently.** The switch is asked first because it is
+the more decisive answer: a queue the owner has turned off has no board worth reading.
+
+### The switch — does the Routine still read `enabled: true`?
+
+**Disabling the Routine does not stop the queue, and this Routine has already been observed
+firing while disabled.** On 2026-08-17 `trig_01WJkMVXGzUVGDcC1njNmaan` carried no `enabled` key —
+it was off — and its `last_fired_at` moved from `15:40:05` to `17:37:11` inside a four-minute
+window while a session watched it. The hourly cron cannot explain that (`next_run_at` was stale at
+`16:05`), which leaves a child's completion poke, and that is exactly what `queue-pickup.md` STEP 5
+tells every child to send.
+
+The API half was probed the same day against a throwaway self-bound Routine, and agrees:
+`update_trigger enabled=false` took — the `enabled` key *disappears* from the response, which is
+how a disable is read back — and `fire_trigger` against it afterwards returned **success with an
+execution session id**, indistinguishable from the same call against the same trigger enabled.
+Nothing refused it.
+
+**So the switch by itself stops the hourly heartbeat and nothing else**: the children keep handing
+the queue back to itself, and the owner's off switch is decorative while looking like a control.
+This gate is what makes it real.
+
+```
+list_triggers  limit=100
+```
+
+Find `trig_01WJkMVXGzUVGDcC1njNmaan` and read it:
+
+- **`enabled: true`** → the queue is on. Go to the owner-activity gate below.
+- **Anything else on a row that is present** → **off. Exit immediately: dispatch nothing, read no
+  board, run no stall check, send nothing.** Write the test that way round rather than looking for
+  `"enabled": false`, which never appears — a disabled row simply lacks the key. `ended_reason`
+  and `suspension_reason` are the two other ways a row reads not-on, and treating all three alike
+  is correct: none of them is a queue the owner expects to be running.
+- **Absent from the response** → **not the same thing as off.** Page first with
+  `cursor=<next_cursor>` before concluding it. Genuinely absent means the Routine this session
+  runs on no longer exists, which is one `PushNotification` and no dispatch.
+- **`InputValidationError`** → the schema arrived deferred. `ToolSearch` by keyword and **call it
+  again**; this is not a failure and must not be read as one.
+- **The call fails for any other reason** — the tool is absent, the connector is unreachable →
+  **HELD, never open**, for the reason the `list_sessions` failures below are: a gate with no data
+  has not passed. Fall through to the stall check, dispatch nothing, **and send a
+  `PushNotification` saying the switch could not be read**, once per condition.
+
+**The notification is not optional here**, for the reason the two `list_sessions` failures below
+carry one: this is the first call of a firing, so if it will not resolve then *every* firing takes
+this branch, and STEP 6 is silent with nothing in flight to age.
+
+**The silent exit is the one place this file leaves without running STEP 6, and that is
+deliberate.** An owner-activity hold is involuntary and temporary — the queue is meant to be
+running, so its clocks still matter and a dead child must still age into view. A disable is
+neither: the owner took the queue out of service on purpose, and alarming hourly about a queue
+they stopped is a push an hour about a decision they already made.
+
+**It does cost one real thing, and the cost is not the story they stopped — it is the child that
+was already running.** A child dispatched minutes before the switch went off keeps building
+(see below), and if it dies its issue sits in `Development (AI)` where nothing reaches it: every
+later firing exits here, so neither STEP 6's age clock nor STEP 2's `ARCHIVED` → back-to-
+`Queued (AI)` recovery ever runs. It self-heals the moment the queue is re-enabled, and the owner
+has a manual path, so this is an accepted cost rather than an oversight — **do not reason from the
+paragraph above that no story can be stranded here, because one can.**
+
+**What the switch does not do: it cannot stop a child already building.** Children are spawned,
+not scheduled, so nothing routes a running one back through this Routine — it finishes, merges its
+PR and moves its issue however the switch is set. Stopping those too is the owner archiving the
+sessions tagged `queue-dispatch` and moving their issues back to `Queued (AI)`; `CLAUDE.md` §What
+Not To Do permits archiving children and forbids it only for this session.
+
+**The check belongs here rather than in the child's poke**, and that is not a stylistic
+preference: the dispatcher is the one chokepoint every spawn passes through, so a single check
+covers the hourly heartbeat, a child's poke and a hand-typed `fire_trigger` alike. Guarding the
+poke instead leaves the other two open — and costs the stall alarm with it, since a child that
+skips its poke is a child that never wakes the step that would notice it died.
+
+### The owner-activity gate
+
+**The owner's own instruction: do not dispatch while the owner has a session actively working.**
+Product owner, 2026-08-16, approving this design: *"Just keep the gate of an active session from
+myself."*
 
 ```
 list_sessions  mine=true  limit=50
@@ -137,7 +222,8 @@ history instead of state.
 **There is no number to compare against 80%**, and inventing a threshold would be a gate that can
 never fire. What was checked, so nobody re-derives it: `claude --help` has no `usage` subcommand,
 `~/.claude` holds no usage file, and no environment variable carries one. **This matters more now
-than it did**, not less: a firing used to start one build and can now start two, plus one scout
+than it did**, not less: a firing used to start one build and can now start two children holding
+several stories each, plus one scout
 agent per candidate. The lever that works is the owner's:
 
 ```
@@ -177,8 +263,9 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
 - **In flight** — everything in `Development (AI)`. Those are claimed by a child that is still
   working. **Do not dispatch them again, and do not treat them as a full stop on the queue the way
   `Needs help` is** — but you **must** read their dispatch records, because STEP 4's caps are
-  evaluated against them and because **each live one occupies one of the two concurrency slots**.
-  The count is below, after the liveness check that says which of them are real.
+  evaluated against them and because **each live child occupies one of the two concurrency slots**
+  — a child, not an issue, so several issues sharing one `session` are one slot. The count is
+  below, after the liveness check that says which of them are real.
 
 ### The dispatch record — how a later firing knows what is in flight
 
@@ -191,8 +278,14 @@ session ending:
 mcp__Linear__list_comments  issueId=<each issue in Development (AI)>
 ```
 
-Take the most recent comment beginning `<!-- dispatch-record -->` and read its `session`, `paths`,
-`migration` and `primitive` fields. STEP 5 is what writes it.
+Take the most recent comment beginning `<!-- dispatch-record -->` and read its `session`, `group`,
+`paths`, `migration` and `primitive` fields. STEP 5 is what writes it.
+
+**Several issues may name the same `session`, and that is a group rather than a fault.** Their
+`paths`, `migration` and `primitive` are the group's union and identical across its members, so
+the caps read correctly whether you evaluate them once per group or once per issue — and every
+member independently carries the liveness check below, so an archived child returns all of its
+issues without anything having to reason about the group at all.
 
 **Check each record's `session` against the `list_sessions` response you already hold.**
 
@@ -217,12 +310,30 @@ it, including with no branch to grep, so this is a faster detector rather than t
 it rather than from a flat number:
 
 ```
-free slots = 2 − (issues still in `Development (AI)` after the check above)
+free slots = 2 − (DISTINCT `session` ids among the dispatch records of issues
+                  still in `Development (AI)` — after BOTH the liveness check
+                  above and the record-less freeze below)
 ```
+
+**Both, and the freeze is the one this formula cannot survive without.** An issue with no dispatch
+record contributes no session id, so a live child whose record write failed is invisible here and
+the count reads one too high — which is how three children end up in flight against a cap of two.
+The freeze below is unconditional and stops the firing before any of that matters, so this is safe
+today; it is written into the formula because a reader computing a number at this line and acting
+on it has already gone wrong. **A `list_comments` call that fails for an in-flight issue is
+indistinguishable from a record-less one, so treat it as the freeze too** rather than as a zero.
+
+**Count children, not issues, and the distinction is load-bearing rather than pedantic.** The cap
+the owner set is *"2 sessions in parallel max"*, and a group is one session holding two or three
+issues — so counting issues would score a single child as two or three slots and starve the queue
+by exactly the amount grouping was meant to win back. The `session` field on each dispatch record
+is what makes the count possible, and its `group:` line is the cross-check: several issues naming
+one session is one slot.
 
 An issue you just returned to `Queued (AI)` because its child was `ARCHIVED` does not occupy a
 slot; one whose session is `IDLE` does, that being the ordinary state of a child between turns.
-**At zero free slots, dispatch nothing and skip STEP 3 as well** — scouting is the expensive half
+**At zero free slots *or fewer*, dispatch nothing and skip STEP 3 as well** — scouting is the
+expensive half
 of a firing and there is no batch to scout for. Go to STEP 6, which is silent in that case.
 
 **An in-flight issue with no dispatch record at all is a dispatch you cannot reason about**: it
@@ -242,8 +353,8 @@ shipped story: the queue freezes permanently while looking like a healthy job be
 column.
 
 **`Needs help` is a full stop for the whole queue, and that is deliberate.** An issue parked there
-is waiting on the owner, and dispatching past it buries a story that needs them under three merged
-PRs. If any issue is in `Needs help`, **dispatch nothing** — but still run STEP 6.
+is waiting on the owner, and dispatching past it buries a story that needs them under the next
+batch of merged PRs. If any issue is in `Needs help`, **dispatch nothing** — but still run STEP 6.
 
 **Never type a status name from memory** — run `list_issue_statuses team=Pedro & Dave` before the
 first status write. Names have moved twice with nothing in the repo noticing, and a `save_issue`
@@ -265,7 +376,10 @@ outranks its own children on priority, so this is a real trap rather than a hypo
 ## STEP 3 — Scout the candidates
 
 **If a hold from STEP 1 is in force, a freeze from STEP 2 is in force, or STEP 2 counted zero free
-slots, skip this step and go straight to STEP 6.** Scouting is the expensive half of a firing —
+slots or fewer, skip this step and go straight to STEP 6.** *Or fewer* is not pedantry: children
+dispatched under an older, larger cap can still be building, so a negative count is a state this
+file reaches rather than a hypothetical — and read as "not zero" it scouts, writes to the board,
+and dispatches nothing. Scouting is the expensive half of a firing —
 `free slots + 2` agents, each re-paying `CLAUDE.md` — and it *writes to the board*, moving stale
 candidates to `Needs decision`. A held firing that scouts anyway spends more than the usage gate
 saves and mutates the board it was told not to act on.
@@ -277,6 +391,11 @@ nothing on the board says what a story will touch.
 candidates, never the whole column: each scout re-pays `CLAUDE.md` in a fresh window, and a
 ten-deep queue would otherwise scout ten every hour *and* on every child poke, to dispatch at most
 two. The `+ 2` is the margin for candidates the scout drops as stale or blocked.
+
+**Grouping does not raise this budget, and must not.** STEP 4 re-partitions the candidates you
+already scouted; it does not reach deeper into the queue to fill a group. So a group forms exactly
+when the top few candidates collide — which is the only case where grouping was worth anything —
+and the expensive half of a firing costs the same as it did when every story got its own session.
 
 Spawn them in parallel, in a single message. Each is cheap and read-only:
 
@@ -292,9 +411,13 @@ Spawn them in parallel, in a single message. Each is cheap and read-only:
 > 2. `migration` — Y/N, does it add a file under `supabase/migrations/`?
 > 3. `primitive` — Y/N, does it add or change a shared component under `src/components/ui/` or
 >    `src/components/icons/`?
-> 4. `premise` — `stale` / `intact` / `no checkable claim`, **with the command you ran and its
+> 4. `size` — `S` / `M` / `L`, one line of basis. `S` is a copy fix, a doc line, a single
+>    component. `L` is a new route with its data layer, a migration plus the screens that read it,
+>    or anything you would expect to touch more than ~10 files. **Estimate the story only**, not
+>    what a triage might fold into it.
+> 5. `premise` — `stale` / `intact` / `no checkable claim`, **with the command you ran and its
 >    output**. See the bar below; without a command there is no verdict.
-> 5. `blockers` — `get_issue includeRelations=true`, then list any `blockedBy` not in
+> 6. `blockers` — `get_issue includeRelations=true`, then list any `blockedBy` not in
 >    `Deployed to DEV`, `Done (in production)`, `Canceled` or `Duplicate`.
 
 ### The bar for `premise: stale`, which is narrower than it sounds
@@ -329,20 +452,84 @@ it.** An ambiguous check is a build.
 
 ---
 
-## STEP 4 — Select the batch
+## STEP 4 — Group the candidates, then select the batch
 
-Walk the scouted candidates in priority order and admit each only if it clears **all** of these
-against the batch so far **and** against every dispatch record from STEP 2:
+**A collision between two candidates is a reason to build them TOGETHER, not a reason to defer
+one.** Every one of the three caps describes damage that only two *different sessions* can do, so
+the same three facts that used to reject a candidate now decide who it ships with:
 
-| Cap | Why it is not just a merge conflict |
-|---|---|
-| **Disjoint `paths`** | Two stories editing one file conflict on the second merge — loud and cheap. Worse, each is reviewed against a `development` containing neither, so `reviewer` gives an honest verdict on a file that will not exist once the other lands |
-| **At most one `migration: Y` in flight** | Two children both write `060_*.sql`. Both land, both apply, and this repo already has a chain (`041 → 044 → 046`) where the wrong order succeeds with **nothing red**. They also apply to the same DEV database, which unlike the test database and the dev-server ports **is** shared across containers |
-| **At most one `primitive: Y` in flight** | Two divergent implementations of the same shared component. Nothing conflicts, nothing fails, and the result is `CLAUDE.md`'s *individually correct and collectively inconsistent* |
+| Cap | What two sessions do | What one session does |
+|---|---|---|
+| **`paths`** | Conflict on the second merge — loud and cheap. Worse, each is reviewed against a `development` containing neither, so `reviewer` gives an honest verdict on a file that will not exist once the other lands | Edits the file once, with both changes in front of it |
+| **`migration: Y`** | Both write `060_*.sql`. Both land, both apply, and this repo already has a chain (`041 → 044 → 046`) where the wrong order succeeds with **nothing red**. They also apply to the same DEV database, which unlike the test database and the dev-server ports **is** shared across containers | Writes `060`, then `061`. The ordering is by construction rather than by luck |
+| **`primitive: Y`** | Two divergent implementations of the same shared component. Nothing conflicts, nothing fails, and the result is `CLAUDE.md`'s *individually correct and collectively inconsistent* | Writes one implementation and uses it twice |
 
-**"In flight" spans firings, not just this batch.** That is the whole reason STEP 2 reads the
-dispatch records; a cap evaluated against the current batch alone is satisfied by construction on
-the first story and useless from the second firing onward.
+**The caps are unchanged; what changed is what they apply to** — a *group* rather than a story.
+Nothing below weakens them, and the third column is why grouping is the stronger treatment rather
+than a way around them.
+
+### First: drop anything colliding with a story already in flight
+
+**Grouping cannot reach a session that is already running.** You cannot merge a candidate into a
+branch another child is building, so a candidate colliding with a dispatch record from STEP 2
+waits exactly as it does today.
+
+Drop it if, against **any** in-flight record, its `paths` intersect, or both carry
+`migration: Y`, or both carry `primitive: Y`. It stays in `Queued (AI)`, it is not commented on,
+and the next firing reconsiders it. **This is what makes "in flight" span firings** — a cap
+evaluated against the current batch alone is satisfied by construction on the first story and
+useless from the second firing onward.
+
+### Then: partition what is left into groups
+
+Two candidates join the same group when they collide with **each other** on any of the three, and
+**collision is transitive**: if A collides with B and B with C, all three are one group even where
+A and C do not touch. A candidate colliding with nothing is a group of one — the ordinary case,
+and the exact shape this file shipped with.
+
+A group's properties are its members' union: `paths` is the union, and the group is
+`migration: Y` or `primitive: Y` if **any** member is. The in-flight caps above are then evaluated
+against the group, which is what still holds the board to one migration and one shared primitive
+at a time.
+
+### The group ceiling — at most 3 issues, and at most one `L`
+
+**Both halves bind, and the second is not implied by the first.** A group holds at most **3**
+issues; it holds at most **one** `size: L`; and a group containing an `L` holds at most **2**.
+So two `L` stories never travel together even though two issues clears the count — which is the
+case the count alone would admit, and the one most likely to arise, since two `L` migration
+stories collide on `migration: Y` whatever their paths.
+
+**The bound is the `reviewer` pass**: one group is one branch, one PR and **one** review, and
+`queue-pickup.md` STEP 4b already refuses a fold-in that *"would grow the diff past what one
+`reviewer` pass can honestly cover"*. A group is that same diff arriving off the board instead of
+out of a triage, and it earns the same ceiling.
+
+**Over either ceiling, take the highest-priority members that fit and leave the rest.** They are
+not lost. **Re-form the leftovers into their own group and walk it with the others** — they still
+collide with each other, so they are a group rather than loose candidates, and the batch step below
+is what holds them: it admits a group only if it clears the caps against every group already
+admitted this firing, and it cannot, because they collide with the group that was just admitted.
+So they wait, and regroup on a later firing.
+
+**The in-flight check is *not* what holds them, and reasoning from it would be wrong** — that one
+reads STEP 2's dispatch records, and the group being dispatched right now has none: STEP 5 writes
+records after selection, not before. The batch check is the only thing standing between a trimmed
+member and a second session over the same paths.
+
+### The batch — one group per free slot
+
+**A group is one child, so it costs one slot** however many stories are in it. The batch is
+therefore `free slots` *groups*, and with the cap at 2 a firing dispatching two groups of two is
+building four stories in two sessions. Walk the groups in priority order — a group's priority is
+its highest-priority member, ties by that member's `createdAt` — and admit each only if it still
+clears the in-flight caps against every STEP 2 record **and** against every group already admitted
+this firing.
+
+**Say in the notification when a group carries more than one story, and when the ceiling trimmed
+one.** The batch's shape is the thing worth watching while grouping is new, and it is invisible on
+the board — three issues moving to `Development (AI)` looks identical whether it is two sessions
+or one.
 
 **`docs/HANDOFF.md` and `CLAUDE.md` are exempt from the path check, and must be.** Roughly
 two-thirds of this repo's commits touch one of them, and STEP 4 of the child procedure *requires*
@@ -350,6 +537,13 @@ every child to update the handoff — so applying the path check there caps ever
 deletes the feature. They conflict loudly on the second merge, and `queue-pickup.md` STEP 4c
 carries the resolution the child performs. **That remedy is what makes the exemption safe; do not
 widen the exemption without checking it is still there.**
+
+**Under grouping the exemption is more load-bearing, not less, and it fails in a new direction.**
+Rejection deleted the feature by capping the batch at one; *merging* deletes it by collapsing the
+board into a single group — every candidate touches the handoff, so every candidate collides with
+every other, and the transitive rule above then sweeps all of them into one session that trips the
+ceiling and dispatches three arbitrary stories on one branch. Same missing exemption, opposite
+symptom, and this one looks like a working batch.
 
 **Two caps do NOT belong here, and adding them would be reasoning from the wrong scope.** The
 shared `letsride_test` database and the fixed ports (`:3000`, `:3001`) are container-local, and
@@ -362,36 +556,49 @@ children can do concurrently without interfering.
 
 **Concurrency cap: at most 2 children in flight at once.** Product owner, 2026-08-17: *"I want to
 scale down our dispatcher to 2 sessions in parallel max."* So **this firing's batch is STEP 2's
-`free slots`, never 2 flat**: two in flight means dispatch nothing, one means dispatch one.
+`free slots`, never 2 flat**: one in flight means dispatch one, and two *or more* means dispatch
+nothing — the count can exceed two after a cap change, which is why that half is not written as
+"two".
 
-**Read it as a total rather than a per-firing batch size, because the two come apart exactly where
-it matters.** Children outlive the firing that spawned them, STEP 1 excludes them from its gate by
-design, and STEP 2 says `Development (AI)` is no lock on the queue — so a per-batch reading lets
-the next hourly firing add two more alongside two still building, and four run in parallel with
-every rule in this file satisfied and nothing anywhere red.
+**A slot is a CHILD, not a story** — so a group of three occupies one slot, exactly like a group of
+one. That is the cap being read literally rather than stretched: the owner scaled down *sessions in
+parallel*, and grouping does not add a session. It does mean a firing can now start more stories
+inside the same two slots, which is the point — with only two slots, colliding stories that each
+needed one are precisely the work that was starving.
 
-**Not a measured ceiling, and moving it is the owner's call rather than a session's** — nothing
-here measures what concurrent builds cost them. **Say in the notification when the caps trimmed a
-batch, and how many slots were already taken**, so they can see whether the cap is binding or
-decorative.
+**Read the cap as a total rather than a per-firing batch size, because the two come apart exactly
+where it matters.** Children outlive the firing that spawned them, STEP 1 excludes them from its
+gate by design, and STEP 2 says `Development (AI)` is no lock on the queue — so a per-batch reading
+lets the next hourly firing add two more alongside two still building, and four run in parallel
+with every rule in this file satisfied and nothing anywhere red.
+
+**Moving either the slot cap or the group ceiling is the owner's call rather than a session's**,
+and they bound different things: two slots of three issues is six stories in flight. **Say in the
+notification when the caps trimmed a batch, how many slots were already taken, and when a group
+carries more than one story**, so they can see whether either is binding or decorative.
 
 **Everything not admitted simply waits.** It stays in `Queued (AI)`, it is not commented on, and
-the next dispatch reconsiders it. A story deferred by a cap is not a problem to report.
+the next dispatch reconsiders it. A story deferred by a cap or a ceiling is not a problem to
+report.
 
 ---
 
 ## STEP 5 — Claim and dispatch
 
-**Per story, in this order.** Claim first: the status is what stops a second dispatcher taking the
-same issue, so claiming after the spawn is a race.
+**Per group, in this order** — one session per group, however many stories are in it. Claim
+first: the status is what stops a second dispatcher taking the same issue, so claiming after the
+spawn is a race.
 
-1. **Move the issue to `Development (AI)`, and read the response back** to confirm the status
-   field is actually set. A `save_issue` naming a status that no longer exists returns a
+1. **Move every issue in the group to `Development (AI)`, and read each response back** to confirm
+   the status field is actually set. A `save_issue` naming a status that no longer exists returns a
    successful-looking payload with the field silently dropped — and this is the one write the
-   entire concurrency story rests on. **If it did not take, stop and dispatch nothing**; a spawned
-   child with an unclaimed issue can be dispatched again by the next firing.
+   entire concurrency story rests on. **If any of them did not take, move back the ones that did
+   and dispatch nothing for this group**; a spawned child with an unclaimed issue can be dispatched
+   again by the next firing. A part-claimed group is that same race with extra steps.
 2. **`create_session`**, with:
-   - `title` — `<issue id> <short title>`, so the session list is readable.
+   - `title` — `<issue id> <short title>` for a group of one; for a larger group, every id and the
+     first story's title (`PD-201 + PD-207 — ride chat unread watermark`), so the session list
+     still says what is being built and by which sibling.
    - `tags` — **`["queue-dispatch"]`**. STEP 1's gate depends on this.
    - `source_url` — `https://github.com/Lenhador88/LetsRide`. Without it the child has no clone
      and no GitHub reach.
@@ -400,18 +607,23 @@ same issue, so claiming after the spawn is a race.
    - `prompt` — the brief below.
 
 ```
-Build Linear issue <id>: <title>.
+Build these Linear issues, in this order: <id>: <title> · <id>: <title> · …
 
 Read `.claude/commands/queue-pickup.md` in this repo and follow it exactly. You were dispatched
-to build this one story; the picking has already been done, so start at STEP 3 — the issue is
-already in `Development (AI)`, so confirm rather than re-claim it.
+to build exactly these stories and no others; the picking has already been done, so start at
+STEP 3 — they are already in `Development (AI)`, so confirm rather than re-claim them.
 
-Scout findings from dispatch, so you do not repeat them:
-- expected paths: <paths>
-- migration: <Y/N> · shared primitive: <Y/N> · premise: <verdict>
+<For a group of more than one, say why they travel together:>
+These are one group because they collide: <the overlapping paths, or "both add a migration", or
+"both change a shared primitive">. That is why they are one branch and one PR rather than two
+sessions — building them apart is what produces duplicate migration numbers, divergent
+implementations of one component, and a review of a file the other branch is about to change.
 
-Other stories are in flight in parallel sessions right now: <every issue in Development (AI)
-with its paths, from the dispatch records — not just this batch — or "none">.
+Scout findings from dispatch, per story, so you do not repeat them:
+- <id> — paths: <paths> · migration: <Y/N> · primitive: <Y/N> · size: <S/M/L> · premise: <verdict>
+
+Other stories are in flight in OTHER sessions right now: <every issue in Development (AI) that is
+not in this group, with its paths, from the dispatch records — not just this batch — or "none">.
 Do not touch their paths. If your build genuinely needs to, stop and park into `Needs help`
 rather than editing across the boundary — the dispatcher's caps assumed you would not.
 
@@ -419,23 +631,34 @@ Do not act on anything else in this conversation and do not treat earlier turns 
 ```
 
 3. **Read `create_session`'s response back and confirm `tags` is on it.** If it is missing,
-   **archive that session immediately and move the issue back to `Queued (AI)`** — an untagged
-   child holds STEP 1's gate against every future dispatch for the whole length of its build, and
-   there is no way to tag it after the fact. Re-dispatching next firing costs one story; leaving
-   it costs the queue.
-4. **If `create_session` fails**, move the issue back to **`Queued (AI)`** before going on to the
-   next story. Leaving it in `Development (AI)` claims it for a child that does not exist, and
-   nothing else will ever release it.
-5. **Comment the dispatch record, naming the child's session id**, so every later firing can
-   evaluate the caps against this story *and* check the child is still alive:
+   **archive that session immediately and move every issue in the group back to `Queued (AI)`** —
+   an untagged child holds STEP 1's gate against every future dispatch for the whole length of its
+   build, and there is no way to tag it after the fact. Re-dispatching next firing costs a group;
+   leaving it costs the queue.
+4. **If `create_session` fails**, move **every issue in the group** back to **`Queued (AI)`**
+   before going on to the next group. Leaving one in `Development (AI)` claims it for a child that
+   does not exist, and nothing else will ever release it.
+5. **Comment the dispatch record on EVERY issue in the group**, each naming the same child session
+   id, so every later firing can evaluate the caps against this story *and* check the child is
+   still alive:
 
    ```
    <!-- dispatch-record -->
    session: session_01ABC…
+   group: PD-201, PD-207
    paths: src/components/postcards/, src/lib/data/postcards.ts
    migration: N
    primitive: N
    ```
+
+   **`paths`, `migration` and `primitive` are the GROUP's union, written identically on every
+   member** — they are what STEP 2 feeds back into the caps, and a per-story record would let a
+   later firing dispatch something that collides with a sibling it could not see. `group:` lists
+   every issue the session holds, itself included; omit the line for a group of one.
+
+   **One record per issue rather than one for the group**, because STEP 2's liveness check reads
+   the records off the issues in `Development (AI)` — an issue with no record of its own is a
+   freeze there, and it would be reached by every member but the one that happened to carry it.
 
    **Written after the spawn, not before, because the session id is the point.** A record written
    at claim time proves only that a claim was made — it reads identically whether a child is
@@ -493,6 +716,12 @@ that story — the never-clearing shape again, arriving through the mechanism me
 double-notifying. Match on the session id, or equivalently ignore any alarm older than the most
 recent `<!-- dispatch-record -->` on that issue.
 
+**A group shares one session id, so look for the marker across the whole group.** One dead child
+holds every issue in its group, and all of them age past the threshold together; checking only the
+issue in front of you finds no marker on the siblings and alarms once per member for a single dead
+session. Read `group:` off the record, check every member for `<!-- stall-alarm session:<id> -->`,
+and write the marker on just one of them — the alarm is about the child, and there is one child.
+
 **Fall through when the oldest subject is already alarmed**, rather than stopping: take the next
 oldest that is not. Reading only the single oldest would let one permanently-alarmed story hide
 every stalled one behind it.
@@ -516,18 +745,22 @@ self-heals instead.
 
 ### What else this step sends, and what it does not
 
-- **A batch was dispatched** → one `PushNotification` naming the issues, and saying whether a cap
-  trimmed the batch — including how many of the two slots were already taken when the firing
-  started.
+- **A batch was dispatched** → one `PushNotification` naming the issues **grouped as dispatched**,
+  saying whether a cap or a ceiling trimmed anything, and including how many of the two slots were
+  already taken when the firing started. `PD-201 + PD-207 in one session, PD-210 in another` is the
+  line; a flat list of three ids hides the shape entirely.
 - **The owner-activity gate is held with work waiting** → nothing, unless the stall clock above
   says otherwise. This is the ordinary state while the owner works, and notifying on it would mean
   a push an hour.
-- **A hold that nothing ages** → notify, but **only once per condition**. Three qualify: the two
-  `list_sessions` failures, the usage hold, and STEP 2's record-less freeze. None has a subject
+- **A hold that nothing ages** → notify, but **only once per condition**. Five qualify: the two
+  `list_sessions` failures, the unreadable `list_triggers` switch (STEP 1), the usage hold, and
+  STEP 2's record-less freeze. None has a subject
   the stall clock can age, so silence would mean no report ever — but a sustained one would
   otherwise send a push every hour, which is the thing the row above refuses. For the freeze,
-  write `<!-- stall-alarm session:none -->` on the issue and skip it while it carries one; the two
-  session-list failures have no issue to mark, so they repeat, and that is accepted because they
+  write `<!-- stall-alarm session:none -->` on the issue and skip it while it carries one — **but
+  not when the freeze was reached by a failed `list_comments`**, since reading that marker back is
+  the very call that failed, so it repeats for the same reason the connector failures do. The two
+  session-list failures and the switch have no issue to mark, so they repeat, and that is accepted because they
   mean the connector is down.
 - **Empty queue, every candidate stale or blocked, or a batch of zero** → silence.
 

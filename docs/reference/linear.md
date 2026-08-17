@@ -150,7 +150,8 @@ it does, permanently.
 ### The queue is drained by a dispatcher, on two clocks
 
 **`trig_01WJkMVXGzUVGDcC1njNmaan`** fires into the dispatcher session, which **hands each queued
-story to its own fresh session** rather than building anything itself. **The procedure is
+story — or each group of colliding stories — to its own fresh session** rather than building
+anything itself. **The procedure is
 [`.claude/commands/queue-dispatch.md`](.claude/commands/queue-dispatch.md), and the child's is
 [`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read them there.** The
 trigger's prompt says little more than *read that file and follow it*, and the child's prompt —
@@ -203,11 +204,22 @@ What has to be known outside those files:
   now, so the temptation to skip past a parked story and find workable ones is stronger than it
   was — and the reason not to is unchanged: it buries a story that needs the owner under three
   merged PRs. A batch is not a licence to route around a stop.
-- **The batch is capped, and the caps are not style.** At most one story adding a migration and at
-  most one touching a shared primitive may be in flight at once, and no two may expect to edit the
-  same paths. `queue-dispatch.md` STEP 4 carries each cap with the silent failure it prevents —
-  duplicate migration numbers, divergent implementations of one component, and a `reviewer` pass
-  that reads a file the other branch is about to change.
+- **The batch is capped, and the caps are not style.** At most one *session* adding a migration
+  and at most one touching a shared primitive may be in flight at once, and no two may expect to
+  edit the same paths. `queue-dispatch.md` STEP 4 carries each cap with the silent failure it
+  prevents — duplicate migration numbers, divergent implementations of one component, and a
+  `reviewer` pass that reads a file the other branch is about to change.
+- **Colliding stories are grouped into one session rather than deferred**, which is the same three
+  caps read the other way round: each describes damage only two *different* sessions can do, and
+  one session writing `060` then `061` has no ordering problem to have. A group is one branch, one
+  PR and one `reviewer` pass, capped at three issues, and each issue is still claimed, commented
+  and moved on its own. `queue-dispatch.md` STEP 4 has the partitioning and the ceiling.
+- **Disabling the Routine stops the queue, and the dispatcher is what makes that true.** A poke
+  from a finishing child is *accepted* against a disabled trigger rather than refused (measured
+  2026-08-17), so the switch is enforced by the dispatcher reading its own `enabled` field on every
+  firing — `queue-dispatch.md` STEP 1. **It does not stop a child already building**: those are
+  spawned rather than scheduled, so stopping them means archiving the sessions tagged
+  `queue-dispatch` and returning their issues to `Queued (AI)`.
 
 ### Do not ask permission to touch Linear
 

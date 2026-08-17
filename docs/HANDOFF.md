@@ -1778,7 +1778,7 @@ repo.** Check `session_context.sources` before theorising about permission layer
 **The queue's own machinery — the two trigger ids, the never-delete rule, the dispatcher session
 and the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the procedures are
 `.claude/commands/queue-dispatch.md` (pick and hand out) and `.claude/commands/queue-pickup.md`
-(build one story).** None of it belongs here: settled contract, not current position.
+(build one group).** None of it belongs here: settled contract, not current position.
 
 **The procedure change does not take effect until the trigger's prompt is repointed**, because the
 prompt is outside the repo and names the file the firing reads. Until then a firing reads the
