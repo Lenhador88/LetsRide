@@ -111,9 +111,22 @@ catch. The rollback is the SQL below.
                 public.complete_onboarding(text) from 058 §3, and
                 public.delete_owned_club(uuid) from 043 — verbatim.
 060   the two notification fan-outs, filtered by their subjects' read policies
-      ROLLBACK: -- Newest-first, and the two DROPs must follow the re-issues:
-                -- is_club_member's 060 body CALLS is_club_member_for, and both
-                -- fan-outs call can_read_ride.
+      ROLLBACK: -- Newest-first, and all THREE drops must follow the re-issues.
+                -- The full caller list, because a partial one reads as licence
+                -- to drop the unlisted function first: is_club_member's 060
+                -- body calls is_club_member_for; can_read_ride and
+                -- can_read_club both call it too; notify_ride_joined calls
+                -- can_read_ride; notify_ride_created_in_club calls BOTH
+                -- can_read_ride and can_read_club.
+                --
+                -- Every one of these is `language sql` with a string body, so
+                -- Postgres records NO dependency and every drop below would
+                -- succeed out of order, silently, leaving bodies that fail at
+                -- the next RSVP rather than at rollback time.
+                --
+                -- COMMENT INCLUDED on all three re-issues. Restoring a body and
+                -- leaving 060's comment on it is worse than no comment: the
+                -- function would still claim a readability filter that is gone.
                 re-issue private.notify_ride_joined() from 055 verbatim, and
                 private.notify_ride_created_in_club() from 059 §1 verbatim
                 -- 059's, NOT 036 §7.5's: 036's predates the default-club early
@@ -130,7 +143,9 @@ catch. The rollback is the SQL below.
 **`058`, `059` and `060` are the entries here whose rollback is ORDER-DEPENDENT in a way a
 `drop` cannot express**, and `060` extends the chain rather than starting a second one: it
 replaces `notify_ride_created_in_club` for the third time, so the three files have to be undone
-newest-first or an older body lands on top of a newer repair with nothing raised.** Four function bodies reference `clubs.is_default`, so dropping the column
+newest-first or an older body lands on top of a newer repair with nothing raised.
+
+Four function bodies reference `clubs.is_default`, so dropping the column
 first fails on the dependency, and rolling `058` back without `059` leaves `059`'s bodies pointing
 at a column that no longer exists. Take them newest-first, functions before column, always.
 

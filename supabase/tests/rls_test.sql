@@ -13203,7 +13203,7 @@ select assert_eq(
   '060: clubs SELECT is TEXTUALLY what private.can_read_club restates — the twin of the pin above. A block arm added here is exactly the change that makes the club conjunct start excluding people, and it must arrive at the helper in the same change');
 
 -- ---------------------------------------------------------------------------
--- 060.2  The two new helpers are reachable by NO client role
+-- 060.2  The three subject-taking helpers are reachable by NO client role
 -- ---------------------------------------------------------------------------
 -- Named by ROLE rather than attempted — 031's lesson: the suite runs as the
 -- table owner, for whom neither the schema barrier nor the EXECUTE barrier
@@ -13214,7 +13214,8 @@ select assert_eq(
 -- returns false only when x and the organizer are blocked with each other,
 -- which decision #2 requires must never be revealed by any gap, count or
 -- marker. is_club_member_for(x, c) is a MEMBERSHIP ORACLE for private clubs.
--- Both are safe only because no rider can call them.
+-- can_read_club is the second oracle of that kind. All three are safe only
+-- because no rider can call them.
 --
 -- service_role is included because 031 granted it USAGE on `private`; revoking
 -- from `public` is what actually closes it, EXECUTE being granted to PUBLIC by
@@ -13240,7 +13241,7 @@ select assert_eq(
       and p.proname in ('can_read_ride', 'can_read_club', 'is_club_member_for')),
   0, '060: ... and none is in the PostgREST-exposed public schema');
 
--- Definer with the path pinned, both of them. Asserted from the catalog rather
+-- Definer with the path pinned, all three. Asserted from the catalog rather
 -- than trusted from the file: apply_migration takes SQL as an argument, and 022
 -- once shipped with `security definer` missing. proconfig stores the pin as the
 -- literal search_path="" — matching on `search_path=` finds nothing and reads
