@@ -348,8 +348,8 @@ Ask, specifically:
   neither does the digest. `list_edge_functions` returns `updated_at`; compare it against
   `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/`, and a
   file newer than the deploy means the deployed build is **stale**. Run the two commands rather
-  than reading a sentence about it; where each function currently stands is
-  `docs/HANDOFF.md` §Store readiness row 2.
+  than trusting any file's account of the answer — `delete-account`'s standing is
+  `docs/HANDOFF.md` §Store readiness row 2, and that row covers no other function.
 
   `status`, `verify_jwt` and `ezbr_sha256` are the second question — do the **two projects** run
   the same thing. Two projects can be equal and both stale, so equality is never currency.
