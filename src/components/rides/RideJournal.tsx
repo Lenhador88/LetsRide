@@ -30,15 +30,30 @@ import { ImageIcon, PlusIcon } from '@/components/icons/generated'
 export function RideJournalEmpty() {
   return (
     <div className="flex gap-2 px-4">
-      <div className="flex flex-1 aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center">
+      {/* `min-w-0` on both, and it is the difference between a matched pair and
+          two different squares. A flex item defaults to `min-width: auto`, so
+          `flex-1` (`1 1 0%`) cannot shrink it below its *min-content* width —
+          and "Prep shots count" is wider than "Add". Measured on a 390px
+          viewport before this: 187×187 beside 163×163, from two elements
+          carrying identical classes. The tiles are squares by `aspect-square`,
+          so the width error is a height error too. */}
+      <div className="flex aspect-square min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center">
         <ImageIcon className="h-6 w-6 text-muted opacity-60" aria-hidden="true" />
         <span className="text-xs font-semibold text-foreground">Nothing yet</span>
         <span className="text-2xs text-muted">Prep shots count</span>
       </div>
 
+      {/* `bg-track`, not `bg-surface`. The mock fills this tile with its
+          `--device-fill`, which is a *subtle tint against the surface it sits
+          on* — and on that mock the surface is a white phone body, so the tint
+          is cream. This page's surface is already cream, so translating the
+          token by name gives white, which at 175px square is the brightest
+          thing on the screen and reads as a card rather than a slot. `bg-track`
+          is the same recessed fill the map panel directly above already uses,
+          which is what the mock's relationship actually looks like here. */}
       <Link
         href="/postcards/new"
-        className="flex flex-1 aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-surface text-muted transition-colors active:bg-border"
+        className="flex aspect-square min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
       >
         <PlusIcon className="h-6 w-6" aria-hidden="true" />
         <span className="text-xs font-semibold">Add</span>
