@@ -442,7 +442,7 @@ mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
 mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
 # updated_at vs the commit date above; then status ACTIVE, verify_jwt true,
 # and ezbr_sha256 equal across the two. A moved sha is necessary, not sufficient —
-# verify a redeploy by content, per docs/HANDOFF.md's Known issues row 2.
+# verify a redeploy by content, per docs/HANDOFF.md's Store readiness row 2.
 ```
 
 **There is one doorway now, and almost nothing should reach past it:**

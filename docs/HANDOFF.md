@@ -417,7 +417,8 @@ working around them.** Four carry detail worth having at hand:
    2026-08-11. Re-measured 2026-08-17: `delete-account` and `resolve-ride-location` are both
    `ACTIVE` on both projects, `verify_jwt` true, `ezbr_sha256` equal across the two per function
    (`7d521b17…` and `d5932de9…`) — **and `delete-account`'s deployed build is stale**, `updated_at`
-   2026-08-16T18:34Z against an `index.ts` committed 2026-08-17T08:09Z, which is row 2 below.
+   2026-08-16T18:34Z against an `index.ts` committed 2026-08-17T08:09Z — row 2 of §Store
+   readiness above, not §Known issues, which is a bulleted list with no rows in it.
    Cross-project equality never means current. PD-231 put `list_edge_functions` on `reviewer`'s
    `tools:` line so it can make that comparison rather than probing the endpoint — **an entry on
    a `tools:` line is not availability**, and the pass reviewing PD-231 itself reached no

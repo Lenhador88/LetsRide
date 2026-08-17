@@ -347,10 +347,10 @@ Ask, specifically:
   No file read answers the question that matters — **is the deployed build this file** — and
   neither does the digest. `list_edge_functions` returns `updated_at`; compare it against
   `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/`, and a
-  file newer than the deploy means the deployed build is **stale**. That is the live case as of
-  2026-08-17: `delete-account` deployed 18:34Z on 2026-08-16 against a file committed 08:09Z on
-  the 17th, which is the re-authentication proof `docs/HANDOFF.md`'s §Known issues row 2 says is
-  not yet in production.
+  file newer than the deploy means the deployed build is **stale** — as `delete-account`'s is
+  today, which is why the re-authentication proof `docs/HANDOFF.md`'s §Store readiness row 2
+  names is not in production. Run the two commands rather than reading that sentence; a redeploy
+  retires it without anyone editing this file.
 
   `status`, `verify_jwt` and `ezbr_sha256` are the second question — do the **two projects** run
   the same thing. Equal-and-both-stale is exactly today's state, so equality is never currency.
