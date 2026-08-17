@@ -798,8 +798,9 @@ export type NotificationCursor = { createdAt: string; id: string }
  * shape** — `src/lib/data/places.ts` exists, but it reads through
  * `search_places()`/`locality_centroid()`, which return `PlaceSearchResult`/
  * `LocalityCentroid`, never a row of this type directly. The table is loaded on
- * both projects (`PD-195`); `docs/reference/schema.md` §`places` carries the
- * count and the command that re-derives it.
+ * both projects (`PD-195`) — `docs/reference/schema.md`'s `places` row carries
+ * the count, and `docs/HANDOFF.md` §`places` carries the command that
+ * re-derives it.
  */
 export type Place = {
   /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */
@@ -939,8 +940,10 @@ export type PlaceSearchResult = {
  * all**, which is the case the caller has to handle first.
  *
  * It exists for one job: when the rider declines GPS, `profiles.location` — the
- * free-text city from onboarding — is the *only* position signal the app holds
- * (`rides` has no coordinates and nothing stores a rider position). This turns
+ * free-text city from onboarding — is the position signal to fall back on. It
+ * is no longer the *only* one: `051` gave `rides` `latitude`/`longitude`, so a
+ * ride the rider is looking at can supply a coordinate too (`PD-114` step 3).
+ * Nothing stores a rider's own position. This turns
  * that string into a `near_lat`/`near_lon` pair for `search_places()`, which is
  * the difference between a 2,957 ms nationwide search and a 152 ms local one.
  *
@@ -960,12 +963,13 @@ export type PlaceSearchResult = {
  *    apart; an unloaded index is indistinguishable from an unknown city by
  *    design, not by oversight.
  *
- *    **It is no longer the common answer, and this paragraph said it was for
- *    six days after it stopped being true.** `PD-195` ran the load, so both
- *    projects hold the same index and a stored city resolves — which means a
- *    caller reading this for "will it ever answer" gets the wrong picture, and
- *    the fallback chains built on it were written for a dead branch. Count it,
- *    the way `docs/reference/schema.md` §`places` says to:
+ *    **It is not the common answer, and `040` — the migration this block sends
+ *    you to — states in its own header that it is.** That file says `places`
+ *    "holds 0 rows on DEV and does not exist on PROD at all", and that `rides`
+ *    "has no coordinate columns … That is the whole inventory". Both were true
+ *    when it was written and neither is now; migrations are append-only, so
+ *    those lines stay wrong for ever and reading the source is what re-derives
+ *    the mistake. Count instead:
  *
  *    ```sql
  *    select (select count(*) from public.places) as rows,

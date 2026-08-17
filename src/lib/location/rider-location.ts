@@ -20,8 +20,12 @@ import { getMyLocationText } from '@/lib/data/profile'
  * step 3** — the ride being edited's own meeting point, and the rider's
  * last-used one. **Neither is blocked on schema any more**: this said `rides`
  * had no lat/lng column "verified", and `051` added `latitude`, `longitude`
- * and `geocode_confidence`, filled by the `resolve-ride-location` function.
- * What is left is the work itself. Adding either is meant to be a new entry
+ * and `geocode_confidence`, filled by `resolve-ride-location`, which is ACTIVE
+ * on both projects (measured 2026-08-17; `src/lib/actions/rides.ts` still says
+ * it is not deployed, which is `PD-249`). **Expect NULL on any ride created
+ * before that deploy** — a source reading a coordinate off a ride has to treat
+ * a null as "no signal" rather than as an error, exactly as the profile source
+ * treats a city that does not resolve. Adding either is meant to be a new entry
  * appended to `SOURCES` below, not a rewrite of `resolveRiderLocation` or the
  * functions around it — say so here rather than leaving the next reader to
  * infer it.
