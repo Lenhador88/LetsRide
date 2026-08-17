@@ -3,7 +3,7 @@
 Do not hand-edit. Regenerate from the snapshot; if this disagrees with
 `docs/reference/design-system.md`, this file is right and that one is stale.
 
-Figma file `gDoteM1ow1AZpSEGSNhpc7`, last modified 2026-08-16T23:30:04Z.
+Figma file `gDoteM1ow1AZpSEGSNhpc7`, last modified 2026-08-17T09:03:19Z.
 
 **Colors:**
 

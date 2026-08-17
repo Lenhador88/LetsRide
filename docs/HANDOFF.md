@@ -1517,14 +1517,18 @@ Two traps, both live:
 `CLAUDE.md` §Development Workflow has the commands and the refresh rules; the two traps above
 are the ones that only matter when choosing *what* to build.
 
-### The wave icon — authored into Figma, landed in code, 2026-08-16
+### The wave icon — authored into Figma 2026-08-16, redrawn from primitives 2026-08-17
 
 The like control is the motorcycle wave (PD-228) needed a glyph the set did not have, so it was
 authored **into** Figma rather than drawn in the repo — the first time anything here has written
 to the design file. `CLAUDE.md` §Design System's fourth rule and
 `.claude/agents/design-system.md` §Writing to Figma carry the standing rules that came out of it.
 
-**It is `Element / Icon / Wave` (`4108:6912`), one component, and one is the whole point.** The
+**What ships now is the second glyph.** The first was traced from an emoji font and read as noise
+at 24px, so the product owner reviewed eleven redraws and picked one drawn from primitives
+(PD-242).
+
+**It is `Element / Icon / Wave` (`4127:6925`), one component, and one is the whole point.** The
 heart it replaced was a filled/outline pair; a hand cannot be one. A solid silhouette loses the
 folded fingers and thumb that make the glyph legible at 24px, and a merely bolder copy is
 indistinguishable from the outline on a phone — so the liked state is carried by `text-like`
@@ -1547,14 +1551,21 @@ not a substitute for the attribute.
 The full chain ran, so `design/` and `generated.tsx` are current — 54 icons, not 53:
 
 ```bash
-node -p "require('./design/manifest.json').pulledAt"   # 2026-08-16
-npm run figma -- icons | grep -i wave                  # wave  Wave  4108:6912
+node -p "require('./design/manifest.json').pulledAt"   # 2026-08-17
+npm run figma -- icons | grep -i wave                  # wave  Wave  4127:6925
 grep -c WaveIcon src/components/icons/generated.tsx    # 1
 ```
 
-**The glyph is traced from `Noto Emoji` U+270C, and its licence is settled — clear to ship.**
-Recorded because the next session would otherwise re-derive it, and because `places` is the
-standing warning against assuming exactly this.
+**The glyph shipping today carries NO third-party licence position, because it is drawn from
+primitives rather than traced.** There is nothing to attribute and nothing to record. That
+absence is worth stating rather than leaving implied: silence reads identically to a licence read
+that is still pending, which is the state the traced glyph was in for a day. It is written into
+the Figma component's `description` as well, where the next person to open the file will see it.
+
+**The OFL analysis below is kept as the worked example, not as this icon's position** —
+`.claude/agents/design-system.md` §Writing to Figma points here for it, and it generalises to any
+OFL font, which is the next traced glyph anyone is tempted by. It applied to the *first* wave,
+traced from `Noto Emoji` U+270C, and it is what cleared that one to ship.
 
 `Noto Emoji` is SIL OFL 1.1, `Copyright 2013 Google LLC`, **no Reserved Font Name declared**
 (`raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/OFL.txt`). What settles it is the
@@ -1582,12 +1593,15 @@ So no attribution is required and none is legally load-bearing. Crediting Google
 free courtesy and still worth doing. **What would change the answer is shipping the font file
 itself** — bundling `NotoEmoji-Regular.ttf` puts clause 2 back in play immediately.
 
-**The walk was run against DEV on 2026-08-16 and the icon was looked at.** 19/19 screens rendered
-clean, 48/48 guard, navigation and sign-out checks correct, and the postcards feed was screenshotted
-at 3x with the like control toggled both ways. The glyph reads at 24px, its weight matches Chat
-Bubble and Paper Plane beside it, and the liked state is legibly Pink/100. `aria-label` came back
-`Like, 0 likes` with `aria-pressed` returning to `false` after a toggle — the two mechanisms agreeing,
-which is what the earlier fix was for.
+**That walk looked at the TRACED glyph, and the one shipping now has not been looked at in a
+browser.** Said plainly because the paragraph below otherwise reads as cover for the current icon:
+the run was 2026-08-16, 19/19 screens clean, 48/48 guard, navigation and sign-out checks correct,
+the postcards feed screenshotted at 3x with the like control toggled both ways, `aria-label`
+`Like, 0 likes` and `aria-pressed` returning to `false`. Everything there that is about the
+*screen* still holds — the action row, the toggle and the accessible name are untouched by PD-242.
+Everything about the *glyph* — that it reads at 24px, that its weight sits with Chat Bubble and
+Paper Plane — was measured on the outline that has since been deleted. Re-running the walk is the
+outstanding verification on this icon.
 
 **No credential needed to be requested, and an earlier draft of this section wrongly said one did.**
 `WALK_EMAIL` / `WALK_PASSWORD` are not in the environment and are not meant to be — §Test accounts
@@ -1597,14 +1611,39 @@ on DEV under the standing grant, so it sets a generated password on
 what happened here, and the password was rotated afterwards precisely because it had passed
 through a transcript.
 
-**Stroke weight is measured, not eyeballed, and it took three rounds to learn that.** The glyph
-shipped light twice — once by an agent's judgement and once by a correction that was still guessed
-after the product owner said it looked thin. Measured, it was **1.4px** against Chat Bubble's 2.2.
-It is now 2.2, matching:
+**Stroke weight is measured, not eyeballed, and it took three rounds to learn that.** The traced
+glyph shipped light twice — once by an agent's judgement and once by a correction that was still
+guessed after the product owner said it looked thin. Measured, it was **1.4px** against Chat
+Bubble's 2.2, and was then tuned to 2.2 to match.
+
+**The redraw did not inherit that match, and it is the open question on this icon.** Measured, it
+now comes in above the neighbour it was tuned against:
 
 ```bash
 npm run figma:measure -- wave chat-bubble paper-plane
-# wave 2.2 · chat-bubble 2.2 · paper-plane 2.5
+# wave 2.45 · chat-bubble 2.2 · paper-plane 2.5     (was: wave 2.2, traced)
+```
+
+Left as drawn rather than silently thinned — matching Chat Bubble means altering a drawing the
+product owner approved, so which side gives is theirs to say.
+
+**Do NOT reach for `strokeWeight` in the snapshot to settle it — it is vestigial on this icon and
+the trap is that it reads perfectly plausible.** The obvious command is the one to avoid:
+
+```bash
+node -e "const d=require('./design/components/element-icon-wave.json');
+         console.log(d.children[0].strokeWeight)"   # 2.2 — and it draws nothing
+```
+
+That number sat beside a `strokes: []` array: the glyph is a **filled path**, so nothing applies a
+stroke and 2.2 is a leftover property. It is invisible in `design/`, because `extract.mjs` records
+`strokeWeight` and not `strokes` — so a count across the set reads 40 of 46 at "2" and looks like
+a row this icon is breaking. Both readings were published in this repo before the raw file was
+checked. The REST node is where the answer is:
+
+```bash
+# strokes: []  ->  strokeWeight is decoration, use figma:measure instead
+node -e "…figmaFetch('files/\$KEY?ids=<node>')…"   # scripts/figma/lib.mjs
 ```
 
 `scripts/figma/measure-icons.mjs` rasterises an exported SVG in Chromium and takes the median run
@@ -1612,12 +1651,36 @@ of ink across rows, which is the stroke width for a line icon. **Read it only fo
 a solid glyph reports its own width — and compare against the icons a glyph will actually sit
 beside, never a global average.
 
-**`inkPct` is not interchangeable with stroke weight, and the wave is the case that proves it.** At
-matched stroke it carries 34.9% ink against Chat Bubble's 21.8%, because it is a narrow, detailed
-hand rather than a simple round shape. Its bbox is 15.3x22.0 against their ~21x21 for the same
-reason. So the row is matched on the axis the eye reads as thickness, and still not identical in
-mass — that is the glyph, not a defect, and growing it further pushes the fingertips into the box
-edge.
+**`inkPct` is not interchangeable with stroke weight, and the wave is the case that proves it.** It
+carries **25.1%** ink against Chat Bubble's 21.8%, because it is a hand rather than a simple round
+shape, and its bbox is **18.1x19.7** against their ~21x21 for the same reason. So the row is not
+identical in mass whatever the stroke does — that is the glyph, not a defect.
+
+**The redraw moved the two numbers in opposite directions, which is the whole point of measuring
+both.** Ink fell from the traced glyph's 34.9% to 25.1% while the stroke rose from 2.2 to 2.45. The
+drop *is* the fix the product owner asked for — the detail crossing the fingers that read as noise
+at 24px — and a single "is it heavier" question cannot express it. A screenshot answers neither
+number, which is why both gates exist.
+
+**Three drafts were reviewed as `H`, `H2` and `H3`, and the shipped one is `H`.** Worth naming
+because the first pass shipped `H2` — one letter apart, and the visible difference is a line
+crossing the two raised fingers, which `H` does not have. `inkPct` is the number that separates
+them: 25.1 for `H` against 30.5 for `H2`.
+
+**All three drafts are deleted from the file and all three are still recoverable**, which is worth
+knowing before anyone redraws one. Figma keeps version history and the REST API takes a `version`
+parameter, so the pre-deletion file is readable — the drafts lived only between
+`2388594355669001856` (2026-08-17T07:29Z) and the delete, so no committed snapshot ever held them
+and `git` cannot help:
+
+```bash
+node -e "…figmaFetch('files/\$KEY/versions')…"                       # list versions
+node -e "…figmaFetch('images/\$KEY?ids=<node>&format=svg&version=<id>')…"   # export one
+```
+
+`createNodeFromSvg` then reimports it faithfully. Figma flattens a fill-only glyph's export to a
+single path, which costs nothing here because these are filled paths already — see the vestigial
+`strokeWeight` above.
 
 ---
 

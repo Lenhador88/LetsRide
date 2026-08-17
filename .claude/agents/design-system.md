@@ -72,10 +72,15 @@ standing rule there — settle it before any screen renders one — is the rule 
 goes in the component's Figma `description` **and** in the handoff. A traced glyph with no
 recorded licence position is not finished, however good it looks.
 
-The wave glyph's own position is settled and is the worked example — `docs/HANDOFF.md` §The wave
-icon carries it. The short version, because it generalises to any OFL font: the licence defines
-"Font Software" as a set of **files**, and every obligation in it hangs off that noun, so shipping
-an extracted outline redistributes nothing the licence governs. Shipping the `.ttf` would.
+**The shipping wave carries no licence position at all** — PD-242 replaced the traced glyph with
+one drawn from primitives, so there is nothing to attribute and nothing to record. Do not read the
+paragraph below as its clearance.
+
+The OFL worked example is kept because it generalises to any OFL font, which is the next traced
+glyph anyone is tempted by; `docs/HANDOFF.md` §The wave icon carries it in full, and it applied to
+the *first* wave. The short version: the licence defines "Font Software" as a set of **files**, and
+every obligation in it hangs off that noun, so shipping an extracted outline redistributes nothing
+the licence governs. Shipping the `.ttf` would.
 
 **Load the server's own skill first.** `read_skill_uri skill://figma/figma-use/SKILL.md`, then
 pass `skillNames: 'resource:figma-use'` on the call — for component work, `figma-generate-library`
@@ -89,13 +94,18 @@ failures look nothing alike: `InputValidationError` means the schema arrived def
 which is what a connector rotation does. Diagnose with a keyword search (`+use_figma figma`) and
 **report** which of the two it was — restoring an absent tool is the owner's, not yours.
 
-**`Element / Icon / Wave` (`4108:6912`) already exists on the Components page**, authored
-2026-08-16 for the like control (PD-228) and pulled through into `generated.tsx`. Check before
-authoring anything hand-shaped, or the dedupe above decides which of two components wins:
+**`Element / Icon / Wave` already exists on the Components page**, authored 2026-08-16 for the like
+control (PD-228), redrawn from primitives 2026-08-17 (PD-242), and pulled through into
+`generated.tsx`. Check before authoring anything hand-shaped, or the dedupe above decides which of
+two components wins:
 
 ```bash
-npm run figma -- icons | grep -i wave   # wave  Wave  4108:6912
+npm run figma -- icons | grep -i wave   # wave  Wave  4127:6925
 ```
+
+**Trust that command's output over the id printed beside it.** The id has moved once already — a
+redraw replaces the node — and nothing in CI, `docs:check` or `crossrefs` reads these lines, so a
+stale one here fails silently in the exact way this check exists to prevent.
 
 **It is deliberately a single component with no filled twin**, and `LikeButton` toggles it with
 `text-like` instead. The reason is legibility, not tooling: a solid hand silhouette loses the

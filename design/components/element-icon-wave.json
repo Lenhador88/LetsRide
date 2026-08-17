@@ -1,7 +1,7 @@
 {
   "page": "Components",
   "section": null,
-  "id": "4108:6912",
+  "id": "4127:6925",
   "name": "Element / Icon / Wave",
   "type": "COMPONENT",
   "box": {
@@ -15,17 +15,17 @@
   "strokeAlign": "INSIDE",
   "children": [
     {
-      "id": "4122:6915",
+      "id": "4132:6913",
       "name": "Icon",
       "type": "VECTOR",
       "box": {
-        "x": 12620.34,
-        "y": 11417,
-        "w": 15.33,
-        "h": 22
+        "x": 12618.96,
+        "y": 11418.16,
+        "w": 18.08,
+        "h": 19.68
       },
-      "strokeWeight": 0.42,
-      "strokeAlign": "OUTSIDE",
+      "strokeWeight": 1,
+      "strokeAlign": "INSIDE",
       "fills": [
         {
           "type": "SOLID",
