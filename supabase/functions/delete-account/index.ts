@@ -3,39 +3,47 @@
  * `auth.users` row.
  *
  * ===========================================================================
- * DEPLOYED, AND BEHIND THIS FILE. Read the state, not this line.
+ * THE DEPLOY MOVES WITHOUT THIS FILE MOVING. Read the state, not this line.
  * ===========================================================================
- * The deploy moves without this file moving, so every claim below carries the
- * command that re-takes it. Do not hand-count how far behind the deployed build
- * is — a headline count here was wrong within one commit of being written, and
- * do not hardcode the deploy date into the range either, which is how the FIX
- * for that went wrong on its first pass. Read the date off the deploy, then use
- * it:
- *
- *   git log --oneline --since=<the updated_at below> -- supabase/functions/delete-account/
+ * Every claim below carries the command that re-takes it. Do not hand-count how
+ * far behind the deployed build is — a headline count here was wrong within one
+ * commit of being written — and do not hardcode a deploy date into the range,
+ * which is how the FIX for that went wrong on its first pass. Read the date off
+ * the deploy, then use it:
  *
  *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
  *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
  *   # status ACTIVE, verify_jwt true, ezbr_sha256 EQUAL across the two
  *
- * Measured 2026-08-14: ACTIVE on both, `verify_jwt: true`, identical
- * `ezbr_sha256`, deployed 2026-08-11. All five of task 2.6's cases passed on
- * DEV against that build; `PD-86` is the record, and whether PROD's
- * `SERVICE_ROLE_KEY` is PROD's key remains unproven there.
+ *   git log --oneline --since=<the updated_at above> -- supabase/functions/delete-account/
+ *   # empty means the deploy is current; anything listed is what it is missing
  *
- * **The deployed build is NOT this file.** `ride-maps` joined `PREFIXES` on
- * 2026-08-12 (`99a2f09`), after the deploy. Harmless while it lasts — the map
- * renderer is deployed on neither project, so nothing writes that prefix — and
- * `add-ride-map-tiles` task 8.3 blocks its own deploy on this redeploy for
- * exactly that reason. Deploying the renderer first is what opens the gap.
+ * **Read what that range CONTAINS, not how many commits it holds.** A commit
+ * that only rewrites this header lands in it too, so the check reads "stale"
+ * for a change that cannot alter behaviour. It errs in the safe direction and
+ * is not a reason to redeploy: open the diff.
  *
- * **The re-authentication proof (task 3.4) is now IN THIS FILE, as of PD-102
- * (2026-08-16) — and it is NOT in the deployed build.** `req.json()` below
- * reads a `{ password }` body and verifies it with `signInWithPassword`
- * before anything destructive runs (D6). The deployed build still predates
- * this: until the owner redeploys (dashboard only, `PD-86`), production and
- * DEV both still delete on a valid bearer token alone, and a client sending a
- * password to either gets it silently ignored.
+ * **`ezbr_sha256` equality across the two projects is NOT a currency check** —
+ * it says PROD and DEV agree, never that either matches this file, and it read
+ * equal for two days while both were behind. The digest that answers currency
+ * is the pair above: a deploy `updated_at` NEWER than this directory's last
+ * commit, with nothing in the `git log` range.
+ *
+ * Measured 2026-08-17T14:32Z, after the owner redeployed by hand: **PROD v9 and
+ * DEV v5, `ezbr_sha256` 9793933d…, both current** — the re-authentication proof
+ * below is live on both projects. `PD-86` is the record. Two things it does not
+ * settle: whether PROD's `SERVICE_ROLE_KEY` is PROD's key (unproven — the 401
+ * at the `getUser` check fires before the admin client is built, so no probe so
+ * far has reached the code a wrong key breaks), and whether the proof actually
+ * RUNS — see the CONTENT note below. `ride-maps` has been in the deployed
+ * `PREFIXES` since the 2026-08-16 deploy, so that gap is closed.
+ *
+ * **The re-authentication proof (task 3.4) landed with PD-102 (2026-08-16).**
+ * `req.json()` below reads a `{ password }` body and verifies it with
+ * `signInWithPassword` before anything destructive runs (D6). A build older
+ * than that commit deletes on a valid bearer token alone and silently ignores
+ * a password the client sends — which is what the two commands above exist to
+ * rule out before anyone trusts the sheet.
  *
  * **Committing the function ahead of the client, inside one branch, does NOT
  * make a redeploy fail-closed, and an earlier revision of this comment
