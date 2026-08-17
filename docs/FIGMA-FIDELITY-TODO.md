@@ -122,34 +122,57 @@ being called done.
       **Heart Filled in Pink/100 `#F23071`** when liked. That settles the
       "Pink/100 — purpose not established" note in `CLAUDE.md`: it is the liked heart, and
       nothing else uses it.
-- [ ] **The action row's trailing padding is conditional, and an uncounted control is 4px
-      under the glove floor — deviation, adopted 2026-08-17.** Same status as the photo-box
-      entry under §Create postcard: a design question on record, not drift. All eight
+- [ ] **An uncounted action control is the owner's 6/6 box, 8px under the glove floor —
+      deviation, adopted 2026-08-17.** Same status as the photo-box entry under §Create
+      postcard: a design question on record, not drift. All eight
       `Button / Postcard Action` variants — `Type=Share` included — draw a count, so the
       frame's `padding 8/12/8/8` measures the gap between the **number** and the box edge and
       has no ground truth for the zero-count state. The app has that state constantly: `Count`
       renders nothing at zero, and `ShareButton` passes no count at all because nothing is
       recorded to count. Applied unconditionally the 12px is dead space beside a bare glyph,
-      and with the frame's own `itemSpacing 0` two adjacent icons sat 20px apart. Shipped as
-      `pr-3` with a count and `pr-2` without — a symmetric 40px box around the 24px icon.
-      Measured in Chromium at 390px: uncounted controls 44 → **40px** wide, icon gaps 20 →
-      **16px**; counted controls unchanged at 61/56px.
+      and with the frame's own `itemSpacing 0` two adjacent icons sat 20px apart.
+      - **A counted control is still the measured box, and deliberately so.** Shipped as
+        `pl-2 pr-3` with a count — 8/12, 54px, exactly the frame — and `px-1.5` without.
+        Only the state the design never drew moved; scaling the counted box to match was
+        built and rejected, because it would depart from a measured value in a state the
+        frame *does* draw. Measured in Chromium at 390px: uncounted controls **36px** wide
+        with **12px** icon gaps, counted ones unchanged at 61/56px.
+      - **The 6px is the owner's number, not an inference.** The first pass shipped symmetric
+        8 (40px, 16px gaps) as this file's own reading of what the frame would have hugged
+        to. Shown 16px, 12px, a 12px-with-28px-glyph variant and 8px rendered side by side on
+        2026-08-17, the owner chose 12px. So this line records a decision, and the only thing
+        to re-derive is whether it still holds.
       - **The cost is horizontal tap target, and it cannot be bought back.** An uncounted
-        control is 40×44 rather than 44×44. The `::before` that lifts the height to 44 cannot
-        widen it: the row is `gap-0` and the boxes abut, so `-inset-x` would overlap the
-        neighbour and hand the later sibling taps meant for the earlier one — firing the wrong
-        action, which is worse than a narrow one. Three abutting 44px targets need 132px of
-        row; three 40px boxes give 120px. So icon spacing and target width are one lever:
-        16px gaps with 40px targets, or 20px gaps with 44px. The owner saw the 20px version
-        and asked for it tighter. Revisit if a rider reports mis-taps here.
+        control is 36×44. The `::before` that lifts the height to 44 cannot widen it: the row
+        is `gap-0` and the boxes abut, so `-inset-x` would overlap the neighbour and hand the
+        later sibling taps meant for the earlier one — firing the wrong action, which is worse
+        than a narrow one. The gap between two glyphs **is** the control width minus the 24px
+        icon, so there is one lever and not two: 12px apart means 36px wide, 16px means 40px,
+        and the 44px floor would mean 20px apart — the version that prompted all of this. The
+        escape is a larger glyph, and **32px is the one that actually clears the floor**
+        (32+6+6 = 44 with the gaps still 12). The variant offered to the owner and declined was
+        **28px, which reaches only 40** — it buys back the width this entry gave up and does
+        not reach the floor, so a later session reaching for "the logged escape" must not read
+        it as clearing 44.
+      - **The second tap after a like clears its neighbour by under a pixel.** `LikeButton` is
+        optimistic, so a tap on a zero-like card grows that control from 36px to 53.1px in the
+        same frame — and a rider tapping comment where it was a moment earlier is 0.9px inside
+        the new comment box. Measured in Chromium at 390px, both states rendered: the old
+        centre still resolves to the right control, so this is a **thin margin, not a defect**
+        — but 0.9px is inside font-rendering variance, and at 16px spacing the same margin was
+        6.9px. A shift larger than half the neighbour's width lands the tap on the *previous*
+        control, which un-likes instead of opening the thread. So "revisit if a rider reports
+        mis-taps" points here as much as at the static width, and the fix if it is ever needed
+        is to stop the control resizing on the optimistic write rather than to widen it back.
       - **The rule is gated; the pixels are not.**
         `src/components/postcards/__tests__/PostcardAction.test.tsx` renders all three
         variants plus the composed card and asserts the class list — the conditional padding,
         that a zero count reads as no count, that a caller can still override it, and that the
         row keeps `gap-0`. Each was proved to fail against a reintroduced regression before it
-        was committed. What it does **not** assert is any width above: the suite is
-        `environment: 'node'`, so 8+24+8 = 40px is the browser's arithmetic, measured once in
-        a scratch route that no longer exists.
+        was committed — including the counted-box departure named above, which fails 4. What
+        it does **not** assert is any width above: the suite is `environment: 'node'`, so
+        6+24+6 = 36px is the browser's arithmetic, measured in a scratch route that no longer
+        exists.
 - [x] ~~**Empty state**~~ — **measured copy:** "There are no new postcards, yet!",
       Poppins/14/Medium in Grey/80, centred, no panel, no illustration, no CTA.
 - [x] ~~**Header**~~ — **measured.** `v2 / Component / Header` Type=Regular: 96 tall, centred
