@@ -151,6 +151,10 @@ in the wrong order is expensive in a way a skipped hour is not.
 Consider adding the missing `blockedBy` relation while you are there, so the next firing
 catches it at the dispatcher's scout pass instead.
 
+**Send the push before you stop**, exactly as §If you get stuck requires and for the same reason:
+`Done ; ) <issue id> parked, needs you — waiting on <issue id>`. This exit never reaches STEP 5
+bullet 5, and the queue is frozen behind it.
+
 **If you got far enough into the build to have a STEP 4b triage list, file it before you
 stop** — same rule as §If you get stuck. This exit is named there as one of the two that leave
 without reaching STEP 5, and STEP 4b deliberately creates nothing, so a follow-up rated on the
@@ -735,9 +739,10 @@ That is why they are numbered and cross-referenced by number.
 
    **What it costs, said once so nobody re-derives it as a defect: a freed slot waits for the top
    of the hour.** Finish at 10:05 and the next story starts at 11:00, not at 10:06. That is the
-   owner's call, and it buys a queue with exactly one clock — nothing to double-fire, nothing to
-   wake a dispatcher that is already running, and an off switch that genuinely stops everything
-   rather than stopping only the heartbeat.
+   owner's call, and it buys a queue with exactly one clock — nothing to double-fire, at most one
+   firing an hour that can land on a dispatcher still working, and an off switch that stops every
+   dispatch rather than stopping only the heartbeat. **It still cannot stop a child already
+   building**, yours included: that is `queue-dispatch.md` STEP 1's carve-out, not an oversight.
 
    **You therefore need no Claude Code Remote tools at all.** If a future step needs one, that is
    a design change rather than a convenience — say so rather than reaching for `fire_trigger`.
@@ -821,9 +826,10 @@ call:
   firing reads the board as it stands, and it can arrive minutes after your last write: park
   afterwards and it sees nothing in `Needs help`, so the queue-wide lock does not hold and it
   dispatches into every free slot — burying the story that needs the owner under the merged PRs,
-  which is the exact harm the lock exists to prevent. **The park is the only signal you send**;
-  since bullet 6 no longer pokes anything, a late one is not late by seconds, it is simply missing
-  when the hour turns.
+  which is the exact harm the lock exists to prevent. **The park is the only signal the queue
+  gets** — the push in bullet 5 goes to the owner, not to a dispatcher — and since bullet 6 no
+  longer pokes anything, a late park is not late by seconds, it is simply missing when the hour
+  turns.
 
   **Bullet 4 rather than bullet 6, because bullet 4 is the earlier hazard.** It moves *every* issue
   in the group to `Deployed to DEV` with a comment claiming a merge — so a park deferred past it
@@ -869,7 +875,14 @@ needing the owner does not get buried under the next batch of merged PRs.
 **Leave the branch and any PR open, and say so in the comment.** Nothing else will pick this up:
 your session ends here, and the next dispatch will not touch a story it can see is parked. **Send
 nothing to the queue** — STEP 5 bullet 6 applies to a park exactly as it applies to a merge, and
-the `Needs help` status plus your comment is what the next hourly firing reads.
+the `Needs help` status is what the next hourly firing reads.
+
+**Then send the push, because a park is the one exit where nothing else will.** `Done ; ) <issue
+id> parked, needs you — <one line why>`. Parking freezes the whole queue and the dispatcher's
+`Needs help` clock does not alarm until the story is over three hours old, so without this the
+owner's first signal is three to four hours after everything stopped. **This is not the poke coming
+back**: it goes to the owner, not to the queue, and it is the same `PushNotification` STEP 5 bullet
+5 sends on the merge path — a path this exit never reaches.
 
 ---
 

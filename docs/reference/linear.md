@@ -172,7 +172,10 @@ routine. It will just pick up new stories on the next hourly run."* A child's la
 `fire_trigger` on that same trigger, so the next batch started seconds after a slot freed;
 `queue-pickup.md` STEP 5 bullet 6 now tells every child to send nothing at all. **A freed slot
 waits for the top of the hour** — the accepted cost of one clock instead of two, and of an off
-switch that stops everything rather than only the heartbeat.
+switch that stops every dispatch rather than only the heartbeat. It still does not stop a child
+already building; that carve-out is below and is unchanged. **A parked story is the one thing a
+child still reports**, by push notification straight to the owner, because the dispatcher's
+`Needs help` clock does not alarm for three hours.
 
 What has to be known outside those files:
 
