@@ -378,6 +378,28 @@ is a drawn value this repo no longer builds:
       Not a new failure mode — the same pairing, four times on one screen now; raised on the
       same PD-176 designer question rather than logged again as new.
 
+- [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
+      `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1
+      bar, and both new instances are 12px — so neither is WCAG large text and neither passes.
+      They are `ClubCreateRideRow`'s second line and the carousel's `Add` label; the same
+      pairing already ships unlogged on `RideJournalEmpty`'s `Add`, and this entry's own
+      unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
+      added them re-counted the *accent* pairing carefully and said nothing about this one,
+      which left this file asserting a complete contrast sweep it had not done.
+
+      **A same-line grep finds one of the two, not both**, which is the trap worth recording:
+      the carousel's `Add` label is a bare `text-xs font-semibold` span that **inherits**
+      `text-muted` from the `Link` wrapping it, so the pairing is spread across two lines and
+      only the row's own second line matches. List the token and read the sizes off the hits:
+
+      ```bash
+      grep -n "text-muted\|text-xs" src/components/clubs/ClubCreateRideRow.tsx \
+        src/components/clubs/ClubPostcardCarousel.tsx
+      ```
+
+      `text-foreground` on `bg-track` is fine at **12.65:1** and is what the row's title uses;
+      the failure is confined to the muted supporting lines. Same PD-176 designer question.
+
 - [ ] **The section order and the Postcards section itself deviate further from the approved
       mock, 2026-08-18 (`club-details-dropdown-removal`, PD-262).** The product owner settled a
       new top-to-bottom order in conversation rather than in a redrawn frame: Upcoming rides,

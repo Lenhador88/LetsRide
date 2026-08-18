@@ -216,24 +216,26 @@ function ClubScreen() {
         </section>
 
         {/* Tiles, not the stacked `PostcardCard` list this section used to
-            draw — see `ClubPostcardCarousel` for the trade. `See all` always
-            draws, unlike the rides section above: `getClubFeed` and
-            `/postcards?club=<id>` are the same select (this file's own note
-            above `postcards`' `useQuery`), so an empty carousel and an empty
-            destination are the same fact, not two things that can disagree. */}
+            draw — see `ClubPostcardCarousel` for the trade.
+
+            `See all` drops on an empty strip, the same policy the rides
+            section above applies and for the same reason: `getClubFeed` and
+            `/postcards?club=<id>` are the same select under the same key (this
+            file's own note above `postcards`' `useQuery`), so an empty strip
+            means an empty destination — offering a way to it is offering a
+            blank screen. The two sections applied opposite policies to that
+            identical situation for one commit. */}
         <section className="flex flex-col gap-2">
           <SectionHeader
             title="Postcards"
-            action={{ label: 'See all', href: `/postcards?club=${encodeURIComponent(id)}` }}
+            action={
+              postcards.data.length > 0
+                ? { label: 'See all', href: `/postcards?club=${encodeURIComponent(id)}` }
+                : undefined
+            }
             className="px-4 py-0"
           />
-          {postcards.data.length === 0 ? (
-            <p className="py-8 text-center text-sm font-medium text-muted">
-              Nothing has been posted here, yet!
-            </p>
-          ) : (
-            <ClubPostcardCarousel postcards={postcards.data} />
-          )}
+          <ClubPostcardCarousel postcards={postcards.data} isMember={isMember} />
         </section>
 
         {/* Join only — a constructive action stays visible on the page, where

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ImageIcon, PlusIcon } from '@/components/icons/generated'
 import { routes } from '@/lib/routes'
+import { formatPostcardDate } from '@/lib/utils'
 import type { Postcard } from '@/types'
 
 /**
@@ -37,13 +38,48 @@ import type { Postcard } from '@/types'
  * necessarily in this club's feed. Same gap `RideJournalEmpty` documents for
  * the ride side.
  */
-export function ClubPostcardCarousel({ postcards }: { postcards: Postcard[] }) {
+export function ClubPostcardCarousel({
+  postcards,
+  isMember,
+}: {
+  postcards: Postcard[]
+  /**
+   * Decides both the `Add` tile and what an empty strip says. A non-member
+   * looking at a public club reads an empty feed whatever the club has posted
+   * — `009` scopes club postcards to members — so "nothing posted yet" would
+   * be a claim this screen cannot make.
+   */
+  isMember: boolean
+}) {
+  if (postcards.length === 0 && !isMember)
+    return (
+      <p className="px-4 text-sm font-medium text-muted">
+        Postcards in this club are for its members.
+      </p>
+    )
+
   return (
     <div className="flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* The empty state draws rather than hides, and it draws the `Add` beside
+          it — `RideJournal`'s recorded decision, which the first pass of this
+          component dropped: "a section nobody has seen is a feature nobody
+          knows exists, and empty is the state every ride starts in". A club
+          starts there too, and that is exactly when the rider needs the way
+          in. */}
+      {postcards.length === 0 && (
+        <div className="flex aspect-square w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center">
+          <ImageIcon className="h-6 w-6 text-muted opacity-60" aria-hidden="true" />
+          <span className="text-xs font-semibold text-foreground">Nothing yet</span>
+        </div>
+      )}
+
       {postcards.map((postcard) => (
         <Link
           key={postcard.id}
           href={routes.postcard(postcard.id)}
+          aria-label={
+            postcard.caption?.trim() || `Postcard from ${formatPostcardDate(postcard.created_at)}`
+          }
           className="aspect-square w-28 shrink-0 overflow-hidden rounded-lg bg-track"
         >
           {postcard.image_url ? (
@@ -65,13 +101,15 @@ export function ClubPostcardCarousel({ postcards }: { postcards: Postcard[] }) {
         </Link>
       ))}
 
-      <Link
-        href="/postcards/new"
-        className="flex aspect-square w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
-      >
-        <PlusIcon className="h-6 w-6" aria-hidden="true" />
-        <span className="text-xs font-semibold">Add</span>
-      </Link>
+      {isMember && (
+        <Link
+          href="/postcards/new"
+          className="flex aspect-square w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
+        >
+          <PlusIcon className="h-6 w-6" aria-hidden="true" />
+          <span className="text-xs font-semibold">Add</span>
+        </Link>
+      )}
     </div>
   )
 }
