@@ -194,33 +194,47 @@ function ClubScreen() {
             An owner is always a member and never sees this either way. */}
         {!isMember && (
           <div className="px-4">
-            <ClubMembershipButton clubId={id} isMember={false} />
+            <ClubMembershipButton clubId={id} />
           </div>
         )}
 
+        {/* `px-4`, not the component's own `px-6`: everything these headers
+            sit above — the rail's `mx-4`, the chip strip, the postcard column —
+            is inset 16px, and the `See all` links make a right edge that is 8px
+            out of line visible in a way a title alone never was. */}
         <section className="flex flex-col gap-2">
           <SectionHeader
             title="Members"
             action={{ label: 'See all', href: routes.clubMembers(id) }}
-            className="py-0"
+            className="px-4 py-0"
           />
           <ClubMemberRail clubId={id} />
         </section>
 
-        {upcoming.length > 0 && (
-          <section className="flex flex-col gap-2">
-            <SectionHeader
-              title="Upcoming rides"
-              action={{ label: 'See all', href: routes.clubRides(id) }}
-              className="py-0"
-            />
+        {/* Rendered whether or not there are rides, which the Timeline version
+            of this section was not. Hiding it cost nothing while
+            `ClubDetailPageMenu` reached `/clubs/detail/rides` from every club;
+            now this `See all` is the route's only entrance, so hiding the
+            section on an empty list is exactly PD-125's defect — a screen
+            nobody can reach, with its own empty state ("No rides are planned,
+            yet!") as dead code behind it. The ride detail makes the same call
+            for its Journal. */}
+        <section className="flex flex-col gap-2">
+          <SectionHeader
+            title="Upcoming rides"
+            action={{ label: 'See all', href: routes.clubRides(id) }}
+            className="px-4 py-0"
+          />
+          {upcoming.length === 0 ? (
+            <p className="px-4 text-sm font-medium text-muted">No rides are planned, yet!</p>
+          ) : (
             <div className="flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {upcoming.map((ride) => (
                 <RideChip key={ride.id} ride={ride} />
               ))}
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
         {postcards.data.length === 0 ? (
           <p className="py-8 text-center text-sm font-medium text-muted">

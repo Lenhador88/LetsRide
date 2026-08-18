@@ -310,7 +310,6 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     .from('clubs')
     .select(
       `id, name, description, is_public, owner_id, created_at, avatar_path, cover_image_path,
-       owner:profiles!owner_id(${PUBLIC_PROFILE_COLUMNS}),
        members_count:club_members(count)`
     )
     .eq('id', id)
@@ -327,7 +326,6 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     created_at: string
     avatar_path: string | null
     cover_image_path: string | null
-    owner: PublicProfile | null
     members_count: { count: number }[] | null
   }
 
@@ -354,7 +352,6 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     cover_image_path: row.cover_image_path,
     avatar_url: null,
     cover_image_url: null,
-    owner: row.owner,
     members_count: row.members_count?.[0]?.count ?? 0,
     viewer_role: (membership?.role as ClubDetail['viewer_role']) ?? null,
   }
@@ -367,15 +364,13 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
       ? (urls.get(club.cover_image_path) ?? null)
       : null
   }
-  if (club.owner) await resolveAvatarUrls([club.owner], supabase)
-
   return club
 }
 
 /**
  * One club, for `/clubs/detail/edit` (PD-101). Narrower than `getClub` — no
- * `owner` embed, no `members_count` — because the edit screen needs the
- * editable columns and nothing a byline or a member list would want.
+ * `members_count`, no `viewer_role` — because the edit screen needs the
+ * editable columns and nothing a member list would want.
  *
  * `is_owner` is computed here the same way `RideForEdit.is_organizer` is, so
  * the edit screen can tell "not found" from "not yours" without a second

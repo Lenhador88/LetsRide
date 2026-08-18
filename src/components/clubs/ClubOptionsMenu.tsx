@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { EditIcon, LogOutIcon, OptionsIcon } from '@/components/icons/generated'
 import { useBanner } from '@/components/ui/Banner'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
@@ -47,6 +48,7 @@ export function ClubOptionsMenu({ clubId, isOwner }: { clubId: string; isOwner: 
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const showBanner = useBanner()
+  const router = useRouter()
 
   function onLeave() {
     setOpen(false)
@@ -57,6 +59,13 @@ export function ClubOptionsMenu({ clubId, isOwner }: { clubId: string; isOwner: 
         return
       }
       showBanner('Left the club')
+      // Leaving is the one action that can take the screen it was invoked from
+      // away: the clubs SELECT policy is `is_public OR owner_id = auth.uid() OR
+      // is_club_member(id)`, so for a private club the invalidated refetch
+      // answers null and the page's `notFound()` fires — a success banner over
+      // a Not Found. `replace` rather than `push`, so back does not return to
+      // the club that just became unreadable.
+      router.replace('/clubs')
     })
   }
 

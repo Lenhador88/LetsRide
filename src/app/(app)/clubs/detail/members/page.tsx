@@ -83,8 +83,15 @@ function ClubMembersScreen() {
           <SkeletonList rows={5} />
         ) : (
           <div className="px-4 motion-safe:animate-fade-in">
+            {/* Counts the array below it, never `club.members_count`. The rail
+                on the club detail counts this same list under this same key,
+                and the aggregate genuinely differs from it: `getClubMembers`
+                caps at `CLUB_ROSTER_LIMIT` and drops rows whose profile the
+                policies hide, while `members_count:club_members(count)` does
+                neither. Two numbers one tap apart, from two derivations, is the
+                trap PD-254 named for the ride crew. */}
             <p className="mb-2 text-sm font-medium text-muted">
-              {club.data.members_count} {club.data.members_count === 1 ? 'member' : 'members'}
+              {members.data.length} {members.data.length === 1 ? 'member' : 'members'}
             </p>
 
             <ul className="overflow-hidden rounded-lg bg-surface">

@@ -360,16 +360,22 @@ is a drawn value this repo no longer builds:
       `role = 'admin'` with a trailing label and no ring; the rail's collapsed state shows
       only the host ring, on the owner, matching what `RideCrewRail` draws for the ride
       organizer. Opening the rail shows the same labels the members page does.
-- [ ] **`See all` adds two more `text-accent`-on-cream instances to the count already logged
+- [ ] **`See all` adds three more `text-accent`-on-cream instances to the count already logged
       against the ride detail.** That entry measured `#3D996B` on `--color-background`
       `#F2ECE6` at **3.00:1** against a 4.5:1 bar, and put it at three instances on that
-      screen (`Directions`, `See all`, the crew rail's error fallback). This screen adds two
-      more of the identical pairing — the Members section's `See all` and the Upcoming rides
-      section's `See all`, both through `SectionHeader`'s `action` prop — which is the same
-      component the ride plan does not use for its own `See all`, so the failure was already
-      latent in `SectionHeader` and this is the first screen to draw it twice. Not a new
-      failure mode, the same one reaching a fifth and sixth instance; raised on the same
-      PD-176 designer question rather than logged again as new.
+      screen (`Directions`, `See all`, the crew rail's error fallback). **Count this screen's
+      in two places, not one** — the first pass of this entry said two and missed the third,
+      because two of them come through `SectionHeader`'s `action` prop and the third is the
+      rail's own `See all` inside its expanded panel, where a grep of the page file cannot
+      see either kind:
+
+      ```bash
+      grep -c "label: 'See all'" 'src/app/(app)/clubs/detail/page.tsx'   # 2, via SectionHeader
+      grep -c "text-accent" src/components/clubs/ClubMemberRail.tsx      # 1, the panel's own
+      ```
+
+      Not a new failure mode — the same pairing, three more times on one screen; raised on the
+      same PD-176 designer question rather than logged again as new.
 
 Blocked on schema, same as the ride detail: `formatRideTime` on `RideChip` renders one
 instant because `rides` has no end-time column — see that entry rather than repeating it.
