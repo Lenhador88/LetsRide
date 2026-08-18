@@ -374,16 +374,18 @@ whenever the file carries them, under every mode including `Hide`, and no mode S
 represented as covering them.
 
 **Settled by the product owner, 2026-08-18: *"Hide does not hide capture time."*** This scoping
-shipped as the deliberate reading rather than by omission, and it is now the decided one — PD-265
-asked whether it should be widened and the answer is no. `taken_at` is the whole point of the ride
-Journal, which orders on the riding rather than the telling, and gating it behind a privacy control
-would cost that for a protection the coordinate already provides.
+shipped as the deliberate reading rather than by omission, and it is now the decided one. The
+capture time is the ride Journal's ordering key — it is what makes a Journal order on the riding
+rather than the telling — so covering it would cost the Journal outright.
+
+**The residual below is accepted, not denied.** The decision does not rest on the composition
+being harmless; it rests on the cost of removing it being higher than the exposure. Do not cite
+this requirement as evidence that a capture time reveals nothing about place.
 
 **The string does not over-claim, and that is what makes the narrow scope honest.** "The photo's
 **location** never leaves your phone" stays true with a capture time uploaded. A rewording to
 "nothing about this photo leaves your phone", or any other formulation covering the photo
-generally, would be false — and is now **permanently** forbidden rather than forbidden pending an
-answer.
+generally, would be false, and is forbidden.
 
 The composition worth being explicit about: a capture time to the second, on a postcard tagged to
 a ride whose meeting point and start time are published, is a fair approximation of where the

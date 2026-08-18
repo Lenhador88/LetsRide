@@ -649,6 +649,8 @@ leaves the phone, which stays true with `taken_at` uploaded, and a requirement i
 `photo-capture-metadata` forbids rewording it to a broader claim until this is answered.
 Answerable by: the product owner alone — a privacy-expectation judgement, not a build question.
 
+**ANSWERED 2026-08-18 — no.** Product owner, verbatim: *"Hide does not hide capture time."* The recommended default stands. The reasoning above is kept as the record of the question rather than rewritten to match its answer, and the requirement forbidding a wider `Hide` string is now permanent rather than pending. PD-265.
+
 **Q4 — Should the Journal sort ascending or descending?** (`proposal.md` §Journal ordering.)
 *Recommended default: ascending — a timeline of a day reads forwards* — but
 `tag-postcards-to-rides` currently specifies `created_at desc` for the Journal, so the two must be

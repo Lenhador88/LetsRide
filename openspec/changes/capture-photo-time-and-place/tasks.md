@@ -232,8 +232,11 @@ their results rather than left open.
 - [ ] 7.2 Note in the PD-257 issue that the Journal inherits the ordering rule
       (`photo-capture-metadata`, *The Journal SHALL sort on the capture time…*) and that its sort
       direction must be settled with `tag-postcards-to-rides` (**Q4**).
-- [ ] 7.3 Carry **Q3** (does `Hide` cover time) and **Q5** (does a rider need to see their own
-      published location before PD-257) to the owner. Neither blocks; both are hers alone, and
+- [x] 7.3a **Q3 (does `Hide` cover time) is ANSWERED** — product owner, 2026-08-18: *"Hide does
+      not hide capture time."* The narrow scoping stands, and the requirement forbidding a wider
+      `Hide` string is now permanent rather than pending. PD-265 carries the reasoning.
+- [ ] 7.3 Carry **Q5** (does a rider need to see their own
+      published location before PD-257) to the owner. It does not block; it is hers alone, and
       both get cheaper to answer now than after a screen renders any of this.
       `proposal.md` §Open questions for the owner has them phrased to lift verbatim into the PR
       body or the Linear comment. **Q1 and Q2 are closed** — answered by the coordinating session
@@ -329,10 +332,10 @@ Supabase default (`015`'s footer, `031`'s lesson).
 - [ ] 10.4 `docs/reference/schema.md` — the `postcards` per-column grant table gains five rows and
       the audience paragraph gains the sentence that the columns' audience *is* the postcard's,
       with no narrower one available.
-- [ ] 10.5 `docs/HANDOFF.md` — the migration count and its verification command, and the three
-      open questions (Q3, Q4, Q5) with their recommended defaults. Note that Q1 and Q2 were
-      answered by a session rather than by the owner, so a later reader knows they are assumptions
-      rather than instructions.
+- [ ] 10.5 `docs/HANDOFF.md` — the migration count and its verification command, and the open
+      questions with their recommended defaults: **Q4 and Q5 only**, since Q3 was answered by the
+      owner on 2026-08-18. Note that Q1 and Q2 were answered by a session rather than by the
+      owner, so a later reader knows they are assumptions rather than instructions.
 - [ ] 10.6 **Do not touch** `src/components/clubs/`, `src/app/(app)/clubs/`,
       `src/components/rides/RideChip.tsx`, `src/lib/routes.ts`, `src/lib/utils.ts` or
       `docs/FIGMA-FIDELITY-TODO.md` — PD-262 owns all six this session.
