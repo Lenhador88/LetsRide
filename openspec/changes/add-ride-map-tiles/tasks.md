@@ -56,8 +56,11 @@
   That is what discharges obligation 1 in practice — **so do not suppress it.** Suppressing it does
   not remove the obligation, it moves it onto us, and obligation 1 has no plan-level escape.
 
-  This repo still carries **one** unresolved attribution question (`places` / Overture); it is a
-  separate vendor and neither answer covers the other.
+  The `places` / Overture attribution question was settled separately by PD-191 on 2026-08-18
+  (CDLA Permissive 2.0 + Apache 2.0, credited on `/legal/attributions`). It is a different vendor
+  and neither answer covers the other: Overture's theme carries no OSM data and no ODbL clause,
+  while Geoapify's obligation 1 above is an unconditional OSM credit. Both lines belong on that
+  page, never merged.
 - [x] 0.2b **Raised by the primary terms; DECIDED by the product owner 2026-08-11: "let's just
   store the images for now… we will check that better when we start having users on the app."**
 

@@ -280,11 +280,12 @@ that it be designed into the strip, and a list is scrolled, so a footer credit i
 with the tiles it covers.
 
 **The exact string is a blocking question**, because it depends on the vendor's current terms and
-possibly on the upstream data licence. Worth noting that this repo already carries **one
-unresolved attribution question** — `places`, whose Overture census names eight sources and zero
-OpenStreetMap, making the ODbL credit first assumed there wrong. These are two obligations from two
-vendors and neither satisfies the other. Do not let the second inherit the first's uncertainty as
-though it were the same problem.
+possibly on the upstream data licence. Worth noting that this repo carries **a second attribution
+obligation** — `places`, whose Overture census names eight sources and zero OpenStreetMap, making
+the ODbL credit first assumed there wrong. It was settled separately by `PD-191` (CDLA Permissive
+2.0 + Apache 2.0, credited once on `/legal/attributions`), and **that answer says nothing about
+this one**: two obligations from two vendors, neither satisfying the other. Do not let the tile
+credit inherit the Overture answer any more than it inherited the Overture uncertainty.
 
 ## D7 — What the RLS suite can and cannot see here
 

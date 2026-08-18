@@ -587,8 +587,9 @@ attribution is a licence breach that ships silently on every ride card in the ap
 - **WHEN** the tile is built
 - **THEN** the attribution text SHALL be taken from the provider's current terms rather than
   inferred from another provider's
-- **AND** it SHALL be recorded that this repo already carries **one unresolved attribution
-  question** for the `places` table, whose census names eight sources and zero OpenStreetMap
+- **AND** it SHALL be recorded that the `places` table carries a **separate, and now settled,**
+  attribution obligation — CDLA Permissive 2.0 + Apache 2.0 per `PD-191`, whose census names eight
+  sources and zero OpenStreetMap
 - **AND** neither obligation SHALL be treated as satisfying the other, because they come from
   different vendors covering different data
 

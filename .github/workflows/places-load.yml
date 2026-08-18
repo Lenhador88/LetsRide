@@ -11,10 +11,12 @@ name: Load places index
 #
 # Deliberately `workflow_dispatch` only, with no `schedule:`. Overture releases
 # monthly and the index goes stale on its own, but a scheduled run would need to
-# discover the latest release itself (the extractor pins one), and an unattended
-# PROD load is wrong while PD-150 is open and the attribution credit is unsettled.
-# Add the schedule when both are closed; the detector that makes a schedule safe
-# is already here.
+# discover the latest release itself, and the extractor pins a release. Both of
+# the reasons an unattended PROD load was WRONG are now closed — PD-150 (049 +
+# 050 bound the search cost) and PD-191 (attribution: CDLA Permissive 2.0 +
+# Apache 2.0, credited on /legal/attributions) — so what is left is the pinned
+# release, not a risk. Adding a schedule is a real option now; the detector that
+# makes one safe is already here.
 #
 # ---------------------------------------------------------------------------
 # §The owner action — one secret per database, pasted once
@@ -57,7 +59,7 @@ on:
         type: boolean
         default: false
       confirm:
-        description: 'target=prod ONLY: type load-prod. PD-150 must have landed first.'
+        description: 'target=prod ONLY: type load-prod. Writes 736k rows to the production database.'
         type: string
         default: ''
 
@@ -150,12 +152,12 @@ jobs:
             secret=PLACES_PROD_DATABASE_URL
             url=$PROD_URL
             if [ "$CONFIRM" != "load-prod" ]; then
-              echo "::error::Loading PROD needs confirm=load-prod. Two things to have settled first, neither of which this workflow can check:"
-              echo "::error::  1. PD-150 — a 49-character term costs ~5.9 s of database CPU. That is 0 ms today only because the table is empty; this load is what arms it."
-              echo "::error::  2. Attribution — the credit string is unsettled (README §Attribution). Loading rows is safe; rendering one is not."
+              echo "::error::Loading PROD needs confirm=load-prod. This writes 736k rows to the production database in one transaction."
+              echo "::error::The two blockers this gate used to name are both closed: PD-150 (049 + 050 bound the search cost) and PD-191 (attribution settled, credited on /legal/attributions)."
+              echo "::error::Check the extract before confirming — the detector below fails a short one closed, but it cannot tell you the release is the one you meant."
               exit 1
             fi
-            echo "PROD load confirmed. PD-150 and attribution are asserted by the person who typed the confirmation, not by this job."
+            echo "PROD load confirmed by hand. Nothing about the extract's release or freshness is asserted by this job."
           else
             secret=PLACES_DEV_DATABASE_URL
             url=$DEV_URL
