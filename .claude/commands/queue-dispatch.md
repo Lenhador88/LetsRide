@@ -38,7 +38,16 @@ just see the stories are in development?"* So:
 | Is the queue stopped? | any issue in `Needs help` | not a Routine field |
 
 **Two labels are the concurrency cap, and they are the whole of it.** `slot-1` and `slot-2` exist
-on the `PD` team (created 2026-08-18). The dispatcher puts one on every issue it hands to a
+on the `PD` team (created 2026-08-18) — check rather than trust that, because everything below
+rests on it:
+
+```
+mcp__Linear__list_issue_labels  team=Pedro & Dave     # slot-1 and slot-2 must both be there
+```
+
+**A `list_issues label=slot-1` returning nothing does NOT establish they exist**, which is the
+trap: the empty response is identical whether the label is missing or simply unused. Only the
+label listing answers it. The dispatcher puts one on every issue it hands to a
 session; that session carries the same label onto anything else it picks up. **A slot label
 present on an issue in `Development (AI)` means that slot is occupied**, however many issues carry
 it — so the free-slot count is `2 −` the number of *distinct* slot labels in that column, and it
@@ -105,8 +114,11 @@ that away while looking diligent.
 
 **Why the relay reads the board at all, when the previous version of this step forbade it.** A
 dispatcher costs a whole session — `CLAUDE.md` is auto-loaded into every one, so ~50k is spent
-*before* it can discover the queue is empty. Measured 2026-08-18: six dispatcher sessions ran
-between 12:28 and 17:10 and produced one child. **The pre-check is two booleans, not a
+*before* it can discover the queue is empty. Measured 2026-08-18 from `list_sessions mine=true
+limit=100`, counting rows tagged `queue-dispatch-run` against rows tagged `queue-dispatch`: six
+dispatchers ran between 12:28 and 17:10 and produced one child. **That call is banned inside a
+firing, not banned outright** — it is the ~140k read this rebuild removed from the hourly path, and
+re-running it belongs in an owner-directed session where its cost is paid once. **The pre-check is two booleans, not a
 judgement** — is there anything to take, and is there anywhere to put it. Which story, which
 group, which caps: all of that stays in the dispatcher, and a relay that starts answering any of
 it has become the thing STEP 0 costs 50k to do properly.
@@ -249,10 +261,18 @@ free slots = 2 − (DISTINCT slot labels — `slot-1`, `slot-2` — appearing on
                   still in `Development (AI)`)
 ```
 
-**An in-flight issue carrying NO slot label occupies no slot, and that is deliberate.** It was
-moved there by hand — the owner does that — and freezing the queue over it is the never-clearing
-shape this file has been bitten by twice. Say it in STEP 6's notification if a batch went out
-alongside one, so an issue parked in the column by accident is visible rather than silent.
+**An in-flight issue carrying NO slot label occupies no slot, and that is deliberate.** The
+ordinary cause is a hand move — the owner does that — and freezing the queue over it is the
+never-clearing shape this file has been bitten by twice.
+
+**The cause is not always benign, and that is the accepted cost rather than an oversight.** A live
+session can end up unlabelled too: a dispatcher dying between the status write and its read-back, a
+half-completed rollback, or a later `save_issue` replacing the label set from a stale read. In that
+state the count reads one too high and a firing can put three sessions in flight against a cap of
+two. The old file froze the whole queue on the equivalent state; this one takes fan-out over a
+freeze, because a freeze is what a *hand move* would now trigger and the hand move is the common
+case by a wide margin. **Say it in STEP 6's notification whenever a batch goes out alongside an
+unlabelled in-flight issue** — that line is the only signal either cause gets.
 
 **At zero free slots, dispatch nothing.** Go to STEP 6, which is silent in that case.
 
@@ -290,7 +310,8 @@ plus STEP 2's territory are what hold them.**
 Go to STEP 6.
 
 **For each occupied slot, read the territory its session declared** — one call per slot, at most
-two, on any one issue carrying that label:
+two, on any one issue carrying that label. The child writes the same comment on every issue it
+holds (`queue-pickup.md` STEP 3), so any of them answers:
 
 ```
 mcp__Linear__list_comments  issueId=<an issue carrying slot-N>
@@ -409,8 +430,13 @@ a race.
    mcp__Linear__save_issue  id=PD-201  state=<Development (AI)>  labels=["App", "Feature", "slot-1"]
    ```
 
-   **If any of them did not take, move back the ones that did and dispatch nothing for this
-   group.** A part-claimed group is a race with extra steps.
+   **If any of them did not take, move back the ones that did, dispatch nothing for this group,
+   and send a `PushNotification` naming the issue and which field failed.** A part-claimed group is
+   a race with extra steps — and a silent rollback is worse than the race, because the label is the
+   whole lock: if `slot-1` and `slot-2` were renamed or deleted, *every* claim drops its label,
+   *every* group rolls back, and the queue exits quietly every hour against a full column. That is
+   indistinguishable from an empty queue, which is the one outcome STEP 0 exists to prevent. **This
+   notification is the only detector the lock has for its own failure.**
 2. **`create_session`**, with:
    - `title` — `<issue id> <short title>` for a group of one; for a larger group, every id and the
      first story's title (`PD-201 + PD-207 — ride chat unread watermark`), so the session list still

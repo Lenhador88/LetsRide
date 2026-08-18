@@ -2155,11 +2155,12 @@ What replaced them:
 - **The owner-activity gate is gone**, on the owner's instruction — *"we can indeed drop the gate
   whether I am here or not"*, with *"i do not edit files by hand, always prompting here"*.
 
-**Two things that need the owner rather than a session**, both live at the time of writing: the
-club-detail story (`PD-262`) has sat in `Development (AI)` since 05:16Z although #258 and #259
-merged, so it holds a slot until someone moves it; and its session was still re-arming an hourly
-check-in on PR #252 at 84.5M cache-read tokens. `queue-pickup.md` STEP 4c now bounds that at three
-CI attempts, which is a rule for future sessions and does nothing to one already running.
+**The durable lesson from what prompted it**, since the incident itself cleared the same evening:
+a session that keeps re-arming a check-in to watch one PR has no bound on what it spends, and its
+issue holds a queue slot the whole time. `queue-pickup.md` STEP 4c now bounds driving CI to green
+at three attempts, and `CLAUDE.md` §Working Principles carries the same rule for a directed
+session. Neither reaches a session already running — stopping one of those is the owner archiving
+it.
 
 **The board's live state is the fastest-moving thing in this file — do not read it here:**
 

@@ -224,7 +224,13 @@ describe('the cross-references in the real repo', () => {
     // collision, and this ceiling is the "did you mean to add one" prompt.
     // **Do not raise it to make a red run green without saying which citation
     // moved it and why** — a ceiling nobody defends is the same as no ceiling.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(10)
+    //
+    // **10 -> 11 on 2026-08-18 (the queue rebuild).** The new one is
+    // `docs/HANDOFF.md` citing `CLAUDE.md §Working Principles` for the
+    // three-attempt CI bound that landed in that section. Same collision as
+    // every other entry here — `§Working With the Product Owner` starts with the
+    // same word — so it adds no new KIND, which is what `firstWords` above pins.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(11)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

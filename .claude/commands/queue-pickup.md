@@ -67,7 +67,7 @@ The live set as last read back off the board:
 | `Backlog AI` | backlog | Captured, not triaged. **Was `Backlog`** | Either |
 | `Todo Human` | unstarted | Triaged; owner chores live here | Either |
 | `Todo AI` | unstarted | Triaged, and a session could do it. **Not a start signal** | Either |
-| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner**, and the dispatcher's scout on a stale premise |
+| `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner**, and a build session whose story fails STEP 3's premise check |
 | `Queued (AI)` | started | **Approved to build. The only start signal** | **Owner** |
 | `Development (AI)` | started | An agent has it *now*. **Claims one issue; not a lock on the queue** | Agent |
 | `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
@@ -115,6 +115,11 @@ on assumptions and do not pick work from the repo instead.
 
 It must fail loudly — a job that silently does nothing looks exactly like an empty queue.
 
+**One Claude Code Remote tool is needed too, and only at the end**: `get_session`, for STEP 6's
+budget gate. Do not load it here — a build that never reaches STEP 6 has no use for it, and its
+absence must not stop a story that is otherwise buildable. STEP 6 says what to do if it will not
+answer.
+
 **Search for it by keyword, not by the `mcp__Linear__*` name — that prefix is not stable.**
 Watched rotate mid-session on 2026-08-08: every connector's tools came back re-registered under
 a **UUID** prefix (`mcp__a55a164a-…__list_issues`) and the `mcp__Linear__*` names stopped
@@ -131,9 +136,10 @@ ToolSearch  query="select:mcp__Linear__list_issues"   # exact — fails the mome
 **This applies to every connector, not just Linear** — the rotation re-registered all of them at
 once. So `mcp__github__create_pull_request` — STEP 4c, and the only route to a PR since `gh` is
 absent — carries the same hazard. **It fails in the honest direction**: no PR opens and the run
-stops visibly. The dangerous version of this lives in the dispatcher, whose session gate *would*
-fail open if an unreachable `list_sessions` were read as "no sessions running" — which is why
-that file makes an unreachable connector a hold.
+stops visibly. **Not every unreachable connector fails that way, so decide per call rather than by
+habit** — the dispatcher's relay pre-check deliberately fails *open* (an unreadable board has not
+established that there is nothing to do), while STEP 6's budget read below fails *closed* (a budget
+you cannot read is not a budget you have cleared).
 
 Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as "the tool called
 `<tool>` on that connector", whatever prefix it currently carries**, and reach it by keyword
@@ -151,7 +157,7 @@ had `notifications.push` set on the trigger itself.
 
 ## STEP 2c — If it turns out to be out of sequence mid-build, stop
 
-The dispatcher's scout pass only sees blockers somebody wrote down. If the issue you are building
+The dispatcher's blocker check only sees blockers somebody wrote down. If the issue you are building
 turns out to need something another unfinished issue is meant to deliver — its columns, its
 migration, its provider key, its design decision — and no relation says so, **do not build
 it, and do not quietly swap to a different story.** Move it to `Needs help`, comment naming
@@ -159,14 +165,14 @@ the issue it is waiting on and why, and stop. Sequencing is the owner's to fix, 
 in the wrong order is expensive in a way a skipped hour is not.
 
 Consider adding the missing `blockedBy` relation while you are there, so the next firing
-catches it at the dispatcher's scout pass instead.
+catches it at the dispatcher's blocker check (`queue-dispatch.md` STEP 3) instead.
 
 **Send the push before you stop**, exactly as §If you get stuck requires and for the same reason:
 `Done ; ) <issue id> parked, needs you — waiting on <issue id>`. This exit never reaches STEP 5
 bullet 5, and the queue is frozen behind it.
 
 **If you got far enough into the build to have a STEP 4b triage list, file it before you
-stop** — same rule as §If you get stuck. This exit is named there as one of the two that leave
+stop** — same rule as §If you get stuck. This exit is named there as one of the three that leave
 without reaching STEP 5, and STEP 4b deliberately creates nothing, so a follow-up rated on the
 way here is lost unless this step writes it out. **Put the sub-4 items in the `Needs help`
 comment**, since there is no PR body here to hold them.
@@ -206,10 +212,16 @@ so leaving it bare invites a second session over the same work.
 
 ### Then declare your territory, before you write any code
 
-**One comment, on the first issue of your group, and it is the only thing the next dispatcher can
-see about what you are touching.** It replaces the scout pass that used to predict this from
-outside — you know what you are about to edit, and a prediction made by an agent that never built
-it was both the weaker answer and the most expensive part of a firing.
+**One comment, on EVERY issue you hold — the same body on each — and it is the only thing the next
+dispatcher can see about what you are touching.** It replaces the scout pass that used to predict
+this from outside: you know what you are about to edit, and a prediction made by an agent that
+never built it was both the weaker answer and the most expensive part of a firing.
+
+**On every issue rather than on the first, because the dispatcher reads whichever one it happens
+to pick.** It has your slot label on two or three rows and calls `list_comments` on one of them; a
+comment sitting only on the first is a coin flip, and a miss makes it treat your slot as touching
+*everything* and dispatch nothing into the other slot for as long as you run. Writing it three
+times is three cheap calls against a whole firing's batch.
 
 ```
 <!-- territory -->
@@ -467,8 +479,8 @@ twice gets had again by whichever session next opens that file, with better cont
 would have carried. **`Backlog AI` stays the owner's to use** — they can park a real idea there;
 a firing cannot.
 
-**On the two exits that never reach a PR — STEP 2c and §If you get stuck — the `Needs help`
-comment is the PR body's stand-in.** Both leave with a triage list and no PR to write it into, so
+**On the exits that never reach a merged PR — STEP 2c, STEP 4c's three-attempt CI bound, and
+§If you get stuck — the `Needs help` comment is the PR body's stand-in.** Both leave with a triage list and no PR to write it into, so
 without this the sub-4 items go nowhere at all, which §If you get stuck rightly calls worse than
 never having noticed them.
 
@@ -698,6 +710,17 @@ live RLS hole letting any signed-in rider post a ride into any club.
    what you tried. **Do not open a fourth**, do not re-run a job hoping for a different answer, and
    above all **do not arm a check-in to come back to it later**.
 
+   **Park properly — this is a §If you get stuck exit and owes everything that exit owes**: the
+   push notification (`Done ; ) <ids> parked, needs you — CI red on <check>`), and the STEP 4b
+   triage list filed before you stop, because STEP 5 will not run to file it. A park with no push
+   means the owner's first signal is the dispatcher's three-hour clock, with the whole queue
+   stopped in the meantime.
+
+   **One caveat worth naming, because it turns a bad day into a stopped queue:** *absent* counts as
+   an attempt, so a workflow whose `on:` list no longer names this base branch reports nothing at
+   all and parks every story that reaches it. If the third attempt is still `total_count: 0` rather
+   than red, say **that** in the comment — the fault is CI configuration, not the story.
+
    **This bound exists because the alternative was measured.** On 2026-08-18 a session watching one
    PR re-armed an hourly `send_later` eighteen times across twenty hours — 84.5M cache-read tokens,
    343k output, nothing built after the first hour, and its issue holding a slot the whole time.
@@ -834,8 +857,11 @@ That is why they are numbered and cross-referenced by number.
    nothing to double-fire, and at most one firing an hour that can land on a dispatcher still
    working. **Pausing the Routine still cannot stop a session already building**, yours included.
 
-   **You therefore need no Claude Code Remote tools at all.** If a future step needs one, that is
-   a design change rather than a convenience — say so rather than reaching for `fire_trigger`.
+   **You need exactly one Claude Code Remote tool, and it is not a messaging one.** STEP 6 reads
+   your own token spend through `get_session` (with `session_id` omitted) to decide whether to take
+   another story. That is the whole of it: **no `fire_trigger`, no `send_later`, no
+   `create_session`, no message to any session.** Reaching for one of those is a design change
+   rather than a convenience — say so instead.
 
 **Bullet 3 failing means the PR is already merged**, so §If you get stuck's usual claim — that
 parking into `Needs help` leaves a branch and an open PR for the next firing to trip over — does
@@ -898,8 +924,20 @@ bullet 2.** Then:
 
 ## STEP 6 — Take another story, or end
 
-**Only after STEP 5 is complete for every story you hold** — merged, deployed, commented, notified.
-A session in the middle of a build has nothing to decide here.
+**Only after the merge and STEP 5's deploy check** — a session in the middle of a build has nothing
+to decide here.
+
+**Claim before you release, and this ordering is not cosmetic.** If you are going to take another
+story, run this whole step — both gates, the collision check and the claim write — **between STEP
+5's bullet 3 and bullet 4**, so your slot label never leaves `Development (AI)`. Move the finished
+issues to `Deployed to DEV` afterwards.
+
+**What the natural order costs:** bullet 4 moves every issue you hold out of `Development (AI)`,
+which takes your slot label with them, and the dispatcher counts that slot **free**. An hourly
+firing landing in the seconds or minutes it then takes you to read the board, check a collision and
+claim will dispatch a fresh session into *your* slot. Two live sessions wear one label, three
+builds run against a cap of two, and the next firing reads whichever of the two territories it
+happens to land on. **The slot is yours until you have either re-filled it or given it up.**
 
 **Two gates, both hard, and you check them in this order. Either one failing ends the session.**
 
@@ -911,12 +949,21 @@ A session in the middle of a build has nothing to decide here.
    mcp__Claude_Code_Remote__get_session          # external_metadata.usage.output_tokens
    ```
 
+   **If that tool will not answer, end the session — this one fails CLOSED.** An
+   `InputValidationError` is a deferred schema, so `ToolSearch` (`+get_session claude code
+   remote`) and call it again; `No such tool available` after a keyword search means the connector
+   is not on this session at all. **A budget you cannot read is not a budget you have cleared**,
+   and the cost of failing closed here is one story waiting an hour — against a session with no
+   bound at all on how much it spends taking more work.
+
 **Where 400k comes from, so it can be re-derived rather than trusted.** Ten single-story children
 measured 2026-08-17/18 spent between 9.8k and 377k output tokens each, most of them 120k–310k. So
 one story is usually 150k–300k, and a 400k floor admits a second story exactly when the first was
 cheap — a copy fix, a doc line, a migration with no screens. That is the case where a warm session
 is worth reusing; a session that has already spent 300k is one that should hand the next story to a
-fresh window. Re-derive it from a few recent `queue-dispatch`-tagged sessions before moving it.
+fresh window. Those figures come from `list_sessions`, which is **not** yours to call — it is the
+~140k read the 2026-08-18 rebuild took out of the hourly path, so moving this number is an
+owner-directed session's job rather than a firing's.
 
 **There is no way to clear a session's context from inside one** — `/clear` is interactive and no
 tool exposes it, and the harness's own compaction is lossy summarisation you cannot trigger. **So
@@ -959,8 +1006,19 @@ outcome, not a failure.
 mcp__Linear__save_issue  id=<issue>  state=<Development (AI)>  labels=[<its existing labels>, "slot-N"]
 ```
 
-Read the write back and confirm both fields took. **If either did not, do not build it** — end the
-session and let the next firing dispatch it properly.
+**Read the write back, and check it for a second claimer as well as for your own fields.** A
+dispatcher may be mid-batch on the same column right now — nothing serialises the two of you, the
+same way nothing serialises two dispatchers (`queue-dispatch.md` STEP -1 accepts that race and says
+why). So confirm all three:
+
+- the status is `Development (AI)`,
+- **your** slot label is on it,
+- and the *other* slot's label is **not**.
+
+**Any of those wrong → release it back to `Queued (AI)`, strip your label, and end the session.**
+Losing a race costs one story an hour; winning one you should have lost costs two sessions building
+one story on two branches, which nothing downstream can see — `queue-pickup.md` STEP 3 says plainly
+that both children read the status they expect.
 
 **Then start it clean, and start it at STEP 3:**
 
@@ -1029,8 +1087,9 @@ options, ranked" are different messages**, and only the second is one the owner 
 without reconstructing the problem first.
 
 **File any follow-up you already rated before you stop — every exit path owes that, not just
-STEP 5's.** STEP 4b decides where each one goes but deliberately creates nothing, so this path
-and STEP 2c are the two that leave with a triage list and no STEP 5 to write it out. **Put the
+STEP 5's.** STEP 4b decides where each one goes but deliberately creates nothing, so this path,
+STEP 2c and STEP 4c's three-attempt CI bound are the three that leave with a triage list and no
+STEP 5 to write it out. **Put the
 sub-4 items in the `Needs help` comment**, since there is no PR body here to hold them. Rating
 something and then dropping it is worse than never noticing it, because the rating is what made
 it look handled.

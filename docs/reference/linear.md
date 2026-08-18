@@ -171,8 +171,8 @@ there.
 routine. It will just pick up new stories on the next hourly run."* A child's last act used to be
 `fire_trigger` on that same trigger, so the next batch started seconds after a slot freed;
 `queue-pickup.md` STEP 5 bullet 6 now tells every child to send nothing at all. **A freed slot
-waits for the top of the hour** — the accepted cost of one clock instead of two, and of an off
-switch that stops every dispatch rather than only the heartbeat. It still does not stop a child
+usually waits for the top of the hour** — the accepted cost of one clock instead of two, avoided
+only when the finishing session takes the next story itself under `queue-pickup.md` STEP 6. It still does not stop a child
 already building; that carve-out is below and is unchanged. **A parked story is the one thing a
 child still reports**, by push notification straight to the owner, because the dispatcher's
 `Needs help` clock does not alarm for three hours.
@@ -189,9 +189,11 @@ What has to be known outside those files:
   fallback. `create_trigger` refuses the `connectors` parameter for this organization, so its
   three hand-attached connectors (Supabase, Linear, Vercel) cannot be recreated from a session;
   `update_trigger enabled: true` restores it whole. **`…WJkMV` is cheap and `…Gzy8e` is
-  irreplaceable** — keep the two straight in both directions. A disabled trigger's
-  `list_triggers` row has **no `enabled` key at all** rather than `"enabled": false`, so read a
-  disable back by checking the field is gone.
+  irreplaceable** — keep the two straight in both directions. **A Routine's enabled state cannot
+  be read at all** — measured 2026-08-18, no row `list_triggers` returns carries an `enabled` key,
+  live or paused, so the old rule *read a disable back by checking the field is gone* returns
+  "disabled" against a Routine that is firing. Read `next_run_at` instead: in the future = live,
+  in the past = paused.
 - **Connectors attach to a session, not to a trigger**, which is why the *relay* is a reused
   session and why no amount of procedure can make it otherwise. Switching that Routine to
   `create_new_session_on_fire` loses five things at once, none of which a session can restore: the
@@ -307,7 +309,7 @@ work. Carrying the N across writes `Ready: N` onto nearly every follow-up this r
 backlog then reads as entirely unstartable.
 
 Only the second of those three reasons has any automated backstop, and a weak one: the
-dispatcher's scout pass checks `blockedBy` relations somebody wrote down. An owner action and a
+dispatcher checks `blockedBy` relations (`queue-dispatch.md` STEP 3) somebody wrote down. An owner action and a
 story wanting a proposal both sail straight through it.
 
 **An issue parked in `Needs decision` or `Needs help` also owes a comparison table of the ways

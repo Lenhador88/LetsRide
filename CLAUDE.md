@@ -1232,9 +1232,10 @@ Three things are still owed and none of them is a status update:
 - **Anything the owner just asked.** Answer it immediately and fully. §Delegating while the
   owner is at the keyboard is explicit — *"spawn the agent, reply at once, and keep answering
   questions about other stories while it runs"* — and that mode buys **availability**, which
-  is the whole return on backgrounding. It is also the only thing picking work up while they
-  are at the keyboard, since the dispatcher's owner-activity gate holds while this session is
-  running. Silence here cancels the mode rather than serving it.
+  is the whole return on backgrounding. Silence here cancels the mode rather than serving it.
+  (Until 2026-08-18 this mode was also the *only* thing picking work up while the owner was at
+  the keyboard, because the dispatcher held every dispatch while one of their sessions was
+  running. That gate is gone: the queue now runs alongside this mode.)
 - **A question only they can answer, and a blocked capability.** Both are decisions, not
   status.
 - **A one-line answer to a hook that returned `decision: block`.** That is a prompt, unlike a
