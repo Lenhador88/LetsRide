@@ -823,14 +823,14 @@ export type NotificationCursor = { createdAt: string; id: string }
  * against the 2026-07-22.0 release rather than assumed — `brand` is null on
  * 92% of rows and `street` on ~5%.
  *
- * **Attribution is an OPEN question, not a settled one.** An earlier version of
- * this comment said any screen must credit "© OpenStreetMap contributors".
- * That was wrong: measured across 527,725 sampled rows, *zero* cite
- * OpenStreetMap — the sources present are Overture, meta, Foursquare,
- * Microsoft, AllThePlaces, PinMeTo, DAC and Krick. What those eight require has
- * not been read from Overture's own attribution terms, which the build
- * container cannot reach. Settle it before a result renders; see `037`'s
- * header.
+ * **Attribution is SETTLED (PD-191, 2026-08-18) and it is NOT ODbL**, so a
+ * screen may render a result. Overture publishes the Places theme under CDLA
+ * Permissive 2.0 and Apache 2.0; the credit is paid once, on
+ * `/legal/attributions`, and nothing is owed per result. The reflex to credit
+ * "© OpenStreetMap contributors" is the trap this comment used to fall into:
+ * measured across 527,725 sampled rows — roughly 72% of the extract — *zero*
+ * cite OpenStreetMap. See `scripts/places/README.md` §Attribution for the
+ * reasoning and the one thing still inferred rather than measured.
  *
  * Most screens want `PlaceSearchResult` instead. **Nothing reads this RAW
  * shape** — `src/lib/data/places.ts` exists, but it reads through

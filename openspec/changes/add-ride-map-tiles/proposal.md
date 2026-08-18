@@ -503,11 +503,12 @@ world-readable folder.
 - **`meeting_point` is transmitted to Geoapify.** A processor relationship and a privacy-policy
   change. It is an owner action and it blocks nothing in the build, but it must land before real
   riders geocode real addresses.
-- **Attribution for `places` is still unresolved**, and this change adds a second attribution
-  obligation beside it. `CLAUDE.md` records that the Overture census names eight sources and zero
-  OpenStreetMap, so the ODbL credit first assumed there is wrong and the commercial terms are
-  unread. These are two different obligations from two different vendors and neither one satisfies
-  the other.
+- **Attribution for `places` was settled by `PD-191`** (CDLA Permissive 2.0 + Apache 2.0,
+  credited once on `/legal/attributions`), and this change carries a second obligation beside it.
+  `CLAUDE.md` records that the Overture census names eight sources and zero OpenStreetMap, so the
+  ODbL credit first assumed there is wrong. These are two different obligations from two different
+  vendors and neither one satisfies the other — Geoapify's OpenStreetMap credit is unconditional,
+  where Overture's is not ODbL at all.
 - **No alerting when the vendor fails or quota runs out.** Error tracking is deliberately
   undecided; this change declines to invent it. The rider-visible behaviour is fully specified and
   the owner-visible behaviour is a function log nobody reads.

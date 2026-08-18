@@ -25,10 +25,7 @@ still needs a tile provider.
 
 ## Attribution — settled, and it is not ODbL
 
-**Two earlier versions of this section were wrong in opposite directions.** The first
-asserted an ODbL "© OpenStreetMap contributors" credit; the second, correctly, said
-that was unmeasured and left the question open. Both are superseded by `PD-191`,
-settled 2026-08-18 against
+Settled by `PD-191` on 2026-08-18 against
 [Overture's attribution page](https://docs.overturemaps.org/attribution/) — which is
 egress-blocked from a session by `curl` and `WebFetch`, and reachable through
 `WebSearch`.
@@ -62,6 +59,28 @@ here would be actively wrong. Across 28 of the 84 NL row groups in release
 `sources` is still not extracted, and under this licence it does not need to be — the
 credit names the contributors as a set rather than per row. Add it to `COLUMNS` only if
 a future source arrives with a per-row obligation.
+
+### What is INFERRED rather than measured, and it is the storage half
+
+**The per-source table on that page is unread.** Its prose says some sources carry
+"special terms"; `WebSearch` returned the page's summary, not the table, and the host
+refuses `curl` and `WebFetch`. `/legal/attributions` names all eight contributors and
+both licences, which is broader than any per-source credit line would be — so what is
+unread could only be an obligation *other* than credit.
+
+**The obligation most likely to hide there is about STORAGE, not display**, which is
+what `docs/HANDOFF.md` flagged separately on 2026-08-11: Foursquare, Microsoft, Meta,
+PinMeTo, DAC and Krick commonly attach terms to storage and derived works. The argument
+for treating it as covered is that **we take the rows from Overture, under the licence
+Overture grants**, and CDLA Permissive 2.0 grants use, modification and redistribution
+outright — so reconciling upstream contributor terms is the Foundation's business.
+
+**That is reasoning, not a document anyone read.** A permissive data licence grants
+rights and disclaims warranties; it does not warrant that the licensor cleared its own
+inputs. Apache 2.0 is thinner still — §4(a)–(d) carries licence-copy and NOTICE
+obligations and has no "Results" concept, and the attributions page naming both licences
+with links is what discharges it in practice. **If this ever has to be certain rather
+than reasonable, read that table** — do not re-derive the argument.
 
 **Map tiles are a different vendor and a different obligation.** Geoapify requires an
 unconditional OpenStreetMap credit (`PD-104`) — a separate line on the same page, never
@@ -167,10 +186,10 @@ caller-chosen multiplier at eight distinct tokens, and **`050` caps candidate
 rows at 2,000 per pass**, which is the option B this file used to call open.
 Measured on the loaded PROD table, warm: `straat` — one token, 28.7% of the rows
 — is 96 ms nationally and 227 ms near Amsterdam, against 11,458 ms and 4,011 ms
-without `050`. The workflow's PROD arm still requires a typed confirmation
-naming PD-150, and that wording is a human gate rather than a check — read the
-issue's current state
-rather than the prompt.
+without `050`. The workflow's PROD arm still requires a typed
+confirmation, and that is a human gate rather than a check — it no longer names
+PD-150 or attribution, both of which are closed, and it never asserted anything
+about the extract itself.
 
 ### What it costs — measured on the real extract, 2026-08-09
 

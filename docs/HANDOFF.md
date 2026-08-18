@@ -314,7 +314,9 @@ NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native
 ls out/index.html             # exists; .next-capacitor/ does not
 ```
 
-35 documents, 291 `__next.*.txt` RSC segment payloads, and the static assets — around 410 files
+35 documents (the payload and total figures are carried over from the build that measured 34 —
+only the document count was re-derived when `/legal/attributions` was added), 291 `__next.*.txt`
+RSC segment payloads, and the static assets — around 410 files
 in all. **Documents is one MORE than the static-route count**, which reads like the near-miss
 warned about 70 lines above and is not one: `check-export.mjs` walks `out/` and counts every
 emitted `.html`, and `next build`'s route table omits `/_not-found`. So documents tracks the
@@ -800,7 +802,7 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo and DEV hold 64, PROD holds 59
+## Migrations — the repo and DEV hold 65, PROD holds 59
 
 **`064` is PD-255's and is on DEV ONLY, applied 2026-08-18.** It adds five nullable columns to
 `postcards` — `taken_at`, `taken_at_offset_minutes`, `taken_latitude`, `taken_longitude`,
@@ -1179,7 +1181,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   050 IS on PROD: #179 loaded places into production behind it rather than after
 #   it, which is the right order — PROD carries 736,538 places rows, so the
 #   candidate cap is guarding a loaded table there, not an empty one.
-ls supabase/migrations/ | wc -l          # 64
+ls supabase/migrations/ | wc -l          # 65
 ```
 
 **`055` is PD-129's and is now on both projects.** It replaces one function body —
@@ -1287,20 +1289,30 @@ and the census that killed the OpenStreetMap assumption. Nothing renders a place
 from `src/lib/location/rider-location.ts` — but that is now a statement about what is built rather
 than a constraint on what may be.
 
-**The STORAGE half is answered by the same licence, and it is worth saying why explicitly** —
-it was flagged separately on 2026-08-11 on the reasoning that Foursquare, Microsoft, Meta, PinMeTo,
-DAC and Krick commonly attach terms to *storage and derived works* rather than only to display.
-**We do not take the rows from those sources; we take them from Overture, under the licence
-Overture grants**, and CDLA Permissive 2.0 grants use, modification and redistribution of the Data
-outright. Reconciling each contributor's upstream terms is the Foundation's job, discharged at the
-point it published the theme under that licence.
+**The STORAGE half rests on REASONING, not on a document anyone read, and it is labelled that way
+on purpose.** It was flagged separately on 2026-08-11: Foursquare, Microsoft, Meta, PinMeTo, DAC
+and Krick commonly attach terms to *storage and derived works* rather than only to display, and
+the licence-identity answer above says nothing about their upstream terms. The argument for
+treating it as covered is that **we do not take the rows from those sources; we take them from
+Overture, under the licence Overture grants**, and CDLA Permissive 2.0 grants use, modification
+and redistribution of the Data outright — so reconciling each contributor's upstream terms is the
+Foundation's business rather than a redistributor's.
 
-**The one thing a session still cannot read is the per-source table** at
-<https://docs.overturemaps.org/attribution/>, whose prose says some sources carry "special terms".
-`curl` and `WebFetch` are egress-blocked on that host; `WebSearch` reached the summary but not the
-table. `/legal/attributions` names all eight contributors and both licences, which is broader than
-any per-source line would be — so the residual exposure is a source demanding something *other*
-than credit, and nothing in the summary suggests one does.
+**Do not read that as verified.** A permissive *data* licence grants rights and disclaims
+warranties; it is not a warranty that the licensor cleared its own inputs, and no file in this
+repo vendors the licence text to check the clause against. The **Apache 2.0** half is thinner
+still — §4(a)–(d) has its own licence-copy and NOTICE obligations and no "Results" concept, and
+`/legal/attributions` naming both licences with links is what discharges it in practice rather
+than a clause anyone quoted.
+
+**The one thing a session cannot read is the per-source table** at
+<https://docs.overturemaps.org/attribution/>, whose prose says some sources carry "special terms" —
+and that table is the primary evidence on precisely this question. `curl` and `WebFetch` are
+egress-blocked on that host; `WebSearch` reached the summary but not the table.
+`/legal/attributions` names all eight contributors and both licences, which is broader than any
+per-source line would be, so what is unread could only be an obligation *other* than credit.
+**If this ever needs to be certain rather than reasonable** — a rider volume worth a lawyer, or a
+store review asking — the action is to read that table, not to re-derive the argument above.
 
 **Both secrets are set and both have now been used.** `.github/workflows/places-load.yml`
 (Actions → Load places index) runs the extractor and `scripts/places/load.sql` on a runner, which
