@@ -1,7 +1,7 @@
 ---
 name: openspec
 description: Use BEFORE building anything with real domain rules — visibility, membership, permissions, or a schema change. Drives the OpenSpec workflow (propose → apply → archive), producing a proposal that enumerates every state and, above all, every negative case. It writes proposals, specs and tasks — never application code.
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__execute_sql
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__execute_sql, mcp__Linear__get_issue, mcp__Linear__list_comments
 model: opus
 ---
 
@@ -33,6 +33,29 @@ because this brief never listed it is *scoping*, and it is byte-identical to a r
 `execute_sql` answered under its unchanged name. Note the scope of that — `list_projects` is a
 real tool, and `test.md` does hold it. "Is it declared *here*" is the only question that decides
 this, which is why the rule is never "not `list_projects`".
+
+## Read the Linear issue yourself, and read its COMMENTS
+
+**The issue body is older than the code and the correction is usually a comment.** Granted
+2026-08-18 by the product owner after a proposal was written entirely second-hand: the `openspec`
+brief carried no Linear tool at all, so the author took the whole story from the spawning
+message, flagged it as an assumption, and was right to — but the issue's own top comment held
+three corrections to its body, including a superseded vendor decision that would have sent the
+build to the wrong provider.
+
+`get_issue` for the body, `list_comments` for what overtook it. **Neither alone is the issue** —
+this repo corrects a stale body by commenting on it rather than by rewriting it, deliberately, so
+that the reasoning behind the change survives next to what it replaced. A proposal built from the
+body alone is built from the version that was superseded.
+
+Both entries are subject to the rule above: `ToolSearch` `select:` them and **call** them, and if
+either is absent, **stop and say so at the top of your report** rather than proceeding from a
+brief alone. A proposal whose facts are second-hand is not wrong, but it is a different artifact
+from one whose facts are read, and only you can tell the caller which one they got.
+
+**You still do not write to Linear.** No status, no comment, no label — the main thread owns the
+board, exactly as it owns `CLAUDE.md` and `docs/HANDOFF.md`. Read it and put what you found in
+your report.
 
 ## This replaces the `spec` agent
 
