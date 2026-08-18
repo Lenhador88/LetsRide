@@ -6,8 +6,18 @@ description: Build one dispatched Linear group end to end — the child session'
 
 **You were dispatched to build the named stories in your prompt, and usually there is one.** The
 picking was done by [`queue-dispatch.md`](queue-dispatch.md) in another session: the queue was
-read, the premise checked, the blockers checked, and these were chosen against a set of caps that
-assumed what they would touch. **Do not pick different work, and do not pick more work.**
+read, the blockers checked, and these were chosen against what the other live session is touching.
+**Do not pick different work.**
+
+**You hold a slot, and the slot is the concurrency cap.** Your prompt names it — `slot-1` or
+`slot-2` — and the label is on every issue you were given. Two labels exist, so at most two build
+sessions run at once, and the dispatcher counts them off the board rather than off any session
+list. **Every issue you claim carries your label**, and nothing else may wear it.
+
+**You MAY take another story when these are finished, and STEP 6 is the whole of that rule.** It
+is bounded by a story count and a measured token budget, it never leaves your own slot, and it is
+the cheapest work in this queue: a fresh session re-pays ~50k of process docs before it reads a
+line of code, and you have already paid that.
 
 **When your prompt names more than one, they are a *group*: stories that collide, which is why one
 session builds them rather than two** — `queue-dispatch.md` STEP 4 has the reasoning, and your
@@ -24,13 +34,13 @@ PR while this file can.
 
 **Your session is fresh and yours alone.** That is the change §Why this session is fresh records:
 there is no owner conversation above you, no earlier build's context, and nothing else will run in
-here. So there are no idle gates to clear — the owner-activity gate and the queue lock are the
-dispatcher's now — and this file starts at "can you see the board".
+here. So there are no idle gates to clear — the queue's own locks are the dispatcher's now — and
+this file starts at "can you see the board".
 
-**Other stories are being built in parallel sessions right now**, and your prompt names them and
-the paths they expect to touch. **Stay inside your own paths.** If the story genuinely cannot be
-finished without editing across that boundary, that is §If you get stuck, not a judgement call —
-the dispatcher's caps were set on the assumption you would not.
+**One other story may be building in a parallel session right now**, and your prompt names the
+territory it declared. **Stay outside it.** If the story genuinely cannot be finished without
+editing across that boundary, that is §If you get stuck, not a judgement call — the dispatcher
+admitted your group on the assumption you would not.
 
 **You cannot report back to the dispatcher, and nothing you say in this session reaches the
 owner.** A cloud session receives messages and cannot answer into the conversation that spawned
@@ -187,6 +197,70 @@ check catches only a change made by someone else afterwards.
 
 **That claim is per issue, not a lock on the queue.** Other stories are legitimately in
 `Development (AI)` at the same time; they are other sessions' and none of your business.
+
+**Confirm your slot label is on each of them too.** If one carries the status but not the label,
+add it — read the issue's existing labels and pass them plus yours, because `labels` on
+`save_issue` **replaces the whole set** and a bare `["slot-1"]` strips `App`, `Database` and
+everything the owner filters on. An unlabelled in-flight issue occupies no slot for the dispatcher,
+so leaving it bare invites a second session over the same work.
+
+### Then declare your territory, before you write any code
+
+**One comment, on the first issue of your group, and it is the only thing the next dispatcher can
+see about what you are touching.** It replaces the scout pass that used to predict this from
+outside — you know what you are about to edit, and a prediction made by an agent that never built
+it was both the weaker answer and the most expensive part of a firing.
+
+```
+<!-- territory -->
+slot: 1
+issues: PD-201, PD-207
+paths: src/components/postcards/, src/lib/data/postcards.ts
+migration: Y
+primitive: N
+```
+
+- **`paths`** — the directories and files under `src/`, `supabase/`, `scripts/` or `design/` you
+  expect to modify. **Predict generously**; a missed path is a collision in another session.
+  `docs/HANDOFF.md` and `CLAUDE.md` are exempt — every session touches them, so naming them would
+  hold the whole queue.
+- **`migration`** — Y if you will add a file under `supabase/migrations/`.
+- **`primitive`** — Y if you will add or change a shared component under `src/components/ui/` or
+  `src/components/icons/`.
+
+**Rewrite it — same shape, new comment — whenever it stops being true**: when you fold something in
+at STEP 4b, and whenever you take another story at STEP 6. The dispatcher reads the most recent one
+and nothing else.
+
+**A missing territory comment does not stop the queue, it stops the OTHER slot.** The dispatcher
+treats a slot with no territory as touching everything, so forgetting this costs the next firing
+its whole batch while looking like a healthy build.
+
+### Is the premise still true? Answer it here, before building
+
+**This was a scout's verdict in the dispatcher until 2026-08-18.** It moved because the session
+reading the actual code is better placed to answer it than an agent predicting from the issue text,
+and because those agents were the single most expensive thing in a firing.
+
+**Stale means one of exactly three things, each with a command behind it:** the code now does what
+the issue asks (**already done**); a later decision or migration makes it moot (**superseded**); or
+the thing it describes does not exist, typically a count that moved or a file that was deleted
+(**void premise**).
+
+**None of these is staleness:** disagreeing with the approach, thinking the priority is wrong,
+finding the story hard, finding it bigger than it looked, or noticing it is old. **Age is not
+evidence** — `PD-129` sat five days with its premise entirely intact.
+
+**The asymmetry sets the bar.** Building something already done costs one build and ends in a PR
+that changes nothing: loud, cheap, self-correcting. Parking a live story costs the owner a round
+trip and sits in `Needs decision` until they happen to look. **So the bar is evidence, or build
+it.** An ambiguous check is a build.
+
+**Stale, with the command and its output in hand** → do not build it and do not close it. Comment
+with the command, its output and which of the three rows it falls under, move it to
+**`Needs decision`**, strip your slot label from it, and drop it from your group. **Never
+`Needs help`** — that stops the whole queue over work nobody is doing. If every story in your group
+is stale, say so in a `PushNotification` and end the session.
 
 ---
 
@@ -514,17 +588,18 @@ live RLS hole letting any signed-in rider post a ride into any club.
    moving `development` is the same defect arriving later. A sha cannot move.
 
    Pass it with the rest of the scope material: **every issue being built** — all of them, for a
-   group — **each with the `size` the scout gave it, which your prompt carries** — each fold-in
-   with its one-line relatedness justification and its five ratings, and the commit ranges: each
-   story's own commits versus its fold-ins'. Without those, `reviewer.md`'s scope pass cannot check
-   the breadth cap at all, and is briefed to report that rather than guess the boundary from the
-   diff.
+   group — **each with its `size`, which you state from what you actually built** (`S` a copy fix,
+   a doc line, a single component · `M` the ordinary story · `L` a new route with its data layer, a
+   migration plus the screens that read it, or more than ~10 files) — each fold-in with its
+   one-line relatedness justification and its five ratings, and the commit ranges: each story's own
+   commits versus its fold-ins'. Without those, `reviewer.md`'s scope pass cannot check the breadth
+   cap at all, and is briefed to report that rather than guess the boundary from the diff.
 
    **`size` is on this list because the reviewer's ceiling check is otherwise unenforceable.**
    `reviewer.md` is briefed that a group holds at most one `size: L` — a bound a count alone cannot
-   see, since two `L` stories are two issues and clear the count. `size` is deliberately *not* on
-   the dispatch record, so Linear cannot supply it either: your prompt is the only place it
-   survives, and dropping it here turns that check into a rule with no input.
+   see, since two `L` stories are two issues and clear the count. **You are the one who can say it
+   honestly**: the scout that used to guess it before the build was removed on 2026-08-18, and
+   Linear carries it nowhere, so the diff in front of you is the only remaining source.
 
    **For a group, say so and say why, or the scope pass reads the branch as scope creep.** A
    diff carrying three unrelated-looking stories is exactly the shape that pass exists to catch,
@@ -617,6 +692,18 @@ live RLS hole letting any signed-in rider post a ride into any club.
    make. **Never merge on `total_count: 0`**: `CLAUDE.md` requires that whatever runs must pass,
    and a check that never reported has not passed.
 
+   **Driving CI to green is bounded: three attempts, then park.** An *attempt* is one push that
+   intends to fix a red or absent check. After the third one has been read back and is still not
+   green, stop: move the group to `Needs help` with the failing check named, the log excerpt, and
+   what you tried. **Do not open a fourth**, do not re-run a job hoping for a different answer, and
+   above all **do not arm a check-in to come back to it later**.
+
+   **This bound exists because the alternative was measured.** On 2026-08-18 a session watching one
+   PR re-armed an hourly `send_later` eighteen times across twenty hours — 84.5M cache-read tokens,
+   343k output, nothing built after the first hour, and its issue holding a slot the whole time.
+   A session that cannot get CI green in three tries has found something the owner needs to see,
+   and every wake after that spends real money to say so more slowly. `Needs help` says it once.
+
 ### Confirm the pass returned — the gate bullet 3 runs
 
 **The `reviewer` pass is a gate on the MERGE, and a missing result is a missing review rather
@@ -630,9 +717,10 @@ cannot spawn `reviewer` at all reaches by a different route.
 
 *(`CLAUDE.md` §Delegating while the owner is at the keyboard reaches the same anchor — *"the
 findings still land before the merge, which is the threshold that matters"* — but do **not** cite
-it as governing here. That section is explicitly the **attended** mode, and the dispatcher's
-owner-activity gate means a dispatched build is never in it; the rest of it — reply at once, keep
-answering — is wrong unattended, and you have nobody to reply to. The argument above stands on
+it as governing here. That section is explicitly the **attended** mode, and a dispatched build is
+never in it whether or not the owner is at their keyboard — nothing routes their questions here;
+the rest of it — reply at once, keep answering — is wrong unattended, and you have nobody to reply
+to. The argument above stands on
 its own.)*
 
 **A dead agent and a slow one are indistinguishable from the main thread**: no error, no
@@ -726,7 +814,7 @@ That is why they are numbered and cross-referenced by number.
    merged · PD-207 parked, needs you`. This line is read on a phone hours later with nothing else
    open, so it is the worst of the three places to claim a story shipped when it did not: bullet 4
    has its carve-out for exactly that reason and this bullet needs the same one.
-6. **Report to nobody. Your session ends here.** Product owner, 2026-08-18: *"when the
+6. **Report to nobody.** Product owner, 2026-08-18: *"when the
    development ends, I dont want those new sessions to report back to the routine. It will just
    pick up new stories on the next hourly run."* So there is **no `fire_trigger`, no poke, and no
    message to any other session** — not on a merge, not on a park into `Needs help`, not on a
@@ -737,12 +825,14 @@ That is why they are numbered and cross-referenced by number.
    A queue that also messages itself has two records of the same fact, and the second one is the
    one that goes stale.
 
-   **What it costs, said once so nobody re-derives it as a defect: a freed slot waits for the top
-   of the hour.** Finish at 10:05 and the next story starts at 11:00, not at 10:06. That is the
-   owner's call, and it buys a queue with exactly one clock — nothing to double-fire, at most one
-   firing an hour that can land on a dispatcher still working, and an off switch that stops every
-   dispatch rather than stopping only the heartbeat. **It still cannot stop a child already
-   building**, yours included: that is `queue-dispatch.md` STEP 1's carve-out, not an oversight.
+   **Then go to STEP 6**, which decides whether you take another story or end. That is the one
+   thing that happens after this bullet, and it sends nothing either way.
+
+   **What a freed slot costs when you do end: it waits for the top of the hour.** Finish at 10:05
+   and the next story starts at 11:00, not at 10:06 — unless STEP 6's gates let you take it
+   yourself, which is exactly the case that cost is worth avoiding. It buys a queue with one clock:
+   nothing to double-fire, and at most one firing an hour that can land on a dispatcher still
+   working. **Pausing the Routine still cannot stop a session already building**, yours included.
 
    **You therefore need no Claude Code Remote tools at all.** If a future step needs one, that is
    a design change rather than a convenience — say so rather than reaching for `fire_trigger`.
@@ -803,6 +893,91 @@ bullet 2.** Then:
   "deploy not yet visible" in the comment. Do not poll for it.
 - **The Vercel connector is missing or the call fails** → continue, and say the deploy was
   unverified. An unlabelled guess is the thing to avoid, not the missing check itself.
+
+---
+
+## STEP 6 — Take another story, or end
+
+**Only after STEP 5 is complete for every story you hold** — merged, deployed, commented, notified.
+A session in the middle of a build has nothing to decide here.
+
+**Two gates, both hard, and you check them in this order. Either one failing ends the session.**
+
+1. **Stories built this session, including folds-in: fewer than 3.**
+2. **Your own output tokens: under 400k.** Read them off your own session — `get_session` with
+   `session_id` omitted describes the caller:
+
+   ```
+   mcp__Claude_Code_Remote__get_session          # external_metadata.usage.output_tokens
+   ```
+
+**Where 400k comes from, so it can be re-derived rather than trusted.** Ten single-story children
+measured 2026-08-17/18 spent between 9.8k and 377k output tokens each, most of them 120k–310k. So
+one story is usually 150k–300k, and a 400k floor admits a second story exactly when the first was
+cheap — a copy fix, a doc line, a migration with no screens. That is the case where a warm session
+is worth reusing; a session that has already spent 300k is one that should hand the next story to a
+fresh window. Re-derive it from a few recent `queue-dispatch`-tagged sessions before moving it.
+
+**There is no way to clear a session's context from inside one** — `/clear` is interactive and no
+tool exposes it, and the harness's own compaction is lossy summarisation you cannot trigger. **So
+ending the session IS the clear**, and these two numbers are what decide when to spend one.
+
+**If either gate fails, end the session.** Say nothing to anyone: STEP 5 already sent the
+notification and wrote the record, the leftover stories are still in `Queued (AI)`, and the next
+hourly firing will dispatch them into a fresh window.
+
+### If both gates pass, take the next story
+
+```
+mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  state=<Queued (AI)>
+mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  state=<Needs help>
+mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  state=<Development (AI)>
+```
+
+Take the highest-priority candidate (Urgent → High → Medium → Low → No priority, ties by oldest
+`createdAt`) that clears **all** of these:
+
+- **`Needs help` is empty.** A parked story stops the whole queue, and that applies to you exactly
+  as it applies to the dispatcher. Any row → end the session.
+- **It does not collide with the OTHER slot's territory.** Read that slot's `<!-- territory -->`
+  comment the way the dispatcher does, and apply the same three caps: overlapping paths, both
+  adding a migration, both touching a shared primitive. **You are the one session that cannot see
+  the other's branch, so treat an uncertain overlap as a collision** — the dispatcher groups on
+  uncertainty because it can put both in one session, and you cannot.
+- **It is not an epic** — a candidate with sub-issues is a container, not work.
+- **It is not blocked** — `get_issue includeRelations=true`, any `blockedBy` outside
+  `Deployed to DEV`, `Done (in production)`, `Canceled` or `Duplicate` disqualifies it.
+- **Its premise is intact**, by the bar at STEP 3. You are about to build it, so the check is the
+  same one and it happens now, not after the branch exists.
+
+**Nothing qualifies → end the session.** Leaving a story for the next firing is the ordinary
+outcome, not a failure.
+
+**Claiming it is one write and it must carry your label:**
+
+```
+mcp__Linear__save_issue  id=<issue>  state=<Development (AI)>  labels=[<its existing labels>, "slot-N"]
+```
+
+Read the write back and confirm both fields took. **If either did not, do not build it** — end the
+session and let the next firing dispatch it properly.
+
+**Then start it clean, and start it at STEP 3:**
+
+- **A new branch off the freshly-pulled `development`**, never a second commit on the merged one:
+  `git checkout -B claude/<slug> origin/development`. Your previous PR is merged; stacking on it
+  puts already-shipped commits into the next diff and makes `reviewer` read a branch that is not
+  what it will merge.
+- **Rewrite your `<!-- territory -->` comment** on the new issue, naming what this story touches
+  rather than what the last one did. A stale territory is worse than none — the dispatcher trusts
+  the newest comment.
+- **One story, one branch, one PR, one `reviewer` pass, one push notification.** Nothing about the
+  second story is shared with the first except the session.
+
+**This is the one place a session picks its own work, and it stays inside one slot.** You never
+spawn a session, never take a story into a slot that is not yours, and never take a second one
+while the first is still open. `queue-dispatch.md` §The board is the lock is what those rules
+protect.
 
 ---
 
@@ -933,14 +1108,17 @@ retires four costs at once:
 
 | Cost of the reused session | How it is gone |
 |---|---|
-| The session was not idle by construction — a firing could land mid-conversation with the owner | Nothing else runs in here. The seven idle gates are deleted, not moved |
+| The session was not idle by construction — a firing could land mid-conversation with the owner | Nothing else runs in here. The idle gates are deleted, not moved |
 | Context accumulated across firings, and no session can `/clear` itself | This window starts empty and is discarded after one group |
 | The build had to run in a subagent purely to stand in for that clear | STEP 4 — build in your own thread; only specialists and `reviewer` are delegated now |
 | One story at a time, because one session could only build one thing | The claim is per issue; other stories build in parallel sessions, and colliding ones build together in this one |
 
-**What did not change: the owner's gate, and `Needs help`.** The dispatcher still refuses to
-dispatch while the owner has a session actively working, and still stops the whole queue when any
-story is parked in `Needs help`. Both are in [`queue-dispatch.md`](queue-dispatch.md).
+**What changed again on 2026-08-18, and it is the reason STEP 6 exists.** The owner dropped the
+owner-activity gate — *"we can indeed drop the gate whether I am here or not"* — so the queue now
+runs through their working day, and the scout pass, the session-liveness reads and the dispatch
+records all went with it. What holds the concurrency now is two Linear labels and the territory
+comment you write at STEP 3. `Needs help` is unchanged: any story parked there stops every
+dispatch, including the one you might make at STEP 6.
 
 **Two things remain irreversible from inside a session**, and they are in `CLAUDE.md` §What Not To
 Do because the calls that trip them are CCR calls made by a session that is not reading this file:
@@ -949,8 +1127,10 @@ Do because the calls that trip them are CCR calls made by a session that is not 
   fallback. Its three connectors were hand-attached and cannot be recreated from a session, so
   deleting it destroys the only recoverable path; `update_trigger enabled: true` restores it
   whole. **`…WJkMV` is the cheap hourly one and `…Gzy8e` is the irreplaceable one** — keep the two
-  straight in both directions. A disabled trigger's `list_triggers` row has **no `enabled` key at
-  all** rather than `"enabled": false`, so read a disable back by checking the field is gone.
+  straight in both directions. **You cannot read a Routine's enabled state at all**: measured
+  2026-08-18, none of the 27 rows `list_triggers` returns carries an `enabled` key, including the
+  hourly one that was firing at the time. `queue-dispatch.md` §Why this shape has the measurement
+  and what was removed because of it.
 - **Never archive the session the dispatcher Routine is bound to.** Archiving it stops the queue
   silently, with no error anywhere, and `update_trigger` has no `persistent_session_id`
   parameter — so recovery means a new trigger bound to a new session.
