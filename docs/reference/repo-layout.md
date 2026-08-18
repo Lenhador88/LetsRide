@@ -26,7 +26,7 @@ src/
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
 │   ├── rides/              # CreateRideForm, EditRideForm, DeleteRideControl, RideCard, RideFilterBar, RideHeader, RideCrewRail, RideChatRow, RideJournal, RideAttendanceBar, RideMap, RideChatThread, RideChatComposer
-│   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, EditClubForm, DeleteClubControl, JoinClubButton, MarkClubSeen
+│   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, CreateClubForm, EditClubForm, DeleteClubControl, ExploreClubsStrip, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem
 │   └── profile/            # CountryFlags, EditProfileForm, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu

@@ -312,6 +312,20 @@ Every geometry value was **read** from `v2 / Component / List / Club` (the 3-var
 `- No clubs`. What follows is what the design asks for and the schema has not got, plus the
 deliberate deviations and one settled ambiguity.
 
+- **The sub-page dropdown is gone, and the four v2 frames draw it.** `PD-258`, product owner
+      2026-08-17: *"I want to stop using that top dropdown"* — the same objection `PD-254` acted
+      on for the ride detail. So `Clubs - Your clubs` (`1914:6862`) and `Clubs - Explore`
+      (`1918:9610`) are no longer built as drawn: no `subRow`, a 96px header instead of 120, an
+      `Explore N clubs` strip between the header and the list, and `/clubs/explore` titled for
+      itself with a back control. **`Clubs - Your clubs - No clubs` (`1918:9439`) is deliberately
+      not built at all** — a rider with no clubs gets the explore list on the same route, so the
+      empty state has no state left to occupy.
+
+      The approved composition is its own Figma section, `AI / Clubs one screen / 2026-08-17`
+      (`4166:7017`), built from this file's own `List / Club` instances and paint styles and
+      sitting beside `PD-254`'s. Read that rather than the four originals; the originals are kept
+      because the rows, the cards and every token on them are still what ships.
+
 - [x] ~~**Which Explore design is canonical**~~ — **settled, and it is not the newer-looking
       one.** The flow holds two frames named `Clubs - Explore`: a `List / Club` row list
       (`1918:9610`) and a two-column grid of 175×190 tiles (`1918:10353`), the grid sitting
