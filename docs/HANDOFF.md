@@ -1760,8 +1760,9 @@ contain icon *instances* under those exact names, and they walk after the real c
 fact about that node, not about instances, because eleven icons in the set are instances and
 export fine (below) — and `Chevron Right` to a grey instance inside a note frame.
 
-**`ChevronDownIcon` has three importers** — `ClubPageMenu`, `ClubDetailPageMenu`, `RideCrewRail` —
-so regenerating on that pull drops an export those three still import. That fails loudly at `tsc`
+**`ChevronDownIcon` has two importers** — `ClubDetailPageMenu` and `RideCrewRail`; `ClubPageMenu`
+was the third until `PD-258` deleted it — so regenerating on that pull drops an export those still
+import. That fails loudly at `tsc`
 rather than shipping, which is the one piece of luck here. `chevron-right` is the quiet half: only
 its `fill` moved, and `components.mjs` rewrites every literal fill to `currentColor`, so
 `generated.tsx` is **byte-identical** and the wrong node is now canonical in `design/` with nothing

@@ -25,8 +25,8 @@ src/
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
-│   ├── rides/              # CreateRideForm, EditRideForm, DeleteRideControl, RideCard, RideChip, RideFilterBar, RideHeader, RideCrewRail, RideChatRow, RideJournal, RideAttendanceBar, RideMap, RideChatThread, RideChatComposer
-│   ├── clubs/              # ClubCard, ClubDetailHeader, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPageMenu, CreateClubForm, EditClubForm, DeleteClubControl, JoinClubButton, MarkClubSeen
+│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, MarkRideChatSeen, RideAttendanceBar, RideCard, RideChatButton, RideChatComposer, RideChatRow, RideChatThread, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap
+│   ├── clubs/              # ClubCard, ClubCreateRideRow, ClubDetailHeader, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPostcardCarousel, CreateClubForm, DeleteClubControl, EditClubForm, ExploreClubsStrip, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem
 │   └── profile/            # CountryFlags, EditProfileForm, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu

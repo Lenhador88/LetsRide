@@ -104,6 +104,17 @@ export const queryKeys = {
     me: (): QueryKey => ['profile', 'me'],
     countries: (userId: string): QueryKey => ['profile', 'countries', userId],
     /**
+     * `getMyLocationText` — the onboarding city alone, for the Clubs strip
+     * (PD-258). Its own leaf rather than `me()` because the shapes differ: a
+     * `string | null` and a whole `Profile` sharing one cache entry is the
+     * collision this file's header warns about, and `getMyLocationText` exists
+     * precisely to avoid `getCurrentProfile`'s avatar-signing pass.
+     *
+     * Under `profile`, so `updateProfile`'s existing `profile.all()`
+     * invalidation moves the strip's city the moment a rider edits it.
+     */
+    location: (): QueryKey => ['profile', 'location'],
+    /**
      * `view-rider-profile` — no `revalidatePath` predecessor, like
      * `notifications` and `places`. `blockRider`/`unblockRider`'s
      * `invalidate(EVERYTHING)` already reaches this through the empty
