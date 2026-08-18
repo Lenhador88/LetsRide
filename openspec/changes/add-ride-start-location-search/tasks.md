@@ -77,10 +77,18 @@
       clears text and pick together.
 - [ ] 4.3 The search affordance carries an accessible name; the sheet keeps its `role="dialog"`,
       `aria-modal` and `Escape` handling.
-- [ ] 4.4 Extend `src/components/ui/__tests__/place-search-field.test.ts`: free-text mode renders an
-      input, typing clears the hidden fields, picking fills all four, clubs' four-hidden-input shape
-      is unchanged.
-- [ ] 4.5 Confirm `CreateClubForm` and `EditClubForm` are untouched and still pass.
+- [ ] 4.4 **Typing clears the pick** — product owner, 2026-08-18, *"Lets throw away the pin if the
+      rider types more."* Not a preference to re-litigate; the field must stop showing a pin the write
+      will not store.
+- [ ] 4.5 **Add the `/legal/attributions` link to the sheet.** Required by PD-114 **and** PD-259 in
+      the same words, and **not built by PD-259** — `grep -rn "attributions" src/` finds it only in
+      `types/index.ts`, `legal/terms` and `legal/privacy`. One link in the sheet, on the shared
+      control so clubs gain it too. Not a per-result credit and not a per-source line.
+- [ ] 4.6 Extend `src/components/ui/__tests__/place-search-field.test.ts`: free-text mode renders an
+      input, typing clears the hidden fields, picking fills all four, the attributions link is
+      present, clubs' four-hidden-input shape is unchanged.
+- [ ] 4.7 Confirm `CreateClubForm` and `EditClubForm` are untouched behaviourally and still pass —
+      they gain the attribution link and nothing else.
 
 ## 5. Ride forms, validation and actions
 
@@ -112,6 +120,13 @@
 - [ ] 6.1 `supabase/functions/resolve-ride-location/index.ts`: read `start_place_id` with the ride,
       and when it is present skip the geocode and the three gates, render both tiles from the stored
       coordinate, and write **only** the two path columns.
+- [ ] 6.1a **Guard the step-8 UPDATE with `.is('start_place_id', null)`** on the geocoded path. 6.1
+      cannot cover the race: a pick that arrives *after* the ride was read but *before* the UPDATE
+      lands makes `protect_picked_ride_location` NULL the path columns while the statement still
+      **succeeds**, so the compensating delete never runs and two JPEGs of the wrong place are
+      orphaned. The guard turns that into a zero-row result, which the existing `!written` branch
+      already handles — delete the uploads, return `noTile('column_write_refused')`. Add the case to
+      the function's own §8 comment.
 - [ ] 6.2 Keep every decision in `gates.ts`, where `src/__tests__/ride-geocode-gates.test.ts` can
       reach it — a decision that moves into `index.ts` leaves the test suite.
 - [ ] 6.3 Add a test for the skip branch alongside the existing gate tests.
@@ -119,12 +134,49 @@
       carries an exact coordinate and no tile. Do not claim the function is current; verify with
       `list_edge_functions` against both refs and the `updated_at`-vs-commit-date check.
 
-## 7. Gates and wrap-up
+## 7. Coordination and documentation — do not let these land silently
 
-- [ ] 7.1 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
-- [ ] 7.2 `npm run walk` with `WALK_FIXTURES=1` against DEV via the relay — its create/edit phases
+- [ ] 7.1 **The orphaned-tile class, and its retention.** Both new triggers NULL the path columns, and
+      after either, nothing in the database knows the object's name. Verify — do not assume — that
+      `'ride-maps'` is still in `PREFIXES` in `supabase/functions/delete-account/index.ts` (it is,
+      added by PD-104 §4, and that list is the only thing reaching the folder), and record in the PR
+      that **this change is what first makes the orphan class real**: no ride has ever carried a
+      coordinate, so no tile has ever been rendered. This is the counterpart to
+      `add-ride-map-tiles` 7.1 and it exists for the same reason — the code half being done is not
+      the specification half being done.
+- [ ] 7.2 **Update `docs/reference/schema.md`'s `rides` row.** `067` falsifies it in three places: the
+      `insert` list goes from ten columns to 13, the `update` list gains `start_place_id`, and *"a
+      coordinate needs a confidence at or above the floor"* stops being true — a picked coordinate
+      carries none. `Three CHECKs` becomes four, and `rides_geocode_coupling` no longer exists by
+      name. `066` updated that file for clubs; same precedent, same file.
+- [ ] 7.3 Note in the PR that PD-114's *"the coordinates may not be landing"* suspicion is now traced:
+      the function fires and **refuses** at the granularity gate — `ride_map_render_attempts` holds
+      two rows for the two rides created 2026-08-17, both free text, both leaving the columns NULL.
+      PD-260 depends on the same answer.
+
+## 8. Provenance hardening — AFTER the Edge Function deploy, never before
+
+- [ ] 8.1 **Do not start this until 6.1 is deployed.** The order is fixed by `021`/`025`: additive
+      first, deploy, destructive last. `resolve-ride-location` writes as the **caller**
+      (`authenticated`), not `service_role`, so revoking `update (geocode_confidence)` ahead of the
+      deploy raises `42501` on every geocode — fail-open, so every ride silently stops getting a tile
+      with nothing red anywhere.
+- [ ] 8.2 Add a `security definer` `record_ride_geocode(ride_id, lat, lon, confidence)` that checks
+      `organizer_id = auth.uid()` and writes the geocoded arm. Narrow on purpose — it takes no other
+      column — and it adds a ninth `authenticated_security_definer_function_executable` advisor,
+      which is expected rather than new.
+- [ ] 8.3 Switch the function to call it, deploy, verify, **then** a separate migration revoking
+      `update (geocode_confidence)` from `authenticated`.
+- [ ] 8.4 Assert it against the **role** — `has_column_privilege('authenticated', 'public.rides',
+      'geocode_confidence', 'UPDATE')` false — rather than by calling the function, which is `031`'s
+      lesson: the RLS suite runs as the table owner, for whom no grant barrier exists.
+
+## 9. Gates and wrap-up
+
+- [ ] 9.1 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
+- [ ] 9.2 `npm run walk` with `WALK_FIXTURES=1` against DEV via the relay — its create/edit phases
       assert that every field and choice survives a refusal, which is what covers 5.3.
-- [ ] 7.3 `npm run docs:check` if any claim in `CLAUDE.md` or `docs/` moved (the ride trigger count on
+- [ ] 9.3 `npm run docs:check` if any claim in `CLAUDE.md` or `docs/` moved (the ride trigger count on
       `rides` goes from four to five).
-- [ ] 7.4 `reviewer` on the diff before the PR. Point it at `067` and at the same-statement trigger
+- [ ] 9.4 `reviewer` on the diff before the PR. Point it at `067` and at the same-statement trigger
       case specifically.

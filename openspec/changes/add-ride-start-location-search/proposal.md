@@ -25,6 +25,26 @@ Two corrections to PD-114's body, which predates the code:
   `latitude`, `longitude` and `geocode_confidence`; those are the columns, and only one new column
   is added here.
 
+Read from the issue and its comments directly, 2026-08-18. Three things they carry that the relay
+into this proposal did not:
+
+- **Storage rights, which the body names as load-bearing** — *"'We may keep the lat/lng' is
+  load-bearing for all three payoffs, so verify it before the migration lands."* Answered: Overture
+  Places is **CDLA Permissive 2.0 + Apache 2.0**, not ODbL — no share-alike, no deletion clause, no
+  rights that lapse, and no per-result credit (PD-191, 2026-08-18). Written into the spec rather than
+  inherited.
+- **A hard requirement nobody has built: the search sheet must link to `/legal/attributions`.**
+  Carried by PD-114 and PD-259 in the same words, because the licence argument depends on that page
+  being reachable and it is currently linked only from Terms and Privacy. **PD-259 shipped the
+  control without it** — `grep -rn "attributions" src/` finds it only in `types/index.ts`,
+  `legal/terms` and `legal/privacy`. This change adds it to the shared control, so clubs gain it too.
+- **The provenance question the issue assigns to this story** (comment, 2026-08-12): confidence
+  saturates, so a picked coordinate and a maximally-confident geocode are indistinguishable, and it
+  offers "either a `location_source` column, or a CHECK-admitted sentinel". This proposal takes
+  neither — see `design.md` §D2.
+- The comment's *"the coordinates may not be landing"* suspicion is **traced**: the function fires and
+  refuses at the granularity gate. PD-260 depends on the same answer.
+
 ## What Changes
 
 - **`meeting_point` stays free text and stays required.** Search is an accelerator on top of it,
@@ -48,6 +68,15 @@ Two corrections to PD-114's body, which predates the code:
   work at all.
 - **INSERT grants.** `051` granted UPDATE on `latitude`/`longitude` and no INSERT at all, so
   picking a place at ride creation raises `42501` today. Additive INSERT grants are added.
+- **The sheet gains a link to `/legal/attributions`**, on the shared control, closing a requirement
+  both this story and PD-259 carry and neither has built.
+- **Typing over a pick throws the pick away** — product owner, 2026-08-18: *"Lets throw away the pin
+  if the rider types more."*
+- **What this change does NOT close, stated rather than implied**: `authenticated` keeps
+  `update (geocode_confidence)` from `051`, so the *geocoded* arm remains self-asserted. It cannot be
+  revoked here — `resolve-ride-location` writes as the **caller**, not `service_role`, so a revoke
+  ahead of a redeployed function silently stops every tile. The fix and its fixed ordering are named
+  in the spec and scheduled in `tasks.md` §8.
 - **BREAKING for nothing shipped**: no rider-visible behaviour is removed, no existing ride changes,
   and no backfill is run.
 
@@ -73,8 +102,13 @@ Two corrections to PD-114's body, which predates the code:
 - **Code** — `src/components/ui/PlaceSearchField.tsx` (extended), `src/components/rides/CreateRideForm.tsx`,
   `EditRideForm.tsx`, `src/lib/validation/rides.ts`, `src/lib/actions/rides.ts`, `src/lib/data/rides.ts`,
   `src/types/index.ts`.
-- **Edge Function** — `supabase/functions/resolve-ride-location/` skips a ride that carries a pick
-  and renders its tiles from the stored coordinate. **Deploying is an owner action**, so this is
-  drift from the moment it merges; the interim state is stated in the spec rather than assumed away.
+- **Docs** — `docs/reference/schema.md`'s `rides` row is falsified by `067` in three places (the
+  `insert` list, the `update` list, and *"a coordinate needs a confidence at or above the floor"*) and
+  is updated in the same change, as `066` did for clubs.
+- **Edge Function** — `supabase/functions/resolve-ride-location/` skips a ride that carries a pick,
+  renders its tiles from the stored coordinate, and guards its write against a pick that arrived
+  mid-flight. **Deploying is an owner action**, so this is drift from the moment it merges; the
+  interim state — including the two JPEGs that race can orphan — is stated in the spec rather than
+  assumed away.
 - **No new runtime dependency.** Nine today, nine after.
 - **No mapping SDK** — decision #3 is untouched. This adds a search, not a map.

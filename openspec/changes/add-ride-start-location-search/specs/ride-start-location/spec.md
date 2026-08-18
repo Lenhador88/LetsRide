@@ -62,6 +62,24 @@ A picked coordinate therefore carries **no** `geocode_confidence`, and that is c
 missing: confidence is the vendor's evidence for a guess, and a rider choosing a row from an index
 is not a guess with a score.
 
+This answers the question PD-114's own 2026-08-12 comment assigns to this story — *"the confidence
+column cannot record provenance… either a `location_source` column, or a CHECK-admitted sentinel
+confidence value reserved for picks"* — and it takes **neither** of those two options. The comment is
+right that confidence saturates, so a maximally-confident geocode and a pick are indistinguishable
+*within that column*; the answer is not to overload it or to duplicate it in an enum, but to let the
+**presence of `start_place_id`** carry the fact and a CHECK make the arms exclusive. It is also right
+that this must be decided before the first coordinate is written, and no ride carries one yet.
+
+**One half of provenance is enforced and the other half is a claim, and the difference SHALL be
+stated.** `authenticated` holds UPDATE on `geocode_confidence` from `051`, and
+`resolve-ride-location` writes **as the caller** — the anon key plus the rider's own
+`Authorization` header, never `service_role` — so the grant cannot simply be revoked without taking
+the geocoder down with it. The consequence: a rider cannot forge over a pick (the precedence trigger
+restores it), but a rider *can* hand-write the geocoded arm onto a ride that has no pick, making the
+row claim a vendor produced a value no vendor touched. The harm is an organizer misrepresenting the
+provenance of their own ride's coordinate; it reaches no other rider's data. Closing it is a
+follow-up whose ordering is fixed, and which is named under the unbuilt surfaces below.
+
 #### Scenario: The three states are the only three states
 - **WHEN** any row in `public.rides` is read
 - **THEN** it SHALL be in exactly one of: nothing known (all four NULL); picked (`start_place_id`,
@@ -78,6 +96,13 @@ is not a guess with a score.
 #### Scenario: Both writers at once is refused
 - **WHEN** a write would leave both `start_place_id` and `geocode_confidence` non-NULL on the same row
 - **THEN** it SHALL be refused
+
+#### Scenario: The geocoded arm is self-asserted until the grant moves
+- **WHEN** an organizer hand-writes `latitude`, `longitude` and a valid `geocode_confidence` onto
+  their own ride that carries no pick
+- **THEN** it SHALL be accepted, because `authenticated` holds that grant and the geocoder needs it
+- **AND** this spec SHALL record that as a stated gap, so no later change reads "provenance" as
+  meaning the geocoded arm was proven
 
 ### Requirement: The geocoder SHALL NOT overwrite a rider's pick, and the database SHALL be what stops it
 
@@ -176,6 +201,10 @@ Stated as reach, positive and negative:
   `rides` UPDATE is `auth.uid() = organizer_id`, and this change adds no arm to it.
 - **Club member (ride in their club)** — MAY read the coordinate exactly as they read the ride. MAY
   NOT set or change it.
+- **Ride crew (`ride_members`, any status)** — reads the coordinate **only** if the `rides` SELECT
+  policy already admits them; being on the crew confers nothing by itself, because that policy has no
+  crew arm. A rider who RSVP'd to a public ride that later moved into a private club they do not
+  belong to loses the coordinate with the rest of the row. MAY NOT set or change it.
 - **Non-member, signed-in** — MAY read the coordinate of a ride they can already read (a public
   ride). MAY NOT read anything about a private club's ride, coordinate included, because the row
   itself is out of reach.
@@ -199,6 +228,12 @@ Stated as reach, positive and negative:
 #### Scenario: A blocked rider sees no coordinate in either direction
 - **WHEN** rider A has blocked rider B, and B organises a public ride
 - **THEN** A SHALL NOT see the ride or its coordinate, and B SHALL NOT see A's rides or theirs
+
+#### Scenario: Crew membership alone grants nothing
+- **WHEN** a rider holds a `ride_members` row for a ride the `rides` SELECT policy does not admit
+  them to
+- **THEN** they SHALL read zero rows, coordinate included — the crew row SHALL NOT be an arm of that
+  policy, and this change SHALL NOT add one
 
 #### Scenario: The pick is writable at creation, not only at edit
 - **WHEN** an organizer creates a ride with a place picked
@@ -236,6 +271,51 @@ location was picked.
 - **THEN** no request SHALL be made, and the sheet SHALL say what the minimum is rather than showing
   "no results"
 
+### Requirement: The right to keep a coordinate SHALL be stated, and the search sheet SHALL link to the attribution page
+
+PD-114 names storage rights as load-bearing — *"'We may keep the lat/lng' is load-bearing for all
+three payoffs, so verify it before the migration lands"* — and its body's answer (Google's 30-day
+delete clause, Mapbox as the recommendation) is superseded. **The answer SHALL be written down here
+rather than left to be inferred from a decision made on another issue.**
+
+`public.places` is Overture's Places theme, published under **CDLA Permissive 2.0 and Apache 2.0** —
+**not ODbL**. There is no share-alike, no deletion clause, no rights that lapse with a subscription,
+and no per-result credit obligation: §3 of CDLA Permissive 2.0 exempts what an app renders
+("Results") from carrying the licence text. So a GERS id and a coordinate copied out of that index
+MAY be kept permanently, which is what makes a denormalised copy on `rides` lawful as well as
+correct. Settled by the product owner on PD-191, 2026-08-18.
+
+**The credit is paid once, on `/legal/attributions`, and the sheet SHALL link to it.** That is a
+requirement carried by both PD-114 and PD-259, in the same words — *"the search sheet must link to
+`/legal/attributions`… One link from the sheet, not a per-result credit and not a per-source line"* —
+because the licence argument depends on that page being reachable, and today it is linked only from
+Terms and Privacy, which a rider sees at signup and never again.
+
+**Measured 2026-08-18: `PlaceSearchField` carries no such link** — `grep -rn "attributions" src/`
+returns only `src/types/index.ts`, `legal/terms` and `legal/privacy`. PD-259 built the control first
+and did not build this. It SHALL be added to the shared control, where both stories expect it, and
+SHALL NOT be added twice.
+
+Map tiles are a **different vendor and a different obligation**: Geoapify requires an unconditional
+OpenStreetMap credit, discharged by the credit burned into the tile image and by its own line on that
+page. This requirement SHALL NOT merge the two.
+
+#### Scenario: The sheet reaches the attribution page
+- **WHEN** the search sheet is open
+- **THEN** it SHALL offer a link to `/legal/attributions`
+- **AND** no per-result or per-source credit line SHALL be rendered on a result row
+
+#### Scenario: The link is on the shared control
+- **WHEN** the link is added
+- **THEN** it SHALL live in `src/components/ui/`, so the club picker gains it in the same change
+- **AND** neither story SHALL ship a second copy
+
+#### Scenario: A stored coordinate has no expiry
+- **WHEN** a picked coordinate and GERS id are written to a ride
+- **THEN** no deletion deadline, cache window or subscription condition SHALL apply to them
+- **AND** the retention that governs them SHALL be the ride's own, per this spec's retention
+  requirement
+
 ### Requirement: The search surface SHALL define every state it can be in
 
 Search sits in a sheet over a form the rider is part-way through. Every state below SHALL be
@@ -250,6 +330,7 @@ difference.
 | No matches | Says nothing matched, and the free text remains usable. |
 | Error / offline | Says the search failed and can be retried; Cancel returns to the intact form. |
 | Picked | The field shows the picked place and offers to clear it. |
+| Typed over | Typing in the text drops the pick — **product owner, 2026-08-18: _"Lets throw away the pin if the rider types more."_** |
 | Cleared | Text and pick cleared together; the field is back to its placeholder. |
 | Refused save | The pick survives a refused create or edit, like every other field. |
 
@@ -263,6 +344,14 @@ difference.
   and the form re-renders
 - **THEN** the picked place SHALL still be held by the form, alongside every other retained field
 - **AND** resubmitting unchanged SHALL write the same coordinate
+
+#### Scenario: Typing over a pick drops it
+- **WHEN** a rider picks a place and then edits the text in the field
+- **THEN** the pick SHALL be dropped as they type — decided by the product owner 2026-08-18,
+  *"Lets throw away the pin if the rider types more"*
+- **AND** the field SHALL stop showing a pick, so the screen never claims a pin the write will not
+  store
+- **AND** the resulting write SHALL carry the typed text with all three location columns NULL
 
 #### Scenario: Results are bounded and ordered by the index
 - **WHEN** a term matches many rows
@@ -293,26 +382,50 @@ is what it was when somebody chose it, and must not move because a data vendor r
 - **WHEN** a client writes an arbitrarily long `start_place_id`
 - **THEN** a CHECK SHALL refuse anything past 100 characters, matching `066`
 
-### Requirement: A ride's start location SHALL have a stated retention, and it SHALL die with the ride
+### Requirement: A ride's start location SHALL have a stated retention, and the artifact that outlives it SHALL be named
 
-A ride's start location SHALL be held only on the ride row, SHALL be destroyed with it, and SHALL
-NOT be copied into any table, log or object that outlives it.
+The **columns** SHALL be held only on the ride row and SHALL be destroyed with it: three columns, no
+history table, no audit row, no separate location store, and no per-rider location record created by
+this change. Deleting the ride deletes them, with no tombstone.
 
-The coordinate lives in three columns on the ride row and nowhere else. There is no history table, no
-audit row, no separate location store, and no per-rider location record created by this change.
+**A rendered tile is a different artifact and SHALL NOT be described by that sentence.** `051` states
+it in writing and this change SHALL NOT weaken it: a tile is *"a rendered image of where an
+identified rider previously intended to be, and the bytes persist whether or not a row points at
+them"*. Storage has no foreign key to Postgres, so an object survives the row that named it. Two
+routes produce such an orphan here, both by design — the clearing trigger NULLs both path columns
+whenever the meeting point changes, and the precedence trigger NULLs them when it rejects a
+coordinate — and after either, **nothing in the database knows the object's name**. The organizer's
+own `ride-maps/<uid>/` prefix is the only handle left.
+
+**This change is what first makes that class exist, and that SHALL be stated rather than inherited.**
+No ride in either project has ever carried a coordinate, so no tile has ever been rendered; the first
+orphan possible is one produced by a *picked*, exact point rather than a geocoder's approximation.
+
+Retention for the orphan SHALL therefore be stated as it actually is: **it lives until its
+organizer's account is deleted**, at which point the account-deletion sweep removes the whole
+`ride-maps/<uid>/` prefix. Nothing prunes it before then, and nothing SHALL claim otherwise.
 
 **A ride's start location is not a rider's location.** It is a meeting point an organizer published
 to the ride's audience. Nothing here writes to `profiles.location`, reads a rider's device position
 into the ride, or infers one rider's whereabouts from another's ride.
 
-#### Scenario: Deleting the ride deletes the location
-- **WHEN** a ride is deleted, by its organizer or by the account-deletion path
-- **THEN** the coordinate and the place id SHALL go with the row, with no tombstone and no copy left
+#### Scenario: Deleting the ride deletes the columns
+- **WHEN** a ride is deleted, by its organizer or through their account deletion
+- **THEN** the coordinate and the place id SHALL go with the row, with no tombstone
 
-#### Scenario: Account deletion leaves no coordinate behind
+#### Scenario: An orphaned tile outlives the row that named it
+- **WHEN** a picked or geocoded coordinate is cleared or rejected and the path columns are NULLed
+- **THEN** any object already uploaded SHALL remain in Storage, unnamed by any row
+- **AND** the change SHALL NOT claim it was deleted
+- **AND** it SHALL remain reachable only under the organizer's own prefix, by the organizer and by
+  the account-deletion sweep
+
+#### Scenario: Account deletion removes the prefix
 - **WHEN** a rider deletes their account
-- **THEN** every ride they organise SHALL be handled exactly as it is today, and this change SHALL
-  add no new table, column or object holding a coordinate that survives them
+- **THEN** `ride-maps/<uid>/` SHALL be swept, orphans included, because it is in the deletion
+  function's prefix list
+- **AND** that membership SHALL be verified rather than assumed, since the list is the only thing
+  that reaches the folder
 
 #### Scenario: The device position is used for bias only
 - **WHEN** the search sheet resolves the rider's own position to bias results toward them
@@ -361,6 +474,14 @@ Each surface below SHALL be left unbuilt and named, and SHALL NOT be half-built 
   cheap improvement and is deliberately not bundled here.
 - **No distance filter, no "rides near me", no index on the coordinate.** Adding an index before a
   SQL-side distance predicate exists would be a write cost the planner never reads, per `066` §4.
+- **The geocoded arm is not made unforgeable here, and the fix has a fixed order.** It needs a
+  `security definer` RPC the Edge Function calls to record a geocode, and only then a revoke of
+  `update (geocode_confidence)` from `authenticated`. **Revoking before that function is deployed
+  takes every tile down**, silently and fail-open, because the geocoder writes as the caller. So it
+  is additive-first / deploy / destructive-last across two migrations, per `021`/`025`, and it does
+  not belong inside this one.
+- **No orphan sweep for tiles whose paths were NULLed.** Their retention is the organizer's account,
+  as stated above; a pruning job is a separate decision with a separate owner.
 
 #### Scenario: A picked ride between merge and deploy
 - **WHEN** a rider picks a place before `resolve-ride-location` has been redeployed

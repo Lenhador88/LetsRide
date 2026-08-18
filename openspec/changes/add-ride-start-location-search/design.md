@@ -58,8 +58,10 @@ set", with a CHECK `start_place_id is null or meeting_point = start_place_name`.
 grounds. First, D3's rule decides the same question from `OLD`/`NEW` without it. Second, the CHECK
 would make "pin plus a note" — picking `Shell Pernis Werk, Rotterdam` and then writing
 `Shell Pernis Werk, Rotterdam — by the pumps` — impossible at the database level, which is a product
-decision the schema has no business taking. Recorded because it is a genuinely reasonable design and
-will be proposed again.
+decision the schema has no business taking. **The owner has since closed that question in the UI**
+(typing throws the pin away), which strengthens rather than weakens the argument: a UI rule is
+reversible in an afternoon, a CHECK is a migration and a backfill. Recorded because it is a genuinely
+reasonable design and will be proposed again.
 
 ### D2. Provenance by mutual exclusion, not by a source enum
 
@@ -96,9 +98,18 @@ Dropping and re-adding a constraint is not editing an applied migration; `067` i
 `rides_geocode_coupling` is gone by name after it, which anything grepping for that name (`051`'s
 footer, the RLS suite) must be updated for.
 
-*Alternative considered — a `location_source` enum column (`picked` / `geocoded`).* Rejected: it is
-a second statement of a fact the columns already carry, it can disagree with them, and a CHECK tying
-it to them would be this same constraint plus a column.
+*Alternatives considered, and both are the ones PD-114's 2026-08-12 comment offers this story by
+name.* That comment establishes the problem correctly — confidence saturates, the measured Geoapify
+geocode of `Stationsplein 1, Amsterdam` returned exactly `1`, which is also what a picker would
+naturally write — and proposes "either a `location_source` column, or a CHECK-admitted sentinel
+confidence value reserved for picks". Neither is taken. The **enum** is a second statement of a fact
+the columns already carry, free to disagree with them, and a CHECK tying it to them would be this
+same constraint plus a column. The **sentinel** abuses a column whose name says it holds a vendor
+score, and any later reader who has not been told the convention reads it as one. Presence of
+`start_place_id` costs the same column the story needed anyway and cannot disagree with itself.
+
+*What this does not buy.* `authenticated` holds `update (geocode_confidence)` from `051`, so the
+geocoded arm can be hand-written. See D5.
 
 ### D3. The clearing rule, decided from `OLD` and `NEW` alone
 
@@ -176,6 +187,24 @@ no client ever produces one, and under D2 a client that could would be writing t
 Additive statements only — `044`/`046` are this repo's worked example of two absolute grant lists
 silently reinstating each other's revokes.
 
+**The UPDATE grant on `geocode_confidence` stays, and removing it here would take the geocoder down.**
+This was raised in review as a one-line hardening on the premise that `resolve-ride-location` runs as
+`service_role` and so bypasses column grants. **It does not.** `index.ts` builds its writing client as
+`createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: 'Bearer ' + token } } })`
+and issues the step-8 `update` through it — its own §Rule 1 is "the caller's own token on every
+statement from here down", and CLAUDE.md records that `delete-account` is the **only** place a
+service-role key exists. So the function writes as `authenticated`, on the rider's JWT, and a revoke
+would raise `42501` on every geocode. It would do so **invisibly**: the function is fail-open, so it
+would return `rendered: false` after paying for a geocode, two renders and two uploads, and every
+ride would quietly stop getting a tile with nothing red anywhere.
+
+The goal behind the finding is right, and it is met in the direction that matters: a pick cannot be
+forged over, because D4 restores it. What remains is a rider hand-writing the geocoded arm onto a
+ride with no pick — self-misrepresentation on their own row, reaching no one else's data. Closing it
+needs a `security definer` `record_ride_geocode(...)` for the function to call, **then** the revoke,
+in that order and across two migrations (`021`/`025`'s rule). Filed as an unbuilt surface, with the
+ordering, rather than done half-way here.
+
 ### D6. The Edge Function skips a picked ride — spend, not correctness
 
 `resolve-ride-location` gains one branch after it reads the ride: `start_place_id is not null` →
@@ -190,9 +219,36 @@ a picked ride has an exact coordinate and no tile, and both containers draw the 
 draw for every ride on DEV today.
 
 `requestRideMapRender` in `src/lib/actions/rides.ts` SHALL NOT be called when the write carried a
-pick. That removes the interim's one real cost: today's deployed function would geocode, render, and
-upload two objects whose column write D4 then overrides — leaving two orphaned JPEGs, because the
-function's compensating delete only runs when the UPDATE *errors*, and D4 succeeds silently.
+pick. That removes the *common* case of the interim's cost: today's deployed function would geocode,
+render, and upload two objects whose column write D4 then overrides — leaving two orphaned JPEGs,
+because the function's compensating delete only runs when the UPDATE *errors*, and D4 succeeds
+silently.
+
+**That condition does not cover the race, and the race is the harder half.** "The write carried a
+pick" is evaluated in the action; it says nothing about a render already in flight when the pick
+arrives:
+
+1. organizer creates a ride with free text → `requestRideMapRender` fires, legitimately;
+2. before the function's step 8 lands, the organizer edits and picks a place;
+3. the function completes: it uploads two JPEGs and issues its UPDATE;
+4. `clear_ride_map_tiles` does **not** fire — that statement touches neither `meeting_point` nor
+   `start_place_id`; `protect_picked_ride_location` **does**, and NULLs the path columns;
+5. the UPDATE **succeeds**, so `writeError` is null and `written` is a row — the function's
+   compensating delete never runs, and two JPEGs of the wrong place are orphaned with nothing naming
+   them.
+
+Same mechanism, arriving by a route the condition cannot see. The fix belongs in the function,
+because that is the only party still holding the object names (`051`'s own point), and it is one
+clause: **guard the UPDATE with `.is('start_place_id', null)`**. A pick that arrived mid-flight makes
+the statement match zero rows, which the function already treats as the refused-write path — so its
+existing compensating delete runs, unchanged, and `noTile('column_write_refused')` is returned. The
+`maybeSingle()` + `!written` branch already handles it; what changes is that the branch becomes
+reachable for this case instead of the UPDATE silently succeeding.
+
+**Both halves are function changes, so both wait on the same owner deploy**, and until then the race
+orphans two objects — bounded by how often an organizer picks a place within a few seconds of
+creating the ride with free text. Stated rather than mitigated away; the retention requirement says
+where those bytes then live and for how long.
 
 ### D7. The picker extension, precisely
 
@@ -207,8 +263,15 @@ What to add:
   stay hidden. Clubs keep four hidden inputs and are untouched.
 - A search affordance inside the field that opens the same sheet — the frame draws a search icon and
   a `Search location` placeholder.
-- Typing in the input clears the three hidden fields, so text and pin cannot silently disagree in the
-  UI. (See Open Question 1: the database permits them to disagree; the UI chooses not to.)
+- Typing in the input clears the three hidden fields. **Decided by the product owner, 2026-08-18:
+  *"Lets throw away the pin if the rider types more."*** The database still permits text and pin to
+  disagree — a statement may carry any text with any picked place — and the UI chooses not to, so the
+  screen never shows a pin the write will not store.
+- **A link to `/legal/attributions`, in the sheet.** Required by PD-114 and PD-259 in the same words,
+  and **not built by PD-259**: `grep -rn "attributions" src/` finds it only in `types/index.ts`,
+  `legal/terms` and `legal/privacy`. It goes on the shared control, so clubs gain it in the same
+  change. One link — not a per-result credit and not a per-source line, which is the whole point of
+  paying the credit once (CDLA Permissive 2.0 §3).
 - `required` passed through, since `meeting_point` is `NOT NULL` and 1–120 characters.
 - `sheetTitle="Set start location"` and `placeholder="Search location"`, both read from the frames.
 
@@ -220,9 +283,22 @@ what `PlaceSearchField` already builds.
 
 The coordinate is three columns on `rides`. `001`/`017`/`022` decide who reads the row; RLS is
 row-level, so they decide the columns too. There is no narrower policy available and a wider one
-would be a defect. Deleting the ride deletes the location. Nothing new stores a rider's own position:
-the sheet's proximity bias is resolved when the sheet opens, held in a ref, never persisted, never
-sent anywhere but our own RPC.
+would be a defect. No SELECT grant is needed either: `rides` is `authenticated=rdm`, table-level,
+unlike `postcards` (`d` only), which is why `062` had to revoke a column grant there and nothing
+equivalent is needed here. Deleting the ride deletes the columns. Nothing new stores a rider's own
+position: the sheet's proximity bias is resolved when the sheet opens, held in a ref, never
+persisted, never sent anywhere but our own RPC.
+
+**The columns are not the whole retention story, and the earlier draft of this section was wrong to
+imply they were.** A rendered tile is a separate artifact in Storage with no foreign key back to
+Postgres, and `051` says so in writing: it is *"a rendered image of where an identified rider
+previously intended to be, and the bytes persist whether or not a row points at them."* Both new
+triggers NULL the path columns, and after either, nothing in the database knows the object's name.
+Its retention is the organizer's account — `ride-maps` is in `delete-account`'s `PREFIXES` list
+(verified in `supabase/functions/delete-account/index.ts`, added by PD-104 §4), and that list is the
+only thing that reaches the folder. **This change is what makes the orphan class real**: no ride has
+ever carried a coordinate, so no tile has ever been rendered, and the first orphan possible will be
+one rendered for an exact picked point.
 
 ## Risks / Trade-offs
 
@@ -247,30 +323,32 @@ sent anywhere but our own RPC.
 - **The picker cannot be reached from a keyboard-only or screen-reader path if the search affordance
   is icon-only.** → It carries an accessible name, like the existing clear button.
 
+## Decided while this was being written
+
+**Typing over a pick throws the pick away.** Product owner, 2026-08-18: *"Lets throw away the pin if
+the rider types more."* This was Open Question 1 and is now a decision — see D7 for where it lands in
+the control, and the spec's sheet-state table and its own scenario. The database still permits text
+and pin to disagree; the UI does not, so the screen never shows a pin the write will not store. The
+alternative that was on the table — a `Pinned: <place> · change / remove` line letting a rider
+annotate without losing the pin — is closed, not deferred.
+
 ## Open Questions
 
 Each has a recommended default so the build is never blocked on an answer.
 
-**1. May the text and the pin disagree in the UI? (non-blocking — product owner)**
-The database permits it: a statement may carry any text with any picked place, which is what makes
-"pin plus a note" possible. The UI has to choose. **Recommended default: typing clears the pin.** It
-is honest, it needs no element the frames do not draw, and it keeps the rendered text and the pin in
-agreement. The alternative — a `Pinned: <place> · change / remove` line under the input, letting a
-rider annotate without losing the pin — is nicer and is a follow-up, not a blocker.
-
-**2. Should `Get directions` deeplink the coordinate when the location was picked? (non-blocking —
+**1. Should `Get directions` deeplink the coordinate when the location was picked? (non-blocking —
 product owner)** Today it deeplinks the `meeting_point` text, so a picked exact point is handed back
 to Google as a fuzzy search. **Recommended default: unchanged in this change**, raised as a
 follow-up; it is a one-line change with its own testing question (a coordinate deeplink with a label
 reads differently in the Maps app) and does not belong bundled with a schema change.
 
-**3. Should a rider be able to pick a place for a ride they are not organising? (non-blocking —
+**2. Should a rider be able to pick a place for a ride they are not organising? (non-blocking —
 already answered by the schema, recorded so nobody re-opens it)** No. `rides` UPDATE is
 `auth.uid() = organizer_id` and no arm is added, so a club admin cannot. **Recommended default:
 leave it that way** — a location an admin can move on someone else's ride is a ride whose crew
 arrives somewhere the organizer never chose.
 
-**4. Does the sheet need a "use my current location" row? (non-blocking — product owner)** The bias
+**3. Does the sheet need a "use my current location" row? (non-blocking — product owner)** The bias
 already resolves the rider's position when the sheet opens, so the data is there. **Recommended
 default: no.** A meeting point is a place riders converge on, not where the organizer is standing
 while creating the ride, and the row would invite exactly that mistake — the same error `066` calls
