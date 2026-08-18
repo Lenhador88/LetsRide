@@ -1586,8 +1586,8 @@ from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
 **Full detail — the anti-duplication contract, the status traps, sequencing, the queue dispatcher
 and its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before
 the first Linear call of a session, and before ANY call that touches the dispatcher Routine, its
-triggers or the dispatcher session** — those are CCR calls rather than Linear ones, so "before a
-Linear call" would never have fired for them. What must be true without reading it:
+triggers or the relay session it fires into** — those are CCR calls rather than Linear ones, so
+"before a Linear call" would never have fired for them. What must be true without reading it:
 
 - Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**. **Pass the project id —
   `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it holds a curly apostrophe, the
@@ -1767,9 +1767,12 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   this organization, so no session can recreate it; `update_trigger enabled: true` restores it
   whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one — keep them straight
   in both directions. Detail in [`docs/reference/linear.md`](docs/reference/linear.md).
-- **Don't archive or abandon the dispatcher session** — the one
+- **Don't archive or abandon the relay session** — the one
   `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, currently
   `session_01B2mxc642tG8vZ15wysQpqM`. Archiving it stops the queue silently with no error
   anywhere, and `update_trigger` has no `persistent_session_id` parameter, so recovery needs a
-  third trigger bound to a new session. **Its children are disposable and archiving one is
-  fine** — they carry the `queue-dispatch` tag, which is how they are told apart.
+  third trigger bound to a new session. **It is the only session in the queue that is reused, and
+  since 2026-08-18 it decides nothing**: a firing spawns a fresh dispatcher and exits, so
+  everything it spawns is disposable and archiving one is fine — a dispatcher carries
+  `queue-dispatch-run` and a child carries `queue-dispatch`, which is how the three are told
+  apart. `.claude/commands/queue-dispatch.md` STEP -1 is the procedure.
