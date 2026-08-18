@@ -1994,26 +1994,40 @@ nothing, because connectors attach per session independently of the repo.
 no "Allow always" means there is no project settings file to persist a grant into — i.e. no
 repo.** Check `session_context.sources` before theorising about permission layers.
 
-**The queue's own machinery — the two trigger ids, the never-delete rule, the dispatcher session
-and the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the procedures are
+**The queue's own machinery — the two trigger ids, the never-delete rule, the relay session and
+the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the procedures are
 `.claude/commands/queue-dispatch.md` (pick and hand out) and `.claude/commands/queue-pickup.md`
 (build one group).** None of it belongs here: settled contract, not current position.
 
-**The procedure change does not take effect until the trigger's prompt is repointed**, because the
-prompt is outside the repo and names the file the firing reads. Until then a firing reads the
-*child* procedure, which opens by telling it the issue id is in its prompt when there is no id —
-undefined behaviour in an unattended session. Check rather than assume:
+**The prompt is repointed — read 2026-08-18, `trig_01WJkMVXGzUVGDcC1njNmaan` names
+`queue-dispatch.md`.** It also says *"you are the DISPATCHER"*, which since STEP -1 is one role too
+far — the session it fires into is the **relay**, and the file overrides the prompt. Harmless, and
+only the owner or that session can reword it.
+
+**Two of `PD-241`'s three items are still open, and the issue body has not caught up.** The
+**fallback Routine is still missing** (`trig_01Gzy8eCiaXUUa1knvJnNpwy`, absent again at
+`limit=100`, and the whole account holds two Routines). And the **re-enable**: the row carried no
+`enabled` key that morning, `last_fired_at` 06:20Z with
+`next_run_at` 07:05Z already in the past, so **the queue is switched off right now**. Check rather
+than assume — a disabled row simply lacks the key:
 
 ```
 # via the CCR MCP: list_triggers -> trig_01WJkMVXGzUVGDcC1njNmaan
 #   its prompt must name queue-dispatch.md, not queue-pickup.md
+#   enabled: true, and next_run_at in the FUTURE = live
 ```
 
-**No ordinary session can make that edit, measured 2026-08-17** — `update_trigger` returns
-*"editing the prompt of a routine whose fires deliver into a session that is not your own is not
-available via this tool"*. So it is the dispatcher session's own call or a Routines-UI edit, and
-**`PD-241` carries it as an owner action** along with the re-enable and the missing fallback.
-Do not spend another session rediscovering the refusal.
+**A procedure change needs no trigger edit, and STEP -1 is why that stays true.** The prompt says
+*read the file and follow it*, so the relay behaviour landed as a file change; nothing outside the
+repo had to move. That matters because **no ordinary session can edit that prompt, measured
+2026-08-17** — `update_trigger` returns *"editing the prompt of a routine whose fires deliver into
+a session that is not your own is not available via this tool"*. So a prompt edit is the relay
+session's own call or a Routines-UI edit. Do not spend another session rediscovering the refusal.
+
+**The relay session is where a firing's questions used to land, and one is still sitting there.**
+`session_01B2mxc642tG8vZ15wysQpqM` is `need_input` on *"queue dispatch: PD-255 blocked by
+`src/types/index.ts` overlap; proposing exemption"*. Under STEP -1 that question would have been
+asked by a fresh dispatcher instead; the one already asked still needs the owner.
 
 **Two facts measured 2026-08-16 that the trigger list will not tell you, and both need re-reading
 rather than trusting:**

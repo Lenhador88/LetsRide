@@ -22,25 +22,148 @@ name; pass the id, never the name.
 
 ---
 
-## The two roles, and how to tell which you are
+## The three roles, and how to tell which you are
 
-| | Dispatcher | Child |
-|---|---|---|
-| Started by | the hourly Routine, or a `fire_trigger` poke | `create_session` from the dispatcher |
-| Reads | this file | [`queue-pickup.md`](queue-pickup.md) |
-| Holds | the board, the caps, the batch | its group's issue ids, given in its prompt |
-| Ends at | children spawned | every issue in its group at `Deployed to DEV` |
-| Carries the tag | no | **`queue-dispatch`** |
+| | Relay | Dispatcher | Child |
+|---|---|---|---|
+| Started by | the hourly Routine, or a `fire_trigger` poke | `create_session` from the relay | `create_session` from the dispatcher |
+| Reads | STEP -1, and nothing else in this file | this file, from STEP 0 | [`queue-pickup.md`](queue-pickup.md) |
+| Holds | nothing — it decides nothing | the board, the caps, the batch | its group's issue ids, given in its prompt |
+| Ends at | one session spawned | children spawned | every issue in its group at `Deployed to DEV` |
+| Carries the tag | no — it **is** `session_01B2mxc642tG8vZ15wysQpqM` | **`queue-dispatch-run`** | **`queue-dispatch`** |
 
 **A child never dispatches.** One level, no chaining — a child that spawns a child has no view of
 the caps below and cannot enforce them, so the batch guarantees quietly stop holding while
 everything still looks healthy.
 
-**You are `session_01B2mxc642tG8vZ15wysQpqM`.** If you are not, this message is misrouted: stop,
-and say so. The fallback if the Routine is ever rebound is this session's own
+**Which of the three you are is decided by your own session id**, and STEP -1 is where you read
+it. The relay is `session_01B2mxc642tG8vZ15wysQpqM` — the session the Routine is bound to, and the
+only one this file names. The fallback if the Routine is ever rebound is that session's own
 `Claude-Session: https://claude.ai/code/<id>` line, the one used for commit trailers. STEP 1
-cannot exclude you from its own gate without this, and a gate that counts the firing itself never
-passes.
+cannot exclude the relay from its own gate without this, and a gate that counts the firing itself
+never passes.
+
+---
+
+## The relay, and why the bound session decides nothing
+
+**The Routine fires into one persistent session and always will.** `update_trigger` has no
+`persistent_session_id` parameter, and switching that Routine to `create_new_session_on_fire`
+loses five things at once that no session can restore — the repo, the model, the effort level, the
+permission mode and the connectors. `create_trigger` still refuses the `connectors` parameter for
+this organization, re-measured 2026-08-18 against a throwaway one-shot: *"the connectors parameter
+is not available for this organization."*
+
+**So the reuse is moved rather than removed.** The bound session spawns a fresh dispatcher and
+exits. Every board read, every scout verdict, every cap decision and every question belongs to a
+session that did not exist an hour ago, and the reused session holds two state reads and one
+`create_session` call per firing.
+
+**It reads state, never the board, and the line between them is the whole discipline.** Is the
+Routine on, and is a dispatcher already in flight — two booleans, both about the queue's own
+machinery. A relay that reads one issue has started deciding, and the step it is deciding instead
+of is the one that costs 34k of process docs to do properly.
+
+Product owner, 2026-08-18: *"i think our routine is reusing sessions from other topics... This
+does not seem like a good practice."* It was reusing exactly one — the bound session, live since
+2026-08-07 — and this step retires it from deciding anything.
+
+**What that buys is the three costs the top of this file already names** — context accumulating
+across firings, a `/clear` nobody can perform from inside, and a firing landing mid-conversation
+with the owner. The relay pays none of them, because it reads nothing and decides nothing.
+
+**What it costs is one extra session per firing, and less than it looks — but only because STEP -1
+says the relay does not read `CLAUDE.md`.** Every firing already re-read `CLAUDE.md` and this file,
+so the fresh dispatcher pays what the persistent one was paying anyway; the addition is one
+session's own fixed overhead, and the subtraction is a transcript that had grown for eleven days.
+Drop that one instruction and the arithmetic inverts — the relay reads 34k of process docs to make
+one call, and the firing pays for it twice.
+
+**Spawning through `create_session` is what makes this work at all**, and it is a different path
+from a trigger-spawned session rather than the same thing at a different depth. §Why this shape
+carries what was probed, what it does not cover, and why the gap is survivable.
+
+---
+
+## STEP -1 — Are you the relay?
+
+**Read your own session id first** — `get_session` with `session_id` omitted describes the session
+making the call, and it is the only tool here that answers the question. **The relay branch fires
+on a positive match and on nothing else.** If the id cannot be read at all, decide by the prompt
+instead: the dispatcher's prompt carries the line `Spawned by the relay.` verbatim and the
+Routine's does not.
+
+**Written that way round deliberately.** A default of "assume relay" is the one that can chain: a
+dispatcher taking the relay branch spawns a dispatcher, which takes it again, and nothing in this
+file bounds that. The Routine's own prompt calls its recipient the DISPATCHER — that wording
+predates this step, no ordinary session can edit it, and **this file is the authority over it**.
+Being handed that prompt is not a positive id match.
+
+**If you are `session_01B2mxc642tG8vZ15wysQpqM`, you are the relay.** Two checks, one call, then
+exit. **Read no board, run no other step of this file, and do not read `CLAUDE.md`** — the
+instruction at the top of this file to read it fully belongs to the dispatcher. The relay's entire
+value is that its transcript grows by a few hundred tokens a firing, and reading 34k of process
+docs to make one call throws that away while looking diligent.
+
+1. **The switch — is the queue even on?** `list_triggers` and read
+   `trig_01WJkMVXGzUVGDcC1njNmaan` exactly as STEP 1 does: `enabled: true` and nothing else is on,
+   a disabled row simply lacks the key, and an `InputValidationError` is a deferred schema rather
+   than a failure — `ToolSearch` and call it again. **Not on → exit silently, spawning nothing.**
+   This check is here rather than only in STEP 1 because a poke against a disabled trigger is
+   accepted rather than refused, so without it a stopped queue would still burn a session an hour,
+   for ever, to discover it was stopped. **If the call cannot be made at all, spawn anyway** — STEP
+   1 holds on an unreadable switch and notifies, and a switch you cannot read is not a licence to
+   stop the queue silently.
+2. **Is a dispatcher already in flight?** `list_sessions mine=true limit=100`, and look for a
+   session tagged `queue-dispatch-run` whose `session_status` is RUNNING **or PENDING** — a
+   just-spawned session is PENDING for its first seconds, which is exactly the window this check
+   has to cover.
+   - **One is in flight and its `updated_at` is inside the last 30 minutes → exit silently.** Two
+     dispatchers reading the board at once both compute the same free slots and can claim the same
+     issue: a status write is not compare-and-swap, and STEP 5's dispatch record is written *after*
+     the spawn, so neither sees the other. Delivery into one persistent relay serialises the
+     firings themselves — its turns run one at a time — and this check is what extends that
+     serialisation across the sessions they spawn.
+   - **Older than that → hold, and send a `PushNotification` naming the session.** A wedged
+     dispatcher is the one queue session nothing in this file ages: it holds no dispatch record, so
+     STEP 6 cannot see it, and STEP 1 excludes it by tag. Spawning past it risks two children on
+     one story, which costs more than a delay; the owner clears it by archiving that session.
+3. **`create_session`**, with:
+   - `title` — `Queue dispatch — <UTC date and time of this firing>`, so the session list reads as
+     a run rather than a topic.
+   - `tags` — **`["queue-dispatch-run"]`**. STEP 1's owner-activity gate depends on it exactly as
+     it depends on the child's tag, and an untagged dispatcher holds that gate against every
+     future firing for as long as it runs.
+   - `source_url` — `https://github.com/Lenhador88/LetsRide`. **Without it there is no checkout**,
+     so this file cannot be read and `.claude/settings.json` is never loaded, which takes every
+     grant in it with it. That is the exact failure `docs/HANDOFF.md` records as *a permission
+     dialog offering "Allow once" but no "Allow always"*, and it is the most likely way this step
+     goes wrong.
+   - `prompt` — it must open with the line `Spawned by the relay.`, then: read
+     `.claude/commands/queue-dispatch.md` and follow it from STEP 0; you are the dispatcher, you
+     never build, the file is the authority over anything you remember, and do not act on anything
+     else in the conversation. **The first line is load-bearing**, not decoration: it is what STEP
+     -1 falls back on when a session cannot read its own id.
+4. **Read the response back and confirm `tags` is on it.** If it is missing, **archive that session
+   immediately**, send a `PushNotification` saying so, and stop.
+5. **Say nothing else, run no other step of this file, and exit — STEP 6 included.** The stall
+   check reads the board, and a relay reading the board is a relay becoming the dispatcher one
+   firing at a time.
+
+**`InputValidationError` from `create_session` is a deferred schema, not a failure** — `ToolSearch`
+by keyword and call it again. Reading it as a failure takes the branch below, which runs the whole
+firing in the relay and quietly restores the shape this step exists to remove.
+
+**If `create_session` fails for any other reason, run the firing yourself from STEP 0 and send a
+`PushNotification` saying the relay could not spawn.** A queue that stops because one call failed
+is worse than one firing in the old shape — and the notification is what keeps the degraded mode
+from quietly becoming the permanent one. **In that branch you are the relay for the rest of the
+firing**: the usage rule in STEP 1 and the `send_later` ban below both turn on that, and both say
+so.
+
+**If your session id is anything else, you are the dispatcher: go to STEP 0 and ignore this step.**
+**The Routine's own prompt arriving in a session that is neither the relay nor a
+`Spawned by the relay.` dispatcher is misrouted** — stop, and say so.
 
 ---
 
@@ -150,8 +273,10 @@ paragraph above that no story can be stranded here, because one can.**
 **What the switch does not do: it cannot stop a child already building.** Children are spawned,
 not scheduled, so nothing routes a running one back through this Routine — it finishes, merges its
 PR and moves its issue however the switch is set. Stopping those too is the owner archiving the
-sessions tagged `queue-dispatch` and moving their issues back to `Queued (AI)`; `CLAUDE.md` §What
-Not To Do permits archiving children and forbids it only for this session.
+sessions tagged `queue-dispatch` and moving their issues back to `Queued (AI)` — **and any session
+tagged `queue-dispatch-run` with them**, since a dispatcher that passed this gate before the switch
+went off will still claim and spawn. `CLAUDE.md` §What Not To Do permits archiving both and forbids
+it only for the relay.
 
 **The check belongs here rather than in the child's poke**, and that is not a stylistic
 preference: the dispatcher is the one chokepoint every spawn passes through, so a single check
@@ -166,7 +291,7 @@ Product owner, 2026-08-16, approving this design: *"Just keep the gate of an act
 myself."*
 
 ```
-list_sessions  mine=true  limit=50
+list_sessions  mine=true  limit=100
 ```
 
 **A hold here means "dispatch nothing", never "stop" — go to STEP 2, read the board, and run
@@ -176,18 +301,29 @@ child. That matters most exactly when this gate is held: the owner works a six-h
 firing in it holds, and a child that died at the start ages straight through the alarm window
 unseen. Read the board even when you will not act on it.
 
-**Hold if any session in that list is `SESSION_STATUS_RUNNING` and is neither this session
-(`session_01B2mxc642tG8vZ15wysQpqM`) nor tagged `queue-dispatch`.** Read the tag and the id in the
-same pass — the tag is the primary signal, and a row lacking it is a child only if
-`parent_session_id` is this session *and* `origin` is `claude_code_mcp_seed`. **Apply that
-cross-check inside the rule, not as a footnote**, or an untagged child holds the gate for its
-whole build.
+**Hold if any session in that list is `SESSION_STATUS_RUNNING` and is none of these four: this
+session, the relay (`session_01B2mxc642tG8vZ15wysQpqM`), a session tagged `queue-dispatch-run`, or
+one tagged `queue-dispatch`.** Read the tag and the id in the same pass — the tag is the primary
+signal, and a row lacking it is queue machinery only if `origin` is `claude_code_mcp_seed` *and*
+its `parent_session_id` is the relay or a session tagged `queue-dispatch-run`. **Apply that
+cross-check inside the rule, not as a footnote**, or an untagged child holds the gate for its whole
+build.
+
+**That cross-check reads the relay's id and the run tag rather than "this session", and it has to.**
+Every child alive when you run this step was spawned by an *earlier* firing's dispatcher, so a
+version of the rule that matches `parent_session_id` against your own id can never match anything
+and quietly becomes dead code — the untagged child then falls straight through to the permanent
+hold below.
 
 Both exclusions are load-bearing in different ways, and each is the cheapest failure in this repo
 to write:
 
 - **This session.** The dispatcher runs in a RUNNING session by definition, so a check counting
   every RUNNING session is held by the firing itself and can never pass.
+- **The relay, and any other `queue-dispatch-run` session.** The relay is RUNNING for the moment it
+  takes to spawn you, and both it and a still-finishing earlier dispatcher are the queue's own
+  machinery rather than the owner working. Excluding them by tag is what keeps STEP -1 from
+  gating every firing off at the step after it.
 - **Children.** They are RUNNING for the whole length of a build, so counting them gates the
   dispatcher off permanently the moment it spawns its first child — the same never-clearing shape
   from the other side.
@@ -212,12 +348,13 @@ signal arrives in THIS firing** — a system warning that a limit is approaching
 overage notice, a rate-limit message — and send a `PushNotification` saying so.
 
 **"This firing", never "anywhere in this conversation", and the distinction is the whole gate.**
-The dispatcher is a persistent session whose context accumulates and which no session can clear,
-so a signal that ever appeared is visible for ever: read that way, **the first rate-limit message
-this session receives disables the queue permanently**, and the `enabled=false/true` lever below
-does not clear it because pausing a trigger does not touch a transcript. That is the
-never-clearing shape this very step warns about twice, arriving through the one gate that reads
-history instead of state.
+For a dispatcher spawned by STEP -1 the two now coincide — its conversation *is* one firing — but
+the rule stays and is not decoration: STEP -1's failure branch runs the firing in the relay, which
+is a persistent session whose context accumulates and which no session can clear. Read as "anywhere
+in this conversation" there, **the first rate-limit message that session ever received disables the
+queue permanently**, and the `enabled=false/true` lever below does not clear it because pausing a
+trigger does not touch a transcript. That is the never-clearing shape this very step warns about
+twice, arriving through the one gate that reads history instead of state.
 
 **There is no number to compare against 80%**, and inventing a threshold would be a gate that can
 never fire. What was checked, so nobody re-derives it: `claude --help` has no `usage` subcommand,
@@ -236,9 +373,17 @@ owner work is the single outcome this gate exists to prevent, and failing open l
 a clean pass:
 
 - **The call fails or the connector is unreachable.** Per STEP 0, a `select:` miss is a rename.
-- **The response carries `has_more: true`.** The ordering is documented nowhere this session can
-  read, so a truncated page is not a sample you can reason about — a RUNNING session on the next
-  page is invisible. `limit=50` makes truncation unlikely, not impossible.
+- **The page is too shallow to contain the owner's current work.** `has_more: true` is **not** that
+  signal and must not be read as one: it is the norm and always has been. Measured 2026-08-18, one
+  page at `limit=50` came back `has_more: true` with **28 of its 50 rows already ARCHIVED** —
+  archived and idle sessions are returned alongside live ones, so the list only ever grows and a
+  rule that holds on `has_more` holds for ever, on every firing, against a healthy queue.
+
+  What actually matters is **how far back the page reaches**: rows come newest-first, so a page
+  whose oldest row is younger than **48 hours** cannot be reasoned about — a RUNNING session on the
+  next page is invisible. Read `created_at` on the last row; at `limit=100` today it reaches back
+  about two weeks, which is why 48 hours is a tripwire rather than a routine hold. Hold and notify
+  when it does not clear that floor.
 
 **Both exits send their own `PushNotification`**, because a gate held with no data has no clock
 behind it and STEP 6 therefore cannot age it. A stop nothing can age is a stop nothing reports.
@@ -764,19 +909,36 @@ self-heals instead.
   mean the connector is down.
 - **Empty queue, every candidate stale or blocked, or a batch of zero** → silence.
 
+### Your last act — archive yourself
+
+**A dispatcher spawned by STEP -1 archives its own session once this step is done**, which
+releases the container and keeps a queue that fires hourly from filling the owner's session list
+with a run they will never open again. It is best effort: if the call refuses, say nothing and
+exit — nothing downstream depends on it, and an archived row is still returned by `list_sessions`
+either way, so this buys tidiness and a container rather than a working gate.
+
+**Archive nothing else.** Not the relay, ever (`CLAUDE.md` §What Not To Do), and not a child —
+a child archives itself, and archiving a live one strands its issue in `Development (AI)`.
+
+**The relay never reaches this step**, so in STEP -1's failure branch, where the firing runs in
+the relay, this instruction does not apply to you.
+
 ### How you get woken again
 
-- **A child pokes you.** Each child's last act is `fire_trigger` on the dispatcher Routine. That
-  is what makes the next batch start seconds after a slot frees, and it is the point of the
-  design.
+- **A child pokes you — or rather, it pokes the relay.** Each child's last act is `fire_trigger` on
+  the Routine, which delivers into the relay, which runs STEP -1 and spawns a *new* dispatcher.
+  Nothing wakes the dispatcher that spawned that child. That is what makes the next batch start
+  seconds after a slot frees, and it is the point of the design.
 - **The hourly Routine fires.** The **heartbeat, not the driver** — it exists because a child that
   dies never pokes, and an event-driven chain has no way back once a link is lost. Do not remove
   it because the pokes are working.
 - **`send_later`** — **only for a condition that resolves on a clock you can name**, and never for
   a held gate. A gate clears when the owner stops working, which no event reports and no delay
-  predicts, so re-arming on it is a poll: three hours of owner activity would wake this session
-  ~180 times, accumulating context in the one session that must not accumulate it. The hourly
-  heartbeat already covers it.
+  predicts, so re-arming on it is a poll: three hours of owner activity would wake a session ~180
+  times. **In STEP -1's failure branch that session is the relay** — the one session in this design
+  whose context must not accumulate and which no session can clear — and outside that branch you
+  are a dispatcher that is meant to have archived itself a step ago. The hourly heartbeat already
+  covers it either way.
 
 ---
 
@@ -794,13 +956,25 @@ GitHub tools all answered. That removed the reason the single session had to be 
 it the three costs the reuse was paying — context accumulating across firings, a `/clear` no
 session can perform, and a firing landing mid-conversation with the owner.
 
-**One inherited capability was NOT established by that probe, and the design leans on it:** the
-child's `fire_trigger` poke needs the Claude Code Remote tools. The probe's summary reported every
-item reachable, but the itemised result was not read back, so **treat CCR inheritance as
-plausible-but-unverified until a child actually pokes.** If it turns out not to inherit, the poke
-fails, its error branch in `queue-pickup.md` STEP 5 fires, and the design degrades to the hourly
-heartbeat — slower, not broken. The Vercel connector the child's deploy check uses is unverified
-the same way and degrades the same way.
+**The one capability that probe left unverified is now measured, and STEP -1 depends on it far
+harder than the poke ever did.** Probed 2026-08-18 from two `create_session` children, itemised
+this time rather than summarised:
+
+- **Child with no repo attached** — `permission_mode: auto` inherited, and Linear, Supabase,
+  Vercel, GitHub **and the Claude Code Remote tools** (`list_sessions`, `list_triggers`,
+  `get_session`) all answered.
+- **Child with `source_url` set** — repo checked out, and it called `create_session` itself: the
+  grandchild came back with `parent_session_id` set and its `tags` intact.
+
+So the dispatcher's spawn of its children and the child's `fire_trigger` poke stand on measured
+ground, and `queue-pickup.md` STEP 5's error branch is now the belt rather than the design.
+
+**Two gaps, and neither is closable from inside a session.** Both probes were spawned from an
+*interactive* session, so **the exact hop STEP -1 performs — a Routine-fired session spawning a
+child — is inferred rather than measured**; and whether any of these grants survive a container
+reclaim across an idle hour is observable only after the fact. STEP 0 is the detector for the
+second, and STEP -1's `create_session` failure branch is the detector for the first: it degrades
+to the old shape and notifies, rather than stopping.
 
 **What it does not remove is the reason for a dispatcher.** The caps in STEP 4 need one place that
 can see every story in flight at once. A chain — each child spawning the next — is simpler and
@@ -812,7 +986,13 @@ session that is not reading this file:**
 - **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`**, the disabled fresh-session Routine. Its three
   connectors were hand-attached and `create_trigger` refuses the parameter, so no session can
   recreate it; `update_trigger enabled: true` restores it whole. **It was not in `list_triggers`
-  on 2026-08-16** — see `docs/HANDOFF.md`; if it is gone the documented fallback is gone with it.
-- **Never archive the dispatcher session.** `update_trigger` has no `persistent_session_id`
-  parameter, so recovery means a new trigger bound to a new session. **Children are disposable**
-  and archiving one is fine; the `queue-dispatch` tag is how they are told apart.
+  on 2026-08-16, and still was not on 2026-08-18** (the whole account holds two Routines at
+  `limit=100`, and neither is it) — see
+  `docs/HANDOFF.md`; if it is gone the documented fallback is gone with it. **STEP -1 is what makes
+  that survivable**: the thing the fallback existed to provide — a firing whose context is one hour
+  old rather than eleven days — no longer needs a Routine to provide it.
+- **Never archive the relay session** (`session_01B2mxc642tG8vZ15wysQpqM`). `update_trigger` has
+  no `persistent_session_id` parameter, so recovery means a new trigger bound to a new session.
+  **Everything the relay spawns is disposable** and archiving one is fine: a dispatcher carries
+  `queue-dispatch-run` and a child carries `queue-dispatch`, and those two tags are how all three
+  roles are told apart from the outside.

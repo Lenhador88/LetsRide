@@ -917,9 +917,10 @@ job that could reach Linear at all.
 
 **A session spawned by another *session* inherits them.** Probed 2026-08-16 from a
 `create_session` child with the repo attached: `permission_mode: auto` inherited without
-complaint, and Linear, Supabase and the GitHub tools all reachable. One capability this file's
-STEP 5 poke depends on is unverified — [`queue-dispatch.md`](queue-dispatch.md) §Why this shape
-carries it. That probe is what made the dispatcher possible, and it retires four costs at once:
+complaint, and Linear, Supabase and the GitHub tools all reachable. **Re-probed 2026-08-18 and
+itemised, the Claude Code Remote tools this file's STEP 5 poke depends on answered too** —
+[`queue-dispatch.md`](queue-dispatch.md) §Why this shape carries that probe and the two gaps it
+does not close. STEP 5's error branch is now the belt rather than the design. That probe is what made the dispatcher possible, and it retires four costs at once:
 
 | Cost of the reused session | How it is gone |
 |---|---|
