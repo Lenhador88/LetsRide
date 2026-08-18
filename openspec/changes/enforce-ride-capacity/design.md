@@ -18,7 +18,7 @@ The state that shapes the design:
 |---|---|
 | `ride_members` is keyed `(ride_id, user_id)`, `status in ('going','maybe')`, FK to `rides` `on delete cascade` | `001` |
 | Its SELECT policy carries `private.is_blocked`, so the roster is per-viewer | `009` |
-| Its UPDATE policy is `auth.uid() = user_id` with **no** `EXISTS` against `rides` | `008` |
+| Its UPDATE policy is `auth.uid() = user_id` with **no** `EXISTS` against `rides` — which is covered anyway, because Postgres applies the SELECT policy to an UPDATE's new row (measured; `proposal.md`) | `008` |
 | `authenticated` holds INSERT and UPDATE on `(ride_id, user_id, status)` — `ride_id` deliberately, for the upsert | `048` |
 | Two triggers already: `enforce_participation_gate` (BEFORE INSERT, `when current_user = 'authenticated'`), `notify_ride_joined` (AFTER INSERT) | `023`, `055`/`060` |
 | `rides.max_riders` is `int null`, bounded 1..999 | `001`, `018` |
@@ -34,8 +34,9 @@ The state that shapes the design:
 
 **Non-Goals**
 
-- Repairing the `ride_members` UPDATE policy's missing visibility conjunct. Found here, filed,
-  not fixed — see `proposal.md`.
+- Restating the visibility conjunct on the `ride_members` UPDATE policy. Measured as already
+  covered by the SELECT policy — see `proposal.md`; a second copy of an enforced rule is a defect
+  in itself.
 - Any change to `rides`: no CHECK, no trigger, no new column. Lowering the cap is unconstrained by
   decision 3.
 - Any UI. The design draws no capacity affordance; verified against the snapshot.
@@ -282,9 +283,7 @@ including any ride that became over-subscribed while it was off.
 
 ## Open Questions
 
-**Q1 — Close the one-bit disclosure now, or accept it?** (D6.) *Recommended default: accept it,
-and revisit if the follow-up fixes the UPDATE policy's missing `EXISTS`, at which point the
-`AFTER`-trigger variant becomes cheap.* Blocking: **no** — the swap is contained to the migration
+**Q1 — Close the one-bit disclosure now, or accept it?** (D6.) *Recommended default: accept it.* Blocking: **no** — the swap is contained to the migration
 and changes no requirement except the disclosure scenario. Answerable by: the product owner.
 
 **Q2 — Should the trigger carry `when (current_user = 'authenticated')`?** (D10.) *Recommended

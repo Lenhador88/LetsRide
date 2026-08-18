@@ -428,10 +428,12 @@ Each of the following is absent by decision, and SHALL NOT be part-implemented i
 - **THEN** it SHALL NOT be applied to `club_members`, which has no capacity column and no design
   that draws one
 
-#### Scenario: The ride_members UPDATE policy's missing visibility conjunct is not fixed here
-- **WHEN** the `ride_members` UPDATE policy is read
-- **THEN** it SHALL still lack the `EXISTS` against `rides` that its INSERT policy carries
-- **AND** that gap SHALL be recorded as a separate, pre-existing defect rather than treated as
-  covered by this change
-- **AND** a seat move into a ride the rider cannot see SHALL nonetheless be refused when that
-  ride is full, because the capacity gate does bind that statement
+#### Scenario: A seat cannot be moved onto a ride the rider cannot see
+- **WHEN** a rider issues `update ride_members set ride_id = <a ride they cannot see>`
+- **THEN** the write SHALL be refused by row security with `42501`, not by the capacity gate
+- **AND** that refusal SHALL come from the `ride_members` SELECT policy applied to the new row,
+  not from the UPDATE policy's `with check`, which carries no `EXISTS` against `rides`
+- **AND** the asymmetry SHALL NOT be "fixed" by restating the conjunct on the UPDATE policy,
+  which would be a second copy of an enforced rule
+- **AND** the refusal SHALL be asserted at `42501` specifically, so that relaxing the roster
+  SELECT policy — as `002` once had it, `using (true)` — cannot open the gap silently

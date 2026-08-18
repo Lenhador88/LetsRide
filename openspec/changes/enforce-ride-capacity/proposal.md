@@ -117,14 +117,17 @@ already embeds is filtered per-viewer and would disagree with the cap by the num
 | Any "Ride is full" UI, seats-remaining count, or disabled RSVP control | Undesigned. Needs a count no screen currently reads, and a per-viewer count would be wrong — see above |
 | A waitlist | No table, no design, no product decision. A refused join leaves no trace at all |
 | A `ride_full` notification to the organizer | A notification for a non-event, and it would tell an organizer that a *specific* rider tried and failed to join |
-| Fixing the `ride_members` UPDATE policy's missing `EXISTS` | A pre-existing hole this change *found*; owner is triaging it separately. See below |
+| Restating the `rides` `EXISTS` on the `ride_members` UPDATE policy | It reads like a hole and measurement says it is not — the SELECT policy already covers it. See below |
 | Capping `club_members` | Clubs have no capacity column and no design that draws one |
 | Backfilling or repairing existing over-subscribed rides | Decision 2 makes them legal. Nothing is rewritten |
 
-### A pre-existing hole this change found, does not fix, and files
+### The asymmetry that reads like a hole and is not — measured
 
 **The `ride_members` UPDATE policy has no `EXISTS` against `rides`, while the INSERT policy does.**
-Measured, not read off a file:
+Read off the file that is a visibility hole: `048` grants `authenticated` UPDATE on
+`(ride_id, user_id, status)`, so `update ride_members set ride_id = <a ride I cannot see>` appears
+to skip the test the INSERT policy makes. **It does not, and this section is here because that
+wrong conclusion is the one a careful reader reaches first.**
 
 ```
 UPDATE  "Users can update their own ride status"  using (auth.uid() = user_id)
@@ -133,15 +136,29 @@ INSERT  "Users can join visible rides"            with check (auth.uid() = user_
                                                     and exists (select 1 from rides r where …))
 ```
 
-`048` grants `authenticated` UPDATE on `(ride_id, user_id, status)`, so a rider can
-`update ride_members set ride_id = <another ride>` and move their seat onto a ride they **cannot
-see** — a private club's ride they were never in. That is a visibility hole, it predates this
-change, and it is the owner's to triage.
+**Postgres applies the SELECT policy to the NEW row of an UPDATE**, and that policy carries the
+`EXISTS`. Measured three ways on the applied chain, 2026-08-18:
+
+- An outsider moving their seat onto a private club's ride is refused **42501** — the RLS
+  refusal, not `23514` from the capacity trigger.
+- The same rider moving between two rides they *can* see succeeds.
+- Relaxing **only** the roster SELECT policy to `using (true)` inside a rolled-back transaction
+  makes the first move succeed. That isolates the mechanism: it is the SELECT policy doing the
+  work, not the UPDATE policy's `with check`.
+
+So there is nothing to file, and **nothing to fix in this change either** — restating the
+`EXISTS` on the UPDATE policy would add a second copy of a rule already enforced, which
+`CLAUDE.md` treats as a defect in its own right.
+
+**What is worth knowing is that the coverage is incidental.** It comes from a policy that exists
+for *reads*. `002` had the roster SELECT policy as `using (true)`; if it ever returns to anything
+that broad, this hole opens with it and nothing would say so. `rls_test.sql`'s 063 section pins
+the refusal at `42501` for exactly that reason — the assertion fails if the coverage goes away.
 
 **This change does bind that statement for capacity** — the trigger fires on an UPDATE that
-changes `ride_id`, so a seat cannot be moved into a full ride (measured: `23514 / this ride is
-full`). Without that, the cap would be one statement away from being bypassed. Fixing the
-visibility half is explicitly not attempted here.
+changes `ride_id`, so a seat cannot be moved into a full ride the rider *can* see (measured:
+`23514 / this ride is full`). Without that, the cap would be one statement away from being
+bypassed.
 
 ## Capabilities
 

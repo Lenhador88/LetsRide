@@ -156,9 +156,12 @@ is how the next session re-derives the gap.
 
 ## 8. Follow-ups to file, not to build here
 
-- [ ] 8.1 File the `ride_members` UPDATE policy's missing `EXISTS` against `rides` as its own
-      issue — a rider can move their seat onto a ride they cannot see. Pre-existing, found by this
-      change, explicitly out of scope. Include the measured policy text.
+- [ ] 8.1 **Nothing to file here — measured, not inferred.** The `ride_members` UPDATE policy's
+      missing `EXISTS` reads like a visibility hole and is not one: Postgres applies the SELECT
+      policy to the NEW row of an UPDATE, and that policy carries the conjunct. Isolated by
+      relaxing only the roster SELECT policy inside a rolled-back transaction, at which point the
+      move succeeds. `proposal.md` has the three measurements. What the 063 suite section pins is
+      the refusal at `42501`, so the coverage cannot quietly go away.
 - [ ] 8.2 File the capacity affordance as a design question: the ride plan and Crew screens draw
       no seats-remaining count and no "Ride is full" state, so a rider learns it by being refused.
       Note that the number must come from a privileged count, never from the embedded roster.
