@@ -4,6 +4,7 @@ import {
   formatNotificationStamp,
   formatPostcardDate,
   formatRelativeTime,
+  formatRideChipDate,
   formatRideDate,
   formatRideDateLong,
   formatRideDepartureInput,
@@ -51,6 +52,13 @@ describe('formatRideDateLong', () => {
 
   it('keeps the comma after the weekday that en-GB omits on its own', () => {
     expect(formatRideDateLong('2024-11-16T10:00:00Z')).toContain(', ')
+  })
+})
+
+describe('formatRideChipDate', () => {
+  it('splits day and month into two uppercase parts, Amsterdam wall clock', () => {
+    expect(formatRideChipDate('2024-11-16T23:30:00Z')).toEqual({ day: '17', month: 'NOV' })
+    expect(formatRideChipDate('2026-01-02T09:00:00Z')).toEqual({ day: '2', month: 'JAN' })
   })
 })
 
