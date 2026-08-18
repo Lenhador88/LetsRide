@@ -55,10 +55,104 @@ export const postcardImagePathSchema = z
   .string()
   .regex(POSTCARD_IMAGE_PATH_RE, 'Not a valid postcard image path.')
 
-export const createPostcardSchema = z.object({
-  imagePath: postcardImagePathSchema,
-  caption: postcardCaptionSchema,
-  clubId: postcardClubIdSchema,
-})
+/**
+ * The capture fields, as they arrive from the composer's hidden inputs.
+ *
+ * **Zod carries the MESSAGE here; `064` carries the guarantee.** Every rule
+ * below is also a CHECK constraint, and that duplication is the point rather
+ * than an oversight: the app is client-rendered, so this schema runs in the
+ * rider's own browser and a patched client simply does not execute it. What
+ * this buys is a readable failure for an honest client — a field error instead
+ * of the raw `23514` the database would otherwise surface as "Could not post
+ * that."
+ *
+ * CLAUDE.md is explicit that a rule living only here is advisory. The reason it
+ * is worth writing anyway is `postcardImagePathSchema`'s: the same pre-emption
+ * of a constraint violation nobody could act on.
+ *
+ * FormData gives an absent field as `null`, and an empty string for a field
+ * whose hidden input rendered with no value — both mean "nothing", so both
+ * become `null` before anything is parsed.
+ */
+const emptyToNull = (value: unknown) => (value === '' || value === undefined ? null : value)
+
+/**
+ * A capture instant. Bounded rather than owned — the value comes from the
+ * rider's own file and there is no server-side source for it, so unlike
+ * `created_at` it cannot simply be taken away from the client (`044`). The
+ * future bound is the one that matters: this is the ride Journal's sort key.
+ */
+export const postcardTakenAtSchema = z.preprocess(
+  emptyToNull,
+  z
+    .string()
+    .datetime({ message: 'Not a valid capture time.' })
+    .nullable()
+    .refine((value) => value === null || new Date(value) <= new Date(), {
+      message: 'A photo cannot have been taken in the future.',
+    })
+    .refine((value) => value === null || new Date(value) >= new Date('1995-01-01T00:00:00Z'), {
+      message: 'That capture time is too old to be real.',
+    })
+)
+
+const numericField = (schema: z.ZodType<number>) =>
+  z.preprocess((value) => {
+    const cleaned = emptyToNull(value)
+    if (cleaned === null) return null
+    const parsed = typeof cleaned === 'string' ? Number(cleaned) : cleaned
+    return Number.isFinite(parsed as number) ? parsed : cleaned
+  }, schema.nullable())
+
+export const postcardTakenAtOffsetSchema = numericField(
+  z.number().int().min(-1440).max(1440)
+)
+
+export const postcardLatitudeSchema = numericField(z.number().min(-90).max(90))
+export const postcardLongitudeSchema = numericField(z.number().min(-180).max(180))
+
+export const postcardLocationPrecisionSchema = z.preprocess(
+  emptyToNull,
+  z.enum(['region', 'precise']).nullable()
+)
+
+export const createPostcardSchema = z
+  .object({
+    imagePath: postcardImagePathSchema,
+    caption: postcardCaptionSchema,
+    clubId: postcardClubIdSchema,
+    takenAt: postcardTakenAtSchema,
+    takenAtOffsetMinutes: postcardTakenAtOffsetSchema,
+    takenLatitude: postcardLatitudeSchema,
+    takenLongitude: postcardLongitudeSchema,
+    takenLocationPrecision: postcardLocationPrecisionSchema,
+  })
+  // The two couplings `064` enforces, restated so an honest client fails
+  // readably instead of meeting a constraint violation it cannot explain.
+  // Neither is a trust boundary: the database refuses these regardless.
+  .refine(
+    (value) => (value.takenAt === null) === (value.takenAtOffsetMinutes === null),
+    { message: 'A capture time needs the zone it was read in.', path: ['takenAt'] }
+  )
+  .refine(
+    (value) =>
+      (value.takenLatitude === null) === (value.takenLongitude === null) &&
+      (value.takenLatitude === null) === (value.takenLocationPrecision === null),
+    { message: 'A location needs both coordinates and how precise it is.', path: ['takenLatitude'] }
+  )
+  // Not a duplicate of the coupling above: this is the one rule that says a
+  // rider who chose `Region` actually GOT a region. The rounding happens in the
+  // browser, so this is the client checking its own work — `064`'s
+  // postcards_region_location_is_rounded is what makes it true for a client
+  // that skips this file entirely.
+  .refine(
+    (value) =>
+      value.takenLocationPrecision !== 'region' ||
+      (value.takenLatitude !== null &&
+        value.takenLongitude !== null &&
+        value.takenLatitude === Math.round(value.takenLatitude * 100) / 100 &&
+        value.takenLongitude === Math.round(value.takenLongitude * 100) / 100),
+    { message: 'That location is not rounded.', path: ['takenLatitude'] }
+  )
 
 export type CreatePostcardInput = z.output<typeof createPostcardSchema>

@@ -421,11 +421,13 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's
-`ezbr_sha256` is equal across the two projects — and `delete-account`'s deployed build is
-nonetheless STALE, older than its own `index.ts`.** Measured 2026-08-17, and the pairing is the
-point: cross-project equality says the two projects agree, never that either matches the repo.
-Deploying is an **owner action** — there is no `supabase` CLI in the build container, and the
+**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, each one's `ezbr_sha256`
+equal across the two projects, and both current against their files** — measured 2026-08-17,
+after the owner redeployed `delete-account` (`9793933d…`, PROD v9 / DEV v5). **Cross-project
+equality is not what establishes that second half**: it says the two projects agree, never that
+either matches the repo, so currency is the `updated_at`-against-commit-date check below.
+Deploying is an **owner action** — there is no
+`supabase` CLI in the build container, and the
 MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
 §Working Principles says to treat as blocked under any connector name — so an edit under
 `supabase/functions/` is drift from the moment it merges, and CI has no path that would notice.
@@ -510,7 +512,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 63 files. DEV is at `063`, PROD at `059` — DEV AHEAD, 2026-08-18.** DEV-ahead is
+**Applied state: 64 files. DEV is at `064`, PROD at `059` — DEV AHEAD, 2026-08-18.** DEV-ahead is
 the ordinary state of a migration between its merge and its promotion, not drift. **Do not read
 the count of unpromoted files off this sentence either** — it named exactly one while two were
 waiting, which is the same defect as a stale number in a smaller place, and the promotion is the
@@ -560,7 +562,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1671** assertions — re-derive rather than trust it:
+Suite **1701** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.

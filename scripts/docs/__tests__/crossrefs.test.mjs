@@ -214,7 +214,17 @@ describe('the cross-references in the real repo', () => {
   it('surfaces every ambiguous citation rather than letting it pass on luck', () => {
     const firstWords = [...new Set(result.ambiguous.map((a) => a.name.split(/\s+/)[0]))].sort()
     expect(firstWords).toEqual(['Before', 'Working'])
-    expect(result.ambiguous.length).toBeLessThanOrEqual(8)
+    // **8 -> 10 on 2026-08-18 (PD-255).** Both new ones are
+    // `openspec/changes/capture-photo-time-and-place/design.md` citing
+    // `CLAUDE.md §Working Principles`, which is the exact heading they mean —
+    // they are ambiguous only under the one-word leading match this test exists
+    // to pin, and `§Working With the Product Owner` is the sibling they collide
+    // with. Raising the number is the intended response to that: the guard is
+    // the `firstWords` assertion above, which still admits no NEW kind of
+    // collision, and this ceiling is the "did you mean to add one" prompt.
+    // **Do not raise it to make a red run green without saying which citation
+    // moved it and why** — a ceiling nobody defends is the same as no ceiling.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(10)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

@@ -19,6 +19,16 @@ export {
 export { MAX_INPUT_BYTES, validateImageFile } from './validate'
 export type { ImageFileValidation } from './validate'
 export { compressImage } from './compress'
+export { parseExifCapture, readExifCapture } from './exif'
+export type { ExifCapture } from './exif'
+export {
+  DEFAULT_PHOTO_LOCATION_MODE,
+  NO_PHOTO_LOCATION,
+  REGION_DECIMAL_PLACES,
+  resolvePhotoLocation,
+  roundToRegion,
+} from './location'
+export type { PhotoLocation, PhotoLocationMode } from './location'
 export type { CompressImageOptions, CompressedImage } from './compress'
 export {
   uploadObject,

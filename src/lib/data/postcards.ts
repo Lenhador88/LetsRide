@@ -60,8 +60,22 @@ export const FEED_PAGE_SIZE = 30
 // fork and of the owner choosing the accessor. It returns ids; the rows are
 // then read through this select list, under the caller's own RLS.
 //
+// **`064`'s five capture columns are granted and deliberately NOT here** —
+// `taken_at`, `taken_at_offset_minutes`, `taken_latitude`, `taken_longitude`,
+// `taken_location_precision`. Nothing draws a location or a capture time yet
+// (the Journal is PD-257), and a field in this list is a field in every feed
+// payload on every screen. The grant exists ahead of its reader for two reasons
+// that are decisions rather than habit: a rider must be able to read back what
+// they published, and `order by taken_at` needs the column privilege — Postgres
+// checks a column reference in an ORDER BY exactly as in a target list, which is
+// the same thing `062` measured for a predicate.
+//
+// Adding them here is PD-257's to do, and it is a one-line change that needs no
+// migration. What it must NOT become is a reason to widen the grant further.
+//
 // Add a field only when something below actually reads it, **and only when
-// `062`'s grant list names it**. A column silently missing from a hand-written
+// the newest `grant select (...) on public.postcards` names it** — `062` for the
+// seven original columns, `064` for the five above. A column silently missing from a hand-written
 // list like this one is not caught by tsc, ESLint or the build — the
 // `as unknown as PostcardRow[]` casts a few lines down remove the compile-time
 // check that would otherwise catch it. `columns.test.ts` pins both halves: this
