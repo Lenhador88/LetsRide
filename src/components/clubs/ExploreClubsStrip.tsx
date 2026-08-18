@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ChevronRightIcon, LocationFilledIcon } from '@/components/icons/generated'
+import { localityOf } from '@/lib/countries'
 import { CLUBS_PAGE_SIZE } from '@/lib/data/clubs'
 
 /**
@@ -44,7 +45,10 @@ import { CLUBS_PAGE_SIZE } from '@/lib/data/clubs'
  * the sentence true; until it lands the word `near` is ahead of the data, which
  * is recorded here rather than left for the next reader to discover from the
  * query. It degrades to `Explore N clubs` for a rider whose `profiles.location`
- * is empty, which is every rider who skipped that onboarding step.
+ * is empty, which is every rider who skipped that onboarding step, and it
+ * shows the town alone — product owner, 2026-08-18: *"just close by city or
+ * village or town is fine. remove the country."* `localityOf` is what does
+ * that, against a free-text column riders fill four different ways.
  *
  * The pin is the approved frame's own glyph.
  *
@@ -53,10 +57,12 @@ import { CLUBS_PAGE_SIZE } from '@/lib/data/clubs'
  * read as the main action.
  */
 export function ExploreClubsStrip({ count, city }: { count?: number; city?: string | null }) {
-  // Trimmed, because `018` bounds `location` to 1..100 characters and nothing
-  // else — a city of spaces is a value the column accepts and this must not
-  // render as `near` followed by a gap.
-  const place = city?.trim() ? ` near ${city.trim()}` : ''
+  // `localityOf` rather than the raw column: `location` is free text and riders
+  // type `Amsterdam`, `Amsterdam, Netherlands`, `Amsterdam, NL` and `Hoorn
+  // Netherlands` — all four are in the database. It also answers null for the
+  // string of spaces `018` permits, so this never renders `near` and a gap.
+  const locality = localityOf(city)
+  const place = locality ? ` near ${locality}` : ''
 
   const label =
     count === undefined || count === 0
