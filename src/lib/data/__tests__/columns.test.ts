@@ -236,11 +236,17 @@ describe('no query names a dropped column', () => {
  * PD-165: `041` added `postcards.ride_id`, and `POSTCARD_SELECT` used to open
  * with `*`, so every postcard read shipped the raw uuid — a value comparable
  * across postcards even by a viewer who cannot resolve any single ride it
- * points at. The select-list fix is **payload hygiene, not a security
- * boundary** (see the comment at `POSTCARD_SELECT` itself) — `authenticated`
- * still holds the column-level SELECT grant PostgREST honours directly, so
- * this test pins only what an explicit select list can actually promise: the
- * app's own reads do not name the column.
+ * points at. The select-list fix was **payload hygiene, not a security
+ * boundary** (see the comment at `POSTCARD_SELECT` itself): `authenticated`
+ * still held the column-level SELECT grant PostgREST honours directly.
+ *
+ * **PD-166 closed the grant** — `062` revokes table-level SELECT on `postcards`
+ * and re-grants seven columns without `ride_id`, and the Journal filters
+ * through `public.ride_journal_postcard_ids` instead. So this test is no longer
+ * the only thing standing between the column and the wire. It stays because it
+ * is the cheap half and it fails in the right place: a select naming `ride_id`
+ * is now `42501` at runtime for every rider, and a unit test saying so beats
+ * discovering it on a screen.
  *
  * **Scoped to `lib/data/postcards.ts`, unlike the `avatar_url` sweep above.**
  * `ride_id` is a legitimate column on `ride_messages`, `ride_members` and
@@ -269,6 +275,91 @@ describe('postcards reads never re-ship ride_id (PD-165)', () => {
   it.each(selects.map((select, i) => [i, select] as const))('select #%s', (_i, select) => {
     expect(select).not.toMatch(/\bride_id\b/)
     expect(select).not.toMatch(/\*/)
+  })
+})
+
+/**
+ * `062` gives `postcards` the shape `025` gave `profiles`: no table-level SELECT
+ * for `authenticated`, an explicit column grant instead. That makes
+ * `POSTCARD_SELECT` the same kind of pair as `OWN_PROFILE_COLUMNS` — a column in
+ * the select that the grant does not name is `42501` for every rider, on every
+ * feed, and neither tsc nor ESLint nor the build can see it, because the row
+ * type is reached through an `as unknown as PostcardRow[]` cast.
+ *
+ * **A subset check, not equality, unlike the `025` pair.** `POSTCARD_SELECT` is
+ * one query's projection rather than the whole grant: `updated_at` is granted
+ * and not selected here, because no postcard screen draws an edited-at stamp.
+ *
+ * Top-level columns only. The select also carries embeds —
+ * `author:profiles!author_id(…)`, `likes_count:postcard_likes(count)` — whose
+ * columns belong to other tables and other grants, so an entry carrying a `(`
+ * is skipped rather than checked against this list.
+ */
+describe('POSTCARD_SELECT names only columns 062 grants', () => {
+  const migration = readFileSync(
+    path.join(SRC, '..', 'supabase', 'migrations', '062_ride_id_reads_through_an_accessor.sql'),
+    'utf8'
+  )
+
+  const granted = (() => {
+    const match = migration.match(
+      /grant\s+select\s*\(([^)]*)\)\s*\n?\s*on\s+public\.postcards\s+to\s+authenticated/i
+    )
+    if (!match) throw new Error('no `grant select (...) on public.postcards` found in 062')
+    return match[1]
+      .split(',')
+      .map((c) => c.replace(/--.*$/gm, '').trim())
+      .filter(Boolean)
+  })()
+
+  /** The top-level entries of `POSTCARD_SELECT`, embeds dropped. */
+  const selected = (() => {
+    const source = queryModules.find(
+      (m) => m.name === path.join('lib', 'data', 'postcards.ts')
+    )?.source
+    const match = source?.match(/^const POSTCARD_SELECT = `([^`]*)`/m)
+    if (!match) throw new Error('no `const POSTCARD_SELECT` found in lib/data/postcards.ts')
+    // Split at depth 0 only. A naive `split(',')` cuts `club:clubs(id, name)`
+    // in half and asks the grant list for a column called `name)`, which fails
+    // for the wrong reason and reads exactly like a real finding.
+    const entries: string[] = []
+    let depth = 0
+    let current = ''
+    for (const ch of match[1]) {
+      if (ch === '(') depth += 1
+      if (ch === ')') depth -= 1
+      if (ch === ',' && depth === 0) {
+        entries.push(current)
+        current = ''
+      } else {
+        current += ch
+      }
+    }
+    entries.push(current)
+
+    return entries
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0 && !entry.includes('('))
+  })()
+
+  it('finds a real grant list, so this cannot pass by matching nothing', () => {
+    expect(granted).toEqual(
+      expect.arrayContaining(['id', 'author_id', 'club_id', 'image_path', 'caption'])
+    )
+  })
+
+  it('finds real top-level columns, so the subset check cannot pass on an empty list', () => {
+    expect(selected.length).toBeGreaterThan(4)
+  })
+
+  it('selects only columns 062 actually grants', () => {
+    for (const column of selected) {
+      expect(granted, `${column} is not in 062's grant list`).toContain(column)
+    }
+  })
+
+  it('never grants the column the accessor exists to hold', () => {
+    expect(granted).not.toContain('ride_id')
   })
 })
 

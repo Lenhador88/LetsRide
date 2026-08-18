@@ -44,7 +44,16 @@ export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
  * was exempt from the projection rule. `021` ends that: it revokes table-level
  * SELECT on `profiles` from `authenticated` and re-grants an explicit column
  * allowlist, because a column-level revoke against a table-level grant is a
- * documented no-op. `select('*')` requires SELECT on *every* column, so after
+ * documented no-op.
+ *
+ * **`062` is the second table to take this shape, and the pair is what makes it
+ * a rule rather than a one-off.** It revokes table-level SELECT on `postcards`
+ * and re-grants seven columns, leaving `ride_id` out — see `POSTCARD_SELECT` in
+ * `lib/data/postcards.ts`. Both were reached for the same reason: a bare
+ * `revoke select (col)` against a table-level grant changes nothing at all, so
+ * closing one column costs the whole table's grant and a re-grant beside it.
+ *
+ * `select('*')` requires SELECT on *every* column, so after
  * `021` it returns `42501` and `unwrap` throws — the profile screen lands on the
  * error boundary. This constant is that allowlist, spelled from the client side.
  *

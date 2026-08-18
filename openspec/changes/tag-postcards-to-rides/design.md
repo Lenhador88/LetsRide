@@ -35,6 +35,12 @@ because it reads as primary evidence.
 | A ride picker anywhere in the design | **none** — the `Create ride` frame inside the *Create postcard* flow is a stray v1 ride composer, not a postcard one | `npm run figma -- ls "Create postcard"` |
 | A compose affordance on the Journal frame | **none**, hidden layers included | `npm run figma -- tree … -- --all` |
 
+**Two rows are the state `041` started from and are no longer today's**, kept because the design
+below is reasoned from them. `041` made UPDATE per column, and `062` (PD-166) did the same to SELECT
+— `authenticated` now holds a seven-column SELECT grant with `ride_id` absent, so row 18's
+"table-level SELECT" and row 17's column list both read as history. Re-derive with the same commands
+rather than trusting either.
+
 Four of those decide everything below.
 
 1. **The grants are table-level.** So the column arrives writable and re-writable, by default, in
