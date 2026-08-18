@@ -306,6 +306,20 @@ export type RideForEdit = {
   is_public: boolean
   club_id: string | null
   /**
+   * The place the organizer picked for the start, and its coordinate — `067`,
+   * PD-114. All three move together (`rides_location_coupling`'s picked arm),
+   * so a non-null `start_place_id` guarantees a non-null pair and vice versa.
+   *
+   * **NULL is the normal state and does NOT mean "no coordinate".** A ride
+   * whose free text the geocoder resolved carries `latitude`/`longitude` with
+   * a `geocode_confidence` and no place id — the edit form seeds a pick only
+   * from the picked arm, because re-posting a *guessed* coordinate as a pick
+   * would relabel it as the rider's own choice.
+   */
+  start_place_id: string | null
+  latitude: number | null
+  longitude: number | null
+  /**
    * `null` means either "no club" (`club_id` is null) or "a club this viewer
    * cannot currently see" — the ex-member-of-a-private-club case
    * `ride-lifecycle` names. Distinguish using `club_id`, which is never

@@ -20,11 +20,19 @@ import type { PlaceSearchResult } from '@/types'
  * So this knows nothing about clubs — it takes a value, returns a value, and
  * writes four hidden inputs the caller names.
  *
- * **What PD-114 will need on top, and what it must NOT change.** A ride's
+ * **Two modes, and the second is why this is a primitive.** A club's location
+ * IS a place, so the field is a value button and four hidden inputs. A ride's
  * meeting point is free text *with* search on top — "the layby past the second
  * roundabout" is a real meeting point and a picker that refuses it is worse
- * than the bare field it replaced. That is a `required`/free-text prop added
- * here, not a second component and not a rewrite of this one.
+ * than the bare field it replaced. So `freeText` swaps the button for an
+ * editable input and keeps everything else. PD-114 built it here rather than
+ * writing a second picker, which is what PD-259 asked for in as many words.
+ *
+ * **In free-text mode the text and the pick are separate props on purpose.**
+ * The text is what gets stored and what a refused submit has to give back, so
+ * the form owns it; the pick is this field's own output. Folding them into one
+ * value would make "the rider typed over a pick" indistinguishable from "the
+ * rider picked something whose label happens to differ".
  *
  * ## The design, and what is deliberately not taken from it
  *
@@ -83,6 +91,7 @@ export function PlaceSearchField({
   names,
   maxNameLength,
   disabled,
+  freeText,
 }: {
   /** The field's own label, e.g. `Location`. */
   label: string
@@ -113,16 +122,34 @@ export function PlaceSearchField({
    */
   maxNameLength?: number
   disabled?: boolean
+  /**
+   * Present for a field whose value may be typed rather than picked — a ride's
+   * meeting point. Absent for a field that is a place or nothing, like a club's
+   * location.
+   *
+   * The caller holds the text because the caller has to put it back after a
+   * refused submit; see `RIDE_FIELDS` and PD-199, which is the defect shape
+   * this arrangement avoids.
+   */
+  freeText?: {
+    text: string
+    onTextChange: (text: string) => void
+    /** `meeting_point` is `NOT NULL`, so a ride's field is required. */
+    required?: boolean
+  }
 }) {
   const [open, setOpen] = useState(false)
   const fieldId = useId()
 
   return (
     <div className="flex w-full flex-col gap-1.5">
-      {/* The value travels as four hidden fields rather than as JSON in one:
-          the action parses them with `readClubLocation`, and four named
-          strings are what a `FormData` round trip cannot half-decode. */}
-      <input type="hidden" name={names.name} value={value?.name ?? ''} />
+      {/* The value travels as named fields rather than as JSON in one: the
+          action parses them with `readClubLocation`/`readRideLocation`, and
+          named strings are what a `FormData` round trip cannot half-decode.
+
+          `names.name` is hidden in place mode and the rider's own editable
+          input in free-text mode — the other three are hidden in both. */}
+      {!freeText && <input type="hidden" name={names.name} value={value?.name ?? ''} />}
       <input type="hidden" name={names.placeId} value={value?.placeId ?? ''} />
       <input type="hidden" name={names.lat} value={value ? String(value.lat) : ''} />
       <input type="hidden" name={names.lon} value={value ? String(value.lon) : ''} />
@@ -133,30 +160,75 @@ export function PlaceSearchField({
           disabled && 'opacity-50'
         )}
       >
-        <button
-          type="button"
-          id={fieldId}
-          onClick={() => setOpen(true)}
-          disabled={disabled}
-          className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left focus-visible:outline-none"
-        >
-          <span className="text-sm font-medium text-muted">{label}</span>
-          <span
-            className={cn(
-              'w-full truncate text-base font-medium',
-              value ? 'text-foreground' : 'text-muted'
-            )}
-          >
-            {value?.name ?? placeholder}
-          </span>
-        </button>
-
-        {/* Only when there is something to clear. A permanently-visible clear
-            control on an empty optional field reads as a broken affordance. */}
-        {value && !disabled && (
+        {freeText ? (
+          <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+            <label htmlFor={fieldId} className="text-sm font-medium text-muted">
+              {label}
+            </label>
+            <input
+              id={fieldId}
+              type="text"
+              name={names.name}
+              value={freeText.text}
+              /* Typing throws the pin away — product owner, 2026-08-18. The
+                 database would accept text and pin disagreeing; the screen
+                 must never show a pin the write will not store. */
+              onChange={(event) => {
+                freeText.onTextChange(event.target.value)
+                if (value) onChange(null)
+              }}
+              placeholder={placeholder}
+              maxLength={maxNameLength}
+              required={freeText.required}
+              disabled={disabled}
+              autoComplete="off"
+              className="w-full min-w-0 bg-transparent text-base font-medium text-foreground placeholder:text-muted focus:outline-none"
+            />
+          </div>
+        ) : (
           <button
             type="button"
-            onClick={() => onChange(null)}
+            id={fieldId}
+            onClick={() => setOpen(true)}
+            disabled={disabled}
+            className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left focus-visible:outline-none"
+          >
+            <span className="text-sm font-medium text-muted">{label}</span>
+            <span
+              className={cn(
+                'w-full truncate text-base font-medium',
+                value ? 'text-foreground' : 'text-muted'
+              )}
+            >
+              {value?.name ?? placeholder}
+            </span>
+          </button>
+        )}
+
+        {/* Free-text mode needs its own way into the sheet, because the field
+            itself is now a text input the rider is typing in. */}
+        {freeText && !disabled && (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label={`Search for a place for ${label.toLowerCase()}`}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted transition-colors active:bg-border"
+          >
+            <SearchIcon className="h-5 w-5" />
+          </button>
+        )}
+
+        {/* Only when there is something to clear. A permanently-visible clear
+            control on an empty optional field reads as a broken affordance.
+            In free-text mode there is something to clear as soon as the rider
+            has typed, pick or no pick. */}
+        {(freeText ? freeText.text.length > 0 : value !== null) && !disabled && (
+          <button
+            type="button"
+            onClick={() => {
+              onChange(null)
+              freeText?.onTextChange('')
+            }}
             aria-label={`Clear ${label.toLowerCase()}`}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted transition-colors active:bg-border"
           >
@@ -171,12 +243,12 @@ export function PlaceSearchField({
           placeholder={placeholder}
           onClose={() => setOpen(false)}
           onPick={(place) => {
-            onChange({
-              name: boundName(placeLabel(place), maxNameLength),
-              placeId: place.id,
-              lat: place.lat,
-              lon: place.lon,
-            })
+            const name = boundName(placeLabel(place), maxNameLength)
+            onChange({ name, placeId: place.id, lat: place.lat, lon: place.lon })
+            // In free-text mode the visible field is the rider's own input, so
+            // a pick has to write through to it — otherwise the pin is stored
+            // and the text still says whatever they had typed.
+            freeText?.onTextChange(name)
             setOpen(false)
           }}
         />
@@ -356,7 +428,7 @@ function PlaceSearchSheet({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         <SheetBody
           term={term}
           results={results}
@@ -365,8 +437,38 @@ function PlaceSearchSheet({
           onPick={onPick}
         />
       </div>
+
+      <PlaceDataCredit />
     </div>,
     document.body
+  )
+}
+
+/**
+ * The place-data credit, paid ONCE and rendered here rather than per result.
+ *
+ * Overture's Places theme is CDLA Permissive 2.0 + Apache 2.0, and §3 exempts
+ * what an application renders ("Results") from carrying the licence text — so a
+ * result row owes nothing and this line is the whole obligation (PD-191).
+ * Required by PD-114 and PD-259 in the same words; PD-259 shipped this control
+ * without it, which is what PD-114 found.
+ *
+ * On the shared control, so clubs are credited by the same link. Not a
+ * per-source line either: `/legal/attributions` names all eight contributors,
+ * which is broader than anything a sheet could carry.
+ *
+ * **Its own component so it can be tested.** The sheet renders through a
+ * portal and needs an event loop; this does not, so `renderToStaticMarkup`
+ * reaches it in the repo's `node` test environment.
+ */
+export function PlaceDataCredit() {
+  return (
+    <p className="shrink-0 px-4 pt-2 pb-8 text-center text-sm font-medium text-muted">
+      Place data from{' '}
+      <a href="/legal/attributions" className="underline">
+        Overture Maps
+      </a>
+    </p>
   )
 }
 

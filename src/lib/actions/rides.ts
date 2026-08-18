@@ -3,7 +3,7 @@ import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
 import { routes } from '@/lib/routes'
-import { rideSchema } from '@/lib/validation/rides'
+import { readRideLocation, rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
 import type { ActionState } from '@/lib/actions/state'
 import type { RideAttendance } from '@/types'
@@ -174,6 +174,7 @@ export async function createRide(
     max_riders: rawMax ? Number(rawMax) : null,
     is_public: formData.get('is_public') === 'on',
     club_id: rawClub || null,
+    location: readRideLocation(formData),
   })
 
   if (!parsed.success) {
@@ -184,12 +185,16 @@ export async function createRide(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to create a ride.' }
 
-  const { departure_at, ...rest } = parsed.data
+  // `location` is destructured OUT rather than spread: it is a shape this
+  // form invented, not a column, and PostgREST answers `PGRST204` for a key
+  // that names no column. `createClub` does the same for the same reason.
+  const { departure_at, location, ...rest } = parsed.data
 
   const { data: ride, error } = await supabase
     .from('rides')
     .insert({
       ...rest,
+      ...(location ?? {}),
       departure_at: wallClockToUtc(departure_at),
       organizer_id: user.id,
     })
@@ -230,7 +235,22 @@ export async function createRide(
   // PD-104 §5.1. After the crew row and not before it: a rollback above deletes
   // the ride, and a render already in flight against a deleted ride would spend
   // a ledger row on a ride that no longer exists.
-  requestRideMapRender(supabase, ride.id)
+  //
+  // **Not called when the write carried a pick** — PD-114 §D6, and the
+  // condition is about WHICH BUILD IS DEPLOYED rather than about picks.
+  //
+  // The function deployed today geocodes unconditionally. Against a picked
+  // ride it would spend a geocode and two renders, upload both JPEGs, and then
+  // have its column write silently overridden by
+  // `protect_picked_ride_location` — succeeding, so its own compensating
+  // delete never runs, and two objects are orphaned with nothing naming them.
+  //
+  // **Reinstate this call the moment `tasks.md` §6.1 is deployed** (§6.5). That
+  // build skips the geocode for a picked ride and renders from the stored
+  // coordinate, which is the only thing that ever gives a picked ride a tile —
+  // nothing else invokes the function. Left as-is, the feature ships and the
+  // map silently never appears for exactly the rides with the best coordinates.
+  if (!location) requestRideMapRender(supabase, ride.id)
 
   invalidate(queryKeys.rides.all())
   // A ride created into a club appears on that club's Rides sub-page, which
@@ -377,6 +397,7 @@ export async function updateRide(
     max_riders: rawMax ? Number(rawMax) : null,
     is_public: formData.get('is_public') === 'on',
     club_id: rawClub || null,
+    location: readRideLocation(formData),
   })
 
   if (!parsed.success) {
@@ -398,7 +419,7 @@ export async function updateRide(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit a ride.' }
 
-  const { departure_at, title, description, route_description, meeting_point, max_riders, is_public, club_id } =
+  const { departure_at, title, description, route_description, meeting_point, max_riders, is_public, club_id, location } =
     parsed.data
 
   // PD-104 §5.1a. Read fresh rather than taking the paths off `getRideForEdit`'s
@@ -446,6 +467,22 @@ export async function updateRide(
       max_riders,
       is_public,
       club_id,
+      // **All three, on every save, present or NULL — never omitted.** A
+      // cleared pick is a real edit the rider made, and an omitted column is
+      // indistinguishable from "unchanged", so leaving them out would make the
+      // pin unremovable. Sent in the SAME statement as `meeting_point` on
+      // purpose: `067`'s `clear_ride_map_tiles` fires on a text change and
+      // clears the group, and `protect_picked_ride_location` then restores
+      // whatever this statement supplied — which is the whole reason that pair
+      // of triggers exists.
+      start_place_id: location?.start_place_id ?? null,
+      latitude: location?.latitude ?? null,
+      longitude: location?.longitude ?? null,
+      // A pick carries no vendor score, and `067`'s coupling CHECK refuses a
+      // confidence beside one. NULLing it here is what makes "the rider picked
+      // this" and "a geocoder guessed it" different rows rather than a
+      // convention.
+      geocode_confidence: null,
     })
     .eq('id', rideId)
     .select('id')
@@ -488,7 +525,9 @@ export async function updateRide(
   // path the render is about to reuse.
   if (addressChanged) {
     await removeRideMapTiles(supabase, [previous!.map_card_path, previous!.map_detail_path])
-    requestRideMapRender(supabase, rideId)
+    // Not when the save carried a pick — same condition as `createRide`, same
+    // reason, and the same reinstatement when §6.1 deploys. See the note there.
+    if (!location) requestRideMapRender(supabase, rideId)
   }
 
   // `rides.all()`, not `rides.detail(rideId)` alone: `club_id` and
