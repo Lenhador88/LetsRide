@@ -12,7 +12,9 @@ import { queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM } from '@/lib/routes'
 
 /**
- * `Private club - Members` (`2059:6545`).
+ * `Private club - Members` (`2059:6545`) — reached only from the merged club
+ * detail's Members section (`See all`, or its rail's own `See all`), which is
+ * why `ClubDetailHeader`'s back button returns there rather than to `/clubs`.
  *
  * The owner carries the brand ring and a trailing label, which is the same
  * `is Host=True` variant the ride crew uses for its organizer — one component,
@@ -48,7 +50,7 @@ function ClubMembersScreen() {
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
   // Enabled only once the club has come back. `getClubMembers` raises on a
   // malformed uuid, so eagerly issued it would answer `/clubs/junk/members`
-  // with an error screen where the server page answered 404 — see the Timeline
+  // with an error screen where the merged club page answered 404 — see that
   // page for the full reasoning.
   const members = useQuery(club.data ? queryKeys.clubs.members(id) : null, () =>
     getClubMembers(id)
@@ -56,53 +58,55 @@ function ClubMembersScreen() {
 
   if (club.data === null) notFound()
 
-  // Above both gates: back and the sub-page switcher come from the URL, so they
-  // stay usable while the club is arriving and when it has failed.
+  // Above both gates: back comes from the URL via `current`, so it stays
+  // usable while the club is arriving and when it has failed.
   const header = <ClubDetailHeader clubId={id} club={club.data} current="members" />
 
   const gate = combineQueries(club, members)
-  if (gate.error)
-    return (
-      <>
-        {header}
-        <ErrorState onRetry={gate.refetch} />
-      </>
-    )
-
-  // Both, not just the club: the count line reads from the club and the rows
-  // from the roster, and drawing "12 members" over an empty list for a tick is
-  // a worse artifact than one more moment of placeholder.
-  if (!club.data || !members.data)
-    return (
-      <>
-        {header}
-        <SkeletonList rows={5} />
-      </>
-    )
 
   return (
     <>
       {header}
 
-      <div className="px-4 motion-safe:animate-fade-in">
-        <p className="mb-2 text-sm font-medium text-muted">
-          {club.data.members_count} {club.data.members_count === 1 ? 'member' : 'members'}
-        </p>
+      {/* No `.pt-header-sub-extra`: the sub-page switcher that made this
+          header the 120px variant is deleted (the club detail merge), so the
+          shell's own 96px is the whole of it and this owns its own 16px gap
+          under that, matching the ride sub-pages' own `pt-4`. */}
+      <div className="pt-4">
+        {gate.error ? (
+          <ErrorState onRetry={gate.refetch} />
+        ) : // Both, not just the club: the count line reads from the club and
+        // the rows from the roster, and drawing "12 members" over an empty
+        // list for a tick is a worse artifact than one more moment of
+        // placeholder.
+        !club.data || !members.data ? (
+          <SkeletonList rows={5} />
+        ) : (
+          <div className="px-4 motion-safe:animate-fade-in">
+            <p className="mb-2 text-sm font-medium text-muted">
+              {club.data.members_count} {club.data.members_count === 1 ? 'member' : 'members'}
+            </p>
 
-        <ul className="overflow-hidden rounded-lg bg-surface">
-          {members.data.map((member) => (
-            <li key={member.user_id}>
-              <ListUser
-                name={member.profile?.username ?? 'Rider'}
-                avatarUrl={member.profile?.avatar_url}
-                isHost={member.role === 'owner'}
-                note={
-                  member.role === 'member' ? undefined : member.role === 'owner' ? 'Owner' : 'Admin'
-                }
-              />
-            </li>
-          ))}
-        </ul>
+            <ul className="overflow-hidden rounded-lg bg-surface">
+              {members.data.map((member) => (
+                <li key={member.user_id}>
+                  <ListUser
+                    name={member.profile?.username ?? 'Rider'}
+                    avatarUrl={member.profile?.avatar_url}
+                    isHost={member.role === 'owner'}
+                    note={
+                      member.role === 'member'
+                        ? undefined
+                        : member.role === 'owner'
+                          ? 'Owner'
+                          : 'Admin'
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </>
   )

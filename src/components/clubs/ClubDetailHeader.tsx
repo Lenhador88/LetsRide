@@ -1,37 +1,50 @@
-import Link from 'next/link'
-import { EditIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { Avatar } from '@/components/ui/Avatar'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { ClubOptionsMenu } from '@/components/clubs/ClubOptionsMenu'
 import { routes } from '@/lib/routes'
-import { ClubDetailPageMenu, type ClubPage } from '@/components/clubs/ClubDetailPageMenu'
 import type { ClubDetail } from '@/types'
 
+/** The three screens that still render this header — the merged detail
+ * itself, plus the two roster/list sub-pages `See all` still reaches. */
+export type ClubScreen = 'detail' | 'members' | 'rides'
+
 /**
- * The chrome all four club sub-pages share — `v2 / Component / Header` in its
- * `Type=Club` shape: a 28px avatar beside the club name, back at the left, and
- * the sub-page switcher on the row beneath.
+ * The chrome the three remaining club screens share — `v2 / Component /
+ * Header` in its `Type=Club` shape: a 28px avatar beside the club name, back
+ * at the left, the dots menu at the right.
  *
- * The design also draws an `Options` control at the right of the title row. It
- * is **omitted rather than stubbed**, on the same reasoning as the ride header:
- * the flow never draws the sheet it opens, and club overflow is presumably
- * edit / delete / leave — three rows of guesswork on a menu that would be
- * destructive. `RideHeader`'s note says the same thing about Ride Options.
- * Leaving a club is reachable from the About page instead, where it is one
- * labelled control rather than an invented menu.
+ * **The sub-page switcher is deleted, and with it the 120px variant.** The
+ * club detail merge (2026-08-18, the club counterpart of PD-254) puts
+ * Members and Upcoming rides on the detail screen itself as sections with
+ * their own `See all`, so nothing here needs a row under the title any more —
+ * every caller gets the plain 96px `Header`. `/clubs/detail/about` is
+ * deleted outright: its one unambiguous action, leaving, moves into
+ * `ClubOptionsMenu` below, and the rest of what it drew (type, created-at,
+ * description) moves onto the merged screen next to the postcard timeline.
  *
- * **Edit is not that menu, and is built as of PD-101.** `design.md` §D4 puts
- * it in the header as its own affordance, owner-only, through `action` — free
- * here, unlike the ride header, because nothing else in this header claims it.
- * Delete stays off the header entirely, at the foot of the edit screen behind
- * a second tap.
+ * **The header's right-hand control is now the dots menu, not a bare Edit
+ * pencil.** Product owner, 2026-08-17: *"I tihnk we need the dots on the top
+ * right. If owner we show the pencil, that also goes to an option udner the
+ * dots."* `ClubOptionsMenu` owns both the owner's `Edit club` row and the
+ * member's `Leave club` row; see its own docstring for the one row the
+ * approved mock draws that is deliberately not built here (`Delete club`).
+ * **A non-member gets no menu at all** — `action` below is `undefined` for
+ * that viewer, same as it was `undefined` for anyone who was not the owner
+ * before this change.
  *
- * **`clubId` is taken separately from `club` so the header can draw before the
- * club arrives.** Back and the sub-page switcher both come from the route
- * segment, so the only two things that wait on the read are the name and the
- * avatar — and holding the whole header for them would leave a slow club with
- * no way out of it. Edit waits too, on the same read: `club.viewer_role` is
- * what decides it, and there is nothing safe to show before that lands.
+ * **`current` still decides one thing a merged screen does not remove: where
+ * back goes.** Reached only from the merged screen's `See all` now, so
+ * Members' and Rides' back button returns to the club rather than to
+ * `/clubs` — the same move `RideHeader` made for the crew route when the ride
+ * switcher went, and for the identical reason: a back button that leaves the
+ * screen a rider came from is the kind of thing nothing fails on.
+ *
+ * **`clubId` is taken separately from `club` so the header can draw before
+ * the club arrives.** Back comes from the route segment (via `current`), so
+ * the only things that wait on the read are the name, the avatar and the
+ * menu — `club?.viewer_role` decides the last of those, and there is nothing
+ * safe to show before it lands.
  */
 export function ClubDetailHeader({
   clubId,
@@ -42,13 +55,12 @@ export function ClubDetailHeader({
   /** `undefined` while the club is still being read — `Header` draws a
    * placeholder bar for the title. See that component's `title` prop. */
   club: ClubDetail | undefined
-  current: ClubPage
+  current: ClubScreen
 }) {
   return (
     <Header
       title={club?.name}
-      backHref="/clubs"
-      subRow={<ClubDetailPageMenu clubId={clubId} current={current} />}
+      backHref={current === 'detail' ? '/clubs' : routes.club(clubId)}
       titleLeading={
         club ? (
           <Avatar
@@ -64,14 +76,8 @@ export function ClubDetailHeader({
         )
       }
       action={
-        club?.viewer_role === 'owner' ? (
-          <Link
-            href={routes.clubEdit(clubId)}
-            aria-label="Edit club"
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
-          >
-            <EditIcon className="h-6 w-6" />
-          </Link>
+        club?.viewer_role ? (
+          <ClubOptionsMenu clubId={clubId} isOwner={club.viewer_role === 'owner'} />
         ) : undefined
       }
     />

@@ -18,12 +18,13 @@ import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
  * destructive button reads "Delete ride". The field set here is exactly
  * `CreateClubForm`'s.
  *
- * Next still nests this under `clubs/detail/layout.tsx`, whose
- * `pt-header-sub-extra` is sized for the four sub-pages' shared switcher row
- * — a 24px top-up this screen's plain `Header` (no `subRow`) does not need
- * and there is no route-group escape from a shared ancestor layout for one
- * child route. The cost is a few extra pixels of clearance under the header,
- * never an overlap; noted here rather than silently accepted.
+ * Next still nests this under `clubs/detail/layout.tsx`, shared with the
+ * other club screens — there is no route-group escape from a shared ancestor
+ * layout for one child route. That used to cost this screen an unwanted 24px
+ * top-up sized for the sub-page switcher's row; the club detail merge deleted
+ * the switcher and, with it, the layout's unconditional padding, so this
+ * screen's plain `Header` (no `subRow`) now gets exactly the shell's 96px and
+ * nothing more.
  */
 export default function EditClubPage() {
   // The id is a query parameter, not a segment, so the static bundle needs one
@@ -84,7 +85,7 @@ function EditClubScreen() {
   return (
     <>
       {header}
-      <div className="px-4 pb-8 motion-safe:animate-fade-in">
+      <div className="px-4 pt-4 pb-8 motion-safe:animate-fade-in">
         <EditClubForm club={club.data} />
       </div>
     </>
