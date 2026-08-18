@@ -1,45 +1,45 @@
 ## 0. Before anything is written
 
-- [ ] 0.1 Re-derive the next migration number: `ls supabase/migrations/` against
+- [x] 0.1 Re-derive the next migration number: `ls supabase/migrations/` against
       `list_migrations` on **both** refs. `066` is the tip on files and on DEV (`fpmrimzxadewsaiwpsel`);
       PROD (`zwprydcyryvudhurbnye`) is behind. Do not trust `067` from this file.
-- [ ] 0.2 Re-measure the two facts `067` is built on, on DEV, rather than trusting `design.md`:
+- [x] 0.2 Re-measure the two facts `067` is built on, on DEV, rather than trusting `design.md`:
       the `authenticated` column grants on `rides` scoped to that grantee, and the same-statement
       trigger collision inside a rolled-back transaction (`update rides set meeting_point = …,
       latitude = …, longitude = …, geocode_confidence = …` returning three NULLs).
-- [ ] 0.3 Read `supabase/migrations/051_ride_map_tiles.sql` end to end, and `066_clubs_carry_a_location.sql`
+- [x] 0.3 Read `supabase/migrations/051_ride_map_tiles.sql` end to end, and `066_clubs_carry_a_location.sql`
       for the pattern. `067` replaces two of `051`'s objects.
 
 ## 1. Migration `067` — the schema
 
-- [ ] 1.1 `alter table public.rides add column start_place_id text;` with a column comment saying it
+- [x] 1.1 `alter table public.rides add column start_place_id text;` with a column comment saying it
       is the Overture GERS id, provenance and never a join key, `text` because GERS ids are opaque.
-- [ ] 1.2 `drop constraint rides_geocode_coupling` and add `rides_location_coupling` with the three
+- [x] 1.2 `drop constraint rides_geocode_coupling` and add `rides_location_coupling` with the three
       arms from `design.md` §D2. **Keep the `0.70::real` and `1.0::real` casts** — uncast, a
       confidence exactly at the floor violates its own constraint (`051` measured it).
-- [ ] 1.3 Add `rides_start_place_id_length` (≤ 100), mirroring `066`.
-- [ ] 1.4 Rewrite `public.clear_ride_map_tiles()` per §D3 and re-create its trigger with the widened
+- [x] 1.3 Add `rides_start_place_id_length` (≤ 100), mirroring `066`.
+- [x] 1.4 Rewrite `public.clear_ride_map_tiles()` per §D3 and re-create its trigger with the widened
       WHEN (`meeting_point` **or** `start_place_id` distinct). Update the function comment, including
       why the WHEN scope is not optional (`propagate_club_privacy_to_rides`).
-- [ ] 1.5 Add `public.protect_picked_ride_location()` and its trigger per §D4 — restore the picked
+- [x] 1.5 Add `public.protect_picked_ride_location()` and its trigger per §D4 — restore the picked
       coordinate, force `geocode_confidence` NULL, NULL both tile paths, never raise. `security
       invoker`, `set search_path = ''`, and `revoke all ... from public, anon, authenticated`.
-- [ ] 1.6 Additive grants: `insert (start_place_id, latitude, longitude)` and
+- [x] 1.6 Additive grants: `insert (start_place_id, latitude, longitude)` and
       `update (start_place_id)` to `authenticated`. No `anon` grant of any kind. No INSERT grant on
       `geocode_confidence`.
-- [ ] 1.7 No index and no RLS policy on the new column — record both as decisions in the file header,
+- [x] 1.7 No index and no RLS policy on the new column — record both as decisions in the file header,
       with `066` §4's trigger for adding an index later (a SQL-side distance predicate).
-- [ ] 1.8 Write the verification block into the file footer: grants **scoped to grantee**
+- [x] 1.8 Write the verification block into the file footer: grants **scoped to grantee**
       (`015`'s lesson — a table-wide count reads wrong), each CHECK arm refused/accepted, and the
       same-statement pick surviving.
 
 ## 2. Migration `067` — apply and verify
 
-- [ ] 2.1 Hand-exercise every affected write path on DEV in rolled-back transactions **before**
+- [x] 2.1 Hand-exercise every affected write path on DEV in rolled-back transactions **before**
       applying: create with a pick, create without, edit text only, edit with a new pick, re-pick the
       same place, clear the pick, and a geocode-shaped UPDATE against a picked ride.
-- [ ] 2.2 Apply to DEV. Re-run 1.8's verification against the live project.
-- [ ] 2.3 `get_advisors(security)` on DEV — the expected set is the ten in `CLAUDE.md`; a new WARN
+- [x] 2.2 Apply to DEV. Re-run 1.8's verification against the live project.
+- [x] 2.3 `get_advisors(security)` on DEV — the expected set is the ten in `CLAUDE.md`; a new WARN
       means a revoke did not land. `protect_picked_ride_location` is `security invoker` and should add
       none.
 - [ ] 2.4 Do **not** apply to PROD ahead of the code deploy. `067` is additive, so it is safe to
@@ -48,23 +48,23 @@
 
 ## 3. RLS assertions (`supabase/tests/rls_test.sql`)
 
-- [ ] 3.1 Update every reference to `rides_geocode_coupling` — it no longer exists by that name.
-- [ ] 3.2 Coupling: each of the three arms accepted; each mixed combination refused with `23514`
+- [x] 3.1 Update every reference to `rides_geocode_coupling` — it no longer exists by that name.
+- [x] 3.2 Coupling: each of the three arms accepted; each mixed combination refused with `23514`
       (place id with no coordinate; coordinate with neither confidence nor place id; both markers at
       once; out-of-range lat/lon; confidence below the floor / above the ceiling).
-- [ ] 3.3 **The same-statement case**, written as one statement: text + pick together survives; text
+- [x] 3.3 **The same-statement case**, written as one statement: text + pick together survives; text
       alone clears everything; text + the row's existing place id clears everything.
-- [ ] 3.4 Precedence: a geocode-shaped UPDATE on a picked ride leaves the picked coordinate, NULL
+- [x] 3.4 Precedence: a geocode-shaped UPDATE on a picked ride leaves the picked coordinate, NULL
       confidence and NULL paths, and does **not** raise. A path-only UPDATE with unchanged
       coordinates is accepted.
-- [ ] 3.5 Grants, scoped to `authenticated` — INSERT reaches `start_place_id`, `latitude`,
+- [x] 3.5 Grants, scoped to `authenticated` — INSERT reaches `start_place_id`, `latitude`,
       `longitude` and **not** `geocode_confidence`; `anon` holds none.
-- [ ] 3.6 Reach, one assertion per role: organizer writes; club admin's UPDATE affects zero rows;
+- [x] 3.6 Reach, one assertion per role: organizer writes; club admin's UPDATE affects zero rows;
       member reads; non-member of a private club's ride reads zero rows; blocked rider reads zero
       rows in both directions; `anon` reaches nothing.
-- [ ] 3.7 The bulk-update case: `propagate_club_privacy_to_rides` across a club leaves every ride's
+- [x] 3.7 The bulk-update case: `propagate_club_privacy_to_rides` across a club leaves every ride's
       location and tiles intact.
-- [ ] 3.8 `PGPASSWORD=postgres npm test` green, and compare **label sets** against the previous run,
+- [x] 3.8 `PGPASSWORD=postgres npm test` green, and compare **label sets** against the previous run,
       not counts — a count cannot tell a rename from a loss.
 
 ## 4. The picker extension
