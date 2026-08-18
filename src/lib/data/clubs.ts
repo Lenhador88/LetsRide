@@ -247,6 +247,20 @@ export async function getYourClubs(): Promise<ClubListItem[]> {
  * joined — the same class of silent truncation as the ride filter tiles that
  * went missing past the page boundary.
  */
+/**
+ * **"Near you" is computed over a RECENCY window, and the threshold is 50 —
+ * not "thousands".** The page is selected by `created_at desc` and only then
+ * sorted by distance, so with 60 public clubs the rider's nearest club can be
+ * the 55th newest and be absent from the page, from the near count and from the
+ * list — while the strip says `50+`. `066` §4 and `distance.ts` both name the
+ * trigger for moving the predicate into SQL as "a club count that outgrows the
+ * page"; this is what that number actually is, stated here rather than left to
+ * be discovered from the query.
+ *
+ * It is a bound rather than a bug at today's scale (tens of clubs, all of them
+ * on the page), and the honest description of what ships is *the newest fifty,
+ * nearest first* rather than *the nearest fifty*.
+ */
 export async function getExploreClubs(near?: RiderPosition | null): Promise<ClubListItem[]> {
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()

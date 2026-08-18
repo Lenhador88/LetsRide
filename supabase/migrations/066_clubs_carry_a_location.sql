@@ -89,9 +89,15 @@ alter table public.clubs add constraint clubs_location_coupling check (
 -- 2. Bounds on the two text columns, for the reason `018` added them to
 --    `profiles`: `001` declares `clubs.name` and `description` as bare `text`,
 --    so the table would take a megabyte in a column a card renders on one line.
---    200 is generous against the longest label `search_places()` can return
---    (a name plus a street plus a locality) and small enough that no card
---    layout has to defend against it.
+--
+--    **200 is CHOSEN, and it is deliberately below what the picker can
+--    produce.** Measured on the loaded index rather than assumed: the longest
+--    `places.name` is 203 characters, and the label the picker builds (name
+--    plus locality) reaches 214 — but on exactly ONE row of 736,538, and 93
+--    rows exceed 120. So the bound is generous for every real place and the
+--    handful past it are truncated client-side by `boundName`, which is where
+--    a value too long for its column should be shortened: the field owns the
+--    string, so a rider has nothing to edit if it is merely refused.
 alter table public.clubs add constraint clubs_location_name_length check (
   location_name is null or char_length(location_name) <= 200
 );

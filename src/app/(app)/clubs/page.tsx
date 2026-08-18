@@ -2,14 +2,15 @@
 
 import { Header } from '@/components/layout/Header'
 import { ClubCard } from '@/components/clubs/ClubCard'
+import { ExploreClubsList } from '@/components/clubs/ExploreClubsList'
 import { ExploreClubsStrip } from '@/components/clubs/ExploreClubsStrip'
-import { localityOf } from '@/lib/countries'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreClubs, getYourClubs } from '@/lib/data/clubs'
 import { getMyLocationText } from '@/lib/data/profile'
 import { isNearby } from '@/lib/location/distance'
+import { nearLabel, type NearLabel } from '@/lib/location/near-label'
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { useQuery, type UseQueryResult } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
@@ -66,13 +67,29 @@ export default function ClubsPage() {
   // entry. It never prompts: a rider who has not already granted location gets
   // the profile city, or nothing.
   const near = useQuery(queryKeys.riderLocation(), resolveRiderLocation)
-  const explore = useQuery(queryKeys.clubs.explore(near.data), () =>
-    getExploreClubs(near.data)
-  )
   // The rider's own city, for the strip's `near …`. Its own read rather than
   // `getCurrentProfile`, which would sign an avatar and a cover to render one
   // word. Ungated like the count: no city simply drops the clause.
   const city = useQuery(queryKeys.profile.location(), getMyLocationText)
+
+  // **Held with a `null` key until the position is DECIDED**, and that is the
+  // fix for a real double fetch rather than tidiness. `near.data` is
+  // `undefined` on the first render, so an ungated query ran the whole read —
+  // rows, membership probe, two signing round trips — under the `unlocated`
+  // key, and then ran it again under `52.09,5.12` the moment the position
+  // landed, because that is a different cache entry with no data in it. The
+  // rider saw the list load, blank back to a skeleton, and re-appear reordered.
+  // `null` is `useQuery`'s disabled contract: no fetch, no subscription.
+  const positionDecided = near.data !== undefined
+  const position = near.data ?? null
+  const explore = useQuery(
+    positionDecided ? queryKeys.clubs.explore(position) : null,
+    () => getExploreClubs(position)
+  )
+
+  // The name of the place the distances were measured FROM — never the profile
+  // city beside a device-measured distance. `nearLabel` owns that rule.
+  const label = nearLabel(position, city.data)
 
   // `[]` is a decided answer and the one branch that owns the whole screen;
   // `undefined` is "not yet", and gets the strip like every other state.
@@ -88,7 +105,7 @@ export default function ClubsPage() {
           `Create ride`. */}
       <div className="pb-navbar-action-extra">
         {hasNoClubs ? (
-          <NoClubsYet explore={explore} city={city.data} />
+          <NoClubsYet explore={explore} near={label} />
         ) : (
           <>
             {/* Outside the gate below, and ungated on `explore` — the strip
@@ -105,8 +122,12 @@ export default function ClubsPage() {
             <div className="px-4 pt-4 pb-4">
               <ExploreClubsStrip
                 count={explore.data?.length}
-                nearCount={explore.data?.filter((club) => isNearby(club.distance_km)).length}
-                city={city.data}
+                nearCount={
+                  label && explore.data
+                    ? explore.data.filter((club) => isNearby(club.distance_km)).length
+                    : undefined
+                }
+                near={label}
               />
             </div>
 
@@ -148,24 +169,19 @@ export default function ClubsPage() {
  */
 function NoClubsYet({
   explore,
-  city,
+  near,
 }: {
   explore: UseQueryResult<ClubListItem[]>
-  city?: string | null
+  near: NearLabel
 }) {
   if (explore.error) return <ErrorState onRetry={explore.refetch} />
   if (!explore.data) return <SkeletonList />
 
-  // The heading claims proximity only when the list can back it: at least one
-  // club is actually within `NEARBY_RADIUS_KM` AND the rider's town is known.
-  // PD-258 shipped `Clubs to explore` because nothing behind the screen could
-  // say `near`; `066` is what makes it sayable, and this is the one condition
-  // under which it is true rather than decorative.
-  const locality = localityOf(city)
-  const heading =
-    locality && explore.data.some((club) => isNearby(club.distance_km))
-      ? `Clubs near ${locality}`
-      : 'Clubs to explore'
+  // The screen's own title stays neutral — `ExploreClubsList` draws the
+  // `Near <town>` heading over the clubs that actually are, so putting
+  // proximity in the page title as well would either duplicate it or, when
+  // nothing is near, claim it with nothing underneath.
+  const heading = 'Clubs to explore'
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-4 motion-safe:animate-fade-in">
@@ -181,13 +197,7 @@ function NoClubsYet({
           There are no public clubs, yet!
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {explore.data.map((club) => (
-            <li key={club.id}>
-              <ClubCard club={club} joined={false} />
-            </li>
-          ))}
-        </ul>
+        <ExploreClubsList clubs={explore.data} near={near} />
       )}
     </div>
   )

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { placeLabel } from '@/components/ui/PlaceSearchField'
+import { boundName, placeLabel } from '@/components/ui/PlaceSearchField'
 import type { PlaceSearchResult } from '@/types'
 
 /**
@@ -43,5 +43,35 @@ describe('placeLabel', () => {
 
   it('ignores a trailing comma rather than appending an empty locality', () => {
     expect(placeLabel(place({ label: 'Bar', meta: 'Kerkstraat,' }))).toBe('Bar')
+  })
+})
+
+describe('boundName', () => {
+  it('leaves a name inside the bound alone', () => {
+    expect(boundName('Utrecht', 200)).toBe('Utrecht')
+    expect(boundName('x'.repeat(200), 200)).toBe('x'.repeat(200))
+  })
+
+  it('never returns more characters than the bound', () => {
+    // The whole point: `places.name` reaches 203 on the real index and the
+    // label built from it reaches 214, against a CHECK of 200. A picker that
+    // can return an unstorable value is a dead end the rider cannot escape.
+    const bounded = boundName('x'.repeat(214), 200)
+    expect(bounded.length).toBe(200)
+    expect(bounded.endsWith('\u2026')).toBe(true)
+  })
+
+  it('keeps the ellipsis INSIDE the budget rather than adding to it', () => {
+    // Overshooting by one is the same bug arriving through the fix for it.
+    expect(boundName('abcdef', 4)).toBe('abc\u2026')
+    expect(boundName('abcdef', 4).length).toBe(4)
+  })
+
+  it('does not leave a dangling space before the ellipsis', () => {
+    expect(boundName('Shell Pernis Werk', 7)).toBe('Shell\u2026')
+  })
+
+  it('applies no bound when the caller has no column limit', () => {
+    expect(boundName('x'.repeat(500))).toBe('x'.repeat(500))
   })
 })

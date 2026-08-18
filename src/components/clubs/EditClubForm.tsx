@@ -20,6 +20,7 @@ import { queryKeys } from '@/lib/query/keys'
 import {
   CLUB_DESCRIPTION_MAX,
   CLUB_LOCATION_FIELD_NAMES,
+  CLUB_LOCATION_NAME_MAX,
   CLUB_NAME_MAX,
   clubSchema,
 } from '@/lib/validation/clubs'
@@ -242,6 +243,7 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
               value={location}
               onChange={setLocation}
               names={CLUB_LOCATION_FIELD_NAMES}
+            maxNameLength={CLUB_LOCATION_NAME_MAX}
               disabled={busy}
             />
             <p className="pl-1 text-xs font-medium text-muted">

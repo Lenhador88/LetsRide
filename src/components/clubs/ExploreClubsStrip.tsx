@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ChevronRightIcon, LocationFilledIcon } from '@/components/icons/generated'
-import { localityOf } from '@/lib/countries'
 import { CLUBS_PAGE_SIZE } from '@/lib/data/clubs'
+import type { NearLabel } from '@/lib/location/near-label'
 
 /**
  * The row between the header and Your clubs — `AI / Clubs one screen /
@@ -44,23 +44,32 @@ import { CLUBS_PAGE_SIZE } from '@/lib/data/clubs'
  * the list are within `NEARBY_RADIUS_KM` of the rider.
  *
  * **The number and the word move together, and that coupling is the whole
- * rule.** `near <town>` is drawn only when a town is known AND at least one club
- * is actually near it; the count beside it is then the NEAR count, not the
- * total. Any other pairing states something false — `Explore 12 clubs near
- * Utrecht` with eleven of them in Groningen is worse than the honest
+ * rule.** `near <name>` is drawn only when there is a place to name AND at
+ * least one club is actually near it; the count beside it is then the NEAR
+ * count, not the total. Any other pairing states something false — `Explore 12
+ * clubs near Utrecht` with eleven of them in Groningen is worse than the honest
  * `Explore 12 clubs`, because a rider cannot tell it is wrong until they tap.
+ *
+ * **And the destination shows that same near set FIRST, under that same
+ * name.** `ExploreClubsList` draws a `Near <name>` heading over exactly the
+ * clubs counted here, which is what keeps PD-258's second trap closed: the
+ * number the rider taps is the number they land on. A version of this that
+ * counted the near ones while the destination listed all of them was caught in
+ * review, and it is the same defect as PD-254's crew count in a new shape.
+ *
+ * **The name comes from `nearLabel`, never from the profile city directly.**
+ * The distance is measured from `resolveRiderLocation()`, whose first source is
+ * the device — so naming `profiles.location` beside it says `near Utrecht`
+ * about clubs measured from Maastricht. `nearLabel` is the one thing that reads
+ * `RiderLocation.source`, and it answers `you` whenever the name would not
+ * match the number. Product owner, 2026-08-18: *"just close by city or village
+ * or town is fine. remove the country."*
  *
  * **A zero near-count falls back to the unfiltered total rather than to zero.**
  * PD-258's first trap, and it is sharper now than when it was written: this row
  * is the only door to `/clubs/explore`, so a rider with no club within 100 km
  * must still be told how many there are to explore. Nothing here may ever
  * render `Explore 0 clubs` while public clubs exist.
- *
- * It degrades to `Explore N clubs` for a rider whose `profiles.location` is
- * empty and who has not granted location, and it shows the town alone —
- * product owner, 2026-08-18: *"just close by city or village or town is fine.
- * remove the country."* `localityOf` is what does that, against a free-text
- * column riders fill four different ways.
  *
  * The pin is the approved frame's own glyph.
  *
@@ -71,7 +80,7 @@ import { CLUBS_PAGE_SIZE } from '@/lib/data/clubs'
 export function ExploreClubsStrip({
   count,
   nearCount,
-  city,
+  near,
 }: {
   count?: number
   /**
@@ -80,20 +89,15 @@ export function ExploreClubsStrip({
    * list has not loaded — which is NOT the same as zero and must not read as it.
    */
   nearCount?: number
-  city?: string | null
+  /** What to call where the distances were measured from — see `nearLabel`. */
+  near?: NearLabel
 }) {
-  // `localityOf` rather than the raw column: `location` is free text and riders
-  // type `Amsterdam`, `Amsterdam, Netherlands`, `Amsterdam, NL` and `Hoorn
-  // Netherlands` — all four are in the database. It also answers null for the
-  // string of spaces `018` permits, so this never renders `near` and a gap.
-  const locality = localityOf(city)
-
-  // The word and the number are chosen together. `near <town>` needs a town AND
+  // The word and the number are chosen together. `near <name>` needs a name AND
   // at least one club actually near it; without both, the row falls back to the
   // unfiltered total with no place clause — never to a zero.
-  const sayNear = !!locality && nearCount !== undefined && nearCount > 0
+  const sayNear = !!near && nearCount !== undefined && nearCount > 0
   const shown = sayNear ? nearCount : count
-  const place = sayNear ? ` near ${locality}` : ''
+  const place = sayNear ? ` near ${near!.name}` : ''
 
   const label =
     shown === undefined || shown === 0

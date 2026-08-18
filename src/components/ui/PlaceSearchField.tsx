@@ -81,6 +81,7 @@ export function PlaceSearchField({
   value,
   onChange,
   names,
+  maxNameLength,
   disabled,
 }: {
   /** The field's own label, e.g. `Location`. */
@@ -97,6 +98,20 @@ export function PlaceSearchField({
    * would silently write a club's column names onto a ride.
    */
   names: { name: string; placeId: string; lat: string; lon: string }
+  /**
+   * The column's own length bound, so what this writes can always be stored.
+   *
+   * **Measured, not assumed:** `search_places()` returns `places.name`
+   * verbatim, whose longest row on the real index is 203 characters, and
+   * `placeLabel` appends a locality on top — 214 at the maximum, over 200 on
+   * exactly one row of 736,538. A picker that can return a value its own
+   * table's CHECK refuses is a dead end a rider cannot escape: the field owns
+   * the value, so there is nothing for them to shorten.
+   *
+   * Omitted means no bound, which is only correct for a caller whose column
+   * has none.
+   */
+  maxNameLength?: number
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -157,7 +172,7 @@ export function PlaceSearchField({
           onClose={() => setOpen(false)}
           onPick={(place) => {
             onChange({
-              name: placeLabel(place),
+              name: boundName(placeLabel(place), maxNameLength),
               placeId: place.id,
               lat: place.lat,
               lon: place.lon,
@@ -186,6 +201,19 @@ export function placeLabel(place: PlaceSearchResult): string {
   if (!locality) return place.label
   if (locality.toLowerCase() === place.label.toLowerCase()) return place.label
   return `${place.label}, ${locality}`
+}
+
+/**
+ * Cuts an over-long place name to what the caller's column will take, ending it
+ * with an ellipsis so the rider can see it was shortened.
+ *
+ * The ellipsis is inside the budget rather than added to it — a truncation that
+ * overshoots the bound by one character is the bug this function exists to
+ * prevent, arriving by a different door.
+ */
+export function boundName(name: string, max?: number): string {
+  if (max === undefined || name.length <= max) return name
+  return `${name.slice(0, max - 1).trimEnd()}\u2026`
 }
 
 /** How long the field waits after the last keystroke before it searches. */
@@ -272,9 +300,11 @@ function PlaceSearchSheet({
           setError('Places could not be searched. Check your connection.')
           setResults([])
         })
-        .finally(() => {
-          if (!controller.signal.aborted) setSearching(false)
-        })
+        // Unconditionally, including on an abort. Gating it on
+        // `!signal.aborted` left the flag stuck true whenever a rider deleted
+        // back below the minimum mid-request: the effect returns early on the
+        // next term and never re-runs, so nothing else would ever clear it.
+        .finally(() => setSearching(false))
     }, DEBOUNCE_MS)
 
     return () => {
@@ -295,10 +325,16 @@ function PlaceSearchSheet({
     >
       <div className="flex items-center justify-between gap-4 px-4 pt-6 pb-4">
         <h2 className="truncate text-xl font-medium text-foreground">{title}</h2>
+        {/* `text-foreground`, not the frame's accent. `accent` on `background`
+            computes to 3.00:1 against a 4.5:1 bar at this size, and that exact
+            pairing is already logged in `docs/FIGMA-FIDELITY-TODO.md` as an
+            unresolved designer question with four instances — adding a fifth
+            and waiting is worse than deviating on one text button. Recorded
+            there rather than only here. */}
         <button
           type="button"
           onClick={onClose}
-          className="shrink-0 text-sm font-medium text-accent"
+          className="shrink-0 text-sm font-medium text-foreground"
         >
           Cancel
         </button>
