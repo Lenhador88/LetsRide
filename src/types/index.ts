@@ -471,6 +471,20 @@ export type Club = {
   created_at: string
   members_count?: number
   is_member?: boolean
+  /**
+   * Where the club is based — `066`, PD-259. All four columns move together
+   * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
+   * non-null coordinate pair and vice versa. **NULL is the normal state**: the
+   * field is optional at create, and every club made before `066` has none.
+   *
+   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
+   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * nothing in the database will say so.
+   */
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 /**
@@ -506,6 +520,30 @@ export type ClubListItem = {
    * `Join club` link in the same slot.
    */
   unread?: number
+  /**
+   * Where the club is based — `066`, PD-259. All four columns move together
+   * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
+   * non-null coordinate pair and vice versa. **NULL is the normal state**: the
+   * field is optional at create, and every club made before `066` has none.
+   *
+   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
+   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * nothing in the database will say so.
+   */
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
+  /**
+   * Great-circle kilometres from the rider's own position to this club — `066`,
+   * PD-259. **Computed at read time, never stored**, and absent in three
+   * distinct cases the caller must not conflate: the rider has no resolvable
+   * position, the club has no location, or the read did not ask for one.
+   *
+   * `undefined` therefore means "no answer", never "far away" — a list sorted
+   * as though it meant zero would float every unlocated club to the top.
+   */
+  distance_km?: number
 }
 
 /**
@@ -539,6 +577,20 @@ export type ClubDetail = {
   cover_image_url: string | null
   members_count: number
   viewer_role: 'owner' | 'admin' | 'member' | null
+  /**
+   * Where the club is based — `066`, PD-259. All four columns move together
+   * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
+   * non-null coordinate pair and vice versa. **NULL is the normal state**: the
+   * field is optional at create, and every club made before `066` has none.
+   *
+   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
+   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * nothing in the database will say so.
+   */
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 /**
@@ -559,6 +611,20 @@ export type ClubForEdit = {
   owner_id: string
   /** Computed the same way `RideForEdit.is_organizer` is — see that type. */
   is_owner: boolean
+  /**
+   * Where the club is based — `066`, PD-259. All four columns move together
+   * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
+   * non-null coordinate pair and vice versa. **NULL is the normal state**: the
+   * field is optional at create, and every club made before `066` has none.
+   *
+   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
+   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * nothing in the database will say so.
+   */
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 /**

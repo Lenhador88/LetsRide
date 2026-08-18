@@ -18,6 +18,96 @@ import { CLUB_AVATAR_PATH_RE, CLUB_COVER_PATH_RE } from '@/lib/media/constants'
 export const CLUB_NAME_MAX = 60
 export const CLUB_DESCRIPTION_MAX = 500
 
+/**
+ * The two location bounds, and **unlike the two above these are NOT chosen
+ * here** — `066` declares both as CHECK constraints on `clubs`, so these
+ * numbers are a copy of a rule the database already owns. That is the shape
+ * CLAUDE.md asks for: Zod owns the *message*, the database owns the
+ * *guarantee*. Change one and the other refuses the write with a raw 23514.
+ *
+ * 200 is generous against the longest label `search_places()` returns (a name
+ * plus a street plus a locality); 100 bounds an opaque GERS id, which is the
+ * field a client controls most directly.
+ */
+export const CLUB_LOCATION_NAME_MAX = 200
+export const CLUB_LOCATION_PLACE_ID_MAX = 100
+
+/**
+ * A club's location, or none — `066`, PD-259.
+ *
+ * **All four move together or none does**, which is `clubs_location_coupling`
+ * restated for the message rather than for the guarantee. Expressed as a
+ * nullable object rather than four nullable fields precisely so the illegal
+ * state (a name with no coordinates) is unrepresentable here, instead of being
+ * a `.refine` that has to remember all four combinations.
+ *
+ * The coordinate bounds are the CHECK's, not a sanity check: a rider drives the
+ * browser, so this is the message and `066` is the rule.
+ */
+export const clubLocationSchema = z
+  .object({
+    location_name: z
+      .string()
+      .trim()
+      .min(1, 'Pick a place from the list.')
+      .max(CLUB_LOCATION_NAME_MAX, 'That place name is too long.'),
+    location_place_id: z
+      .string()
+      .trim()
+      .min(1, 'Pick a place from the list.')
+      .max(CLUB_LOCATION_PLACE_ID_MAX, 'That place could not be attached.'),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  })
+  .nullable()
+
+export type ClubLocationInput = z.infer<typeof clubLocationSchema>
+
+/**
+ * The four hidden fields the place picker writes, read back off `FormData` as
+ * one nullable object.
+ *
+ * **Anything short of all four present and numeric is `null`**, not a partial
+ * object and not an error. A half-filled set can only come from a form the
+ * rider never completed — the picker writes all four together or clears all
+ * four together — so "no location" is the honest reading, and the CHECK behind
+ * it means a partial write could not land anyway.
+ *
+ * `Number('')` is `0`, which is a real coordinate in the Gulf of Guinea, so the
+ * emptiness test is on the STRING and never on the parsed number. That is the
+ * whole reason this is a function rather than a `z.coerce.number()` on each
+ * field.
+ */
+/**
+ * What the picker's four hidden inputs are called, so the form that writes them
+ * and the function that reads them back cannot drift apart.
+ *
+ * `PlaceSearchField` takes the names as a prop rather than defaulting to these
+ * — two different tables want that control, and a shared default would silently
+ * write a club's column names onto a ride.
+ */
+export const CLUB_LOCATION_FIELD_NAMES = {
+  name: 'location_name',
+  placeId: 'location_place_id',
+  lat: 'latitude',
+  lon: 'longitude',
+} as const
+
+export function readClubLocation(formData: FormData): ClubLocationInput {
+  const name = (formData.get('location_name') as string | null)?.trim() ?? ''
+  const placeId = (formData.get('location_place_id') as string | null)?.trim() ?? ''
+  const lat = (formData.get('latitude') as string | null)?.trim() ?? ''
+  const lon = (formData.get('longitude') as string | null)?.trim() ?? ''
+
+  if (!name || !placeId || !lat || !lon) return null
+
+  const latitude = Number(lat)
+  const longitude = Number(lon)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+
+  return { location_name: name, location_place_id: placeId, latitude, longitude }
+}
+
 export const clubSchema = z.object({
   name: z
     .string()
@@ -58,6 +148,13 @@ export const clubSchema = z.object({
     .string()
     .regex(CLUB_COVER_PATH_RE, 'That image could not be attached.')
     .nullable(),
+  /**
+   * Optional, and that is a product decision rather than a gap — Create club is
+   * the app's shortest creation flow and a required field is a new wall in
+   * front of it. Every club that predates `066` carries null and keeps
+   * appearing on Explore: a club with no location is not a hidden club.
+   */
+  location: clubLocationSchema,
 })
 
 export type ClubInput = z.infer<typeof clubSchema>

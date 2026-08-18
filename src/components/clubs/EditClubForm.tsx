@@ -6,6 +6,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
+import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchField'
 import { Textarea } from '@/components/ui/Textarea'
 import { DeleteClubControl } from '@/components/clubs/DeleteClubControl'
 import { updateClub } from '@/lib/actions/clubs'
@@ -16,7 +17,13 @@ import { getClubPublicRideCount } from '@/lib/data/clubs'
 import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
-import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX, clubSchema } from '@/lib/validation/clubs'
+import {
+  CLUB_DESCRIPTION_MAX,
+  CLUB_LOCATION_FIELD_NAMES,
+  CLUB_LOCATION_NAME_MAX,
+  CLUB_NAME_MAX,
+  clubSchema,
+} from '@/lib/validation/clubs'
 import type { ClubForEdit } from '@/types'
 
 /**
@@ -48,6 +55,20 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
   const [name, setName] = useState(club.name)
   const [description, setDescription] = useState(club.description ?? '')
   const [isPublic, setIsPublic] = useState(club.is_public)
+  // Seeded from the row, and `null` when the club has none — which is every
+  // club made before `066`. The four columns move together
+  // (`clubs_location_coupling`), so testing one is testing all four.
+  const [location, setLocation] = useState<PlaceValue | null>(
+    club.location_name && club.location_place_id !== null
+      && club.latitude !== null && club.longitude !== null
+      ? {
+          name: club.location_name,
+          placeId: club.location_place_id,
+          lat: club.latitude,
+          lon: club.longitude,
+        }
+      : null
+  )
   // `form.reset()` re-ticks this from its mount-time `checked` attribute while
   // this state still says false, and `updateClub` reads `is_public` from
   // `FormData` — so the retry after a refusal re-opens a club the owner had just
@@ -101,6 +122,16 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
       is_public: isPublic,
       avatar_path: avatarPath || null,
       cover_image_path: coverPath || null,
+      // Built from state rather than read off the DOM: this form is controlled
+      // and the four hidden inputs are rendered from the same `location`.
+      location: location
+        ? {
+            location_name: location.name,
+            location_place_id: location.placeId,
+            latitude: location.lat,
+            longitude: location.lon,
+          }
+        : null,
     })
     const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
     if (typeof field === 'string') {
@@ -199,6 +230,27 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
+
+          {/* Editable after the fact, which is the other half of "optional at
+              create": a club that never set one can set it here, and a club
+              that moves can change it. Clearing it back to nothing is a real
+              edit — `locationColumns` always writes all four. */}
+          <div className="flex flex-col gap-1">
+            <PlaceSearchField
+              label="Where the club is based (optional)"
+              sheetTitle="Set club location"
+              placeholder="Search for a town or place"
+              value={location}
+              onChange={setLocation}
+              names={CLUB_LOCATION_FIELD_NAMES}
+            maxNameLength={CLUB_LOCATION_NAME_MAX}
+              disabled={busy}
+            />
+            <p className="pl-1 text-xs font-medium text-muted">
+              Riders looking for a club near them will find yours. This is the club&rsquo;s own
+              location, not yours.
+            </p>
+          </div>
 
           <div className="flex flex-col gap-1">
             <Checkbox

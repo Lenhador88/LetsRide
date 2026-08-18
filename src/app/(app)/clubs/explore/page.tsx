@@ -1,10 +1,13 @@
 'use client'
 
 import { Header } from '@/components/layout/Header'
-import { ClubCard } from '@/components/clubs/ClubCard'
+import { ExploreClubsList } from '@/components/clubs/ExploreClubsList'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreClubs } from '@/lib/data/clubs'
+import { getMyLocationText } from '@/lib/data/profile'
+import { nearLabel } from '@/lib/location/near-label'
+import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 
@@ -33,9 +36,29 @@ import { queryKeys } from '@/lib/query/keys'
  * row leave this list and appear on Your clubs — and, since PD-258, what moves
  * the strip's count on the tab root, because that count is `getExploreClubs`
  * read under this same key.
+ *
+ * **Since PD-259 the strip counts the NEAR clubs, and this screen sections them
+ * under the same heading** — so the number the rider taps is the number they
+ * land on. `ExploreClubsList` owns that split; a version where the strip
+ * counted three and this screen listed twelve was caught in review.
  */
 export default function ExploreClubsPage() {
-  const clubs = useQuery(queryKeys.clubs.explore(), getExploreClubs)
+  // The same three reads as `/clubs`, under the same keys — which is what makes
+  // arriving here from the strip a cache hit rather than a second fetch, and
+  // what keeps the strip's near count equal to the `Near <name>` section below
+  // (PD-258's second trap).
+  const near = useQuery(queryKeys.riderLocation(), resolveRiderLocation)
+  const city = useQuery(queryKeys.profile.location(), getMyLocationText)
+
+  // Held until the position is decided — see `/clubs` for the double fetch this
+  // avoids. `undefined` is "not yet"; `null` is "no position", which is a real
+  // answer and gets the unfiltered list.
+  const positionDecided = near.data !== undefined
+  const position = near.data ?? null
+  const clubs = useQuery(
+    positionDecided ? queryKeys.clubs.explore(position) : null,
+    () => getExploreClubs(position)
+  )
 
   return (
     <>
@@ -60,13 +83,7 @@ export default function ExploreClubsPage() {
                 There are no public clubs, yet!
               </p>
             ) : (
-              <ul className="flex flex-col gap-2">
-                {clubs.data.map((club) => (
-                  <li key={club.id}>
-                    <ClubCard club={club} joined={false} />
-                  </li>
-                ))}
-              </ul>
+              <ExploreClubsList clubs={clubs.data} near={nearLabel(position, city.data)} />
             )}
           </div>
         )}

@@ -378,6 +378,15 @@ is a drawn value this repo no longer builds:
       Not a new failure mode — the same pairing, four times on one screen now; raised on the
       same PD-176 designer question rather than logged again as new.
 
+      **PD-259 DEVIATED rather than adding a fifth, and that is the precedent worth having.**
+      `PlaceSearchField`'s sheet header has a `Cancel` text button, which
+      `Rides / Add starting location - Filled` (`1918:15967`) draws in `Accent (OLD)/100` —
+      the same pairing at the same 3.00:1. It ships as `text-foreground` instead. The reason
+      to break the tie this way rather than wait: this control is new, so nothing regresses,
+      and a fifth instance would have made the eventual fix five edits instead of four. The
+      **existing four are untouched** — changing those is the designer's call, not a
+      side effect of an unrelated story.
+
 - [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
       `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1
       bar, and both new instances are 12px — so neither is WCAG large text and neither passes.

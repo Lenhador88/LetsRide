@@ -96,7 +96,19 @@ export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean
 
         <p className="flex items-center gap-1 text-sm font-medium text-muted">
           <TypeIcon className="h-6 w-6 shrink-0" />
-          {club.is_public ? 'Public club' : 'Private club'}
+          <span className="min-w-0 truncate">
+            {club.is_public ? 'Public club' : 'Private club'}
+            {/* Appended to the row the design already draws rather than given a
+                line of its own: the card is a measured 112px and a fourth row
+                does not fit. Truncated, because a place name is up to 200
+                characters and this row is ~200px wide.
+
+                No distance figure beside it, deliberately. A club's location is
+                a town rather than a doorstep, so "34 km" is a precision the
+                data does not carry — `ExploreClubsList`'s `Near <name>` heading
+                is how proximity is expressed. */}
+            {club.location_name ? ` · ${club.location_name}` : ''}
+          </span>
         </p>
 
         <div className="flex items-center gap-1">

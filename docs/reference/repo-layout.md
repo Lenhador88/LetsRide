@@ -21,7 +21,7 @@ src/
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
 ├── components/
-│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ErrorState, ExpandableText, FilterTile, Input, ListUser, NotificationDot, NotificationRow, OfflineState, Pagination, SectionHeader, Skeleton, Textarea
+│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ErrorState, ExpandableText, FilterTile, Input, ListUser, NotificationDot, NotificationRow, OfflineState, Pagination, PlaceSearchField, SectionHeader, Skeleton, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
@@ -46,6 +46,7 @@ src/
 │   ├── routes.ts           # every href that names a resource id — /rides/detail?id= and its nine siblings (PD-142)
 │   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
 │   ├── realtime/           # useRideMessageStream — the app's only Supabase Realtime subscription
+│   ├── location/           # rider-location.ts (where the rider is — device, then profile city; never prompts), distance.ts (haversine + NEARBY_RADIUS_KM, PD-259)
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/

@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
-import { Globe2Icon, Lock2Icon } from '@/components/icons/generated'
+import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
 import { ClubCreateRideRow } from '@/components/clubs/ClubCreateRideRow'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
@@ -273,6 +273,21 @@ function ClubScreen() {
             {club.data.is_public ? 'Public club' : 'Private club'} · Started{' '}
             {formatRideDateLong(club.data.created_at)}
           </p>
+
+          {/* Its own line rather than a third clause on the one above: that
+              line is two facts about the club's shape, and where it rides is a
+              different kind of fact — and the one most likely to be long.
+
+              Rendered only when set (PD-259). Absent for every club made before
+              `066`, and there is deliberately no "no location yet" placeholder
+              beside the description's: a missing optional field is not news,
+              and the screen already carries one empty-state sentence. */}
+          {club.data.location_name && (
+            <p className="flex items-center gap-1.5 px-4 text-sm font-medium text-muted">
+              <LocationOutlineIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">{club.data.location_name}</span>
+            </p>
+          )}
 
           {club.data.description ? (
             <ExpandableText className="px-4">{club.data.description}</ExpandableText>
