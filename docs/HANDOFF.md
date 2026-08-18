@@ -1994,14 +1994,20 @@ nothing, because connectors attach per session independently of the repo.
 no "Allow always" means there is no project settings file to persist a grant into — i.e. no
 repo.** Check `session_context.sources` before theorising about permission layers.
 
-**The queue's own machinery — the two trigger ids, the never-delete rule, the dispatcher session
-and the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the procedures are
+**The queue's own machinery — the two trigger ids, the never-delete rule, the relay session and
+the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the procedures are
 `.claude/commands/queue-dispatch.md` (pick and hand out) and `.claude/commands/queue-pickup.md`
 (build one group).** None of it belongs here: settled contract, not current position.
 
 **The prompt is repointed — read 2026-08-18, `trig_01WJkMVXGzUVGDcC1njNmaan` names
-`queue-dispatch.md` and says "you are the DISPATCHER".** What is left of `PD-241` is the
-**re-enable**: the row carried no `enabled` key that morning, `last_fired_at` 06:20Z with
+`queue-dispatch.md`.** It also says *"you are the DISPATCHER"*, which since STEP -1 is one role too
+far — the session it fires into is the **relay**, and the file overrides the prompt. Harmless, and
+only the owner or that session can reword it.
+
+**Two of `PD-241`'s three items are still open, and the issue body has not caught up.** The
+**fallback Routine is still missing** (`trig_01Gzy8eCiaXUUa1knvJnNpwy`, absent again at
+`limit=100`, and the whole account holds two Routines). And the **re-enable**: the row carried no
+`enabled` key that morning, `last_fired_at` 06:20Z with
 `next_run_at` 07:05Z already in the past, so **the queue is switched off right now**. Check rather
 than assume — a disabled row simply lacks the key:
 

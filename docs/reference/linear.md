@@ -153,9 +153,7 @@ it does, permanently.
 fresh **dispatcher** and exit; the dispatcher **hands each queued story — or each group of
 colliding stories — to its own fresh session** rather than building anything itself. **The relay is
 the one session in this design that is reused, and it decides nothing** — every board read and
-every judgement belongs to a session an hour old at most (`queue-dispatch.md` STEP -1, added
-2026-08-18 after the owner asked why the Routine was reusing a session that had held other
-topics). **The procedure is
+every judgement belongs to a session an hour old at most (`queue-dispatch.md` STEP -1). **The procedure is
 [`.claude/commands/queue-dispatch.md`](.claude/commands/queue-dispatch.md), and the child's is
 [`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read them there.** The
 trigger's prompt says little more than *read that file and follow it*, and the child's prompt —
@@ -229,7 +227,8 @@ What has to be known outside those files:
   2026-08-17), so the switch is enforced by the dispatcher reading its own `enabled` field on every
   firing — `queue-dispatch.md` STEP 1. **It does not stop a child already building**: those are
   spawned rather than scheduled, so stopping them means archiving the sessions tagged
-  `queue-dispatch` and returning their issues to `Queued (AI)`.
+  `queue-dispatch` — plus any tagged `queue-dispatch-run`, a dispatcher that cleared the switch
+  before it moved — and returning their issues to `Queued (AI)`.
 
 ### Do not ask permission to touch Linear
 

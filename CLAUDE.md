@@ -1586,8 +1586,8 @@ from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
 **Full detail — the anti-duplication contract, the status traps, sequencing, the queue dispatcher
 and its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before
 the first Linear call of a session, and before ANY call that touches the dispatcher Routine, its
-triggers or the dispatcher session** — those are CCR calls rather than Linear ones, so "before a
-Linear call" would never have fired for them. What must be true without reading it:
+triggers or the relay session it fires into** — those are CCR calls rather than Linear ones, so
+"before a Linear call" would never have fired for them. What must be true without reading it:
 
 - Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**. **Pass the project id —
   `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it holds a curly apostrophe, the
