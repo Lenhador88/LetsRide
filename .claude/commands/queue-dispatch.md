@@ -16,6 +16,19 @@ That split is the whole design. Read §Why this shape before changing any of it.
 accumulating across firings, one story at a time, and a `/clear` nobody can perform from inside.
 Read the board, scout, spawn, exit. Nothing else.
 
+**The shape, as the owner stated it on 2026-08-18** — check each half against the step that owns
+it rather than trusting this paragraph, which is a map:
+
+> *"every hour the routine runs, spawns a max of 2 sessions. Each session can pickup a group of
+> stories if applicable. Sometimes it may not make sense to spawn the 2 sessions, for eg. if there
+> are no stories that can be done in paralel, no stories available etc."*
+
+One firing an hour (STEP -1), at most two children in flight at once (STEP 4), a group of up to
+three colliding stories per child (STEP 4), and every reason a firing dispatches fewer — a held
+gate, a parked story, a cap, a collision, an empty queue, a stale candidate — is a step of its own.
+**Fewer than two is a normal firing, not a fault**, and a firing that dispatches nothing is
+silent.
+
 Read `CLAUDE.md` fully before acting. Workspace `lets-ride`, team **Pedro & Dave** (`PD`), project
 **Let's ride (AI)** (`88f3f224-ecf0-46f0-a032-c86b7a12f81c`). Note the curly apostrophe in that
 name; pass the id, never the name.
@@ -26,7 +39,7 @@ name; pass the id, never the name.
 
 | | Relay | Dispatcher | Child |
 |---|---|---|---|
-| Started by | the hourly Routine, or a `fire_trigger` poke | `create_session` from the relay | `create_session` from the dispatcher |
+| Started by | the hourly Routine — the only clock there is | `create_session` from the relay | `create_session` from the dispatcher |
 | Reads | STEP -1, and nothing else in this file | this file, from STEP 0 | [`queue-pickup.md`](queue-pickup.md) |
 | Holds | nothing — it decides nothing | the board, the caps, the batch | its group's issue ids, given in its prompt |
 | Ends at | one session spawned | children spawned | every issue in its group at `Deployed to DEV` |
@@ -109,9 +122,9 @@ docs to make one call throws that away while looking diligent.
    `trig_01WJkMVXGzUVGDcC1njNmaan` exactly as STEP 1 does: `enabled: true` and nothing else is on,
    a disabled row simply lacks the key, and an `InputValidationError` is a deferred schema rather
    than a failure — `ToolSearch` and call it again. **Not on → exit silently, spawning nothing.**
-   This check is here rather than only in STEP 1 because a poke against a disabled trigger is
-   accepted rather than refused, so without it a stopped queue would still burn a session an hour,
-   for ever, to discover it was stopped. **If the call cannot be made at all, spawn anyway** — STEP
+   This check is here rather than only in STEP 1 because a `fire_trigger` against a disabled
+   trigger is accepted rather than refused, so a hand-typed poke would otherwise still burn a
+   session to discover the queue was stopped. **If the call cannot be made at all, spawn anyway** — STEP
    1 holds on an unreadable switch and notifies, and a switch you cannot read is not a licence to
    stop the queue silently.
 2. **Is a dispatcher already in flight?** `list_sessions mine=true limit=100`, and look for a
@@ -124,10 +137,22 @@ docs to make one call throws that away while looking diligent.
      the spawn, so neither sees the other. Delivery into one persistent relay serialises the
      firings themselves — its turns run one at a time — and this check is what extends that
      serialisation across the sessions they spawn.
-   - **Older than that → hold, and send a `PushNotification` naming the session.** A wedged
-     dispatcher is the one queue session nothing in this file ages: it holds no dispatch record, so
-     STEP 6 cannot see it, and STEP 1 excludes it by tag. Spawning past it risks two children on
-     one story, which costs more than a delay; the owner clears it by archiving that session.
+   - **Between 30 minutes and 3 hours old → hold, and send one `PushNotification` naming the
+     session.** Spawning past a dispatcher that may still be working risks two children on one
+     story, which costs more than a delay.
+
+     **Notify on the first firing that sees it and then only every sixth hour** — age inside
+     `[30m, 90m)` and then each crossing of `6h`, `12h`, `18h`. The relay cannot mark a condition
+     once the way STEP 6 does, because it may not read the board; the age is the only state it
+     has, so the buckets are the discipline. A push an hour is the volume STEP 6 refuses.
+   - **Older than 3 hours → archive it, then spawn as normal**, and say in the notification that
+     you did. **This is the recovery, and without it a wedged dispatcher stops the queue for
+     ever**: the relay never spawns, so STEP 6 never runs, so the `Development (AI)` and
+     `Needs help` clocks go dark alongside the dispatching. A dispatcher is disposable by design
+     (`CLAUDE.md` §What Not To Do), and the one thing archiving can strand — an issue claimed in
+     STEP 5 whose child was never spawned — is exactly what STEP 2's record-less freeze already
+     catches and reports. **Three hours is chosen against STEP 6's own dead-child threshold**, so
+     a dispatcher gets the same benefit of the doubt a child does.
 3. **`create_session`**, with:
    - `title` — `Queue dispatch — <UTC date and time of this firing>`, so the session list reads as
      a run rather than a topic.
@@ -213,12 +238,22 @@ the more decisive answer: a queue the owner has turned off has no board worth re
 
 ### The switch — does the Routine still read `enabled: true`?
 
-**Disabling the Routine does not stop the queue, and this Routine has already been observed
-firing while disabled.** On 2026-08-17 `trig_01WJkMVXGzUVGDcC1njNmaan` carried no `enabled` key —
-it was off — and its `last_fired_at` moved from `15:40:05` to `17:37:11` inside a four-minute
-window while a session watched it. The hourly cron cannot explain that (`next_run_at` was stale at
-`16:05`), which leaves a child's completion poke, and that is exactly what `queue-pickup.md` STEP 5
-tells every child to send.
+**This Routine has been observed firing while disabled, and the explanation that fitted at the
+time has since been removed from the design.** On 2026-08-17 `trig_01WJkMVXGzUVGDcC1njNmaan`
+carried no `enabled` key — it was off — and its `last_fired_at` moved from `15:40:05` to `17:37:11`
+inside a four-minute window while a session watched it. The hourly cron cannot explain that
+(`next_run_at` was stale at `16:05`), and the completion poke that did explain it is gone:
+`queue-pickup.md` STEP 5 bullet 6 now tells every child to send nothing at all.
+
+**Both firings are explained by that poke, measured rather than inferred**: `origin/development`
+carries #238 merged at `15:38:35Z` and #241 at `17:35:20Z` — one to two minutes before each
+`last_fired_at`, which is the length of STEP 5's tail. So the cause is gone with the poke, and the
+gate now stands on the *other* thing this section measured: a hand-typed `fire_trigger` is accepted
+against a disabled trigger.
+
+```bash
+TZ=UTC git log --format='%cd %s' --date=iso-strict-local origin/development | grep '(#2'
+```
 
 The API half was probed the same day against a throwaway self-bound Routine, and agrees:
 `update_trigger enabled=false` took — the `enabled` key *disappears* from the response, which is
@@ -226,9 +261,13 @@ how a disable is read back — and `fire_trigger` against it afterwards returned
 execution session id**, indistinguishable from the same call against the same trigger enabled.
 Nothing refused it.
 
-**So the switch by itself stops the hourly heartbeat and nothing else**: the children keep handing
-the queue back to itself, and the owner's off switch is decorative while looking like a control.
-This gate is what makes it real.
+**With the pokes gone the switch now stops every dispatch on its own, and this gate is what makes
+that a fact rather than an expectation.** It used to be decorative while looking like a control —
+the children handed the queue back to itself, so disabling the Routine stopped only the heartbeat.
+Nothing hands it back now; what remains is a hand-typed `fire_trigger`, which is accepted rather
+than refused, and reading the field is cheaper than trusting that nobody types one. **"Every
+dispatch" is not "everything"** — see below: a child already building runs to completion whatever
+the switch says.
 
 ```
 list_triggers  limit=100
@@ -278,11 +317,9 @@ tagged `queue-dispatch-run` with them**, since a dispatcher that passed this gat
 went off will still claim and spawn. `CLAUDE.md` §What Not To Do permits archiving both and forbids
 it only for the relay.
 
-**The check belongs here rather than in the child's poke**, and that is not a stylistic
-preference: the dispatcher is the one chokepoint every spawn passes through, so a single check
-covers the hourly heartbeat, a child's poke and a hand-typed `fire_trigger` alike. Guarding the
-poke instead leaves the other two open — and costs the stall alarm with it, since a child that
-skips its poke is a child that never wakes the step that would notice it died.
+**The check belongs here, in the one chokepoint every spawn passes through** — the hourly firing
+and any hand-typed `fire_trigger` alike. That was true when children poked too, and removing the
+poke did not move it: a check on the way *out* of a build guards only that path.
 
 ### The owner-activity gate
 
@@ -415,8 +452,8 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
 ### The dispatch record — how a later firing knows what is in flight
 
 **A firing that cannot see what an earlier firing dispatched cannot enforce any cap across
-them**, and the caps are then worthless the moment a child's poke wakes a second firing while the
-first batch is still building. So the record is written to the board, where it survives this
+them**, and the caps are then worthless the moment the next hour turns while the first batch is
+still building. So the record is written to the board, where it survives this
 session ending:
 
 ```
@@ -435,8 +472,10 @@ issues without anything having to reason about the group at all.
 **Check each record's `session` against the `list_sessions` response you already hold.**
 
 - **`SESSION_STATUS_ARCHIVED` → the child is gone.** Move that issue back to `Queued (AI)`,
-  comment saying the child ended without reaching `Deployed to DEV`, and carry on. It becomes a
-  candidate again on the **next** firing; this firing's candidate list was read before the move.
+  comment saying the child ended without reaching `Deployed to DEV`, and **re-read the queue column
+  before STEP 3 so it is a candidate in this firing**. Deferring it used to cost minutes, because a
+  child's poke could be the next firing; with the cron as the only clock it costs an hour on top of
+  however long the child took to die.
 - **Absent from the list → freeze and notify**, exactly as for a record-less issue below. **Do
   not treat absence as death.** Nothing establishes that the list is complete for arbitrarily old
   sessions, and the plausible cause of absence — retention or pruning — bites hardest on the
@@ -534,8 +573,7 @@ nothing on the board says what a story will touch.
 
 **Scout in priority order, and stop once you have enough.** Scout the first `free slots + 2`
 candidates, never the whole column: each scout re-pays `CLAUDE.md` in a fresh window, and a
-ten-deep queue would otherwise scout ten every hour *and* on every child poke, to dispatch at most
-two. The `+ 2` is the margin for candidates the scout drops as stale or blocked.
+ten-deep queue would otherwise scout ten every hour to dispatch at most two. The `+ 2` is the margin for candidates the scout drops as stale or blocked.
 
 **Grouping does not raise this budget, and must not.** STEP 4 re-partitions the candidates you
 already scouted; it does not reach deeper into the queue to fill a group. So a group forms exactly
@@ -880,8 +918,11 @@ once *and* cannot be missed. The comment is checkable by any later firing, which
 not.
 
 For an owner session RUNNING there is no issue to comment on, so that one keeps a `[3h, 4h)`
-window and may repeat if the firings fall badly. Accepted: it is the one clock whose subject the
-owner can already see.
+window — and with one firing an hour that window holds at most one firing, so it cannot repeat and
+**can instead be missed outright**: the single firing inside it is consumed if the switch is off,
+if a dispatcher is in flight, or if a wedged one is being recovered. Accepted, because it is the
+one clock whose subject the owner can already see; do not copy the shape to a clock whose subject
+they cannot.
 
 **Re-anchor on the branch tip, do not suppress.** The obvious version — "tip moved recently, exit
 silently" — is wrong invisibly: a build that dies at hour 3½ has a fresh tip at the only firing
@@ -925,20 +966,31 @@ the relay, this instruction does not apply to you.
 
 ### How you get woken again
 
-- **A child pokes you — or rather, it pokes the relay.** Each child's last act is `fire_trigger` on
-  the Routine, which delivers into the relay, which runs STEP -1 and spawns a *new* dispatcher.
-  Nothing wakes the dispatcher that spawned that child. That is what makes the next batch start
-  seconds after a slot frees, and it is the point of the design.
-- **The hourly Routine fires.** The **heartbeat, not the driver** — it exists because a child that
-  dies never pokes, and an event-driven chain has no way back once a link is lost. Do not remove
-  it because the pokes are working.
+- **The hourly Routine fires. That is the only clock, and there is deliberately no other.**
+  Product owner, 2026-08-18: *"when the development ends, I dont want those new sessions to report
+  back to the routine. It will just pick up new stories on the next hourly run."* Children used to
+  `fire_trigger` on finishing so the next batch started seconds after a slot freed;
+  `queue-pickup.md` STEP 5 bullet 6 now tells them to send nothing.
+
+  **A freed slot therefore waits for the top of the hour**, and that is the accepted cost rather
+  than a gap to engineer around. What it buys: one clock instead of two, at most one firing an
+  hour to collide with a dispatcher still working, and an off switch that stops every dispatch
+  rather than only the heartbeat. **Do not reintroduce the poke** — not as an optimisation, not as
+  a stall alarm, and not as "just for the parked case".
+
+  **It does not make a concurrent firing impossible, and STEP -1's in-flight check is not dead
+  code.** The cron fires on its own anchor minute regardless of how long a dispatcher lives, so any
+  dispatcher that outlives the gap to the next cron minute — four scout agents will do it — is
+  running when the next firing lands. Removing the poke lowered the rate; the check is what makes
+  it safe.
 - **`send_later`** — **only for a condition that resolves on a clock you can name**, and never for
   a held gate. A gate clears when the owner stops working, which no event reports and no delay
   predicts, so re-arming on it is a poll: three hours of owner activity would wake a session ~180
   times. **In STEP -1's failure branch that session is the relay** — the one session in this design
   whose context must not accumulate and which no session can clear — and outside that branch you
-  are a dispatcher that is meant to have archived itself a step ago. The hourly heartbeat already
-  covers it either way.
+  are a dispatcher that is meant to have archived itself a step ago. The hourly firing already
+  covers it either way, and it is now the only clock the queue has — do not add a second one
+  here.
 
 ---
 
@@ -966,8 +1018,9 @@ this time rather than summarised:
 - **Child with `source_url` set** — repo checked out, and it called `create_session` itself: the
   grandchild came back with `parent_session_id` set and its `tags` intact.
 
-So the dispatcher's spawn of its children and the child's `fire_trigger` poke stand on measured
-ground, and `queue-pickup.md` STEP 5's error branch is now the belt rather than the design.
+So the relay's spawn of a dispatcher and the dispatcher's spawn of its children stand on measured
+ground. **The child needs none of it any more** — `queue-pickup.md` STEP 5 bullet 6 stopped poking
+on 2026-08-18, so the only CCR calls left in the queue are the relay's and the dispatcher's.
 
 **Two gaps, and neither is closable from inside a session.** Both probes were spawned from an
 *interactive* session, so **the exact hop STEP -1 performs — a Routine-fired session spawning a

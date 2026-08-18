@@ -147,7 +147,7 @@ it does, permanently.
   so relations are a **backstop that catches a mistake**, never the mechanism that makes queuing
   blocked work safe. The column rule above is the mechanism.
 
-### The queue is drained by a dispatcher, on two clocks
+### The queue is drained by a dispatcher, on one clock
 
 **`trig_01WJkMVXGzUVGDcC1njNmaan`** fires into the **relay** session, whose only act is to spawn a
 fresh **dispatcher** and exit; the dispatcher **hands each queued story — or each group of
@@ -166,10 +166,16 @@ whichever file the trigger names, so editing `queue-dispatch.md` does nothing un
 read the *child* procedure, which opens by telling it the issue id is in its prompt when no id is
 there.
 
-**The hourly cron is the heartbeat, not the driver.** Each child's last act is `fire_trigger` on
-that same trigger, so the next batch starts seconds after a slot frees instead of at the top of
-the hour. The cron exists because a child that dies never pokes, and an event-driven chain has no
-way back once one link is lost — do not remove it on the grounds that the pokes are working.
+**The hourly cron is the only clock, and nothing else may wake the queue.** Product owner,
+2026-08-18: *"when the development ends, I dont want those new sessions to report back to the
+routine. It will just pick up new stories on the next hourly run."* A child's last act used to be
+`fire_trigger` on that same trigger, so the next batch started seconds after a slot freed;
+`queue-pickup.md` STEP 5 bullet 6 now tells every child to send nothing at all. **A freed slot
+waits for the top of the hour** — the accepted cost of one clock instead of two, and of an off
+switch that stops every dispatch rather than only the heartbeat. It still does not stop a child
+already building; that carve-out is below and is unchanged. **A parked story is the one thing a
+child still reports**, by push notification straight to the owner, because the dispatcher's
+`Needs help` clock does not alarm for three hours.
 
 What has to be known outside those files:
 
@@ -222,10 +228,12 @@ What has to be known outside those files:
   one session writing `060` then `061` has no ordering problem to have. A group is one branch, one
   PR and one `reviewer` pass, capped at three issues, and each issue is still claimed, commented
   and moved on its own. `queue-dispatch.md` STEP 4 has the partitioning and the ceiling.
-- **Disabling the Routine stops the queue, and the dispatcher is what makes that true.** A poke
-  from a finishing child is *accepted* against a disabled trigger rather than refused (measured
-  2026-08-17), so the switch is enforced by the dispatcher reading its own `enabled` field on every
-  firing — `queue-dispatch.md` STEP 1. **It does not stop a child already building**: those are
+- **Disabling the Routine stops the queue, and with the pokes gone it should do so on its own.**
+  It is still enforced twice — the relay reads the trigger's `enabled` field before it spawns, and
+  the dispatcher reads it again (`queue-dispatch.md` STEP -1 and STEP 1) — because a hand-typed
+  `fire_trigger` is *accepted* against a disabled trigger rather than refused (measured
+  2026-08-17), and because this Routine has been seen firing while disabled by something nothing
+  in the repo can now account for. **It does not stop a child already building**: those are
   spawned rather than scheduled, so stopping them means archiving the sessions tagged
   `queue-dispatch` — plus any tagged `queue-dispatch-run`, a dispatcher that cleared the switch
   before it moved — and returning their issues to `Queued (AI)`.
