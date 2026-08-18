@@ -1393,9 +1393,21 @@ someone will open anyway.
 
 **Filed, because each needs something a branch cannot supply** — a proposal, or the designer:
 
-- **`max_riders` has never been enforced** — not by an action, a policy or a trigger, since
-  `001`. `018` bounds the *value* (1–999); nothing counts `ride_members` against it. `PD-174`,
-  and it wants a proposal first: the negative cases are the whole content.
+- **A rider learns a ride is full by trying to join it.** `063` (PD-174) makes `max_riders`
+  real, and the design draws **no** capacity affordance anywhere — no "Ride is full" state on
+  the detail, no seats-remaining count, no disabled RSVP pill, nothing on the card. So the
+  enforcement surfaces only as an error in `RideAttendanceBar`'s `role="status"` line after the
+  tap. That is honest rather than good, and closing it needs a frame that does not exist. Note
+  the data is already on the client: `RideCrewRail` on the ride detail reads
+  `queryKeys.rides.crew(id)`, so a "full" state is a prop away once someone draws one.
+
+- **Three claims in `docs/FIGMA-FIDELITY-TODO.md` went stale with `063` and were NOT edited** —
+  PR #252 (PD-262) was open across that file when this landed, so per the dispatch's path caps
+  they are logged here instead. Lines 250, 664 and 731 each say `max_riders` is unenforced or
+  that "nothing caps `ride_members`"; 664 is the tracking item itself and can be ticked, and
+  731's reasoning for `RIDE_CREW_LIMIT = 200` still holds but for a narrower reason — an
+  *uncapped* ride is still unbounded, and a capped one is bounded at 999 by `018`. Fix them in
+  the next branch that opens that file.
 - **Both RSVP pills fail WCAG AA**, and two more pairings besides — the Maybe pill at 2.54:1,
   `Accent Brand/100` with white at 3.52:1, the ride-host label at 4.10:1, the unselected RSVP
   label at 4.17:1. Left exactly as drawn; remedies costed in `docs/FIGMA-FIDELITY-TODO.md`.

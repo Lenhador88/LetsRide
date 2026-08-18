@@ -257,13 +257,29 @@ export async function createRide(
  * policy delegates both to the rides SELECT policy via EXISTS, so restating
  * them would be a second copy free to drift.
  *
- * **`max_riders` is not enforced, here or anywhere.** The column has existed
- * since 001 and nothing has ever checked it — not this action, not a policy,
- * not a trigger — so a ride can be over-subscribed. It is out of scope here
- * because the ride plan design does not draw capacity at all, and because the
- * correct place for it is a constraint the database owns rather than a
- * check-then-insert in application code, which races. Logged in
- * docs/FIGMA-FIDELITY-TODO.md §Ride detail rather than silently inherited.
+ * **`max_riders` is enforced, and not here.** `063` hangs
+ * `enforce_ride_capacity` on `ride_members`, so the refusal arrives as a
+ * `23514` from the database rather than from a check in front of this upsert —
+ * which is the point: a check-then-insert races two riders taking the last
+ * seat, and that race *is* the defect PD-174 named. What this function owns is
+ * the message, per CLAUDE.md's rule that Zod and the client own wording and
+ * never the guarantee.
+ *
+ * Matched on the message as well as the code, exactly as `createRide` matches
+ * `022`'s audience raise: `018` bounds four text columns on `rides` with
+ * CHECKs that raise the same SQLSTATE, and a title-too-long must never be
+ * reported to a rider as a full ride.
+ *
+ * **The rule is a join gate, not an invariant** — an organizer may lower the
+ * cap below the current crew and nobody is evicted — so this action never has
+ * to reconcile anything. And a rider already on a full ride is not refused:
+ * `063` excludes the row's own subject from the count, because the upsert below
+ * fires a BEFORE INSERT trigger even when it resolves to an UPDATE.
+ *
+ * **The design draws no capacity affordance at all** — no "Ride is full" state,
+ * no seats-remaining count, no disabled pill — so a rider learns a ride is full
+ * by trying to join it. That is honest rather than good, and it needs a frame
+ * that does not exist; recorded in docs/HANDOFF.md §Known issues.
  */
 export async function setRideAttendance(
   rideId: string,
@@ -288,6 +304,14 @@ export async function setRideAttendance(
             { ride_id: rideId, user_id: user.id, status: attendance },
             { onConflict: 'ride_id,user_id' }
           )
+
+  // 063's capacity trigger. The substring is the contract — see the migration,
+  // which says so on the `raise` itself — and it is matched alongside the code
+  // rather than instead of it, because 018's four text CHECKs on `rides` raise
+  // 23514 too.
+  if (error?.code === '23514' && error.message.includes('this ride is full')) {
+    return { error: 'This ride is full — every seat is taken. Ask the organizer if they can make room.' }
+  }
 
   // A refusal is usually RLS deciding the ride is not visible, which from the
   // rider's side looks like the ride being gone rather than a permission
