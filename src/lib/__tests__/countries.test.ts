@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { COUNTRY_CODES, COUNTRY_TOTAL, countryFlag, countryName } from '@/lib/countries'
+import {
+  COUNTRY_CODES,
+  COUNTRY_TOTAL,
+  countryFlag,
+  countryName,
+  localityOf,
+} from '@/lib/countries'
 import { countryCodeSchema } from '@/lib/validation/profile'
 
 describe('COUNTRY_CODES', () => {
@@ -88,5 +94,54 @@ describe('countryCodeSchema', () => {
     expect(countryCodeSchema.safeParse('N').success).toBe(false)
     expect(countryCodeSchema.safeParse('NLD').success).toBe(false)
     expect(countryCodeSchema.safeParse('').success).toBe(false)
+  })
+})
+
+describe('localityOf', () => {
+  // The four shapes actually stored on DEV, measured 2026-08-18. `location` is
+  // free text bounded only by 018's 1..100, so this is what riders type rather
+  // than what a picker would produce.
+  it('returns the town for every shape found in the database', () => {
+    expect(localityOf('Amsterdam')).toBe('Amsterdam')
+    expect(localityOf('Amsterdam, Netherlands')).toBe('Amsterdam')
+    expect(localityOf('Amsterdam, NL')).toBe('Amsterdam')
+    expect(localityOf('Hoorn Netherlands')).toBe('Hoorn')
+  })
+
+  it('takes a multi-word country whole, longest match first', () => {
+    // Shortest-first would leave `Auckland New`, which reads as a place.
+    expect(localityOf('Auckland New Zealand')).toBe('Auckland')
+    expect(localityOf('Manchester United Kingdom')).toBe('Manchester')
+  })
+
+  it('keeps a town whose name is also a country', () => {
+    // The guard that matters: these are real towns, and stripping would tell
+    // the rider they are near nowhere.
+    expect(localityOf('Luxembourg')).toBe('Luxembourg')
+    expect(localityOf('Monaco')).toBe('Monaco')
+    expect(localityOf('Singapore')).toBe('Singapore')
+  })
+
+  it('keeps a multi-word town that is not a country', () => {
+    expect(localityOf('Den Haag')).toBe('Den Haag')
+    expect(localityOf('New York')).toBe('New York')
+  })
+
+  it('drops a province along with the country', () => {
+    expect(localityOf('Hoorn, Noord-Holland, Netherlands')).toBe('Hoorn')
+  })
+
+  it('answers null for nothing to show', () => {
+    // `location` is nullable until onboarding's last step, and 018 accepts a
+    // string of spaces — both must reach the caller as "no city" rather than
+    // rendering `near` followed by a gap.
+    expect(localityOf(null)).toBeNull()
+    expect(localityOf(undefined)).toBeNull()
+    expect(localityOf('   ')).toBeNull()
+    expect(localityOf(', Netherlands')).toBeNull()
+  })
+
+  it('trims the surrounding whitespace 018 permits', () => {
+    expect(localityOf('  Utrecht , Netherlands ')).toBe('Utrecht')
   })
 })

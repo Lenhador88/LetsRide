@@ -76,3 +76,64 @@ export function countryName(code: string): string {
     return code
   }
 }
+
+// Built once from `COUNTRY_CODES`, like `displayNames` above and for the same
+// reason: `localityOf` runs per render on a list screen. Holds every ISO code
+// and every English country name, lowercased.
+let countryTokens: Set<string> | null = null
+
+function countryTokenSet(): Set<string> {
+  if (countryTokens) return countryTokens
+  countryTokens = new Set<string>()
+  for (const code of COUNTRY_CODES) {
+    countryTokens.add(code.toLowerCase())
+    const name = countryName(code)
+    if (name !== code) countryTokens.add(name.toLowerCase())
+  }
+  return countryTokens
+}
+
+/** The longest country name in the set is four words (`United States Minor …`). */
+const MAX_COUNTRY_WORDS = 5
+
+/**
+ * `profiles.location` → the town on its own. `Amsterdam, Netherlands`,
+ * `Amsterdam, NL` and `Hoorn Netherlands` all give the town; `Amsterdam` is
+ * unchanged.
+ *
+ * The Clubs strip needs this because `location` is **free text** — `018` bounds
+ * it to 1..100 characters and nothing else, there is no picker behind it, and
+ * riders type the country in as many forms as they feel like. Measured on DEV
+ * 2026-08-18, seven rows held four different shapes, three of them carrying a
+ * country. Product owner: *"just close by city or village or town is fine."*
+ *
+ * Two passes, in this order, because neither alone covers what is actually
+ * stored:
+ *
+ * 1. **Everything before the first comma.** That is the town in every
+ *    comma-separated form, and it also drops a province nobody asked for.
+ * 2. **A trailing country, space-separated**, which is what pass 1 cannot see:
+ *    `Hoorn Netherlands` has no comma. Matched against `COUNTRY_CODES` and
+ *    `Intl.DisplayNames` rather than a list written here — same derivation the
+ *    rest of this file uses, so it does not go stale when a country renames.
+ *    Longest match first, so `New Zealand` goes whole rather than leaving `New`.
+ *
+ * **Never returns empty, and that guard is the interesting case rather than
+ * defensive padding.** Several towns *are* country names — Luxembourg, Mexico,
+ * Singapore, Monaco — so a rider who typed one would otherwise be told they are
+ * near nowhere. If stripping would consume the whole string, the string stays.
+ */
+export function localityOf(location: string | null | undefined): string | null {
+  const first = location?.split(',')[0]?.trim()
+  if (!first) return null
+
+  const words = first.split(/\s+/)
+  const tokens = countryTokenSet()
+
+  for (let take = Math.min(MAX_COUNTRY_WORDS, words.length - 1); take >= 1; take--) {
+    const suffix = words.slice(words.length - take).join(' ').toLowerCase()
+    if (tokens.has(suffix)) return words.slice(0, words.length - take).join(' ')
+  }
+
+  return first
+}
