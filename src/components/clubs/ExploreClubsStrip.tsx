@@ -35,21 +35,35 @@ import { CLUBS_PAGE_SIZE } from '@/lib/data/clubs'
  * a count that can disagree with the list one tap away is `PD-254`'s crew-count
  * bug, and no server-side `count` can reproduce a predicate applied in JS.
  *
- * The pin is the approved frame's own glyph and stays; the *copy* deliberately
- * does not say "near you" until `PD-259` gives a club a location, since nothing
- * in the schema can back that sentence today.
+ * **`city` is the rider's own onboarding city, and the clubs are not filtered
+ * by it.** Product owner's call, 2026-08-18, after the concern was raised and
+ * reaffirmed: the row reads `near Utrecht` because that is the sentence the
+ * screen wants, while `getExploreClubs` still returns every public club the
+ * rider has not joined, in creation order, with no geographic predicate of any
+ * kind — `clubs` has no location column to filter on. `PD-259` is what makes
+ * the sentence true; until it lands the word `near` is ahead of the data, which
+ * is recorded here rather than left for the next reader to discover from the
+ * query. It degrades to `Explore N clubs` for a rider whose `profiles.location`
+ * is empty, which is every rider who skipped that onboarding step.
+ *
+ * The pin is the approved frame's own glyph.
  *
  * No button, deliberately: the Navbar's sticky `Create club` is already this
  * screen's one primary, and a second filled control beside it makes neither
  * read as the main action.
  */
-export function ExploreClubsStrip({ count }: { count?: number }) {
+export function ExploreClubsStrip({ count, city }: { count?: number; city?: string | null }) {
+  // Trimmed, because `018` bounds `location` to 1..100 characters and nothing
+  // else — a city of spaces is a value the column accepts and this must not
+  // render as `near` followed by a gap.
+  const place = city?.trim() ? ` near ${city.trim()}` : ''
+
   const label =
     count === undefined || count === 0
-      ? 'Explore clubs'
+      ? `Explore clubs${place}`
       : count >= CLUBS_PAGE_SIZE
-        ? `Explore ${CLUBS_PAGE_SIZE}+ clubs`
-        : `Explore ${count} ${count === 1 ? 'club' : 'clubs'}`
+        ? `Explore ${CLUBS_PAGE_SIZE}+ clubs${place}`
+        : `Explore ${count} ${count === 1 ? 'club' : 'clubs'}${place}`
 
   return (
     <Link
