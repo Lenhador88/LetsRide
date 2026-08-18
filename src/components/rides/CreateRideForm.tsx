@@ -37,8 +37,9 @@ const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') 
  * - **An end time.** The frame draws a second date and time; `rides` has
  *   `departure_at` and nothing else. The ride detail draws only a start too.
  * - **Distance in km** and **"Includes offroad"**, neither of which exists.
- * - **"Public seats"** as a number distinct from `max_riders` — and `max_riders`
- *   itself has never been enforced by anything since `001`.
+ * - **"Public seats"** as a number distinct from `max_riders`. `max_riders`
+ *   itself is real and, since `063`, enforced — what has no column is a
+ *   *second* number beside it.
  * - **A cover photo** ("Add photo"). `rides` has no image column; the list's
  *   80-wide strip is empty for the same reason.
  * - **Rider invitations** with an Admin role, the same unbuilt feature the
