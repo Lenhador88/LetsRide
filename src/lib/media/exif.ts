@@ -37,16 +37,38 @@
  * broken file can do is produce the same result as a photo with no metadata.
  */
 
-import { wallClockToUtc } from '@/lib/utils'
-
 export type ExifCapture = {
   /** ISO 8601 instant, or null when the photo carries no usable capture time. */
   takenAt: string | null
+  /**
+   * The UTC offset the instant above was resolved with, in minutes east of UTC
+   * (Amsterdam in summer is `120`). It is what makes the camera's own wall-clock
+   * reading recoverable from the instant, exactly, by any renderer.
+   *
+   * Always present when `takenAt` is, and always absent when it is not — the
+   * database CHECK refuses a half pair, and a bare instant would leave every
+   * reader guessing which zone to draw it in.
+   */
+  takenAtOffsetMinutes: number | null
   latitude: number | null
   longitude: number | null
 }
 
-const NOTHING: ExifCapture = { takenAt: null, latitude: null, longitude: null }
+const NOTHING: ExifCapture = {
+  takenAt: null,
+  takenAtOffsetMinutes: null,
+  latitude: null,
+  longitude: null,
+}
+
+/**
+ * The floor a capture time has to clear. `DateTimeOriginal` arrived with EXIF
+ * 1.0 in **October 1995**, so a value predating the tag's own specification is
+ * garbage by construction — which is the test that actually catches the two
+ * values that turn up in practice, epoch-0 (`1970-01-01`) and the 1904 Mac
+ * epoch. A 1900 floor admits both.
+ */
+const EARLIEST_CAPTURE_MS = Date.UTC(1995, 0, 1)
 
 /**
  * How much of the file to look at. The Exif APP1 segment is at most 65533 bytes
@@ -111,7 +133,7 @@ export function parseExifCapture(buffer: ArrayBuffer): ExifCapture {
     if (!ifd0) return NOTHING
 
     return {
-      takenAt: readTakenAt(view, tiffAt, ifd0, little),
+      ...readTakenAt(view, tiffAt, ifd0, little),
       ...readCoordinates(view, tiffAt, ifd0, little),
     }
   } catch {
@@ -286,56 +308,128 @@ const DATE_TIME_ORIGINAL_RE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$
 /** `+HH:MM` / `-HH:MM`, per EXIF 2.31's OffsetTimeOriginal. */
 const OFFSET_TIME_RE = /^([+-])(\d{2}):(\d{2})$/
 
+type CaptureTime = { takenAt: string | null; takenAtOffsetMinutes: number | null }
+
+const NO_CAPTURE_TIME: CaptureTime = { takenAt: null, takenAtOffsetMinutes: null }
+
 /**
  * `DateTimeOriginal` is a **zone-less wall-clock string** — the camera writes
  * what its own clock read and, before EXIF 2.31, recorded no offset at all. So
- * turning it into an instant needs a zone from somewhere, and there are only
- * three candidates:
+ * turning it into an instant needs an offset from somewhere, and **whichever one
+ * is used is stored beside the instant** rather than discarded. That is what
+ * makes the camera's own reading recoverable: `takenAt` answers *when*, the
+ * offset answers *what the clock on the wall said*, and no renderer has to guess.
  *
- * - **`OffsetTimeOriginal`, when the camera wrote one.** The honest answer, and
- *   the only one that is actually *true*. Used whenever it is present and
- *   well-formed.
- * - **`APP_TIME_ZONE`**, via `wallClockToUtc` — the app's standing convention
- *   for every zone-less time it stores (CLAUDE.md §Technology Decisions). It is
- *   wrong for a photo taken abroad, and it is chosen anyway because it is the
- *   one that **round-trips**: the Journal renders through formatters pinned to
- *   the same zone, so a camera that recorded 12:15 draws 12:15. The rider sees
- *   the time they remember.
- * - The **browser's** zone at upload, which is the tempting one and is wrong in
- *   a way the other two are not: it makes the stored instant depend on where the
- *   rider happened to be standing when they got signal, so the same photo
- *   uploaded twice from two places is two different times.
+ * Two sources, in order:
  *
- * A photo taken abroad is therefore recorded as if the camera's clock were
- * Amsterdam's. That is a known, bounded inaccuracy — the same interim CLAUDE.md
- * records for ride times, which the proposal notes ends the same way, with a
- * zone stored beside the value.
+ * - **`OffsetTimeOriginal`, when the camera wrote one.** The honest answer and
+ *   the only one that is actually *true*.
+ * - **The device's own offset at that wall-clock date.** The photo was almost
+ *   always taken by the phone now uploading it, so its zone is where the rider
+ *   was; and because the device's clock and its offset are self-consistent with
+ *   `now()`, an honestly-dated photo cannot come out ahead of the present.
+ *
+ * **`APP_TIME_ZONE` was the third candidate and it is wrong here, which is worth
+ * writing down because it is the app's convention everywhere else.** That
+ * convention exists so an unpinned *formatter* does not render one zone during
+ * the prerender pass and another on hydration — a display problem. This is an
+ * event handler on a picked file producing an absolute instant, with no render
+ * and no second reader. Resolving a Helsinki rider's 12:00 EEST photo as
+ * Amsterdam wall-clock yields 10:00 UTC: **an hour in the future**, which
+ * `taken_at <= now()` refuses. Every zone east of Amsterdam, in proportion to
+ * its offset, for exactly the window in which riders post.
+ *
+ * The date is resolved through the local-parts `Date` constructor rather than by
+ * adding a fixed offset, so a photo taken in July gets July's offset and one
+ * taken in January gets January's. Adding a constant is the version that is
+ * wrong twice a year.
  */
-function readTakenAt(view: DataView, tiffAt: number, ifd0: Ifd, little: boolean): string | null {
+function readTakenAt(view: DataView, tiffAt: number, ifd0: Ifd, little: boolean): CaptureTime {
   const exifIfd = readSubIfd(view, tiffAt, ifd0, TAG_EXIF_IFD, little)
-  if (!exifIfd) return null
+  if (!exifIfd) return NO_CAPTURE_TIME
 
   const entry = exifIfd.get(TAG_DATE_TIME_ORIGINAL)
-  if (!entry) return null
+  if (!entry) return NO_CAPTURE_TIME
   const raw = readAscii(view, tiffAt, entry, little)
-  if (!raw) return null
+  if (!raw) return NO_CAPTURE_TIME
 
   const match = DATE_TIME_ORIGINAL_RE.exec(raw.trim())
   // Cameras write `    :  :     :  :  ` for "unset" rather than omitting the
   // tag, so a shape check is the whole validation here.
-  if (!match) return null
+  if (!match) return NO_CAPTURE_TIME
   const [, year, month, day, hour, minute, second] = match
-  const wallClock = `${year}-${month}-${day}T${hour}:${minute}:${second}`
 
   const offsetEntry = exifIfd.get(TAG_OFFSET_TIME_ORIGINAL)
-  const offset = offsetEntry ? readAscii(view, tiffAt, offsetEntry, little) : null
-  const iso = offset && OFFSET_TIME_RE.test(offset.trim())
-    ? `${wallClock}${offset.trim()}`
-    : null
+  const declared = offsetEntry ? readAscii(view, tiffAt, offsetEntry, little)?.trim() : null
+  const declaredOffset = declared ? parseOffsetMinutes(declared) : null
 
-  const instant = iso ? new Date(iso) : new Date(wallClockToUtc(wallClock))
-  if (Number.isNaN(instant.getTime())) return null
-  return instant.toISOString()
+  const parts = {
+    year: Number(year),
+    month: Number(month),
+    day: Number(day),
+    hour: Number(hour),
+    minute: Number(minute),
+    second: Number(second),
+  }
+
+  const { instant, offsetMinutes } =
+    declaredOffset === null ? resolveWithDeviceOffset(parts) : resolveWithOffset(parts, declaredOffset)
+
+  if (Number.isNaN(instant)) return NO_CAPTURE_TIME
+
+  // **The clamp, and it is total.** The database bounds this column because the
+  // client supplies it and cannot be trusted to — but a CHECK that refuses the
+  // insert costs the rider the photo they just composed, and a garbage EXIF tag
+  // is not their fault. So an out-of-range value is dropped here and the
+  // postcard posts without a capture time, which is a state the composer and the
+  // Journal both already handle. The CHECK stays as the guarantee; this keeps it
+  // from ever being the thing a rider meets.
+  if (instant > Date.now() || instant < EARLIEST_CAPTURE_MS) return NO_CAPTURE_TIME
+
+  // Dropped together, always — the coupling CHECK refuses a half pair, and an
+  // instant with no offset is one nobody can draw a wall clock from.
+  return { takenAt: new Date(instant).toISOString(), takenAtOffsetMinutes: offsetMinutes }
+}
+
+type WallClockParts = {
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  second: number
+}
+
+/** `+HH:MM` / `-HH:MM` to minutes east of UTC. */
+function parseOffsetMinutes(text: string): number | null {
+  const match = OFFSET_TIME_RE.exec(text)
+  if (!match) return null
+  const [, sign, hours, minutes] = match
+  const total = Number(hours) * 60 + Number(minutes)
+  return sign === '-' ? -total : total
+}
+
+function resolveWithOffset(parts: WallClockParts, offsetMinutes: number) {
+  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+  return { instant: asUtc - offsetMinutes * 60_000, offsetMinutes }
+}
+
+/**
+ * The device's own offset **at that date**, taken from a `Date` built out of
+ * local parts — which is what makes it DST-correct without a zone database.
+ *
+ * `getTimezoneOffset()` reports minutes *behind* UTC, so it is negated to give
+ * the "east of UTC" convention the column stores.
+ */
+function resolveWithDeviceOffset(parts: WallClockParts) {
+  const local = new Date(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+  const instant = local.getTime()
+  return {
+    instant,
+    // `0 - x` rather than `-x`, so UTC yields `+0` and not `-0`. Cosmetic on the
+    // wire (JSON renders both as `0`) and not in a test or a comparison.
+    offsetMinutes: Number.isNaN(instant) ? 0 : 0 - local.getTimezoneOffset(),
+  }
 }
 
 /**

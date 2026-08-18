@@ -13,6 +13,14 @@ import { parseExifCapture } from '../exif'
  * with correct inline-vs-offset value placement.
  */
 
+/** What every "this photo tells us nothing" assertion below compares against. */
+const NOTHING = {
+  takenAt: null,
+  takenAtOffsetMinutes: null,
+  latitude: null,
+  longitude: null,
+}
+
 type Rational = [numerator: number, denominator: number]
 
 type ExifFixture = {
@@ -147,37 +155,105 @@ function buildJpeg(fixture: ExifFixture): ArrayBuffer {
   return new Uint8Array(chunks).buffer
 }
 
-/** Amsterdam is UTC+2 in August, so 12:15 wall-clock is 10:15Z. */
 const AUGUST_NOON = '2026:08:10 12:15:30'
 
+/**
+ * **`vitest.config.ts` pins `TZ=UTC`, and under it a device-zone fallback and a
+ * hardcoded `Date.UTC` are indistinguishable** — the same trap `wallClockToUtc`'s
+ * own tests record, where a naive implementation passes because the only zone
+ * the suite ever runs in has a zero offset.
+ *
+ * Node re-reads `process.env.TZ` between `Date` constructions, so these tests
+ * set a real zone with a real DST rule and assert the *offset*, which is the
+ * thing that would silently be zero.
+ */
+function inZone<T>(zone: string, run: () => T): T {
+  const original = process.env.TZ
+  process.env.TZ = zone
+  try {
+    return run()
+  } finally {
+    process.env.TZ = original
+  }
+}
+
+/** Wall-clock parts for an instant a minute ago, in whatever zone is current. */
+function aMinuteAgoLocal(): string {
+  const when = new Date(Date.now() - 60_000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${when.getFullYear()}:${pad(when.getMonth() + 1)}:${pad(when.getDate())} ` +
+    `${pad(when.getHours())}:${pad(when.getMinutes())}:${pad(when.getSeconds())}`
+  )
+}
+
 describe('parseExifCapture — capture time', () => {
-  it('reads DateTimeOriginal as APP_TIME_ZONE wall-clock when the camera wrote no offset', () => {
-    const result = parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON }))
-    expect(result.takenAt).toBe('2026-08-10T10:15:30.000Z')
+  it('resolves a zone-less DateTimeOriginal against the device zone, and reports the offset it used', () => {
+    const result = inZone('Europe/Helsinki', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON }))
+    )
+    expect(result.takenAt).toBe('2026-08-10T09:15:30.000Z')
+    expect(result.takenAtOffsetMinutes).toBe(180)
   })
 
-  it('prefers OffsetTimeOriginal over the app zone when the camera wrote one', () => {
-    const result = parseExifCapture(
-      buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '-05:00' })
+  it('uses the offset in force on the capture DATE, not a constant — a January photo is not a July one', () => {
+    const result = inZone('Europe/Helsinki', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: '2026:01:10 12:15:30' }))
+    )
+    expect(result.takenAt).toBe('2026-01-10T10:15:30.000Z')
+    expect(result.takenAtOffsetMinutes).toBe(120)
+  })
+
+  it('reports a zero offset in UTC rather than omitting it', () => {
+    const result = inZone('UTC', () => parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON })))
+    expect(result.takenAt).toBe('2026-08-10T12:15:30.000Z')
+    expect(result.takenAtOffsetMinutes).toBe(0)
+  })
+
+  it('handles a zone behind UTC', () => {
+    const result = inZone('America/New_York', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON }))
+    )
+    expect(result.takenAt).toBe('2026-08-10T16:15:30.000Z')
+    expect(result.takenAtOffsetMinutes).toBe(-240)
+  })
+
+  it('prefers OffsetTimeOriginal over the device zone when the camera wrote one', () => {
+    const result = inZone('Europe/Helsinki', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '-05:00' }))
     )
     expect(result.takenAt).toBe('2026-08-10T17:15:30.000Z')
+    expect(result.takenAtOffsetMinutes).toBe(-300)
   })
 
-  it('ignores a malformed offset rather than failing the whole read', () => {
-    const result = parseExifCapture(
-      buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: 'nonsense' })
+  it('falls back to the device zone when the offset tag is malformed', () => {
+    const result = inZone('Europe/Helsinki', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: 'nonsense' }))
     )
-    expect(result.takenAt).toBe('2026-08-10T10:15:30.000Z')
+    expect(result.takenAt).toBe('2026-08-10T09:15:30.000Z')
+    expect(result.takenAtOffsetMinutes).toBe(180)
   })
 
-  it('resolves a winter capture against the winter offset, not a fixed one', () => {
-    const result = parseExifCapture(buildJpeg({ dateTimeOriginal: '2026:01:10 12:15:30' }))
-    expect(result.takenAt).toBe('2026-01-10T11:15:30.000Z')
+  /**
+   * The regression this whole shape exists for. Resolving a zone-less wall clock
+   * against `APP_TIME_ZONE` puts a rider east of Amsterdam in the FUTURE — a
+   * Helsinki photo taken a minute ago reads as 59 minutes from now — and the
+   * clamp below then drops it. The result was a capture time silently NULL for a
+   * whole region, at exactly the moment people post.
+   */
+  it('keeps a photo taken a minute ago in a zone ahead of Amsterdam', () => {
+    const result = inZone('Europe/Helsinki', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: aMinuteAgoLocal() }))
+    )
+    expect(result.takenAt).not.toBeNull()
+    expect(result.takenAtOffsetMinutes).toBe(180)
   })
 
   it('reads a big-endian (MM) TIFF header the same way', () => {
-    const result = parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, bigEndian: true }))
-    expect(result.takenAt).toBe('2026-08-10T10:15:30.000Z')
+    const result = inZone('UTC', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, bigEndian: true }))
+    )
+    expect(result.takenAt).toBe('2026-08-10T12:15:30.000Z')
   })
 
   it('returns null for the blank placeholder cameras write for "unset"', () => {
@@ -188,6 +264,49 @@ describe('parseExifCapture — capture time', () => {
   it('returns null when the tag is absent altogether', () => {
     const result = parseExifCapture(buildJpeg({ gps: AMSTERDAM }))
     expect(result.takenAt).toBeNull()
+  })
+})
+
+describe('parseExifCapture — the clamp', () => {
+  it('drops a capture time in the future rather than letting the CHECK refuse the post', () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const stamp =
+      `${tomorrow.getFullYear()}:${pad(tomorrow.getMonth() + 1)}:${pad(tomorrow.getDate())} ` +
+      `${pad(tomorrow.getHours())}:${pad(tomorrow.getMinutes())}:${pad(tomorrow.getSeconds())}`
+    expect(parseExifCapture(buildJpeg({ dateTimeOriginal: stamp })).takenAt).toBeNull()
+  })
+
+  it.each([
+    ['the epoch-0 placeholder', '1970:01:01 00:00:00'],
+    ['the 1904 Mac epoch', '1904:01:01 00:00:00'],
+    ['the day before the floor', '1994:12:31 23:59:59'],
+  ])('drops %s — a 1900 floor would have admitted all three', (_label, stamp) => {
+    expect(parseExifCapture(buildJpeg({ dateTimeOriginal: stamp })).takenAt).toBeNull()
+  })
+
+  it('keeps a date after the floor', () => {
+    expect(parseExifCapture(buildJpeg({ dateTimeOriginal: '1996:06:01 12:00:00' })).takenAt).not.toBeNull()
+  })
+
+  it('drops the instant and its offset TOGETHER — the database CHECK refuses a half pair', () => {
+    const dropped = parseExifCapture(buildJpeg({ dateTimeOriginal: '1970:01:01 00:00:00' }))
+    expect(dropped.takenAt).toBeNull()
+    expect(dropped.takenAtOffsetMinutes).toBeNull()
+  })
+
+  it('never reports an offset without an instant, on any fixture in this file', () => {
+    const fixtures = [
+      buildJpeg({}),
+      buildJpeg({ gps: AMSTERDAM }),
+      buildJpeg({ dateTimeOriginal: '    :  :     :  :  ' }),
+      buildJpeg({ dateTimeOriginal: '1970:01:01 00:00:00' }),
+      buildJpeg({ dateTimeOriginal: AUGUST_NOON }),
+    ]
+    for (const fixture of fixtures) {
+      const { takenAt, takenAtOffsetMinutes } = parseExifCapture(fixture)
+      expect(takenAt === null).toBe(takenAtOffsetMinutes === null)
+    }
   })
 })
 
@@ -248,40 +367,40 @@ describe('parseExifCapture — coordinates', () => {
   })
 
   it('reads both together when the photo carries both', () => {
-    const result = parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, gps: AMSTERDAM }))
-    expect(result.takenAt).toBe('2026-08-10T10:15:30.000Z')
+    const result = inZone('UTC', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, gps: AMSTERDAM }))
+    )
+    expect(result.takenAt).toBe('2026-08-10T12:15:30.000Z')
     expect(result.latitude).toBeCloseTo(52.37, 5)
   })
 })
 
 describe('parseExifCapture — files it must not choke on', () => {
   it('finds the Exif APP1 behind an XMP APP1 rather than parsing the first one it sees', () => {
-    const result = parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, xmpFirst: true }))
-    expect(result.takenAt).toBe('2026-08-10T10:15:30.000Z')
+    const result = inZone('UTC', () =>
+      parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, xmpFirst: true }))
+    )
+    expect(result.takenAt).toBe('2026-08-10T12:15:30.000Z')
   })
 
   it('returns nothing for a JPEG with no Exif segment at all', () => {
     const bare = new Uint8Array([0xff, 0xd8, 0xff, 0xda, 0x00, 0x02]).buffer
-    expect(parseExifCapture(bare)).toEqual({ takenAt: null, latitude: null, longitude: null })
+    expect(parseExifCapture(bare)).toEqual(NOTHING)
   })
 
   it('returns nothing for a file that is not a JPEG', () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).buffer
-    expect(parseExifCapture(png)).toEqual({ takenAt: null, latitude: null, longitude: null })
+    expect(parseExifCapture(png)).toEqual(NOTHING)
   })
 
   it('returns nothing for an empty buffer', () => {
-    expect(parseExifCapture(new ArrayBuffer(0))).toEqual({
-      takenAt: null,
-      latitude: null,
-      longitude: null,
-    })
+    expect(parseExifCapture(new ArrayBuffer(0))).toEqual(NOTHING)
   })
 
   it('returns nothing for a truncated Exif segment instead of throwing', () => {
     const full = new Uint8Array(buildJpeg({ dateTimeOriginal: AUGUST_NOON, gps: AMSTERDAM }))
     const truncated = full.slice(0, 24).buffer
-    expect(parseExifCapture(truncated)).toEqual({ takenAt: null, latitude: null, longitude: null })
+    expect(parseExifCapture(truncated)).toEqual(NOTHING)
   })
 
   it('returns nothing when the TIFF magic is wrong', () => {
@@ -290,10 +409,6 @@ describe('parseExifCapture — files it must not choke on', () => {
     // length(4) + "Exif\0\0"(6) + byte order(2).
     full[14] = 0x00
     full[15] = 0x00
-    expect(parseExifCapture(full.buffer)).toEqual({
-      takenAt: null,
-      latitude: null,
-      longitude: null,
-    })
+    expect(parseExifCapture(full.buffer)).toEqual(NOTHING)
   })
 })

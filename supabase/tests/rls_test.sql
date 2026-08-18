@@ -9804,6 +9804,14 @@ reset role;
 -- INSERT, column by column. 041 made UPDATE column-level and left INSERT at
 -- table level, so before 044 `created_at` was insertable even though it was not
 -- in any grant list — the half a reader of 041 alone would not predict.
+--
+-- **The exact list below grew from six to eleven in 064, and that is the point
+-- of asserting it exactly rather than per column.** 064 adds the five capture
+-- columns, and this assertion is what makes any future widening of INSERT a
+-- deliberate edit to a test rather than a silent one — including the shape 044
+-- and 046 both warn about, where an absolute re-grant written from a document
+-- instead of from the database reinstates a column somebody removed on purpose.
+-- What must NEVER come back here is `created_at` or `updated_at`.
 select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'insert'),
   false, '044: authenticated holds no TABLE-level INSERT grant on postcards — 044 made it column-level, as 041 did for UPDATE');
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'created_at', 'INSERT'),
@@ -9815,8 +9823,8 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'postcards'
       and grantee = 'authenticated' and privilege_type = 'INSERT'),
-  'author_id,caption,club_id,id,image_path,ride_id',
-  '044: exactly six columns hold INSERT, and neither timestamp is among them');
+  'author_id,caption,club_id,id,image_path,ride_id,taken_at,taken_at_offset_minutes,taken_latitude,taken_location_precision,taken_longitude',
+  '044/064: the INSERT grant list is exact, and neither timestamp 044 closed is among the eleven columns on it');
 
 -- The whole migration in one line. **Deliberately a RESTATEMENT** and placed
 -- after the four it summarises rather than before them: all four combinations
@@ -14908,6 +14916,294 @@ select assert_eq(
 
 reset role;
 rollback to savepoint ride_capacity_063;
+
+\echo ''
+\echo '# A photo''s capture time and place — bounded, coupled, and insert-only (064)'
+
+-- ===========================================================================
+-- 064.  postcards.taken_at / taken_at_offset_minutes / taken_latitude /
+--       taken_longitude / taken_location_precision.  PD-255.
+--
+--       The privacy rule this file cannot test, stated so nobody reads the
+--       absence as coverage: **the reduction happens in the BROWSER, before the
+--       request is built.** No assertion here can see that, because by the time
+--       a row exists the choice has already been made. What the database CAN
+--       own, and what is asserted below, is everything that follows from it —
+--       which columns may ever be written, that a `region` row really is
+--       rounded, that the triple cannot arrive half-populated, and that nobody
+--       can edit any of it afterwards.
+--
+--       Grants are asserted BY ROLE with has_column_privilege, never by
+--       attempting a write: this suite runs as the table owner, for whom no
+--       column privilege is a barrier (031's lesson).
+-- ===========================================================================
+savepoint capture_metadata_064;
+
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 064.1  INSERT reaches all five, so a rider can publish what they chose.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', 'public.postcards', c, 'INSERT'))
+     from unnest(array['taken_at', 'taken_at_offset_minutes', 'taken_latitude',
+                       'taken_longitude', 'taken_location_precision']) c),
+  true, '064: authenticated may INSERT all five capture columns — the rider''s own choice is what writes them');
+
+-- ---------------------------------------------------------------------------
+-- 064.2  SELECT reaches all five, and the reason is a decision rather than
+--        habit: a rider must be able to read back what they published, and the
+--        Journal's `order by taken_at` needs the column privilege — Postgres
+--        checks a column reference in an ORDER BY exactly as in a target list,
+--        which is what 062 measured for a predicate.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', 'public.postcards', c, 'SELECT'))
+     from unnest(array['taken_at', 'taken_at_offset_minutes', 'taken_latitude',
+                       'taken_longitude', 'taken_location_precision']) c),
+  true, '064: ... and may SELECT all five — the audience of these columns IS the audience of the postcard, and there is no narrower one available');
+
+select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'select'),
+  false, '064: ... while the TABLE-level SELECT grant is still absent, so 062''s shape survived the re-grant and select(*) is still 42501');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'SELECT'),
+  false, '064: ... and ride_id is STILL not readable — 062 took it out deliberately, and an absolute re-grant list is exactly how that gets silently reverted');
+
+-- ---------------------------------------------------------------------------
+-- 064.3  NO UPDATE, on any of the five, ever. This is the insert-only decision
+--        and the whole remedy for a mis-published location is deleting the
+--        postcard. 064 issues no UPDATE statement at all — leaving the verb
+--        alone is what produces this, and touching it is 044/046's trap.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_or(has_column_privilege('authenticated', 'public.postcards', c, 'UPDATE'))
+     from unnest(array['taken_at', 'taken_at_offset_minutes', 'taken_latitude',
+                       'taken_longitude', 'taken_location_precision']) c),
+  false, '064: no capture column holds UPDATE — a rider may always make a photo vaguer by deleting it and never sharper, and there is no path to re-point an old postcard at a new place');
+
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  'caption,club_id,image_path',
+  '064: the UPDATE list is UNMOVED at exactly three columns — if this goes red, 064 touched a verb it must not mention and has reinstated whatever 046 removed');
+
+-- ---------------------------------------------------------------------------
+-- 064.4  anon holds nothing, on any of the five, in any verb. Decision #1.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_or(has_column_privilege('anon', 'public.postcards', c, p))
+     from unnest(array['taken_at', 'taken_at_offset_minutes', 'taken_latitude',
+                       'taken_longitude', 'taken_location_precision']) c,
+          unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p),
+  false, '064: anon holds no privilege of any kind on any capture column — a coordinate is the last thing that should reach a role with no session');
+
+-- ---------------------------------------------------------------------------
+-- 064.5  The all-NULL shape is legal, and it is the COMMON one. HEIC (the
+--        iPhone default), screenshots and anything already through another
+--        app's share sheet carry no EXIF at all. If this were refused, every
+--        existing insert fixture in this file would break — which is itself the
+--        proof, since none of them names a capture column.
+-- ---------------------------------------------------------------------------
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000064001', 'exifrider@example.com');
+reset role;
+update profiles set username = 'exifrider', location = 'Utrecht',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000064001';
+
+insert into postcards (id, author_id, image_path)
+  values ('00000000-0000-0000-0000-00000064f001',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a1.jpg');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000064f001'),
+  1, '064: a postcard with no capture metadata at all is legal — it is the common case, not the edge one');
+
+-- ---------------------------------------------------------------------------
+-- 064.6  taken_at is BOUNDED because it cannot be OWNED. 044 closed created_at
+--        by taking the grant away; that instrument is unavailable here, because
+--        this value exists only in the rider's own file. So the CHECK is the
+--        guarantee — and a future value is the one that matters, since the
+--        Journal sorts on this column.
+-- ---------------------------------------------------------------------------
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f002',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a2.jpg',
+          now() + interval '1 day', 0)$$,
+  '23514', '064: a capture time in the FUTURE is refused — it is the ride Journal''s sort key, so PD-163''s pin-yourself-to-the-top defect would arrive again through a column the client must be able to write');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f003',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a3.jpg',
+          timestamptz '1970-01-01 00:00:00+00', 0)$$,
+  '23514', '064: the epoch-0 placeholder is refused — and a 1900 floor would have ADMITTED it, which is why the floor is 1995, the year DateTimeOriginal was specified');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f004',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a4.jpg',
+          timestamptz '1904-01-01 00:00:00+00', 0)$$,
+  '23514', '064: ... and so is the 1904 Mac epoch, the other value a 1900 floor would have let through');
+
+insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f005',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a5.jpg',
+          now() - interval '3 hours', 120);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000064f005'),
+  1, '064: an honest capture time earlier today lands — the bound refuses garbage, not riders');
+
+-- ---------------------------------------------------------------------------
+-- 064.7  The offset is coupled to the instant IN BOTH DIRECTIONS. There is one
+--        writer and it always knows an offset, so a bare instant is a value no
+--        renderer can draw a wall clock from — and a bare offset is nonsense.
+-- ---------------------------------------------------------------------------
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_at)
+  values ('00000000-0000-0000-0000-00000064f006',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a6.jpg',
+          now() - interval '1 hour')$$,
+  '23514', '064: a capture time with NO offset is refused — the camera''s wall clock would be unrecoverable, and the Journal would draw a Helsinki photo in Amsterdam time');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f007',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a7.jpg',
+          120)$$,
+  '23514', '064: ... and an offset with no capture time is refused too — the coupling runs both ways');
+
+-- ---------------------------------------------------------------------------
+-- 064.8  The coordinate TRIPLE arrives whole or not at all. Three nullable
+--        columns admit eight states, five of which are nonsense; without this
+--        every reader invents its own guess about a half-populated row. Same
+--        shape as rides_geocode_coupling (051), one table over.
+-- ---------------------------------------------------------------------------
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_latitude)
+  values ('00000000-0000-0000-0000-00000064f008',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a8.jpg',
+          52.37)$$,
+  '23514', '064: a latitude with no longitude is refused — half a coordinate is not a place');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_latitude, taken_longitude)
+  values ('00000000-0000-0000-0000-00000064f009',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640a9.jpg',
+          52.37, 4.9)$$,
+  '23514', '064: a coordinate with no precision marker is refused — a reader could not tell a rounded point from an exact one, and would have to guess how honestly to label it');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000064f010',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b0.jpg',
+          'precise')$$,
+  '23514', '064: ... and a precision marker with no coordinate is refused, which is the same rule read the other way');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_latitude, taken_longitude, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000064f011',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b1.jpg',
+          52.37, 4.9, 'approximate')$$,
+  '23514', '064: an unknown precision marker is refused — the two values are the contract the composer''s three buttons produce, and a third would be a mode nobody designed');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_latitude, taken_longitude, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000064f012',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b2.jpg',
+          95.0, 4.9, 'precise')$$,
+  '23514', '064: an out-of-range latitude is refused — 051''s bounds, copied rather than reinvented');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_latitude, taken_longitude, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000064f013',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b3.jpg',
+          52.37, 195.0, 'precise')$$,
+  '23514', '064: ... and an out-of-range longitude with it');
+
+-- ---------------------------------------------------------------------------
+-- 064.9  A `region` row must ACTUALLY BE ROUNDED, and this is the assertion the
+--        whole privacy model leans on that a reviewer would otherwise assume is
+--        the client's job. The app is client-rendered: the rounding happens in
+--        a browser this project does not control, so a patched client could
+--        send a precise coordinate under a `region` marker and be drawn as
+--        approximate. CLAUDE.md — no new integrity rule may live only in Zod.
+-- ---------------------------------------------------------------------------
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_latitude, taken_longitude, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000064f014',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b4.jpg',
+          52.370216, 4.895168, 'region')$$,
+  '23514', '064: a PRECISE coordinate sent under a region marker is refused — the rounding is done in a browser this app does not control, so the claim has to be checked here or it is not a claim at all');
+
+insert into postcards (id, author_id, image_path, taken_latitude, taken_longitude, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000064f015',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b5.jpg',
+          52.37, 4.9, 'region');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000064f015'),
+  1, '064: ... and a genuinely rounded one lands');
+
+-- The halfway case, and the reason the predicate is written the way it is. It
+-- asks whether the stored value IS at two decimal places, NOT whether it equals
+-- Postgres's own rounding of some original — so JS and Postgres disagreeing on
+-- 4.895 (JS floors to 4.89, numeric round gives 4.90) cannot fail an honest
+-- client. Both land.
+insert into postcards (id, author_id, image_path, taken_latitude, taken_longitude, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000064f016',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b6.jpg',
+          4.89, 4.90, 'region');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000064f016'),
+  1, '064: ... including the halfway case both languages round differently — the CHECK asks "is it at two places", not "does it equal MY rounding of the original"');
+
+-- A precise row is NOT held to the rounding rule, which is the point of the
+-- marker: it is what distinguishes a value the rider chose to publish exactly
+-- from one they chose to blur.
+insert into postcards (id, author_id, image_path, taken_latitude, taken_longitude, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000064f017',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b7.jpg',
+          52.370216, 4.895168, 'precise');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000064f017'),
+  1, '064: a precise row keeps every digit — the marker is what says which rule applies');
+
+-- ---------------------------------------------------------------------------
+-- 064.10 NO POLICY MOVED. 064 is a grants-and-constraints change; if any of the
+--        four quals differs afterwards it has done something it does not
+--        describe. Asserted as a count of policies rather than a pinned md5,
+--        because the quals are asserted individually throughout this file and a
+--        hash here would go red on every legitimate future edit to them.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'postcards'),
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'postcards'
+      and (coalesce(qual, '') || coalesce(with_check, '')) not like '%taken_%'),
+  '064: no postcards policy mentions a capture column — the audience of a photo''s location is the audience of the photo, and adding an arm for it would be inventing a second one');
+
+rollback to savepoint capture_metadata_064;
 
 rollback;
 
