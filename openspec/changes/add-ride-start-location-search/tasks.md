@@ -130,6 +130,9 @@
 - [ ] 6.2 Keep every decision in `gates.ts`, where `src/__tests__/ride-geocode-gates.test.ts` can
       reach it — a decision that moves into `index.ts` leaves the test suite.
 - [ ] 6.3 Add a test for the skip branch alongside the existing gate tests.
+- [ ] 6.4 **Ask the owner to deploy**, and say plainly in the PR that until they do, a picked ride
+      carries an exact coordinate and no tile. Do not claim the function is current; verify with
+      `list_edge_functions` against both refs and the `updated_at`-vs-commit-date check.
 - [ ] 6.5 **Reinstate `requestRideMapRender` for picked writes, in the same PR as the deploy.**
       5.7 suppresses the call because the *currently deployed* build would orphan two objects on a
       picked ride — the condition is about which build is live, not about picks. Once 6.1 is
@@ -137,9 +140,7 @@
       invokes the function, so leaving 5.7's guard in place ships a map that silently never appears
       for exactly the rides carrying the best coordinates. Found while building 5.7; the gap was
       between 5.7 and 6.1 rather than inside either.
-- [ ] 6.4 **Ask the owner to deploy**, and say plainly in the PR that until they do, a picked ride
-      carries an exact coordinate and no tile. Do not claim the function is current; verify with
-      `list_edge_functions` against both refs and the `updated_at`-vs-commit-date check.
+
 
 ## 7. Coordination and documentation — do not let these land silently
 

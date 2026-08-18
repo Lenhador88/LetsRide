@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState } from 'react'
+import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { CloseIcon, LocationOutlineIcon, SearchIcon } from '@/components/icons/generated'
 import { PLACE_SEARCH_MIN_CHARS, searchPlaces } from '@/lib/data/places'
@@ -464,10 +465,14 @@ function PlaceSearchSheet({
 export function PlaceDataCredit() {
   return (
     <p className="shrink-0 px-4 pt-2 pb-8 text-center text-sm font-medium text-muted">
+      {/* `next/link`, not a bare anchor. The sheet opens on TOP of a
+          create-ride or create-club form, so a document navigation would
+          reload the bundle and take everything typed with it — the pick
+          included. In the Capacitor shell it is a hard reload of the app. */}
       Place data from{' '}
-      <a href="/legal/attributions" className="underline">
+      <Link href="/legal/attributions" className="underline">
         Overture Maps
-      </a>
+      </Link>
     </p>
   )
 }

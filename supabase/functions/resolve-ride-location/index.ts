@@ -446,9 +446,17 @@ Deno.serve(async (req: Request) => {
     //    path this function already handles: the uploads are deleted and
     //    `column_write_refused` is returned. Nothing new to handle — the branch
     //    simply becomes reachable for a case that used to slip past it.
+    // ** Never issue an empty payload. ** A picked ride whose render or upload
+    //    failed has nothing to write — its coordinate is already stored and is
+    //    the rider's own — and PostgREST's handling of an empty PATCH body is
+    //    not something this repo pins. Before the picked branch existed the
+    //    coordinate columns were always present, so this state was unreachable.
+    const payload = { ...locationColumns, ...tileColumns }
+    if (Object.keys(payload).length === 0) return noTile('nothing_to_write')
+
     const write = caller
       .from('rides')
-      .update({ ...locationColumns, ...tileColumns })
+      .update(payload)
       .eq('id', rideId)
 
     const { data: written, error: writeError } = await (picked
