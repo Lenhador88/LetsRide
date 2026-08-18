@@ -21,14 +21,24 @@ import type { ClubListItem } from '@/types'
  * `.pt-header-sub-extra` on top of the shell's `.pt-header`), and `Explore` is
  * reached from the strip instead.
  *
- * **With no clubs joined, the explore list *is* this screen.** Rendered in
- * place, on this route — not a redirect to `/clubs/explore`, which was the
- * alternative considered and rejected: the decision reads from data rather than
- * session, so it cannot live in `lib/auth/guard.ts` and would have to fire from
- * an effect after the read lands — skeleton, then empty, then a jump, then a
- * second skeleton. It also reverses the moment a rider leaves their last club,
- * so the tab would start bouncing with nothing on screen saying why. Same
- * destination, one render, no history to reason about.
+ * **The strip renders above the read gate, and that placement is the whole
+ * point rather than a layout choice.** The dropdown it replaces lived on the
+ * header, so Explore stayed one tap away even while this list was failing to
+ * load. Rendered inside the gate — which is what the first version did — a
+ * failed `getYourClubs` leaves a rider with a full-screen error, a retry for
+ * the read that broke, and no route to the other screen at all. Caught in
+ * review, and no gate here could have caught it: `scripts/walk.mjs` reaches
+ * `/clubs/explore` by typing the URL, so the walk stays green with zero links
+ * to it.
+ *
+ * **With no clubs joined, the explore list *is* this screen**, and that is the
+ * one branch with no strip — the destination is already on screen. Rendered in
+ * place, on this route, not a redirect to `/clubs/explore`: the decision reads
+ * from data rather than session, so it cannot live in `lib/auth/guard.ts` and
+ * would have to fire from an effect after the read lands — skeleton, then
+ * empty, then a jump, then a second skeleton. It also reverses the moment a
+ * rider leaves their last club, so the tab would start bouncing with nothing on
+ * screen saying why. Same destination, one render, no history to reason about.
  *
  * That deletes the `You have no clubs, yet!` empty state rather than restyling
  * it. A screen whose whole content is a sentence telling a rider what they do
@@ -47,40 +57,53 @@ export default function ClubsPage() {
   const yours = useQuery(queryKeys.clubs.yours(), getYourClubs)
   const explore = useQuery(queryKeys.clubs.explore(), getExploreClubs)
 
+  // `[]` is a decided answer and the one branch that owns the whole screen;
+  // `undefined` is "not yet", and gets the strip like every other state.
+  const hasNoClubs = yours.data?.length === 0
+
   return (
     <>
       <Header title="Clubs" secondaryAction={<NotificationsHeaderControl />} />
 
-      {/* The two placeholder treatments carry their own horizontal padding —
-          `SkeletonList` is built at the list's own `px-4` — so they replace the
-          padded block rather than sit inside it. Nested, the placeholder rows
-          would lay out 16px narrower than the cards that replace them. */}
-      {yours.error ? (
-        <ErrorState onRetry={yours.refetch} />
-      ) : !yours.data ? (
-        // Gated on the data, never on `isLoading` — see `combineQueries` for
-        // the first-render tick where `isLoading` is false and there is still
-        // nothing to draw. An empty array is data, so the branch below still
-        // gets its turn.
-        <SkeletonList />
-      ) : yours.data.length === 0 ? (
-        <NoClubsYet explore={explore} />
-      ) : (
-        <div className="flex flex-col gap-4 px-4 motion-safe:animate-fade-in">
-          {/* `explore.data?.length` rather than a gate: the strip draws itself
-              without a number until the count lands, and keeps the route
-              reachable if that read fails outright. */}
-          <ExploreClubsStrip count={explore.data?.length} />
+      {/* `.pb-navbar-action-extra` on top of the shell's `.pb-navbar`, because
+          the Navbar carries a sticky `Create club` on this route — without it
+          the last card sits under the button. Same top-up `/rides` applies for
+          `Create ride`. */}
+      <div className="pb-navbar-action-extra">
+        {hasNoClubs ? (
+          <NoClubsYet explore={explore} />
+        ) : (
+          <>
+            {/* Outside the gate below, and ungated on `explore` — the strip
+                draws itself without a number until the count lands, and keeps
+                the route reachable if either read fails outright.
 
-          <ul className="flex flex-col gap-2">
-            {yours.data.map((club) => (
-              <li key={club.id}>
-                <ClubCard club={club} joined />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+                Its own padded wrapper rather than a shared one, because
+                `SkeletonList` and `ErrorState` are both built at the list's
+                `px-4` and would lay out 16px narrower nested inside it. */}
+            <div className="px-4 pb-4">
+              <ExploreClubsStrip count={explore.data?.length} />
+            </div>
+
+            {yours.error ? (
+              <ErrorState onRetry={yours.refetch} />
+            ) : !yours.data ? (
+              // Gated on the data, never on `isLoading` — see `combineQueries`
+              // for the first-render tick where `isLoading` is false and there
+              // is still nothing to draw.
+              <SkeletonList />
+            ) : (
+              <ul className="flex flex-col gap-2 px-4 motion-safe:animate-fade-in">
+                {yours.data.map((club) => (
+                  <li key={club.id}>
+                    <ClubCard club={club} joined />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
     </>
   )
 }
@@ -92,6 +115,11 @@ export default function ClubsPage() {
  * Its own gate rather than one `if` over both reads at the top — the rule
  * `combineQueries` states, and here it is what stops a rider *with* clubs
  * waiting on the explore read to see their own list.
+ *
+ * The heading says `Clubs to explore` rather than the mock's `Clubs near you`:
+ * `getExploreClubs` has no geographic predicate and `clubs` has no location
+ * column, so proximity is a claim nothing behind this screen can make. `PD-259`
+ * is what makes it sayable.
  */
 function NoClubsYet({ explore }: { explore: UseQueryResult<ClubListItem[]> }) {
   if (explore.error) return <ErrorState onRetry={explore.refetch} />
@@ -100,7 +128,7 @@ function NoClubsYet({ explore }: { explore: UseQueryResult<ClubListItem[]> }) {
   return (
     <div className="flex flex-col gap-4 px-4 motion-safe:animate-fade-in">
       <div className="flex flex-col gap-0.5 px-2">
-        <h2 className="text-xl font-semibold text-foreground">Clubs near you</h2>
+        <h2 className="text-xl font-semibold text-foreground">Clubs to explore</h2>
         <p className="text-sm font-medium text-muted">You have not joined a club yet.</p>
       </div>
 

@@ -326,6 +326,12 @@ deliberate deviations and one settled ambiguity.
       sitting beside `PD-254`'s. Read that rather than the four originals; the originals are kept
       because the rows, the cards and every token on them are still what ships.
 
+      **That section post-dates the last `figma:pull`, so it is not in `design/`** — `npm run
+      figma -- tree "Clubs - One screen - Your clubs"` finds nothing until the snapshot is
+      refreshed, and the geometry in `ExploreClubsStrip`'s docstring is therefore read from the
+      live file rather than from the committed one. `PD-254`'s section is in the same state; the
+      label is here so neither reads as measured-from-`design/` when it is not.
+
 - [x] ~~**Which Explore design is canonical**~~ — **settled, and it is not the newer-looking
       one.** The flow holds two frames named `Clubs - Explore`: a `List / Club` row list
       (`1918:9610`) and a two-column grid of 175×190 tiles (`1918:10353`), the grid sitting

@@ -41,30 +41,36 @@ export default function ExploreClubsPage() {
     <>
       <Header title="Explore clubs" backHref="/clubs" />
 
-      {/* Outside the `px-4`, not inside it: both treatments are built at the
-          list's own padding, so nesting would draw them 16px narrower than the
-          cards they stand in for. */}
-      {clubs.error ? (
-        <ErrorState onRetry={clubs.refetch} />
-      ) : !clubs.data ? (
-        <SkeletonList />
-      ) : (
-        <div className="px-4 motion-safe:animate-fade-in">
-          {clubs.data.length === 0 ? (
-            <p className="py-8 text-center text-sm font-medium text-muted">
-              There are no public clubs, yet!
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {clubs.data.map((club) => (
-                <li key={club.id}>
-                  <ClubCard club={club} joined={false} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      {/* `.pb-navbar-action-extra` because the Navbar carries a sticky
+          `Create club` on this route too — without it the last card sits under
+          the button. Missing on both club screens until PD-258.
+
+          The two placeholder treatments sit outside the `px-4`, not inside it:
+          both are built at the list's own padding, so nesting would draw them
+          16px narrower than the cards they stand in for. */}
+      <div className="pb-navbar-action-extra">
+        {clubs.error ? (
+          <ErrorState onRetry={clubs.refetch} />
+        ) : !clubs.data ? (
+          <SkeletonList />
+        ) : (
+          <div className="px-4 motion-safe:animate-fade-in">
+            {clubs.data.length === 0 ? (
+              <p className="py-8 text-center text-sm font-medium text-muted">
+                There are no public clubs, yet!
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {clubs.data.map((club) => (
+                  <li key={club.id}>
+                    <ClubCard club={club} joined={false} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
     </>
   )
 }
