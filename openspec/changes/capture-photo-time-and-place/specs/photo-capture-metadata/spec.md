@@ -373,11 +373,19 @@ The control decides what happens to the photo's **place**. `taken_at` and its of
 whenever the file carries them, under every mode including `Hide`, and no mode SHALL be
 represented as covering them.
 
-This is a deliberate property rather than luck, and it is the half of the protection available
-without answering the open question of whether `Hide` *should* cover time: **the string does not
-over-claim.** "The photo's **location** never leaves your phone" stays true with a capture time
-uploaded. A rewording to "nothing about this photo leaves your phone", or any other formulation
-covering the photo generally, would be false and is forbidden until that question is answered.
+**Settled by the product owner, 2026-08-18: *"Hide does not hide capture time."*** This scoping
+shipped as the deliberate reading rather than by omission, and it is now the decided one. The
+capture time is the ride Journal's ordering key — it is what makes a Journal order on the riding
+rather than the telling — so covering it would cost the Journal outright.
+
+**The residual below is accepted, not denied.** The decision does not rest on the composition
+being harmless; it rests on the cost of removing it being higher than the exposure. Do not cite
+this requirement as evidence that a capture time reveals nothing about place.
+
+**The string does not over-claim, and that is what makes the narrow scope honest.** "The photo's
+**location** never leaves your phone" stays true with a capture time uploaded. A rewording to
+"nothing about this photo leaves your phone", or any other formulation covering the photo
+generally, would be false, and is forbidden.
 
 The composition worth being explicit about: a capture time to the second, on a postcard tagged to
 a ride whose meeting point and start time are published, is a fair approximation of where the

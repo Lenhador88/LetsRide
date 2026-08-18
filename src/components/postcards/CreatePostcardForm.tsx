@@ -52,9 +52,10 @@ type Upload =
  * **`Hide` is scoped to the LOCATION on purpose, and the wording is load
  * bearing.** A photo's capture time is uploaded whatever mode is chosen, so a
  * string like "nothing about this photo leaves your phone" would be false.
- * Whether Hide *should* also cover the time is an open product question on
- * PD-255; until it is answered this copy must not be widened, because widening
- * it is how the app starts making a promise the schema does not keep.
+ * Whether Hide *should* also cover the time was PD-265, and the product owner
+ * settled it on 2026-08-18: it should not. So this copy must not be widened —
+ * not pending an answer, but permanently — because widening it is how the app
+ * starts making a promise the schema does not keep.
  */
 const LOCATION_MODES: {
   value: PhotoLocationMode

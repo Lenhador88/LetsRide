@@ -843,11 +843,16 @@ does not control. `062`'s reasoning arrives inverted here: a coordinate is compa
 externally resolvable, and unlike `ride_id` the mitigation cannot be a grant — the upload-time
 choice is the only line of defence there is.
 
-**Two questions are open with the product owner and neither blocks anything already merged**, both
-in the proposal's §Open questions: whether `Hide` should also cover the capture time (it currently
-does not — the hint string is scoped to "the photo's location" for exactly that reason, and a
-requirement forbids widening it until this is answered), and whether a rider needs to be able to
-see their own published location before PD-257 draws one.
+**One question is open with the product owner and it blocks nothing already merged**, in the
+proposal's §Open questions: whether a rider needs to be able to see their own published location
+before PD-257 draws one.
+
+**The other was ANSWERED on 2026-08-18 — `Hide` does NOT cover the capture time** (PD-265, product
+owner, verbatim: *"Hide does not hide capture time."*). `taken_at` is uploaded under every mode,
+the hint string stays scoped to "the photo's location", and the requirement forbidding a wider
+string is now **permanent rather than pending an answer** — which is the half most likely to be
+misread, since the old wording invited a future session to treat the ban as expiring the day the
+question closed.
 
 **`063` is PD-174's and is on DEV ONLY, applied 2026-08-18.** It hangs
 `private.enforce_ride_capacity()` on `ride_members` as a `BEFORE INSERT OR UPDATE` trigger, so

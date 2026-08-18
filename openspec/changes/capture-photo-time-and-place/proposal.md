@@ -473,6 +473,8 @@ stays true, and a requirement now forbids rewording it to "nothing about this ph
 phone" until this is answered. Only you can answer it; it is a privacy-expectation judgement, not
 a build question.
 
+**ANSWERED 2026-08-18 — no.** Product owner, verbatim: *"Hide does not hide capture time."* The recommended default stands. The reasoning above is kept as the record of the question rather than rewritten to match its answer, and the requirement forbidding a wider `Hide` string is now permanent rather than pending. PD-265.
+
 **Q5 — Does a rider need to see the location on their own postcard before PD-257 lands?** Nothing
 in this change renders a coordinate, so a rider picks `Precise`, something is stored, and they get
 no feedback that it was. *Recommended: no — filed, not built.* **Not blocking**: it is bounded by
