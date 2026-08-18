@@ -49,9 +49,15 @@ that the reasoning behind the change survives next to what it replaced. A propos
 body alone is built from the version that was superseded.
 
 Both entries are subject to the rule above: `ToolSearch` `select:` them and **call** them, and if
-either is absent, **stop and say so at the top of your report** rather than proceeding from a
-brief alone. A proposal whose facts are second-hand is not wrong, but it is a different artifact
-from one whose facts are read, and only you can tell the caller which one they got.
+either is absent, **stop and say so at the top of your report** — then write the proposal anyway,
+from the brief, marking what is second-hand. **Absent Linear is not a reason to produce nothing**,
+and reading it as one would halt every proposal for the length of a connector rotation; CLAUDE.md
+§Working Principles is explicit that you *"carry on with everything the block does not touch"*,
+and §The Agent Squad that *"the fix is therefore the report"*. The worked example is this brief's
+own origin: PD-114's proposal was written with no Linear tool at all, flagged as second-hand, and
+its three measured database findings were later verified correct by `reviewer`. A proposal whose
+facts are second-hand is not wrong, but it is a different artifact from one whose facts are read,
+and only you can tell the caller which one they got.
 
 **You still do not write to Linear.** No status, no comment, no label — the main thread owns the
 board, exactly as it owns `CLAUDE.md` and `docs/HANDOFF.md`. Read it and put what you found in
