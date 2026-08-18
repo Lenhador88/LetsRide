@@ -171,8 +171,8 @@ there.
 routine. It will just pick up new stories on the next hourly run."* A child's last act used to be
 `fire_trigger` on that same trigger, so the next batch started seconds after a slot freed;
 `queue-pickup.md` STEP 5 bullet 6 now tells every child to send nothing at all. **A freed slot
-waits for the top of the hour** — the accepted cost of one clock instead of two, and of an off
-switch that stops every dispatch rather than only the heartbeat. It still does not stop a child
+usually waits for the top of the hour** — the accepted cost of one clock instead of two, avoided
+only when the finishing session takes the next story itself under `queue-pickup.md` STEP 6. It still does not stop a child
 already building; that carve-out is below and is unchanged. **A parked story is the one thing a
 child still reports**, by push notification straight to the owner, because the dispatcher's
 `Needs help` clock does not alarm for three hours.
@@ -189,9 +189,11 @@ What has to be known outside those files:
   fallback. `create_trigger` refuses the `connectors` parameter for this organization, so its
   three hand-attached connectors (Supabase, Linear, Vercel) cannot be recreated from a session;
   `update_trigger enabled: true` restores it whole. **`…WJkMV` is cheap and `…Gzy8e` is
-  irreplaceable** — keep the two straight in both directions. A disabled trigger's
-  `list_triggers` row has **no `enabled` key at all** rather than `"enabled": false`, so read a
-  disable back by checking the field is gone.
+  irreplaceable** — keep the two straight in both directions. **A Routine's enabled state cannot
+  be read at all** — measured 2026-08-18, no row `list_triggers` returns carries an `enabled` key,
+  live or paused, so the old rule *read a disable back by checking the field is gone* returns
+  "disabled" against a Routine that is firing. Read `next_run_at` instead: in the future = live,
+  in the past = paused.
 - **Connectors attach to a session, not to a trigger**, which is why the *relay* is a reused
   session and why no amount of procedure can make it otherwise. Switching that Routine to
   `create_new_session_on_fire` loses five things at once, none of which a session can restore: the
@@ -223,17 +225,25 @@ What has to be known outside those files:
   edit the same paths. `queue-dispatch.md` STEP 4 carries each cap with the silent failure it
   prevents — duplicate migration numbers, divergent implementations of one component, and a
   `reviewer` pass that reads a file the other branch is about to change.
+- **Two labels are the concurrency cap, and they are visible on the board.** `slot-1` and `slot-2`
+  (created 2026-08-18) go on every issue a build session holds; a slot label present in
+  `Development (AI)` means that session is live, so the dispatcher counts free slots in the same
+  call that reads the queue and never reads a session list. **An issue moved into that column by
+  hand carries no slot label and consumes no slot** — that is deliberate, so a hand-moved story
+  cannot freeze the queue. A session that finishes with budget left may take another queued story
+  **into its own slot** (`queue-pickup.md` STEP 6); it never opens a third.
 - **Colliding stories are grouped into one session rather than deferred**, which is the same three
   caps read the other way round: each describes damage only two *different* sessions can do, and
   one session writing `060` then `061` has no ordering problem to have. A group is one branch, one
   PR and one `reviewer` pass, capped at three issues, and each issue is still claimed, commented
   and moved on its own. `queue-dispatch.md` STEP 4 has the partitioning and the ceiling.
-- **Disabling the Routine stops the queue, and with the pokes gone it should do so on its own.**
-  It is still enforced twice — the relay reads the trigger's `enabled` field before it spawns, and
-  the dispatcher reads it again (`queue-dispatch.md` STEP -1 and STEP 1) — because a hand-typed
-  `fire_trigger` is *accepted* against a disabled trigger rather than refused (measured
-  2026-08-17), and because this Routine has been seen firing while disabled by something nothing
-  in the repo can now account for. **It does not stop a child already building**: those are
+- **Disabling the Routine stops the queue, because the cron is the only thing that fires it.**
+  **Nothing in the queue reads that field any more, and nothing can**: measured 2026-08-18, not one
+  of the 27 rows `list_triggers` returns carries an `enabled` key — including this Routine, which
+  had fired an hour earlier — so a gate on it could only ever read "off". The two steps that
+  checked it are gone; `queue-dispatch.md` §Why this shape has the measurement. What remains
+  unguarded is a hand-typed `fire_trigger`, which is *accepted* against a disabled trigger rather
+  than refused (measured 2026-08-17). **It does not stop a child already building**: those are
   spawned rather than scheduled, so stopping them means archiving the sessions tagged
   `queue-dispatch` — plus any tagged `queue-dispatch-run`, a dispatcher that cleared the switch
   before it moved — and returning their issues to `Queued (AI)`.
@@ -299,7 +309,7 @@ work. Carrying the N across writes `Ready: N` onto nearly every follow-up this r
 backlog then reads as entirely unstartable.
 
 Only the second of those three reasons has any automated backstop, and a weak one: the
-dispatcher's scout pass checks `blockedBy` relations somebody wrote down. An owner action and a
+dispatcher checks `blockedBy` relations (`queue-dispatch.md` STEP 3) somebody wrote down. An owner action and a
 story wanting a proposal both sail straight through it.
 
 **An issue parked in `Needs decision` or `Needs help` also owes a comparison table of the ways
@@ -327,7 +337,7 @@ to the block, and do not drop it from the table.
   tracker reads as current by construction.
 - **A new owner action goes in Linear the moment it is found**, labelled `Owner only`.
 - **A story's premise ages, and nothing marks it done except someone re-measuring.** Check it
-  before building, not after — `.claude/commands/queue-dispatch.md` STEP 3 is the procedure, and
+  before building, not after — `.claude/commands/queue-pickup.md` STEP 3 is the procedure, and
   it applies to a story picked up by hand just as much as to one a dispatch takes off the queue.
   **A stale story goes to `Needs decision` with the command and its output in a comment, never
   to `Needs help`** — that name is half the concurrency lock, so parking finished work there

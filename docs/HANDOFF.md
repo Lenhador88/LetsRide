@@ -2083,17 +2083,21 @@ the cron traps — is in `CLAUDE.md` §The roadmap lives in Linear, and the proc
 far — the session it fires into is the **relay**, and the file overrides the prompt. Harmless, and
 only the owner or that session can reword it.
 
-**Two of `PD-241`'s three items are still open, and the issue body has not caught up.** The
-**fallback Routine is still missing** (`trig_01Gzy8eCiaXUUa1knvJnNpwy`, absent again at
-`limit=100`, and the whole account holds two Routines). And the **re-enable**: the row carried no
-`enabled` key that morning, `last_fired_at` 06:20Z with
-`next_run_at` 07:05Z already in the past, so **the queue is switched off right now**. Check rather
-than assume — a disabled row simply lacks the key:
+**The fallback Routine is still missing** — `trig_01Gzy8eCiaXUUa1knvJnNpwy`, absent again on
+2026-08-18 at `limit=100 include_completed=true`, where the account returns **27** rows and none is
+it. Only the owner can rebuild it, by hand, in the Routines UI.
+
+**`enabled` is not a readable field, and reading it as one is what made this file say the queue was
+switched off.** Measured 2026-08-18: **not one of those 27 rows carries an `enabled` key**,
+including `trig_01WJkMVXGzUVGDcC1njNmaan`, which had fired at 17:09Z and carried `next_run_at`
+18:05Z. So the documented rule — *a disabled row simply lacks the key* — cannot distinguish a live
+Routine from a stopped one in either direction. **`next_run_at` is the check that works**, and the
+two steps that gated on `enabled` were deleted the same day (`queue-dispatch.md` §Why this shape).
 
 ```
 # via the CCR MCP: list_triggers -> trig_01WJkMVXGzUVGDcC1njNmaan
 #   its prompt must name queue-dispatch.md, not queue-pickup.md
-#   enabled: true, and next_run_at in the FUTURE = live
+#   next_run_at in the FUTURE = live; in the past = paused. `enabled` is never present.
 ```
 
 **A procedure change needs no trigger edit, and STEP -1 is why that stays true.** The prompt says
@@ -2113,10 +2117,12 @@ rather than trusting:**
 
 - **`…WJkMV` was found paused**, `last_fired_at` 2026-08-14T09:36Z with `next_run_at` two days in
   the past. Nothing on the board or in the repo showed it; the queue simply stopped. **Check
-  `next_run_at` is in the future** — the presence of the row is not the check.
+  `next_run_at` is in the future** — the presence of the row is not the check, and neither is
+  `enabled`, which no row carries.
 - **`trig_01Gzy8eCiaXUUa1knvJnNpwy` did not appear in `list_triggers` at all** (7 rows at
-  `limit=100`). If it is genuinely gone, the documented fallback is gone with it and only the
-  owner can rebuild it, by hand, in the Routines UI.
+  `limit=100` then, 27 on 2026-08-18 with `include_completed=true`). If it is genuinely gone, the
+  documented fallback is gone with it and only the owner can rebuild it, by hand, in the Routines
+  UI.
 
 ```bash
 # via the CCR MCP: list_triggers  limit=100
@@ -2129,10 +2135,37 @@ session was active, so the container was warm. **Whether the grants survive a co
 across an idle hour is unproven**, and no session can test it — it is only observable after the
 fact. STEP 0 of the procedure is the detector; the fallback is re-enabling the old Routine.
 
+**The queue was rebuilt on 2026-08-18 around the board rather than the session list**, on the
+owner's instruction, and the four removals each have a measurement behind them in
+`queue-dispatch.md` §Why this shape: the scout pass (~120k a firing to predict paths), the
+`list_sessions` reads (~35k a call), the dispatch-record comments, and the `enabled` gate above.
+What replaced them:
+
+- **`slot-1` / `slot-2`** — two Linear labels created that day on the `PD` team. Every issue a
+  build session holds carries its label, so free slots are counted in the same call that reads the
+  queue. **An issue moved into `Development (AI)` by hand carries no label and holds no slot.**
+- **A `<!-- territory -->` comment per slot**, written by the session that is building — the paths,
+  whether it adds a migration, whether it touches a shared primitive.
+- **The relay pre-check** (`queue-dispatch.md` STEP -1) — four small board reads before it spawns
+  anything, because a dispatcher costs a whole session and six of them on 2026-08-18 produced one
+  child.
+- **`queue-pickup.md` STEP 6** — a session that finishes with budget left takes another queued
+  story into its own slot. Bounded at 3 stories and 400k output tokens, measured off ten recent
+  children that spent 9.8k–377k each.
+- **The owner-activity gate is gone**, on the owner's instruction — *"we can indeed drop the gate
+  whether I am here or not"*, with *"i do not edit files by hand, always prompting here"*.
+
+**The durable lesson from what prompted it**, since the incident itself cleared the same evening:
+a session that keeps re-arming a check-in to watch one PR has no bound on what it spends, and its
+issue holds a queue slot the whole time. `queue-pickup.md` STEP 4c now bounds driving CI to green
+at three attempts, and `CLAUDE.md` §Working Principles carries the same rule for a directed
+session. Neither reaches a session already running — stopping one of those is the owner archiving
+it.
+
 **The board's live state is the fastest-moving thing in this file — do not read it here:**
 
 ```bash
-# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c
-#   -> group by status; Queued (AI) is the queue, Development (AI) claims one issue each,
-#      and any Needs help row stops every dispatch
+# via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c state=<one status>
+#   -> Queued (AI) is the queue; Development (AI) is what is being built, and the slot-1/slot-2
+#      labels on those rows are the concurrency count; any Needs help row stops every dispatch
 ```

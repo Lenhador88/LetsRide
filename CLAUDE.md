@@ -930,15 +930,14 @@ a build.
 
 **Default: one build in flight, in the background, and the thread stays free.** Spawn the agent,
 reply at once, and keep answering questions about other stories while it runs. What this buys is
-**availability, not throughput** — and the queue is not the fallback a session assumes it is,
-because `.claude/commands/queue-dispatch.md` STEP 1 holds every dispatch while any of the owner's
-own sessions is `RUNNING`. **So while the owner is actively working the queue is suppressed, not
-merely slow**, and this mode is the only thing picking work up at all.
+**availability, not throughput**.
 
-**That gate is narrower than the one it replaced, and the difference matters here.** It used to
-hold the whole hour whenever *any* of the owner's sessions had been touched in the last 15
-minutes — so an idle session they might come back to suppressed the queue as effectively as a
-live one. Now only an actively running session does.
+**The queue runs alongside this mode now, which it did not until 2026-08-18.** The dispatcher used
+to hold every dispatch while any of the owner's own sessions was `RUNNING`; the owner dropped that
+gate — *"we can indeed drop the gate whether I am here or not"* — so an hourly firing may hand a
+story to a build session while this conversation is live. **The collision that gate guarded against
+is between two builds, not between a build and a conversation**, and `queue-dispatch.md` §The board
+is the lock now holds it with two Linear labels and a declared territory per session.
 
 **Backgrounding it and then waiting on it is the same as not backgrounding it.** Product owner,
 2026-08-11: *"shouldn't all of that be running on the background?"* — said to a session that had
@@ -1233,9 +1232,10 @@ Three things are still owed and none of them is a status update:
 - **Anything the owner just asked.** Answer it immediately and fully. §Delegating while the
   owner is at the keyboard is explicit — *"spawn the agent, reply at once, and keep answering
   questions about other stories while it runs"* — and that mode buys **availability**, which
-  is the whole return on backgrounding. It is also the only thing picking work up while they
-  are at the keyboard, since the dispatcher's owner-activity gate holds while this session is
-  running. Silence here cancels the mode rather than serving it.
+  is the whole return on backgrounding. Silence here cancels the mode rather than serving it.
+  (Until 2026-08-18 this mode was also the *only* thing picking work up while the owner was at
+  the keyboard, because the dispatcher held every dispatch while one of their sessions was
+  running. That gate is gone: the queue now runs alongside this mode.)
 - **A question only they can answer, and a blocked capability.** Both are decisions, not
   status.
 - **A one-line answer to a hook that returned `decision: block`.** That is a prompt, unlike a
@@ -1507,6 +1507,19 @@ looks finished. Before ending a session, merge it or say plainly that it is open
 is not hypothetical: a handoff rewrite sat in an unmerged PR while `main` told the next session
 a shipped epic was half-finished.
 
+**Driving a PR to green is bounded: three attempts, then hand it back.** An attempt is one push
+that intends to fix a red or absent check. After the third is read back and still not green, say
+what is failing and stop — do not open a fourth, do not re-run a job hoping for a different answer,
+and **do not arm a repeating check-in to come back to it later**.
+
+Measured 2026-08-18: one session watching a single PR re-armed an hourly `send_later` eighteen
+times across twenty hours — **84.5M cache-read tokens, 343k output, nothing built after the first
+hour**, and its Linear issue holding a queue slot the whole time. A session that cannot get CI green
+in three tries has found something the owner needs to see, and every wake after that spends real
+money to say so more slowly. This bounds the harness's own PR-watch instructions, which otherwise
+re-arm indefinitely; a session can read its own spend to check itself — `get_session` with
+`session_id` omitted returns `external_metadata.usage`.
+
 **"Counts" has two thresholds, and which of them is yours depends on what you were asked to do.**
 **A session's unit of done is a merged PR on `development`**, which is where a queue firing ends
 (`Deployed to DEV`). Reaching riders is the promotion to `main`, and `Done (in production)` is the
@@ -1548,7 +1561,7 @@ rather than checking it against this list, which is not exhaustive:
   obituaries, so the obvious command returns a wrong number that looks measured.
 - **`^`-anchored `git grep -L`** (same paragraph) — unanchored, a doc comment mentioning
   `'use client'` counts as the directive, so real server-rendered pages drop out of the list.
-- **The team-scoped lock** (`.claude/commands/queue-dispatch.md` STEP 2) — a team-scoped
+- **The team-scoped lock** (`.claude/commands/queue-dispatch.md` STEP 1) — a team-scoped
   `list_issues` is the natural query and is held permanently by years-old issues outside this
   project.
 
@@ -1598,10 +1611,17 @@ triggers or the relay session it fires into** — those are CCR calls rather tha
   response.**
 - **Do not ask permission to touch Linear.** Standing grant, 2026-08-07 — read, create, update,
   label, move between statuses, and close. Deleting anything a human authored is the exception.
-- **`Queued (AI)` is the only start signal.** `Development (AI)` claims **one issue** — stories
-  build in parallel sessions, so it says nothing about the others — while `Needs help` still stops
-  every dispatch. Both traps are spelled out in the reference; reading either as "any `started`
-  issue" freezes the queue while looking healthy.
+- **`Queued (AI)` is the only start signal**, and the owner keeps it hand-fed on purpose
+  (2026-08-18: *"it allows me to prioritise and focus work on the features I want to deliver"*), so
+  a full `Todo AI` column is not a starved queue to route around. `Development (AI)` claims **one
+  issue** — stories build in parallel sessions, so it says nothing about the others — while
+  `Needs help` still stops every dispatch. Both traps are spelled out in the reference; reading
+  either as "any `started` issue" freezes the queue while looking healthy.
+- **The two `slot-*` labels are the concurrency cap, and the board is the whole lock.** `slot-1`
+  and `slot-2` go on every issue a build session holds, so free slots are counted in the same call
+  that reads the queue — no session list, no dispatch records, no scout agents. An issue moved into
+  `Development (AI)` by hand carries no slot label and holds no slot, which is what keeps a manual
+  move from freezing the queue.
 - **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`. A
   `save_issue` naming a status that no longer exists comes back looking successful with the field
   silently dropped.
