@@ -204,7 +204,14 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
           the three buttons are about, and `Hide`'s copy is scoped to the
           location for exactly that reason. Omitted entirely when the photo
           carried none, which is the common case: HEIC, screenshots, and
-          anything already through another app's share sheet. */}
+          anything already through another app's share sheet.
+
+          Gated on `takenAt` alone, and that is safe only because `exif.ts`
+          returns the instant and its offset together or not at all — the type
+          permits a non-null `takenAt` beside a null offset, and that shape would
+          submit the string "null" and produce a Zod error with no field a rider
+          could correct. If a second producer of `ExifCapture` ever appears,
+          this gate has to check both. */}
       {capture?.takenAt && (
         <>
           <input type="hidden" name="takenAt" value={capture.takenAt} />

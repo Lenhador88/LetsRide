@@ -327,9 +327,27 @@ describe('parseExifCapture — a corrupt OffsetTimeOriginal', () => {
             )
             expect(takenAtOffsetMinutes).not.toBeNull()
             expect(Math.abs(takenAtOffsetMinutes!)).toBeLessThanOrEqual(1440)
-            // Stronger than the CHECK, and it is the half that catches a
-            // corrupt minutes field: every offset this parser emits is one a
-            // real place uses.
+            // Tighter than the CHECK, and it would catch a widened *total*
+            // bound.
+            //
+            // **It does NOT catch a corrupt minutes field, and an earlier
+            // version of this comment claimed it did.** Delete
+            // `Number(minutes) > 59` from `exif.ts` and this loop still passes:
+            // `+05:99` sums to 399, which is inside −720..840, so the unguarded
+            // value satisfies every assertion here. Mutation-tested rather than
+            // reasoned about.
+            //
+            // **What actually pins that fix is `'+05:99'` and `'+00:99'` in the
+            // rejection list above** — the same mutation fails there and only
+            // there. Do not prune them as "already covered by the property
+            // test"; they are the only regression guard on the minutes bound.
+            //
+            // Nor is "every offset this parser emits is one a real place uses"
+            // true: `+05:17` → 317 passes, and no current zone is off a
+            // 15-minute multiple. That is benign — both the schema and the
+            // CHECK accept it, so no rider is ever stranded by it — which is
+            // why the bound stops at the range rather than testing for
+            // realness.
             expect(takenAtOffsetMinutes!).toBeGreaterThanOrEqual(-720)
             expect(takenAtOffsetMinutes!).toBeLessThanOrEqual(840)
           }
