@@ -1737,6 +1737,15 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   and a wrap-up PR left open is that failure mode with extra steps, because every other signal
   (clean tree, green CI, pushed branch) already looks finished. If it genuinely cannot merge,
   say so plainly as the **last thing in the session**, with the reason.
+- **Every implemented story ends on DEV.** Standing instruction, product owner 2026-08-18:
+  *"after every story implementation, we should deploy to DEV."* Merging to `development` **is**
+  that deploy — Vercel builds the Preview against `letsride-dev` on the merge — so the story is
+  not finished at "green and approved", it is finished when it is running on DEV and the Linear
+  issue says `Deployed to DEV`. **Do not wait to be told to merge.** A design question, a review
+  finding or a blocked capability is a reason to hold; the absence of an explicit "merge it" is
+  not, and neither is the work being someone else's to admire.
+  `docs/reference/linear.md` §The statuses carries the status half and the promotion rule
+  beyond it — DEV is the session's threshold, `main` is the rider's.
 - **A follow-up PR is fine when a fact only becomes true after the merge.** Applying a migration
   that must land after its code deploys is the standard case: the "applied" line cannot be
   written truthfully in the PR that deploys the code.
